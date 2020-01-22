@@ -20,7 +20,8 @@
 .. autosummary::
    :nosignatures:
 
-   soxspipe.utKit.utKit 
+   soxspipe.commonutils.sof_util
+ 
 
 **Functions**
 

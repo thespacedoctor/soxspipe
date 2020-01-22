@@ -12,7 +12,8 @@ def readme():
 install_requires = [
     'pyyaml',
     'soxspipe',
-    'fundamentals'
+    'fundamentals',
+    'astropy'
 ]
 
 # READ THE DOCS SERVERS

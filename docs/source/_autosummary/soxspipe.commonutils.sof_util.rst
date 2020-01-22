@@ -1,9 +1,9 @@
-utKit (*class*)
-==============================
+sof_util (*class*)
+=======================================
 
-.. currentmodule:: soxspipe.utKit
+.. currentmodule:: soxspipe.commonutils
 
-.. autoclass:: utKit
+.. autoclass:: sof_util
    :members:
    :private-members:
    :show-inheritance:
@@ -20,27 +20,9 @@ utKit (*class*)
         
    
         
-            ~utKit.get_project_root
+            ~sof_util.generate_sof_file_from_directory
        
    
-        
-            ~utKit.refresh_database
-       
-   
-        
-            ~utKit.setupModule
-       
-   
-        
-            ~utKit.tearDownModule
-       
-   
-   
-       
-   
-       
-   
-       
    
        
    

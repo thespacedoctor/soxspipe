@@ -1,5 +1,5 @@
 commonutils (*subpackage*)
-====================================================
+===================================
 
 .. automodule:: soxspipe.commonutils
     :members:
@@ -23,7 +23,23 @@ commonutils (*subpackage*)
         
         
         
+        
+            
+                ~getpackagepath
+           
+        
+        
+            
+                ~sof_util
+           
+        
+        
+            
+        
     
+        
+        
+        
         
         
         

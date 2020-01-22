@@ -17,7 +17,8 @@ class utKit(utKit):
     # Initialisation
     def __init__(
             self,
-            moduleDirectory
+            moduleDirectory,
+            dbConn=False
     ):
         self.moduleDirectory = moduleDirectory
         # x-self-arg-tmpx
@@ -50,13 +51,15 @@ class utKit(utKit):
             handlers: [console]"""
 
         # Override Variable Data Atrributes
-        self.dbConfig = """
-         version: 1
-         db: dryx_unit_testing
-         host: localhost
-         user: unittesting
-         password: utpass
-         """
+        self.dbConfig = False
+        if dbConn:
+            self.dbConfig = """
+             version: 1
+             db: dryx_unit_testing
+             host: localhost
+             user: unittesting
+             password: utpass
+             """
 
         return
 

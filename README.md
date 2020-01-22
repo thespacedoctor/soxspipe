@@ -2,7 +2,6 @@
 
 [![](https://readthedocs.org/projects/soxspipe/badge/)](http://soxspipe.readthedocs.io/en/latest/?badge)   [![](https://cdn.jsdelivr.net/gh/thespacedoctor/soxspipe@master/coverage.svg)](https://cdn.jsdelivr.net/gh/thespacedoctor/soxspipe@master/htmlcov/index.html)
 
-
 *A python package and command-line tools for The data-reduction pipeline for the SOXS instrument*.
 
 Documentation for soxspipe is hosted by [Read the Docs](http://soxspipe.readthedocs.org/en/stable/) (last
@@ -10,9 +9,11 @@ Documentation for soxspipe is hosted by [Read the Docs](http://soxspipe.readthed
 
 ## Installation
 
-The easiest way to install soxspipe is to use `pip`:
+The easiest way to install soxspipe is to use `pip` (here we show the install inside of a conda environment):
 
 ``` bash
+conda create -n soxspipe python=3.7 pip
+conda activate soxspipe
 pip install soxspipe
 ```
 
@@ -41,6 +42,9 @@ python setup.py develop
 ```
 
 [Pull requests](https://github.com/thespacedoctor/soxspipe/pulls) are welcomed! 
+
+
+Note the data-sets are fairly bulky so make sure you have plenty of space on the drive you are downloading this data to.
 
 <!-- ### Sublime Snippets
 

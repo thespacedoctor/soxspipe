@@ -28,6 +28,7 @@ Classes
    :toctree: _autosummary
    :nosignatures:
 
+   soxspipe.commonutils.sof_util
    soxspipe.utKit.utKit 
 
 
