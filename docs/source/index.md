@@ -18,14 +18,6 @@
    quickstart
 ```
 
-```eval_rst
-.. toctree::
-   :maxdepth: 4
-   :caption: Add Content Here
-
-   _template_
-```
-
 ## API
 
 ```eval_rst
@@ -49,4 +41,5 @@
    :caption: Misc
 
    todolist
+   _template_
 ```
