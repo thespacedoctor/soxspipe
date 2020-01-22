@@ -1,0 +1,8 @@
+pymdown-extensions
+MarkdownSubscript
+mock
+git+https://github.com/thespacedoctor/sphinx-markdown-parser.git@master#egg=sphinx_markdown_parser
+m2r
+mdx_include
+lxml
+sphinxcontrib-mermaid
