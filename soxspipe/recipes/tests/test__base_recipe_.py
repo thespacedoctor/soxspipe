@@ -10,9 +10,9 @@ from fundamentals import tools
 from os.path import expanduser
 home = expanduser("~")
 
-packageDirectory = utKit("", dbConn=False).get_project_root()
+packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings.yaml"
-# settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
+# settingsFile = home + "/.config/soxspipe.recipes/soxspipe.recipes.yaml"
 su = tools(
     arguments={"settingsFile": settingsFile},
     docString=__doc__,
@@ -43,31 +43,32 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 
 
-class test_sof_util(unittest.TestCase):
+class test__base_recipe_(unittest.TestCase):
 
-    def test_sof_util_function(self):
+    def test__base_recipe__function(self):
+
+        framePath = settings["test-data-root"] + \
+            "/xshooter-bias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
+        interMediatePath = settings["intermediate-data-root"]
 
         # utKit.refresh_database() # reset database to database found in
-        # soxspipe/test/input
-        directory = settings["test-data-root"] + "/xshooter-bias/vis"
-        other_output = settings[
-            "reduced-data-root"].replace("reduced", "other_output")
-
-        sofPath = other_output + "/test.sof"
-        from soxspipe.commonutils import sof_util
-        sof = sof_util(
+        # soxspipe.recipes/test/input
+        from soxspipe.recipes import _base_recipe_
+        recipe = _base_recipe_(
             log=log,
             settings=settings
         )
-        sofFile = sof.generate_sof_file_from_directory(
-            directory=directory, sofPath=sofPath)
-        print("sof file written to %(sofPath)s" % locals())
+        preFrame = recipe.prepare_single_frame(frame=framePath)
 
-    def test_sof_util_function_exception(self):
+        # NOW TRY SAVING
+        preFrame = recipe.prepare_single_frame(frame=framePath, save=settings[
+                                               "save-intermediate-products"])
 
-        from soxspipe.commonutils import sof_util
+    def test__base_recipe__function_exception(self):
+
+        from soxspipe.recipes import _base_recipe_
         try:
-            this = sof_util(
+            this = _base_recipe_(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"

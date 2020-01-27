@@ -14,4 +14,4 @@ Submodules
 .. toctree::
 
    soxspipe.commonutils.getpackagepath
-   soxspipe.commonutils.sof_util
+   soxspipe.commonutils.set_of_files

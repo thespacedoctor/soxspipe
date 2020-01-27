@@ -6,6 +6,7 @@
    :template: autosummary/subpackage.rst
 
    soxspipe.commonutils
+   soxspipe.recipes
 
 **Modules**
 
@@ -20,14 +21,16 @@
 .. autosummary::
    :nosignatures:
 
-   soxspipe.commonutils.sof_util
- 
+   soxspipe.commonutils.set_of_files
+   soxspipe.recipes._base_recipe_
+   soxspipe.recipes.mbias
+
 
 **Functions**
 
 .. autosummary::
    :nosignatures:
 
-   soxspipe.docstring_test.docsting_test 
+   soxspipe.docstring_test.docsting_test
 
 :ref:`Index<genindex>`

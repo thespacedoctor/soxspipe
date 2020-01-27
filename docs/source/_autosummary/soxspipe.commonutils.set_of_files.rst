@@ -1,9 +1,9 @@
-sof_util (*class*)
-=======================================
+set_of_files (*class*)
+===========================================
 
 .. currentmodule:: soxspipe.commonutils
 
-.. autoclass:: sof_util
+.. autoclass:: set_of_files
    :members:
    :private-members:
    :show-inheritance:
@@ -20,9 +20,15 @@ sof_util (*class*)
         
    
         
-            ~sof_util.generate_sof_file_from_directory
+            ~set_of_files.generate_sof_file_from_directory
        
    
+        
+            ~set_of_files.get
+       
+   
+   
+       
    
        
    

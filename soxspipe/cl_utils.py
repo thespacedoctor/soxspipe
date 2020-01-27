@@ -5,10 +5,14 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org/en
 
 Usage:
     soxspipe init
-    soxspipe [-s <pathToSettingsFile>]  
+    soxspipe mbias <inputFrames> [-s <pathToSettingsFile>] 
 
 Options:
     init                                   setup the soxspipe settings file for the first time
+    mbias                                  the master bias recipe
+
+    inputFrames                            path to a directory of frames or a set-of-files file
+
     -h, --help                             show this help message
     -v, --version                          show version
     -s, --settings <pathToSettingsFile>    the settings file
@@ -112,6 +116,16 @@ def main(arguments=None):
         except:
             pass
         return
+
+    if a["mbias"]:
+        from soxspipe.recipes import mbias
+        recipe = mbias(
+            log=log,
+            settings=settings,
+            inputFrames=a["inputFrames"]
+        )
+        mbiasFrame = recipe.produce_product()
+        print("You can find the master bias frame at `%(mbiasFrame)s`" % locals())
 
     # CALL FUNCTIONS/OBJECTS
 

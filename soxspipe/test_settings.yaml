@@ -21,6 +21,8 @@ calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
 intermediate-data-root: ~/soxspipe-unittests/intermediate
 reduced-data-root: ~/soxspipe-unittests/reduced
 
+save-intermediate-products: True
+
 logging settings:
     formatters:
         file_style:

@@ -7,7 +7,8 @@ Subpackages
    :nosignatures:
    :template: autosummary/subpackage.rst
 
-   soxspipe.commonutils 
+   soxspipe.commonutils
+   soxspipe.recipes
 
 
 Modules
@@ -18,7 +19,7 @@ Modules
    :nosignatures:
 
    soxspipe.docstring_test
-   soxspipe.utKit 
+   soxspipe.utKit
 
 
 Classes
@@ -28,8 +29,10 @@ Classes
    :toctree: _autosummary
    :nosignatures:
 
-   soxspipe.commonutils.sof_util
-   soxspipe.utKit.utKit 
+   soxspipe.commonutils.set_of_files
+   soxspipe.recipes._base_recipe_
+   soxspipe.recipes.mbias
+   soxspipe.utKit.utKit
 
 
 Functions
@@ -39,7 +42,7 @@ Functions
    :toctree: _autosummary
    :nosignatures:
 
-   soxspipe.docstring_test.docsting_test 
+   soxspipe.docstring_test.docsting_test
 
 :ref:`Index<genindex>`
 ----------------------

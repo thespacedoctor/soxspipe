@@ -1,4 +1,4 @@
 """
 *common tools used throughout package*
 """
-from .sof_util import sof_util
+from .set_of_files import set_of_files

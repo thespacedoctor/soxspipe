@@ -13,7 +13,8 @@ install_requires = [
     'pyyaml',
     'soxspipe',
     'fundamentals',
-    'astropy'
+    'astropy',
+    'ccdproc'
 ]
 
 # READ THE DOCS SERVERS

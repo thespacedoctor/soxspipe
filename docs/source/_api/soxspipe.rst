@@ -14,6 +14,7 @@ Subpackages
 .. toctree::
 
    soxspipe.commonutils
+   soxspipe.recipes
 
 Submodules
 ----------

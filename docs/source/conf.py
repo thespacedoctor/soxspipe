@@ -22,7 +22,7 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
         return Mock()
 MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.colors',
-                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest']
+                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 
 
@@ -140,7 +140,7 @@ def updateUsageMd():
 
     usage = """
 
-```bash 
+```bash
 %(usageString)s
 ```
 """ % locals()
@@ -237,7 +237,7 @@ Subpackages
    :nosignatures:
    :template: autosummary/subpackage.rst
 
-   %(allSubpackages)s 
+   %(allSubpackages)s
 
 """ % locals()
 
@@ -250,7 +250,7 @@ Modules
    :toctree: _autosummary
    :nosignatures:
 
-   %(allModules)s 
+   %(allModules)s
 
 """ % locals()
 
@@ -263,7 +263,7 @@ Classes
    :toctree: _autosummary
    :nosignatures:
 
-   %(allClasses)s 
+   %(allClasses)s
 
 """ % locals()
 
@@ -276,7 +276,7 @@ Functions
    :toctree: _autosummary
    :nosignatures:
 
-   %(allFunctions)s 
+   %(allFunctions)s
 
 :ref:`Index<genindex>`
 ----------------------
@@ -313,14 +313,14 @@ Functions
 .. autosummary::
    :nosignatures:
 
-   %(allClasses)s 
+   %(allClasses)s
 
 **Functions**
 
 .. autosummary::
    :nosignatures:
 
-   %(allFunctions)s 
+   %(allFunctions)s
 
 :ref:`Index<genindex>`
 """ % locals()
@@ -363,11 +363,30 @@ def docstring(app, what, name, obj, options, lines):
 
     md = '\n'.join(lines)
 
+    # FIX MARKDOWN
+    md = md.replace("    imes", "\\times")
+    md = md.replace("    ext{", "\\text{")
+    if "\nm{" in md or "{\nm " in md:
+        md = md.replace("\n        ", "\n")
+        md = md.replace("\nm{", "\\rm{")
+        md = md.replace("{\nm ", "{\\rm ")
+        # md = md.replace("\nm{", "\\text{")
+    # if "electron counts" in md:
+    #     print(md)
+    #     sys.exit(0)
+
     regex = re.compile(r'(.+?)\n:\s+(.*\n)')
     md = regex.sub(r'\1\n  \2', md)
 
+    # FIX INLINE MATH
     regex = re.compile(r'(\s|\n)(\$[^\$\n]+\$)([^\$])')
     md = regex.sub(r'\1`\2`\3', md)
+
+    # FIX EQUATIONS
+    regex = re.compile(r'\n\$\$(\S)')
+    md = regex.sub(r'\n$$\n\1', md)
+    regex = re.compile(r'(\S)\$\$\n')
+    md = regex.sub(r'\1\n$$', md)
 
     # FIX DEFINITIONS
     regex = re.compile(r'(( |\t)+)- ``([^\n]+)`` -')
@@ -405,8 +424,24 @@ def docstring(app, what, name, obj, options, lines):
 
     rst = md
     rst = m2r.convert(md)
+
     rst = rst.replace("6473829123", "  ")
     rst = rst.replace(".. code-block:: eval_rst", "")
+
+    rst = rst.replace("  imes", "\\times")
+
+    # $$\rm{error}$$
+    matchObject = True
+    while matchObject:
+        matchObject = re.search(r'\n\n(\$\$\n(\S(.*\n)*?)\$\$)', rst)
+        if matchObject:
+            math = matchObject.group(2)
+            math = math.replace("\n", " \\\\\n    ")
+            math = "\n\n.. math::\n\n    " + math
+            rst = rst.replace(matchObject.group(0), math)
+
+    if "electron counts" in rst:
+        print(rst)
 
     # REPLACE THE DOCSTRING LINES WITH OUR NEW RST
     lines.clear()
