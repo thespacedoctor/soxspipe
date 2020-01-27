@@ -50,9 +50,6 @@ class test__base_recipe_(unittest.TestCase):
         framePath = settings["test-data-root"] + \
             "/xshooter-bias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
         interMediatePath = settings["intermediate-data-root"]
-
-        # utKit.refresh_database() # reset database to database found in
-        # soxspipe.recipes/test/input
         from soxspipe.recipes import _base_recipe_
         recipe = _base_recipe_(
             log=log,

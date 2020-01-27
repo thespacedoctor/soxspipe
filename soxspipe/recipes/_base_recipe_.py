@@ -235,7 +235,7 @@ class _base_recipe_():
         **Usage:**
 
         ```python
-        usage code 
+        myPath = self._absolute_path(myPath)
         ```
 
         ---
@@ -292,7 +292,6 @@ class _base_recipe_():
         self.log.debug('starting the ``prepare_frames`` method')
 
         filepaths = self.inputFrames.files_filtered(include_path=True)
-        preframes = []
 
         preframes = []
         preframes[:] = [self.prepare_single_frame(
