@@ -21,6 +21,7 @@ from astropy.stats import mad_std
 import numpy as np
 from astropy.nddata import CCDData
 import ccdproc
+from ccdproc import Combiner
 
 
 class mbias(_base_recipe_):
@@ -34,7 +35,7 @@ class mbias(_base_recipe_):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
 
     See `produce_product` method for usage.
 
@@ -71,8 +72,15 @@ class mbias(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY MBIAS - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
+        print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
-        print(self.inputFrames.summary)
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+
+        print("# RAW INPUT BIAS FRAMES - SUMMARY")
+        # SORT IMAGE COLLECTION
+        self.inputFrames.sort(['mjd-obs'])
+        print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -152,19 +160,57 @@ class mbias(_base_recipe_):
 
         # IMAGECOLLECTION FILEPATHS
         filepaths = self.inputFrames.files_filtered(include_path=True)
-
         ccds = []
+        firstInputheader = None
         for f in filepaths:
             ccd = CCDData.read(f, hdu=0, unit='electron', hdu_uncertainty='UNCERT',
                                hdu_mask='MASK', hdu_flags='BITMAP', key_uncertainty_type='UTYPE')
+            if not firstInputheader:
+                firstInputheader = ccd.header
             ccds.append(ccd)
 
-        # GENERATE THE COMBINED MEDIAN
-        combined_bias_median = ccdproc.combine(ccds, method='median', sigma_clip=True, sigma_clip_low_thresh=5,
-                                               sigma_clip_high_thresh=5, sigma_clip_func=np.ma.median, sigma_clip_dev_func=mad_std, mem_limit=700e6)
+        print("# CLIPPING PIXELS WITH EXTREME VALUES IN INDIVIDUAL FRAMES")
+        # PRINT SOME INFO FOR USER
+        arm = ccd.header['eso seq arm'].upper()
+        badCount = ccd.mask.sum()
+        totalPixels = np.size(ccd.mask)
+        percent = (float(badCount) / float(totalPixels)) * 100.
+        print("    The basic bad-pixel mask for the %(arm)s detector contains %(badCount)s pixels (%(percent)0.2f%% of all pixels)" % locals())
 
-        # PRODUCT PATH
-        arm = combined_bias_median.header['eso seq arm']
+        # CREATE A COMBINER OBJECT
+        # https://ccdproc.readthedocs.io/en/latest/api/ccdproc.Combiner.html#ccdproc.Combiner
+        combiner = Combiner(ccds)
+
+        # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INOUT FRAMES - USING
+        # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
+        old_n_masked = 0
+        new_n_masked = combiner.data_arr.mask.sum()
+        # print("The basic bad-pixel mask contains %(new_n_masked)s pixels" % locals())
+        iteration = 1
+        while (new_n_masked > old_n_masked):
+            combiner.sigma_clipping(
+                low_thresh=5, high_thresh=5, func=np.ma.median, dev_func=mad_std)
+            old_n_masked = new_n_masked
+            new_n_masked = combiner.data_arr.mask.sum()
+            diff = new_n_masked - old_n_masked
+            extra = ""
+            if diff == 0:
+                extra = " - we're done"
+            print("    Clipping iteration %(iteration)s finds %(diff)s more rogue pixels in the set of input frames%(extra)s" % locals())
+            iteration += 1
+
+        # GENERATE THE COMBINED MEDIAN
+        print("# MEDIAN COMBINING INPUT FRAMES - USING UPDATED BAD-PIXEL MASK")
+        combined_bias_median = combiner.median_combine()
+        combined_bias_median.header = firstInputheader
+        combined_bias_median.header[
+            "HIERARCH ESO PRO CATG"] = "MASTER_BIAS_%(arm)s" % locals()
+
+        # CALCULATE NEW PIXELS ADDED TO MASK
+        newBadCount = ccd.mask.sum()
+        diff = newBadCount - badCount
+        print("%(diff)s new pixels made it into the propagated bad-pixel map" % locals())
+
         x = combined_bias_median.header['eso det win1 binx']
         y = combined_bias_median.header['eso det win1 biny']
         productPath = self.intermediateRootPath + \

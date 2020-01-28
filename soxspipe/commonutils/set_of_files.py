@@ -69,7 +69,7 @@ class set_of_files(object):
             log,
             settings=False,
             inputFrames=[],
-            keys=['cdelt1', 'cdelt2', 'eso det chip1 pszx',
+            keys=['mjd-obs', 'cdelt1', 'cdelt2', 'eso det chip1 pszx',
                   'eso dpr type', 'eso seq arm', 'exptime', 'naxis1', 'naxis2']
     ):
         self.log = log

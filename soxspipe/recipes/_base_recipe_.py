@@ -158,19 +158,29 @@ class _base_recipe_():
             raise TypeError("%(frame)s is not a raw frame" % locals())
 
         # TRIM OVERSCAN REGION
-        frame = ccdproc.trim_image(frame[:, :2048])
+        if frame.header['HIERARCH ESO SEQ ARM'] != "NIR":
+            frame = ccdproc.trim_image(frame[:, :2048])
+        else:
+            frame = ccdproc.trim_image(frame[:1056, :2040])
 
         # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
-        if "HIERARCH ESO DET OUT1 CONAD" not in frame.header:
+        if ("HIERARCH ESO DET OUT1 CONAD" not in frame.header) and ("HIERARCH ESO DET CHIP GAIN" not in frame.header):
             raise AttributeError(
-                "'HIERARCH ESO DET OUT1 CONAD' keyword not found in %(frame)s" % locals())
-        gain = frame.header["HIERARCH ESO DET OUT1 CONAD"]
+                "'HIERARCH ESO DET OUT1 CONAD/HIERARCH ESO DET CHIP GAIN' keyword not found in %(frame)s" % locals())
+        if "HIERARCH ESO DET OUT1 CONAD" in frame.header:
+            gain = frame.header["HIERARCH ESO DET OUT1 CONAD"]
+        else:
+            gain = frame.header["HIERARCH ESO DET CHIP GAIN"
+                                ]
 
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
-        if "HIERARCH ESO DET OUT1 RON" not in frame.header:
+        if ("HIERARCH ESO DET OUT1 RON" not in frame.header) and ("HIERARCH ESO DET CHIP RON" not in frame.header):
             raise AttributeError(
-                "'HIERARCH ESO DET OUT1 RON' keyword not found in %(frame)s" % locals())
-        ron = frame.header["HIERARCH ESO DET OUT1 RON"]
+                "'HIERARCH ESO DET OUT1 RON/HIERARCH ESO DET CHIP RON' keyword not found in %(frame)s" % locals())
+        if "HIERARCH ESO DET OUT1 RON" in frame.header:
+            ron = frame.header["HIERARCH ESO DET OUT1 RON"]
+        else:
+            ron = frame.header["HIERARCH ESO DET CHIP RON"]
 
         # CONVERT ADU TO ELECTRONS
         frame.data = frame.data * gain
@@ -182,17 +192,19 @@ class _base_recipe_():
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
         # AS AN EXTENSION
-        binx = int(frame.header["HIERARCH ESO DET WIN1 BINX"])
-        biny = int(frame.header["HIERARCH ESO DET WIN1 BINY"])
         arm = frame.header["HIERARCH ESO SEQ ARM"]
         if "NIR" in arm:
             bitMapPath = self.calibrationRootPath + \
                 "/cal/BP_MAP_RP_%(arm)s.fits" % locals()
         else:
+            binx = int(frame.header["HIERARCH ESO DET WIN1 BINX"])
+            biny = int(frame.header["HIERARCH ESO DET WIN1 BINY"])
             bitMapPath = self.calibrationRootPath + \
                 "/cal/BP_MAP_RP_%(arm)s_%(binx)sx%(biny)s.fits" % locals()
 
-        bitMap = CCDData.read(bitMapPath, hdu=0)
+        bitMap = CCDData.read(bitMapPath, hdu=0, unit='electron')
+        if "NIR" in arm:
+            bitMap.data = np.rot90(bitMap.data, -1)
         frame.flags = bitMap.data
 
         # FLATTEN BAD-PIXEL BITMAP TO BOOLEAN FALSE (GOOD) OR TRUE (BAD) AND
@@ -293,6 +305,8 @@ class _base_recipe_():
 
         filepaths = self.inputFrames.files_filtered(include_path=True)
 
+        frameCount = len(filepaths)
+        print("# PREPARING %(frameCount)s RAW FRAMES - CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
         preframes = []
         preframes[:] = [self.prepare_single_frame(
             frame=frame, save=save) for frame in filepaths]
@@ -302,6 +316,8 @@ class _base_recipe_():
             inputFrames=preframes
         )
         preframes = sof.get()
+
+        self.inputFrames.sort(['mjd-obs'])
 
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes

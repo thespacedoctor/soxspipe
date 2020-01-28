@@ -27,6 +27,7 @@ import pickle
 from docopt import docopt
 from fundamentals import tools, times
 from subprocess import Popen, PIPE, STDOUT
+from astropy import log as astrolog
 
 
 def tab_complete(text, state):
@@ -41,12 +42,18 @@ def main(arguments=None):
     su = tools(
         arguments=arguments,
         docString=__doc__,
-        logLevel="WARNING",
+        logLevel="ERROR",
         options_first=False,
         projectName="soxspipe",
         defaultSettingsFile=True
     )
     arguments, settings, log, dbConn = su.setup()
+
+    # ALIGN ASTROPY LOGGING LEVEL WITH SOXSPIPES
+    try:
+        astrolog.setLevel(settings["logging settings"]["root"]["level"])
+    except:
+        pass
 
     # tab completion for raw_input
     readline.set_completer_delims(' \t\n;')
