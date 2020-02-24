@@ -32,6 +32,7 @@ Classes
    soxspipe.commonutils.set_of_files
    soxspipe.recipes._base_recipe_
    soxspipe.recipes.mbias
+   soxspipe.recipes.mdark
    soxspipe.utKit.utKit
 
 
