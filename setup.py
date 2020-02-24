@@ -14,6 +14,7 @@ install_requires = [
     'soxspipe',
     'fundamentals',
     'astropy',
+    'pathlib',
     'ccdproc'
 ]
 
