@@ -31,6 +31,18 @@ To upgrade to the latest version of soxspipe use the command:
 pip install soxspipe --upgrade
 ```
 
+### Python 2.7
+
+Although we don't officially support Python 2.7 you should be able to get `soxspipe` installed in a Python 2 environment with the following commands:
+
+``` bash
+conda create -n soxspipe-p2 python=2.7 pip pandas more-itertools
+conda activate soxspipe
+conda install -c astropy ccdproc
+pip install soxspipe
+```
+
+
 ## Development
 
 If you want to tinker with the code, then install in development mode. This means you can modify the code from your cloned repo:

@@ -40,3 +40,5 @@ blog-post.md
 blog-post.rst
 /blog-post.rst-e
 /README.rst-e
+.cache
+.cache/*
