@@ -33,7 +33,7 @@ class _base_recipe_(object):
     **Usage:**
 
     ```python
-    usage code 
+    usage code
     ```
 
     ---
@@ -85,12 +85,12 @@ class _base_recipe_(object):
             - ``frame`` -- the path to the frame to prepare, of a CCDData object
 
         **Return:**
-            - ``frame`` -- the prepared frame with mask and uncertainty extensions (CCDData object) 
+            - ``frame`` -- the prepared frame with mask and uncertainty extensions (CCDData object)
 
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
@@ -104,19 +104,19 @@ class _base_recipe_(object):
             - update package tutorial with command-line tool info if needed
         ```
 
-        ## Preparing the Raw SOXS Frames
+        # Preparing the Raw SOXS Frames
 
-        ### Trim Overscan
+        # Trim Overscan
 
         The first thing we need to do is trim off the overscan area of the image.
 
-        ### ADU to Electrons
+        # ADU to Electrons
 
         The first thing to do is to convert the pixel data from ADU to electron counts by multiplying each pixel value in the raw frame by the gain (`HIERARCH ESO DET OUT1 CONAD` keyword value).
 
         $$\rm{electron\ count} = \rm{adu\ count} \times \rm{gain}$$
 
-        ### Generating an Uncertainty Map
+        # Generating an Uncertainty Map
 
         Next we need to generate the uncertainty map for the raw image and add this as the 'UNCERT' extension to the image.
 
@@ -124,11 +124,11 @@ class _base_recipe_(object):
 
         $$\rm{error} = \sqrt{\rm{readnoise}^2+\rm{electron\ count}}$$
 
-        ### Bitmap Extension
+        # Bitmap Extension
 
         The appropriate bitmap extension is selected and simply added as the 'FLAG' extension of the frame.
 
-        ### Bad Pixel Mask
+        # Bad Pixel Mask
 
         The selected bitmap is converted to a boolean mask, with values >0 becoming TRUE to indicate these pixels need to be masks. All other values are set to FALSE.
 
@@ -209,8 +209,18 @@ class _base_recipe_(object):
 
         # FLATTEN BAD-PIXEL BITMAP TO BOOLEAN FALSE (GOOD) OR TRUE (BAD) AND
         # APPEND AS 'UNCERT' EXTENSION
-        boolMask = bitMap.data.astype(bool)
-        frame.mask = boolMask.data
+        boolMask = bitMap.data.astype(bool).data
+        try:
+            # FAILS IN PYTHON 2.7 AS BOOLMASK IS A BUFFER - NEED TO CONVERT TO
+            # 2D ARRAY
+            boolMask.shape
+
+        except:
+            arr = np.frombuffer(boolMask, dtype=np.uint8)
+            arr.shape = (frame.data.shape)
+            boolMask = arr
+
+        frame.mask = boolMask
 
         if save:
             outDir = self.intermediateRootPath
@@ -287,7 +297,7 @@ class _base_recipe_(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
