@@ -22,7 +22,7 @@ import ccdproc
 from soxspipe.commonutils import set_of_files
 
 
-class _base_recipe_():
+class _base_recipe_(object):
     """
     The base recipe class which all other recipes inherit
 
