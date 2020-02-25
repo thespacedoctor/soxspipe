@@ -54,16 +54,16 @@ class test_mdark(unittest.TestCase):
             inputFrames=directory
         )
 
-    def test_mdark_function(self):
+    # def test_mdark_function(self):
 
-        # utKit.refresh_database() # reset database to database found in
-        # soxspipe/test/input
-        from soxspipe.recipes import mdark
-        this = mdark(
-            log=log,
-            settings=settings
-        )
-        this.get()
+    #     # utKit.refresh_database() # reset database to database found in
+    #     # soxspipe/test/input
+    #     from soxspipe.recipes import mdark
+    #     this = mdark(
+    #         log=log,
+    #         settings=settings
+    #     )
+    #     this.get()
 
     def test_mdark_function_exception(self):
 
