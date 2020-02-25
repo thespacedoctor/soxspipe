@@ -52,7 +52,7 @@ class mdark(_base_recipe_):
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super().__init__(log=log, settings=settings)
+        super(mdark, self).__init__(log=log, settings=settings)
         self.log = log
         log.debug("instansiating a new 'mdark' object")
         self.settings = settings

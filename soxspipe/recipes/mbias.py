@@ -53,7 +53,7 @@ class mbias(_base_recipe_):
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super().__init__(log=log, settings=settings)
+        super(mbias, self).__init__(log=log, settings=settings)
         self.log = log
         log.debug("instansiating a new 'mbias' object")
         self.settings = settings

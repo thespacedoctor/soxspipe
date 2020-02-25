@@ -17,6 +17,7 @@ os.environ['TERM'] = 'vt100'
 from fundamentals import tools
 from astropy.io import fits
 from ccdproc import ImageFileCollection
+import codecs
 
 
 class set_of_files(object):
@@ -217,7 +218,8 @@ class set_of_files(object):
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
             sof = ImageFileCollection(self.inputFrames, keywords=self.keys)
         elif isinstance(self.inputFrames, str) and os.path.isfile(self.inputFrames) and '.sof' in self.inputFrames:
-            readFile = open(self.inputFrames, encoding='utf-8', mode='r')
+            readFile = codecs.open(
+                self.inputFrames, encoding='utf-8', mode='r')
             thisData = readFile.read()
             readFile.close()
             lines = thisData.split("\n")
