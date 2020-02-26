@@ -12,7 +12,8 @@ home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings.yaml"
-# settingsFile = home + "/.config/soxspipe.commonutils/soxspipe.commonutils.yaml"
+# settingsFile = home +
+# "/.config/soxspipe.commonutils/soxspipe.commonutils.yaml"
 su = tools(
     arguments={"settingsFile": settingsFile},
     docString=__doc__,
@@ -44,6 +45,20 @@ if not os.path.exists(pathToOutputDir):
 
 
 class test_keyword_lookup(unittest.TestCase):
+
+    def test_keyword_dictionary_selection_function(self):
+
+        # utKit.refresh_database() # reset database to database found in
+        # soxspipe.commonutils/test/input
+        from soxspipe.commonutils import keyword_lookup
+        this = keyword_lookup(
+            log=log,
+            settings=settings
+        )
+        kw = this._select_dictionary()
+        print(kw["DET_NDITSKIP"])
+        print(kw["MJDOBS"])
+        print(kw["NAXIS1"])
 
     def test_keyword_lookup_function(self):
 

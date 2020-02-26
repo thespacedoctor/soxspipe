@@ -17,9 +17,6 @@ os.environ['TERM'] = 'vt100'
 from fundamentals import tools
 
 
-# OR YOU CAN REMOVE THE CLASS BELOW AND ADD A WORKER FUNCTION ... SNIPPET TRIGGER BELOW
-# xt-worker-def
-
 class keyword_lookup(object):
     """
     *The worker class for the keyword_lookup module*
@@ -63,6 +60,7 @@ class keyword_lookup(object):
 
         # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
         # Variable Data Atrributes
+        self.instrument = settings["instrument"]
 
         # 3. @flagged: what variable attrributes need overriden in any baseclass(es) used
         # Override Variable Data Atrributes
@@ -99,8 +97,37 @@ class keyword_lookup(object):
         self.log.debug('completed the ``get`` method')
         return keyword_lookup
 
-    # xt-class-method
+    def _select_dictionary(
+            self):
+        """*select the keyword dictionary based on the instrument passed via the settings*
 
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
-    # Override Method Attributes
-    # method-override-tmpx
+        **Return:**
+            - ``kwDict`` -- the python dictionary of keywords (key = tag, value = fits keyword)
+
+        **Usage:**
+
+        ```python
+        from soxspipe.commonutils import keyword_lookup
+        this = keyword_lookup(
+            log=log,
+            settings=settings
+        )
+        kw = this._select_dictionary()
+        ```
+        """
+        self.log.debug('starting the ``_select_dictionary`` method')
+
+        # GENERATE PATH TO YAML DICTIONARY
+        yamlFilePath = os.path.dirname(os.path.dirname(
+            __file__)) + "/resources/" + self.instrument + "_keywords.yaml"
+
+        # YAML CONTENT TO DICTIONARY
+        import yaml
+        with open(yamlFilePath, 'r') as stream:
+            kwDict = yaml.load(stream)
+
+        self.log.debug('completed the ``_select_dictionary`` method')
+        return kwDict
+
+    # use the tab-trigger below for new method
+    # xt-class-method
