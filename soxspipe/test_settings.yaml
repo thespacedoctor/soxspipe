@@ -16,6 +16,9 @@ version: 1
 #     remote datbase host: mydatabaseName
 #     port: 9002
 
+# instrument the data belongs to; `xsh` or `soxs`
+instrument: xsh
+
 test-data-root: ~/xshooter-pipeline-data/raw_data
 calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
 intermediate-data-root: ~/soxspipe-unittests/intermediate
