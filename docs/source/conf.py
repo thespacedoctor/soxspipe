@@ -21,7 +21,7 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
         return Mock()
 MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.colors',
-                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'reproject.spherical_intersect', 'reproject.spherical_intersect._overlap']
+                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 from soxspipe import cl_utils
 
