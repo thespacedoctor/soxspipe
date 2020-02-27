@@ -21,9 +21,9 @@ install_requires = [
 # READ THE DOCS SERVERS
 exists = os.path.exists("/home/docs/")
 if exists:
-    install_requires = ['fundamentals']
+    # install_requires = ['fundamentals']
     c_exclude_list = ['healpy', 'astropy',
-                      'numpy', 'sherlock', 'wcsaxes', 'HMpTy', 'ligo-gracedb', 'reproject']
+                      'numpy', 'sherlock', 'wcsaxes', 'HMpTy', 'ligo-gracedb', 'reproject', 'ccdproc']
     for e in c_exclude_list:
         try:
             install_requires.remove(e)
