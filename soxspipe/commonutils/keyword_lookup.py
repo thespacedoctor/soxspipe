@@ -4,7 +4,7 @@
 *Given a keyword token and instrument name return the exact FITS Header keyword*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     February 26, 2020
@@ -27,25 +27,42 @@ class keyword_lookup(object):
 
     **Usage:**
 
-        To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
 
-        To initiate a keyword_lookup object, use the following:
+    To initalise the keyword lookup object in your code add the following:
 
-        .. todo::
+    ```python
+    from soxspipe.commonutils import keyword_lookup
+    kw = keyword_lookup(
+        log=log,
+        settings=settings
+    ).get
+    ```
 
-            - add usage info
-            - create a sublime snippet for usage
-            - create cl-util for this class
-            - add a tutorial about ``keyword_lookup`` to documentation
-            - create a blog post about what ``keyword_lookup`` does
+    After this it's possible to either look up a single keyword using it's alias:
 
-        .. code-block:: python 
+    ```python
+    kw("DET_NDITSKIP")
+    > "ESO DET NDITSKIP"
+    ```
 
-            usage code   
+    or return a list of keywords:
+
+    ```python
+    kw(["PROV", "DET_NDITSKIP"])
+    > ['PROV', 'ESO DET NDITSKIP']
+    ```
+
+    For those keywords that require an index it's possible to also pass the index to the `kw` function:
+
+    ```python
+    kw("PROV", 9)
+    > 'PROV09'
+    ```
+
+    If a tag is not in the list of FITS Header keyword aliases in the configuration file a `LookupError` will be raised.
     """
     # Initialisation
-    # 1. @flagged: what are the unique attrributes for each object? Add them
-    # to __init__
 
     def __init__(
             self,
@@ -58,44 +75,61 @@ class keyword_lookup(object):
         self.settings = settings
         # xt-self-arg-tmpx
 
-        # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
-        # Variable Data Atrributes
-        self.instrument = settings["instrument"]
-
-        # 3. @flagged: what variable attrributes need overriden in any baseclass(es) used
-        # Override Variable Data Atrributes
-
-        # Initial Actions
+        # SELECT THE INSTRUMENT AND READ THE KEYWORD DICTIONARY IN RESOURCES
+        # FOLDER
+        if "instrument" in settings:
+            self.instrument = settings["instrument"]
+        else:
+            self.instrument = "soxs"
+        self.kwDict = self._select_dictionary()
 
         return None
 
-    # 4. @flagged: what actions does each object have to be able to perform? Add them here
-    # Method Attributes
-    def get(self):
+    def get(self,
+            tag,
+            index=False):
         """
-        *get the keyword_lookup object*
+        *given a tag, and optional keyword index, return the FITS Header keyword for the selected instrument*
+
+        **Key Arguments:**
+            - ``tag`` -- the keyword tag as set in the yaml keyword dictionary (e.g. 'SDP_KEYWORD_TMID' returns 'TMID'). Can be string or list of sttings.
+            - ``index`` -- add an index to the keyword if not False (e.g. tag='PROV', index=3 returns 'PROV03') Default *False*
 
         **Return:**
-            - ``keyword_lookup``
+            - ``keywords`` -- the FITS Header keywords. Can be string or list of sttings depending on format of tag argument
 
         **Usage:**
-        .. todo::
 
-            - add usage info
-            - create a sublime snippet for usage
-            - create cl-util for this method
-            - update the package tutorial if needed
-
-        .. code-block:: python 
-
-            usage code 
+        See docstring for the class
         """
         self.log.debug('starting the ``get`` method')
 
-        keyword_lookup = None
+        # CONVERT STRING TO LIST OF ONE ITEM
+        single = False
+        if not isinstance(tag, list):
+            single = True
+            tag = [tag]
+
+        # STRINGIFY INDEX
+        if index:
+            index = "%(index)0.2d" % locals()
+        else:
+            index = ""
+
+        # LOOKUP KEYWORDS
+        keywords = []
+        for t in tag:
+            if t not in self.kwDict:
+                raise LookupError(
+                    "%(tag)s is not in the list of known FITS Header keyword aliases" % locals())
+            keywords.append(self.kwDict[t] + index)
+
+        # RETURNING A SINGLE KEYWORD?
+        if single:
+            keywords = keywords[0]
 
         self.log.debug('completed the ``get`` method')
-        return keyword_lookup
+        return keywords
 
     def _select_dictionary(
             self):
@@ -128,6 +162,3 @@ class keyword_lookup(object):
 
         self.log.debug('completed the ``_select_dictionary`` method')
         return kwDict
-
-    # use the tab-trigger below for new method
-    # xt-class-method

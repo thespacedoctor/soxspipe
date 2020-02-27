@@ -4,7 +4,7 @@
 *The recipe for creating master-bias frames *
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     January 22, 2020
@@ -39,9 +39,12 @@ class mbias(_base_recipe_):
 
     See `produce_product` method for usage.
 
+
+    ```eval_rst
     .. todo::
 
         - add a tutorial about ``mbias`` to documentation
+    ```
     """
     # Initialisation
 

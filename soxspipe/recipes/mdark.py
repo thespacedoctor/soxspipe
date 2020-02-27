@@ -4,7 +4,7 @@
 *The recipe to generate a master dark frame*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     January 27, 2020
@@ -38,9 +38,12 @@ class mdark(_base_recipe_):
 
     See `produce_product` method for usage.
 
+    ```eval_rst
     .. todo::
 
         - add a tutorial about ``mdark`` to documentation
+
+    ```
     """
     # Initialisation
 

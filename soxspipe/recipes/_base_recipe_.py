@@ -4,7 +4,7 @@
 *The base recipe class which all other recipes inherit*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     January 22, 2020
@@ -20,6 +20,7 @@ from astropy.nddata import CCDData
 from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import set_of_files
+from soxspipe.commonutils import keyword_lookup
 
 
 class _base_recipe_(object):
@@ -32,18 +33,7 @@ class _base_recipe_(object):
 
     **Usage:**
 
-    ```python
-    usage code
-    ```
-
-    ---
-
-    ```eval_rst
-    .. todo::
-
-        - add usage info, including a template to create a new recipe
-        - create a sublime snippet for usage
-    ```
+    To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler receipes (e.g. `mbias`) - copy and modify the code.
     """
     # Initialisation
 
@@ -62,16 +52,7 @@ class _base_recipe_(object):
             settings["reduced-data-root"])
         self.calibrationRootPath = self._absolute_path(
             settings["calibration-data-root"])
-
         # xt-self-arg-tmpx
-
-        # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
-        # Variable Data Atrributes
-
-        # 3. @flagged: what variable attrributes need overriden in any baseclass(es) used
-        # Override Variable Data Atrributes
-
-        # Initial Actions
 
         return None
 
@@ -90,7 +71,12 @@ class _base_recipe_(object):
         **Usage:**
 
         ```python
-        usage code
+        from soxspipe.recipes import _base_recipe_
+        recipe = _base_recipe_(
+            log=log,
+            settings=settings
+        )
+        preFrame = recipe.prepare_single_frame(frame="/path/to/frame.fits")
         ```
 
         ---
@@ -98,10 +84,7 @@ class _base_recipe_(object):
         ```eval_rst
         .. todo::
 
-            - add usage info
-            - create a sublime snippet for usage
             - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
         ```
 
         # Preparing the Raw SOXS Frames
@@ -140,14 +123,19 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``prepare_single_frame`` method')
 
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+
         # CONVERT FILEPATH TO CCDDATA OBJECT
         filepath = frame
         if isinstance(frame, str):
 
-            if frame[0] == "~":
-                from os.path import expanduser
-                home = expanduser("~")
-                frame = home + "/" + frame[1:]
+            # CONVERT RELATIVE TO ABSOLUTE PATHS
+            frame = self._absolute_path(frame)
 
             # OPEN THE RAW FRAME
             frame = CCDData.read(frame, hdu=0, unit='electron', hdu_uncertainty='UNCERT',
@@ -158,29 +146,33 @@ class _base_recipe_(object):
             raise TypeError("%(frame)s is not a raw frame" % locals())
 
         # TRIM OVERSCAN REGION
-        if frame.header['HIERARCH ESO SEQ ARM'] != "NIR":
+        if frame.header[kw('SEQ_ARM')] != "NIR":
             frame = ccdproc.trim_image(frame[:, :2048])
         else:
             frame = ccdproc.trim_image(frame[:1056, :2040])
 
         # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
-        if ("HIERARCH ESO DET OUT1 CONAD" not in frame.header) and ("HIERARCH ESO DET CHIP GAIN" not in frame.header):
+        if (kw('DET_GAIN') not in frame.header) and (kw('DET_CHIP_GAIN') not in frame.header):
+            one = kw('DET_GAIN')
+            two = kw('DET_CHIP_GAIN')
             raise AttributeError(
-                "'HIERARCH ESO DET OUT1 CONAD/HIERARCH ESO DET CHIP GAIN' keyword not found in %(frame)s" % locals())
-        if "HIERARCH ESO DET OUT1 CONAD" in frame.header:
-            gain = frame.header["HIERARCH ESO DET OUT1 CONAD"]
+                "'%(one)s/%(two)s' keyword not found in %(frame)s" % locals())
+        if kw('DET_GAIN') in frame.header:
+            gain = frame.header[kw('DET_GAIN')]
         else:
-            gain = frame.header["HIERARCH ESO DET CHIP GAIN"
+            gain = frame.header[kw('DET_CHIP_GAIN')
                                 ]
 
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
-        if ("HIERARCH ESO DET OUT1 RON" not in frame.header) and ("HIERARCH ESO DET CHIP RON" not in frame.header):
+        if (kw('RON') not in frame.header) and (kw('CHIP_RON') not in frame.header):
+            one = kw('RON')
+            two = kw('CHIP RON')
             raise AttributeError(
-                "'HIERARCH ESO DET OUT1 RON/HIERARCH ESO DET CHIP RON' keyword not found in %(frame)s" % locals())
-        if "HIERARCH ESO DET OUT1 RON" in frame.header:
-            ron = frame.header["HIERARCH ESO DET OUT1 RON"]
+                "'%(one)s/%(two)s' keyword not found in %(frame)s" % locals())
+        if kw('RON') in frame.header:
+            ron = frame.header[kw('RON')]
         else:
-            ron = frame.header["HIERARCH ESO DET CHIP RON"]
+            ron = frame.header[kw('CHIP_RON')]
 
         # CONVERT ADU TO ELECTRONS
         frame.data = frame.data * gain
@@ -192,13 +184,13 @@ class _base_recipe_(object):
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
         # AS AN EXTENSION
-        arm = frame.header["HIERARCH ESO SEQ ARM"]
+        arm = frame.header[kw('SEQ_ARM')]
         if "NIR" in arm:
             bitMapPath = self.calibrationRootPath + \
                 "/cal/BP_MAP_RP_%(arm)s.fits" % locals()
         else:
-            binx = int(frame.header["HIERARCH ESO DET WIN1 BINX"])
-            biny = int(frame.header["HIERARCH ESO DET WIN1 BINY"])
+            binx = int(frame.header[kw('WIN_BINX')])
+            biny = int(frame.header[kw('WIN_BINY')])
             bitMapPath = self.calibrationRootPath + \
                 "/cal/BP_MAP_RP_%(arm)s_%(binx)sx%(biny)s.fits" % locals()
 
@@ -249,7 +241,6 @@ class _base_recipe_(object):
 
         **Key Arguments:**
             - ``path`` -- path possibly relative to home directory
-            -
 
         **Return:**
             - ``absolutePath`` -- absolute path
@@ -258,17 +249,6 @@ class _base_recipe_(object):
 
         ```python
         myPath = self._absolute_path(myPath)
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
         ```
         """
         self.log.debug('starting the ``_absolute_path`` method')
@@ -296,22 +276,21 @@ class _base_recipe_(object):
 
         **Usage:**
 
+        Usually called within a recipe class once the input frames have been selected and verified (see `mbias` code for example): 
+
         ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"])
         ```
         """
         self.log.debug('starting the ``prepare_frames`` method')
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
 
         filepaths = self.inputFrames.files_filtered(include_path=True)
 
@@ -327,14 +306,10 @@ class _base_recipe_(object):
         )
         preframes = sof.get()
 
-        self.inputFrames.sort(['mjd-obs'])
+        self.inputFrames.sort([kw('MJDOBS').lower()])
 
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
 
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
-    # Override Method Attributes
-    # method-override-tmpx

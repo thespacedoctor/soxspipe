@@ -48,8 +48,7 @@ class test_mbias(unittest.TestCase):
     def test_mbias_from_directory_function(self):
         directory = settings["test-data-root"] + "/xshooter-bias/uvb/1x1"
 
-        # utKit.refresh_database() # reset database to database found in
-        # soxspipe.recipes/test/input
+        print(directory)
         from soxspipe.recipes import mbias
         this = mbias(
             log=log,

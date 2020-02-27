@@ -4,7 +4,7 @@
 *Tools for working with 'set-of-files' (sof) files*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     January 22, 2020
@@ -18,11 +18,12 @@ from fundamentals import tools
 from astropy.io import fits
 from ccdproc import ImageFileCollection
 import codecs
+from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
 
 class set_of_files(object):
     """
-    *The worker class for the sof module*
+    *The worker class for the sof module used to homogenise various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
 
     **Key Arguments:**
         - ``log`` -- logger
@@ -50,18 +51,6 @@ class set_of_files(object):
     ```
 
     `inputFrames` can be a directory, a list of fits filepaths or a set-of-files (SOF) file
-
-    ---
-
-    ```eval_rst
-    .. todo::
-
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``sof`` to documentation
-        - create a blog post about what ``sof`` does
-    ```
     """
     # Initialisation
 
@@ -70,14 +59,23 @@ class set_of_files(object):
             log,
             settings=False,
             inputFrames=[],
-            keys=['mjd-obs', 'cdelt1', 'cdelt2', 'eso det chip1 pszx',
-                  'eso dpr type', 'eso seq arm', 'exptime', 'naxis1', 'naxis2']
+            keys=['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX',
+                  'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2']
     ):
         self.log = log
         log.debug("instansiating a new 'sof' object")
         self.settings = settings
         self.inputFrames = inputFrames
-        self.keys = keys
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+        keys = kw(keys)
+        self.keys = []
+        self.keys[:] = [k.lower() for k in keys]
 
         # xt-self-arg-tmpx
 
@@ -90,7 +88,7 @@ class set_of_files(object):
 
         return None
 
-    def generate_sof_file_from_directory(
+    def _generate_sof_file_from_directory(
             self,
             directory,
             sofPath):
@@ -111,21 +109,18 @@ class set_of_files(object):
             log=log,
             settings=settings
         )
-        sofFile = sof.generate_sof_file_from_directory(
+        sofFile = sof._generate_sof_file_from_directory(
             directory="path/to/directory", sofPath="/path/to/myFile.sof")
         ```
-
-        ---
-
-        ```eval_rst
-        ..  todo::
-
-            - write a command-line tool for this method
-        ```
-
         """
         self.log.debug(
-            'starting the ``generate_sof_file_from_directory`` method')
+            'starting the ``_generate_sof_file_from_directory`` method')
+
+        from soxspipe.commonutils import keyword_lookup
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
 
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
@@ -146,15 +141,15 @@ class set_of_files(object):
                     hdr = hdul[0].header
                     # PRINT FULL FITS HEADER TO STDOUT
                     # print(repr(hdr).strip())
-                    dpr_type = hdr['HIERARCH ESO DPR TYPE'].strip()
+                    dpr_type = hdr[kw("DPR_TYPE")].strip()
                     # CHECK ARM
-                    arm = hdr['HIERARCH ESO SEQ ARM']
+                    arm = hdr[kw("SEQ_ARM")]
                     # CHECK BINNING
-                    if 'CDELT1' in hdr:
-                        xbin = str(int(hdr['CDELT1']))
-                        ybin = str(int(hdr['CDELT2']))
+                    if kw('CDELT1') in hdr:
+                        xbin = str(int(hdr[kw('CDELT1')]))
+                        ybin = str(int(hdr[kw('CDELT2')]))
                     catagory = dpr_type + "_" + arm.strip()
-                    if 'CDELT1' in hdr:
+                    if kw('CDELT1') in hdr:
                         catagory  += "_" + \
                             xbin.strip() + "x" + ybin.strip()
 
@@ -170,7 +165,7 @@ class set_of_files(object):
             myFile.write(content)
 
         self.log.debug(
-            'completed the ``generate_sof_file_from_directory`` method')
+            'completed the ``_generate_sof_file_from_directory`` method')
         return sofPath
 
     def get(
@@ -199,15 +194,6 @@ class set_of_files(object):
         ```
 
         `inputFrames` can be a directory, a list of fits filepaths or a set-of-files (SOF) file.
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
         """
         self.log.debug('starting the ``get`` method')
 

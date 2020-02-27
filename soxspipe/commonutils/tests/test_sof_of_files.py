@@ -56,7 +56,7 @@ class test_set_of_files(unittest.TestCase):
             log=log,
             settings=settings
         )
-        sofFile = sof.generate_sof_file_from_directory(
+        sofFile = sof._generate_sof_file_from_directory(
             directory=directory, sofPath=sofPath)
         print("sof file written to %(sofPath)s" % locals())
 
@@ -123,7 +123,7 @@ class test_set_of_files(unittest.TestCase):
             log=log,
             settings=settings
         )
-        sofFile = sof.generate_sof_file_from_directory(
+        sofFile = sof._generate_sof_file_from_directory(
             directory=directory, sofPath=sofPath)
 
         print("sof file written to %(sofPath)s" % locals())

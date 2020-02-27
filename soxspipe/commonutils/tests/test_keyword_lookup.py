@@ -48,8 +48,6 @@ class test_keyword_lookup(unittest.TestCase):
 
     def test_keyword_dictionary_selection_function(self):
 
-        # utKit.refresh_database() # reset database to database found in
-        # soxspipe.commonutils/test/input
         from soxspipe.commonutils import keyword_lookup
         this = keyword_lookup(
             log=log,
@@ -62,14 +60,19 @@ class test_keyword_lookup(unittest.TestCase):
 
     def test_keyword_lookup_function(self):
 
-        # utKit.refresh_database() # reset database to database found in
-        # soxspipe.commonutils/test/input
         from soxspipe.commonutils import keyword_lookup
-        this = keyword_lookup(
+        kw = keyword_lookup(
             log=log,
             settings=settings
-        )
-        this.get()
+        ).get
+        if settings["instrument"] == "xsh":
+            assert kw("DET_NDITSKIP") == "ESO DET NDITSKIP"
+            assert kw("PROV", 14) == "PROV14"
+            assert kw("PROV", 1) == "PROV01"
+
+        # AND HOW ABOUT LISTS
+        if settings["instrument"] == "xsh":
+            assert kw(["PROV", "DET_NDITSKIP"])[1] == 'ESO DET NDITSKIP'
 
     def test_keyword_lookup_function_exception(self):
 

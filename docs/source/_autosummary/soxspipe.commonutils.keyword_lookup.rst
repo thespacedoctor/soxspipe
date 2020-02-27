@@ -1,9 +1,9 @@
-set_of_files (*class*)
-===========================================
+keyword_lookup (*class*)
+=============================================
 
 .. currentmodule:: soxspipe.commonutils
 
-.. autoclass:: set_of_files
+.. autoclass:: keyword_lookup
    :members:
    :private-members:
    :show-inheritance:
@@ -20,7 +20,7 @@ set_of_files (*class*)
         
    
         
-            ~set_of_files.get
+            ~keyword_lookup.get
        
    
    
@@ -77,7 +77,7 @@ set_of_files (*class*)
        
    
        
-            ~set_of_files._generate_sof_file_from_directory
+            ~keyword_lookup._select_dictionary
         
    
        
