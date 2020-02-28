@@ -93,6 +93,10 @@ mbias (*class*)
         
    
        
+            ~mbias._verify_input_frames_basics
+        
+   
+       
    
        
    
