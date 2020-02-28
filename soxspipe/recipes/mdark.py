@@ -21,6 +21,7 @@ from astropy.stats import mad_std
 import numpy as np
 from astropy.nddata import CCDData
 import ccdproc
+from soxspipe.commonutils import keyword_lookup
 
 
 class mdark(_base_recipe_):
