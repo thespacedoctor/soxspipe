@@ -21,6 +21,7 @@ from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import set_of_files
 from soxspipe.commonutils import keyword_lookup
+from datetime import datetime
 
 
 class _base_recipe_(object):
@@ -142,8 +143,8 @@ class _base_recipe_(object):
                                  hdu_mask='MASK', hdu_flags='BITMAP', key_uncertainty_type='UTYPE')
 
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1
-        if len(frame.to_hdu()) > 1:
-            raise TypeError("%(frame)s is not a raw frame" % locals())
+        if len(frame.to_hdu()) > 1 or "SOXSPIPE PRE" in frame.header:
+            raise TypeError("%(filepath)s is not a raw frame" % locals())
 
         # TRIM OVERSCAN REGION
         if frame.header[kw('SEQ_ARM')] != "NIR":
@@ -218,6 +219,11 @@ class _base_recipe_(object):
             outDir = self.intermediateRootPath
         else:
             outDir = self.intermediateRootPath + "/tmp"
+
+        # INJECT THE PRE KEYWORD
+        utcnow = datetime.utcnow()
+        frame.header["SOXSPIPE PRE"] = (utcnow.strftime(
+            "%Y-%m-%dT%H:%M:%S.%f"), "UTC timestamp")
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):
