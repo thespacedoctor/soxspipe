@@ -29,8 +29,8 @@ class set_of_files(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
-        - ``keys`` -- keys to report in the ImageFileCollection. Default ['cdelt1', 'cdelt2', 'eso det chip1 pszx',
-            'eso dpr type', 'eso seq arm', 'exptime', 'naxis1', 'naxis2']
+        - ``keys`` -- key aliases to report in the ImageFileCollection. Default ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX',
+                  'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED']
 
     **Usage:**
 
@@ -60,7 +60,7 @@ class set_of_files(object):
             settings=False,
             inputFrames=[],
             keys=['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX',
-                  'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2']
+                  'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED']
     ):
         self.log = log
         log.debug("instansiating a new 'sof' object")

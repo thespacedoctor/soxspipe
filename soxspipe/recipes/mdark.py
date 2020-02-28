@@ -95,9 +95,17 @@ class mdark(_base_recipe_):
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
-        imageTypes = self.inputFrames.values(
-            keyword='eso dpr type', unique=True)
+        self._verify_input_frames_basics()
 
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+
+        imageTypes = self.inputFrames.values(
+            keyword=kw("DPR_TYPE").lower(), unique=True)
         # MIXED INPUT IMAGE TYPES ARE BAD
         if len(imageTypes) > 1:
             imageTypes = " and ".join(imageTypes)

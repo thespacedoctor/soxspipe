@@ -317,5 +317,58 @@ class _base_recipe_(object):
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
 
+    def _verify_input_frames_basics(
+            self):
+        """*the basic verifications that needs done for all recipes*
+
+        **Return:**
+            - None
+
+        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
+        """
+        self.log.debug('starting the ``_verify_input_frames_basics`` method')
+
+        # CHECK WE ACTUALLY HAVE IMAGES
+        if not len(self.inputFrames.files_filtered(include_path=True)):
+            raise FileNotFoundError(
+                "No image frames where passed to the recipe")
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+
+        arms = self.inputFrames.values(
+            keyword=kw("SEQ_ARM").lower(), unique=True)
+        # MIXED INPUT ARMS ARE BAD
+        if len(arms) > 1:
+            arms = " and ".join(arms)
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames are a mix of %(imageTypes)s" % locals())
+
+        cdelt1 = self.inputFrames.values(
+            keyword=kw("CDELT1").lower(), unique=True)
+        cdelt2 = self.inputFrames.values(
+            keyword=kw("CDELT2").lower(), unique=True)
+        # MIXED BINNING IS BAD
+        if len(cdelt1) > 1 or len(cdelt2) > 1:
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames are a mix of binnings" % locals())
+
+        readSpeed = self.inputFrames.values(
+            keyword=kw("DET_READ_SPEED").lower(), unique=True)
+        # MIXED READOUT SPEEDS IS BAD
+        if len(readSpeed) > 1:
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames are a mix of readout speeds" % locals())
+
+        self.log.debug('completed the ``_verify_input_frames_basics`` method')
+        return None
+
     # use the tab-trigger below for new method
     # xt-class-method

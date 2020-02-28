@@ -46,7 +46,8 @@ if not os.path.exists(pathToOutputDir):
 class test_mbias(unittest.TestCase):
 
     def test_mbias_from_directory_function(self):
-        directory = settings["test-data-root"] + "/xshooter-bias/uvb/1x1"
+        directory = settings["test-data-root"] + \
+            "/xshooter-bias/uvb/1x1/slow_read"
 
         print(directory)
         from soxspipe.recipes import mbias
@@ -69,7 +70,8 @@ class test_mbias(unittest.TestCase):
         )
 
     def test_mbias_from_list_of_fits_function(self):
-        directory = settings["test-data-root"] + "/xshooter-bias/uvb/1x1"
+        directory = settings["test-data-root"] + \
+            "/xshooter-bias/uvb/1x1/fast_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
         home = expanduser("~")
@@ -92,7 +94,8 @@ class test_mbias(unittest.TestCase):
         )
 
     def test_produce_product_function(self):
-        directory = settings["test-data-root"] + "/xshooter-bias/uvb/1x1"
+        directory = settings["test-data-root"] + \
+            "/xshooter-bias/uvb/1x1/fast_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
         home = expanduser("~")

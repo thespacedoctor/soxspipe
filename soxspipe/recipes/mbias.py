@@ -22,6 +22,7 @@ import numpy as np
 from astropy.nddata import CCDData
 import ccdproc
 from ccdproc import Combiner
+from soxspipe.commonutils import keyword_lookup
 
 
 class mbias(_base_recipe_):
@@ -103,9 +104,17 @@ class mbias(_base_recipe_):
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
-        imageTypes = self.inputFrames.values(
-            keyword='eso dpr type', unique=True)
+        self._verify_input_frames_basics()
 
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+
+        imageTypes = self.inputFrames.values(
+            keyword=kw("DPR_TYPE").lower(), unique=True)
         # MIXED INPUT IMAGE TYPES ARE BAD
         if len(imageTypes) > 1:
             imageTypes = " and ".join(imageTypes)
@@ -117,25 +126,6 @@ class mbias(_base_recipe_):
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames not BIAS frames" % locals())
-
-        arms = self.inputFrames.values(
-            keyword='eso seq arm', unique=True)
-        # MIXED INPUT ARMS ARE BAD
-        if len(arms) > 1:
-            arms = " and ".join(arms)
-            print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames are a mix of %(imageTypes)s" % locals())
-
-        cdelt1 = self.inputFrames.values(
-            keyword='cdelt1', unique=True)
-        cdelt2 = self.inputFrames.values(
-            keyword='cdelt2', unique=True)
-        # MIXED BINNING IS BAD
-        if len(cdelt1) > 1 or len(cdelt2) > 1:
-            print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames are a mix of binnings" % locals())
 
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
