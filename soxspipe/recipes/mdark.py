@@ -143,6 +143,8 @@ class mdark(_base_recipe_):
 
         productPath = None
 
+        self.clean_up()
+
         self.log.debug('completed the ``produce_product`` method')
         return productPath
 

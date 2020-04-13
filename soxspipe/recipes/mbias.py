@@ -213,6 +213,8 @@ class mbias(_base_recipe_):
             productPath,
             overwrite=True)
 
+        self.clean_up()
+
         self.log.debug('completed the ``produce_product`` method')
         return productPath
 

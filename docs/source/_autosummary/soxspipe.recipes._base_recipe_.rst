@@ -20,6 +20,10 @@ _base_recipe_ (*class*)
         
    
         
+            ~_base_recipe_.clean_up
+       
+   
+        
             ~_base_recipe_.prepare_frames
        
    
@@ -83,6 +87,12 @@ _base_recipe_ (*class*)
        
             ~_base_recipe_._absolute_path
         
+   
+       
+            ~_base_recipe_._verify_input_frames_basics
+        
+   
+       
    
        
    

@@ -61,6 +61,9 @@ class test__base_recipe_(unittest.TestCase):
         preFrame = recipe.prepare_single_frame(frame=framePath, save=settings[
                                                "save-intermediate-products"])
 
+        # NOW CLEAN UP
+        recipe.clean_up()
+
     def test__base_recipe__function_exception(self):
 
         from soxspipe.recipes import _base_recipe_

@@ -22,6 +22,7 @@ import ccdproc
 from soxspipe.commonutils import set_of_files
 from soxspipe.commonutils import keyword_lookup
 from datetime import datetime
+import shutil
 
 
 class _base_recipe_(object):
@@ -368,6 +369,28 @@ class _base_recipe_(object):
                 "Input frames are a mix of readout speeds" % locals())
 
         self.log.debug('completed the ``_verify_input_frames_basics`` method')
+        return None
+
+    def clean_up(
+            self):
+        """*remove intermediate files once recipe is complete*
+
+        **Usage:**
+
+        ```python
+        recipe.clean_up()
+        ```
+        """
+        self.log.debug('starting the ``clean_up`` method')
+
+        outDir = self.intermediateRootPath + "/tmp"
+
+        try:
+            shutil.rmtree(outDir)
+        except:
+            pass
+
+        self.log.debug('completed the ``clean_up`` method')
         return None
 
     # use the tab-trigger below for new method

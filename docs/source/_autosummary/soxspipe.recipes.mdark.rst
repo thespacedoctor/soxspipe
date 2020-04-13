@@ -20,6 +20,10 @@ mdark (*class*)
         
    
         
+            ~mdark.clean_up
+       
+   
+        
             ~mdark.prepare_frames
        
    
@@ -91,6 +95,12 @@ mdark (*class*)
        
             ~mdark._absolute_path
         
+   
+       
+            ~mdark._verify_input_frames_basics
+        
+   
+       
    
        
    

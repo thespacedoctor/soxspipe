@@ -20,6 +20,10 @@ mbias (*class*)
         
    
         
+            ~mbias.clean_up
+       
+   
+        
             ~mbias.prepare_frames
        
    
@@ -91,6 +95,12 @@ mbias (*class*)
        
             ~mbias._absolute_path
         
+   
+       
+            ~mbias._verify_input_frames_basics
+        
+   
+       
    
        
    
