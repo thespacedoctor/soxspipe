@@ -7,3 +7,4 @@ mdx_include
 lxml
 sphinxcontrib-mermaid
 psutil
+unicodecsv
