@@ -15,7 +15,8 @@ install_requires = [
     'fundamentals',
     'astropy',
     'pathlib',
-    'ccdproc'
+    'ccdproc',
+    'docopt'
 ]
 
 # READ THE DOCS SERVERS
