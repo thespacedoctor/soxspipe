@@ -6,3 +6,4 @@ m2r
 mdx_include
 lxml
 sphinxcontrib-mermaid
+psutil
