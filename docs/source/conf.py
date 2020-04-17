@@ -35,7 +35,7 @@ autosummary_generate = True
 autodoc_member_order = 'bysource'
 add_module_names = False
 todo_include_todos = True
-templates_path = ['_templates', '_static/whistles-theme/sphinx']
+templates_path = ['_static/whistles-theme/sphinx']
 source_suffix = ['.rst', '.md']
 master_doc = 'index'
 # pygments_style = 'monokai'
@@ -43,8 +43,24 @@ html_theme = 'sphinx_rtd_theme'
 html_logo = "_images/thespacedoctor_icon_white_circle.png"
 html_favicon = "_images/favicon.ico"
 html_show_sourcelink = True
-# html_theme_options = {}
-# html_theme_path = []
+html_theme_options = {
+    'logo_only': False,
+    'display_version': True,
+    'prev_next_buttons_location': 'bottom',
+    'style_external_links': False,
+    'vcs_pageview_mode': '',
+    'style_nav_header_background': 'white',
+    # Toc options
+    'collapse_navigation': True,
+    'sticky_navigation': True,
+    'navigation_depth': 4,
+    'includehidden': True,
+    'titles_only': False,
+    'github_user': 'thespacedoctor',
+    'github_repo': 'soxspipe',
+    'strap_line': "The data-reduction pipeline for NTT's SOXS instrument"
+}
+html_theme_path = ['_static/whistles-theme/sphinx/_themes']
 # html_title = None
 # html_short_title = None
 # html_sidebars = {}
@@ -191,13 +207,14 @@ def generateAutosummaryIndex():
     allModules = []
     allClasses = []
     allFunctions = []
+    allMethods = []
     for sp in allSubpackages:
         for name, obj in inspect.getmembers(__import__(sp, fromlist=[''])):
             if inspect.ismodule(obj):
                 if name in ["numpy"]:
                     continue
                 thisMod = sp + "." + name
-                if thisMod not in allSubpackages and len(name) and name[0:2] != "__" and name[-5:] != "tests" and "cl_util" not in name:
+                if thisMod not in allSubpackages and len(name) and name[0:1] != "_" and name[-5:] != "tests" and "cl_util" not in name:
                     allModules.append(sp + "." + name)
                 # if thisMod not in allSubpackages and len(name) and name[0:2] != "__" and name[-5:] != "tests" and name != "cl_utils" and name != "utKit":
                 #     allModules.append(sp + "." + name)
@@ -206,12 +223,16 @@ def generateAutosummaryIndex():
         for name, obj in inspect.getmembers(__import__(spm, fromlist=[''])):
             if inspect.isclass(obj):
                 thisClass = spm + "." + name
-                if (thisClass == obj.__module__ or spm == obj.__module__) and len(name) and name[0:2] != "__":
+                if (thisClass == obj.__module__ or spm == obj.__module__) and len(name) and name[0:1] != "_":
                     allClasses.append(thisClass)
             if inspect.isfunction(obj):
                 thisFunction = spm + "." + name
-                if (spm == obj.__module__ or obj.__module__ == thisFunction) and len(name) and name != "main" and name[0:2] != "__":
+                if (spm == obj.__module__ or obj.__module__ == thisFunction) and len(name) and name != "main" and name[0:1] != "_":
                     allFunctions.append(thisFunction)
+            if inspect.ismethod(obj):
+                thisMethod = spm + "." + name
+                if (spm == obj.__module__ or obj.__module__ == thisMethod) and len(name) and name != "main" and name[0:1] != "_":
+                    allMethods.append(thisMethod)
 
     allSubpackages = allSubpackages[1:]
     allSubpackages.sort(reverse=False)
@@ -225,23 +246,8 @@ def generateAutosummaryIndex():
 
     # FOR SUBPACKAGES USE THE SUBPACKAGE TEMPLATE INSTEAD OF DEFAULT MODULE
     # TEMPLATE
-    thisText = u""
-    if len(allSubpackages):
-        thisText += """
-Subpackages
------------
-
-.. autosummary::
-   :toctree: _autosummary
-   :nosignatures:
-   :template: autosummary/subpackage.rst
-
-   %(allSubpackages)s
-
-""" % locals()
-
     if len(allModules):
-        thisText += """
+        thisText  = """
 Modules
 -------
 
@@ -249,7 +255,8 @@ Modules
    :toctree: _autosummary
    :nosignatures:
 
-   %(allModules)s
+   %(allSubpackages)s 
+   %(allModules)s 
 
 """ % locals()
 
@@ -262,7 +269,7 @@ Classes
    :toctree: _autosummary
    :nosignatures:
 
-   %(allClasses)s
+   %(allClasses)s 
 
 """ % locals()
 
@@ -275,11 +282,7 @@ Functions
    :toctree: _autosummary
    :nosignatures:
 
-   %(allFunctions)s
-
-:ref:`Index<genindex>`
-----------------------
-
+   %(allFunctions)s 
 """ % locals()
 
     moduleDirectory = os.path.dirname(__file__)
@@ -292,19 +295,12 @@ Functions
     allClasses = regex.sub("\n", allClasses)
 
     autosummaryInclude = u"""
-**Subpackages**
-
-.. autosummary::
-   :nosignatures:
-   :template: autosummary/subpackage.rst
-
-   %(allSubpackages)s
-
 **Modules**
 
 .. autosummary::
    :nosignatures:
 
+   %(allSubpackages)s 
    %(allModules)s
 
 **Classes**
@@ -312,16 +308,14 @@ Functions
 .. autosummary::
    :nosignatures:
 
-   %(allClasses)s
+   %(allClasses)s 
 
 **Functions**
 
 .. autosummary::
    :nosignatures:
 
-   %(allFunctions)s
-
-:ref:`Index<genindex>`
+   %(allFunctions)s 
 """ % locals()
 
     moduleDirectory = os.path.dirname(__file__)

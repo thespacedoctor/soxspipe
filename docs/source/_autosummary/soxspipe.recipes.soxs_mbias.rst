@@ -1,9 +1,9 @@
-mbias (*class*)
-================================
+soxs_mbias
+=====================================
 
 .. currentmodule:: soxspipe.recipes
 
-.. autoclass:: mbias
+.. autoclass:: soxs_mbias
    :members:
    :private-members:
    :show-inheritance:
@@ -20,23 +20,23 @@ mbias (*class*)
         
    
         
-            ~mbias.clean_up
+            ~soxs_mbias.clean_up
        
    
         
-            ~mbias.prepare_frames
+            ~soxs_mbias.prepare_frames
        
    
         
-            ~mbias.prepare_single_frame
+            ~soxs_mbias.prepare_single_frame
        
    
         
-            ~mbias.produce_product
+            ~soxs_mbias.produce_product
        
    
         
-            ~mbias.verify_input_frames
+            ~soxs_mbias.verify_input_frames
        
    
    
@@ -93,11 +93,11 @@ mbias (*class*)
        
    
        
-            ~mbias._absolute_path
+            ~soxs_mbias._absolute_path
         
    
        
-            ~mbias._verify_input_frames_basics
+            ~soxs_mbias._verify_input_frames_basics
         
    
        

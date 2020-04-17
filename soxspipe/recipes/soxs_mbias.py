@@ -25,16 +25,17 @@ from ccdproc import Combiner
 from soxspipe.commonutils import keyword_lookup
 
 
-class mbias(_base_recipe_):
+class soxs_mbias(_base_recipe_):
     """
-    *The mbias recipe*
+    *The soxs_mbias recipe*
 
-    **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
+    **Key Arguments**
 
-    **Usage:**
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
+
+    **Usage**
 
     To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
 
@@ -44,7 +45,7 @@ class mbias(_base_recipe_):
     ```eval_rst
     .. todo::
 
-        - add a tutorial about ``mbias`` to documentation
+        - add a tutorial about ``soxs_mbias`` to documentation
     ```
     """
     # Initialisation
@@ -57,9 +58,9 @@ class mbias(_base_recipe_):
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(mbias, self).__init__(log=log, settings=settings)
+        super(soxs_mbias, self).__init__(log=log, settings=settings)
         self.log = log
-        log.debug("instansiating a new 'mbias' object")
+        log.debug("instansiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
         # xt-self-arg-tmpx
@@ -74,7 +75,7 @@ class mbias(_base_recipe_):
         )
         self.inputFrames = sof.get()
 
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY MBIAS - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MBIAS - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
@@ -95,7 +96,7 @@ class mbias(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the mbias recipe*
+        """*verify the input frame match those required by the soxs_mbias recipe*
 
         **Return:**
             - ``None``
@@ -132,16 +133,16 @@ class mbias(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the mbias recipe*
+        """*The code to generate the product of the soxs_mbias recipe*
 
         **Return:**
             - ``productPath`` -- the path to the final product
 
-        **Usage:**
+        **Usage**
 
         ```python
-        from soxspipe.recipes import mbias
-        recipe = mbias(
+        from soxspipe.recipes import soxs_mbias
+        recipe = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=fileList

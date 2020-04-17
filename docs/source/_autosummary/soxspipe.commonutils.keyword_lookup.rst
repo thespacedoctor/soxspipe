@@ -1,4 +1,4 @@
-keyword_lookup (*class*)
+keyword_lookup
 =============================================
 
 .. currentmodule:: soxspipe.commonutils

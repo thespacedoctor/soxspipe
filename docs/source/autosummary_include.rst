@@ -1,18 +1,11 @@
 
-**Subpackages**
-
-.. autosummary::
-   :nosignatures:
-   :template: autosummary/subpackage.rst
-
-   soxspipe.commonutils
-   soxspipe.recipes
-
 **Modules**
 
 .. autosummary::
    :nosignatures:
 
+   soxspipe.commonutils
+   soxspipe.recipes 
    soxspipe.docstring_test
    soxspipe.utKit
 
@@ -23,16 +16,13 @@
 
    soxspipe.commonutils.keyword_lookup
    soxspipe.commonutils.set_of_files
-   soxspipe.recipes._base_recipe_
-   soxspipe.recipes.mbias
-   soxspipe.recipes.mdark
-
+   soxspipe.recipes.soxs_mbias
+   soxspipe.recipes.soxs_mdark
+ 
 
 **Functions**
 
 .. autosummary::
    :nosignatures:
 
-   soxspipe.docstring_test.docsting_test
-
-:ref:`Index<genindex>`
+   soxspipe.docstring_test.docsting_test 

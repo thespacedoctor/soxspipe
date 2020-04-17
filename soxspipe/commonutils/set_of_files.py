@@ -29,10 +29,9 @@ class set_of_files(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
-        - ``keys`` -- key aliases to report in the ImageFileCollection. Default ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX',
-                  'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED']
+        - ``keys`` -- key aliases to report in the ImageFileCollection. Default ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX', 'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED']
 
-    **Usage:**
+    **Usage**
 
     To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
 
@@ -101,7 +100,7 @@ class set_of_files(object):
         **Return:**
             - ``sofPath`` -- the path to the sof file
 
-        **Usage:**
+        **Usage**
 
         ```python
         from soxspipe.commonutils import set_of_files
@@ -175,7 +174,7 @@ class set_of_files(object):
         **Return:**
             - ``sof`` -- a ccdproc ImageFileCollection of the frames
 
-        **Usage:**
+        **Usage**
 
         To generate a ImageFileCollection from a directory, a list of fits filepaths or a set-of-files (SOF) file try the following:
 

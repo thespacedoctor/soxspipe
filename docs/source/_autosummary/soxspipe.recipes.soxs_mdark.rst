@@ -1,9 +1,9 @@
-_base_recipe_ (*class*)
-========================================
+soxs_mdark
+=====================================
 
 .. currentmodule:: soxspipe.recipes
 
-.. autoclass:: _base_recipe_
+.. autoclass:: soxs_mdark
    :members:
    :private-members:
    :show-inheritance:
@@ -20,15 +20,23 @@ _base_recipe_ (*class*)
         
    
         
-            ~_base_recipe_.clean_up
+            ~soxs_mdark.clean_up
        
    
         
-            ~_base_recipe_.prepare_frames
+            ~soxs_mdark.prepare_frames
        
    
         
-            ~_base_recipe_.prepare_single_frame
+            ~soxs_mdark.prepare_single_frame
+       
+   
+        
+            ~soxs_mdark.produce_product
+       
+   
+        
+            ~soxs_mdark.verify_input_frames
        
    
    
@@ -85,12 +93,16 @@ _base_recipe_ (*class*)
        
    
        
-            ~_base_recipe_._absolute_path
+            ~soxs_mdark._absolute_path
         
    
        
-            ~_base_recipe_._verify_input_frames_basics
+            ~soxs_mdark._verify_input_frames_basics
         
+   
+       
+   
+       
    
        
    

@@ -33,9 +33,9 @@ class _base_recipe_(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
 
-    **Usage:**
+    **Usage**
 
-    To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler receipes (e.g. `mbias`) - copy and modify the code.
+    To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler receipes (e.g. `soxs_mbias`) - copy and modify the code.
     """
     # Initialisation
 
@@ -70,7 +70,7 @@ class _base_recipe_(object):
         **Return:**
             - ``frame`` -- the prepared frame with mask and uncertainty extensions (CCDData object)
 
-        **Usage:**
+        **Usage**
 
         ```python
         from soxspipe.recipes import _base_recipe_
@@ -252,7 +252,7 @@ class _base_recipe_(object):
         **Return:**
             - ``absolutePath`` -- absolute path
 
-        **Usage:**
+        **Usage**
 
         ```python
         myPath = self._absolute_path(myPath)
@@ -281,9 +281,9 @@ class _base_recipe_(object):
         **Return:**
             - ``preframes`` -- the new image collection containing the prepared frames
 
-        **Usage:**
+        **Usage**
 
-        Usually called within a recipe class once the input frames have been selected and verified (see `mbias` code for example): 
+        Usually called within a recipe class once the input frames have been selected and verified (see `soxs_mbias` code for example): 
 
         ```python
         self.inputFrames = self.prepare_frames(
@@ -375,7 +375,7 @@ class _base_recipe_(object):
             self):
         """*remove intermediate files once recipe is complete*
 
-        **Usage:**
+        **Usage**
 
         ```python
         recipe.clean_up()

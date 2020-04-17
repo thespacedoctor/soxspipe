@@ -24,16 +24,17 @@ import ccdproc
 from soxspipe.commonutils import keyword_lookup
 
 
-class mdark(_base_recipe_):
+class soxs_mdark(_base_recipe_):
     """
-    *The mdark recipe*
+    *The soxs_mdark recipe*
 
-    **Key Arguments:**
+    **Key Arguments**
+
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
 
-    **Usage:**
+    **Usage**
 
     To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
 
@@ -42,7 +43,7 @@ class mdark(_base_recipe_):
     ```eval_rst
     .. todo::
 
-        - add a tutorial about ``mdark`` to documentation
+        - add a tutorial about ``soxs_mdark`` to documentation
 
     ```
     """
@@ -56,9 +57,9 @@ class mdark(_base_recipe_):
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(mdark, self).__init__(log=log, settings=settings)
+        super(soxs_mdark, self).__init__(log=log, settings=settings)
         self.log = log
-        log.debug("instansiating a new 'mdark' object")
+        log.debug("instansiating a new 'soxs_mdark' object")
         self.settings = settings
         self.inputFrames = inputFrames
         # xt-self-arg-tmpx
@@ -73,7 +74,7 @@ class mdark(_base_recipe_):
         )
         self.inputFrames = sof.get()
 
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY MDARK - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MDARK - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         self.verify_input_frames()
         print(self.inputFrames.summary)
@@ -87,7 +88,7 @@ class mdark(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the mdark recipe*
+        """*verify the input frame match those required by the soxs_mdark recipe*
 
         **Return:**
             - ``None``
@@ -119,16 +120,16 @@ class mdark(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the mdark recipe*
+        """*The code to generate the product of the soxs_mdark recipe*
 
         **Return:**
             - ``productPath`` -- the path to the final product
 
-        **Usage:**
+        **Usage**
 
         ```python
-        from soxspipe.recipes import mdark
-        recipe = mdark(
+        from soxspipe.recipes import soxs_mdark
+        recipe = soxs_mdark(
             log=log,
             settings=settings,
             inputFrames=fileList

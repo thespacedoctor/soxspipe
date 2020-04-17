@@ -25,7 +25,7 @@ class keyword_lookup(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
 
-    **Usage:**
+    **Usage**
 
     To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
 
@@ -98,7 +98,7 @@ class keyword_lookup(object):
         **Return:**
             - ``keywords`` -- the FITS Header keywords. Can be string or list of sttings depending on format of tag argument
 
-        **Usage:**
+        **Usage**
 
         See docstring for the class
         """
@@ -138,7 +138,7 @@ class keyword_lookup(object):
         **Return:**
             - ``kwDict`` -- the python dictionary of keywords (key = tag, value = fits keyword)
 
-        **Usage:**
+        **Usage**
 
         ```python
         from soxspipe.commonutils import keyword_lookup

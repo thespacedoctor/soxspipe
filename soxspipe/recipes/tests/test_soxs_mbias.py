@@ -43,33 +43,33 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 
 
-class test_mbias(unittest.TestCase):
+class test_soxs_mbias(unittest.TestCase):
 
-    def test_mbias_from_directory_function(self):
+    def test_soxs_mbias_from_directory_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-bias/uvb/1x1/slow_read"
 
         print(directory)
-        from soxspipe.recipes import mbias
-        this = mbias(
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=directory
         )
 
-    def test_mbias_from_sof_function(self):
+    def test_soxs_mbias_from_sof_function(self):
         sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-bias/sof/bias_uvb_1x1.sof"
 
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input
-        from soxspipe.recipes import mbias
-        this = mbias(
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=sofPath
         )
 
-    def test_mbias_from_list_of_fits_function(self):
+    def test_soxs_mbias_from_list_of_fits_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-bias/uvb/1x1/fast_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
@@ -86,8 +86,8 @@ class test_mbias(unittest.TestCase):
 
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input
-        from soxspipe.recipes import mbias
-        this = mbias(
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=fileList
@@ -108,20 +108,20 @@ class test_mbias(unittest.TestCase):
             if os.path.isfile(filename) and ".fits" in d:
                 fileList.append(filename)
 
-        from soxspipe.recipes import mbias
-        this = mbias(
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=fileList
         )
         this.produce_product()
 
-    def test_mbias_mixed_image_type_exception(self):
+    def test_soxs_mbias_mixed_image_type_exception(self):
 
         directory = settings["test-data-root"] + "/xshooter-lingain/vis"
         try:
-            from soxspipe.recipes import mbias
-            this = mbias(
+            from soxspipe.recipes import soxs_mbias
+            this = soxs_mbias(
                 log=log,
                 settings=settings,
                 inputFrames=directory
@@ -132,12 +132,12 @@ class test_mbias(unittest.TestCase):
             assert True
             print(str(e))
 
-    def test_mbias_wrong_image_type_exception(self):
+    def test_soxs_mbias_wrong_image_type_exception(self):
 
         directory = settings["test-data-root"] + "/xshooter-darks/vis"
         try:
-            from soxspipe.recipes import mbias
-            this = mbias(
+            from soxspipe.recipes import soxs_mbias
+            this = soxs_mbias(
                 log=log,
                 settings=settings,
                 inputFrames=directory
@@ -148,12 +148,12 @@ class test_mbias(unittest.TestCase):
             assert True
             print(str(e))
 
-    def test_mbias_mixed_binning_exception(self):
+    def test_soxs_mbias_mixed_binning_exception(self):
 
         directory = settings["test-data-root"] + "/xshooter-bias/vis"
         try:
-            from soxspipe.recipes import mbias
-            this = mbias(
+            from soxspipe.recipes import soxs_mbias
+            this = soxs_mbias(
                 log=log,
                 settings=settings,
                 inputFrames=directory
@@ -164,11 +164,11 @@ class test_mbias(unittest.TestCase):
             assert True
             print(str(e))
 
-    def test_mbias_function_exception(self):
+    def test_soxs_mbias_function_exception(self):
 
-        from soxspipe.recipes import mbias
+        from soxspipe.recipes import soxs_mbias
         try:
-            this = mbias(
+            this = soxs_mbias(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"

@@ -1,4 +1,4 @@
-docstring_test (*module*)
+docstring_test
 ==================================
 
 

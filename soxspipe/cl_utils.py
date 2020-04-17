@@ -125,8 +125,8 @@ def main(arguments=None):
         return
 
     if a["mbias"]:
-        from soxspipe.recipes import mbias
-        recipe = mbias(
+        from soxspipe.recipes import soxs_mbias
+        recipe = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"]
