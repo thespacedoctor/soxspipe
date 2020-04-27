@@ -76,7 +76,7 @@ trim_footnote_reference_space = True
 rst_epilog = u"""
 .. |tsd| replace:: thespacedoctor
 """ % locals()
-link_resolver_url = "https://github.com/thespacedoctor/python-package-template/tree/master"
+link_resolver_url = "https://github.com/thespacedoctor/soxspipe/blob/master"
 
 
 # General information about the project.
@@ -349,7 +349,9 @@ def linkcode_resolve(domain, info):
     if not info['module']:
         return None
     filename = info['module'].replace('.', '/')
-    return link_resolver_url + "/" + filename + ".py"
+    if info['fullname']:
+        filename += "/" + info['fullname'] + ".py"
+    return link_resolver_url + "/" + filename
 
 
 def docstring(app, what, name, obj, options, lines):

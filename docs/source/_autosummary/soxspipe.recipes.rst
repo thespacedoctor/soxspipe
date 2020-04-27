@@ -1,15 +1,14 @@
-recipes
+recipes *(module)*
 ===========================
 
 
 
 .. automodule:: soxspipe.recipes
     :members:
-    :private-members:
     :undoc-members:
     :show-inheritance:
     :inherited-members:
-    :member-order: bysource
+    :member-order: groupwise
     
     
     
@@ -19,6 +18,39 @@ recipes
     
     
 
+    
+    
+    
+
+    
+    
+    .. rubric:: Sub-modules
+
+    .. autosummary::
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+        
+            ~soxs_mbias (nice)
+       
+    
+    
+        
+            ~soxs_mdark (nice)
+       
+    
+    
+        
+    
     
     
     

@@ -1,14 +1,13 @@
-set_of_files
+set_of_files *(class)*
 ===========================================
 
 .. currentmodule:: soxspipe.commonutils
 
 .. autoclass:: set_of_files
    :members:
-   :private-members:
    :show-inheritance:
    :inherited-members:
-   :member-order: bysource
+   :member-order: groupwise
 
     
 
@@ -23,65 +22,65 @@ set_of_files
             ~set_of_files.get
        
    
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-            ~set_of_files._generate_sof_file_from_directory
-        
-   
-       
-   
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   ..          ~set_of_files._generate_sof_file_from_directory
+   ..      
+   .. 
+   ..     
+   .. 
    
    
 

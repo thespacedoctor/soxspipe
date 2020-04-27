@@ -1,14 +1,13 @@
-soxs_mbias
+soxs_mbias *(class)*
 =====================================
 
 .. currentmodule:: soxspipe.recipes
 
 .. autoclass:: soxs_mbias
    :members:
-   :private-members:
    :show-inheritance:
    :inherited-members:
-   :member-order: bysource
+   :member-order: groupwise
 
     
 
@@ -39,77 +38,77 @@ soxs_mbias
             ~soxs_mbias.verify_input_frames
        
    
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-            ~soxs_mbias._absolute_path
-        
-   
-       
-            ~soxs_mbias._verify_input_frames_basics
-        
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   ..          ~soxs_mbias._absolute_path
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_mbias._verify_input_frames_basics
+   ..      
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
    
    
 

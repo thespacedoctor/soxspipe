@@ -1,14 +1,13 @@
-soxs_mdark
+soxs_mdark *(class)*
 =====================================
 
 .. currentmodule:: soxspipe.recipes
 
 .. autoclass:: soxs_mdark
    :members:
-   :private-members:
    :show-inheritance:
    :inherited-members:
-   :member-order: bysource
+   :member-order: groupwise
 
     
 
@@ -39,77 +38,77 @@ soxs_mdark
             ~soxs_mdark.verify_input_frames
        
    
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-            ~soxs_mdark._absolute_path
-        
-   
-       
-            ~soxs_mdark._verify_input_frames_basics
-        
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   ..          ~soxs_mdark._absolute_path
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_mdark._verify_input_frames_basics
+   ..      
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
    
    
 

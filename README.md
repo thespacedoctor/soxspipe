@@ -2,7 +2,8 @@
 
 <iframe src="https://ghbtns.com/github-btn.html?user=thespacedoctor&repo=soxspipe&type=star&count=true&size=large" frameborder="0" scrolling="0" width="160px" height="30px"></iframe>
 
-[![](https://readthedocs.org/projects/soxspipe/badge/)](http://soxspipe.readthedocs.io/en/latest/?badge)   [![](https://cdn.jsdelivr.net/gh/thespacedoctor/soxspipe@master/coverage.svg)](https://cdn.jsdelivr.net/gh/thespacedoctor/soxspipe@master/htmlcov/index.html)
+[![](https://readthedocs.org/projects/soxspipe/badge/)](http://soxspipe.readthedocs.io/en/latest/?badge)
+[![](https://cdn.jsdelivr.net/gh/thespacedoctor/soxspipe@master/coverage.svg)](https://cdn.jsdelivr.net/gh/thespacedoctor/soxspipe@master/htmlcov/index.html)
 
 *The data-reduction pipeline for the SOXS instrument* (a python package with command-line tools).
 
