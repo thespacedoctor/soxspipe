@@ -9,7 +9,6 @@
 
    install
    initialisation
-   _template_
    todolist
    changes_link
 ```
