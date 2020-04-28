@@ -10,3 +10,4 @@ psutil
 unicodecsv
 pymysql==0.9.0
 multiprocess
+git+https://github.com/readthedocs/readthedocs-sphinx-search@master
