@@ -12,7 +12,7 @@ import m2r
 import codecs
 
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.todo',
-              'sphinx.ext.mathjax', 'sphinx.ext.autosummary', 'sphinx.ext.coverage', 'sphinx.ext.linkcode', 'sphinxcontrib.mermaid']
+              'sphinx.ext.mathjax', 'sphinx.ext.autosummary', 'sphinx.ext.coverage', 'sphinx.ext.linkcode', 'sphinxcontrib.mermaid', 'sphinx_search.extension']
 
 
 class Mock(MagicMock):
@@ -39,7 +39,7 @@ templates_path = ['_static/whistles-theme/sphinx']
 source_suffix = ['.rst', '.md']
 master_doc = 'index'
 # pygments_style = 'monokai'
-html_theme = 'sphinx_dryx_rtd_theme'
+html_theme = 'sphinx_rtd_theme'
 html_logo = "_images/thespacedoctor_icon_white_circle.png"
 html_favicon = "_images/favicon.ico"
 html_show_sourcelink = True
