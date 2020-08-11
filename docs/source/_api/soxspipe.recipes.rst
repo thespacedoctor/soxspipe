@@ -7,6 +7,7 @@ soxspipe.recipes package
    :show-inheritance:
    :inherited-members:
    :member-order:
+   :private-members:
 
 Submodules
 ----------
@@ -14,5 +15,5 @@ Submodules
 .. toctree::
 
    soxspipe.recipes._base_recipe_
-   soxspipe.recipes.mbias
-   soxspipe.recipes.mdark
+   soxspipe.recipes.soxs_mbias
+   soxspipe.recipes.soxs_mdark

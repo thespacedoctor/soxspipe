@@ -1,7 +1,7 @@
-soxspipe.cl\_utils module
-=========================
+soxspipe.recipes.soxs\_mbias module
+===================================
 
-.. automodule:: soxspipe.cl_utils
+.. automodule:: soxspipe.recipes.soxs_mbias
    :members:
    :undoc-members:
    :show-inheritance:

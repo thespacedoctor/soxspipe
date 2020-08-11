@@ -1,7 +1,7 @@
-soxspipe.cl\_utils module
-=========================
+soxspipe.recipes.soxs\_mdark module
+===================================
 
-.. automodule:: soxspipe.cl_utils
+.. automodule:: soxspipe.recipes.soxs_mdark
    :members:
    :undoc-members:
    :show-inheritance:

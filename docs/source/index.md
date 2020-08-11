@@ -13,6 +13,12 @@
    changes_link
 ```
 
+
+```eval_rst
+.. autoclass:: soxspipe.commonutils.set_of_files
+```
+
+
 ## API Reference
 
 ```eval_rst

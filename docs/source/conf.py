@@ -214,7 +214,7 @@ def generateAutosummaryIndex():
                 if name in ["numpy"]:
                     continue
                 thisMod = sp + "." + name
-                if thisMod not in allSubpackages and len(name) and name[0:1] != "_" and name[-5:] != "tests" and "cl_util" not in name:
+                if thisMod not in allSubpackages and len(name) and name[0:1] != "$" and name[-5:] != "tests" and "cl_util" not in name:
                     allModules.append(sp + "." + name)
                 # if thisMod not in allSubpackages and len(name) and name[0:2] != "__" and name[-5:] != "tests" and name != "cl_utils" and name != "utKit":
                 #     allModules.append(sp + "." + name)
@@ -223,15 +223,15 @@ def generateAutosummaryIndex():
         for name, obj in inspect.getmembers(__import__(spm, fromlist=[''])):
             if inspect.isclass(obj):
                 thisClass = spm + "." + name
-                if (thisClass == obj.__module__ or spm == obj.__module__) and len(name) and name[0:1] != "_":
+                if (thisClass == obj.__module__ or spm == obj.__module__) and len(name) and name[0:1] != "$":
                     allClasses.append(thisClass)
             if inspect.isfunction(obj):
                 thisFunction = spm + "." + name
-                if (spm == obj.__module__ or obj.__module__ == thisFunction) and len(name) and name != "main" and name[0:1] != "_":
+                if (spm == obj.__module__ or obj.__module__ == thisFunction) and len(name) and name != "main" and name[0:1] != "$":
                     allFunctions.append(thisFunction)
             if inspect.ismethod(obj):
                 thisMethod = spm + "." + name
-                if (spm == obj.__module__ or obj.__module__ == thisMethod) and len(name) and name != "main" and name[0:1] != "_":
+                if (spm == obj.__module__ or obj.__module__ == thisMethod) and len(name) and name != "main" and name[0:1] != "$":
                     allMethods.append(thisMethod)
 
     allSubpackages = allSubpackages[1:]
@@ -416,6 +416,10 @@ def docstring(app, what, name, obj, options, lines):
     # HR
     regex = re.compile(r'\n---')
     md = regex.sub(r"\n\n----------\n\n", md)
+
+    # FIX LINKS
+    regex = re.compile(r'\[(.*?)\]\(\/?(\_autosummary\/)?(\S*?)(\.html)?\)')
+    md = regex.sub(r'[\1](\3.html)', md)
 
     rst = md
     rst = m2r.convert(md)

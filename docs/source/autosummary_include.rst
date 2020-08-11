@@ -16,6 +16,7 @@
 
    soxspipe.commonutils.keyword_lookup
    soxspipe.commonutils.set_of_files
+   soxspipe.recipes._base_recipe_
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark
  
