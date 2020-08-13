@@ -108,8 +108,8 @@ class test_mbias(unittest.TestCase):
             if os.path.isfile(filename) and ".fits" in d:
                 fileList.append(filename)
 
-        from soxspipe.recipes import mbias
-        this = mbias(
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=fileList
