@@ -50,8 +50,8 @@ class test_mbias(unittest.TestCase):
             "/xshooter-bias/uvb/1x1/fast_read"
 
         print(directory)
-        from soxspipe.recipes import mbias
-        this = mbias(
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=directory
@@ -62,8 +62,8 @@ class test_mbias(unittest.TestCase):
 
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input
-        from soxspipe.recipes import mbias
-        this = mbias(
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=sofPath
@@ -86,8 +86,8 @@ class test_mbias(unittest.TestCase):
 
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input
-        from soxspipe.recipes import mbias
-        this = mbias(
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=fileList
@@ -120,8 +120,8 @@ class test_mbias(unittest.TestCase):
 
         directory = settings["test-data-root"] + "/xshooter-lingain/vis"
         try:
-            from soxspipe.recipes import mbias
-            this = mbias(
+            from soxspipe.recipes import soxs_mbias
+            this = soxs_mbias(
                 log=log,
                 settings=settings,
                 inputFrames=directory
@@ -136,8 +136,8 @@ class test_mbias(unittest.TestCase):
 
         directory = settings["test-data-root"] + "/xshooter-darks/vis"
         try:
-            from soxspipe.recipes import mbias
-            this = mbias(
+            from soxspipe.recipes import soxs_mbias
+            this = soxs_mbias(
                 log=log,
                 settings=settings,
                 inputFrames=directory
@@ -152,8 +152,8 @@ class test_mbias(unittest.TestCase):
 
         directory = settings["test-data-root"] + "/xshooter-bias/vis"
         try:
-            from soxspipe.recipes import mbias
-            this = mbias(
+            from soxspipe.recipes import soxs_mbias
+            this = soxs_mbias(
                 log=log,
                 settings=settings,
                 inputFrames=directory
@@ -166,9 +166,9 @@ class test_mbias(unittest.TestCase):
 
     def test_mbias_function_exception(self):
 
-        from soxspipe.recipes import mbias
+        from soxspipe.recipes import soxs_mbias
         try:
-            this = mbias(
+            this = soxs_mbias(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"
