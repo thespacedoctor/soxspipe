@@ -1,59 +1,56 @@
-recipes (*subpackage*)
-===============================
+recipes *(module)*
+===========================
+
+
 
 .. automodule:: soxspipe.recipes
     :members:
-    :private-members:
+    :undoc-members:
     :show-inheritance:
     :inherited-members:
-    :member-order: bysource
+    :member-order: groupwise
+    
+    
+    
+    
 
     
     
-    .. rubric:: Subpackage Members
+    
+
+    
+    
+    
+
+    
+    
+    .. rubric:: Sub-modules
 
     .. autosummary::
     
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-            
-                ~mbias
-           
-        
-        
-            
-                ~mdark
-           
-        
-        
-            
-        
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
         
+            ~soxs_mbias (nice)
+       
+    
+    
         
+            ~soxs_mdark (nice)
+       
+    
+    
         
-        
-        
-        
-        
-        
-        
-        
-            
-                ~_base_recipe_
-           
-        
-        
-        
-        
+    
+    
     
     

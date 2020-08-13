@@ -95,10 +95,7 @@ class utKit(utKit):
         directory_script_runner(
             log=log,
             pathToScriptDirectory=packageDirectory + "/tests/input",
-            databaseName=settings["database settings"]["db"],
-            force=True,
-            loginPath=settings["database settings"]["loginPath"],
-            waitForResult=True,
+            dbConn=dbConn,
             successRule=None,
             failureRule=None
         )

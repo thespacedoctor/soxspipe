@@ -1,15 +1,14 @@
-docstring_test (*module*)
+docstring_test *(module)*
 ==================================
 
 
 
 .. automodule:: soxspipe.docstring_test
     :members:
-    :private-members:
     :undoc-members:
     :show-inheritance:
     :inherited-members:
-    :member-order: bysource
+    :member-order: groupwise
     
     
     
@@ -25,6 +24,27 @@ docstring_test (*module*)
     
     
 
+    
+    
+    
+
+    
+    
+    .. rubric:: Sub-modules
+
+    .. autosummary::
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+        
+    
     
     
     

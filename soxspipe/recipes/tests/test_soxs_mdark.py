@@ -43,33 +43,33 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 
 
-class test_mdark(unittest.TestCase):
+class test_soxs_mdark(unittest.TestCase):
 
-    def test_mdark_from_directory_function(self):
+    def test_soxs_mdark_from_directory_function(self):
         directory = settings["test-data-root"] + "/xshooter-darks/nir"
-        from soxspipe.recipes import mdark
-        this = mdark(
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
             log=log,
             settings=settings,
             inputFrames=directory
         )
 
-    # def test_mdark_function(self):
+    # def test_soxs_mdark_function(self):
 
     #     # utKit.refresh_database() # reset database to database found in
     #     # soxspipe/test/input
-    #     from soxspipe.recipes import mdark
-    #     this = mdark(
+    #     from soxspipe.recipes import soxs_mdark
+    #     this = soxs_mdark(
     #         log=log,
     #         settings=settings
     #     )
     #     this.get()
 
-    def test_mdark_function_exception(self):
+    def test_soxs_mdark_function_exception(self):
 
-        from soxspipe.recipes import mdark
+        from soxspipe.recipes import soxs_mdark
         try:
-            this = mdark(
+            this = soxs_mdark(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"

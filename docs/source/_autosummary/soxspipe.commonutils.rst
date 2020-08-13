@@ -1,59 +1,60 @@
-commonutils (*subpackage*)
-===================================
+commonutils *(module)*
+===============================
+
+
 
 .. automodule:: soxspipe.commonutils
     :members:
-    :private-members:
+    :undoc-members:
     :show-inheritance:
     :inherited-members:
-    :member-order: bysource
+    :member-order: groupwise
+    
+    
+    
+    
 
     
     
-    .. rubric:: Subpackage Members
+    
+
+    
+    
+    
+
+    
+    
+    .. rubric:: Sub-modules
 
     .. autosummary::
     
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-            
-                ~getpackagepath
-           
-        
-        
-            
-                ~keyword_lookup
-           
-        
-        
-            
-                ~set_of_files
-           
-        
-        
-            
-        
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
         
+            ~getpackagepath (nice)
+       
+    
+    
         
+            ~keyword_lookup (nice)
+       
+    
+    
         
+            ~set_of_files (nice)
+       
+    
+    
         
-        
-        
-        
-        
-        
-        
-        
-        
-        
+    
+    
     
     

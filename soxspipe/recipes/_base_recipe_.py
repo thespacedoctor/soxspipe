@@ -21,6 +21,8 @@ from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import set_of_files
 from soxspipe.commonutils import keyword_lookup
+from datetime import datetime
+import shutil
 
 
 class _base_recipe_(object):
@@ -31,9 +33,9 @@ class _base_recipe_(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
 
-    **Usage:**
+    **Usage**
 
-    To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler receipes (e.g. `mbias`) - copy and modify the code.
+    To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler receipes (e.g. `soxs_mbias`) - copy and modify the code.
     """
     # Initialisation
 
@@ -68,7 +70,7 @@ class _base_recipe_(object):
         **Return:**
             - ``frame`` -- the prepared frame with mask and uncertainty extensions (CCDData object)
 
-        **Usage:**
+        **Usage**
 
         ```python
         from soxspipe.recipes import _base_recipe_
@@ -142,8 +144,8 @@ class _base_recipe_(object):
                                  hdu_mask='MASK', hdu_flags='BITMAP', key_uncertainty_type='UTYPE')
 
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1
-        if len(frame.to_hdu()) > 1:
-            raise TypeError("%(frame)s is not a raw frame" % locals())
+        if len(frame.to_hdu()) > 1 or "SOXSPIPE PRE" in frame.header:
+            raise TypeError("%(filepath)s is not a raw frame" % locals())
 
         # TRIM OVERSCAN REGION
         if frame.header[kw('SEQ_ARM')] != "NIR":
@@ -219,6 +221,11 @@ class _base_recipe_(object):
         else:
             outDir = self.intermediateRootPath + "/tmp"
 
+        # INJECT THE PRE KEYWORD
+        utcnow = datetime.utcnow()
+        frame.header["SOXSPIPE PRE"] = (utcnow.strftime(
+            "%Y-%m-%dT%H:%M:%S.%f"), "UTC timestamp")
+
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):
             os.makedirs(outDir)
@@ -245,7 +252,7 @@ class _base_recipe_(object):
         **Return:**
             - ``absolutePath`` -- absolute path
 
-        **Usage:**
+        **Usage**
 
         ```python
         myPath = self._absolute_path(myPath)
@@ -274,9 +281,9 @@ class _base_recipe_(object):
         **Return:**
             - ``preframes`` -- the new image collection containing the prepared frames
 
-        **Usage:**
+        **Usage**
 
-        Usually called within a recipe class once the input frames have been selected and verified (see `mbias` code for example): 
+        Usually called within a recipe class once the input frames have been selected and verified (see `soxs_mbias` code for example): 
 
         ```python
         self.inputFrames = self.prepare_frames(
@@ -310,6 +317,81 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
+
+    def _verify_input_frames_basics(
+            self):
+        """*the basic verifications that needs done for all recipes*
+
+        **Return:**
+            - None
+
+        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
+        """
+        self.log.debug('starting the ``_verify_input_frames_basics`` method')
+
+        # CHECK WE ACTUALLY HAVE IMAGES
+        if not len(self.inputFrames.files_filtered(include_path=True)):
+            raise FileNotFoundError(
+                "No image frames where passed to the recipe")
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+
+        arms = self.inputFrames.values(
+            keyword=kw("SEQ_ARM").lower(), unique=True)
+        # MIXED INPUT ARMS ARE BAD
+        if len(arms) > 1:
+            arms = " and ".join(arms)
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames are a mix of %(imageTypes)s" % locals())
+
+        cdelt1 = self.inputFrames.values(
+            keyword=kw("CDELT1").lower(), unique=True)
+        cdelt2 = self.inputFrames.values(
+            keyword=kw("CDELT2").lower(), unique=True)
+        # MIXED BINNING IS BAD
+        if len(cdelt1) > 1 or len(cdelt2) > 1:
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames are a mix of binnings" % locals())
+
+        readSpeed = self.inputFrames.values(
+            keyword=kw("DET_READ_SPEED").lower(), unique=True)
+        # MIXED READOUT SPEEDS IS BAD
+        if len(readSpeed) > 1:
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames are a mix of readout speeds" % locals())
+
+        self.log.debug('completed the ``_verify_input_frames_basics`` method')
+        return None
+
+    def clean_up(
+            self):
+        """*remove intermediate files once recipe is complete*
+
+        **Usage**
+
+        ```python
+        recipe.clean_up()
+        ```
+        """
+        self.log.debug('starting the ``clean_up`` method')
+
+        outDir = self.intermediateRootPath + "/tmp"
+
+        try:
+            shutil.rmtree(outDir)
+        except:
+            pass
+
+        self.log.debug('completed the ``clean_up`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method

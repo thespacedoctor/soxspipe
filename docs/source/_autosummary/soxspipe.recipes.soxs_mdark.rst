@@ -1,9 +1,9 @@
-utKit *(class)*
-==============================
+soxs_mdark *(class)*
+=====================================
 
-.. currentmodule:: soxspipe.utKit
+.. currentmodule:: soxspipe.recipes
 
-.. autoclass:: utKit
+.. autoclass:: soxs_mdark
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,19 +19,23 @@ utKit *(class)*
         
    
         
-            ~utKit.get_project_root
+            ~soxs_mdark.clean_up
        
    
         
-            ~utKit.refresh_database
+            ~soxs_mdark.prepare_frames
        
    
         
-            ~utKit.setupModule
+            ~soxs_mdark.prepare_single_frame
        
    
         
-            ~utKit.tearDownModule
+            ~soxs_mdark.produce_product
+       
+   
+        
+            ~soxs_mdark.verify_input_frames
        
    
    .. 
@@ -84,6 +88,16 @@ utKit *(class)*
    ..     
    .. 
    ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   ..          ~soxs_mdark._absolute_path
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_mdark._verify_input_frames_basics
+   ..      
    .. 
    ..     
    .. 

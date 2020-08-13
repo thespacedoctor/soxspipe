@@ -1,32 +1,40 @@
-```eval_rst
-.. toctree::
-   :hidden:
-   :maxdepth: 4
-   :caption: Getting Started
 
-   readme_link
-```
 
 {{../../README.md}}
 
-## Getting Started
-
 ```eval_rst
 .. toctree::
    :maxdepth: 4
+   :caption: Table of Contents
 
-   quickstart
+   install
+   initialisation
+   todolist
+   changes_link
 ```
 
-## API
+
+```eval_rst
+.. autoclass:: soxspipe.commonutils.set_of_files
+```
+
+
+## API Reference
 
 ```eval_rst
 .. toctree::
    :hidden:
    :maxdepth: 30
-   :caption: API
+   :caption: API reference
 
    autosummary
+```
+
+```eval_rst
+.. toctree::
+   :hidden:
+
+   genindex
 ```
 
 
@@ -34,12 +42,8 @@
 .. include:: /autosummary_include.rst
 ```
 
-
 ```eval_rst
-.. toctree::
-   :maxdepth: 30
-   :caption: Misc
-
-   todolist
-   _template_
+.. include:: /genindex.rst
 ```
+
+{{../../CHANGES.md}}

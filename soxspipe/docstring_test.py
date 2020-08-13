@@ -22,7 +22,7 @@ def docsting_test(self):
     **Return:**
         - ``dbConns`` -- a dictionary of the database connections required by sherlock
 
-    **Usage:**
+    **Usage**
 
         To setup the sherlock database connections, run the following:
 

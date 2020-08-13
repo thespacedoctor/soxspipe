@@ -7,6 +7,7 @@ soxspipe.commonutils package
    :show-inheritance:
    :inherited-members:
    :member-order:
+   :private-members:
 
 Submodules
 ----------

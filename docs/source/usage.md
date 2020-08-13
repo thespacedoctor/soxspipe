@@ -2,7 +2,7 @@
 
 ```bash
     
-    Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org/en/stable
+    Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
     
     Usage:
         soxspipe init

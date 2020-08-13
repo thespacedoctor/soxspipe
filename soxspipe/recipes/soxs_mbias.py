@@ -22,18 +22,20 @@ import numpy as np
 from astropy.nddata import CCDData
 import ccdproc
 from ccdproc import Combiner
+from soxspipe.commonutils import keyword_lookup
 
 
-class mbias(_base_recipe_):
+class soxs_mbias(_base_recipe_):
     """
-    *The mbias recipe*
+    *The soxs_mbias recipe*
 
-    **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
+    **Key Arguments**
 
-    **Usage:**
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
+
+    **Usage**
 
     To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
 
@@ -43,7 +45,7 @@ class mbias(_base_recipe_):
     ```eval_rst
     .. todo::
 
-        - add a tutorial about ``mbias`` to documentation
+        - add a tutorial about ``soxs_mbias`` to documentation
     ```
     """
     # Initialisation
@@ -56,9 +58,9 @@ class mbias(_base_recipe_):
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(mbias, self).__init__(log=log, settings=settings)
+        super(soxs_mbias, self).__init__(log=log, settings=settings)
         self.log = log
-        log.debug("instansiating a new 'mbias' object")
+        log.debug("instansiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
         # xt-self-arg-tmpx
@@ -73,7 +75,7 @@ class mbias(_base_recipe_):
         )
         self.inputFrames = sof.get()
 
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY MBIAS - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MBIAS - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
@@ -94,7 +96,7 @@ class mbias(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the mbias recipe*
+        """*verify the input frame match those required by the soxs_mbias recipe*
 
         **Return:**
             - ``None``
@@ -103,9 +105,17 @@ class mbias(_base_recipe_):
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
-        imageTypes = self.inputFrames.values(
-            keyword='eso dpr type', unique=True)
+        self._verify_input_frames_basics()
 
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+
+        imageTypes = self.inputFrames.values(
+            keyword=kw("DPR_TYPE").lower(), unique=True)
         # MIXED INPUT IMAGE TYPES ARE BAD
         if len(imageTypes) > 1:
             imageTypes = " and ".join(imageTypes)
@@ -118,40 +128,21 @@ class mbias(_base_recipe_):
             raise TypeError(
                 "Input frames not BIAS frames" % locals())
 
-        arms = self.inputFrames.values(
-            keyword='eso seq arm', unique=True)
-        # MIXED INPUT ARMS ARE BAD
-        if len(arms) > 1:
-            arms = " and ".join(arms)
-            print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames are a mix of %(imageTypes)s" % locals())
-
-        cdelt1 = self.inputFrames.values(
-            keyword='cdelt1', unique=True)
-        cdelt2 = self.inputFrames.values(
-            keyword='cdelt2', unique=True)
-        # MIXED BINNING IS BAD
-        if len(cdelt1) > 1 or len(cdelt2) > 1:
-            print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames are a mix of binnings" % locals())
-
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
 
     def produce_product(
             self):
-        """*The code to generate the product of the mbias recipe*
+        """*The code to generate the product of the soxs_mbias recipe*
 
         **Return:**
             - ``productPath`` -- the path to the final product
 
-        **Usage:**
+        **Usage**
 
         ```python
-        from soxspipe.recipes import mbias
-        recipe = mbias(
+        from soxspipe.recipes import soxs_mbias
+        recipe = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=fileList
@@ -222,6 +213,8 @@ class mbias(_base_recipe_):
         combined_bias_median.write(
             productPath,
             overwrite=True)
+
+        self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath

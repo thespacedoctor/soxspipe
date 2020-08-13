@@ -1,14 +1,13 @@
-keyword_lookup (*class*)
+keyword_lookup *(class)*
 =============================================
 
 .. currentmodule:: soxspipe.commonutils
 
 .. autoclass:: keyword_lookup
    :members:
-   :private-members:
    :show-inheritance:
    :inherited-members:
-   :member-order: bysource
+   :member-order: groupwise
 
     
 
@@ -23,65 +22,65 @@ keyword_lookup (*class*)
             ~keyword_lookup.get
        
    
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-   
-       
-            ~keyword_lookup._select_dictionary
-        
-   
-       
-   
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   ..          ~keyword_lookup._select_dictionary
+   ..      
+   .. 
+   ..     
+   .. 
    
    
 

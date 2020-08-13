@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org/en/stable
+Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe init
@@ -125,8 +125,8 @@ def main(arguments=None):
         return
 
     if a["mbias"]:
-        from soxspipe.recipes import mbias
-        recipe = mbias(
+        from soxspipe.recipes import soxs_mbias
+        recipe = soxs_mbias(
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"]

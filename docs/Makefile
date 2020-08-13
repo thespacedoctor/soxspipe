@@ -60,7 +60,7 @@ buildapi:
 	# inherited-members  members inherited from baseclass
 	# show-inheritance  show where code is inherited from
 	rm -rf $(APIDIR)
-	SPHINX_APIDOC_OPTIONS='members,undoc-members,show-inheritance,inherited-members,member-order' sphinx-apidoc -fMeTP  -o source/_api ../ ../setup.py ../soxspipe/__version__.py ../*/tests* ../*/*/tests* ../*/*/*/tests* ../*/*/*/*/tests*
+	SPHINX_APIDOC_OPTIONS='members,undoc-members,show-inheritance,inherited-members,member-order,private-members' sphinx-apidoc -fMeTP  -o source/_api ../ ../setup.py ../soxspipe/__version__.py ../*/tests* ../*/*/tests* ../*/*/*/tests* ../*/*/*/*/tests*
 	@echo "Auto-generation of API documentation finished. " \
 		"The generated files are in '_api/'"
 

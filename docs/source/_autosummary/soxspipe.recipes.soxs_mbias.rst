@@ -1,9 +1,9 @@
-utKit *(class)*
-==============================
+soxs_mbias *(class)*
+=====================================
 
-.. currentmodule:: soxspipe.utKit
+.. currentmodule:: soxspipe.recipes
 
-.. autoclass:: utKit
+.. autoclass:: soxs_mbias
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,19 +19,23 @@ utKit *(class)*
         
    
         
-            ~utKit.get_project_root
+            ~soxs_mbias.clean_up
        
    
         
-            ~utKit.refresh_database
+            ~soxs_mbias.prepare_frames
        
    
         
-            ~utKit.setupModule
+            ~soxs_mbias.prepare_single_frame
        
    
         
-            ~utKit.tearDownModule
+            ~soxs_mbias.produce_product
+       
+   
+        
+            ~soxs_mbias.verify_input_frames
        
    
    .. 
@@ -84,6 +88,16 @@ utKit *(class)*
    ..     
    .. 
    ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   ..          ~soxs_mbias._absolute_path
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_mbias._verify_input_frames_basics
+   ..      
    .. 
    ..     
    .. 
