@@ -42,8 +42,7 @@ class _base_recipe_(object):
     def __init__(
             self,
             log,
-            settings=False,
-
+            settings=False
     ):
         self.log = log
         log.debug("instansiating a new '__init__' object")
@@ -55,6 +54,18 @@ class _base_recipe_(object):
         self.calibrationRootPath = self._absolute_path(
             settings["calibration-data-root"])
         # xt-self-arg-tmpx
+
+        # SET LATER WHEN VERIFYING FRAMES
+        self.arm = None
+        self.detectorParams = None
+
+        from soxspipe.commonutils import keyword_lookup
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        self.kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
 
         return None
 
@@ -125,45 +136,38 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``prepare_single_frame`` method')
 
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        kw = keyword_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get
+        kw = self.kw
+
+        # STORE FILEPATH FOR LATER USE
+        filepath = frame
 
         # CONVERT FILEPATH TO CCDDATA OBJECT
-        filepath = frame
         if isinstance(frame, str):
 
             # CONVERT RELATIVE TO ABSOLUTE PATHS
             frame = self._absolute_path(frame)
 
-            # OPEN THE RAW FRAME
-            frame = CCDData.read(frame, hdu=0, unit='electron', hdu_uncertainty='UNCERT',
-                                 hdu_mask='MASK', hdu_flags='BITMAP', key_uncertainty_type='UTYPE')
+            # OPEN THE RAW FRAME - MASK AND UNCERT TO BE POPULATED LATER
+            frame = CCDData.read(frame, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1
+        # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SOXSPIPE PRE" DOES NOT
+        # EXIST
         if len(frame.to_hdu()) > 1 or "SOXSPIPE PRE" in frame.header:
             raise TypeError("%(filepath)s is not a raw frame" % locals())
 
-        # TRIM OVERSCAN REGION
-        if frame.header[kw('SEQ_ARM')] != "NIR":
-            frame = ccdproc.trim_image(frame[:, :2048])
-        else:
-            frame = ccdproc.trim_image(frame[:1056, :2040])
+        # MANIPULATE XSH DATA
+        frame = self.xsh2soxs(frame)
+
+        frame = self._trim_frame(frame)
 
         # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
-        if (kw('DET_GAIN') not in frame.header) and (kw('DET_CHIP_GAIN') not in frame.header):
-            one = kw('DET_GAIN')
-            two = kw('DET_CHIP_GAIN')
+        # CONAD IS REALLY GAIN AND HAS UNIT OF Electrons/ADU
+        if (kw('CONAD') not in frame.header):
+            one = kw('CONAD')
             raise AttributeError(
-                "'%(one)s/%(two)s' keyword not found in %(frame)s" % locals())
-        if kw('DET_GAIN') in frame.header:
-            gain = frame.header[kw('DET_GAIN')]
-        else:
-            gain = frame.header[kw('DET_CHIP_GAIN')
-                                ]
+                "'%(one)s' keyword not found in %(frame)s" % locals())
+        gain = frame.header[kw('CONAD')] * u.electron / u.adu
 
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
         if (kw('RON') not in frame.header) and (kw('CHIP_RON') not in frame.header):
@@ -172,16 +176,16 @@ class _base_recipe_(object):
             raise AttributeError(
                 "'%(one)s/%(two)s' keyword not found in %(frame)s" % locals())
         if kw('RON') in frame.header:
-            ron = frame.header[kw('RON')]
+            ron = frame.header[kw('RON')] * u.electron
         else:
-            ron = frame.header[kw('CHIP_RON')]
+            ron = frame.header[kw('CHIP_RON')] * u.electron
 
-        # CONVERT ADU TO ELECTRONS
-        frame.data = frame.data * gain
+        # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
+        frame = ccdproc.gain_correct(frame, gain)
 
         # GENERATE UNCERTAINTY MAP AS EXTENSION
         frame = ccdproc.create_deviation(
-            frame, readnoise=ron * u.electron)
+            frame, readnoise=ron)
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
@@ -196,9 +200,13 @@ class _base_recipe_(object):
             bitMapPath = self.calibrationRootPath + \
                 "/cal/BP_MAP_RP_%(arm)s_%(binx)sx%(biny)s.fits" % locals()
 
-        bitMap = CCDData.read(bitMapPath, hdu=0, unit='electron')
-        if "NIR" in arm:
-            bitMap.data = np.rot90(bitMap.data, -1)
+        bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
+
+        # BIAS FRAMES HAVE NO 'FLUX', JUST READNOISE, SO ADD AN EMPTY BAD-PIXEL
+        # MAP
+        if frame.header[kw("DPR_TYPE")] == "BIAS":
+            bitMap.data = np.zeros_like(bitMap.data)
+
         frame.flags = bitMap.data
 
         # FLATTEN BAD-PIXEL BITMAP TO BOOLEAN FALSE (GOOD) OR TRUE (BAD) AND
@@ -292,12 +300,7 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``prepare_frames`` method')
 
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        kw = keyword_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get
+        kw = self.kw
 
         filepaths = self.inputFrames.files_filtered(include_path=True)
 
@@ -391,6 +394,87 @@ class _base_recipe_(object):
             pass
 
         self.log.debug('completed the ``clean_up`` method')
+        return None
+
+    def xsh2soxs(
+            self,
+            frame):
+        """*perform some massaging of the xshooter data so it more closely resembles soxs data -  this function can be removed once code is production ready*
+
+        **Key Arguments:**
+            - ``frame`` -- the CCDDate frame to manipulate
+
+        **Return:**
+            - ``frame`` -- the manipulated soxspipe-ready frame
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``xsh2soxs`` method')
+
+        kw = self.kw
+
+        if self.settings["instrument"] == "xsh":
+            # XSH VIS DATA REMAINS UNTOUCHED
+            # XSH UVB DATA NEEDS ROTATED 180
+            if frame.header[kw('SEQ_ARM')] == "UVB":
+                frame.data = np.rot90(frame.data, 2)
+            # XSH NIV DATA NEEDS ROTATED 90 CLOCKWISE
+            if frame.header[kw('SEQ_ARM')] == "NIR":
+                frame.data = np.rot90(frame.data, -1)
+
+        self.log.debug('completed the ``xsh2soxs`` method')
+        return frame
+
+    def _trim_frame(
+            self,
+            frame):
+        """*return frame with pre-scan and overscan regions removed*
+
+        **Key Arguments:**
+            - ``frame`` -- the CCDData frame to be trimmed
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``_trim_frame`` method')
+
+        # TRIM OVERSCAN REGION ----- MOVE READ DETECT AREAS FROM SETTINGS FILES
+        # !!!
+        if frame.header[kw('SEQ_ARM')] != "NIR":
+            frame = ccdproc.trim_image(frame[:, :2048])
+        else:
+            frame = ccdproc.trim_image(frame[:1056, :2040])
+
+        self.log.debug('completed the ``_trim_frame`` method')
         return None
 
     # use the tab-trigger below for new method

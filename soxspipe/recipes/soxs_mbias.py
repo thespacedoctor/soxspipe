@@ -27,7 +27,7 @@ from soxspipe.commonutils import keyword_lookup
 
 class soxs_mbias(_base_recipe_):
     """
-    *The soxs_mbias recipe*
+    *The `soxs_mbias` recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have the bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
 
     **Key Arguments**
 
@@ -105,14 +105,10 @@ class soxs_mbias(_base_recipe_):
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
-        self._verify_input_frames_basics()
+        kw = self.kw
 
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        kw = keyword_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get
+        # BASIC VERIFICATION COMMON TO ALL RECIPES
+        self._verify_input_frames_basics()
 
         imageTypes = self.inputFrames.values(
             keyword=kw("DPR_TYPE").lower(), unique=True)
