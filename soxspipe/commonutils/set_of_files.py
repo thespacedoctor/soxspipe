@@ -211,8 +211,16 @@ class set_of_files(object):
                             ".fits" for l in lines if ".fits" in l]
             sof = ImageFileCollection(filenames=fitsFiles, keywords=self.keys)
         elif isinstance(self.inputFrames, list):
+            # FIND UNIQUE FILE LOCATIONS
+            locations = [os.path.dirname(f) for f in self.inputFrames]
+            if len(set(locations)) == 1:
+                location = locations[0]
+                self.inputFrames = [os.path.basename(
+                    f) for f in self.inputFrames]
+            else:
+                location = None
             sof = ImageFileCollection(
-                filenames=self.inputFrames, keywords=self.keys)
+                filenames=self.inputFrames, location=location, keywords=self.keys)
         else:
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths")
