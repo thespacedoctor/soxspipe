@@ -38,7 +38,6 @@ class _base_recipe_(object):
 
     To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler recipes (e.g. `soxs_mbias`) - copy and modify the code.
     """
-    # Initialisation
 
     def __init__(
             self,
@@ -54,13 +53,11 @@ class _base_recipe_(object):
             settings["reduced-data-root"])
         self.calibrationRootPath = self._absolute_path(
             settings["calibration-data-root"])
-        # xt-self-arg-tmpx
 
         # SET LATER WHEN VERIFYING FRAMES
         self.arm = None
         self.detectorParams = None
 
-        from soxspipe.commonutils import keyword_lookup
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
         self.kw = keyword_lookup(
@@ -74,7 +71,7 @@ class _base_recipe_(object):
             self,
             frame,
             save=False):
-        """*prepare a single raw frame by converting to electron counts and adding mask and uncertainty extensions*
+        """*prepare a single raw frame by converting pixel data from ADU to electrons and adding mask and uncertainty extensions*
 
         **Key Arguments:**
             - ``frame`` -- the path to the frame to prepare, of a CCDData object
@@ -158,7 +155,6 @@ class _base_recipe_(object):
 
         # MANIPULATE XSH DATA
         frame = self.xsh2soxs(frame)
-
         frame = self._trim_frame(frame)
 
         # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
@@ -350,29 +346,74 @@ class _base_recipe_(object):
         else:
             self.arm = arm[0]
 
+        # MIXED BINNING IS BAD
         cdelt1 = self.inputFrames.values(
             keyword=kw("CDELT1").lower(), unique=True)
         cdelt2 = self.inputFrames.values(
             keyword=kw("CDELT2").lower(), unique=True)
-        # MIXED BINNING IS BAD
+
         if len(cdelt1) > 1 or len(cdelt2) > 1:
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of binnings" % locals())
 
+        # MIXED READOUT SPEEDS IS BAD
         readSpeed = self.inputFrames.values(
             keyword=kw("DET_READ_SPEED").lower(), unique=True)
-        # MIXED READOUT SPEEDS IS BAD
         if len(readSpeed) > 1:
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of readout speeds" % locals())
+
+        # MIXED GAIN SPEEDS IS BAD
+        # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
+        # CONAD IS REALLY GAIN AND HAS UNIT OF Electrons/ADU
+        gain = self.inputFrames.values(
+            keyword=kw("CONAD").lower(), unique=True)
+        if len(gain) > 1:
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames are a mix of gain" % locals())
+        gain = gain[0] * u.electron / u.adu
+
+        # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
+        ron1 = self.inputFrames.values(
+            keyword=kw("RON").lower(), unique=True)
+        ron2 = self.inputFrames.values(
+            keyword=kw("CHIP_RON").lower(), unique=True)
+        # REMOVE NULL VALUES
+        ron1 = [i for i in ron1 if i != None]
+        ron2 = [i for i in ron2 if i != None]
+
+        # NO READNOISE IS BAD
+        if len(ron1) + len(ron2) == 0:
+            one = kw('RON')
+            two = kw('CHIP RON')
+            raise AttributeError(
+                "'%(one)s/%(two)s' keyword not found in %(frame)s" % locals())
+        # MIXED NOISE
+        if len(ron1) > 1 or len(ron2) > 1:
+            raise TypeError("Input frames are a mix of readnoise" % locals())
+
+        # RECORD RON FOR LATER USE
+        if len(ron1) > 0:
+            ron = ron1[0] * u.electron
+            if len(ron2) > 0:
+                print(ron2)
+                raise TypeError(
+                    "Input frames are a mix of readnoise" % locals())
+        else:
+            ron = gain = ron2[0] * u.electron
 
         # CREATE DETECTOR LOOKUP DICTIONARY
         self.detectorParams = detector_lookup(
             log=self.log,
             settings=self.settings
         ).get(self.arm)
+        # ADD A FEW MORE VALUES TO THE DETECTOR LOOKUP DICT SO WE DON'T HAVE TO
+        # REPEATEDLY READ FITS HEADERS
+        self.detectorParams["gain"] = gain
+        self.detectorParams["ron"] = ron
 
         self.log.debug('completed the ``_verify_input_frames_basics`` method')
         return None
@@ -448,41 +489,15 @@ class _base_recipe_(object):
 
         **Key Arguments:**
             - ``frame`` -- the CCDData frame to be trimmed
-
-        **Usage:**
-
-        ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
         """
         self.log.debug('starting the ``_trim_frame`` method')
 
-        # TRIM OVERSCAN REGION ----- MOVE READ DETECT AREAS FROM SETTINGS FILES
-        # !!!
-
         kw = self.kw
         arm = self.arm
+        dp = self.detectorParams
 
-        from soxspipe.commonutils import detector_lookup
-        detector = detector_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get(arm)
-        science_pixels = detector["science-pixels"]
-
-        rs, re, cs, ce = science_pixels["rows"]["start"], science_pixels["rows"][
-            "end"], science_pixels["columns"]["start"], science_pixels["columns"]["end"]
+        rs, re, cs, ce = dp["science-pixels"]["rows"]["start"], dp["science-pixels"]["rows"][
+            "end"], dp["science-pixels"]["columns"]["start"], dp["science-pixels"]["columns"]["end"]
         trimmed_frame = ccdproc.trim_image(frame[rs:re, cs:ce])
 
         self.log.debug('completed the ``_trim_frame`` method')

@@ -59,7 +59,7 @@ class set_of_files(object):
             settings=False,
             inputFrames=[],
             keys=['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX',
-                  'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON']
+                  'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON']
     ):
         self.log = log
         log.debug("instansiating a new 'sof' object")
