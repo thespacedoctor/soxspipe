@@ -90,11 +90,11 @@ class detector_lookup(object):
 
         ```python
         from soxspipe.commonutils import detector_lookup
-        this = keyword_lookup(
+        detector = detector_lookup(
             log=log,
             settings=settings
         )
-        dectDict = this._select_dictionary()
+        dectDict = detector._select_dictionary()
         ```
         """
         self.log.debug('starting the ``_select_dictionary`` method')

@@ -1,4 +1,6 @@
 UVB:
+  # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
+  clockwise-rotation: 180
   science-pixels: 
     # NAXIS1 == x-axis
     columns:
@@ -10,6 +12,8 @@ UVB:
       end: 3000
 
 VIS:
+  # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
+  clockwise-rotation: 0
   science-pixels:
     # NAXIS1 == x-axis
     columns:
@@ -21,6 +25,8 @@ VIS:
       end: 4000
 
 NIR:
+  # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
+  clockwise-rotation: 90
   science-pixels: 
     # NAXIS1 == x-axis
     columns:

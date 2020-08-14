@@ -138,22 +138,21 @@ class _base_recipe_(object):
         self.log.debug('starting the ``prepare_single_frame`` method')
 
         kw = self.kw
+        dp = self.detectorParams
 
         # STORE FILEPATH FOR LATER USE
         filepath = frame
 
         # CONVERT FILEPATH TO CCDDATA OBJECT
         if isinstance(frame, str):
-
             # CONVERT RELATIVE TO ABSOLUTE PATHS
             frame = self._absolute_path(frame)
-
             # OPEN THE RAW FRAME - MASK AND UNCERT TO BE POPULATED LATER
             frame = CCDData.read(frame, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                  hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SOXSPIPE PRE" DOES NOT
-        # EXIST
+        # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
         if len(frame.to_hdu()) > 1 or "SOXSPIPE PRE" in frame.header:
             raise TypeError("%(filepath)s is not a raw frame" % locals())
 
@@ -431,15 +430,13 @@ class _base_recipe_(object):
         self.log.debug('starting the ``xsh2soxs`` method')
 
         kw = self.kw
+        dp = self.detectorParams
 
-        if self.settings["instrument"] == "xsh":
-            # XSH VIS DATA REMAINS UNTOUCHED
-            # XSH UVB DATA NEEDS ROTATED 180
-            if frame.header[kw('SEQ_ARM')] == "UVB":
-                frame.data = np.rot90(frame.data, 2)
-            # XSH NIV DATA NEEDS ROTATED 90 CLOCKWISE
-            if frame.header[kw('SEQ_ARM')] == "NIR":
-                frame.data = np.rot90(frame.data, -1)
+        # NP ROTATION OF ARRAYS IS IN COUNTER-CLOCKWISE DIRECTION
+        rotationIndex = int(4 - dp["clockwise-rotation"] / 90.)
+
+        if self.settings["instrument"] == "xsh" and rotationIndex > 0:
+            frame.data = np.rot90(frame.data, rotationIndex)
 
         self.log.debug('completed the ``xsh2soxs`` method')
         return frame
