@@ -161,7 +161,7 @@ class soxs_mbias(_base_recipe_):
 
         print("# CLIPPING PIXELS WITH EXTREME VALUES IN INDIVIDUAL FRAMES")
         # PRINT SOME INFO FOR USER
-        arm = ccd.header['eso seq arm'].upper()
+        arm = self.arm
         badCount = ccd.mask.sum()
         totalPixels = np.size(ccd.mask)
         percent = (float(badCount) / float(totalPixels)) * 100.

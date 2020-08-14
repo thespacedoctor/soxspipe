@@ -18,7 +18,7 @@ VIS:
     # NAXIS2 == y-axis
     rows:
       start: 0
-      end: 3000
+      end: 4000
 
 NIR:
   science-pixels: 

@@ -21,6 +21,7 @@ from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import set_of_files
 from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils import detector_lookup
 from datetime import datetime
 import shutil
 
@@ -35,7 +36,7 @@ class _base_recipe_(object):
 
     **Usage**
 
-    To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler receipes (e.g. `soxs_mbias`) - copy and modify the code.
+    To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler recipes (e.g. `soxs_mbias`) - copy and modify the code.
     """
     # Initialisation
 
@@ -190,7 +191,7 @@ class _base_recipe_(object):
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
         # AS AN EXTENSION
-        arm = frame.header[kw('SEQ_ARM')]
+        arm = self.arm
         if "NIR" in arm:
             bitMapPath = self.calibrationRootPath + \
                 "/cal/BP_MAP_RP_%(arm)s.fits" % locals()
@@ -332,26 +333,23 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``_verify_input_frames_basics`` method')
 
+        kw = self.kw
+
         # CHECK WE ACTUALLY HAVE IMAGES
         if not len(self.inputFrames.files_filtered(include_path=True)):
             raise FileNotFoundError(
                 "No image frames where passed to the recipe")
 
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        kw = keyword_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get
-
-        arms = self.inputFrames.values(
+        arm = self.inputFrames.values(
             keyword=kw("SEQ_ARM").lower(), unique=True)
         # MIXED INPUT ARMS ARE BAD
-        if len(arms) > 1:
+        if len(arm) > 1:
             arms = " and ".join(arms)
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of %(imageTypes)s" % locals())
+        else:
+            self.arm = arm[0]
 
         cdelt1 = self.inputFrames.values(
             keyword=kw("CDELT1").lower(), unique=True)
@@ -370,6 +368,12 @@ class _base_recipe_(object):
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of readout speeds" % locals())
+
+        # CREATE DETECTOR LOOKUP DICTIONARY
+        self.detectorParams = detector_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get(self.arm)
 
         self.log.debug('completed the ``_verify_input_frames_basics`` method')
         return None
@@ -469,13 +473,23 @@ class _base_recipe_(object):
 
         # TRIM OVERSCAN REGION ----- MOVE READ DETECT AREAS FROM SETTINGS FILES
         # !!!
-        if frame.header[kw('SEQ_ARM')] != "NIR":
-            frame = ccdproc.trim_image(frame[:, :2048])
-        else:
-            frame = ccdproc.trim_image(frame[:1056, :2040])
+
+        kw = self.kw
+        arm = self.arm
+
+        from soxspipe.commonutils import detector_lookup
+        detector = detector_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get(arm)
+        science_pixels = detector["science-pixels"]
+
+        rs, re, cs, ce = science_pixels["rows"]["start"], science_pixels["rows"][
+            "end"], science_pixels["columns"]["start"], science_pixels["columns"]["end"]
+        trimmed_frame = ccdproc.trim_image(frame[rs:re, cs:ce])
 
         self.log.debug('completed the ``_trim_frame`` method')
-        return None
+        return trimmed_frame
 
     # use the tab-trigger below for new method
     # xt-class-method
