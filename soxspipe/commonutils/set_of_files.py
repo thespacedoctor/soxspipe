@@ -76,8 +76,6 @@ class set_of_files(object):
         self.keys = []
         self.keys[:] = [k.lower() for k in keys]
 
-        # xt-self-arg-tmpx
-
         # Initial Actions
         # FIX RELATIVE HOME PATHS
         from os.path import expanduser

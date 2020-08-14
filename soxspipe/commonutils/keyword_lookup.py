@@ -146,7 +146,7 @@ class keyword_lookup(object):
             log=log,
             settings=settings
         )
-        kw = this._select_dictionary()
+        kwDict = this._select_dictionary()
         ```
         """
         self.log.debug('starting the ``_select_dictionary`` method')
