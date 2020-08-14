@@ -19,6 +19,7 @@ import numpy as np
 from astropy.nddata import CCDData
 from astropy import units as u
 import ccdproc
+from astropy.nddata.nduncertainty import StdDevUncertainty
 from soxspipe.commonutils import set_of_files
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import detector_lookup
@@ -157,31 +158,19 @@ class _base_recipe_(object):
         frame = self.xsh2soxs(frame)
         frame = self._trim_frame(frame)
 
-        # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
-        # CONAD IS REALLY GAIN AND HAS UNIT OF Electrons/ADU
-        if (kw('CONAD') not in frame.header):
-            one = kw('CONAD')
-            raise AttributeError(
-                "'%(one)s' keyword not found in %(frame)s" % locals())
-        gain = frame.header[kw('CONAD')] * u.electron / u.adu
-
-        # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
-        if (kw('RON') not in frame.header) and (kw('CHIP_RON') not in frame.header):
-            one = kw('RON')
-            two = kw('CHIP RON')
-            raise AttributeError(
-                "'%(one)s/%(two)s' keyword not found in %(frame)s" % locals())
-        if kw('RON') in frame.header:
-            ron = frame.header[kw('RON')] * u.electron
-        else:
-            ron = frame.header[kw('CHIP_RON')] * u.electron
-
         # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
-        frame = ccdproc.gain_correct(frame, gain)
+        frame = ccdproc.gain_correct(frame, dp["gain"])
 
         # GENERATE UNCERTAINTY MAP AS EXTENSION
-        frame = ccdproc.create_deviation(
-            frame, readnoise=ron)
+        if frame.header[kw("DPR_TYPE")] == "BIAS":
+            # ERROR IS ONLY FROM READNOISE FOR BIAS FRAMES
+            errorMap = np.ones_like(frame.data) * dp["ron"]
+            # errorMap = StdDevUncertainty(errorMap)
+            frame.uncertainty = errorMap
+        else:
+            # GENERATE UNCERTAINTY MAP AS EXTENSION
+            frame = ccdproc.create_deviation(
+                frame, readnoise=dp["ron"])
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
@@ -312,6 +301,8 @@ class _base_recipe_(object):
         )
         preframes = sof.get()
 
+        print(preframes.summary)
+
         self.inputFrames.sort([kw('MJDOBS').lower()])
 
         self.log.debug('completed the ``prepare_frames`` method')
@@ -399,7 +390,6 @@ class _base_recipe_(object):
         if len(ron1) > 0:
             ron = ron1[0] * u.electron
             if len(ron2) > 0:
-                print(ron2)
                 raise TypeError(
                     "Input frames are a mix of readnoise" % locals())
         else:
