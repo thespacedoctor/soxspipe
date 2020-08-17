@@ -47,12 +47,12 @@ class test_soxs_mdark(unittest.TestCase):
 
     def test_soxs_mdark_from_directory_function(self):
         directory = settings["test-data-root"] + "/xshooter-darks/nir"
-        from soxspipe.recipes import soxs_mdark
-        this = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=directory
-        )
+        # from soxspipe.recipes import soxs_mdark
+        # this = soxs_mdark(
+        #     log=log,
+        #     settings=settings,
+        #     inputFrames=directory
+        # )
 
     # def test_soxs_mdark_function(self):
 

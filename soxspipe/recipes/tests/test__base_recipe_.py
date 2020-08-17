@@ -55,11 +55,21 @@ class test__base_recipe_(unittest.TestCase):
             log=log,
             settings=settings
         )
+
+        from soxspipe.commonutils import detector_lookup
+        recipe.detectorParams = detector_lookup(
+            log=log,
+            settings=settings
+        ).get("UVB")
+        recipe.detectorParams["gain"] = 1.75
+        recipe.detectorParams["ron"] = 4.5
+        recipe.arm = "UVB"
+
         preFrame = recipe.prepare_single_frame(frame=framePath)
 
         # NOW TRY SAVING
         preFrame = recipe.prepare_single_frame(frame=framePath, save=settings[
-                                               "save-intermediate-products"])
+            "save-intermediate-products"])
 
         # NOW CLEAN UP
         recipe.clean_up()
