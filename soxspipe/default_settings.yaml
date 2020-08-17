@@ -10,6 +10,11 @@ reduced-data-root: ~/Desktop/soxspipe/reduced
 
 save-intermediate-products: True
 
+soxs-mbias:
+    clipping-lower-simga: 5
+    clipping-upper-simga: 5   
+    clipping-iteration-count: 5
+
 logging settings:
     formatters:
         file_style:

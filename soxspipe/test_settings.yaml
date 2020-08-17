@@ -19,6 +19,11 @@ version: 1
 # instrument the data belongs to; `xsh` or `soxs`
 instrument: xsh
 
+soxs-mbias:
+    clipping-lower-simga: 5
+    clipping-upper-simga: 5   
+    clipping-iteration-count: 5
+
 test-data-root: ~/xshooter-pipeline-data/raw_data
 calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
 intermediate-data-root: ~/soxspipe-unittests/intermediate
