@@ -80,17 +80,6 @@ class _base_recipe_(object):
         **Return:**
             - ``frame`` -- the prepared frame with mask and uncertainty extensions (CCDData object)
 
-        **Usage**
-
-        ```python
-        from soxspipe.recipes import _base_recipe_
-        recipe = _base_recipe_(
-            log=log,
-            settings=settings
-        )
-        preFrame = recipe.prepare_single_frame(frame="/path/to/frame.fits")
-        ```
-
         ---
 
         ```eval_rst
@@ -229,7 +218,9 @@ class _base_recipe_(object):
         extension = os.path.splitext(basename)[1]
         filePath = outDir + "/" + \
             filenameNoExtension + "_pre" + extension
-        frame.write(filePath, overwrite=True)
+
+        # SAVE TO DISK
+        self.write(frame, filePath)
 
         self.log.debug('completed the ``prepare_single_frame`` method')
         return filePath
@@ -276,7 +267,7 @@ class _base_recipe_(object):
 
         **Usage**
 
-        Usually called within a recipe class once the input frames have been selected and verified (see `soxs_mbias` code for example): 
+        Usually called within a recipe class once the input frames have been selected and verified (see `soxs_mbias` code for example):
 
         ```python
         self.inputFrames = self.prepare_frames(
@@ -290,7 +281,7 @@ class _base_recipe_(object):
         filepaths = self.inputFrames.files_filtered(include_path=True)
 
         frameCount = len(filepaths)
-        print("# PREPARING %(frameCount)s RAW FRAMES - CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
+        print("# PREPARING %(frameCount)s RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
         preframes = []
         preframes[:] = [self.prepare_single_frame(
             frame=frame, save=save) for frame in filepaths]
@@ -300,10 +291,10 @@ class _base_recipe_(object):
             inputFrames=preframes
         )
         preframes = sof.get()
+        preframes.sort([kw('MJDOBS').lower()])
 
+        print("# PREPARED FRAMES - SUMMARY")
         print(preframes.summary)
-
-        self.inputFrames.sort([kw('MJDOBS').lower()])
 
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
@@ -444,7 +435,7 @@ class _base_recipe_(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
@@ -488,10 +479,41 @@ class _base_recipe_(object):
 
         rs, re, cs, ce = dp["science-pixels"]["rows"]["start"], dp["science-pixels"]["rows"][
             "end"], dp["science-pixels"]["columns"]["start"], dp["science-pixels"]["columns"]["end"]
-        trimmed_frame = ccdproc.trim_image(frame[rs:re, cs:ce])
+        trimmed_frame = ccdproc.trim_image(frame[rs: re, cs: ce])
 
         self.log.debug('completed the ``_trim_frame`` method')
         return trimmed_frame
+
+    def write(
+            self,
+            frame,
+            filepath,
+            overwrite=True):
+        """*write frame to disk at the specified location*
+
+        **Key Arguments:**
+            - ``frame`` -- the frame to save to disk (CCDData object)
+            - ``filepath`` -- the location to save the frame
+            - ``overwrite`` -- if a file exists at the filepath then choose to overwrite the file. Default: True
+
+        **Usage:**
+
+        Use within a recipe like so:
+
+        ```python
+        self.write(frame, filePath)
+        ```
+        """
+        self.log.debug('starting the ``write`` method')
+
+        HDUList = frame.to_hdu(
+            hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
+        HDUList[0].name = "FLUX"
+        HDUList.writeto(filepath, output_verify='exception',
+                        overwrite=overwrite, checksum=True)
+
+        self.log.debug('completed the ``write`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method
