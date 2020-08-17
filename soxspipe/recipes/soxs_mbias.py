@@ -20,6 +20,7 @@ from ._base_recipe_ import _base_recipe_
 from astropy.stats import mad_std
 import numpy as np
 from astropy.nddata import CCDData
+from astropy import units as u
 import ccdproc
 from ccdproc import Combiner
 from soxspipe.commonutils import keyword_lookup
@@ -82,7 +83,7 @@ class soxs_mbias(_base_recipe_):
         sys.stdout.write("\x1b[1A\x1b[2K")
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        print("# RAW INPUT BIAS FRAMES - SUMMARY")
+        print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['mjd-obs'])
         print(self.inputFrames.summary, "\n")
@@ -123,6 +124,8 @@ class soxs_mbias(_base_recipe_):
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames not BIAS frames" % locals())
+
+        self.imageType = imageTypes[0]
 
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
