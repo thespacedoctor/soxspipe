@@ -348,9 +348,17 @@ def linkcode_resolve(domain, info):
         return None
     if not info['module']:
         return None
+
     filename = info['module'].replace('.', '/')
-    if info['fullname']:
+    if info['fullname'] and "." not in info['fullname']:
         filename += "/" + info['fullname'] + ".py"
+    else:
+        if "/" in filename:
+            filename = ("/").join(filename.split("/")[0:-1]) + "/"
+        else:
+            filename = ""
+        filename += ("/").join(info['fullname'].split(
+            ".")[0:-1]) + ".py" + "#" + info['fullname'].split(".")[-1]
     return link_resolver_url + "/" + filename
 
 
