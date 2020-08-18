@@ -1,4 +1,4 @@
-﻿utKit *(module)*
+utKit *(module)*
 =========================
 
 
@@ -33,6 +33,8 @@
     .. rubric:: Sub-modules
 
     .. autosummary::
+    
+    
     
     
     
