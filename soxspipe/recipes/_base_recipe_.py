@@ -18,6 +18,7 @@ from fundamentals import tools
 import numpy as np
 from astropy.nddata import CCDData
 from astropy import units as u
+from astropy.stats import mad_std
 import ccdproc
 from astropy.nddata.nduncertainty import StdDevUncertainty
 from ccdproc import Combiner

@@ -17,7 +17,6 @@ os.environ['TERM'] = 'vt100'
 from fundamentals import tools
 from soxspipe.commonutils import set_of_files
 from ._base_recipe_ import _base_recipe_
-from astropy.stats import mad_std
 import numpy as np
 from astropy.nddata import CCDData
 import ccdproc
