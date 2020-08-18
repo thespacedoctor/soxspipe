@@ -20,6 +20,7 @@ from astropy.nddata import CCDData
 from astropy import units as u
 import ccdproc
 from astropy.nddata.nduncertainty import StdDevUncertainty
+from ccdproc import Combiner
 from soxspipe.commonutils import set_of_files
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import detector_lookup
