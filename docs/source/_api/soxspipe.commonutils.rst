@@ -13,6 +13,7 @@ Submodules
 ----------
 
 .. toctree::
+   :maxdepth: 4
 
    soxspipe.commonutils.detector_lookup
    soxspipe.commonutils.getpackagepath
