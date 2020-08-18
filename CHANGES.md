@@ -1,4 +1,4 @@
-## vx.x.x - xxdatexx
+## v0.3.0 - August 18, 2020
 
 * **FEATURE:** added a `write` method to the `_base_recipe` to write frames to disk (renames extensions to ESO preferred naming scheme)
 * **FEATURE:** detector lookup class added alongside yaml files to host detector specific parameters (rotation, science-pixels etc). Code has been updated to remove hard-wired detector values.
