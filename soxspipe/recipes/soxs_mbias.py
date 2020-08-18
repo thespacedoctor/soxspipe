@@ -22,7 +22,6 @@ import numpy as np
 from astropy.nddata import CCDData
 from astropy import units as u
 import ccdproc
-from ccdproc import Combiner
 from soxspipe.commonutils import keyword_lookup
 
 
