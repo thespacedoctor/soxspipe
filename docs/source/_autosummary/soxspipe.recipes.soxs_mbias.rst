@@ -1,4 +1,4 @@
-﻿soxs_mbias *(class)*
+soxs_mbias *(class)*
 =====================================
 
 .. currentmodule:: soxspipe.recipes

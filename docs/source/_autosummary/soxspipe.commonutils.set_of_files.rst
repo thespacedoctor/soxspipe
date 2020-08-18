@@ -1,4 +1,4 @@
-﻿set_of_files *(class)*
+set_of_files *(class)*
 ===========================================
 
 .. currentmodule:: soxspipe.commonutils
