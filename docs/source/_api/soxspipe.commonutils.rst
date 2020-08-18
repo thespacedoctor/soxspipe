@@ -14,6 +14,7 @@ Submodules
 
 .. toctree::
 
+   soxspipe.commonutils.detector_lookup
    soxspipe.commonutils.getpackagepath
    soxspipe.commonutils.keyword_lookup
    soxspipe.commonutils.set_of_files

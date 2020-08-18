@@ -21,7 +21,7 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
         return Mock()
 MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.colors',
-                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas']
+                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas', 'astropy.nddata.nduncertainty']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 from soxspipe import cl_utils
 
@@ -418,8 +418,8 @@ def docstring(app, what, name, obj, options, lines):
     md = regex.sub(r"\n\n----------\n\n", md)
 
     # FIX LINKS
-    regex = re.compile(r'\[(.*?)\]\(\/?(\_autosummary\/)?(\S*?)(\.html)?\)')
-    md = regex.sub(r'[\1](\3.html)', md)
+    # regex = re.compile(r'\[(.*?)\]\(\/?(\_autosummary\/)?(\S*?)(\.html)?\)')
+    # md = regex.sub(r'[\1](\3.html)', md)
 
     rst = md
     rst = m2r.convert(md)

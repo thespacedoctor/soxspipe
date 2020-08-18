@@ -39,6 +39,11 @@ commonutils *(module)*
     
     
         
+            ~detector_lookup (nice)
+       
+    
+    
+        
             ~getpackagepath (nice)
        
     

@@ -14,6 +14,7 @@
 .. autosummary::
    :nosignatures:
 
+   soxspipe.commonutils.detector_lookup
    soxspipe.commonutils.keyword_lookup
    soxspipe.commonutils.set_of_files
    soxspipe.recipes._base_recipe_

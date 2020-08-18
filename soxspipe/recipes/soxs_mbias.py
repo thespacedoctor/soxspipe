@@ -28,17 +28,15 @@ from soxspipe.commonutils import keyword_lookup
 
 class soxs_mbias(_base_recipe_):
     """
-    *The `soxs_mbias` recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have the bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
+    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have the bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
 
     **Key Arguments**
 
     - ``log`` -- logger
     - ``settings`` -- the settings dictionary
-    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default: `[]`
 
-    **Usage**
-
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
+    [![](https://live.staticflickr.com/65535/50240606321_c0829448c4_z.png)](https://live.staticflickr.com/65535/50240606321_c0829448c4_o.png)
 
     See `produce_product` method for usage.
 
@@ -185,106 +183,6 @@ class soxs_mbias(_base_recipe_):
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
-
-    def clip_and_stack(
-            self,
-            frames,
-            recipe):
-        """*mean combine input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function*
-
-        **Key Arguments:**
-            - ``frames`` -- an ImageFileCollection of the framers to stack
-            - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
-
-        **Return:**
-            - ``combined_frame`` -- the combined master frame (with updated bad-pixel and uncertainty maps)
-
-        ```eval_rst
-        .. todo::
-
-        - revisit error propagation when combining frames: https://github.com/thespacedoctor/soxspipe/issues/42
-        ```
-
-        **Usage:**
-
-        This snippet can be used within the recipe code to combine individual (using bias frames as an example):
-
-        ```python
-        combined_bias_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mbias")
-        ```
-        """
-        self.log.debug('starting the ``clip_and_stack`` method')
-
-        arm = self.arm
-        kw = self.kw
-        dp = self.detectorParams
-        imageType = self.imageType
-
-        # ALLOW FOR UNDERSCORE AND HYPHENS
-        recipe = recipe.replace("soxs_", "soxs-")
-
-        # UNPACK SETTINGS
-        clipping_lower_sigma = self.settings[
-            recipe]["clipping-lower-simga"]
-        clipping_upper_sigma = self.settings[
-            recipe]["clipping-upper-simga"]
-        clipping_iteration_count = self.settings[
-            recipe]["clipping-iteration-count"]
-
-        # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
-        # ccds = [c for c in self.inputFrames.ccds()]
-        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS',
-                                                             "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
-
-        # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
-        # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
-        # MASKED IN ALL INDIVIDUAL IMAGES ARE MASK IN THE FINAL COMBINED IMAGE
-        combiner = Combiner(ccds)
-
-        print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
-        # PRINT SOME INFO FOR USER
-        badCount = ccds[0].mask.sum()
-        totalPixels = np.size(ccds[0].mask)
-        percent = (float(badCount) / float(totalPixels)) * 100.
-        print(f"The basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
-
-        # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INOUT FRAMES - USING
-        # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
-        old_n_masked = -1
-        # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
-        new_n_masked = combiner.data_arr.mask.sum()
-        iteration = 1
-        while (new_n_masked > old_n_masked and iteration <= clipping_iteration_count):
-            combiner.sigma_clipping(
-                low_thresh=clipping_lower_sigma, high_thresh=clipping_upper_sigma, func=np.ma.median, dev_func=mad_std)
-            old_n_masked = new_n_masked
-            # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
-            new_n_masked = combiner.data_arr.mask.sum()
-            diff = new_n_masked - old_n_masked
-            extra = ""
-            if diff == 0:
-                extra = " - we're done"
-            print("    Clipping iteration %(iteration)s finds %(diff)s more rogue pixels in the set of input frames%(extra)s" % locals())
-            iteration += 1
-
-        # GENERATE THE COMBINED MEDIAN
-        print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
-        combined_frame = combiner.average_combine()
-
-        # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
-        # IMAGES
-        combined_frame.header = ccds[0].header
-        combined_frame.header[
-            kw("DPR_CATG")] = "MASTER_%(imageType)s_%(arm)s" % locals()
-
-        # CALCULATE NEW PIXELS ADDED TO MASK
-        newBadCount = combined_frame.mask.sum()
-        diff = newBadCount - badCount
-        print("%(diff)s new pixels made it into the combined bad-pixel map" % locals())
-
-        self.log.debug('completed the ``clip_and_stack`` method')
-        return combined_frame
 
     # use the tab-trigger below for new method
     # xt-class-method

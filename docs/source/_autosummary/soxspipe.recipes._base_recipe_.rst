@@ -23,11 +23,23 @@ _base_recipe_ *(class)*
        
    
         
+            ~_base_recipe_.clip_and_stack
+       
+   
+        
             ~_base_recipe_.prepare_frames
        
    
         
             ~_base_recipe_.prepare_single_frame
+       
+   
+        
+            ~_base_recipe_.write
+       
+   
+        
+            ~_base_recipe_.xsh2soxs
        
    
    .. 
@@ -88,8 +100,18 @@ _base_recipe_ *(class)*
    ..      
    .. 
    ..     
+   ..          ~_base_recipe_._trim_frame
+   ..      
+   .. 
+   ..     
    ..          ~_base_recipe_._verify_input_frames_basics
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

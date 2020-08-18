@@ -23,6 +23,10 @@ soxs_mbias *(class)*
        
    
         
+            ~soxs_mbias.clip_and_stack
+       
+   
+        
             ~soxs_mbias.prepare_frames
        
    
@@ -36,6 +40,14 @@ soxs_mbias *(class)*
    
         
             ~soxs_mbias.verify_input_frames
+       
+   
+        
+            ~soxs_mbias.write
+       
+   
+        
+            ~soxs_mbias.xsh2soxs
        
    
    .. 
@@ -96,8 +108,18 @@ soxs_mbias *(class)*
    ..      
    .. 
    ..     
+   ..          ~soxs_mbias._trim_frame
+   ..      
+   .. 
+   ..     
    ..          ~soxs_mbias._verify_input_frames_basics
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

@@ -87,40 +87,6 @@ class _base_recipe_(object):
 
             - write a command-line tool for this method
         ```
-
-        # Preparing the Raw SOXS Frames
-
-        # Trim Overscan
-
-        The first thing we need to do is trim off the overscan area of the image.
-
-        # ADU to Electrons
-
-        The first thing to do is to convert the pixel data from ADU to electron counts by multiplying each pixel value in the raw frame by the gain (`HIERARCH ESO DET OUT1 CONAD` keyword value).
-
-        $$\rm{electron\ count} = \rm{adu\ count} \times \rm{gain}$$
-
-        # Generating an Uncertainty Map
-
-        Next we need to generate the uncertainty map for the raw image and add this as the 'UNCERT' extension to the image.
-
-        For each pixel the uncertainty is calculated as:
-
-        $$\rm{error} = \sqrt{\rm{readnoise}^2+\rm{electron\ count}}$$
-
-        # Bitmap Extension
-
-        The appropriate bitmap extension is selected and simply added as the 'FLAG' extension of the frame.
-
-        # Bad Pixel Mask
-
-        The selected bitmap is converted to a boolean mask, with values >0 becoming TRUE to indicate these pixels need to be masks. All other values are set to FALSE.
-
-        Finally the prepared frames are saved out into the intermediate frames location with the prefix `pre_`.
-
-        Viewing the image in DS9 (using the command `ds9 -multiframe pre_filename.fits` to show all extensions as tiled frames) we can see the 'DATA', 'UNCERT' and 'MASK' extensions are now all present.
-
-        ![](https://live.staticflickr.com/65535/49434143241_580e904616_o.png)
         """
         self.log.debug('starting the ``prepare_single_frame`` method')
 
@@ -273,6 +239,46 @@ class _base_recipe_(object):
         self.inputFrames = self.prepare_frames(
             save=self.settings["save-intermediate-products"])
         ```
+
+        # Preparing the Raw SOXS Frames
+
+        Here's the typical workflow for *preparing* the raw SOXS frames for data reduction:
+
+        [![](https://live.staticflickr.com/65535/50237266672_4453a01233_b.png)](https://live.staticflickr.com/65535/50237266672_4453a01233_o.png)
+
+
+        **1. Trim Overscan**
+
+        The first thing we need to do is trim off the overscan area of the image. The science-pixel regions for the detectors are read from the `soxs_detector_parameters.yaml` settings file.
+
+        **2. ADU to Electrons**
+
+        Next the pixel data is converted from ADU to electron counts by multiplying each pixel value in the raw frame by the detector gain (the gain is read in units of electrons/ADU).
+
+        $$\rm{electron\ count} = \rm{adu\ count} \times \rm{gain}$$
+
+        *3. Generating an Uncertainty Map**
+
+        Next an uncertainty map is generated for the raw image and added as the 'ERR' extension of the image.
+
+        <!-- For each pixel the uncertainty is calculated as:
+
+        $$\rm{error} = \sqrt{\rm{readnoise}^2+\rm{electron\ count}}$$ -->
+
+        <!-- **Bitmap Extension**
+
+        The appropriate bitmap extension is selected and simply added as the 'FLAG' extension of the frame. -->
+
+        **4. Bad Pixel Mask**
+
+        The default detector bitmap is read from the static calibration suite and converted to a boolean mask, with values >0 becoming TRUE to indicate these pixels need to be masks. All other values are set to FALSE. This map is add as the 'QUAL' extesion of the image. 
+
+        Finally the prepared frames are saved out into the intermediate frames location with the prefix `pre_`.
+
+        Viewing the image in DS9 (using the command `ds9 -multiframe -tile columns pre_filename.fits` to show all extensions as tiled frames) we can see the 'FLUX', 'QUAL' and 'ERR' extensions are now all present.
+
+        [![](https://live.staticflickr.com/65535/50237008782_5bb148baaf_b.png)](https://live.staticflickr.com/65535/50237008782_5bb148baaf_o.png)
+
         """
         self.log.debug('starting the ``prepare_frames`` method')
 
@@ -514,6 +520,122 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``write`` method')
         return None
+
+    def clip_and_stack(
+            self,
+            frames,
+            recipe):
+        """*mean combine input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function*
+
+        **Key Arguments:**
+            - ``frames`` -- an ImageFileCollection of the framers to stack
+            - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
+
+        **Return:**
+            - ``combined_frame`` -- the combined master frame (with updated bad-pixel and uncertainty maps)
+
+        [![](https://live.staticflickr.com/65535/50237449982_7297f60f71_b.png)](https://live.staticflickr.com/65535/50237449982_7297f60f71_o.png)
+
+        Before combining the frames we want to 'clip' any outyling pixel values found in the individual frames that are to be stacked. We isolate and remove pixels from any averaging calculation (mean or median) that have a value that strays too far from the 'typical' pixel value.
+
+        Using the median pixel value as the 'typical' value and the *median absolute deviation* (MAD) as a proxy for the standard-deviation we can accurately identify rogue pixels. For any given set of pixel values:
+
+        $$
+        MAD = \\frac{1}{N}\\sum_{i=0}^N |x_i - \\text{median}(x)|.
+        $$
+
+        The clipping is done iteratively so newly found rogue pixels are masks, median values are recaluated and clipping in repeated. The iterative process stops whenever either no more bad-pixels are to be found or the maximum number of iterations as read from the recipe settings has been reached.
+
+        After the clipping has been completed the individual frames are mean-combined, ignoring pixels in the individual bad-pixel masks. If a pixel is flagged in all individual masks it is added to the combined frame bad-pixel mask.
+
+        **Usage:**
+
+        This snippet can be used within the recipe code to combine individual (using bias frames as an example):
+
+        ```python
+        combined_bias_mean = self.clip_and_stack(
+            frames=self.inputFrames, recipe="soxs_mbias")
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - revisit error propagation when combining frames: https://github.com/thespacedoctor/soxspipe/issues/42
+        ```
+        """
+        self.log.debug('starting the ``clip_and_stack`` method')
+
+        arm = self.arm
+        kw = self.kw
+        dp = self.detectorParams
+        imageType = self.imageType
+
+        # ALLOW FOR UNDERSCORE AND HYPHENS
+        recipe = recipe.replace("soxs_", "soxs-")
+
+        # UNPACK SETTINGS
+        clipping_lower_sigma = self.settings[
+            recipe]["clipping-lower-simga"]
+        clipping_upper_sigma = self.settings[
+            recipe]["clipping-upper-simga"]
+        clipping_iteration_count = self.settings[
+            recipe]["clipping-iteration-count"]
+
+        # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
+        # ccds = [c for c in self.inputFrames.ccds()]
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS',
+                                                             "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
+        # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
+        # MASKED IN ALL INDIVIDUAL IMAGES ARE MASK IN THE FINAL COMBINED IMAGE
+        combiner = Combiner(ccds)
+
+        print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
+        # PRINT SOME INFO FOR USER
+        badCount = ccds[0].mask.sum()
+        totalPixels = np.size(ccds[0].mask)
+        percent = (float(badCount) / float(totalPixels)) * 100.
+        print(f"The basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
+
+        # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INOUT FRAMES - USING
+        # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
+        old_n_masked = -1
+        # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
+        new_n_masked = combiner.data_arr.mask.sum()
+        iteration = 1
+        while (new_n_masked > old_n_masked and iteration <= clipping_iteration_count):
+            combiner.sigma_clipping(
+                low_thresh=clipping_lower_sigma, high_thresh=clipping_upper_sigma, func=np.ma.median, dev_func=mad_std)
+            old_n_masked = new_n_masked
+            # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
+            new_n_masked = combiner.data_arr.mask.sum()
+            diff = new_n_masked - old_n_masked
+            extra = ""
+            if diff == 0:
+                extra = " - we're done"
+            print("    Clipping iteration %(iteration)s finds %(diff)s more rogue pixels in the set of input frames%(extra)s" % locals())
+            iteration += 1
+
+        # GENERATE THE COMBINED MEDIAN
+        print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
+        combined_frame = combiner.average_combine()
+
+        # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
+        # IMAGES
+        combined_frame.header = ccds[0].header
+        combined_frame.header[
+            kw("DPR_CATG")] = "MASTER_%(imageType)s_%(arm)s" % locals()
+
+        # CALCULATE NEW PIXELS ADDED TO MASK
+        newBadCount = combined_frame.mask.sum()
+        diff = newBadCount - badCount
+        print("%(diff)s new pixels made it into the combined bad-pixel map" % locals())
+
+        self.log.debug('completed the ``clip_and_stack`` method')
+        return combined_frame
 
     # use the tab-trigger below for new method
     # xt-class-method
