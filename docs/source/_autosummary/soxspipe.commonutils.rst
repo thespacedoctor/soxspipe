@@ -1,4 +1,4 @@
-﻿commonutils *(module)*
+commonutils *(module)*
 ===============================
 
 
@@ -34,6 +34,31 @@
     
     
     
+    
+    
+    
+    
+        
+            ~detector_lookup (nice)
+       
+    
+    
+        
+            ~getpackagepath (nice)
+       
+    
+    
+        
+            ~keyword_lookup (nice)
+       
+    
+    
+        
+            ~set_of_files (nice)
+       
+    
+    
+        
     
     
     

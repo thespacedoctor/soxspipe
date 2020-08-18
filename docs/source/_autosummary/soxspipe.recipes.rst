@@ -1,4 +1,4 @@
-﻿recipes *(module)*
+recipes *(module)*
 ===========================
 
 
@@ -34,6 +34,22 @@
     
     
     
+    
+    
+    
+    
+    
+        
+            ~soxs_mbias (nice)
+       
+    
+    
+        
+            ~soxs_mdark (nice)
+       
+    
+    
+        
     
     
     

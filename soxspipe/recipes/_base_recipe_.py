@@ -443,18 +443,7 @@ class _base_recipe_(object):
         **Usage:**
 
         ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        frame = self.xsh2soxs(frame)
         ```
         """
         self.log.debug('starting the ``xsh2soxs`` method')
