@@ -1,3 +1,7 @@
+
+* **ENHANCEMENT:** added default values for gain and ron in the detector settings files. Default values can be overwritten if correct GAIN and RON are found in fits-headers (overwritten for UVB and VIS but not NIR for XShooter)
+* **FIXED:** science pixels for all 3 xshooter detectors in parameters file
+
 ## v0.3.0 - August 18, 2020
 
 * **FEATURE:** added a `write` method to the `_base_recipe` to write frames to disk (renames extensions to ESO preferred naming scheme)
