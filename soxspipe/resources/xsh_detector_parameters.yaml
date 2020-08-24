@@ -10,19 +10,25 @@ UVB:
     rows:
       start: 0
       end: 3000
-
+  saturation: 65000.
+  gain: 0.62 # e/ADU
+  ron: 2.60 # e
+            
 VIS:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
   clockwise-rotation: 0
   science-pixels:
     # NAXIS1 == x-axis
     columns:
-      start: 0
-      end: 2048
+      start: 10
+      end: 2058
     # NAXIS2 == y-axis
     rows:
       start: 0
       end: 4000
+  gain: 1.4 # e/ADU
+  ron: 5.3 # e
+  saturation: 65535.
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -30,10 +36,14 @@ NIR:
   science-pixels: 
     # NAXIS1 == x-axis
     columns:
-      start: 0
-      end: 1056
+      start: 4
+      end: 1100
     # NAXIS2 == y-axis
     rows:
-      start: 0
-      end: 2040
+      start: 4
+      end: 2044
+  saturation: 2.0e5
+  gain: 2.12 # e/ADU
+  ron: 8.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
+
 
