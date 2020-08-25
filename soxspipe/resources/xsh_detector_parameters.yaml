@@ -36,8 +36,8 @@ NIR:
   science-pixels: 
     # NAXIS1 == x-axis
     columns:
-      start: 4
-      end: 1100
+      start: 20
+      end: 1076
     # NAXIS2 == y-axis
     rows:
       start: 4
