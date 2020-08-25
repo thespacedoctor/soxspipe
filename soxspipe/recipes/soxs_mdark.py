@@ -96,14 +96,10 @@ class soxs_mdark(_base_recipe_):
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
-        self._verify_input_frames_basics()
+        kw = self.kw
 
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        kw = keyword_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get
+        # BASIC VERIFICATION COMMON TO ALL RECIPES
+        self._verify_input_frames_basics()
 
         imageTypes = self.inputFrames.values(
             keyword=kw("DPR_TYPE").lower(), unique=True)
@@ -113,7 +109,23 @@ class soxs_mdark(_base_recipe_):
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of %(imageTypes)s" % locals())
+        # NON-BIAS INPUT IMAGE TYPES ARE BAD
+        elif imageTypes[0] != 'DARK':
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames not DARK frames" % locals())
 
+        exptimes = self.inputFrames.values(
+            keyword=kw("EXPTIME").lower(), unique=True)
+        # MIXED INPUT IMAGE TYPES ARE BAD
+        if len(exptimes) > 1:
+            exptimes = [str(e) for e in exptimes]
+            exptimes = " and ".join(exptimes)
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames have differing exposure-times %(exptimes)s" % locals())
+
+        self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
 
