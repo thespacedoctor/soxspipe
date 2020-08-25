@@ -154,8 +154,8 @@ class soxs_mbias(_base_recipe_):
         combined_bias_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mbias")
 
-        x = combined_bias_mean.header[kw("WIN_BINX")]
-        y = combined_bias_mean.header[kw("WIN_BINY")]
+        x = int(dp["binning"][1])
+        y = int(dp["binning"][0])
         productPath = self.intermediateRootPath + \
             "/master_bias_%(arm)s_%(x)sx%(y)s.fits" % locals()
 

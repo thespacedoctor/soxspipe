@@ -142,12 +142,20 @@ class _base_recipe_(object):
             bitMapPath = self.calibrationRootPath + \
                 "/cal/BP_MAP_RP_%(arm)s_%(binx)sx%(biny)s.fits" % locals()
 
+        if not os.path.exists(bitMapPath):
+            message = "the path to the bitMapPath %s does not exist on this machine" % (
+                bitMapPath,)
+            self.log.critical(message)
+            raise IOError(message)
         bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
 
         # BIAS FRAMES HAVE NO 'FLUX', JUST READNOISE, SO ADD AN EMPTY BAD-PIXEL
         # MAP
         if frame.header[kw("DPR_TYPE")] == "BIAS":
             bitMap.data = np.zeros_like(bitMap.data)
+
+        # print(bitMap.data.shape)
+        # print(frame.data.shape)
 
         frame.flags = bitMap.data
 
@@ -336,6 +344,13 @@ class _base_recipe_(object):
         else:
             self.arm = arm[0]
 
+        # CREATE DETECTOR LOOKUP DICTIONARY - SOME VALUES CAN BE OVERWRITTEN
+        # WITH WHAT IS FOUND HERE IN FITS HEADERS
+        self.detectorParams = detector_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get(self.arm)
+
         # MIXED BINNING IS BAD
         cdelt1 = self.inputFrames.values(
             keyword=kw("CDELT1").lower(), unique=True)
@@ -346,6 +361,10 @@ class _base_recipe_(object):
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of binnings" % locals())
+
+        if cdelt1[0] and cdelt2[0]:
+            self.detectorParams["binning"] = [int(cdelt2[0]), int(cdelt1[0])]
+            print(self.detectorParams["binning"])
 
         # MIXED READOUT SPEEDS IS BAD
         readSpeed = self.inputFrames.values(
@@ -364,45 +383,29 @@ class _base_recipe_(object):
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of gain" % locals())
-        gain = gain[0] * u.electron / u.adu
+        if gain[0]:
+            # UVB & VIS
+            self.detectorParams["gain"] = gain[0] * u.electron / u.adu
+        else:
+            # NIR
+            self.detectorParams["gain"] = self.detectorParams[
+                "gain"] * u.electron / u.adu
 
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
-        ron1 = self.inputFrames.values(
+        ron = self.inputFrames.values(
             keyword=kw("RON").lower(), unique=True)
-        ron2 = self.inputFrames.values(
-            keyword=kw("CHIP_RON").lower(), unique=True)
-        # REMOVE NULL VALUES
-        ron1 = [i for i in ron1 if i != None]
-        ron2 = [i for i in ron2 if i != None]
 
-        # NO READNOISE IS BAD
-        if len(ron1) + len(ron2) == 0:
-            one = kw('RON')
-            two = kw('CHIP RON')
-            raise AttributeError(
-                "'%(one)s/%(two)s' keyword not found in %(frame)s" % locals())
         # MIXED NOISE
-        if len(ron1) > 1 or len(ron2) > 1:
+        if len(ron) > 1:
+            print(self.inputFrames.summary)
             raise TypeError("Input frames are a mix of readnoise" % locals())
-
-        # RECORD RON FOR LATER USE
-        if len(ron1) > 0:
-            ron = ron1[0] * u.electron
-            if len(ron2) > 0:
-                raise TypeError(
-                    "Input frames are a mix of readnoise" % locals())
+        if ron[0]:
+            # UVB & VIS
+            self.detectorParams["ron"] = ron[0] * u.electron
         else:
-            ron = gain = ron2[0] * u.electron
-
-        # CREATE DETECTOR LOOKUP DICTIONARY
-        self.detectorParams = detector_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get(self.arm)
-        # ADD A FEW MORE VALUES TO THE DETECTOR LOOKUP DICT SO WE DON'T HAVE TO
-        # REPEATEDLY READ FITS HEADERS
-        self.detectorParams["gain"] = gain
-        self.detectorParams["ron"] = ron
+            # NIR
+            self.detectorParams["ron"] = self.detectorParams[
+                "ron"] * u.electron
 
         self.log.debug('completed the ``_verify_input_frames_basics`` method')
         return None
@@ -452,7 +455,7 @@ class _base_recipe_(object):
         dp = self.detectorParams
 
         # NP ROTATION OF ARRAYS IS IN COUNTER-CLOCKWISE DIRECTION
-        rotationIndex = int(4 - dp["clockwise-rotation"] / 90.)
+        rotationIndex = int(dp["clockwise-rotation"] / 90.)
 
         if self.settings["instrument"] == "xsh" and rotationIndex > 0:
             frame.data = np.rot90(frame.data, rotationIndex)
@@ -476,6 +479,15 @@ class _base_recipe_(object):
 
         rs, re, cs, ce = dp["science-pixels"]["rows"]["start"], dp["science-pixels"]["rows"][
             "end"], dp["science-pixels"]["columns"]["start"], dp["science-pixels"]["columns"]["end"]
+
+        binning = dp["binning"]
+        if binning[0] > 1:
+            rs = int(rs / binning[0])
+            re = int(re / binning[0])
+        if binning[1] > 1:
+            cs = int(cs / binning[0])
+            ce = int(ce / binning[0])
+
         trimmed_frame = ccdproc.trim_image(frame[rs: re, cs: ce])
 
         self.log.debug('completed the ``_trim_frame`` method')

@@ -1,3 +1,15 @@
+
+## v0.3.1 - August 25, 2020
+
+* **FEATURE:** recipe & command-line tool for master dark creation (`mdark`)
+* **ENHANCEMENT:** default binning add to detector settings file
+* **ENHANCEMENT:** added mixed exposure time unit test for dark-frames
+* **ENHANCEMENT:** added default values for gain and ron in the detector settings files. Default values can be overwritten if correct GAIN and RON are found in fits-headers (overwritten for UVB and VIS but not NIR for XShooter)
+* **ENHANCEMENT:** can now interrupt "~" as home directory in sof file path
+* **FIXED:** binning factor used when trimming frames
+* **FIXED:** the trimming dimensions of NIR frames - bad-pixel map now aligns correctly with data frame
+* **FIXED:** science pixels for all 3 xshooter detectors in parameters file
+
 ## v0.3.0 - August 18, 2020
 
 * **FEATURE:** added a `write` method to the `_base_recipe` to write frames to disk (renames extensions to ESO preferred naming scheme)

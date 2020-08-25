@@ -6,10 +6,12 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 Usage:
     soxspipe init
     soxspipe mbias <inputFrames> [-s <pathToSettingsFile>] 
+    soxspipe mdark <inputFrames> [-s <pathToSettingsFile>] 
 
 Options:
     init                                   setup the soxspipe settings file for the first time
     mbias                                  the master bias recipe
+    mdark                                  the master dark recipe
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -133,6 +135,16 @@ def main(arguments=None):
         )
         mbiasFrame = recipe.produce_product()
         print("You can find the master bias frame at `%(mbiasFrame)s`" % locals())
+
+    if a["mdark"]:
+        from soxspipe.recipes import soxs_mdark
+        recipe = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=a["inputFrames"]
+        )
+        mdarkFrame = recipe.produce_product()
+        print("You can find the master bias frame at `%(mdarkFrame)s`" % locals())
 
     # CALL FUNCTIONS/OBJECTS
 

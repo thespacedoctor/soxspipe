@@ -1,4 +1,4 @@
-_base_recipe_ *(class)*
+﻿_base_recipe_ *(class)*
 ========================================
 
 .. currentmodule:: soxspipe.recipes

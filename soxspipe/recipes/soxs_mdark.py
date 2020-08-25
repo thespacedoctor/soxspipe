@@ -31,11 +31,9 @@ class soxs_mdark(_base_recipe_):
 
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
+        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
 
-    **Usage**
-
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    [![](https://live.staticflickr.com/65535/50266964567_2b06dfb8b8_z.png)](https://live.staticflickr.com/65535/50266964567_2b06dfb8b8_o.png)    
 
     See `produce_product` method for usage.
 
@@ -75,8 +73,15 @@ class soxs_mdark(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MDARK - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
+        print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
-        print(self.inputFrames.summary)
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+
+        print("\n# RAW INPUT DARK FRAMES - SUMMARY")
+        # SORT IMAGE COLLECTION
+        self.inputFrames.sort(['mjd-obs'])
+        print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -96,14 +101,10 @@ class soxs_mdark(_base_recipe_):
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
-        self._verify_input_frames_basics()
+        kw = self.kw
 
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        kw = keyword_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get
+        # BASIC VERIFICATION COMMON TO ALL RECIPES
+        self._verify_input_frames_basics()
 
         imageTypes = self.inputFrames.values(
             keyword=kw("DPR_TYPE").lower(), unique=True)
@@ -113,7 +114,23 @@ class soxs_mdark(_base_recipe_):
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of %(imageTypes)s" % locals())
+        # NON-BIAS INPUT IMAGE TYPES ARE BAD
+        elif imageTypes[0] != 'DARK':
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames not DARK frames" % locals())
 
+        exptimes = self.inputFrames.values(
+            keyword=kw("EXPTIME").lower(), unique=True)
+        # MIXED INPUT IMAGE TYPES ARE BAD
+        if len(exptimes) > 1:
+            exptimes = [str(e) for e in exptimes]
+            exptimes = " and ".join(exptimes)
+            print(self.inputFrames.summary)
+            raise TypeError(
+                "Input frames have differing exposure-times %(exptimes)s" % locals())
+
+        self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
 
@@ -138,11 +155,20 @@ class soxs_mdark(_base_recipe_):
         """
         self.log.debug('starting the ``produce_product`` method')
 
-        # IMAGECOLLECTION FILEPATHS
-        filepaths = self.inputFrames.files_filtered(include_path=True)
+        arm = self.arm
+        kw = self.kw
+        dp = self.detectorParams
 
-        productPath = None
+        combined_bias_mean = self.clip_and_stack(
+            frames=self.inputFrames, recipe="soxs_mdark")
 
+        x = int(dp["binning"][1])
+        y = int(dp["binning"][0])
+        productPath = self.intermediateRootPath + \
+            "/master_dark_%(arm)s_%(x)sx%(y)s.fits" % locals()
+
+        # WRITE TO DISK
+        self.write(combined_bias_mean, productPath, overwrite=True)
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

@@ -1,4 +1,4 @@
-soxs_mdark *(class)*
+﻿soxs_mdark *(class)*
 =====================================
 
 .. currentmodule:: soxspipe.recipes

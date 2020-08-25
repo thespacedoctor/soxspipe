@@ -45,14 +45,72 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_mdark(unittest.TestCase):
 
-    def test_soxs_mdark_from_directory_function(self):
-        directory = settings["test-data-root"] + "/xshooter-darks/nir"
-        # from soxspipe.recipes import soxs_mdark
-        # this = soxs_mdark(
-        #     log=log,
-        #     settings=settings,
-        #     inputFrames=directory
-        # )
+    def test_soxs_mdark_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_6s_darks.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_240s_darks.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_125s_darks.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+    def test_soxs_mdark_uvb_function(self):
+
+        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/uvb_1x1_dark_3600s.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/uvb_2x2_dark_3600s.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+    def test_soxs_mdark_vis_function(self):
+        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/vis_1x1_dark_3600s.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/vis_2x2_dark_3600s.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
 
     # def test_soxs_mdark_function(self):
 
@@ -69,12 +127,13 @@ class test_soxs_mdark(unittest.TestCase):
 
         from soxspipe.recipes import soxs_mdark
         try:
+            sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_mixed_exptime_darks.sof"
+            from soxspipe.recipes import soxs_mdark
             this = soxs_mdark(
                 log=log,
                 settings=settings,
-                fakeKey="break the code"
+                inputFrames=sofPath
             )
-            this.get()
             assert False
         except Exception as e:
             assert True
