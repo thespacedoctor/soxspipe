@@ -1,4 +1,5 @@
 
+* can now interrupt "~" as home directory in sof file path
 * **FEATURE:** recipe & command-line tool for master dark creation (`mdark`)
 * **ENHANCEMENT:** default binning add to detector settings file
 * **ENHANCEMENT:** added mixed exposure time unit test for dark-frames
