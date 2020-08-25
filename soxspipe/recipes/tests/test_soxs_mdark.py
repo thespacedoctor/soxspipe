@@ -53,6 +53,7 @@ class test_soxs_mdark(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
+        this.produce_product()
 
         sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_240s_darks.sof"
         from soxspipe.recipes import soxs_mdark
@@ -61,6 +62,7 @@ class test_soxs_mdark(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
+        this.produce_product()
 
         sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_125s_darks.sof"
         from soxspipe.recipes import soxs_mdark
@@ -69,6 +71,7 @@ class test_soxs_mdark(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
+        this.produce_product()
 
     def test_soxs_mdark_uvb_function(self):
 
@@ -79,6 +82,7 @@ class test_soxs_mdark(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
+        this.produce_product()
 
         sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/uvb_2x2_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
@@ -87,6 +91,7 @@ class test_soxs_mdark(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
+        this.produce_product()
 
     def test_soxs_mdark_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/vis_1x1_dark_3600s.sof"
@@ -96,6 +101,7 @@ class test_soxs_mdark(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
+        this.produce_product()
 
         sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/vis_2x2_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
@@ -104,6 +110,7 @@ class test_soxs_mdark(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
+        this.produce_product()
 
     # def test_soxs_mdark_function(self):
 

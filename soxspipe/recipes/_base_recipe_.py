@@ -149,8 +149,8 @@ class _base_recipe_(object):
         if frame.header[kw("DPR_TYPE")] == "BIAS":
             bitMap.data = np.zeros_like(bitMap.data)
 
-        print(bitMap.data.shape)
-        print(frame.data.shape)
+        # print(bitMap.data.shape)
+        # print(frame.data.shape)
 
         frame.flags = bitMap.data
 
@@ -453,9 +453,7 @@ class _base_recipe_(object):
         rotationIndex = int(dp["clockwise-rotation"] / 90.)
 
         if self.settings["instrument"] == "xsh" and rotationIndex > 0:
-            print(rotationIndex)
             frame.data = np.rot90(frame.data, rotationIndex)
-            print("DATA ROTATED")
 
         self.log.debug('completed the ``xsh2soxs`` method')
         return frame
@@ -484,8 +482,6 @@ class _base_recipe_(object):
         if binning[1] > 1:
             cs = int(cs / binning[0])
             ce = int(ce / binning[0])
-
-        print(rs, re, cs, ce)
 
         trimmed_frame = ccdproc.trim_image(frame[rs: re, cs: ce])
 

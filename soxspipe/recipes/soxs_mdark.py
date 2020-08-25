@@ -75,8 +75,15 @@ class soxs_mdark(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MDARK - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
+        print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
-        print(self.inputFrames.summary)
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+
+        print("\n# RAW INPUT DARK FRAMES - SUMMARY")
+        # SORT IMAGE COLLECTION
+        self.inputFrames.sort(['mjd-obs'])
+        print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -150,11 +157,20 @@ class soxs_mdark(_base_recipe_):
         """
         self.log.debug('starting the ``produce_product`` method')
 
-        # IMAGECOLLECTION FILEPATHS
-        filepaths = self.inputFrames.files_filtered(include_path=True)
+        arm = self.arm
+        kw = self.kw
+        dp = self.detectorParams
 
-        productPath = None
+        combined_bias_mean = self.clip_and_stack(
+            frames=self.inputFrames, recipe="soxs_mdark")
 
+        x = int(dp["binning"][1])
+        y = int(dp["binning"][0])
+        productPath = self.intermediateRootPath + \
+            "/master_dark_%(arm)s_%(x)sx%(y)s.fits" % locals()
+
+        # WRITE TO DISK
+        self.write(combined_bias_mean, productPath, overwrite=True)
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
