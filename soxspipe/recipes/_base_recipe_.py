@@ -357,6 +357,10 @@ class _base_recipe_(object):
             raise TypeError(
                 "Input frames are a mix of binnings" % locals())
 
+        if cdelt1[0] and cdelt2[0]:
+            self.detectorParams["binning"] = [int(cdelt2[0]), int(cdelt1[0])]
+            print(self.detectorParams["binning"])
+
         # MIXED READOUT SPEEDS IS BAD
         readSpeed = self.inputFrames.values(
             keyword=kw("DET_READ_SPEED").lower(), unique=True)
@@ -472,6 +476,17 @@ class _base_recipe_(object):
 
         rs, re, cs, ce = dp["science-pixels"]["rows"]["start"], dp["science-pixels"]["rows"][
             "end"], dp["science-pixels"]["columns"]["start"], dp["science-pixels"]["columns"]["end"]
+
+        binning = dp["binning"]
+        if binning[0] > 1:
+            rs = int(rs / binning[0])
+            re = int(re / binning[0])
+        if binning[1] > 1:
+            cs = int(cs / binning[0])
+            ce = int(ce / binning[0])
+
+        print(rs, re, cs, ce)
+
         trimmed_frame = ccdproc.trim_image(frame[rs: re, cs: ce])
 
         self.log.debug('completed the ``_trim_frame`` method')
