@@ -149,6 +149,9 @@ class _base_recipe_(object):
         if frame.header[kw("DPR_TYPE")] == "BIAS":
             bitMap.data = np.zeros_like(bitMap.data)
 
+        print(bitMap.data.shape)
+        print(frame.data.shape)
+
         frame.flags = bitMap.data
 
         # FLATTEN BAD-PIXEL BITMAP TO BOOLEAN FALSE (GOOD) OR TRUE (BAD) AND
@@ -336,6 +339,13 @@ class _base_recipe_(object):
         else:
             self.arm = arm[0]
 
+        # CREATE DETECTOR LOOKUP DICTIONARY - SOME VALUES CAN BE OVERWRITTEN
+        # WITH WHAT IS FOUND HERE IN FITS HEADERS
+        self.detectorParams = detector_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get(self.arm)
+
         # MIXED BINNING IS BAD
         cdelt1 = self.inputFrames.values(
             keyword=kw("CDELT1").lower(), unique=True)
@@ -364,45 +374,29 @@ class _base_recipe_(object):
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of gain" % locals())
-        gain = gain[0] * u.electron / u.adu
+        if gain[0]:
+            # UVB & VIS
+            self.detectorParams["gain"] = gain[0] * u.electron / u.adu
+        else:
+            # NIR
+            self.detectorParams["gain"] = self.detectorParams[
+                "gain"] * u.electron / u.adu
 
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
-        ron1 = self.inputFrames.values(
+        ron = self.inputFrames.values(
             keyword=kw("RON").lower(), unique=True)
-        ron2 = self.inputFrames.values(
-            keyword=kw("CHIP_RON").lower(), unique=True)
-        # REMOVE NULL VALUES
-        ron1 = [i for i in ron1 if i != None]
-        ron2 = [i for i in ron2 if i != None]
 
-        # NO READNOISE IS BAD
-        if len(ron1) + len(ron2) == 0:
-            one = kw('RON')
-            two = kw('CHIP RON')
-            raise AttributeError(
-                "'%(one)s/%(two)s' keyword not found in %(frame)s" % locals())
         # MIXED NOISE
-        if len(ron1) > 1 or len(ron2) > 1:
+        if len(ron) > 1:
+            print(self.inputFrames.summary)
             raise TypeError("Input frames are a mix of readnoise" % locals())
-
-        # RECORD RON FOR LATER USE
-        if len(ron1) > 0:
-            ron = ron1[0] * u.electron
-            if len(ron2) > 0:
-                raise TypeError(
-                    "Input frames are a mix of readnoise" % locals())
+        if ron[0]:
+            # UVB & VIS
+            self.detectorParams["ron"] = ron[0] * u.electron
         else:
-            ron = gain = ron2[0] * u.electron
-
-        # CREATE DETECTOR LOOKUP DICTIONARY
-        self.detectorParams = detector_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get(self.arm)
-        # ADD A FEW MORE VALUES TO THE DETECTOR LOOKUP DICT SO WE DON'T HAVE TO
-        # REPEATEDLY READ FITS HEADERS
-        self.detectorParams["gain"] = gain
-        self.detectorParams["ron"] = ron
+            # NIR
+            self.detectorParams["ron"] = self.detectorParams[
+                "ron"] * u.electron
 
         self.log.debug('completed the ``_verify_input_frames_basics`` method')
         return None
@@ -452,10 +446,12 @@ class _base_recipe_(object):
         dp = self.detectorParams
 
         # NP ROTATION OF ARRAYS IS IN COUNTER-CLOCKWISE DIRECTION
-        rotationIndex = int(4 - dp["clockwise-rotation"] / 90.)
+        rotationIndex = int(dp["clockwise-rotation"] / 90.)
 
         if self.settings["instrument"] == "xsh" and rotationIndex > 0:
+            print(rotationIndex)
             frame.data = np.rot90(frame.data, rotationIndex)
+            print("DATA ROTATED")
 
         self.log.debug('completed the ``xsh2soxs`` method')
         return frame
