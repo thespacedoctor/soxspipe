@@ -31,11 +31,9 @@ class soxs_mdark(_base_recipe_):
 
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
+        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
 
-    **Usage**
-
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    [![](https://live.staticflickr.com/65535/50266964567_2b06dfb8b8_z.png)](https://live.staticflickr.com/65535/50266964567_2b06dfb8b8_o.png)    
 
     See `produce_product` method for usage.
 
