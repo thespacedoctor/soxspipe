@@ -1,6 +1,7 @@
 UVB:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
   clockwise-rotation: 180
+  # science pixel values for un-binned frames (binning handled in code)
   science-pixels: 
     # NAXIS1 == x-axis
     columns:
@@ -10,6 +11,8 @@ UVB:
     rows:
       start: 0
       end: 3000
+  # DEFAULT BINNING [y, x]
+  binning: [1, 1]
   saturation: 65000.
   gain: 0.62 # e/ADU
   ron: 2.60 # e
@@ -17,6 +20,7 @@ UVB:
 VIS:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
   clockwise-rotation: 0
+  # science pixel values for un-binned frames (binning handled in code)
   science-pixels:
     # NAXIS1 == x-axis
     columns:
@@ -26,6 +30,8 @@ VIS:
     rows:
       start: 0
       end: 4000
+  # DEFAULT BINNING [y, x]
+  binning: [1, 1]
   gain: 1.4 # e/ADU
   ron: 5.3 # e
   saturation: 65535.
@@ -33,6 +39,7 @@ VIS:
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
   clockwise-rotation: 90
+  # science pixel values for un-binned frames (binning handled in code)
   science-pixels: 
     # NAXIS1 == x-axis
     columns:
@@ -42,6 +49,8 @@ NIR:
     rows:
       start: 4
       end: 2044
+  # DEFAULT BINNING [y, x]
+  binning: [1, 1]
   saturation: 2.0e5
   gain: 2.12 # e/ADU
   ron: 8.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
