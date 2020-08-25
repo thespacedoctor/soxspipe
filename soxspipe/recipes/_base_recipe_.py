@@ -145,7 +145,7 @@ class _base_recipe_(object):
         if not os.path.exists(bitMapPath):
             message = "the path to the bitMapPath %s does not exist on this machine" % (
                 bitMapPath,)
-            log.critical(message)
+            self.log.critical(message)
             raise IOError(message)
         bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
 
