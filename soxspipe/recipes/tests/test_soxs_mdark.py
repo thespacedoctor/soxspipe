@@ -120,12 +120,13 @@ class test_soxs_mdark(unittest.TestCase):
 
         from soxspipe.recipes import soxs_mdark
         try:
+            sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_mixed_exptime_darks.sof"
+            from soxspipe.recipes import soxs_mdark
             this = soxs_mdark(
                 log=log,
                 settings=settings,
-                fakeKey="break the code"
+                inputFrames=sofPath
             )
-            this.get()
             assert False
         except Exception as e:
             assert True
