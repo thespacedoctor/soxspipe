@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-*The recipe for creating master-bias frames *
+*Recipe to generate a first approximation of the dispersion solution from single pinhole frames*
 
 :Author:
     David Young & Marco Landoni
 
 :Date Created:
-    January 22, 2020
+    August 25, 2020
 """
 ################# GLOBAL IMPORTS ####################
 from builtins import object
@@ -19,27 +19,29 @@ from soxspipe.commonutils import set_of_files
 from ._base_recipe_ import _base_recipe_
 import numpy as np
 from astropy.nddata import CCDData
-from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import keyword_lookup
 
 
-class soxs_mbias(_base_recipe_):
+class soxs_disp_solution(_base_recipe_):
     """
-    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have the bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
+    *The soxs_disp_solution recipe*
 
     **Key Arguments**
 
-    - ``log`` -- logger
-    - ``settings`` -- the settings dictionary
-    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default: `[]`
+        - ``log`` -- logger
+        - ``settings`` -- the settings dictionary
+        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
 
     See `produce_product` method for usage.
 
-
     ```eval_rst
     .. todo::
-        - add a tutorial about ``soxs_mbias`` to documentation
+
+        - add usage info
+        - create a sublime snippet for usage
+        - create cl-util for this class
+        - add a tutorial about ``soxs_disp_solution`` to documentation
     ```
     """
     # Initialisation
@@ -52,9 +54,10 @@ class soxs_mbias(_base_recipe_):
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(soxs_mbias, self).__init__(log=log, settings=settings)
+        super(soxs_disp_solution, self).__init__(
+            log=log, settings=settings)
         self.log = log
-        log.debug("instansiating a new 'soxs_mbias' object")
+        log.debug("instansiating a new 'soxs_disp_solution' object")
         self.settings = settings
         self.inputFrames = inputFrames
         # xt-self-arg-tmpx
@@ -69,14 +72,14 @@ class soxs_mbias(_base_recipe_):
         )
         self.inputFrames = sof.get()
 
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MBIAS - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_disp_solution - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
         sys.stdout.write("\x1b[1A\x1b[2K")
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
+        print("\n# RAW INPUT DARK FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['mjd-obs'])
         print(self.inputFrames.summary, "\n")
@@ -90,7 +93,10 @@ class soxs_mbias(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the soxs_mbias recipe*
+        """*verify the input frame match those required by the soxs_disp_solution recipe*
+
+        **Return:**
+            - ``None``
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -110,19 +116,18 @@ class soxs_mbias(_base_recipe_):
             raise TypeError(
                 "Input frames are a mix of %(imageTypes)s" % locals())
         # NON-BIAS INPUT IMAGE TYPES ARE BAD
-        elif imageTypes[0] != 'BIAS':
+        elif imageTypes[0] != 'DARK':
             print(self.inputFrames.summary)
             raise TypeError(
-                "Input frames not BIAS frames" % locals())
+                "Input frames not DARK frames" % locals())
 
         self.imageType = imageTypes[0]
-
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_mbias recipe*
+        """*The code to generate the product of the soxs_disp_solution recipe*
 
         **Return:**
             - ``productPath`` -- the path to the final product
@@ -130,13 +135,13 @@ class soxs_mbias(_base_recipe_):
         **Usage**
 
         ```python
-        from soxspipe.recipes import soxs_mbias
-        recipe = soxs_mbias(
+        from soxspipe.recipes import soxs_disp_solution
+        recipe = soxs_disp_solution(
             log=log,
             settings=settings,
             inputFrames=fileList
         )
-        mbiasFrame = recipe.produce_product()
+        disp_solutionFrame = recipe.produce_product()
         ```
         """
         self.log.debug('starting the ``produce_product`` method')
@@ -145,32 +150,8 @@ class soxs_mbias(_base_recipe_):
         kw = self.kw
         dp = self.detectorParams
 
-        combined_bias_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mbias")
+        productPath = None
 
-        x = int(dp["binning"][1])
-        y = int(dp["binning"][0])
-        productPath = self.intermediateRootPath + \
-            "/master_bias_%(arm)s_%(x)sx%(y)s.fits" % locals()
-
-        # INSPECTING THE THE UNCERTAINTY MAPS
-        # print("individual frame data")
-        # for a in ccds:
-        #     print(a.data[0][0])
-        # print("\ncombined frame data")
-        # print(combined_bias_mean.data[0][0])
-        # print("individual frame error")
-        # for a in ccds:
-        #     print(a.uncertainty[0][0])
-        # print("combined frame error")
-        # print(combined_bias_mean.uncertainty[0][0])
-
-        # combined_bias_mean.data = combined_bias_mean.data.astype('float32')
-        # combined_bias_mean.uncertainty = combined_bias_mean.uncertainty.astype(
-        #     'float32')
-
-        # WRITE TO DISK
-        self._write(combined_bias_mean, productPath, overwrite=True)
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

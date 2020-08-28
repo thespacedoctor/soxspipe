@@ -1,4 +1,4 @@
-﻿docsting_test (*function*)
+docsting_test (*function*)
 ==================================================
 
 .. currentmodule:: soxspipe.docstring_test

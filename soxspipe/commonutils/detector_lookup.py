@@ -27,8 +27,6 @@ class detector_lookup(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
-
     To initiate a detector_lookup object, use the following:
 
     ```python

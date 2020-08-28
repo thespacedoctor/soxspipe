@@ -1,3 +1,4 @@
+# Release Notes
 
 ## v0.3.1 - August 25, 2020
 

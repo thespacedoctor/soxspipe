@@ -1,9 +1,9 @@
-_base_recipe_ *(class)*
-========================================
+soxs_disp_solution *(class)*
+=============================================
 
 .. currentmodule:: soxspipe.recipes
 
-.. autoclass:: _base_recipe_
+.. autoclass:: soxs_disp_solution
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,19 +19,27 @@ _base_recipe_ *(class)*
         
    
         
-            ~_base_recipe_.clean_up
+            ~soxs_disp_solution.clean_up
        
    
         
-            ~_base_recipe_.clip_and_stack
+            ~soxs_disp_solution.clip_and_stack
        
    
         
-            ~_base_recipe_.prepare_frames
+            ~soxs_disp_solution.prepare_frames
        
    
         
-            ~_base_recipe_.xsh2soxs
+            ~soxs_disp_solution.produce_product
+       
+   
+        
+            ~soxs_disp_solution.verify_input_frames
+       
+   
+        
+            ~soxs_disp_solution.xsh2soxs
        
    
    .. 
@@ -88,24 +96,28 @@ _base_recipe_ *(class)*
    ..     
    .. 
    ..     
-   ..          ~_base_recipe_._absolute_path
+   ..          ~soxs_disp_solution._absolute_path
    ..      
    .. 
    ..     
-   ..          ~_base_recipe_._prepare_single_frame
+   ..          ~soxs_disp_solution._prepare_single_frame
    ..      
    .. 
    ..     
-   ..          ~_base_recipe_._trim_frame
+   ..          ~soxs_disp_solution._trim_frame
    ..      
    .. 
    ..     
-   ..          ~_base_recipe_._verify_input_frames_basics
+   ..          ~soxs_disp_solution._verify_input_frames_basics
    ..      
    .. 
    ..     
-   ..          ~_base_recipe_._write
+   ..          ~soxs_disp_solution._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

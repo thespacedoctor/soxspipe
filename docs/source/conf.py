@@ -69,7 +69,7 @@ html_theme_path = ['_static/whistles-theme/sphinx/_themes']
 html_show_copyright = True
 html_show_sphinx = True
 html_add_permalinks = u"  ∞"
-html_static_path = ['_static']
+html_static_path = ['_static', '_images']
 html_file_suffix = None
 trim_footnote_reference_space = True
 # Add substitutions here

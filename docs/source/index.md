@@ -9,13 +9,11 @@
 
    install
    initialisation
+   recipes/index
+   utils/index
+   files/index
    todolist
    changes_link
-```
-
-
-```eval_rst
-.. autoclass:: soxspipe.commonutils.set_of_files
 ```
 
 
@@ -42,8 +40,5 @@
 .. include:: /autosummary_include.rst
 ```
 
-```eval_rst
-.. include:: /genindex.rst
-```
 
 {{../../CHANGES.md}}

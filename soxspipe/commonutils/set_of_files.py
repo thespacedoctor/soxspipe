@@ -33,8 +33,6 @@ class set_of_files(object):
 
     **Usage**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
-
     To initiate a sof object, use the following:
 
     ```python
@@ -167,7 +165,7 @@ class set_of_files(object):
 
     def get(
             self):
-        """*return the set-of-files as a CCDProc [ImageFileCollection](https://ccdproc.readthedocs.io/en/latest/api/ccdproc.ImageFileCollection.html#ccdproc.ImageFileCollection)*
+        """*return the set-of-files as a CCDProc ImageFileCollection*
 
         **Return:**
             - ``sof`` -- a ccdproc ImageFileCollection of the frames

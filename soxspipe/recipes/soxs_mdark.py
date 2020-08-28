@@ -33,15 +33,12 @@ class soxs_mdark(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
 
-    [![](https://live.staticflickr.com/65535/50266964567_2b06dfb8b8_z.png)](https://live.staticflickr.com/65535/50266964567_2b06dfb8b8_o.png)    
-
     See `produce_product` method for usage.
 
     ```eval_rst
     .. todo::
 
         - add a tutorial about ``soxs_mdark`` to documentation
-
     ```
     """
     # Initialisation
@@ -93,9 +90,6 @@ class soxs_mdark(_base_recipe_):
     def verify_input_frames(
             self):
         """*verify the input frame match those required by the soxs_mdark recipe*
-
-        **Return:**
-            - ``None``
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -168,7 +162,7 @@ class soxs_mdark(_base_recipe_):
             "/master_dark_%(arm)s_%(x)sx%(y)s.fits" % locals()
 
         # WRITE TO DISK
-        self.write(combined_bias_mean, productPath, overwrite=True)
+        self._write(combined_bias_mean, productPath, overwrite=True)
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

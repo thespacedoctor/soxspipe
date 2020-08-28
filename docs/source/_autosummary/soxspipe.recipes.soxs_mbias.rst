@@ -1,4 +1,4 @@
-﻿soxs_mbias *(class)*
+soxs_mbias *(class)*
 =====================================
 
 .. currentmodule:: soxspipe.recipes
@@ -31,19 +31,11 @@
        
    
         
-            ~soxs_mbias.prepare_single_frame
-       
-   
-        
             ~soxs_mbias.produce_product
        
    
         
             ~soxs_mbias.verify_input_frames
-       
-   
-        
-            ~soxs_mbias.write
        
    
         
@@ -108,6 +100,10 @@
    ..      
    .. 
    ..     
+   ..          ~soxs_mbias._prepare_single_frame
+   ..      
+   .. 
+   ..     
    ..          ~soxs_mbias._trim_frame
    ..      
    .. 
@@ -116,8 +112,8 @@
    ..      
    .. 
    ..     
-   .. 
-   ..     
+   ..          ~soxs_mbias._write
+   ..      
    .. 
    ..     
    .. 
