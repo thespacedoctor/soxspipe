@@ -47,25 +47,7 @@ if not os.path.exists(pathToOutputDir):
 class test_soxs_disp_solution(unittest.TestCase):
 
     def test_soxs_disp_solution_nir_function(self):
-        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_6s_darks.sof"
-        from soxspipe.recipes import soxs_disp_solution
-        this = soxs_disp_solution(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
-
-        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_240s_darks.sof"
-        from soxspipe.recipes import soxs_disp_solution
-        this = soxs_disp_solution(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
-
-        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_125s_darks.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-predict/sof/disp_solution_nir.sof"
         from soxspipe.recipes import soxs_disp_solution
         this = soxs_disp_solution(
             log=log,
@@ -76,16 +58,7 @@ class test_soxs_disp_solution(unittest.TestCase):
 
     def test_soxs_disp_solution_uvb_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/uvb_1x1_dark_3600s.sof"
-        from soxspipe.recipes import soxs_disp_solution
-        this = soxs_disp_solution(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
-
-        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/uvb_2x2_dark_3600s.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-predict/sof/disp_solution_uvb.sof"
         from soxspipe.recipes import soxs_disp_solution
         this = soxs_disp_solution(
             log=log,
@@ -95,16 +68,7 @@ class test_soxs_disp_solution(unittest.TestCase):
         this.produce_product()
 
     def test_soxs_disp_solution_vis_function(self):
-        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/vis_1x1_dark_3600s.sof"
-        from soxspipe.recipes import soxs_disp_solution
-        this = soxs_disp_solution(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
-
-        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/vis_2x2_dark_3600s.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-predict/sof/disp_solution_vis.sof"
         from soxspipe.recipes import soxs_disp_solution
         this = soxs_disp_solution(
             log=log,
@@ -128,7 +92,7 @@ class test_soxs_disp_solution(unittest.TestCase):
 
         from soxspipe.recipes import soxs_disp_solution
         try:
-            sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-darks/sofs/nir_mixed_exptime_darks.sof"
+            sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-darks/sofs/nir_mixed_exptime_darks.sof"
             from soxspipe.recipes import soxs_disp_solution
             this = soxs_disp_solution(
                 log=log,
