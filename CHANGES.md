@@ -1,6 +1,10 @@
 # Release Notes
 
 * **FEATURE:** added the disp_solution command-line tool
+* renaming of unit-testing test data directories
+* subtract calibrations method added
+* DPR CATG and DPR TECH added to metadata of sof imagefilecollection objects
+* only filenames reported by sof summaries when files are found in the same directory (easier to read on terminal) 
 
 ## v0.3.1 - August 25, 2020
 

@@ -57,7 +57,7 @@ class set_of_files(object):
             settings=False,
             inputFrames=[],
             keys=['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX',
-                  'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT']
+                  'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT']
     ):
         self.log = log
         log.debug("instansiating a new 'sof' object")
@@ -209,7 +209,15 @@ class set_of_files(object):
             fitsFiles = []
             fitsFiles[:] = [l.split(".fits")[0].replace("~/", home + "/") +
                             ".fits" for l in lines if ".fits" in l]
-            sof = ImageFileCollection(filenames=fitsFiles, keywords=self.keys)
+            locations = [os.path.dirname(f) for f in fitsFiles]
+            if len(set(locations)) == 1:
+                location = locations[0]
+                fitsFiles = [os.path.basename(
+                    f) for f in fitsFiles]
+            else:
+                location = None
+            sof = ImageFileCollection(
+                filenames=fitsFiles, location=location, keywords=self.keys)
         elif isinstance(self.inputFrames, list):
             # FIND UNIQUE FILE LOCATIONS
             locations = [os.path.dirname(f) for f in self.inputFrames]
