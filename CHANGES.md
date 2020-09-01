@@ -1,5 +1,7 @@
 # Release Notes
 
+* **FEATURE:** added the disp_solution command-line tool
+
 ## v0.3.1 - August 25, 2020
 
 * **FEATURE:** recipe & command-line tool for master dark creation (`mdark`)
