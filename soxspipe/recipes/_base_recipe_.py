@@ -109,7 +109,7 @@ class _base_recipe_(object):
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SOXSPIPE PRE" DOES NOT
         # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
         if len(frame.to_hdu()) > 1 or "SOXSPIPE PRE" in frame.header:
-            raise TypeError("%(filepath)s is not a raw frame" % locals())
+            return filepath
 
         # MANIPULATE XSH DATA
         frame = self.xsh2soxs(frame)
@@ -572,7 +572,9 @@ class _base_recipe_(object):
 
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
         # IMAGES
+
         combined_frame.header = ccds[0].header
+        combined_frame.wcs = ccds[0].wcs
         combined_frame.header[
             kw("DPR_CATG")] = "MASTER_%(imageType)s_%(arm)s" % locals()
 
