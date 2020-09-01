@@ -133,14 +133,14 @@ class _base_recipe_(object):
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
         # AS AN EXTENSION
         arm = self.arm
-        if "NIR" in arm:
-            bitMapPath = self.calibrationRootPath + \
-                "/cal/BP_MAP_RP_%(arm)s.fits" % locals()
-        else:
+        if kw('WIN_BINX') in frame.header:
             binx = int(frame.header[kw('WIN_BINX')])
             biny = int(frame.header[kw('WIN_BINY')])
-            bitMapPath = self.calibrationRootPath + \
-                "/cal/BP_MAP_RP_%(arm)s_%(binx)sx%(biny)s.fits" % locals()
+        else:
+            binx = 1
+            biny = 1
+
+        bitMapPath = self.calibrationRootPath + "/" + dp["bad-pixel map"][f"{binx}x{biny}"]
 
         if not os.path.exists(bitMapPath):
             message = "the path to the bitMapPath %s does not exist on this machine" % (

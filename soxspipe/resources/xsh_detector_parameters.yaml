@@ -16,6 +16,11 @@ UVB:
   saturation: 65000.
   gain: 0.62 # e/ADU
   ron: 2.60 # e
+  bad-pixel map:
+    1x1: cal/BP_MAP_RP_UVB_1x1.fits
+    1x2: cal/BP_MAP_RP_UVB_1x2.fits
+    2x2: cal/BP_MAP_RP_UVB_2x2.fits
+
             
 VIS:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -35,6 +40,10 @@ VIS:
   gain: 1.4 # e/ADU
   ron: 5.3 # e
   saturation: 65535.
+  bad-pixel map:
+    1x1: cal/BP_MAP_RP_VIS_1x1.fits
+    1x2: cal/BP_MAP_RP_VIS_1x2.fits
+    2x2: cal/BP_MAP_RP_VIS_2x2.fits
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -54,5 +63,6 @@ NIR:
   saturation: 2.0e5
   gain: 2.12 # e/ADU
   ron: 8.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
-
+  bad-pixel map:
+    1x1: cal/BP_MAP_RP_NIR.fits
 
