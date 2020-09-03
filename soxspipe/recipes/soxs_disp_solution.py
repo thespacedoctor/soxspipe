@@ -22,11 +22,12 @@ from astropy.nddata import CCDData
 from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import keyword_lookup
+import unicodecsv as csv
 
 
 class soxs_disp_solution(_base_recipe_):
     """
-    *The soxs_disp_solution recipe*
+    *generate a first approximation of the dispersion solution from single pinhole frames*
 
     **Key Arguments**
 
@@ -34,18 +35,23 @@ class soxs_disp_solution(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
 
-    See `produce_product` method for usage.
+    **Usage**
+
+    ```python
+    from soxspipe.recipes import soxs_disp_solution
+    disp_map_path = soxs_disp_solution(
+        log=log,
+        settings=settings,
+        inputFrames=sofPath
+    ).produce_product()
+    ```
 
     ```eval_rst
     .. todo::
 
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
         - add a tutorial about ``soxs_disp_solution`` to documentation
     ```
     """
-    # Initialisation
 
     def __init__(
             self,
@@ -61,9 +67,7 @@ class soxs_disp_solution(_base_recipe_):
         log.debug("instansiating a new 'soxs_disp_solution' object")
         self.settings = settings
         self.inputFrames = inputFrames
-        # xt-self-arg-tmpx
 
-        # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         sof = set_of_files(
@@ -95,9 +99,6 @@ class soxs_disp_solution(_base_recipe_):
     def verify_input_frames(
             self):
         """*verify the input frame match those required by the soxs_disp_solution recipe*
-
-        **Return:**
-            - ``None``
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -145,22 +146,10 @@ class soxs_disp_solution(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_disp_solution recipe*
+        """*The code to generate the dispersion map*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
-
-        **Usage**
-
-        ```python
-        from soxspipe.recipes import soxs_disp_solution
-        recipe = soxs_disp_solution(
-            log=log,
-            settings=settings,
-            inputFrames=fileList
-        )
-        disp_solutionFrame = recipe.produce_product()
-        ```
+            - ``productPath`` -- the path to the dispersion map
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -198,90 +187,26 @@ class soxs_disp_solution(_base_recipe_):
             pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        pinhole = self.subtract_calibrations(
+        self.pinholeFrame = self.subtract_calibrations(
             inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
 
         if self.settings["save-intermediate-products"]:
             outDir = self.intermediateRootPath
             filePath = f"{outDir}/single_pinhole_{arm}_calibrated.fits"
             print(f"Calibrated single pinhole frame: {filePath}")
-            self._write(pinhole, filePath, overwrite=True)
+            self._write(self.pinholeFrame, filePath, overwrite=True)
+
+        from soxspipe.commonutils import create_dispersion_map
+        productPath = create_dispersion_map(
+            log=self.log,
+            settings=self.settings,
+            pinholeFrame=self.pinholeFrame
+        ).get()
 
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
 
-    def subtract_calibrations(
-            self,
-            inputFrame,
-            master_bias=False,
-            dark=False):
-        """*subtract calibration frames from an input frame*
-
-        **Key Arguments:**
-            - ``inputFrame`` -- the input frame to have calibrations subtracted. CCDData object.
-            - ``master_bias`` -- the master bias frame to be subtracted. CCDData object. Default *False*.
-            - ``dark`` -- a dark frame to be subtracted. CCDData object. Default *False*.
-
-        **Return:**
-            - ``calibration_subtracted_frame`` -- the input frame with the calibration frame(s) subtracted. CCDData object.
-
-        **Usage:**
-
-        ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
-        """
-        self.log.debug('starting the ``subtract_calibrations`` method')
-
-        arm = self.arm
-        kw = self.kw
-        dp = self.detectorParams
-
-        # VERIFY DATA IS IN ORDER
-        if master_bias == False and dark == False:
-            raise TypeError(
-                "subtract_calibrations method needs a master-bias frame and/or a dark frame to subtract")
-        if master_bias == False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
-            raise AttributeError(
-                "Dark and science/calibration frame have differing exposure-times. A master-bias frame needs to be supplied to scale the dark frame to same exposure time as input science/calibration frame")
-        if master_bias != False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
-            raise AttributeError(
-                "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME")
-
-        if dark != False and dark.header[kw("EXPTIME")] == inputFrame.header[kw("EXPTIME")]:
-            calibration_subtracted_frame = inputFrame.subtract(dark)
-            calibration_subtracted_frame.header = inputFrame.header
-            try:
-                calibration_subtracted_frame.wcs = inputFrame.wcs
-            except:
-                pass
-
-        if dark == False and master_bias != False:
-            calibration_subtracted_frame = inputFrame.subtract(master_bias)
-            calibration_subtracted_frame.header = inputFrame.header
-            try:
-                calibration_subtracted_frame.wcs = inputFrame.wcs
-            except:
-                pass
-
-        self.log.debug('completed the ``subtract_calibrations`` method')
-        return calibration_subtracted_frame
-
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # Override Method Attributes
-    # method-override-tmpx

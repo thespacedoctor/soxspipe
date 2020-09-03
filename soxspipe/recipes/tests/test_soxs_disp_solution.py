@@ -49,33 +49,30 @@ class test_soxs_disp_solution(unittest.TestCase):
     def test_soxs_disp_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-predict/sof/disp_solution_nir.sof"
         from soxspipe.recipes import soxs_disp_solution
-        this = soxs_disp_solution(
+        disp_map_path = soxs_disp_solution(
             log=log,
             settings=settings,
             inputFrames=sofPath
-        )
-        this.produce_product()
+        ).produce_product()
 
     def test_soxs_disp_solution_uvb_function(self):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-predict/sof/disp_solution_uvb.sof"
         from soxspipe.recipes import soxs_disp_solution
-        this = soxs_disp_solution(
+        disp_map_path = soxs_disp_solution(
             log=log,
             settings=settings,
             inputFrames=sofPath
-        )
-        this.produce_product()
+        ).produce_product()
 
     def test_soxs_disp_solution_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-predict/sof/disp_solution_vis.sof"
         from soxspipe.recipes import soxs_disp_solution
-        this = soxs_disp_solution(
+        disp_map_path = soxs_disp_solution(
             log=log,
             settings=settings,
             inputFrames=sofPath
-        )
-        this.produce_product()
+        ).produce_product()
 
     # def test_soxs_disp_solution_function(self):
 
