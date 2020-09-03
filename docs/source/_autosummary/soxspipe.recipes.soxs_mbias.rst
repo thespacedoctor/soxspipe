@@ -35,6 +35,10 @@ soxs_mbias *(class)*
        
    
         
+            ~soxs_mbias.subtract_calibrations
+       
+   
+        
             ~soxs_mbias.verify_input_frames
        
    
@@ -114,6 +118,8 @@ soxs_mbias *(class)*
    ..     
    ..          ~soxs_mbias._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

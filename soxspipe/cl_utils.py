@@ -150,12 +150,11 @@ def main(arguments=None):
 
     if a["disp_sol"]:
         from soxspipe.recipes import soxs_disp_solution
-        recipe = soxs_disp_solution(
+        disp_map = soxs_disp_solution(
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"]
-        )
-        disp_map = recipe.produce_product()
+        ).produce_product()
         print("You can find the disperson map `%(disp_map)s`" % locals())
 
     # CALL FUNCTIONS/OBJECTS

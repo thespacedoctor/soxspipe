@@ -31,6 +31,10 @@ _base_recipe_ *(class)*
        
    
         
+            ~_base_recipe_.subtract_calibrations
+       
+   
+        
             ~_base_recipe_.xsh2soxs
        
    
@@ -106,6 +110,8 @@ _base_recipe_ *(class)*
    ..     
    ..          ~_base_recipe_._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

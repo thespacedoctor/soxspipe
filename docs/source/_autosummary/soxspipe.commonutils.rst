@@ -39,6 +39,11 @@ commonutils *(module)*
     
     
         
+            ~create_dispersion_map (nice)
+       
+    
+    
+        
             ~detector_lookup (nice)
        
     

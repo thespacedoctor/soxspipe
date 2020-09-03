@@ -35,6 +35,10 @@ soxs_mdark *(class)*
        
    
         
+            ~soxs_mdark.subtract_calibrations
+       
+   
+        
             ~soxs_mdark.verify_input_frames
        
    
@@ -114,6 +118,8 @@ soxs_mdark *(class)*
    ..     
    ..          ~soxs_mdark._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

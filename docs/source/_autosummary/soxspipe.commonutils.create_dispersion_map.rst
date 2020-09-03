@@ -1,9 +1,9 @@
-soxs_disp_solution *(class)*
-=============================================
+create_dispersion_map *(class)*
+====================================================
 
-.. currentmodule:: soxspipe.recipes
+.. currentmodule:: soxspipe.commonutils
 
-.. autoclass:: soxs_disp_solution
+.. autoclass:: create_dispersion_map
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,31 +19,31 @@ soxs_disp_solution *(class)*
         
    
         
-            ~soxs_disp_solution.clean_up
+            ~create_dispersion_map.calculate_residuals
        
    
         
-            ~soxs_disp_solution.clip_and_stack
+            ~create_dispersion_map.chebyshev_polynomials_single
        
    
         
-            ~soxs_disp_solution.prepare_frames
+            ~create_dispersion_map.detect_pinhole_arc_line
        
    
         
-            ~soxs_disp_solution.produce_product
+            ~create_dispersion_map.fit_polynomials
        
    
         
-            ~soxs_disp_solution.subtract_calibrations
+            ~create_dispersion_map.get
        
    
         
-            ~soxs_disp_solution.verify_input_frames
+            ~create_dispersion_map.get_predicted_line_list
        
    
         
-            ~soxs_disp_solution.xsh2soxs
+            ~create_dispersion_map.write_map_to_file
        
    
    .. 
@@ -98,26 +98,6 @@ soxs_disp_solution *(class)*
    ..     
    .. 
    ..     
-   .. 
-   ..     
-   ..          ~soxs_disp_solution._absolute_path
-   ..      
-   .. 
-   ..     
-   ..          ~soxs_disp_solution._prepare_single_frame
-   ..      
-   .. 
-   ..     
-   ..          ~soxs_disp_solution._trim_frame
-   ..      
-   .. 
-   ..     
-   ..          ~soxs_disp_solution._verify_input_frames_basics
-   ..      
-   .. 
-   ..     
-   ..          ~soxs_disp_solution._write
-   ..      
    .. 
    ..     
    .. 

@@ -19,6 +19,7 @@ Classes
    :toctree: _autosummary
    :nosignatures:
 
+   soxspipe.commonutils.create_dispersion_map
    soxspipe.commonutils.detector_lookup
    soxspipe.commonutils.keyword_lookup
    soxspipe.commonutils.set_of_files

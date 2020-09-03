@@ -1,5 +1,9 @@
 # Release Notes
 
+* added create_dispersion_map class to be used in `soxs_disp_solution` and `soxs_spatial_solution`
+* added a `subtract_calibrations` method to subtract calibration frames (bias and dark) from an input frame
+* added the dispersion solution recipe and unit tests
+* added predicted lines lists to detector parameter file
 * bad-pixel map paths abstracted to detector settings files
 * **FEATURE:** added the disp_solution command-line tool
 * renaming of unit-testing test data directories
