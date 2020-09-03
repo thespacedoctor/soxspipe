@@ -572,7 +572,10 @@ class _base_recipe_(object):
         # IMAGES
 
         combined_frame.header = ccds[0].header
-        combined_frame.wcs = ccds[0].wcs
+        try:
+            combined_frame.wcs = ccds[0].wcs
+        except:
+            pass
         combined_frame.header[
             kw("DPR_CATG")] = "MASTER_%(imageType)s_%(arm)s" % locals()
 
