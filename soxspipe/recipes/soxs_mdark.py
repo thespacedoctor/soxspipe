@@ -33,7 +33,16 @@ class soxs_mdark(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
 
-    See `produce_product` method for usage.
+    **Usage**
+
+    ```python
+    from soxspipe.recipes import soxs_mdark
+    mdarkFrame = soxs_mdark(
+        log=log,
+        settings=settings,
+        inputFrames=fileList
+    )..produce_product()
+    ```
 
     ```eval_rst
     .. todo::
@@ -41,7 +50,6 @@ class soxs_mdark(_base_recipe_):
         - add a tutorial about ``soxs_mdark`` to documentation
     ```
     """
-    # Initialisation
 
     def __init__(
             self,
@@ -134,18 +142,6 @@ class soxs_mdark(_base_recipe_):
 
         **Return:**
             - ``productPath`` -- the path to the final product
-
-        **Usage**
-
-        ```python
-        from soxspipe.recipes import soxs_mdark
-        recipe = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=fileList
-        )
-        mdarkFrame = recipe.produce_product()
-        ```
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -170,6 +166,3 @@ class soxs_mdark(_base_recipe_):
 
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # Override Method Attributes
-    # method-override-tmpx
