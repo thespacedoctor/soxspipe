@@ -1,17 +1,19 @@
 # Release Notes
 
-* fixed detector science pixels for UVB
-* added create_dispersion_map class to be used in `soxs_disp_solution` and `soxs_spatial_solution`
-* added a `subtract_calibrations` method to subtract calibration frames (bias and dark) from an input frame
-* added the dispersion solution recipe and unit tests
-* added predicted lines lists to detector parameter file
-* bad-pixel map paths abstracted to detector settings files
+## v0.4.0 - September 3, 2020
+
+* **FEATURE:** added create_dispersion_map class to be used in `soxs_disp_solution` and `soxs_spatial_solution`
+* **FEATURE:** added a `subtract_calibrations` method to subtract calibration frames (bias and dark) from an input frame
+* **FEATURE:** added the dispersion solution recipe and unit tests
 * **FEATURE:** added the disp_solution command-line tool
-* renaming of unit-testing test data directories
-* subtract calibrations method added
-* DPR CATG and DPR TECH added to metadata of sof imagefilecollection objects
-* only filenames reported by sof summaries when files are found in the same directory (easier to read on terminal) 
-* wcs copied from a single frame into the combined frames during clip and stack
+* **DOCS:** major docs overhaul
+* **ENHANCEMENT:** added predicted lines lists to detector parameter file
+* **ENHANCEMENT:** DPR CATG and DPR TECH added to metadata of sof imagefilecollection objects
+* **ENHANCEMENT:** wcs copied from a single frame into the combined frames during clip and stack
+* **REFACTOR:** bad-pixel map paths abstracted to detector settings files
+* **REFACTOR:** renaming of unit-testing test data directories
+* **REFACTOR:** only filenames reported by sof summaries when files are found in the same directory (easier to read on terminal) 
+* **FIXED:** fixed detector science pixels for UVB
 
 ## v0.3.1 - August 25, 2020
 
