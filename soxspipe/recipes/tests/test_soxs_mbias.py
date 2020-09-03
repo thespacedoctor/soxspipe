@@ -58,7 +58,7 @@ class test_mbias(unittest.TestCase):
         )
 
     def test_mbias_from_sof_function(self):
-        sofPath = "~/xshooter-pipeline-data/raw_data/xshooter-bias/sof/bias_uvb_1x1.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-bias/sof/bias_uvb_1x1.sof"
 
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input

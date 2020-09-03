@@ -7,11 +7,13 @@ Usage:
     soxspipe init
     soxspipe mbias <inputFrames> [-s <pathToSettingsFile>] 
     soxspipe mdark <inputFrames> [-s <pathToSettingsFile>] 
+    soxspipe disp_sol <inputFrames> [-s <pathToSettingsFile>] 
 
 Options:
     init                                   setup the soxspipe settings file for the first time
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
+    disp_sol                               the disp solution recipe
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -145,6 +147,15 @@ def main(arguments=None):
         )
         mdarkFrame = recipe.produce_product()
         print("You can find the master bias frame at `%(mdarkFrame)s`" % locals())
+
+    if a["disp_sol"]:
+        from soxspipe.recipes import soxs_disp_solution
+        disp_map = soxs_disp_solution(
+            log=log,
+            settings=settings,
+            inputFrames=a["inputFrames"]
+        ).produce_product()
+        print("You can find the disperson map `%(disp_map)s`" % locals())
 
     # CALL FUNCTIONS/OBJECTS
 

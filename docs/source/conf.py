@@ -21,7 +21,7 @@ class Mock(MagicMock):
     def __getattr__(cls, name):
         return Mock()
 MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.colors',
-                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas', 'astropy.nddata.nduncertainty']
+                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas', 'astropy.nddata.nduncertainty', 'photutils', 'scipy.optimize', 'photutils.utils', 'astropy.visualization']
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 from soxspipe import cl_utils
 
@@ -69,7 +69,7 @@ html_theme_path = ['_static/whistles-theme/sphinx/_themes']
 html_show_copyright = True
 html_show_sphinx = True
 html_add_permalinks = u"  ∞"
-html_static_path = ['_static']
+html_static_path = ['_static', '_images']
 html_file_suffix = None
 trim_footnote_reference_space = True
 # Add substitutions here
@@ -120,7 +120,8 @@ markdown_parser_config = {
         'mdx_include',
         'pymdownx.mark',
         'pymdownx.betterem',
-        'pymdownx.caret'
+        'pymdownx.caret',
+        'legacy_attrs'
     ],
     'extension_configs': {
         'toc': {

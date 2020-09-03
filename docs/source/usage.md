@@ -8,11 +8,13 @@
         soxspipe init
         soxspipe mbias <inputFrames> [-s <pathToSettingsFile>] 
         soxspipe mdark <inputFrames> [-s <pathToSettingsFile>] 
+        soxspipe disp_sol <inputFrames> [-s <pathToSettingsFile>] 
     
     Options:
         init                                   setup the soxspipe settings file for the first time
         mbias                                  the master bias recipe
         mdark                                  the master dark recipe
+        disp_sol                               the disp solution recipe
     
         inputFrames                            path to a directory of frames or a set-of-files file
     

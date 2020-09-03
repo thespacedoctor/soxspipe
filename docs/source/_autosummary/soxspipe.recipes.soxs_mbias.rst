@@ -31,19 +31,15 @@
        
    
         
-            ~soxs_mbias.prepare_single_frame
-       
-   
-        
             ~soxs_mbias.produce_product
        
    
         
-            ~soxs_mbias.verify_input_frames
+            ~soxs_mbias.subtract_calibrations
        
    
         
-            ~soxs_mbias.write
+            ~soxs_mbias.verify_input_frames
        
    
         
@@ -108,6 +104,10 @@
    ..      
    .. 
    ..     
+   ..          ~soxs_mbias._prepare_single_frame
+   ..      
+   .. 
+   ..     
    ..          ~soxs_mbias._trim_frame
    ..      
    .. 
@@ -116,6 +116,8 @@
    ..      
    .. 
    ..     
+   ..          ~soxs_mbias._write
+   ..      
    .. 
    ..     
    .. 

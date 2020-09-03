@@ -34,14 +34,19 @@ class soxs_mbias(_base_recipe_):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default: `[]`
 
-    [![](https://live.staticflickr.com/65535/50240606321_c0829448c4_z.png)](https://live.staticflickr.com/65535/50240606321_c0829448c4_o.png)
+    **Usage**
 
-    See `produce_product` method for usage.
-
+    ```python
+    from soxspipe.recipes import soxs_mbias
+    mbiasFrame = soxs_mbias(
+        log=log,
+        settings=settings,
+        inputFrames=fileList
+    ).produce_product()
+    ```
 
     ```eval_rst
     .. todo::
-
         - add a tutorial about ``soxs_mbias`` to documentation
     ```
     """
@@ -95,9 +100,6 @@ class soxs_mbias(_base_recipe_):
             self):
         """*verify the input frame match those required by the soxs_mbias recipe*
 
-        **Return:**
-            - ``None``
-
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
         self.log.debug('starting the ``verify_input_frames`` method')
@@ -132,18 +134,6 @@ class soxs_mbias(_base_recipe_):
 
         **Return:**
             - ``productPath`` -- the path to the final product
-
-        **Usage**
-
-        ```python
-        from soxspipe.recipes import soxs_mbias
-        recipe = soxs_mbias(
-            log=log,
-            settings=settings,
-            inputFrames=fileList
-        )
-        mbiasFrame = recipe.produce_product()
-        ```
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -176,7 +166,7 @@ class soxs_mbias(_base_recipe_):
         #     'float32')
 
         # WRITE TO DISK
-        self.write(combined_bias_mean, productPath, overwrite=True)
+        self._write(combined_bias_mean, productPath, overwrite=True)
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
@@ -184,6 +174,3 @@ class soxs_mbias(_base_recipe_):
 
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # Override Method Attributes
-    # method-override-tmpx

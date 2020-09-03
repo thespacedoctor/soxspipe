@@ -27,8 +27,6 @@ class keyword_lookup(object):
 
     **Usage**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
-
     To initalise the keyword lookup object in your code add the following:
 
     ```python

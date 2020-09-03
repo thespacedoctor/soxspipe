@@ -31,11 +31,7 @@
        
    
         
-            ~_base_recipe_.prepare_single_frame
-       
-   
-        
-            ~_base_recipe_.write
+            ~_base_recipe_.subtract_calibrations
        
    
         
@@ -100,6 +96,10 @@
    ..      
    .. 
    ..     
+   ..          ~_base_recipe_._prepare_single_frame
+   ..      
+   .. 
+   ..     
    ..          ~_base_recipe_._trim_frame
    ..      
    .. 
@@ -108,6 +108,8 @@
    ..      
    .. 
    ..     
+   ..          ~_base_recipe_._write
+   ..      
    .. 
    ..     
    .. 

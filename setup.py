@@ -16,7 +16,9 @@ install_requires = [
     'astropy',
     'pathlib',
     'ccdproc',
-    'docopt'
+    'docopt',
+    'photutils',
+    'matplotlib'
 ]
 
 # READ THE DOCS SERVERS

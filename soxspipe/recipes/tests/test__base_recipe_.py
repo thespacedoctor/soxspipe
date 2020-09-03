@@ -65,10 +65,10 @@ class test__base_recipe_(unittest.TestCase):
         recipe.detectorParams["ron"] = 4.5
         recipe.arm = "UVB"
 
-        preFrame = recipe.prepare_single_frame(frame=framePath)
+        preFrame = recipe._prepare_single_frame(frame=framePath)
 
         # NOW TRY SAVING
-        preFrame = recipe.prepare_single_frame(frame=framePath, save=settings[
+        preFrame = recipe._prepare_single_frame(frame=framePath, save=settings[
             "save-intermediate-products"])
 
         # NOW CLEAN UP

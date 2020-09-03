@@ -31,19 +31,15 @@
        
    
         
-            ~soxs_mdark.prepare_single_frame
-       
-   
-        
             ~soxs_mdark.produce_product
        
    
         
-            ~soxs_mdark.verify_input_frames
+            ~soxs_mdark.subtract_calibrations
        
    
         
-            ~soxs_mdark.write
+            ~soxs_mdark.verify_input_frames
        
    
         
@@ -108,6 +104,10 @@
    ..      
    .. 
    ..     
+   ..          ~soxs_mdark._prepare_single_frame
+   ..      
+   .. 
+   ..     
    ..          ~soxs_mdark._trim_frame
    ..      
    .. 
@@ -116,6 +116,8 @@
    ..      
    .. 
    ..     
+   ..          ~soxs_mdark._write
+   ..      
    .. 
    ..     
    .. 
