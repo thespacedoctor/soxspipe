@@ -1,8 +1,8 @@
-## Find Pinhole Arclines - PLANNED
+## Create Dispersion Map - COMPLETED
 
-The find\_pinhole\_arclines() utility is used to search for arc-lines in the single/multi-pinhole arc-lamp frames.
+The [create\_dispersion\_map()](../_api/soxspipe.commonutils.create_dispersion_map.html) utility is used to search for arc-lines in the single/multi-pinhole arc-lamp frames and then iteratively fit a global polynomial dispersion solution (and spatial-solution in the case of multi-pinhole frame) with the observed line-positions. It is used by both the [soxs\_disp\_solution](../recipes/soxs_disp_solution.md)) and [soxs\_spatial\_solution](../recipes/soxs_spatial_solution.md)) solution recipes.
 
-![](find_pinhole_arclines.png)
+![](create_dispersion_map.png)
 
 In the static calibration suite we have [Pinhole Maps](../files/pinhole_map.md) listing the wavelength $\lambda$, order number $n$ and slit position $s$ of the spectral lines alongside a first approximation of their ($X, Y$) pixel-positions on the detector.
 
@@ -36,8 +36,13 @@ $$
 Y = \sum\limits_{ijk} c_{ijk} \times n^i \times \lambda^j \times s^k \\
 $$
 
-Upon each iteration the residuals between the fits and the measured pixel-positions are calculated and sigma-clipping is employed to eliminate measurements they stray to far from the fit. Once the maximum number of iterations is reach, or all outlying lines have been clipped, the coefficients of the polynomials are written to a [Dispersion Map](../files/dispersion_map.md) file.
+Upon each iteration the residuals between the fits and the measured pixel-positions are calculated and sigma-clipping is employed to eliminate measurements that stray to far from the fit. Once the maximum number of iterations is reach, or all outlying lines have been clipped, the coefficients of the polynomials are written to a [Dispersion Map](../files/dispersion_map.md) file.
 
 
+
+```eval_rst
+.. autoclass:: soxspipe.commonutils.create_dispersion_map
+    :members:
+```
 
 

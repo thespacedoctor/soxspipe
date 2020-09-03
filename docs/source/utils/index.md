@@ -13,7 +13,7 @@ The soxspipe utilities can be viewed as the tool-kit with which the [soxspipe re
    prepare_frames
    clip_and_stack
    subtract_calibrations
-   find_pinhole_arclines
+   create_dispersion_map
    create_noise_map
 ```
 

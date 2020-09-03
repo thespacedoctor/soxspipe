@@ -120,7 +120,8 @@ markdown_parser_config = {
         'mdx_include',
         'pymdownx.mark',
         'pymdownx.betterem',
-        'pymdownx.caret'
+        'pymdownx.caret',
+        'legacy_attrs'
     ],
     'extension_configs': {
         'toc': {

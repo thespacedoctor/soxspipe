@@ -613,7 +613,7 @@ class _base_recipe_(object):
         ```eval_rst
         .. todo::
 
-            - update package tutorial for subtract_calibrations, make sure links all work
+            - code needs written to scale dark frame to exposure time of science/calibration frame
         ```
         """
         self.log.debug('starting the ``subtract_calibrations`` method')

@@ -13,8 +13,8 @@ Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
 
    soxspipe.recipes._base_recipe_
+   soxspipe.recipes.soxs_disp_solution
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark

@@ -31,7 +31,6 @@ import math
 from photutils.utils import NoDetectionsWarning
 import warnings
 from astropy.visualization import hist
-warnings.simplefilter('ignore', NoDetectionsWarning)
 
 
 class create_dispersion_map(object):
@@ -87,6 +86,8 @@ class create_dispersion_map(object):
             log=log,
             settings=settings
         ).get(self.arm)
+
+        warnings.simplefilter('ignore', NoDetectionsWarning)
 
         return None
 
