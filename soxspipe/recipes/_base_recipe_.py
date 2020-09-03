@@ -82,8 +82,6 @@ class _base_recipe_(object):
         **Return:**
             - ``frame`` -- the prepared frame with mask and uncertainty extensions (CCDData object)
 
-        ---
-
         ```eval_rst
         .. todo::
 
@@ -585,6 +583,76 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame
+
+    def subtract_calibrations(
+            self,
+            inputFrame,
+            master_bias=False,
+            dark=False):
+        """*subtract calibration frames from an input frame*
+
+        **Key Arguments:**
+            - ``inputFrame`` -- the input frame to have calibrations subtracted. CCDData object.
+            - ``master_bias`` -- the master bias frame to be subtracted. CCDData object. Default *False*.
+            - ``dark`` -- a dark frame to be subtracted. CCDData object. Default *False*.
+
+        **Return:**
+            - ``calibration_subtracted_frame`` -- the input frame with the calibration frame(s) subtracted. CCDData object.
+
+        **Usage:**
+
+        Within a soxspipe recipe use `subtract_calibrations` like so:
+
+        ```python
+        myCalibratedFrame = self.subtract_calibrations(
+            inputFrame=inputFrameCCDObject, master_bias=masterBiasCCDObject, dark=darkCCDObject)
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - update package tutorial for subtract_calibrations, make sure links all work
+        ```
+        """
+        self.log.debug('starting the ``subtract_calibrations`` method')
+
+        arm = self.arm
+        kw = self.kw
+        dp = self.detectorParams
+
+        # VERIFY DATA IS IN ORDER
+        if master_bias == False and dark == False:
+            raise TypeError(
+                "subtract_calibrations method needs a master-bias frame and/or a dark frame to subtract")
+        if master_bias == False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
+            raise AttributeError(
+                "Dark and science/calibration frame have differing exposure-times. A master-bias frame needs to be supplied to scale the dark frame to same exposure time as input science/calibration frame")
+        if master_bias != False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
+            raise AttributeError(
+                "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME")
+
+        # DARK WITH MATCHING EXPOSURE TIME
+        if dark != False and dark.header[kw("EXPTIME")] == inputFrame.header[kw("EXPTIME")]:
+            calibration_subtracted_frame = inputFrame.subtract(dark)
+            calibration_subtracted_frame.header = inputFrame.header
+            try:
+                calibration_subtracted_frame.wcs = inputFrame.wcs
+            except:
+                pass
+
+        # ONLY A MASTER BIAS FRAME, NO DARK
+        if dark == False and master_bias != False:
+            calibration_subtracted_frame = inputFrame.subtract(master_bias)
+            calibration_subtracted_frame.header = inputFrame.header
+            try:
+                calibration_subtracted_frame.wcs = inputFrame.wcs
+            except:
+                pass
+
+        self.log.debug('completed the ``subtract_calibrations`` method')
+        return calibration_subtracted_frame
 
     # use the tab-trigger below for new method
     # xt-class-method
