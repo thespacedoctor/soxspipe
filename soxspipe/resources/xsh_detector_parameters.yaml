@@ -5,8 +5,8 @@ UVB:
   science-pixels: 
     # NAXIS1 == x-axis
     columns:
-      start: 0
-      end: 2048
+      start: 48
+      end: 2096
     # NAXIS2 == y-axis
     rows:
       start: 0

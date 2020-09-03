@@ -245,11 +245,13 @@ class create_dispersion_map(object):
             else:
                 observed_x = sources[0]['xcentroid'] + xlow
                 observed_y = sources[0]['ycentroid'] + ylow
-            # plt.scatter(observed_x - xlow, sourcobserved_ye_y - ylow, marker='x', s=30)
+            # plt.scatter(observed_x - xlow, observed_y -
+            #             ylow, marker='x', s=30)
             # plt.show()
         else:
             observed_x = None
             observed_y = None
+        # plt.show()
 
         self.log.debug('completed the ``detect_pinhole_arc_line`` method')
         return observed_x, observed_y
