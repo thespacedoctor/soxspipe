@@ -13,6 +13,7 @@ Submodules
 ----------
 
 .. toctree::
+   :maxdepth: 4
 
    soxspipe.commonutils.create_dispersion_map
    soxspipe.commonutils.detector_lookup

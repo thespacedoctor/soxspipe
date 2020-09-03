@@ -1,4 +1,4 @@
-detector_lookup *(class)*
+﻿detector_lookup *(class)*
 ==============================================
 
 .. currentmodule:: soxspipe.commonutils

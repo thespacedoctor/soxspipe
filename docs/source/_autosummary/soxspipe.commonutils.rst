@@ -1,4 +1,4 @@
-commonutils *(module)*
+﻿commonutils *(module)*
 ===============================
 
 
@@ -34,36 +34,6 @@ commonutils *(module)*
     
     
     
-    
-    
-    
-    
-        
-            ~create_dispersion_map (nice)
-       
-    
-    
-        
-            ~detector_lookup (nice)
-       
-    
-    
-        
-            ~getpackagepath (nice)
-       
-    
-    
-        
-            ~keyword_lookup (nice)
-       
-    
-    
-        
-            ~set_of_files (nice)
-       
-    
-    
-        
     
     
     

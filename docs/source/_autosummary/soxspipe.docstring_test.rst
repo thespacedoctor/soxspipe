@@ -1,4 +1,4 @@
-docstring_test *(module)*
+﻿docstring_test *(module)*
 ==================================
 
 
@@ -33,8 +33,6 @@ docstring_test *(module)*
     .. rubric:: Sub-modules
 
     .. autosummary::
-    
-    
     
     
     
