@@ -35,7 +35,7 @@ soxs-disp-solution:
     wavelength_deg: 3
     poly_fitting_residual_clipping_sigma: 5
 
-test-data-root: ~/xshooter-pipeline-data/raw_data
+test-data-root: ~/xshooter-pipeline-data/unittest_data
 calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
 intermediate-data-root: ~/soxspipe-unittests/intermediate
 reduced-data-root: ~/soxspipe-unittests/reduced
