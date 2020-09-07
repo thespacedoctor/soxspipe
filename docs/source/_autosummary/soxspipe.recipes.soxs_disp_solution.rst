@@ -1,4 +1,4 @@
-﻿soxs_disp_solution *(class)*
+soxs_disp_solution *(class)*
 =============================================
 
 .. currentmodule:: soxspipe.recipes

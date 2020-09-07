@@ -159,7 +159,7 @@ class soxs_disp_solution(_base_recipe_):
 
         productPath = None
 
-        self.inputFrames.summary.pprint_all()
+        # self.inputFrames.summary.pprint_all()
 
         master_bias = False
         dark = False
@@ -193,7 +193,7 @@ class soxs_disp_solution(_base_recipe_):
         if self.settings["save-intermediate-products"]:
             outDir = self.intermediateRootPath
             filePath = f"{outDir}/single_pinhole_{arm}_calibrated.fits"
-            print(f"Calibrated single pinhole frame: {filePath}")
+            print(f"\nCalibrated single pinhole frame: {filePath}\n")
             self._write(self.pinholeFrame, filePath, overwrite=True)
 
         from soxspipe.commonutils import create_dispersion_map

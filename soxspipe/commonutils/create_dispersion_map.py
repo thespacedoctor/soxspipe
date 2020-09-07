@@ -147,7 +147,6 @@ class create_dispersion_map(object):
         # WRITE THE MAP TO FILE
         mapPath = self.write_map_to_file(
             popt_x, popt_y, order_deg, wavelength_deg)
-        print(f"Single pinhole first guess dispersion map saved to: {mapPath}")
 
         self.log.debug('completed the ``get`` method')
         return mapPath
@@ -374,6 +373,9 @@ class create_dispersion_map(object):
 
         **Return:**
             - ``residuals`` -- combined x-y residuals
+            - ``mean`` -- the mean of the combine residuals
+            - ``std`` -- the stdev of the combine residuals
+            - ``median`` -- the median of the combine residuals
         """
         self.log.debug('starting the ``calculate_residuals`` method')
 
@@ -416,7 +418,7 @@ class create_dispersion_map(object):
             plt.savefig(filePath)
 
         self.log.debug('completed the ``calculate_residuals`` method')
-        return combined_res
+        return combined_res, combined_res_mean, combined_res_std, combined_res_median
 
     def fit_polynomials(
             self,
@@ -457,7 +459,7 @@ class create_dispersion_map(object):
             ycoeff, pcov_y = curve_fit(self.chebyshev_polynomials_single, xdata=(
                 orders, wavelengths), ydata=observed_y, p0=coeff)
 
-            residuals = self.calculate_residuals(
+            residuals, mean_res, std_res, median_res = self.calculate_residuals(
                 observed_x=observed_x,
                 observed_y=observed_y,
                 wavelengths=wavelengths,
@@ -483,7 +485,7 @@ class create_dispersion_map(object):
             print(f'{clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
 
         # PLOT THE RESIDUALS NOW CLIPPING IS COMPLETE
-        residuals = self.calculate_residuals(
+        residuals, mean_res, std_res, median_res = self.calculate_residuals(
             observed_x=observed_x,
             observed_y=observed_y,
             wavelengths=wavelengths,
@@ -494,6 +496,8 @@ class create_dispersion_map(object):
             wavelength_deg=wavelength_deg,
             slit_deg=False,
             plot=True)
+
+        print(f'\nThe dispersion maps fitted against the observed arc-line positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixles)')
 
         self.log.debug('completed the ``fit_polynomials`` method')
         return xcoeff, ycoeff

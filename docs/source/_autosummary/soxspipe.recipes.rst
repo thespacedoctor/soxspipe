@@ -1,4 +1,4 @@
-﻿recipes *(module)*
+recipes *(module)*
 ===========================
 
 
@@ -34,6 +34,27 @@
     
     
     
+    
+    
+    
+    
+    
+        
+            ~soxs_disp_solution
+       
+    
+    
+        
+            ~soxs_mbias
+       
+    
+    
+        
+            ~soxs_mdark
+       
+    
+    
+        
     
     
     

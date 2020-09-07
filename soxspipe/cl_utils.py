@@ -155,7 +155,7 @@ def main(arguments=None):
             settings=settings,
             inputFrames=a["inputFrames"]
         ).produce_product()
-        print("You can find the disperson map `%(disp_map)s`" % locals())
+        print(f"\nSingle pinhole first guess dispersion map saved to: {disp_map}")
 
     # CALL FUNCTIONS/OBJECTS
 
