@@ -31,7 +31,7 @@ moduleDirectory = os.path.dirname(os.path.realpath(__file__))
 exec(open(moduleDirectory + "/../../soxspipe/__version__.py").read())
 
 
-sys.path.insert(0, os.path.abspath('../../soxspipe'))
+sys.path.insert(0, os.path.abspath('../../soxspipe/soxspipe'))
 
 
 autosummary_generate = True
