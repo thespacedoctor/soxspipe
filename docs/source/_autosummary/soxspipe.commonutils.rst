@@ -10,55 +10,19 @@ commonutils *(module)*
     :inherited-members:
     :member-order: groupwise
     
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
     .. rubric:: Sub-modules
 
     .. autosummary::
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
         
-            ~create_dispersion_map
-       
-    
-    
-        
+            soxspipe.commonutils.create_dispersion_map
+
             ~detector_lookup
-       
-    
-    
-        
+               
             ~getpackagepath
-       
-    
-    
-        
+     
             ~keyword_lookup
-       
-    
-    
-        
+           
             ~set_of_files
        
     
