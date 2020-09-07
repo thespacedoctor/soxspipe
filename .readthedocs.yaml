@@ -13,9 +13,10 @@ formats: all
 python:
   version: 3.7
   install:
+    - requirements: docs/requirements.txt
     - method: setuptools
       path: .
-    - requirements: docs/requirements.txt
+  system_packages: true
 
 submodules:
   include: all
