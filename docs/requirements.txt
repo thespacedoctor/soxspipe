@@ -11,4 +11,4 @@ unicodecsv
 pymysql==0.9.0
 multiprocess
 git+https://github.com/readthedocs/readthedocs-sphinx-search@master
-sphinx
+sphinx==2.3.1
