@@ -30,6 +30,7 @@ moduleDirectory = os.path.dirname(os.path.realpath(__file__))
 # GET PACKAGE __version__ INTO locals()
 exec(open(moduleDirectory + "/../../soxspipe/__version__.py").read())
 
+sys.path.insert(0, os.path.abspath('../../../'))
 sys.path.insert(0, os.path.abspath('../../'))
 sys.path.insert(0, os.path.abspath('../'))
 
