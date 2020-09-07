@@ -30,6 +30,7 @@ moduleDirectory = os.path.dirname(os.path.realpath(__file__))
 # GET PACKAGE __version__ INTO locals()
 exec(open(moduleDirectory + "/../../soxspipe/__version__.py").read())
 
+sys.path.append(moduleDirectory + "/../../soxspipe")
 
 autosummary_generate = True
 autodoc_member_order = 'bysource'
