@@ -1,5 +1,19 @@
 """
 *common tools used throughout package*
+
+
+```eval_rst
+Submodules
+==========
+
+.. autosummary::
+    :toctree: _autosummary
+
+    set_of_files
+    keyword_lookup
+    detector_lookup
+    create_dispersion_map
+```
 """
 from .set_of_files import set_of_files
 from .keyword_lookup import keyword_lookup
