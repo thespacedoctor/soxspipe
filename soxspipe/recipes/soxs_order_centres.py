@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-*Recipe to generate a first approximation of the dispersion solution from single pinhole frames*
+*further constrain the first guess locations of the order centres derived in `soxs_disp_solution`*
 
 :Author:
     David Young & Marco Landoni
 
 :Date Created:
-    August 25, 2020
+    September  8, 2020
 """
 ################# GLOBAL IMPORTS ####################
 from builtins import object
@@ -22,12 +22,11 @@ from astropy.nddata import CCDData
 from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import keyword_lookup
-import unicodecsv as csv
 
 
-class soxs_disp_solution(_base_recipe_):
+class soxs_order_centres(_base_recipe_):
     """
-    *generate a first approximation of the dispersion solution from single pinhole frames*
+    *The soxs_order_centres recipe*
 
     **Key Arguments**
 
@@ -35,23 +34,18 @@ class soxs_disp_solution(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
 
-    **Usage**
-
-    ```python
-    from soxspipe.recipes import soxs_disp_solution
-    disp_map_path = soxs_disp_solution(
-        log=log,
-        settings=settings,
-        inputFrames=sofPath
-    ).produce_product()
-    ```
+    See `produce_product` method for usage.
 
     ```eval_rst
     .. todo::
 
-        - add a tutorial about ``soxs_disp_solution`` to documentation
+        - add usage info
+        - create a sublime snippet for usage
+        - create cl-util for this class
+        - add a tutorial about ``soxs_order_centres`` to documentation
     ```
     """
+    # Initialisation
 
     def __init__(
             self,
@@ -61,13 +55,15 @@ class soxs_disp_solution(_base_recipe_):
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(soxs_disp_solution, self).__init__(
+        super(soxs_order_centres, self).__init__(
             log=log, settings=settings)
         self.log = log
-        log.debug("instansiating a new 'soxs_disp_solution' object")
+        log.debug("instansiating a new 'soxs_order_centres' object")
         self.settings = settings
         self.inputFrames = inputFrames
+        # xt-self-arg-tmpx
 
+        # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         sof = set_of_files(
@@ -77,7 +73,7 @@ class soxs_disp_solution(_base_recipe_):
         )
         self.inputFrames = sof.get()
 
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_disp_solution - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_order_centres - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
@@ -98,7 +94,10 @@ class soxs_disp_solution(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the soxs_disp_solution recipe*
+        """*verify the input frame match those required by the soxs_order_centres recipe*
+
+        **Return:**
+            - ``None``
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -125,20 +124,20 @@ class soxs_disp_solution(_base_recipe_):
                 raise TypeError(
                     "Input frames are a mix of %(imageTypes)s" % locals())
 
-            if imageTypes[0] != "LAMP,FMTCHK":
+            if imageTypes[0] != "LAMP,ORDERDEF":
                 raise TypeError(
-                    "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals())
+                    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames for NIR" % locals())
 
             for i in imageTech:
                 if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
                     raise TypeError(
-                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals())
+                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames for NIR" % locals())
 
         else:
             for i in imageTypes:
-                if i not in ["LAMP,FMTCHK", "BIAS", "DARK"]:
+                if i not in ["LAMP,ORDERDEF", "BIAS", "DARK", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']:
                     raise TypeError(
-                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals())
+                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
@@ -146,10 +145,22 @@ class soxs_disp_solution(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the dispersion map*
+        """*The code to generate the product of the soxs_order_centres recipe*
 
         **Return:**
-            - ``productPath`` -- the path to the dispersion map
+            - ``productPath`` -- the path to the final product
+
+        **Usage**
+
+        ```python
+        from soxspipe.recipes import soxs_order_centres
+        recipe = soxs_order_centres(
+            log=log,
+            settings=settings,
+            inputFrames=fileList
+        )
+        order_centresFrame = recipe.produce_product()
+        ```
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -157,11 +168,11 @@ class soxs_disp_solution(_base_recipe_):
         kw = self.kw
         dp = self.detectorParams
 
-        # self.inputFrames.summary.pprint_all()
+        productPath = None
 
         master_bias = False
         dark = False
-        pinhole_image = False
+        orderDef_image = False
 
         add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -173,32 +184,40 @@ class soxs_disp_solution(_base_recipe_):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK', kw("DPR_TECH"): 'IMAGE'}
+        add_filters = {kw("DPR_TYPE"): 'LAMP,ORDERDEF',
+                       kw("DPR_TECH"): 'IMAGE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            print(i)
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK',
+        add_filters = {kw("DPR_TYPE"): 'LAMP,ORDERDEF',
                        kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
-                                         hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            orderDef_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        self.pinholeFrame = self.subtract_calibrations(
-            inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
+        # UVB - CHECK FOR D2 LAMP FIRST AND IF NOT FOUND USE THE QTH LAMP
+        add_filters = {kw("DPR_TYPE"): 'LAMP,QORDERDEF',
+                       kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            orderDef_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        add_filters = {kw("DPR_TYPE"): 'LAMP,DORDERDEF',
+                       kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            orderDef_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        self.orderFrame = self.subtract_calibrations(
+            inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
         if self.settings["save-intermediate-products"]:
             outDir = self.intermediateRootPath
-            filePath = f"{outDir}/single_pinhole_{arm}_calibrated.fits"
+            filePath = f"{outDir}/order_definition_{arm}_calibrated.fits"
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
-            self._write(self.pinholeFrame, filePath, overwrite=True)
-
-        from soxspipe.commonutils import create_dispersion_map
-        productPath = create_dispersion_map(
-            log=self.log,
-            settings=self.settings,
-            pinholeFrame=self.pinholeFrame
-        ).get()
+            self._write(self.orderFrame, filePath, overwrite=True)
 
         self.clean_up()
 
@@ -207,3 +226,6 @@ class soxs_disp_solution(_base_recipe_):
 
     # use the tab-trigger below for new method
     # xt-class-method
+
+    # Override Method Attributes
+    # method-override-tmpx
