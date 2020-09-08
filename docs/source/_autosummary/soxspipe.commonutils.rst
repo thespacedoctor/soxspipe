@@ -4,118 +4,45 @@ commonutils *(module)*
 
 
 .. automodule:: soxspipe.commonutils
-    :members:
-    :undoc-members:
-    :show-inheritance:
-    :inherited-members:
-    :member-order: groupwise
-    
-    
+
+
     
     
 
     
-    
+
+
     
 
     
-    
-    
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-        
-            
-            [1]
-       
-    
-    
-        
-            
-            [1, 1]
-       
-    
-    
-        
-            
-            [1, 1, 1]
-       
-    
-    
-        
-            
-            [1, 1, 1, 1]
-       
-    
-    
-        
-            
-            [1, 1, 1, 1, 1]
-       
-    
-    
-        
-    
-    
-
-    [1, 1, 1, 1, 1]
-    
-    .. rubric:: Sub-modules
+    .. rubric:: Classes
 
     .. autosummary::
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+
         
-            ~create_dispersion_map
-       
-    
-    
+          ~create_dispersion_map
+          ~detector_lookup
+          ~keyword_lookup
+          ~set_of_files
         
-            ~detector_lookup
-       
-    
-    
+
         
-            ~getpackagepath
-       
-    
-    
-        
-            ~keyword_lookup
-       
-    
-    
-        
-            ~set_of_files
-       
-    
-    
-        
-    
+
+
 
     
+
+
+    
+    .. rubric:: Functions
+
+    .. autosummary::
+
+        
+          ~getpackagepath
+        
+        
+
 
     
     

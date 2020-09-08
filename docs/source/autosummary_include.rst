@@ -29,4 +29,5 @@
 .. autosummary::
    :nosignatures:
 
+   soxspipe.commonutils.getpackagepath
    soxspipe.docstring_test.docsting_test 
