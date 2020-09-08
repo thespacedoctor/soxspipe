@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.abspath('../../soxspipe/soxspipe'))
 
 
 autosummary_generate = True
+autosummary_imported_members = True
 autodoc_member_order = 'bysource'
 add_module_names = False
 todo_include_todos = True
