@@ -209,6 +209,12 @@ class set_of_files(object):
             fitsFiles = []
             fitsFiles[:] = [l.split(".fits")[0].replace("~/", home + "/") +
                             ".fits" for l in lines if ".fits" in l]
+            # MAKE SURE FILES EXIST
+            for f in fitsFiles:
+                exists = os.path.exists(f)
+                if not exists:
+                    raise FileNotFoundError(f"the input file `{f}` does not appear to exist")
+
             locations = [os.path.dirname(f) for f in fitsFiles]
             if len(set(locations)) == 1:
                 location = locations[0]

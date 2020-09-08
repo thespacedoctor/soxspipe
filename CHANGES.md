@@ -1,5 +1,7 @@
 # Release Notes
 
+* **ENHANCEMENT:** check that files in the sof files exist before proceeding.
+
 ## v0.4.0 - September 3, 2020
 
 * **FEATURE:** added create_dispersion_map class to be used in `soxs_disp_solution` and `soxs_spatial_solution`
