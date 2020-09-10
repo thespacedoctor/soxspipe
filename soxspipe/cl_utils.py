@@ -8,12 +8,14 @@ Usage:
     soxspipe mbias <inputFrames> [-s <pathToSettingsFile>] 
     soxspipe mdark <inputFrames> [-s <pathToSettingsFile>] 
     soxspipe disp_sol <inputFrames> [-s <pathToSettingsFile>] 
+    soxspipe order_centres <inputFrames> [-s <pathToSettingsFile>] 
 
 Options:
     init                                   setup the soxspipe settings file for the first time
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
     disp_sol                               the disp solution recipe
+    order_centres                          the order centres recipe
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -156,6 +158,15 @@ def main(arguments=None):
             inputFrames=a["inputFrames"]
         ).produce_product()
         print(f"\nSingle pinhole first guess dispersion map saved to: {disp_map}")
+
+    if a["order_centres"]:
+        from soxspipe.recipes import soxs_order_centres
+        soxs_order_centres(
+            log=log,
+            settings=settings,
+            inputFrames=a["inputFrames"]
+        ).produce_product()
+        print(f"\nADD PRODUCT OUTPUT INFO")
 
     # CALL FUNCTIONS/OBJECTS
 
