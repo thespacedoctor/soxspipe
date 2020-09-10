@@ -1,6 +1,9 @@
 # Release Notes
 
+* **FEATURE:** add command-line util for soxs order_centres recipe
 * **ENHANCEMENT:** check that files in the sof files exist before proceeding.
+* **ENHANCEMENT:** added spectral format table lookup to detector settings file
+* **REFACTOR:** moved chebyshev order/wavelength polynomials into its own class - decoupled from create_dispersion_map class
 
 ## v0.4.0 - September 3, 2020
 

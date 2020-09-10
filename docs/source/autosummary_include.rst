@@ -22,6 +22,7 @@
    soxspipe.recipes.soxs_disp_solution
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark
+   soxspipe.recipes.soxs_order_centres
  
 
 **Functions**

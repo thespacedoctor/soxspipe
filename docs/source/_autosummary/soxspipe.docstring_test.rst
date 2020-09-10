@@ -15,12 +15,6 @@ docstring_test *(module)*
     
 
     
-    .. rubric:: Classes
-
-    .. autosummary::
-
-        
-        
 
         
 
