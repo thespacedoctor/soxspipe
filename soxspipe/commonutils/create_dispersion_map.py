@@ -31,6 +31,7 @@ import math
 from photutils.utils import NoDetectionsWarning
 import warnings
 from astropy.visualization import hist
+from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 
 
 class create_dispersion_map(object):
@@ -384,11 +385,14 @@ class create_dispersion_map(object):
         # POLY FUNCTION NEEDS A TUPLE AS INPUT
         order_wave = (orders, wavelengths)
 
+        poly = chebyshev_order_wavelength_polynomials(
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
+
         # CALCULATE X & Y RESIDUALS BETWEEN OBSERVED LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        residuals_x = np.asarray(self.chebyshev_polynomials_single(
+        residuals_x = np.asarray(poly(
             order_wave, *xcoeff)) - np.asarray(observed_x)
-        residuals_y = np.asarray(self.chebyshev_polynomials_single(
+        residuals_y = np.asarray(poly(
             order_wave, *ycoeff)) - np.asarray(observed_y)
 
         # CALCULATE COMBINED RESIDUALS AND STATS
@@ -448,15 +452,18 @@ class create_dispersion_map(object):
 
         clippedCount = 1
 
+        poly = chebyshev_order_wavelength_polynomials(
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
+
         while clippedCount > 0:
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
             # FIRST X
             coeff = np.ones((order_deg + 1) * (wavelength_deg + 1))
-            xcoeff, pcov_x = curve_fit(self.chebyshev_polynomials_single, xdata=(
+            xcoeff, pcov_x = curve_fit(poly, xdata=(
                 orders, wavelengths), ydata=observed_x, p0=coeff)
 
             # NOW Y
-            ycoeff, pcov_y = curve_fit(self.chebyshev_polynomials_single, xdata=(
+            ycoeff, pcov_y = curve_fit(poly, xdata=(
                 orders, wavelengths), ydata=observed_y, p0=coeff)
 
             residuals, mean_res, std_res, median_res = self.calculate_residuals(
