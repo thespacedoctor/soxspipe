@@ -132,8 +132,8 @@ class create_dispersion_map(object):
         observed_x = [x for x in observed_x if x != None]
         observed_y = [y for y in observed_y if y != None]
 
-        order_deg = self.settings["soxs-disp-solution"]["order_deg"]
-        wavelength_deg = self.settings["soxs-disp-solution"]["wavelength_deg"]
+        order_deg = self.settings["soxs-disp-solution"]["order-deg"]
+        wavelength_deg = self.settings["soxs-disp-solution"]["wavelength-deg"]
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         popt_x, popt_y = self.fit_polynomials(
@@ -272,8 +272,8 @@ class create_dispersion_map(object):
         orders = order_wave[0]
         wavelengths = order_wave[1]
         lhsVals = []
-        order_deg = self.settings["soxs-disp-solution"]["order_deg"]
-        wavelength_deg = self.settings["soxs-disp-solution"]["wavelength_deg"]
+        order_deg = self.settings["soxs-disp-solution"]["order-deg"]
+        wavelength_deg = self.settings["soxs-disp-solution"]["wavelength-deg"]
 
         # POLYNOMIALS SUMS
         for order, wave in zip(orders, wavelengths):
@@ -314,8 +314,8 @@ class create_dispersion_map(object):
         # SORT X COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_x = {}
         coeff_dict_x["axis"] = "x"
-        coeff_dict_x["order_deg"] = order_deg
-        coeff_dict_x["wavelength_deg"] = wavelength_deg
+        coeff_dict_x["order-deg"] = order_deg
+        coeff_dict_x["wavelength-deg"] = wavelength_deg
         n_coeff = 0
         for i in range(0, order_deg + 1):
             for j in range(0, wavelength_deg + 1):
@@ -325,8 +325,8 @@ class create_dispersion_map(object):
         # SORT Y COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_y = {}
         coeff_dict_y["axis"] = "y"
-        coeff_dict_y["order_deg"] = order_deg
-        coeff_dict_y["wavelength_deg"] = wavelength_deg
+        coeff_dict_y["order-deg"] = order_deg
+        coeff_dict_y["wavelength-deg"] = wavelength_deg
         n_coeff = 0
         for i in range(0, order_deg + 1):
             for j in range(0, wavelength_deg + 1):
@@ -455,7 +455,15 @@ class create_dispersion_map(object):
         poly = chebyshev_order_wavelength_polynomials(
             log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
 
-        while clippedCount > 0:
+        clippingSigma = self.settings[
+            "soxs-disp-solution"]["poly-fitting-residual-clipping-sigma"]
+
+        clippingIterationLimit = self.settings[
+            "soxs-disp-solution"]["clipping-iteration-limit"]
+
+        iteration = 0
+        while clippedCount > 0 and iteration < clippingIterationLimit:
+            iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
             # FIRST X
             coeff = np.ones((order_deg + 1) * (wavelength_deg + 1))
@@ -478,8 +486,6 @@ class create_dispersion_map(object):
                 slit_deg=False)
 
             # SIGMA-CLIP THE DATA
-            clippingSigma = self.settings[
-                "soxs-disp-solution"]["poly_fitting_residual_clipping_sigma"]
             masked_residuals = sigma_clip(
                 residuals, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
 
