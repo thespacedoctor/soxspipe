@@ -36,7 +36,9 @@ soxs-disp-solution:
     poly_fitting_residual_clipping_sigma: 5
 
 soxs-order-centre:
-    wavelength-spacing: 10
+    order-sample-count: 100
+    slice-length: 15
+    peak-sigma-limit: 3
 
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data
