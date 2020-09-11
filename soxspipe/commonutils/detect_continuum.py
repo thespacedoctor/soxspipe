@@ -21,11 +21,15 @@ from os.path import expanduser
 import numpy as np
 import unicodecsv as csv
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
+from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
 import matplotlib.pyplot as plt
 from astropy.stats import mad_std
 from astropy.modeling import models, fitting
 from scipy.signal import find_peaks
 from random import random
+from scipy.optimize import curve_fit
+from astropy.stats import sigma_clip, mad_std
+from astropy.visualization import hist
 
 
 class detect_continuum(object):
@@ -223,17 +227,33 @@ class detect_continuum(object):
                 order_deg = int(row["order-deg"])
                 wavelength_deg = int(row["wavelength-deg"])
                 coeff = [float(v) for k, v in row.items() if k not in [
-                    "axis", "order_deg", "wavelength_deg"]]
+                    "axis", "order-deg", "wavelength-deg"]]
                 poly = chebyshev_order_wavelength_polynomials(
                     log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
+
                 if axis == "x":
                     xcoords = poly(order_wave, *coeff)
                 if axis == "y":
                     ycoords = poly(order_wave, *coeff)
         csvFile.close()
 
+        # for o, w, x, y in zip(orderArray, wavelengthArray, xcoords, ycoords):
+        #     print(o, w, x, y)
+
         for o, x, y in zip(orderArray, xcoords, ycoords):
             pixelArrays[f"o{o:0.0f}"].append((x, y))
+
+        for order, pixelArray in pixelArrays.items():
+            pass
+
+        polyDeg = self.settings[
+            "soxs-order-centre"]["poly-deg"]
+
+        # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
+        coeff = self.fit_polynomial(
+            pixelArray=pixelArray,
+            deg=polyDeg
+        )
 
         self.log.debug('completed the ``create_pixel_arrays`` method')
         return pixelArrays
@@ -259,6 +279,7 @@ class detect_continuum(object):
         halfSlice = sliceLength / 2
         x_fit = xy[0]
         y_fit = xy[1]
+
         slice = self.pinholeFlat.data[int(y_fit), max(
             0, int(x_fit - halfSlice)):min(2048, int(x_fit + halfSlice))]
 
@@ -315,6 +336,133 @@ class detect_continuum(object):
 
         self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
         return (xpeak, ypeak)
+
+    def fit_polynomial(
+            self,
+            pixelArray,
+            deg):
+        """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
+
+        **Key Arguments:**
+            - ``pixelArray`` -- the array of x,y pixels of measured 1D guassian peak positions
+            - ``deg`` -- the degree of the polynomial to fit the order centre trace
+
+        **Return:**
+            - ``coeffs`` -- the coefficients of the polynomial fit
+        """
+        self.log.debug('starting the ``fit_polynomial`` method')
+
+        clippedCount = 1
+
+        poly = chebyshev_xy_polynomial(
+            log=self.log, deg=deg).poly
+
+        clippingSigma = self.settings[
+            "soxs-order-centre"]["poly-fitting-residual-clipping-sigma"]
+
+        clippingIterationLimit = self.settings[
+            "soxs-order-centre"]["clipping-iteration-limit"]
+
+        xcoords = [v[0] for v in pixelArray]
+        ycoords = [v[1] for v in pixelArray]
+
+        iteration = 0
+        while clippedCount > 0 and iteration < clippingIterationLimit:
+            iteration += 1
+            # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
+            coeff = np.ones((deg + 1))
+            coeff, pcov_x = curve_fit(
+                poly, xdata=ycoords, ydata=xcoords, p0=coeff)
+
+            residuals, mean_res, std_res, median_res = self.calculate_residuals(
+                xcoords=xcoords,
+                ycoords=ycoords,
+                coeff=coeff,
+                deg=deg)
+
+            # SIGMA-CLIP THE DATA
+            masked_residuals = sigma_clip(
+                residuals, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+
+            # MASK DATA ARRAYS WITH CLIPPED RESIDUAL MASK
+            startCount = len(xcoords)
+            a = [xcoords, ycoords]
+            xcoords, ycoords = [np.ma.compressed(np.ma.masked_array(
+                i, masked_residuals.mask)) for i in a]
+            clippedCount = startCount - len(xcoords)
+            print(f'{clippedCount} pixel positions where clipped in this iteration of fitting an order centre polynomial')
+
+        # PLOT THE RESIDUALS NOW CLIPPING IS COMPLETE
+        residuals, mean_res, std_res, median_res = self.calculate_residuals(
+            xcoords=xcoords,
+            ycoords=ycoords,
+            coeff=coeff,
+            deg=deg,
+            plot=True)
+
+        print(f'\nThe order centre polynomial fitted against the observed 1D gaussian peak positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixles)')
+
+        self.log.debug('completed the ``fit_polynomials`` method')
+        return coeff
+
+    def calculate_residuals(
+            self,
+            xcoords,
+            ycoords,
+            coeff,
+            deg,
+            plot=False):
+        """*calculate residuals of the polynomial fits against the observed line postions*
+
+        **Key Arguments:**
+            - ``xcoords`` -- the measured x positions of the gaussian peaks
+            - ``ycoords`` -- the measurd y positions of the gaussian peaks
+            - ``coeff`` -- the coefficients of the fitted polynomial
+            - ``deg`` -- degree of the fitted polynomial
+            - ``plot`` -- write out a plot to file. Default False.
+
+        **Return:**
+            - ``residuals`` -- x residuals
+            - ``mean`` -- the mean of the residuals
+            - ``std`` -- the stdev of the residuals
+            - ``median`` -- the median of the residuals
+        """
+        self.log.debug('starting the ``calculate_residuals`` method')
+
+        arm = self.arm
+
+        poly = chebyshev_xy_polynomial(
+            log=self.log, deg=deg).poly
+
+        # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
+        # FITTED POSITIONS
+        res_x = np.asarray(poly(
+            ycoords, *coeff)) - np.asarray(xcoords)
+
+        # CALCULATE COMBINED RESIDUALS AND STATS
+        res_mean = np.mean(res_x)
+        res_std = np.std(res_x)
+        res_median = np.median(res_x)
+
+        # IF PLOT IS REQUIRED:
+        if plot:
+            fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+            plt.subplots_adjust(top=0.85)
+
+            hist(res_x, bins='scott', ax=ax[0], histtype='stepfilled',
+                 alpha=0.7, density=True)
+            ax[0].set_xlabel('x residuals')
+            subtitle = f"mean res: {res_mean:2.3f} pix, res stdev: {res_std:2.3f}"
+            fig.suptitle(
+                f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}")
+
+            home = expanduser("~")
+            outDir = self.settings["intermediate-data-root"].replace("~", home)
+            filePath = f"{outDir}/pinhole_flat_{arm}_order_location_residuals.pdf"
+            plt.savefig(filePath)
+
+        self.log.debug('completed the ``calculate_residuals`` method')
+        return res_x, res_mean, res_std, res_median
 
     # use the tab-trigger below for new method
     # xt-class-method

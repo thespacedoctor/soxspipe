@@ -39,6 +39,9 @@ soxs-order-centre:
     order-sample-count: 100
     slice-length: 15
     peak-sigma-limit: 3
+    poly-deg: 3
+    poly-fitting-residual-clipping-sigma: 5
+    clipping-iteration-limit: 5
 
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data

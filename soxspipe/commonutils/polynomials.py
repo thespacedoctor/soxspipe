@@ -81,3 +81,58 @@ class chebyshev_order_wavelength_polynomials():
         self.log.info('completed the ``poly`` method')
 
         return lhsVals
+
+
+class chebyshev_xy_polynomial():
+    """*the chebyshev polynomial fits for the pinhole flat frame order tracing; to be iteratively fitted to minimise errors*
+
+    **Key Arguments:**
+        - ``log`` -- logger
+        - ``deg`` -- degree of the polynomial components
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+    poly = chebyshev_xy_polynomial(
+            log=self.log, deg=deg).poly
+    ```
+    """
+
+    def __init__(
+            self,
+            log,
+            deg
+    ):
+        self.log = log
+        self.deg = deg
+
+        return None
+
+    def poly(self, yarray, *coeff):
+        """the polynomial definition
+
+        **Key Arguments:**
+        - ``yarray`` -- the y coordinates
+        - ``*coeff`` -- a list of the initial coefficients
+
+        **Return:**
+        - ``xvals`` -- the x values of the fitted polynomial
+        """
+        self.log.info('starting the ``poly`` method')
+
+        xvals = []
+
+        # POLYNOMIALS SUMS
+        for y in yarray:
+            n_coeff = 0
+            val = 0
+            for i in range(0, self.deg + 1):
+                val += coeff[n_coeff] * \
+                    math.pow(y, i)
+                n_coeff += 1
+            xvals.append(val)
+
+        self.log.info('completed the ``poly`` method')
+
+        return xvals

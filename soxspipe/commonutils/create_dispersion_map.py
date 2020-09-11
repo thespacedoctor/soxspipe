@@ -256,38 +256,6 @@ class create_dispersion_map(object):
         self.log.debug('completed the ``detect_pinhole_arc_line`` method')
         return observed_x, observed_y
 
-    def chebyshev_polynomials_single(self, order_wave, *coeff):
-        """*the chebyshev polynomial fits for the single pinhole frames; to be iteratively fitted to minimise errors*
-
-        **Key Arguments:**
-            - ``order_wave`` -- a tuple of the order and wavelength arrays
-            - ``*coeff`` -- a list of the initail coefficients
-
-        **Return:**
-            - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
-        """
-        self.log.debug('starting the ``chebyshev_polynomials_single`` method')
-
-        # UNPACK TUPLE INPUT
-        orders = order_wave[0]
-        wavelengths = order_wave[1]
-        lhsVals = []
-        order_deg = self.settings["soxs-disp-solution"]["order-deg"]
-        wavelength_deg = self.settings["soxs-disp-solution"]["wavelength-deg"]
-
-        # POLYNOMIALS SUMS
-        for order, wave in zip(orders, wavelengths):
-            n_coeff = 0
-            val = 0
-            for i in range(0, order_deg + 1):
-                for j in range(0, wavelength_deg + 1):
-                    val += coeff[n_coeff] * \
-                        math.pow(order, i) * math.pow(wave, j)
-                    n_coeff += 1
-            lhsVals.append(val)
-        self.log.debug('completed the ``chebyshev_polynomials_single`` method')
-        return lhsVals
-
     def write_map_to_file(
             self,
             xcoeff,
@@ -356,8 +324,7 @@ class create_dispersion_map(object):
             ycoeff,
             order_deg,
             wavelength_deg,
-            slit_deg=False,
-            plot=False):
+            slit_deg=False):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
@@ -370,7 +337,6 @@ class create_dispersion_map(object):
             - ``order_deg`` -- degree of the order fitting
             - ``wavelength_deg`` -- degree of wavelength fitting
             - ``slit_deg`` -- degree of the slit fitting (False for single pinhole)
-            - ``plot`` -- write out a plot to file. Default False.
 
         **Return:**
             - ``residuals`` -- combined x-y residuals
@@ -390,10 +356,10 @@ class create_dispersion_map(object):
 
         # CALCULATE X & Y RESIDUALS BETWEEN OBSERVED LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        residuals_x = np.asarray(poly(
-            order_wave, *xcoeff)) - np.asarray(observed_x)
-        residuals_y = np.asarray(poly(
-            order_wave, *ycoeff)) - np.asarray(observed_y)
+        xfit = poly(order_wave, *xcoeff)
+        yfit = poly(order_wave, *ycoeff)
+        residuals_x = np.asarray(xfit) - np.asarray(observed_x)
+        residuals_y = np.asarray(yfit) - np.asarray(observed_y)
 
         # CALCULATE COMBINED RESIDUALS AND STATS
         combined_res = np.sqrt(np.square(residuals_x) + np.square(residuals_y))
@@ -401,28 +367,8 @@ class create_dispersion_map(object):
         combined_res_std = np.std(combined_res)
         combined_res_median = np.median(combined_res)
 
-        # IF PLOT IS REQUIRED:
-        if plot:
-            fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-            plt.subplots_adjust(top=0.85)
-            ax[0].scatter(residuals_x, residuals_y, alpha=0.4)
-            ax[0].set_xlabel('x')
-            ax[0].set_ylabel('y')
-
-            hist(combined_res, bins='scott', ax=ax[1], histtype='stepfilled',
-                 alpha=0.7, density=True)
-            ax[1].set_xlabel('xy residual')
-            subtitle = f"mean res: {combined_res_mean:2.3f} pix, res stdev: {combined_res_std:2.3f}"
-            fig.suptitle(
-                f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}")
-
-            home = expanduser("~")
-            outDir = self.settings["intermediate-data-root"].replace("~", home)
-            filePath = f"{outDir}/single_pinhole_{arm}_disp_map_residuals.pdf"
-            plt.savefig(filePath)
-
         self.log.debug('completed the ``calculate_residuals`` method')
-        return combined_res, combined_res_mean, combined_res_std, combined_res_median
+        return combined_res, combined_res_mean, combined_res_std, combined_res_median, residuals_x, residuals_y, xfit, yfit
 
     def fit_polynomials(
             self,
@@ -450,6 +396,8 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``fit_polynomials`` method')
 
+        arm = self.arm
+
         clippedCount = 1
 
         poly = chebyshev_order_wavelength_polynomials(
@@ -474,7 +422,7 @@ class create_dispersion_map(object):
             ycoeff, pcov_y = curve_fit(poly, xdata=(
                 orders, wavelengths), ydata=observed_y, p0=coeff)
 
-            residuals, mean_res, std_res, median_res = self.calculate_residuals(
+            residuals, mean_res, std_res, median_res, residuals_x, residuals_y, xfit, yfit = self.calculate_residuals(
                 observed_x=observed_x,
                 observed_y=observed_y,
                 wavelengths=wavelengths,
@@ -497,18 +445,53 @@ class create_dispersion_map(object):
             clippedCount = startCount - len(observed_x)
             print(f'{clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
 
-        # PLOT THE RESIDUALS NOW CLIPPING IS COMPLETE
-        residuals, mean_res, std_res, median_res = self.calculate_residuals(
-            observed_x=observed_x,
-            observed_y=observed_y,
-            wavelengths=wavelengths,
-            orders=orders,
-            xcoeff=xcoeff,
-            ycoeff=ycoeff,
-            order_deg=order_deg,
-            wavelength_deg=wavelength_deg,
-            slit_deg=False,
-            plot=True)
+        # a = plt.figure(figsize=(40, 15))
+        fig = plt.figure(figsize=(6, 9.5), constrained_layout=True)
+        gs = fig.add_gridspec(6, 4)
+
+        # CREATE THE GID OF AXES
+        toprow = fig.add_subplot(gs[0:2, :])
+        midrow = fig.add_subplot(gs[2:4, :])
+        bottomleft = fig.add_subplot(gs[4:, 0:2])
+        bottomright = fig.add_subplot(gs[4:, 2:])
+
+        # ROTATE THE IMAGE FOR BETTER LAYOUT
+        rotatedImg = np.rot90(self.pinholeFrame.data, 1)
+        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
+        toprow.set_title(
+            "observed arc-line positions (post-clipping)", fontsize=10)
+        x = np.ones(observed_x.shape) * \
+            self.pinholeFrame.data.shape[1] - observed_x
+        toprow.scatter(observed_y, x, marker='x', c='red', s=4)
+        toprow.set_yticklabels([])
+        toprow.set_xticklabels([])
+
+        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
+        midrow.set_title(
+            "global dispersion solution", fontsize=10)
+        xfit = np.ones(len(xfit)) * \
+            self.pinholeFrame.data.shape[1] - xfit
+        midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
+        midrow.set_yticklabels([])
+        midrow.set_xticklabels([])
+
+        # PLOT THE FINAL RESULTS:
+        plt.subplots_adjust(top=0.92)
+        bottomleft.scatter(residuals_x, residuals_y, alpha=0.4)
+        bottomleft.set_xlabel('x residual')
+        bottomleft.set_ylabel('y residual')
+
+        hist(residuals, bins='scott', ax=bottomright, histtype='stepfilled',
+             alpha=0.7, density=True)
+        bottomright.set_xlabel('xy residual')
+        subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
+        fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
+
+        # plt.show()
+        home = expanduser("~")
+        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        filePath = f"{outDir}/single_pinhole_{arm}_disp_map_residuals.pdf"
+        plt.savefig(filePath)
 
         print(f'\nThe dispersion maps fitted against the observed arc-line positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixles)')
 
