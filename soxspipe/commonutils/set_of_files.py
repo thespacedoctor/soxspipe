@@ -184,7 +184,7 @@ class set_of_files(object):
             settings=settings,
             inputFrames=inputFrames
         )
-        sofFile = sof.get()
+        sofFile, supplementarySof = sof.get()
         print(sofFile.summary)
         ```
 
@@ -200,6 +200,12 @@ class set_of_files(object):
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
             sof = ImageFileCollection(self.inputFrames, keywords=self.keys)
+            supplementaryFilepaths = []
+            for d in os.listdir(self.inputFrames):
+                filepath = os.path.join(self.inputFrames, d)
+                if os.path.isfile(filepath) and ".fits" not in d.lower() and d[0] != ".":
+                    supplementaryFilepaths.append(filepath)
+
         elif isinstance(self.inputFrames, str) and os.path.isfile(self.inputFrames) and '.sof' in self.inputFrames:
             readFile = codecs.open(
                 self.inputFrames, encoding='utf-8', mode='r')
@@ -209,8 +215,11 @@ class set_of_files(object):
             fitsFiles = []
             fitsFiles[:] = [l.split(".fits")[0].replace("~/", home + "/") +
                             ".fits" for l in lines if ".fits" in l]
+            supplementaryFilepaths = [
+                l.replace("~/", home + "/") for l in lines if ".fits" not in l.lower() and len(l) > 3]
             # MAKE SURE FILES EXIST
-            for f in fitsFiles:
+            allFiles = fitsFiles.extend(supplementaryFilepaths)
+            for f in fitsFiles + supplementaryFilepaths:
                 exists = os.path.exists(f)
                 if not exists:
                     raise FileNotFoundError(f"the input file `{f}` does not appear to exist")
@@ -225,22 +234,58 @@ class set_of_files(object):
             sof = ImageFileCollection(
                 filenames=fitsFiles, location=location, keywords=self.keys)
         elif isinstance(self.inputFrames, list):
+            fitsFiles = [f for f in self.inputFrames if ".fits" in f.lower()]
             # FIND UNIQUE FILE LOCATIONS
-            locations = [os.path.dirname(f) for f in self.inputFrames]
+            locations = [os.path.dirname(f) for f in fitsFiles]
             if len(set(locations)) == 1:
                 location = locations[0]
-                self.inputFrames = [os.path.basename(
-                    f) for f in self.inputFrames]
+                fitsFiles = [os.path.basename(
+                    f) for f in fitsFiles]
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=self.inputFrames, location=location, keywords=self.keys)
+                filenames=fitsFiles, location=location, keywords=self.keys)
+            supplementaryFilepaths = [
+                f for f in self.inputFrames if ".fits" not in f.lower() and f[0] != "."]
         else:
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths")
 
+        supplementary_sof = self.create_supplimentary_file_dictionary(
+            supplementaryFilepaths)
+
         self.log.debug('completed the ``get`` method')
-        return sof
+        return sof, supplementary_sof
+
+    def create_supplimentary_file_dictionary(
+            self,
+            supplementaryFilepaths):
+        """*create supplimentary file dictionary*
+
+        **Key Arguments:**
+            - ``supplementaryFilepaths`` -- the list of filepaths to genereate the dictionary for
+
+        **Return:**
+            - ``supplementary_sof`` -- a dictionary of non-fits files needed for recipe
+        """
+        self.log.debug(
+            'starting the ``create_supplimentary_file_dictionary`` method')
+
+        supplementary_sof = {}
+        for f in supplementaryFilepaths:
+            for a in ["NIR", "UVB", "VIS"]:
+                if a.lower() in f.lower() and a not in supplementary_sof.keys():
+                    supplementary_sof[a] = {}
+
+        for f in supplementaryFilepaths:
+            if "disp_map" in f:
+                for a in ["NIR", "UVB", "VIS"]:
+                    if a.lower() in f.lower():
+                        supplementary_sof[a]["DISP_MAP"] = f
+
+        self.log.debug(
+            'completed the ``create_supplimentary_file_dictionary`` method')
+        return supplementary_sof
 
     # use the tab-trigger below for new method
     # xt-class-method
