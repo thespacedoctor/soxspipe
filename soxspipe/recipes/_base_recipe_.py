@@ -262,7 +262,7 @@ class _base_recipe_(object):
             settings=self.settings,
             inputFrames=preframes
         )
-        preframes = sof.get()
+        preframes, supplementaryInput = sof.get()
         preframes.sort([kw('MJDOBS').lower()])
 
         print("# PREPARED FRAMES - SUMMARY")
