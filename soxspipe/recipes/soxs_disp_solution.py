@@ -75,7 +75,7 @@ class soxs_disp_solution(_base_recipe_):
             settings=self.settings,
             inputFrames=self.inputFrames
         )
-        self.inputFrames = sof.get()
+        self.inputFrames, self.supplementaryInput = sof.get()
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_disp_solution - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
