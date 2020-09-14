@@ -36,12 +36,12 @@ soxs-disp-solution:
     poly_fitting_residual_clipping_sigma: 5
 
 soxs-order-centre:
-    order-sample-count: 100
+    order-sample-count: 500
     slice-length: 15
     peak-sigma-limit: 3
-    poly-deg: 3
-    poly-fitting-residual-clipping-sigma: 5
-    clipping-iteration-limit: 5
+    poly-deg: 2
+    poly-fitting-residual-clipping-sigma: 2
+    clipping-iteration-limit: 10
 
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data

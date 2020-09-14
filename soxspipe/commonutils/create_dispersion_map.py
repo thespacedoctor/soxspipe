@@ -446,7 +446,10 @@ class create_dispersion_map(object):
             print(f'{clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
 
         # a = plt.figure(figsize=(40, 15))
-        fig = plt.figure(figsize=(6, 9.5), constrained_layout=True)
+        if arm == "UVB":
+            fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
+        else:
+            fig = plt.figure(figsize=(6, 11), constrained_layout=True)
         gs = fig.add_gridspec(6, 4)
 
         # CREATE THE GID OF AXES
@@ -463,8 +466,11 @@ class create_dispersion_map(object):
         x = np.ones(observed_x.shape) * \
             self.pinholeFrame.data.shape[1] - observed_x
         toprow.scatter(observed_y, x, marker='x', c='red', s=4)
-        toprow.set_yticklabels([])
-        toprow.set_xticklabels([])
+        # toprow.set_yticklabels([])
+        # toprow.set_xticklabels([])
+        toprow.set_ylabel("x-axis", fontsize=8)
+        toprow.set_xlabel("y-axis", fontsize=8)
+        toprow.tick_params(axis='both', which='major', labelsize=9)
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         midrow.set_title(
@@ -472,18 +478,23 @@ class create_dispersion_map(object):
         xfit = np.ones(len(xfit)) * \
             self.pinholeFrame.data.shape[1] - xfit
         midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
-        midrow.set_yticklabels([])
-        midrow.set_xticklabels([])
+        # midrow.set_yticklabels([])
+        # midrow.set_xticklabels([])
+        midrow.set_ylabel("x-axis", fontsize=8)
+        midrow.set_xlabel("y-axis", fontsize=8)
+        midrow.tick_params(axis='both', which='major', labelsize=9)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         bottomleft.scatter(residuals_x, residuals_y, alpha=0.4)
         bottomleft.set_xlabel('x residual')
         bottomleft.set_ylabel('y residual')
+        bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
         hist(residuals, bins='scott', ax=bottomright, histtype='stepfilled',
              alpha=0.7, density=True)
         bottomright.set_xlabel('xy residual')
+        bottomright.tick_params(axis='both', which='major', labelsize=9)
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
 

@@ -22,6 +22,7 @@ from astropy.nddata import CCDData
 from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils import detect_continuum
 
 
 class soxs_order_centres(_base_recipe_):
@@ -34,14 +35,22 @@ class soxs_order_centres(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
 
-    See `produce_product` method for usage.
+    **Usage**
+
+    ```python
+    from soxspipe.recipes import soxs_order_centres
+    order_table = soxs_order_centres(
+        log=log,
+        settings=settings,
+        inputFrames=a["inputFrames"]
+    ).produce_product()
+    ```
+
+    ---
 
     ```eval_rst
     .. todo::
 
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
         - add a tutorial about ``soxs_order_centres`` to documentation
     ```
     """
@@ -71,7 +80,7 @@ class soxs_order_centres(_base_recipe_):
             settings=self.settings,
             inputFrames=self.inputFrames
         )
-        self.inputFrames = sof.get()
+        self.inputFrames, self.supplementaryInput = sof.get()
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_order_centres - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
@@ -139,6 +148,12 @@ class soxs_order_centres(_base_recipe_):
                     raise TypeError(
                         "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
+        # LOOK FOR DISP MAP
+        arm = self.arm
+        if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
+            raise TypeError(
+                "Need a first guess dispersion map for %(arm)s - none found with the input files" % locals())
+
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
@@ -149,18 +164,6 @@ class soxs_order_centres(_base_recipe_):
 
         **Return:**
             - ``productPath`` -- the path to the final product
-
-        **Usage**
-
-        ```python
-        from soxspipe.recipes import soxs_order_centres
-        recipe = soxs_order_centres(
-            log=log,
-            settings=settings,
-            inputFrames=fileList
-        )
-        order_centresFrame = recipe.produce_product()
-        ```
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -218,6 +221,15 @@ class soxs_order_centres(_base_recipe_):
             filePath = f"{outDir}/order_definition_{arm}_calibrated.fits"
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
             self._write(self.orderFrame, filePath, overwrite=True)
+
+        # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+        detector = detect_continuum(
+            log=self.log,
+            pinholeFlat=self.orderFrame,
+            dispersion_map=self.supplementaryInput[arm]["DISP_MAP"],
+            settings=self.settings
+        )
+        productPath = detector.get()
 
         self.clean_up()
 

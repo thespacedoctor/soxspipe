@@ -72,7 +72,7 @@ class test_set_of_files(unittest.TestCase):
             settings=settings,
             inputFrames=directory
         )
-        sofFile = sof.get()
+        sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
 
     def test_sof_to_collection_from_sof_file_function(self):
@@ -87,7 +87,7 @@ class test_set_of_files(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
-        sofFile = sof.get()
+        sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
 
     def test_sof_to_collection_from_list_of_fits_files_function(self):
@@ -110,7 +110,7 @@ class test_set_of_files(unittest.TestCase):
             settings=settings,
             inputFrames=fileList
         )
-        sofFile = sof.get()
+        sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
 
     def test_validate_sof_frames_function(self):

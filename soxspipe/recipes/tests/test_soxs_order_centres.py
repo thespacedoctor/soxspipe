@@ -16,7 +16,7 @@ settingsFile = packageDirectory + "/test_settings.yaml"
 su = tools(
     arguments={"settingsFile": settingsFile},
     docString=__doc__,
-    logLevel="DEBUG",
+    logLevel="WARNING",
     options_first=False,
     projectName=None,
     defaultSettingsFile=False
@@ -47,6 +47,7 @@ class test_soxs_order_centres(unittest.TestCase):
 
     def test_soxs_order_centres_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-orderpos/sof/order_centre_nir.sof"
+        # sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-orderpos/nir"
         from soxspipe.recipes import soxs_order_centres
         this = soxs_order_centres(
             log=log,
@@ -75,17 +76,6 @@ class test_soxs_order_centres(unittest.TestCase):
             inputFrames=sofPath
         )
         this.produce_product()
-
-    # def test_soxs_order_centres_function(self):
-
-    #     # utKit.refresh_database() # reset database to database found in
-    #     # soxspipe/test/input
-    #     from soxspipe.recipes import soxs_order_centres
-    #     this = soxs_order_centres(
-    #         log=log,
-    #         settings=settings
-    #     )
-    #     this.get()
 
     def test_soxs_order_centres_function_exception(self):
 

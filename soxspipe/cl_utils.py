@@ -161,12 +161,12 @@ def main(arguments=None):
 
     if a["order_centres"]:
         from soxspipe.recipes import soxs_order_centres
-        soxs_order_centres(
+        order_table = soxs_order_centres(
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"]
         ).produce_product()
-        print(f"\nADD PRODUCT OUTPUT INFO")
+        print(f"\nThe order centre locations have been saved to an order table: {order_table}")
 
     # CALL FUNCTIONS/OBJECTS
 
