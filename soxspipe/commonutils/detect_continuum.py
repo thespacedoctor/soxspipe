@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-*find and fit the continuum in a pinhole flat frame with low-order polynomials. These polynominals are the central loctions of the orders.*
+*find and fit the continuum in a pinhole flat frame with low-order polynomials. These polynominals are the central loctions of the orders*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     September 10, 2020
@@ -30,11 +30,13 @@ from random import random
 from scipy.optimize import curve_fit
 from astropy.stats import sigma_clip, mad_std
 from astropy.visualization import hist
+import collections
+from fundamentals.renderer import list_of_dictionaries
 
 
 class detect_continuum(object):
     """
-    *The worker class for the detect_continuum module*
+    *find and fit the continuum in a pinhole flat frame with low-order polynomials. These polynominals are the central loctions of the orders*
 
     **Key Arguments:**
         - ``log`` -- logger
@@ -44,28 +46,20 @@ class detect_continuum(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
-
-    To initiate a detect_continuum object, use the following:
-
-    ```eval_rst
-    .. todo::
-
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``detect_continuum`` to documentation
-        - create a blog post about what ``detect_continuum`` does
-    ```
+    To use the ``detect_continuum`` object, use the following:
 
     ```python
-    usage code
+    from soxspipe.commonutils import detect_continuum
+    detector = detect_continuum(
+        log=log,
+        pinholeFlat=pinholeFlat,
+        dispersion_map=dispersion_map,
+        settings=settings
+    )
+    order_table_path = detector.get()
     ```
 
     """
-    # Initialisation
-    # 1. @flagged: what are the unique attrributes for each object? Add them
-    # to __init__
 
     def __init__(
             self,
@@ -94,43 +88,42 @@ class detect_continuum(object):
             settings=settings
         ).get(self.arm)
 
+        # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
+        self.polyDeg = self.settings[
+            "soxs-order-centre"]["poly-deg"]
+
         return None
 
     def get(self):
         """
-        *get the detect_continuum object*
+        *return the order centre table filepath*
 
         **Return:**
-            - ``detect_continuum``
-
-        **Usage:**
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - create cl-util for this method
-            - update the package tutorial if needed
-        ```
-
-        ```python
-        usage code
-        ```
+            - ``order_table_path`` -- file path to the order centre table giving polynomial coeffs to each order fit
         """
         self.log.debug('starting the ``get`` method')
 
+        arm = self.arm
+
+        # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax = self.read_spectral_format()
+
+        # CONVERT WAVELENGTH TO PIXEL POSTIONS AND RETURN ARRAY OF POSITIONS TO
+        # SAMPLE THE TRACES
         pixelArrays = self.create_pixel_arrays(
             orderNums,
             waveLengthMin,
             waveLengthMax)
 
+        # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
         sliceLength = self.settings[
             "soxs-order-centre"]["slice-length"]
         peakSigmaLimit = self.settings[
             "soxs-order-centre"]["peak-sigma-limit"]
 
+        # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
+        # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
+        guassianPixelArrays = {}
         for order, xy_array in pixelArrays.items():
             found_xy_array = []
             for xy in xy_array:
@@ -138,14 +131,45 @@ class detect_continuum(object):
                     xy, sliceLength, peakSigmaLimit)
                 if found_xy:
                     found_xy_array.append(found_xy)
+            guassianPixelArrays[order] = found_xy_array
 
             percent = 100 * len(found_xy_array) / len(xy_array)
             print(f"{len(found_xy_array)} out of {len(xy_array)} found ({percent:3.0f}%)")
 
-        detect_continuum = None
+        orderLoctions = {}
+        allResiduals = []
+        allXfit = []
+        allXcoords = []
+        allYcoords = []
+        for order, pixelArray in guassianPixelArrays.items():
+            # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
+            coeff, residuals, xfit, xcoords, ycoords = self.fit_polynomial(
+                pixelArray=pixelArray
+            )
+            allResiduals.extend(residuals)
+            allXfit.extend(xfit)
+            allXcoords.extend(xcoords)
+            allYcoords.extend(ycoords)
+            orderLoctions[order] = coeff
+
+        self.plot_results(
+            allResiduals=allResiduals,
+            allXfit=allXfit,
+            allXcoords=allXcoords,
+            allYcoords=allYcoords,
+            orderLoctions=orderLoctions
+        )
+
+        mean_res = np.mean(np.abs(allResiduals))
+        std_res = np.std(np.abs(allResiduals))
+
+        print(f'\nThe order centre polynomial fitted against the observed 1D gaussian peak positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixles)')
+
+        # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
+        order_table_path = self.write_order_table_to_file(orderLoctions)
 
         self.log.debug('completed the ``get`` method')
-        return detect_continuum
+        return order_table_path
 
     def read_spectral_format(
             self):
@@ -175,8 +199,8 @@ class detect_continuum(object):
 
         # EXTRACT REQUIRED PARAMETERS
         orderNums = spectralFormat["ORDER"]
-        waveLengthMin = spectralFormat["WLMIN"]
-        waveLengthMax = spectralFormat["WLMAX"]
+        waveLengthMin = spectralFormat["WLMINFUL"]
+        waveLengthMax = spectralFormat["WLMAXFUL"]
 
         self.log.debug('completed the ``read_spectral_format`` method')
         return orderNums, waveLengthMin, waveLengthMax
@@ -240,20 +264,11 @@ class detect_continuum(object):
         # for o, w, x, y in zip(orderArray, wavelengthArray, xcoords, ycoords):
         #     print(o, w, x, y)
 
+        xcoords, ycoords, orderArray = zip(
+            *[(x, y, o) for x, y, o in zip(xcoords, ycoords, orderArray) if (x > 0 and y > 0)])
+
         for o, x, y in zip(orderArray, xcoords, ycoords):
             pixelArrays[f"o{o:0.0f}"].append((x, y))
-
-        for order, pixelArray in pixelArrays.items():
-            pass
-
-        polyDeg = self.settings[
-            "soxs-order-centre"]["poly-deg"]
-
-        # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        coeff = self.fit_polynomial(
-            pixelArray=pixelArray,
-            deg=polyDeg
-        )
 
         self.log.debug('completed the ``create_pixel_arrays`` method')
         return pixelArrays
@@ -280,8 +295,11 @@ class detect_continuum(object):
         x_fit = xy[0]
         y_fit = xy[1]
 
-        slice = self.pinholeFlat.data[int(y_fit), max(
-            0, int(x_fit - halfSlice)):min(2048, int(x_fit + halfSlice))]
+        try:
+            slice = self.pinholeFlat.data[int(y_fit), max(
+                0, int(x_fit - halfSlice)):min(2048, int(x_fit + halfSlice))]
+        except:
+            return None
 
         # CHECK THE SLICE POINTS IF NEEDED
         if 1 == 0:
@@ -339,23 +357,27 @@ class detect_continuum(object):
 
     def fit_polynomial(
             self,
-            pixelArray,
-            deg):
+            pixelArray):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
             - ``pixelArray`` -- the array of x,y pixels of measured 1D guassian peak positions
-            - ``deg`` -- the degree of the polynomial to fit the order centre trace
 
         **Return:**
             - ``coeffs`` -- the coefficients of the polynomial fit
+            - ``residuals`` -- the residuals of the fit compared to original guassian peak positions
+            - ``xfit`` -- the polynomial fits x-positions
+            - ``xcoords`` -- the clean guassian peak x-coordinate list (post-clipping)
+            - ``ycoords`` -- the clean guassian peak x-coordinate list (post-clipping)
         """
         self.log.debug('starting the ``fit_polynomial`` method')
+
+        arm = self.arm
 
         clippedCount = 1
 
         poly = chebyshev_xy_polynomial(
-            log=self.log, deg=deg).poly
+            log=self.log, deg=self.polyDeg).poly
 
         clippingSigma = self.settings[
             "soxs-order-centre"]["poly-fitting-residual-clipping-sigma"]
@@ -370,15 +392,14 @@ class detect_continuum(object):
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((deg + 1))
+            coeff = np.ones((self.polyDeg + 1))
             coeff, pcov_x = curve_fit(
                 poly, xdata=ycoords, ydata=xcoords, p0=coeff)
 
-            residuals, mean_res, std_res, median_res = self.calculate_residuals(
+            residuals, mean_res, std_res, median_res, xfit = self.calculate_residuals(
                 xcoords=xcoords,
                 ycoords=ycoords,
-                coeff=coeff,
-                deg=deg)
+                coeff=coeff)
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
@@ -386,40 +407,26 @@ class detect_continuum(object):
 
             # MASK DATA ARRAYS WITH CLIPPED RESIDUAL MASK
             startCount = len(xcoords)
-            a = [xcoords, ycoords]
-            xcoords, ycoords = [np.ma.compressed(np.ma.masked_array(
+            a = [xcoords, ycoords, residuals]
+            xcoords, ycoords, residuals = [np.ma.compressed(np.ma.masked_array(
                 i, masked_residuals.mask)) for i in a]
             clippedCount = startCount - len(xcoords)
             print(f'{clippedCount} pixel positions where clipped in this iteration of fitting an order centre polynomial')
 
-        # PLOT THE RESIDUALS NOW CLIPPING IS COMPLETE
-        residuals, mean_res, std_res, median_res = self.calculate_residuals(
-            xcoords=xcoords,
-            ycoords=ycoords,
-            coeff=coeff,
-            deg=deg,
-            plot=True)
-
-        print(f'\nThe order centre polynomial fitted against the observed 1D gaussian peak positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixles)')
-
         self.log.debug('completed the ``fit_polynomials`` method')
-        return coeff
+        return coeff, residuals, xfit, xcoords, ycoords
 
     def calculate_residuals(
             self,
             xcoords,
             ycoords,
-            coeff,
-            deg,
-            plot=False):
+            coeff):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
             - ``xcoords`` -- the measured x positions of the gaussian peaks
             - ``ycoords`` -- the measurd y positions of the gaussian peaks
             - ``coeff`` -- the coefficients of the fitted polynomial
-            - ``deg`` -- degree of the fitted polynomial
-            - ``plot`` -- write out a plot to file. Default False.
 
         **Return:**
             - ``residuals`` -- x residuals
@@ -432,41 +439,164 @@ class detect_continuum(object):
         arm = self.arm
 
         poly = chebyshev_xy_polynomial(
-            log=self.log, deg=deg).poly
+            log=self.log, deg=self.polyDeg).poly
 
         # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        res_x = np.asarray(poly(
-            ycoords, *coeff)) - np.asarray(xcoords)
+        xfit = poly(
+            ycoords, *coeff)
+        res_x = np.asarray(xfit) - np.asarray(xcoords)
 
         # CALCULATE COMBINED RESIDUALS AND STATS
         res_mean = np.mean(res_x)
         res_std = np.std(res_x)
         res_median = np.median(res_x)
 
-        # IF PLOT IS REQUIRED:
-        if plot:
-            fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-            plt.subplots_adjust(top=0.85)
-
-            hist(res_x, bins='scott', ax=ax[0], histtype='stepfilled',
-                 alpha=0.7, density=True)
-            ax[0].set_xlabel('x residuals')
-            subtitle = f"mean res: {res_mean:2.3f} pix, res stdev: {res_std:2.3f}"
-            fig.suptitle(
-                f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}")
-
-            home = expanduser("~")
-            outDir = self.settings["intermediate-data-root"].replace("~", home)
-            filePath = f"{outDir}/pinhole_flat_{arm}_order_location_residuals.pdf"
-            plt.savefig(filePath)
-
         self.log.debug('completed the ``calculate_residuals`` method')
-        return res_x, res_mean, res_std, res_median
+        return res_x, res_mean, res_std, res_median, xfit
+
+    def plot_results(
+            self,
+            allResiduals,
+            allXfit,
+            allXcoords,
+            allYcoords,
+            orderLoctions):
+        """*generate a plot of the polynomial fits and residuals*
+
+        **Key Arguments:**
+            - ``allResiduals`` -- list of all residuals
+            - ``allXfit`` -- list of all fitted x-positions 
+            - ``allXcoords`` -- cleaned list of all guassian x-pixel positions
+            - ``allYcoords`` -- cleaned list of all guassian y-pixel positions
+            - ``orderLoctions`` -- dictionary of order-location polynomial coeff
+
+        **Return:**
+            - ``filePath`` -- path to the plot pdf
+        """
+        self.log.debug('starting the ``plot_results`` method')
+
+        arm = self.arm
+
+        # a = plt.figure(figsize=(40, 15))
+        if arm == "UVB":
+            fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
+        else:
+            fig = plt.figure(figsize=(6, 11), constrained_layout=True)
+        gs = fig.add_gridspec(6, 4)
+
+        # CREATE THE GID OF AXES
+        toprow = fig.add_subplot(gs[0:2, :])
+        midrow = fig.add_subplot(gs[2:4, :])
+        bottomleft = fig.add_subplot(gs[4:, 0:2])
+        bottomright = fig.add_subplot(gs[4:, 2:])
+
+        # ROTATE THE IMAGE FOR BETTER LAYOUT
+        rotatedImg = np.rot90(self.pinholeFlat.data, 1)
+        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
+        toprow.set_title(
+            "1D guassian peak positions (post-clipping)", fontsize=10)
+        x = np.ones(len(allXcoords)) * \
+            self.pinholeFlat.data.shape[1] - allXcoords
+        toprow.scatter(allYcoords, x, marker='x', c='red', s=4)
+        # toprow.set_yticklabels([])
+        # toprow.set_xticklabels([])
+        toprow.set_ylabel("x-axis", fontsize=8)
+        toprow.set_xlabel("y-axis", fontsize=8)
+        toprow.tick_params(axis='both', which='major', labelsize=9)
+
+        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
+        midrow.set_title(
+            "order-location fit solutions", fontsize=10)
+        ylinelist = np.arange(0, self.pinholeFlat.data.shape[0], 3)
+        poly = chebyshev_xy_polynomial(
+            log=self.log, deg=self.polyDeg).poly
+        for o, coeff in orderLoctions.items():
+            xfit = poly(ylinelist, *coeff)
+            xfit = np.ones(len(xfit)) * \
+                self.pinholeFlat.data.shape[1] - xfit
+            xfit, ylinelist = zip(
+                *[(x, y) for x, y in zip(xfit, ylinelist) if x > 0 and x < (self.pinholeFlat.data.shape[1]) - 10])
+            midrow.plot(ylinelist, xfit)
+
+        # xfit = np.ones(len(xfit)) * \
+        #     self.pinholeFrame.data.shape[1] - xfit
+        # midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
+        # midrow.set_yticklabels([])
+        # midrow.set_xticklabels([])
+        midrow.set_ylabel("x-axis", fontsize=8)
+        midrow.set_xlabel("y-axis", fontsize=8)
+        midrow.tick_params(axis='both', which='major', labelsize=9)
+
+        # PLOT THE FINAL RESULTS:
+        plt.subplots_adjust(top=0.92)
+        bottomleft.scatter(allXcoords, allResiduals, alpha=0.6, s=2)
+        bottomleft.set_xlabel('x pixel position')
+        bottomleft.set_ylabel('x residual')
+        bottomleft.tick_params(axis='both', which='major', labelsize=9)
+
+        # PLOT THE FINAL RESULTS:
+        plt.subplots_adjust(top=0.92)
+        bottomright.scatter(allYcoords, allResiduals, alpha=0.6, s=2)
+        bottomright.set_xlabel('y pixel position')
+        bottomright.tick_params(axis='both', which='major', labelsize=9)
+        # bottomright.set_ylabel('x residual')
+        bottomright.set_yticklabels([])
+
+        mean_res = np.mean(np.abs(allResiduals))
+        std_res = np.std(np.abs(allResiduals))
+
+        subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
+        fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
+
+        # plt.show()
+        home = expanduser("~")
+        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        filePath = f"{outDir}/pinhole_flat_{arm}_order_location_residuals.pdf"
+        plt.savefig(filePath)
+
+        self.log.debug('completed the ``plot_results`` method')
+        return filePath
+
+    def write_order_table_to_file(
+            self,
+            orderLoctions):
+        """*write out the fitted polynomial solution coefficients to file*
+
+        **Key Arguments:**
+            - ``orderLoctions`` -- dictionary of the order coefficients
+
+        **Return:**
+            - ``order_table_path`` -- path to the order table file
+        """
+        self.log.debug('starting the ``write_order_table_to_file`` method')
+
+        arm = self.arm
+
+        # SORT COEFFICIENT OUTPUT TO WRITE TO FILE
+        listOfDictionaries = []
+        for k, v in orderLoctions.items():
+            orderDict = collections.OrderedDict(sorted({}.items()))
+            orderDict["order"] = int(k.replace("o", ""))
+            orderDict["degy"] = self.polyDeg
+            n_coeff = 0
+            for i in range(0, self.polyDeg + 1):
+                orderDict[f'CENT_c{i}'] = v[n_coeff]
+                n_coeff += 1
+            listOfDictionaries.append(orderDict)
+
+        # DETERMINE WHERE TO WRITE THE FILE
+        home = expanduser("~")
+        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        order_table_path = f"{outDir}/order_centre_{arm}_locations.csv"
+        dataSet = list_of_dictionaries(
+            log=self.log,
+            listOfDictionaries=listOfDictionaries
+        )
+        csvData = dataSet.csv(filepath=order_table_path)
+
+        self.log.debug('completed the ``write_order_table_to_file`` method')
+        return order_table_path
 
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
-    # Override Method Attributes
-    # method-override-tmpx
