@@ -21,6 +21,7 @@ commonutils *(module)*
 
         
           ~create_dispersion_map
+          ~detect_continuum
           ~detector_lookup
           ~keyword_lookup
           ~set_of_files

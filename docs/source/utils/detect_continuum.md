@@ -1,8 +1,8 @@
 ## Detect Continuum
 
-The purpose of the `detect_continuum` utility is to find and fit the order centres on a single-pinhole flat-lamp frame with low-level polynomials.
+The purpose of the `detect_continuum` utility is to find and fit the order centres with low-level polynomials.
 
-The utility takes as input a calibrates single pinhole flat-frame which displays the traces of the order centre locations:
+The utility takes as input a calibrated single pinhole flat-frame which displays the traces of the order centre locations:
 
 [![](https://live.staticflickr.com/65535/50318769388_03e2329c2f_z.png)](https://live.staticflickr.com/65535/50318769388_03e2329c2f_o.png)
 
@@ -24,7 +24,7 @@ Where $n$ is the degree of the polynomials. Polynomials are iteratively fitted w
 
 [![](https://live.staticflickr.com/65535/50341080558_27e22d1666_z.png)](https://live.staticflickr.com/65535/50341080558_27e22d1666_o.png)
 
-[![](https://live.staticflickr.com/65535/50341083948_574ff1d452_z.png)](https://live.staticflickr.com/65535/50341083948_574ff1d452_o.png)
+[![](https://live.staticflickr.com/65535/50341953212_dcb050e228_z.png)](https://live.staticflickr.com/65535/50341953212_dcb050e228_o.png)
 
 
 ![](detect_continuum.png)

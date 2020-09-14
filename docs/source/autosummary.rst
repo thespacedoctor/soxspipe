@@ -8,6 +8,7 @@ Modules
 
    soxspipe.commonutils
    soxspipe.recipes 
+   soxspipe.commonutils.polynomials
    soxspipe.docstring_test
    soxspipe.utKit 
 
@@ -20,8 +21,11 @@ Classes
    :nosignatures:
 
    soxspipe.commonutils.create_dispersion_map
+   soxspipe.commonutils.detect_continuum
    soxspipe.commonutils.detector_lookup
    soxspipe.commonutils.keyword_lookup
+   soxspipe.commonutils.polynomials.chebyshev_order_wavelength_polynomials
+   soxspipe.commonutils.polynomials.chebyshev_xy_polynomial
    soxspipe.commonutils.set_of_files
    soxspipe.recipes._base_recipe_
    soxspipe.recipes.soxs_disp_solution

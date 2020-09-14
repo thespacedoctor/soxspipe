@@ -1,9 +1,9 @@
-set_of_files *(class)*
-===========================================
+detect_continuum *(class)*
+===============================================
 
 .. currentmodule:: soxspipe.commonutils
 
-.. autoclass:: set_of_files
+.. autoclass:: detect_continuum
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,11 +19,35 @@ set_of_files *(class)*
         
    
         
-            ~set_of_files.create_supplimentary_file_dictionary
+            ~detect_continuum.calculate_residuals
        
    
         
-            ~set_of_files.get
+            ~detect_continuum.create_pixel_arrays
+       
+   
+        
+            ~detect_continuum.fit_1d_gaussian_to_slice
+       
+   
+        
+            ~detect_continuum.fit_polynomial
+       
+   
+        
+            ~detect_continuum.get
+       
+   
+        
+            ~detect_continuum.plot_results
+       
+   
+        
+            ~detect_continuum.read_spectral_format
+       
+   
+        
+            ~detect_continuum.write_order_table_to_file
        
    
    .. 
@@ -80,8 +104,16 @@ set_of_files *(class)*
    ..     
    .. 
    ..     
-   ..          ~set_of_files._generate_sof_file_from_directory
-   ..      
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

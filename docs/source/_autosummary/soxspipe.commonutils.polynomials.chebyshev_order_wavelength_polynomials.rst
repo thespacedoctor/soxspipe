@@ -1,9 +1,9 @@
-set_of_files *(class)*
-===========================================
+chebyshev_order_wavelength_polynomials *(class)*
+=================================================================================
 
-.. currentmodule:: soxspipe.commonutils
+.. currentmodule:: soxspipe.commonutils.polynomials
 
-.. autoclass:: set_of_files
+.. autoclass:: chebyshev_order_wavelength_polynomials
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,11 +19,7 @@ set_of_files *(class)*
         
    
         
-            ~set_of_files.create_supplimentary_file_dictionary
-       
-   
-        
-            ~set_of_files.get
+            ~chebyshev_order_wavelength_polynomials.poly
        
    
    .. 
@@ -76,12 +72,6 @@ set_of_files *(class)*
    ..     
    .. 
    ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   ..          ~set_of_files._generate_sof_file_from_directory
-   ..      
    .. 
    ..     
    .. 

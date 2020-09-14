@@ -23,10 +23,6 @@ create_dispersion_map *(class)*
        
    
         
-            ~create_dispersion_map.chebyshev_polynomials_single
-       
-   
-        
             ~create_dispersion_map.detect_pinhole_arc_line
        
    
@@ -46,8 +42,6 @@ create_dispersion_map *(class)*
             ~create_dispersion_map.write_map_to_file
        
    
-   .. 
-   ..     
    .. 
    ..     
    .. 
