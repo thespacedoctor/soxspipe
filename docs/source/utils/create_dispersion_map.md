@@ -1,4 +1,4 @@
-## Create Dispersion Map - COMPLETED
+## `create_dispersion_map` - COMPLETED
 
 The [`create_dispersion_map`](../_api/soxspipe.commonutils.create_dispersion_map.html) utility is used to search for arc-lines in the single/multi-pinhole arc-lamp frames and then iteratively fit a global polynomial dispersion solution (and spatial-solution in the case of multi-pinhole frame) with the observed line-positions. It is used by both the [`soxs_disp_solution`](../recipes/soxs_disp_solution.md)) and [`soxs_spatial_solution`](../recipes/soxs_spatial_solution.md)) solution recipes.
 

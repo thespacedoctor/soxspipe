@@ -1,4 +1,4 @@
-# soxs\_order\_centres - COMPLETED
+# `soxs_order_centres` - COMPLETED
 
 The purpose of the [`soxs_order_centres`](../_api/soxspipe.recipes.soxs_order_centres.html) recipe is to find and fit the order centres with low-level polynomials.
 
@@ -10,3 +10,7 @@ Once the single-pinhole flat-lamp frame has had the bias, dark and background su
 
 The product of this recipe is an [order table](../files/order_table.md) containing coefficients to the polynomial fits describing the order centre locations.
 
+Plots similar to the one below are generated after each execution of [`soxs_order_centres`](../_api/soxspipe.recipes.soxs_order_centres.html).
+
+
+[![](https://live.staticflickr.com/65535/50345130012_4e869a6a7f_b.png)](https://live.staticflickr.com/65535/50345130012_4e869a6a7f_o.png)

@@ -1,4 +1,4 @@
-# soxs_mbias - COMPLETED
+# `soxs_mbias` - COMPLETED
 
 A zero-second exposure will contain only read-noise and \~half of pixels within this Gaussian distribution centred around zero count will always contain negative flux. To avoid negative counts an offset *bias* voltage is applied at the amplifier stage so that even when no photons are detected the A/D converter will always register a positive value. This bias-voltage offset must be accounted for in the data reduction process. 
 

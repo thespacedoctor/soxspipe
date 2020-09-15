@@ -530,14 +530,14 @@ class detect_continuum(object):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomleft.scatter(allXcoords, allResiduals, alpha=0.6, s=2)
+        bottomleft.scatter(allXcoords, allResiduals, alpha=0.2, s=1)
         bottomleft.set_xlabel('x pixel position')
         bottomleft.set_ylabel('x residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomright.scatter(allYcoords, allResiduals, alpha=0.6, s=2)
+        bottomright.scatter(allYcoords, allResiduals, alpha=0.2, s=1)
         bottomright.set_xlabel('y pixel position')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         # bottomright.set_ylabel('x residual')
