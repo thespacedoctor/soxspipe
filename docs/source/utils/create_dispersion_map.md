@@ -1,12 +1,12 @@
 ## Create Dispersion Map - COMPLETED
 
-The [create\_dispersion\_map()](../_api/soxspipe.commonutils.create_dispersion_map.html) utility is used to search for arc-lines in the single/multi-pinhole arc-lamp frames and then iteratively fit a global polynomial dispersion solution (and spatial-solution in the case of multi-pinhole frame) with the observed line-positions. It is used by both the [soxs\_disp\_solution](../recipes/soxs_disp_solution.md)) and [soxs\_spatial\_solution](../recipes/soxs_spatial_solution.md)) solution recipes.
+The [`create_dispersion_map`](../_api/soxspipe.commonutils.create_dispersion_map.html) utility is used to search for arc-lines in the single/multi-pinhole arc-lamp frames and then iteratively fit a global polynomial dispersion solution (and spatial-solution in the case of multi-pinhole frame) with the observed line-positions. It is used by both the [`soxs_disp_solution`](../recipes/soxs_disp_solution.md)) and [`soxs_spatial_solution`](../recipes/soxs_spatial_solution.md)) solution recipes.
 
 ![](create_dispersion_map.png)
 
 In the static calibration suite we have [Pinhole Maps](../files/pinhole_map.md) listing the wavelength $\lambda$, order number $n$ and slit position $s$ of the spectral lines alongside a first approximation of their ($X, Y$) pixel-positions on the detector.
 
-If the input frame is a single-pinhole frame, we can filter the Pinhole Map to contain just the central pinhole positions. If however input is the multi-pinhole frame then we use the first guess Dispersion Map (created with [soxs\_disp\_solution](../recipes/soxs_disp_solution.md)) to calculate the shift between the predicted and the observed line positions for the central pinholes. We then update the Pinhole Map by applying the same shift to the other pinholes.
+If the input frame is a single-pinhole frame, we can filter the Pinhole Map to contain just the central pinhole positions. If however input is the multi-pinhole frame then we use the first guess Dispersion Map (created with [`soxs_disp_solution`](../recipes/soxs_disp_solution.md)) to calculate the shift between the predicted and the observed line positions for the central pinholes. We then update the Pinhole Map by applying the same shift to the other pinholes.
 
 For each line in the Pinhole Map line-list:
 

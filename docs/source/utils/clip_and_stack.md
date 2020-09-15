@@ -1,6 +1,6 @@
 ## Clip and Stack - COMPLETED
 
-[clip_and_stack()](../_api/soxspipe.recipes._base_recipe_.html#soxspipe.recipes._base_recipe_._base_recipe_.clip_and_stack) mean combines input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function.
+[`clip_and_stack`](../_api/soxspipe.recipes._base_recipe_.html#soxspipe.recipes._base_recipe_._base_recipe_.clip_and_stack) mean combines input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function.
 
 Before combining the frames we want to 'clip' any outlying pixel values found in the individual frames that are to be stacked. We isolate and remove pixels from any averaging calculation (mean or median) that have a value that strays too far from the 'typical' pixel value.
 

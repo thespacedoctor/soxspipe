@@ -12,6 +12,7 @@
 
    pinhole_map
    detector_parameters
+   spectral_format_table
 ```
 
 ## Intermediate Files
@@ -24,4 +25,5 @@
    master_dark
    prepared_frame
    dispersion_map
+   order_table
 ```

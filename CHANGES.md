@@ -49,7 +49,7 @@
 * **REFACTOR:** moved stacking code to it own `clip_and_stack` method hosted in the `_base_recipe`
 * **REFACTOR:** moved basic input frame verifications to the `_base_recipe` - so not to repeat code
 * **REFACTOR:** removed python 2.7 support - not feasible with CCDProc
-* **DOCS:** added workflow diagrams to the documentation for many of the methods implemented (`prepare_frames()`, `clip_and_stack()`)
+* **DOCS:** added workflow diagrams to the documentation for many of the methods implemented (`prepare_frames()`, ``clip_and_stack``)
 
 ## v0.2.0 - February 27, 2020
 
