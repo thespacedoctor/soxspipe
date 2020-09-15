@@ -7,4 +7,3 @@ soxspipe.recipes.soxs\_mdark module
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:

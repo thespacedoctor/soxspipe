@@ -7,4 +7,3 @@ soxspipe.cl\_utils module
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:

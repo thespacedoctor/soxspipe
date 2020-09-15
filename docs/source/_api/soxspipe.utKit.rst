@@ -7,4 +7,3 @@ soxspipe.utKit module
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:

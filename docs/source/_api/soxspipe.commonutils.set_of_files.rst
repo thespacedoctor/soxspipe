@@ -7,4 +7,3 @@ soxspipe.commonutils.set\_of\_files module
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:

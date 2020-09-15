@@ -7,4 +7,3 @@ soxspipe.recipes.soxs\_mbias module
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:

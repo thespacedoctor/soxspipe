@@ -7,4 +7,3 @@ soxspipe.recipes.\_base\_recipe\_ module
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:

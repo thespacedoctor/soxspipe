@@ -7,16 +7,16 @@ soxspipe.commonutils package
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:
 
 Submodules
 ----------
 
 .. toctree::
-   :maxdepth: 4
 
    soxspipe.commonutils.create_dispersion_map
+   soxspipe.commonutils.detect_continuum
    soxspipe.commonutils.detector_lookup
    soxspipe.commonutils.getpackagepath
    soxspipe.commonutils.keyword_lookup
+   soxspipe.commonutils.polynomials
    soxspipe.commonutils.set_of_files

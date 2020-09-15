@@ -7,4 +7,3 @@ soxspipe.commonutils.create\_dispersion\_map module
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:

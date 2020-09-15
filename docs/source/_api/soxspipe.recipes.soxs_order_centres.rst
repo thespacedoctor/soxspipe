@@ -1,7 +1,7 @@
-soxspipe.commonutils.detector\_lookup module
+soxspipe.recipes.soxs\_order\_centres module
 ============================================
 
-.. automodule:: soxspipe.commonutils.detector_lookup
+.. automodule:: soxspipe.recipes.soxs_order_centres
    :members:
    :undoc-members:
    :show-inheritance:

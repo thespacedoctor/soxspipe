@@ -7,4 +7,3 @@ soxspipe.commonutils.keyword\_lookup module
    :show-inheritance:
    :inherited-members:
    :member-order:
-   :private-members:
