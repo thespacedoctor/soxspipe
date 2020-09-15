@@ -31,8 +31,8 @@ soxs-mdark:
 
 soxs-disp-solution:
     pixel-window-size: 10
-    order_deg: 3
-    wavelength_deg: 3
+    order-deg: 3
+    wavelength-deg: 3
     poly_fitting_residual_clipping_sigma: 5
 
 soxs-order-centre:
