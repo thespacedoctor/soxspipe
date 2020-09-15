@@ -33,7 +33,7 @@ soxs-disp-solution:
     pixel-window-size: 10
     order-deg: 3
     wavelength-deg: 3
-    poly_fitting_residual_clipping_sigma: 5
+    poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
     order-sample-count: 500
