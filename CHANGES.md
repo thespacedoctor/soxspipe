@@ -1,9 +1,11 @@
 # Release Notes
 
-* added a supplementary file list for non-fits input files in set-of-file util
-* adding more information residual plots & visualisation of fitting for disp solution
+## v0.4.1 - September 15, 2020
+
 * **FEATURE:** add command-line util for soxs order_centres recipe
 * **FEATURE** added the `detect_continuum` utility to fit order centre locations in single pinhole flat frames.
+* **ENHANCEMENT:** added a supplementary file list for non-fits input files in set-of-file util
+* **ENHANCEMENT:** adding more information residual plots & visualisation of fitting for disp solution
 * **ENHANCEMENT:** check that files in the sof files exist before proceeding.
 * **ENHANCEMENT:** added spectral format table lookup to detector settings file
 * **REFACTOR:** moved chebyshev order/wavelength polynomials into its own class - decoupled from create_dispersion_map class
