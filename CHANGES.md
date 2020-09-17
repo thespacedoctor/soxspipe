@@ -1,5 +1,8 @@
 # Release Notes
 
+y limits now added to the order table to show limits of order locations on detector
+* **ENHANCEMENT:** added a fraction of a second tolerance when matching exptimes between darks and science/calibration frames 
+
 ## v0.4.1 - September 15, 2020
 
 * **FEATURE:** add command-line util for soxs order_centres recipe

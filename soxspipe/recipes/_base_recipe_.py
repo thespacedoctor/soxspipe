@@ -625,6 +625,11 @@ class _base_recipe_(object):
         kw = self.kw
         dp = self.detectorParams
 
+        if master_bias == None:
+            master_bias = False
+        if dark == None:
+            dark = False
+
         # VERIFY DATA IS IN ORDER
         if master_bias == False and dark == False:
             raise TypeError(
@@ -637,7 +642,8 @@ class _base_recipe_(object):
                 "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME")
 
         # DARK WITH MATCHING EXPOSURE TIME
-        if dark != False and dark.header[kw("EXPTIME")] == inputFrame.header[kw("EXPTIME")]:
+        tolerence = 0.5
+        if dark != False and (int(dark.header[kw("EXPTIME")]) < int(inputFrame.header[kw("EXPTIME")]) + tolerence) and (int(dark.header[kw("EXPTIME")]) > int(inputFrame.header[kw("EXPTIME")]) - tolerence):
             calibration_subtracted_frame = inputFrame.subtract(dark)
             calibration_subtracted_frame.header = inputFrame.header
             try:
