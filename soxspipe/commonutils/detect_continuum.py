@@ -141,6 +141,7 @@ class detect_continuum(object):
         allXfit = []
         allXcoords = []
         allYcoords = []
+        ylims = []
         for order, pixelArray in guassianPixelArrays.items():
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
             coeff, residuals, xfit, xcoords, ycoords = self.fit_polynomial(
@@ -151,6 +152,7 @@ class detect_continuum(object):
             allXcoords.extend(xcoords)
             allYcoords.extend(ycoords)
             orderLoctions[order] = coeff
+            ylims.append((int(min(ycoords)), int(max(ycoords))))
 
         self.plot_results(
             allResiduals=allResiduals,
@@ -166,7 +168,7 @@ class detect_continuum(object):
         print(f'\nThe order centre polynomial fitted against the observed 1D gaussian peak positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixles)')
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
-        order_table_path = self.write_order_table_to_file(orderLoctions)
+        order_table_path = self.write_order_table_to_file(orderLoctions, ylims)
 
         self.log.debug('completed the ``get`` method')
         return order_table_path
@@ -466,7 +468,7 @@ class detect_continuum(object):
 
         **Key Arguments:**
             - ``allResiduals`` -- list of all residuals
-            - ``allXfit`` -- list of all fitted x-positions 
+            - ``allXfit`` -- list of all fitted x-positions
             - ``allXcoords`` -- cleaned list of all guassian x-pixel positions
             - ``allYcoords`` -- cleaned list of all guassian y-pixel positions
             - ``orderLoctions`` -- dictionary of order-location polynomial coeff
@@ -560,11 +562,13 @@ class detect_continuum(object):
 
     def write_order_table_to_file(
             self,
-            orderLoctions):
+            orderLoctions,
+            ylims):
         """*write out the fitted polynomial solution coefficients to file*
 
         **Key Arguments:**
             - ``orderLoctions`` -- dictionary of the order coefficients
+            - ``ylims`` -- the y-min, y-max limits of the order
 
         **Return:**
             - ``order_table_path`` -- path to the order table file
@@ -575,6 +579,7 @@ class detect_continuum(object):
 
         # SORT COEFFICIENT OUTPUT TO WRITE TO FILE
         listOfDictionaries = []
+        oo = 0
         for k, v in orderLoctions.items():
             orderDict = collections.OrderedDict(sorted({}.items()))
             orderDict["order"] = int(k.replace("o", ""))
@@ -583,7 +588,10 @@ class detect_continuum(object):
             for i in range(0, self.polyDeg + 1):
                 orderDict[f'CENT_c{i}'] = v[n_coeff]
                 n_coeff += 1
+            orderDict["ymin"] = ylims[oo][0]
+            orderDict["ymax"] = ylims[oo][1]
             listOfDictionaries.append(orderDict)
+            oo += 1
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
