@@ -9,7 +9,6 @@
 :Date Created:
     January 22, 2020
 """
-################# GLOBAL IMPORTS ####################
 from builtins import object
 import sys
 import os

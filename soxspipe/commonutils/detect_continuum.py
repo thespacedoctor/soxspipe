@@ -32,6 +32,7 @@ from astropy.stats import sigma_clip, mad_std
 from astropy.visualization import hist
 import collections
 from fundamentals.renderer import list_of_dictionaries
+from soxspipe.commonutils.toolkit import cut_image_slice
 
 
 class detect_continuum(object):
@@ -297,20 +298,10 @@ class detect_continuum(object):
         x_fit = xy[0]
         y_fit = xy[1]
 
-        try:
-            slice = self.pinholeFlat.data[int(y_fit), max(
-                0, int(x_fit - halfSlice)):min(2048, int(x_fit + halfSlice))]
-        except:
+        slice = cut_image_slice(log=self.log, frame=self.pinholeFlat.data,
+                                width=1, length=sliceLength, x=x_fit, y=y_fit, plot=False)
+        if slice is None:
             return None
-
-        # CHECK THE SLICE POINTS IF NEEDED
-        if 1 == 0:
-            x = np.arange(0, len(slice))
-            plt.figure(figsize=(8, 5))
-            plt.plot(x, slice, 'ko')
-            plt.xlabel('Position')
-            plt.ylabel('Flux')
-            plt.show()
 
         # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
         # CONTAINING JUST NOISE

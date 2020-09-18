@@ -22,9 +22,9 @@ from astropy.nddata import CCDData
 import ccdproc
 from soxspipe.commonutils import keyword_lookup
 import matplotlib.pyplot as plt
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
-import unicodecsv as csv
+from soxspipe.commonutils.toolkit import unpack_order_table
 import numpy.ma as ma
+from soxspipe.commonutils.toolkit import quicklook_image
 
 
 class soxs_mflat(_base_recipe_):
@@ -183,29 +183,15 @@ class soxs_mflat(_base_recipe_):
         combined_normalised_flat = self.clip_and_stack(
             frames=normalisedFlats, recipe="soxs_mflat")
 
-        if 1 == 1:
-            frame = combined_normalised_flat
-            rotatedImg = np.rot90(frame, 1)
-            std = np.std(frame.data)
-            mean = np.mean(frame.data)
-            vmax = mean + 3 * std
-            vmin = mean - 3 * std
-            plt.figure(figsize=(12, 5))
-            plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
-                       cmap='gray', alpha=1, aspect='auto')
-            plt.colorbar()
-            plt.xlabel(
-                "y-axis", fontsize=10)
-            plt.ylabel(
-                "x-axis", fontsize=10)
-            plt.show()
+        quicklook_image(
+            log=self.log, CCDObject=combined_normalised_flat, show=False)
 
         if 1 == 1:
             from os.path import expanduser
             home = expanduser("~")
             outDir = self.settings["intermediate-data-root"].replace("~", home)
             filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
-            self._write(frame, filePath, overwrite=True)
+            self._write(combined_normalised_flat, filePath, overwrite=True)
 
         self.clean_up()
 
@@ -286,22 +272,8 @@ class soxs_mflat(_base_recipe_):
                 calibratedFlats.append(self.subtract_calibrations(
                     inputFrame=flat, master_bias=bias, dark=dark))
 
-        if 1 == 0:
-            for frame in calibratedFlats:
-                rotatedImg = np.rot90(frame.data, 1)
-                std = np.std(frame.data)
-                mean = np.mean(frame.data)
-                vmax = mean + 3 * std
-                vmin = mean - 3 * std
-                plt.figure(figsize=(12, 5))
-                plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
-                           cmap='gray', alpha=1, aspect='auto')
-                plt.colorbar()
-                plt.xlabel(
-                    "y-axis", fontsize=10)
-                plt.ylabel(
-                    "x-axis", fontsize=10)
-                plt.show()
+        for frame in calibratedFlats:
+            quicklook_image(log=self.log, CCDObject=frame, show=False)
 
         if 1 == 0:
             from os.path import expanduser
@@ -334,50 +306,23 @@ class soxs_mflat(_base_recipe_):
 
         window = int(self.settings[
             "soxs-mflat"]["centre-median-window"] / 2)
-        # OPEN ORDER TABLE AND GENERATE PIXEL ARRAYS FOR CENTRE LOCATIONS
-        orderCentres = []
+
+        # UNPACK THE ORDER TABLE
+
+        orderCentres = unpack_order_table(
+            log=self.log, orderTablePath=orderTablePath)
         mask = np.ones_like(inputFlats[0].data)
-        with open(orderTablePath, 'rb') as csvFile:
-            csvReader = csv.DictReader(
-                csvFile, dialect='excel', delimiter=',', quotechar='"')
-            for row in csvReader:
-                order = int(row["order"])
-                degy = int(row["degy"])
-                ymin = int(row["ymin"])
-                ymax = int(row["ymax"])
-                cent_coeff = [float(v) for k, v in row.items() if "CENT_" in k]
-                ycoords = np.arange(ymin, ymax, 1)
-                poly = chebyshev_xy_polynomial(
-                    log=self.log, deg=degy).poly
-                xcoords = poly(ycoords, *cent_coeff)
-                orderCentres.append((xcoords, ycoords))
-
-                for x, y in zip(xcoords, ycoords):
-                    x = int(x)
-                    mask[y][x - window:x + window] = 0
-
-        csvFile.close()
+        for xcoords, ycoords in orderCentres:
+            for x, y in zip(xcoords, ycoords):
+                x = int(x)
+                mask[y][x - window:x + window] = 0
 
         normalisedFrames = []
 
         # PLOT ONE OF THE MASKED FRAMES TO CHECK
-        if 1 == 0:
-            for frame in [inputFlats[0]]:
-                maskedFrame = ma.array(frame.data, mask=mask)
-                rotatedImg = np.rot90(maskedFrame, 1)
-                std = np.std(frame.data)
-                mean = np.mean(frame.data)
-                vmax = mean + 3 * std
-                vmin = mean - 3 * std
-                plt.figure(figsize=(12, 5))
-                plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
-                           cmap='gray', alpha=1, aspect='auto')
-                plt.colorbar()
-                plt.xlabel(
-                    "y-axis", fontsize=10)
-                plt.ylabel(
-                    "x-axis", fontsize=10)
-                plt.show()
+        for frame in [inputFlats[0]]:
+            maskedFrame = ma.array(frame.data, mask=mask)
+            quicklook_image(log=self.log, CCDObject=maskedFrame, show=False)
 
         for frame in inputFlats:
             maskedFrame = ma.array(frame.data, mask=mask)
@@ -386,22 +331,8 @@ class soxs_mflat(_base_recipe_):
             normalisedFrames.append(normalisedFrame)
 
         # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
-        if 1 == 0:
-            for frame in normalisedFrames:
-                rotatedImg = np.rot90(frame.data, 1)
-                std = np.std(frame.data)
-                mean = np.mean(frame.data)
-                vmax = mean + 3 * std
-                vmin = mean - 3 * std
-                plt.figure(figsize=(12, 5))
-                plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
-                           cmap='gray', alpha=1, aspect='auto')
-                plt.colorbar()
-                plt.xlabel(
-                    "y-axis", fontsize=10)
-                plt.ylabel(
-                    "x-axis", fontsize=10)
-                plt.show()
+        for frame in normalisedFrames:
+            quicklook_image(log=self.log, CCDObject=frame, show=False)
 
         self.log.debug('completed the ``normalise_flats`` method')
         return normalisedFrames
@@ -420,3 +351,7 @@ def nearest_neighbour(singleValue, listOfValues):
     minIndex = np.where(dist == minDist)[0][0]
     matchValue = listOfValues[minIndex]
     return matchValue, minIndex
+
+
+# use the tab-trigger below for new function
+# xt-def-function
