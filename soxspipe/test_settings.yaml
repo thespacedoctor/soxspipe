@@ -44,6 +44,12 @@ soxs-order-centre:
     poly-fitting-residual-clipping-sigma: 3
     clipping-iteration-limit: 10
 
+soxs-mflat:
+    centre-median-window: 20
+    clipping-lower-simga: 5
+    clipping-upper-simga: 5   
+    clipping-iteration-count: 5
+
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data
 calibration-data-root: ~/xshooter-pipeline-data/static_calibrations

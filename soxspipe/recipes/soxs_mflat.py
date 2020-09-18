@@ -22,6 +22,9 @@ from astropy.nddata import CCDData
 import ccdproc
 from soxspipe.commonutils import keyword_lookup
 import matplotlib.pyplot as plt
+from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+import unicodecsv as csv
+import numpy.ma as ma
 
 
 class soxs_mflat(_base_recipe_):
@@ -34,7 +37,19 @@ class soxs_mflat(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
 
-    See `produce_product` method for usage.
+    **Usage**
+
+    ```python
+    from soxspipe.recipes import soxs_mflat
+    recipe = soxs_mflat(
+        log=log,
+        settings=settings,
+        inputFrames=fileList
+    )
+    mflatFrame = recipe.produce_product()
+    ```
+
+    ---
 
     ```eval_rst
     .. todo::
@@ -63,7 +78,6 @@ class soxs_mflat(_base_recipe_):
         self.inputFrames = inputFrames
         # xt-self-arg-tmpx
 
-        # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         sof = set_of_files(
@@ -155,26 +169,43 @@ class soxs_mflat(_base_recipe_):
 
         **Return:**
             - ``productPath`` -- the path to the final product
-
-        **Usage**
-
-        ```python
-        from soxspipe.recipes import soxs_mflat
-        recipe = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=fileList
-        )
-        mflatFrame = recipe.produce_product()
-        ```
         """
         self.log.debug('starting the ``produce_product`` method')
 
         productPath = None
+        arm = self.arm
 
         calibratedFlats = self.calibrate_frame_set()
 
-        normalisedFlats = self.normalise_flats(calibratedFlats)
+        normalisedFlats = self.normalise_flats(
+            calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_CENT"])
+
+        combined_normalised_flat = self.clip_and_stack(
+            frames=normalisedFlats, recipe="soxs_mflat")
+
+        if 1 == 1:
+            frame = combined_normalised_flat
+            rotatedImg = np.rot90(frame, 1)
+            std = np.std(frame.data)
+            mean = np.mean(frame.data)
+            vmax = mean + 3 * std
+            vmin = mean - 3 * std
+            plt.figure(figsize=(12, 5))
+            plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
+                       cmap='gray', alpha=1, aspect='auto')
+            plt.colorbar()
+            plt.xlabel(
+                "y-axis", fontsize=10)
+            plt.ylabel(
+                "x-axis", fontsize=10)
+            plt.show()
+
+        if 1 == 1:
+            from os.path import expanduser
+            home = expanduser("~")
+            outDir = self.settings["intermediate-data-root"].replace("~", home)
+            filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
+            self._write(frame, filePath, overwrite=True)
 
         self.clean_up()
 
@@ -257,7 +288,6 @@ class soxs_mflat(_base_recipe_):
 
         if 1 == 0:
             for frame in calibratedFlats:
-                print(frame.header[kw("MJDOBS").lower()])
                 rotatedImg = np.rot90(frame.data, 1)
                 std = np.std(frame.data)
                 mean = np.mean(frame.data)
@@ -265,13 +295,23 @@ class soxs_mflat(_base_recipe_):
                 vmin = mean - 3 * std
                 plt.figure(figsize=(12, 5))
                 plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
-                           cmap='gray', alpha=1)
+                           cmap='gray', alpha=1, aspect='auto')
                 plt.colorbar()
                 plt.xlabel(
                     "y-axis", fontsize=10)
                 plt.ylabel(
                     "x-axis", fontsize=10)
                 plt.show()
+
+        if 1 == 0:
+            from os.path import expanduser
+            home = expanduser("~")
+            outDir = self.settings["intermediate-data-root"].replace("~", home)
+            index = 1
+            for frame in calibratedFlats:
+                filePath = f"{outDir}/{index:02}_flat_{arm}_calibrated.fits"
+                index += 1
+                self._write(frame, filePath, overwrite=True)
 
         self.log.debug('completed the ``calibrate_frame_set`` method')
         return calibratedFlats
@@ -288,25 +328,80 @@ class soxs_mflat(_base_recipe_):
 
         **Return:**
             - ``normalisedFrames`` -- the normalised flat-field frames (CCDData array)
-
-        **Usage:**
-
-        ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
         ```
         """
         self.log.debug('starting the ``normalise_flats`` method')
+
+        window = int(self.settings[
+            "soxs-mflat"]["centre-median-window"] / 2)
+        # OPEN ORDER TABLE AND GENERATE PIXEL ARRAYS FOR CENTRE LOCATIONS
+        orderCentres = []
+        mask = np.ones_like(inputFlats[0].data)
+        with open(orderTablePath, 'rb') as csvFile:
+            csvReader = csv.DictReader(
+                csvFile, dialect='excel', delimiter=',', quotechar='"')
+            for row in csvReader:
+                order = int(row["order"])
+                degy = int(row["degy"])
+                ymin = int(row["ymin"])
+                ymax = int(row["ymax"])
+                cent_coeff = [float(v) for k, v in row.items() if "CENT_" in k]
+                ycoords = np.arange(ymin, ymax, 1)
+                poly = chebyshev_xy_polynomial(
+                    log=self.log, deg=degy).poly
+                xcoords = poly(ycoords, *cent_coeff)
+                orderCentres.append((xcoords, ycoords))
+
+                for x, y in zip(xcoords, ycoords):
+                    x = int(x)
+                    mask[y][x - window:x + window] = 0
+
+        csvFile.close()
+
+        normalisedFrames = []
+
+        # PLOT ONE OF THE MASKED FRAMES TO CHECK
+        if 1 == 0:
+            for frame in [inputFlats[0]]:
+                maskedFrame = ma.array(frame.data, mask=mask)
+                rotatedImg = np.rot90(maskedFrame, 1)
+                std = np.std(frame.data)
+                mean = np.mean(frame.data)
+                vmax = mean + 3 * std
+                vmin = mean - 3 * std
+                plt.figure(figsize=(12, 5))
+                plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
+                           cmap='gray', alpha=1, aspect='auto')
+                plt.colorbar()
+                plt.xlabel(
+                    "y-axis", fontsize=10)
+                plt.ylabel(
+                    "x-axis", fontsize=10)
+                plt.show()
+
+        for frame in inputFlats:
+            maskedFrame = ma.array(frame.data, mask=mask)
+            median = np.ma.median(maskedFrame)
+            normalisedFrame = frame.divide(median)
+            normalisedFrames.append(normalisedFrame)
+
+        # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
+        if 1 == 0:
+            for frame in normalisedFrames:
+                rotatedImg = np.rot90(frame.data, 1)
+                std = np.std(frame.data)
+                mean = np.mean(frame.data)
+                vmax = mean + 3 * std
+                vmin = mean - 3 * std
+                plt.figure(figsize=(12, 5))
+                plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
+                           cmap='gray', alpha=1, aspect='auto')
+                plt.colorbar()
+                plt.xlabel(
+                    "y-axis", fontsize=10)
+                plt.ylabel(
+                    "x-axis", fontsize=10)
+                plt.show()
 
         self.log.debug('completed the ``normalise_flats`` method')
         return normalisedFrames

@@ -487,7 +487,7 @@ class _base_recipe_(object):
         """*mean combine input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function*
 
         **Key Arguments:**
-            - ``frames`` -- an ImageFileCollection of the framers to stack
+            - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
             - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
 
         **Return:**
@@ -530,8 +530,11 @@ class _base_recipe_(object):
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         # ccds = [c for c in self.inputFrames.ccds()]
-        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS',
-                                                             "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        if not isinstance(frames, list):
+            ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS',
+                                                       "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        else:
+            ccds = frames
 
         # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
         # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL

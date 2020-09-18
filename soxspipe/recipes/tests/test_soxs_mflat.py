@@ -45,6 +45,35 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_mflat(unittest.TestCase):
 
+    def test_soxs_mflat_nir_normalise_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-flats/sof/nir_long_flats.sof"
+        from soxspipe.recipes import soxs_mflat
+        this = soxs_mflat(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+
+        # inputFiles = "/path/to/a/directory"
+        # inputFiles = ['/path/to/one.fits','/path/to/two.fits','/path/to/three.fits']
+        inputFiles = '~/xshooter-pipeline-data/unittest_data/xshooter-flats/nir/calibrated/'
+        from soxspipe.commonutils import set_of_files
+        sof = set_of_files(
+            log=log,
+            settings=settings,
+            inputFrames=inputFiles
+        )
+        sofFile, supplementarySof = sof.get()
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in sofFile.ccds(ccd_kwargs={
+                                        "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        this.normalise_flats(
+            inputFlats=ccds,
+            orderTablePath=supplementarySof["NIR"]["ORDER_CENT"])
+
+        # this.produce_product()
+
     def test_soxs_mflat_nir_long_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-flats/sof/nir_long_flats.sof"
         from soxspipe.recipes import soxs_mflat
