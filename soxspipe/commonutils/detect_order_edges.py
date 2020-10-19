@@ -139,7 +139,7 @@ class detect_order_edges(_base_detect):
             xmaxArray = []
             xminArray = []
             for x, y in zip(xcoords, ycoords):
-                xmax, xmin = self.determine_lower_upper_edge_pixel_positions(
+                xmin, xmax = self.determine_lower_upper_edge_pixel_positions(
                     x, y, minThreshold, maxThreshold, sliceWidth, sliceLength)
                 if xmax == None:
                     continue

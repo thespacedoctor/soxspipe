@@ -134,7 +134,7 @@ def quicklook_image(
         "y-axis", fontsize=10)
     plt.ylabel(
         "x-axis", fontsize=10)
-    plt.invert_yaxis()
+    plt.gca().invert_yaxis()
     plt.show()
 
     log.debug('completed the ``quicklook_image`` function')

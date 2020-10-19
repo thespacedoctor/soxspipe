@@ -9,6 +9,11 @@ from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
 home = expanduser("~")
+from astropy.nddata import CCDData
+from astropy import units as u
+import numpy as np
+import math
+import numpy.ma as ma
 
 packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings.yaml"
@@ -47,38 +52,97 @@ class test_soxs_mflat(unittest.TestCase):
 
     def test_soxs_mflat_nir_normalise_function(self):
 
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-flats/sof/nir_long_flats.sof"
+        from soxspipe.recipes import soxs_mflat
+        this = soxs_mflat(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        # this.produce_product()
+
+        # inputFiles = "/path/to/a/directory"
+        # inputFiles =
+        # ['/path/to/one.fits','/path/to/two.fits','/path/to/three.fits']
+        inputFiles = '~/xshooter-pipeline-data/unittest_data/xshooter-flats/nir/calibrated/'
+        from soxspipe.commonutils import set_of_files
+        sof = set_of_files(
+            log=log,
+            settings=settings,
+            inputFrames=inputFiles
+        )
+        sofFile, supplementarySof = sof.get()
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in sofFile.ccds(ccd_kwargs={
+                                        "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        print(len(ccds))
+
+        combined_normalised_frame = "/Users/Dave/soxspipe-unittests/intermediate/first_iteration_NIR_master_flat.fits"
+        from astropy.nddata import CCDData
+        from astropy import units as u
+        combined_normalised_frame = CCDData.read(combined_normalised_frame, hdu=0, unit=u.electron,
+                                                 hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+        orderTablePath = "/Users/Dave/soxspipe-unittests/intermediate/order_locations_NIR.csv"
         # UNPACK THE ORDER TABLE
         from soxspipe.commonutils.toolkit import unpack_order_table
         orders, orderCentres, orderLimits, orderEdgeLow, orderEdgeUp = unpack_order_table(
-            log=log, orderTablePath="/Users/Dave/soxspipe-unittests/intermediate/order_locations_NIR.csv")
-        print(orders, orderCentres, orderLimits, orderEdgeLow, orderEdgeUp)
+            log=log, orderTablePath=orderTablePath)
 
-        # sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-flats/sof/nir_long_flats.sof"
-        # from soxspipe.recipes import soxs_mflat
-        # this = soxs_mflat(
-        #     log=log,
-        #     settings=settings,
-        #     inputFrames=sofPath
-        # )
-        # this.produce_product()
+        # GENERATE A MASK CONTAINING ORDER LOCATIONS
+        mask = np.ones_like(combined_normalised_frame.data)
+        for lower, upper in zip(orderEdgeLow, orderEdgeUp):
+            for y, xlow, xhigh in zip(lower[1], lower[0], upper[0]):
+                mask[y][math.ceil(xlow):math.floor(xhigh)] = 0
 
-        # # inputFiles = "/path/to/a/directory"
-        # # inputFiles = ['/path/to/one.fits','/path/to/two.fits','/path/to/three.fits']
-        # inputFiles = '~/xshooter-pipeline-data/unittest_data/xshooter-flats/nir/calibrated/'
-        # from soxspipe.commonutils import set_of_files
-        # sof = set_of_files(
-        #     log=log,
-        #     settings=settings,
-        #     inputFrames=inputFiles
-        # )
-        # sofFile, supplementarySof = sof.get()
-        # # LIST OF CCDDATA OBJECTS
-        # ccds = [c for c in sofFile.ccds(ccd_kwargs={
-        #                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        # SUBTRACT NORMALISED FRAME FROM INDIVIDUAL CALIBRATED FRAMES
+        medianNormalisedCCDs = []
+        medianNormalisedCCDs[:] = [ccd.divide(np.ma.median(ma.array(ccd.subtract(
+            combined_normalised_frame).data, mask=mask))) for ccd in ccds]
 
-        # this.normalise_flats(
-        #     inputFlats=ccds,
-        #     orderTablePath=supplementarySof["NIR"]["ORDER_CENT"])
+        exposure_normalised_flat = this.clip_and_stack(
+            frames=medianNormalisedCCDs, recipe="soxs_mflat")
+
+        this._write(exposure_normalised_flat,
+                    "/tmp/mflat.fits", overwrite=True)
+
+        # frame = tmpCcds[0]
+
+        # # PLOT ONE OF THE MASKED FRAMES TO CHECK
+        # from soxspipe.commonutils.toolkit import quicklook_image
+        # for frame in [tmpCcds[0]]:
+        #     maskedFrame = ma.array(frame.data, mask=mask)
+        #     quicklook_image(log=log, CCDObject=maskedFrame, show=True)
+
+        # print(np.ma.median(maskedFrame))
+
+        import matplotlib.pyplot as plt
+        frame = exposure_normalised_flat
+
+        rotatedImg = np.flipud(np.rot90(frame.data, 1))
+        std = np.std(frame.data)
+        mean = np.mean(frame.data)
+        vmax = mean + 3 * std
+        vmin = mean - 3 * std
+        plt.figure(figsize=(12, 5))
+
+        plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
+                   cmap='gray', alpha=1)
+        plt.colorbar()
+        plt.xlabel(
+            "y-axis", fontsize=10)
+        plt.ylabel(
+            "x-axis", fontsize=10)
+
+        for l, u in zip(orderEdgeLow, orderEdgeUp):
+
+            plt.fill_between(l[1], l[0], u[0], alpha=0.4)
+
+        plt.gca().invert_yaxis()
+
+        plt.show()
+
+        # EXPOSURE NORMAALISE FRAMES
 
         # this.produce_product()
 
