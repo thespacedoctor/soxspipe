@@ -459,30 +459,28 @@ class create_dispersion_map(object):
         bottomright = fig.add_subplot(gs[4:, 2:])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = np.rot90(self.pinholeFrame.data, 1)
+        rotatedImg = np.flipud(np.rot90(self.pinholeFrame.data, 1))
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "observed arc-line positions (post-clipping)", fontsize=10)
-        x = np.ones(observed_x.shape) * \
-            self.pinholeFrame.data.shape[1] - observed_x
-        toprow.scatter(observed_y, x, marker='x', c='red', s=4)
+        toprow.scatter(observed_y, observed_x, marker='x', c='red', s=4)
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
         toprow.set_ylabel("x-axis", fontsize=8)
         toprow.set_xlabel("y-axis", fontsize=8)
         toprow.tick_params(axis='both', which='major', labelsize=9)
+        toprow.invert_yaxis()
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         midrow.set_title(
             "global dispersion solution", fontsize=10)
-        xfit = np.ones(len(xfit)) * \
-            self.pinholeFrame.data.shape[1] - xfit
         midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
         # midrow.set_yticklabels([])
         # midrow.set_xticklabels([])
         midrow.set_ylabel("x-axis", fontsize=8)
         midrow.set_xlabel("y-axis", fontsize=8)
         midrow.tick_params(axis='both', which='major', labelsize=9)
+        midrow.invert_yaxis()
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)

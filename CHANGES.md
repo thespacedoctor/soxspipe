@@ -1,5 +1,7 @@
 # Release Notes
 
+* **FEATURE:** added a `detect_order_edges` object
+* **FEATURE:** added image slice tool to toolkit
 * **FEATURE:** added a quicklook function in toolkit to quickly visualise a frame
 * **FEATURE:** added function in toolkit to unpack an order table into lists of coordinates, one list per order.
 * **FEATURE:** added a toolkit module for small functions used throughout soxspipe 

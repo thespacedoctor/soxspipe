@@ -15,5 +15,7 @@ The soxspipe utilities can be viewed as the tool-kit with which the [soxspipe re
    subtract_calibrations
    create_dispersion_map
    create_noise_map
+   detect_continuum
+   detect_order_edges
 ```
 

@@ -8,13 +8,16 @@
         soxspipe init
         soxspipe mbias <inputFrames> [-s <pathToSettingsFile>] 
         soxspipe mdark <inputFrames> [-s <pathToSettingsFile>] 
+        soxspipe mflat <inputFrames> [-s <pathToSettingsFile>] 
         soxspipe disp_sol <inputFrames> [-s <pathToSettingsFile>] 
         soxspipe order_centres <inputFrames> [-s <pathToSettingsFile>] 
+    
     
     Options:
         init                                   setup the soxspipe settings file for the first time
         mbias                                  the master bias recipe
         mdark                                  the master dark recipe
+        mflat                                  the master flat recipe
         disp_sol                               the disp solution recipe
         order_centres                          the order centres recipe
     

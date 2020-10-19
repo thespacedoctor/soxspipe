@@ -309,7 +309,7 @@ class soxs_mflat(_base_recipe_):
 
         # UNPACK THE ORDER TABLE
 
-        orderCentres = unpack_order_table(
+        orders, orderCentres, orderLimits = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
         mask = np.ones_like(inputFlats[0].data)
         for xcoords, ycoords in orderCentres:
@@ -328,6 +328,7 @@ class soxs_mflat(_base_recipe_):
             maskedFrame = ma.array(frame.data, mask=mask)
             median = np.ma.median(maskedFrame)
             normalisedFrame = frame.divide(median)
+            normalisedFrame.header = frame.header
             normalisedFrames.append(normalisedFrame)
 
         # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
