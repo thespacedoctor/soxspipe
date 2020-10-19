@@ -166,6 +166,8 @@ def unpack_order_table(
 
     # OPEN ORDER TABLE AND GENERATE PIXEL ARRAYS FOR CENTRE LOCATIONS
     orderCentres = []
+    orderEdgeUp = []
+    orderEdgeLow = []
     orders = []
     orderLimits = []
 
@@ -186,7 +188,27 @@ def unpack_order_table(
             orders.append(order)
             orderLimits.append((ymin, ymax))
 
+            # ALSO UNPACK EDGES
+            if "degy_edge" in row:
+                degy_edge = int(row["degy_edge"])
+                edgeup_coeff = [float(v)
+                                for k, v in row.items() if "EDGEUP_" in k]
+                poly = chebyshev_xy_polynomial(
+                    log=log, deg=degy_edge).poly
+                xcoords = poly(ycoords, *edgeup_coeff)
+                orderEdgeUp.append((xcoords, ycoords))
+
+                edgelow_coeff = [float(v)
+                                 for k, v in row.items() if "EDGELOW_" in k]
+                poly = chebyshev_xy_polynomial(
+                    log=log, deg=degy_edge).poly
+                xcoords = poly(ycoords, *edgelow_coeff)
+                orderEdgeLow.append((xcoords, ycoords))
+
         csvFile.close()
 
     log.debug('completed the ``functionName`` function')
-    return orders, orderCentres, orderLimits
+    if len(orderEdgeLow):
+        return orders, orderCentres, orderLimits, orderEdgeLow, orderEdgeUp
+    else:
+        return orders, orderCentres, orderLimits

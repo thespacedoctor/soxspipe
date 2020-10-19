@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 from soxspipe.commonutils.toolkit import unpack_order_table
 import numpy.ma as ma
 from soxspipe.commonutils.toolkit import quicklook_image
+from soxspipe.commonutils import detect_order_edges
 
 
 class soxs_mflat(_base_recipe_):
@@ -182,6 +183,14 @@ class soxs_mflat(_base_recipe_):
 
         combined_normalised_flat = self.clip_and_stack(
             frames=normalisedFlats, recipe="soxs_mflat")
+
+        edges = detect_order_edges(
+            log=self.log,
+            flatFrame=combined_normalised_flat,
+            orderCentreTable=self.supplementaryInput[arm]["ORDER_CENT"],
+            settings=self.settings,
+        )
+        edges.get()
 
         quicklook_image(
             log=self.log, CCDObject=combined_normalised_flat, show=False)

@@ -54,7 +54,7 @@ soxs-mflat:
     min-percentage-threshold-for-edge-detection: 18
     max-percentage-threshold-for-edge-detection: 50
     poly-deg: 4
-    poly-fitting-residual-clipping-sigma: 1.5
+    poly-fitting-residual-clipping-sigma: 1.7
     clipping-iteration-limit: 60
 
 
