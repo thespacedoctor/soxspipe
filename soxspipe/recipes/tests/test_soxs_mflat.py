@@ -76,8 +76,6 @@ class test_soxs_mflat(unittest.TestCase):
         ccds = [c for c in sofFile.ccds(ccd_kwargs={
                                         "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        print(len(ccds))
-
         combined_normalised_frame = "/Users/Dave/soxspipe-unittests/intermediate/first_iteration_NIR_master_flat.fits"
         from astropy.nddata import CCDData
         from astropy import units as u
@@ -85,6 +83,7 @@ class test_soxs_mflat(unittest.TestCase):
                                                  hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
         orderTablePath = "/Users/Dave/soxspipe-unittests/intermediate/order_locations_NIR.csv"
         # UNPACK THE ORDER TABLE
+
         from soxspipe.commonutils.toolkit import unpack_order_table
         orders, orderCentres, orderLimits, orderEdgeLow, orderEdgeUp = unpack_order_table(
             log=log, orderTablePath=orderTablePath)
