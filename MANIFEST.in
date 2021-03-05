@@ -6,3 +6,8 @@ include *.rst
 recursive-include soxspipe *
 global-exclude *.pyo
 global-exclude *.pyc
+recursive-exclude tests *
+recursive-exclude */tests *
+recursive-exclude */*/tests *
+recursive-exclude */*/*/tests *
+recursive-exclude tests

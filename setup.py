@@ -19,6 +19,7 @@ install_requires = [
     'docopt',
     'photutils',
     'matplotlib',
+    'numpy',
     'unicodecsv'
 ]
 
