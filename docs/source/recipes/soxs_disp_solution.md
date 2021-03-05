@@ -14,5 +14,4 @@ Once the line positions have been measured, a dispersion solution is generated b
 
 The typical solution for the `soxs_disp_solution` recipe has sub-pixel residuals.
 
-[![](https://live.staticflickr.com/65535/50330665336_accab9eed4_z.png)](https://live.staticflickr.com/65535/50330665336_accab9eed4_o.png)
-
+[![](https://live.staticflickr.com/65535/50636320023_33a47c36d0_z.png)](https://live.staticflickr.com/65535/50636320023_33a47c36d0_o.png)
