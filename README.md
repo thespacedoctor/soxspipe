@@ -15,14 +15,9 @@
 [![](https://readthedocs.org/projects/soxspipe/badge/?version=master)](https://soxspipe.readthedocs.io/en/master/)  
 [![](https://img.shields.io/github/issues/thespacedoctor/soxspipe/type:%20bug?label=bug%20issues)](https://github.com/thespacedoctor/soxspipe/issues?q=is%3Aissue+is%3Aopen+label%3A%22type%3A+bug%22+)  
 
-
-
-
-
 *The data-reduction pipeline for the SOXS instrument* (a python package with command-line tools).
 
-Documentation for soxspipe is hosted by [Read the Docs](https://soxspipe.readthedocs.io/en/master/) (
-[development version](https://soxspipe.readthedocs.io/en/develop/) and [master version](https://soxspipe.readthedocs.io/en/master/)). The code lives on [github](https://github.com/thespacedoctor/soxspipe). Please report any issues you find [here](https://github.com/thespacedoctor/soxspipe/issues).
+Documentation for soxspipe is hosted by [Read the Docs](https://soxspipe.readthedocs.io/en/master/) ([development version](https://soxspipe.readthedocs.io/en/develop/) and [master version](https://soxspipe.readthedocs.io/en/master/)). The code lives on [github](https://github.com/thespacedoctor/soxspipe). Please report any issues you find [here](https://github.com/thespacedoctor/soxspipe/issues).
 
 
 ## Features

@@ -18,7 +18,9 @@ install_requires = [
     'ccdproc',
     'docopt',
     'photutils',
-    'matplotlib'
+    'matplotlib',
+    'numpy',
+    'unicodecsv'
 ]
 
 # READ THE DOCS SERVERS
