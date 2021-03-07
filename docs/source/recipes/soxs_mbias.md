@@ -8,6 +8,20 @@ The master-bias frame can be subtracted from science/calibration frames to remov
 
 ![](soxs_mbias.png)
 
+## Required Input
+
+| Input           | Description               | Origin Recipe |
+| --------------- | ------------------------- | ------------- |
+| raw bias frames | UV-VIS/AC Raw Bias Frames |               |
+
+## Recipe Parameters
+
+| Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
+| ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
+| clipping-lower-simga     | number of σ below which a pixel is clipped    | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
+| clipping-upper-simga     | number of σ above which a pixel is clipped    | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
+| clipping-iteration-count | number of sigma-clipping iteration to perform | int   | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
+
 ```eval_rst
 .. autoclass:: soxspipe.recipes.soxs_mbias
     :members:
