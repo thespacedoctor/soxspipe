@@ -4,6 +4,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=emulateIE7" />
     <title>Coverage for soxspipe/recipes/soxs_order_centres.py: 91%</title>
+    <link rel="icon" sizes="32x32" href="favicon_32.png">
     <link rel="stylesheet" href="style.css" type="text/css">
     <script type="text/javascript" src="jquery.min.js"></script>
     <script type="text/javascript" src="jquery.hotkeys.js"></script>
@@ -21,8 +22,8 @@
         </h1>
         <img id="keyboard_icon" src="keybd_closed.png" alt="Show keyboard shortcuts" />
         <h2 class="stats">
-            97 statements &nbsp;
-            <button type="button" class="run shortkey_r button_toggle_run" title="Toggle lines run">88 run</button>
+            96 statements &nbsp;
+            <button type="button" class="run shortkey_r button_toggle_run" title="Toggle lines run">87 run</button>
             <button type="button" class="mis show_mis shortkey_m button_toggle_mis" title="Toggle lines missing">9 missing</button>
             <button type="button" class="exc show_exc shortkey_x button_toggle_exc" title="Toggle lines excluded">0 excluded</button>
         </h2>
@@ -270,10 +271,10 @@
     <p id="t217" class="pln"><span class="n"><a href="#t217">217</a></span><span class="t">            <span class="nam">inputFrame</span><span class="op">=</span><span class="nam">orderDef_image</span><span class="op">,</span> <span class="nam">master_bias</span><span class="op">=</span><span class="nam">master_bias</span><span class="op">,</span> <span class="nam">dark</span><span class="op">=</span><span class="nam">dark</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p id="t218" class="pln"><span class="n"><a href="#t218">218</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p id="t219" class="run"><span class="n"><a href="#t219">219</a></span><span class="t">        <span class="key">if</span> <span class="nam">self</span><span class="op">.</span><span class="nam">settings</span><span class="op">[</span><span class="str">"save-intermediate-products"</span><span class="op">]</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t220" class="run"><span class="n"><a href="#t220">220</a></span><span class="t">            <span class="nam">outDir</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">intermediateRootPath</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t221" class="run"><span class="n"><a href="#t221">221</a></span><span class="t">            <span class="nam">filePath</span> <span class="op">=</span> <span class="str">f"{outDir}/order_definition_{arm}_calibrated.fits"</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t222" class="run"><span class="n"><a href="#t222">222</a></span><span class="t">            <span class="nam">print</span><span class="op">(</span><span class="str">f"\nCalibrated single pinhole frame: {filePath}\n"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t223" class="run"><span class="n"><a href="#t223">223</a></span><span class="t">            <span class="nam">self</span><span class="op">.</span><span class="nam">_write</span><span class="op">(</span><span class="nam">self</span><span class="op">.</span><span class="nam">orderFrame</span><span class="op">,</span> <span class="nam">filePath</span><span class="op">,</span> <span class="nam">overwrite</span><span class="op">=</span><span class="key">True</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t220" class="run"><span class="n"><a href="#t220">220</a></span><span class="t">            <span class="nam">fileDir</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">intermediateRootPath</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t221" class="run"><span class="n"><a href="#t221">221</a></span><span class="t">            <span class="nam">filepath</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_write</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t222" class="pln"><span class="n"><a href="#t222">222</a></span><span class="t">                <span class="nam">self</span><span class="op">.</span><span class="nam">orderFrame</span><span class="op">,</span> <span class="nam">fileDir</span><span class="op">,</span> <span class="nam">filename</span><span class="op">=</span><span class="key">False</span><span class="op">,</span> <span class="nam">overwrite</span><span class="op">=</span><span class="key">True</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t223" class="run"><span class="n"><a href="#t223">223</a></span><span class="t">            <span class="nam">print</span><span class="op">(</span><span class="str">f"\nCalibrated single pinhole frame frame saved to {filepath}\n"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p id="t224" class="pln"><span class="n"><a href="#t224">224</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p id="t225" class="pln"><span class="n"><a href="#t225">225</a></span><span class="t">        <span class="com"># DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH</span>&nbsp;</span><span class="r"></span></p>
     <p id="t226" class="run"><span class="n"><a href="#t226">226</a></span><span class="t">        <span class="nam">detector</span> <span class="op">=</span> <span class="nam">detect_continuum</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
@@ -298,8 +299,8 @@
 <div id="footer">
     <div class="content">
         <p>
-            <a class="nav" href="index.html">&#xab; index</a> &nbsp; &nbsp; <a class="nav" href="https://coverage.readthedocs.io">coverage.py v5.2.1</a>,
-            created at 2020-09-15 12:35 +0000
+            <a class="nav" href="index.html">&#xab; index</a> &nbsp; &nbsp; <a class="nav" href="https://coverage.readthedocs.io">coverage.py v5.5</a>,
+            created at 2021-03-12 20:36 +0000
         </p>
     </div>
 </div>
