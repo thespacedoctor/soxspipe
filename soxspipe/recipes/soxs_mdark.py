@@ -152,13 +152,13 @@ class soxs_mdark(_base_recipe_):
         combined_bias_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mdark")
 
-        x = int(dp["binning"][1])
-        y = int(dp["binning"][0])
-        productPath = self.intermediateRootPath + \
-            "/master_dark_%(arm)s_%(x)sx%(y)s.fits" % locals()
-
         # WRITE TO DISK
-        self._write(combined_bias_mean, productPath, overwrite=True)
+        productPath = self._write(
+            frame=combined_bias_mean,
+            filedir=self.intermediateRootPath,
+            filename=False,
+            overwrite=True
+        )
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
