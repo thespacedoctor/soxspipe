@@ -217,10 +217,10 @@ class soxs_order_centres(_base_recipe_):
             inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
         if self.settings["save-intermediate-products"]:
-            outDir = self.intermediateRootPath
-            filePath = f"{outDir}/order_definition_{arm}_calibrated.fits"
-            print(f"\nCalibrated single pinhole frame: {filePath}\n")
-            self._write(self.orderFrame, filePath, overwrite=True)
+            fileDir = self.intermediateRootPath
+            filepath = self._write(
+                self.orderFrame, fileDir, filename=False, overwrite=True)
+            print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
         # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
         detector = detect_continuum(

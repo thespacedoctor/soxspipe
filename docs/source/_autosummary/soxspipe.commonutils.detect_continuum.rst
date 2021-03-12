@@ -1,4 +1,4 @@
-detect_continuum *(class)*
+﻿detect_continuum *(class)*
 ===============================================
 
 .. currentmodule:: soxspipe.commonutils

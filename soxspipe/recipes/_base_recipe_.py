@@ -26,6 +26,7 @@ from soxspipe.commonutils import set_of_files
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import detector_lookup
 from datetime import datetime
+from soxspipe.commonutils import filenamer
 import shutil
 
 
@@ -104,9 +105,9 @@ class _base_recipe_(object):
             frame = CCDData.read(frame, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                  hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SOXSPIPE PRE" DOES NOT
+        # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SXSPRE" DOES NOT
         # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
-        if len(frame.to_hdu()) > 1 or "SOXSPIPE PRE" in frame.header:
+        if len(frame.to_hdu()) > 1 or "SXSPRE" in frame.header:
             return filepath
 
         # MANIPULATE XSH DATA
@@ -179,7 +180,7 @@ class _base_recipe_(object):
 
         # INJECT THE PRE KEYWORD
         utcnow = datetime.utcnow()
-        frame.header["SOXSPIPE PRE"] = (utcnow.strftime(
+        frame.header["SXSPRE"] = (utcnow.strftime(
             "%Y-%m-%dT%H:%M:%S.%f"), "UTC timestamp")
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
@@ -194,7 +195,12 @@ class _base_recipe_(object):
             filenameNoExtension + "_pre" + extension
 
         # SAVE TO DISK
-        self._write(frame, filePath)
+        self._write(
+            frame=frame,
+            filedir=outDir,
+            filename=filenameNoExtension + "_pre" + extension,
+            overwrite=True
+        )
 
         self.log.debug('completed the ``_prepare_single_frame`` method')
         return filePath
@@ -452,13 +458,15 @@ class _base_recipe_(object):
     def _write(
             self,
             frame,
-            filepath,
+            filedir,
+            filename=False,
             overwrite=True):
         """*write frame to disk at the specified location*
 
         **Key Arguments:**
             - ``frame`` -- the frame to save to disk (CCDData object)
-            - ``filepath`` -- the location to save the frame
+            - ``filedir`` -- the location to save the frame
+            - ``filename`` -- the filename to save the file as. Default: **False** (standardised filename generated in code)
             - ``overwrite`` -- if a file exists at the filepath then choose to overwrite the file. Default: True
 
         **Usage:**
@@ -471,6 +479,16 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``write`` method')
 
+        if not filename:
+
+            filename = filenamer(
+                log=self.log,
+                frame=frame,
+                settings=self.settings
+            )
+
+        filepath = filedir + "/" + filename
+
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
@@ -478,7 +496,7 @@ class _base_recipe_(object):
                         overwrite=overwrite, checksum=True)
 
         self.log.debug('completed the ``write`` method')
-        return None
+        return filepath
 
     def clip_and_stack(
             self,

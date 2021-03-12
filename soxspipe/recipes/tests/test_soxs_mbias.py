@@ -49,7 +49,6 @@ class test_mbias(unittest.TestCase):
         directory = settings["test-data-root"] + \
             "/xshooter-bias/uvb/1x1/fast_read"
 
-        print(directory)
         from soxspipe.recipes import soxs_mbias
         this = soxs_mbias(
             log=log,
@@ -68,6 +67,8 @@ class test_mbias(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
+        productPath = this.produce_product()
+        print(f"Here is the final product `{productPath}`")
 
     def test_mbias_from_list_of_fits_function(self):
         directory = settings["test-data-root"] + \
@@ -92,6 +93,8 @@ class test_mbias(unittest.TestCase):
             settings=settings,
             inputFrames=fileList
         )
+        productPath = this.produce_product()
+        print(f"Here is the final product `{productPath}`")
 
     def test_produce_product_function(self):
         directory = settings["test-data-root"] + \
@@ -114,7 +117,8 @@ class test_mbias(unittest.TestCase):
             settings=settings,
             inputFrames=fileList
         )
-        this.produce_product()
+        productPath = this.produce_product()
+        print(f"Here is the final product `{productPath}`")
 
     def test_mbias_mixed_image_type_exception(self):
 

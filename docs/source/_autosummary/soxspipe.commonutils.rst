@@ -1,4 +1,4 @@
-commonutils *(module)*
+﻿commonutils *(module)*
 ===============================
 
 
@@ -40,6 +40,7 @@ commonutils *(module)*
     .. autosummary::
 
         
+          ~filenamer
           ~getpackagepath
         
         
