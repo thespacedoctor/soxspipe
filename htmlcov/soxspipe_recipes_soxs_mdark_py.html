@@ -4,6 +4,7 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=emulateIE7" />
     <title>Coverage for soxspipe/recipes/soxs_mdark.py: 92%</title>
+    <link rel="icon" sizes="32x32" href="favicon_32.png">
     <link rel="stylesheet" href="style.css" type="text/css">
     <script type="text/javascript" src="jquery.min.js"></script>
     <script type="text/javascript" src="jquery.hotkeys.js"></script>
@@ -21,8 +22,8 @@
         </h1>
         <img id="keyboard_icon" src="keybd_closed.png" alt="Show keyboard shortcuts" />
         <h2 class="stats">
-            64 statements &nbsp;
-            <button type="button" class="run shortkey_r button_toggle_run" title="Toggle lines run">59 run</button>
+            61 statements &nbsp;
+            <button type="button" class="run shortkey_r button_toggle_run" title="Toggle lines run">56 run</button>
             <button type="button" class="mis show_mis shortkey_m button_toggle_mis" title="Toggle lines missing">5 missing</button>
             <button type="button" class="exc show_exc shortkey_x button_toggle_exc" title="Toggle lines excluded">0 excluded</button>
         </h2>
@@ -205,13 +206,13 @@
     <p id="t152" class="run"><span class="n"><a href="#t152">152</a></span><span class="t">        <span class="nam">combined_bias_mean</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">clip_and_stack</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
     <p id="t153" class="pln"><span class="n"><a href="#t153">153</a></span><span class="t">            <span class="nam">frames</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">inputFrames</span><span class="op">,</span> <span class="nam">recipe</span><span class="op">=</span><span class="str">"soxs_mdark"</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p id="t154" class="pln"><span class="n"><a href="#t154">154</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p id="t155" class="run"><span class="n"><a href="#t155">155</a></span><span class="t">        <span class="nam">x</span> <span class="op">=</span> <span class="nam">int</span><span class="op">(</span><span class="nam">dp</span><span class="op">[</span><span class="str">"binning"</span><span class="op">]</span><span class="op">[</span><span class="num">1</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t156" class="run"><span class="n"><a href="#t156">156</a></span><span class="t">        <span class="nam">y</span> <span class="op">=</span> <span class="nam">int</span><span class="op">(</span><span class="nam">dp</span><span class="op">[</span><span class="str">"binning"</span><span class="op">]</span><span class="op">[</span><span class="num">0</span><span class="op">]</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t157" class="run"><span class="n"><a href="#t157">157</a></span><span class="t">        <span class="nam">productPath</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">intermediateRootPath</span> <span class="op">+</span> <span class="xx">\</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t158" class="pln"><span class="n"><a href="#t158">158</a></span><span class="t">            <span class="str">"/master_dark_%(arm)s_%(x)sx%(y)s.fits"</span> <span class="op">%</span> <span class="nam">locals</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t159" class="pln"><span class="n"><a href="#t159">159</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
-    <p id="t160" class="pln"><span class="n"><a href="#t160">160</a></span><span class="t">        <span class="com"># WRITE TO DISK</span>&nbsp;</span><span class="r"></span></p>
-    <p id="t161" class="run"><span class="n"><a href="#t161">161</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">_write</span><span class="op">(</span><span class="nam">combined_bias_mean</span><span class="op">,</span> <span class="nam">productPath</span><span class="op">,</span> <span class="nam">overwrite</span><span class="op">=</span><span class="key">True</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t155" class="pln"><span class="n"><a href="#t155">155</a></span><span class="t">        <span class="com"># WRITE TO DISK</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t156" class="run"><span class="n"><a href="#t156">156</a></span><span class="t">        <span class="nam">productPath</span> <span class="op">=</span> <span class="nam">self</span><span class="op">.</span><span class="nam">_write</span><span class="op">(</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t157" class="pln"><span class="n"><a href="#t157">157</a></span><span class="t">            <span class="nam">frame</span><span class="op">=</span><span class="nam">combined_bias_mean</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t158" class="pln"><span class="n"><a href="#t158">158</a></span><span class="t">            <span class="nam">filedir</span><span class="op">=</span><span class="nam">self</span><span class="op">.</span><span class="nam">intermediateRootPath</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t159" class="pln"><span class="n"><a href="#t159">159</a></span><span class="t">            <span class="nam">filename</span><span class="op">=</span><span class="key">False</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t160" class="pln"><span class="n"><a href="#t160">160</a></span><span class="t">            <span class="nam">overwrite</span><span class="op">=</span><span class="key">True</span>&nbsp;</span><span class="r"></span></p>
+    <p id="t161" class="pln"><span class="n"><a href="#t161">161</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p id="t162" class="run"><span class="n"><a href="#t162">162</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">clean_up</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p id="t163" class="pln"><span class="n"><a href="#t163">163</a></span><span class="t">&nbsp;</span><span class="r"></span></p>
     <p id="t164" class="run"><span class="n"><a href="#t164">164</a></span><span class="t">        <span class="nam">self</span><span class="op">.</span><span class="nam">log</span><span class="op">.</span><span class="nam">debug</span><span class="op">(</span><span class="str">'completed the ``produce_product`` method'</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -223,8 +224,8 @@
 <div id="footer">
     <div class="content">
         <p>
-            <a class="nav" href="index.html">&#xab; index</a> &nbsp; &nbsp; <a class="nav" href="https://coverage.readthedocs.io">coverage.py v5.2.1</a>,
-            created at 2020-09-15 12:35 +0000
+            <a class="nav" href="index.html">&#xab; index</a> &nbsp; &nbsp; <a class="nav" href="https://coverage.readthedocs.io">coverage.py v5.5</a>,
+            created at 2021-03-12 20:36 +0000
         </p>
     </div>
 </div>

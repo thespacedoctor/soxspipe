@@ -13,6 +13,7 @@ Subpackages
 -----------
 
 .. toctree::
+   :maxdepth: 4
 
    soxspipe.commonutils
    soxspipe.recipes
@@ -21,6 +22,7 @@ Submodules
 ----------
 
 .. toctree::
+   :maxdepth: 4
 
    soxspipe.cl_utils
    soxspipe.docstring_test
