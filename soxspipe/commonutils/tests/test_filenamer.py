@@ -92,7 +92,7 @@ class test_filenamer(unittest.TestCase):
 
     def test_filenamer_function_exception(self):
 
-        from soxspipe import filenamer
+        from soxspipe.commonutils import filenamer
         try:
             this = filenamer(
                 log=log,
