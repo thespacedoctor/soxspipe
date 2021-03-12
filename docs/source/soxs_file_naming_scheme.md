@@ -23,7 +23,7 @@ Those variables within square brackets are present only for the frames that requ
 : pixel binning used along both axes
 
 `<TYPE>`
-: the type of frame. See Frame Types section (required)
+: the type of frame. See [Frame Types](#frame-types) section (required)
 
 `<MASK|SLIT>`
 : the type of mask (`onepin` or `mulpin`) or width of slit (in arcsec) used (required for spectroscopic frames)
