@@ -1,6 +1,6 @@
 ## Order Table
 
-The order table gets build over [`soxs_order_centres`](../recipes/soxs_order_centres.md) and [`soxs_mflat`](../recipes/soxs_mflat.md) recipes. The final product contains polynomial fits for the order centres and the upper and lower edges of the order locations on the detector.
+The order table gets built over [`soxs_order_centres`](../recipes/soxs_order_centres.md) and [`soxs_mflat`](../recipes/soxs_mflat.md) recipes. The final product contains polynomial fits for the order centres and the upper and lower edges of the order locations on the detector.
 
 Here is an example of the content of the NIR order table from the [`soxs_order_centres`](../recipes/soxs_order_centres.md) recipes.
 

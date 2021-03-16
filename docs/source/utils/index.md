@@ -7,13 +7,14 @@ The soxspipe utilities can be viewed as the tool-kit with which the [soxspipe re
 .. toctree::
    :maxdepth: 4
 
-   detector_lookup
-   keyword_lookup
-   set_of_files
-   prepare_frames
    clip_and_stack
-   subtract_calibrations
    create_dispersion_map
    create_noise_map
+   detector_lookup
+   filenamer
+   keyword_lookup
+   prepare_frames
+   set_of_files
+   subtract_calibrations
 ```
 

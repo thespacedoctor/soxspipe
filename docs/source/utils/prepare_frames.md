@@ -41,3 +41,5 @@ Viewing the image in DS9 (using the command `ds9 -multiframe -tile columns pre_f
 ```eval_rst
 .. automethod:: soxspipe.recipes._base_recipe_.prepare_frames
 ```
+
+
