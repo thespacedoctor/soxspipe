@@ -32,6 +32,7 @@ from photutils.utils import NoDetectionsWarning
 import warnings
 from astropy.visualization import hist
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
+from soxspipe.commonutils.filenamer import filenamer
 
 
 class create_dispersion_map(object):
@@ -304,7 +305,14 @@ class create_dispersion_map(object):
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
-        filePath = f"{outDir}/single_pinhole_{arm}_disp_map.csv"
+
+        filename = filenamer(
+            log=self.log,
+            frame=self.pinholeFrame,
+            settings=self.settings
+        )
+        filename = filename.split("arc")[0] + "disp_map.csv"
+        filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
             listOfDictionaries=[coeff_dict_x, coeff_dict_y]

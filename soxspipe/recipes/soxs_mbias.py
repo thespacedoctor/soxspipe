@@ -144,11 +144,6 @@ class soxs_mbias(_base_recipe_):
         combined_bias_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mbias")
 
-        x = int(dp["binning"][1])
-        y = int(dp["binning"][0])
-        productPath = self.intermediateRootPath + \
-            "/master_bias_%(arm)s_%(x)sx%(y)s.fits" % locals()
-
         # INSPECTING THE THE UNCERTAINTY MAPS
         # print("individual frame data")
         # for a in ccds:
@@ -166,7 +161,13 @@ class soxs_mbias(_base_recipe_):
         #     'float32')
 
         # WRITE TO DISK
-        self._write(combined_bias_mean, productPath, overwrite=True)
+        productPath = self._write(
+            frame=combined_bias_mean,
+            filedir=self.intermediateRootPath,
+            filename=False,
+            overwrite=True
+        )
+
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

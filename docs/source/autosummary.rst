@@ -40,5 +40,6 @@ Functions
    :toctree: _autosummary
    :nosignatures:
 
+   soxspipe.commonutils.filenamer
    soxspipe.commonutils.getpackagepath
    soxspipe.docstring_test.docsting_test 

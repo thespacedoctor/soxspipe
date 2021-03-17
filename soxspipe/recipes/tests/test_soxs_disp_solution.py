@@ -54,6 +54,7 @@ class test_soxs_disp_solution(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         ).produce_product()
+        print(f"Here is the final product `{disp_map_path}`")
 
     def test_soxs_disp_solution_uvb_function(self):
 
@@ -64,6 +65,7 @@ class test_soxs_disp_solution(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         ).produce_product()
+        print(f"Here is the final product `{disp_map_path}`")
 
     def test_soxs_disp_solution_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-predict/sof/disp_solution_vis.sof"
@@ -73,6 +75,7 @@ class test_soxs_disp_solution(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         ).produce_product()
+        print(f"Here is the final product `{disp_map_path}`")
 
     # def test_soxs_disp_solution_function(self):
 

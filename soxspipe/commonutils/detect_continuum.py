@@ -22,6 +22,7 @@ import numpy as np
 import unicodecsv as csv
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+from soxspipe.commonutils.filenamer import filenamer
 import matplotlib.pyplot as plt
 from astropy.stats import mad_std
 from astropy.modeling import models, fitting
@@ -588,7 +589,15 @@ class detect_continuum(object):
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
-        order_table_path = f"{outDir}/order_centre_{arm}_locations.csv"
+
+        filename = filenamer(
+            log=self.log,
+            frame=self.pinholeFlat,
+            settings=self.settings
+        )
+        filename = filename.split("flat")[0] + "order_centres.csv"
+
+        order_table_path = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
             listOfDictionaries=listOfDictionaries

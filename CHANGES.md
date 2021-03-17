@@ -1,5 +1,8 @@
 # Release Notes
 
+* **FEATURE** Added a new `filenamer` module that implements a strict intermediate and reduced file-naming scheme
+* **REFACTOR:** Change the "SOXSPIPE PRE" date stamp keyword to "SXSPRE" to future-proof for phase III (8 character keyword limit)
+
 ## v0.4.1 - September 15, 2020
 
 * **FEATURE:** add command-line util for soxs order_centres recipe

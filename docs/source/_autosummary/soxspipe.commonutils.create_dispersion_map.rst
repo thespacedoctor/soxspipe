@@ -1,4 +1,4 @@
-create_dispersion_map *(class)*
+﻿create_dispersion_map *(class)*
 ====================================================
 
 .. currentmodule:: soxspipe.commonutils
