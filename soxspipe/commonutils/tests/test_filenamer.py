@@ -56,15 +56,15 @@ class test_filenamer(unittest.TestCase):
         subDirs = [
             "create_dispersion_map",
             "detect_continuum",
-            "xshooter-bias/uvb/1x1/fast_read",
-            "xshooter-bias/uvb/1x1/slow_read",
-            "xshooter-bias/vis",
-            "xshooter-darks/nir/240s",
+            "xshooter-mbias/uvb/1x1/fast_read",
+            "xshooter-mbias/uvb/1x1/slow_read",
+            "xshooter-mbias/vis",
+            "xshooter-mdark/nir/240s",
             "xshooter-detect-order-edges",
             "xshooter-flats/uvb/qflat",
             "xshooter-flats/nir/calibrated",
-            "xshooter-orderpos/uvb/",
-            "xshooter-predict/nir/"
+            "xshooter-order-centres/uvb/",
+            "xshooter-disp-solution/nir/"
         ]
         filestoname = []
         for dirr in subDirs:
