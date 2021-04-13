@@ -311,7 +311,7 @@ class create_dispersion_map(object):
             frame=self.pinholeFrame,
             settings=self.settings
         )
-        filename = filename.split("arc")[0] + "disp_map.csv"
+        filename = filename.split("ARC")[0] + "DISP_MAP.csv"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
@@ -506,10 +506,18 @@ class create_dispersion_map(object):
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
 
+        # GET FILENAME FOR THE RESIDUAL PLOT
+        filename = filenamer(
+            log=self.log,
+            frame=self.pinholeFrame,
+            settings=self.settings
+        )
+        filename = filename.split("ARC")[0] + "DISP_MAP_RESIDUALS.pdf"
+
         # plt.show()
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
-        filePath = f"{outDir}/single_pinhole_{arm}_disp_map_residuals.pdf"
+        filePath = f"{outDir}/{filename}"
         plt.savefig(filePath)
 
         print(f'\nThe dispersion maps fitted against the observed arc-line positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixles)')

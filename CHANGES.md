@@ -1,7 +1,12 @@
 # Release Notes
 
+lines in a sof file beginning with a `#` are considered as comments and therefore ignored by the pipeline.
+
 * **FEATURE** Added a new `filenamer` module that implements a strict intermediate and reduced file-naming scheme
 * **REFACTOR:** Change the "SOXSPIPE PRE" date stamp keyword to "SXSPRE" to future-proof for phase III (8 character keyword limit)
+* **ENHANCEMENT** Added a `-o <outputDirectory>` switch to the command-line to optionally override the 'intermediate-data-root' setting in the settings file.
+* **FIXED:** correct binning reported in product file names
+* **REFACTOR:** removed OBID from file names and added readout mode. This information is more helpful at the glance.
 
 ## v0.4.1 - September 15, 2020
 

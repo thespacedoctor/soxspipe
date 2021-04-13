@@ -46,7 +46,7 @@ if not os.path.exists(pathToOutputDir):
 class test_set_of_files(unittest.TestCase):
 
     def test01_set_of_files_function(self):
-        directory = settings["test-data-root"] + "/xshooter-bias/vis"
+        directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         other_output = settings[
             "reduced-data-root"].replace("reduced", "other_output")
 
@@ -61,7 +61,7 @@ class test_set_of_files(unittest.TestCase):
         print("sof file written to %(sofPath)s" % locals())
 
     def test_sof_to_collection_from_directory_function(self):
-        directory = settings["test-data-root"] + "/xshooter-bias/vis"
+        directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         other_output = settings[
             "reduced-data-root"].replace("reduced", "other_output")
 
@@ -76,7 +76,7 @@ class test_set_of_files(unittest.TestCase):
         print(sofFile.summary)
 
     def test_sof_to_collection_from_sof_file_function(self):
-        directory = settings["test-data-root"] + "/xshooter-bias/vis"
+        directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         other_output = settings[
             "reduced-data-root"].replace("reduced", "other_output")
 
@@ -91,7 +91,7 @@ class test_set_of_files(unittest.TestCase):
         print(sofFile.summary)
 
     def test_sof_to_collection_from_list_of_fits_files_function(self):
-        directory = settings["test-data-root"] + "/xshooter-bias/vis"
+        directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
         home = expanduser("~")
@@ -114,7 +114,7 @@ class test_set_of_files(unittest.TestCase):
         print(sofFile.summary)
 
     def test_validate_sof_frames_function(self):
-        directory = settings["test-data-root"] + "/xshooter-bias/vis"
+        directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         other_output = settings[
             "reduced-data-root"].replace("reduced", "other_output")
         sofPath = other_output + "/test.sof"

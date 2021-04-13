@@ -74,12 +74,28 @@ def filenamer(
         "-", "").replace(":", "").split(".")[0]
     obid = frame.header[kw("OBS_ID")]
     arm = frame.header[kw("SEQ_ARM")].lower()
-    x = int(dp["binning"][1])
-    y = int(dp["binning"][0])
-    binning = f"{x}x{y}"
+    # x = int(dp["binning"][1])
+    # y = int(dp["binning"][0])
+    if frame.wcs:
+        x = int(frame.wcs.to_header(relax=True)["CDELT1"])
+        y = int(frame.wcs.to_header(relax=True)["CDELT2"])
+        binning = f"_{x}x{y}"
+    else:
+        binning = ""
+
+    romode = ""
+    if kw("DET_READ_SPEED") in frame.header:
+        if "100k" in frame.header[kw("DET_READ_SPEED")].lower():
+            romode = "_slow"
+        elif "400k" in frame.header[kw("DET_READ_SPEED")].lower():
+            romode = "_fast"
+        else:
+            print(frame.header[kw("DET_READ_SPEED")])
+            raise LookupError(f"Cound not parse readout mode")
+
+    filename = f"{dateStamp}_{arm}{binning}{romode}"
 
     ttype = None
-
     obsmode = None
 
     # DETERMINE THE TYPE
@@ -115,7 +131,7 @@ def filenamer(
         log.error(message)
         raise TypeError(message)
 
-    filename = f"{dateStamp}_{obid}_{arm}_{binning}_{ttype}"
+    filename = f"{filename}_{ttype}"
 
     maskSlit = None
     if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,PINHOLE":
@@ -141,6 +157,7 @@ def filenamer(
     if maskSlit:
         filename = f"{filename}_{maskSlit}"
 
+    filename = filename.upper()
     filename += ".fits"
 
     log.debug('completed the ``filenamer`` function')

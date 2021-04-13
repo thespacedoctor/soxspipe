@@ -5,7 +5,7 @@ With the SOXSPIPE file-naming convention you should be able, at a glance, be abl
 Here is the file-naming scheme for all SOXSPIPE generated frames: 
 
 ```text
-<DATE>_<OBID>_<ARM>_<BIN>_<TYPE>[_<MASK|SLIT>_<OBSMODE>].fits
+<DATE>_<ARM>_<BIN>_[<ROMODE>_]<TYPE>[_<MASK|SLIT>_<OBSMODE>].fits
 ```
 
 Those variables within square brackets are present only for the frames that require them.
@@ -13,8 +13,10 @@ Those variables within square brackets are present only for the frames that requ
 `<DATE>` 
 : UT date-time stamp reflecting the start of the observation to second precision (required)
 
+<!--
 `<OBID>`
 : ID of the observation block used to acquire the frame (required)
+-->
 
 `<ARM>`
 : the instrument arm the frame originated from. `vis`, `nir` or `acam`  (required)
@@ -24,6 +26,9 @@ Those variables within square brackets are present only for the frames that requ
 
 `<TYPE>`
 : the type of frame. See [Frame Types](#frame-types) section (required)
+
+`<ROMODE>`
+: readout mode (required)
 
 `<MASK|SLIT>`
 : the type of mask (`onepin` or `mulpin`) or width of slit (in arcsec) used (required for spectroscopic frames)

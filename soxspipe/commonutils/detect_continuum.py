@@ -551,9 +551,16 @@ class detect_continuum(object):
         fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
 
         # plt.show()
+        filename = filenamer(
+            log=self.log,
+            frame=self.pinholeFlat,
+            settings=self.settings
+        )
+        filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
+
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
-        filePath = f"{outDir}/pinhole_flat_{arm}_order_location_residuals.pdf"
+        filePath = f"{outDir}/{filename}"
         plt.savefig(filePath)
 
         self.log.debug('completed the ``plot_results`` method')
@@ -595,7 +602,7 @@ class detect_continuum(object):
             frame=self.pinholeFlat,
             settings=self.settings
         )
-        filename = filename.split("flat")[0] + "order_centres.csv"
+        filename = filename.split("FLAT")[0] + "ORDER_CENTRES.csv"
 
         order_table_path = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(

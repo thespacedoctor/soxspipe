@@ -326,7 +326,6 @@ class _base_recipe_(object):
 
         if cdelt1[0] and cdelt2[0]:
             self.detectorParams["binning"] = [int(cdelt2[0]), int(cdelt1[0])]
-            print(self.detectorParams["binning"])
 
         # MIXED READOUT SPEEDS IS BAD
         readSpeed = self.inputFrames.values(

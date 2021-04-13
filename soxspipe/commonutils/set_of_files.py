@@ -212,6 +212,10 @@ class set_of_files(object):
             thisData = readFile.read()
             readFile.close()
             lines = thisData.split("\n")
+
+            # REMOVE COMMENTED LINES
+            lines = [l for l in lines if len(l) and l[0] != "#"]
+
             fitsFiles = []
             fitsFiles[:] = [l.split(".fits")[0].replace("~/", home + "/") +
                             ".fits" for l in lines if ".fits" in l]
@@ -278,7 +282,7 @@ class set_of_files(object):
                     supplementary_sof[a] = {}
 
         for f in supplementaryFilepaths:
-            if "disp_map" in f:
+            if "disp_map" in f.lower():
                 for a in ["NIR", "UVB", "VIS"]:
                     if a.lower() in f.lower():
                         supplementary_sof[a]["DISP_MAP"] = f

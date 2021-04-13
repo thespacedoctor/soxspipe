@@ -5,10 +5,10 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe init
-    soxspipe mbias <inputFrames> [-s <pathToSettingsFile>] 
-    soxspipe mdark <inputFrames> [-s <pathToSettingsFile>] 
-    soxspipe disp_sol <inputFrames> [-s <pathToSettingsFile>] 
-    soxspipe order_centres <inputFrames> [-s <pathToSettingsFile>] 
+    soxspipe mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
+    soxspipe mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
     init                                   setup the soxspipe settings file for the first time
@@ -113,6 +113,10 @@ def main(arguments=None):
         for k in pickleMeObjects:
             pickleMe[k] = theseLocals[k]
         pickle.dump(pickleMe, open(pathToPickleFile, "wb"))
+
+    # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
+    if a['outputDirectory']:
+        settings["intermediate-data-root"] = a['outputDirectory']
 
     if a["init"]:
         from os.path import expanduser

@@ -48,7 +48,7 @@ class test__base_recipe_(unittest.TestCase):
     def test__base_recipe__function(self):
 
         framePath = settings["test-data-root"] + \
-            "/xshooter-bias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
+            "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
         interMediatePath = settings["intermediate-data-root"]
         from soxspipe.recipes import _base_recipe_
         recipe = _base_recipe_(

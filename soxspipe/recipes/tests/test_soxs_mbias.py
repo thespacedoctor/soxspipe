@@ -47,7 +47,7 @@ class test_mbias(unittest.TestCase):
 
     def test_mbias_from_directory_function(self):
         directory = settings["test-data-root"] + \
-            "/xshooter-bias/uvb/1x1/fast_read"
+            "/xshooter-mbias/uvb/1x1/fast_read"
 
         from soxspipe.recipes import soxs_mbias
         this = soxs_mbias(
@@ -55,9 +55,11 @@ class test_mbias(unittest.TestCase):
             settings=settings,
             inputFrames=directory
         )
+        productPath = this.produce_product()
+        print(f"Here is the final product `{productPath}`")
 
     def test_mbias_from_sof_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-bias/sof/bias_uvb_1x1.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mbias/sof/bias_uvb_1x1.sof"
 
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input
@@ -72,7 +74,7 @@ class test_mbias(unittest.TestCase):
 
     def test_mbias_from_list_of_fits_function(self):
         directory = settings["test-data-root"] + \
-            "/xshooter-bias/uvb/1x1/slow_read"
+            "/xshooter-mbias/uvb/1x1/slow_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
         home = expanduser("~")
@@ -98,7 +100,7 @@ class test_mbias(unittest.TestCase):
 
     def test_produce_product_function(self):
         directory = settings["test-data-root"] + \
-            "/xshooter-bias/uvb/1x1/fast_read"
+            "/xshooter-mbias/uvb/1x1/fast_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
         home = expanduser("~")
@@ -138,7 +140,7 @@ class test_mbias(unittest.TestCase):
 
     def test_mbias_wrong_image_type_exception(self):
 
-        directory = settings["test-data-root"] + "/xshooter-darks/vis"
+        directory = settings["test-data-root"] + "/xshooter-mdark/vis"
         try:
             from soxspipe.recipes import soxs_mbias
             this = soxs_mbias(
@@ -154,7 +156,7 @@ class test_mbias(unittest.TestCase):
 
     def test_mbias_mixed_binning_exception(self):
 
-        directory = settings["test-data-root"] + "/xshooter-bias/vis"
+        directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         try:
             from soxspipe.recipes import soxs_mbias
             this = soxs_mbias(
