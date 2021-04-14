@@ -114,7 +114,7 @@ def filenamer(
             ttype = "mflat"
         else:
             ttype = "flat"
-    elif frame.header[kw("DPR_TYPE")].upper() == "LAMP,FMTCHK":
+    elif frame.header[kw("DPR_TYPE")].upper() == "LAMP,FMTCHK" or frame.header[kw("DPR_TYPE")].upper() == "LAMP,WAVE":
         ttype = "arc"
     elif "LAMP" in frame.header[kw("DPR_TYPE")].upper() and "ORDERDEF" in frame.header[kw("DPR_TYPE")].upper():
         ttype = "flat"
@@ -136,6 +136,8 @@ def filenamer(
     maskSlit = None
     if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,PINHOLE":
         maskSlit = "onepin"
+    if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,MULTI-PINHOLE":
+        maskSlit = "multipin"
 
     if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,SLIT" and ttype in ("mflat", "flat"):
         maskSlit = "slit"

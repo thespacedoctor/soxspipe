@@ -20,6 +20,7 @@ from ._base_recipe_ import _base_recipe_
 import numpy as np
 from astropy.nddata import CCDData
 import ccdproc
+from astropy import units as u
 from soxspipe.commonutils import keyword_lookup
 
 
@@ -136,13 +137,13 @@ class soxs_spatial_solution(_base_recipe_):
             for i in imageTypes:
                 if i not in ["LAMP,WAVE", "BIAS", "DARK"]:
                     raise TypeError(
-                        "Input frames for soxspipe spatial_solution need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals())
+                        "Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
         # LOOK FOR ****
         arm = self.arm
         if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
             raise TypeError(
-                "Need a **** for %(arm)s - none found with the input files" % locals())
+                "Need a DISP_MAP for %(arm)s - none found with the input files" % locals())
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
@@ -174,6 +175,53 @@ class soxs_spatial_solution(_base_recipe_):
         dp = self.detectorParams
 
         productPath = None
+
+        master_bias = False
+        dark = False
+        multi_pinhole_image = False
+
+        add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                       hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        # UVB/VIS DARK
+        add_filters = {kw("DPR_CATG"): 'MASTER_DARK_' + arm}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        # NIR DARK
+        add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
+                       kw("DPR_TECH"): 'IMAGE'}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        # MULTIPINHOLE IMAGE
+        add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
+                       kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            multi_pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                               hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        self.multiPinholeFrame = self.subtract_calibrations(
+            inputFrame=multi_pinhole_image, master_bias=master_bias, dark=dark)
+
+        if self.settings["save-intermediate-products"]:
+            fileDir = self.intermediateRootPath
+            filepath = self._write(
+                self.multiPinholeFrame, fileDir, filename=False, overwrite=True)
+            print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
+
+        # # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+        # detector = detect_continuum(
+        #     log=self.log,
+        #     pinholeFlat=self.orderFrame,
+        #     dispersion_map=self.supplementaryInput[arm]["DISP_MAP"],
+        #     settings=self.settings
+        # )
+        # productPath = detector.get()
 
         self.clean_up()
 
