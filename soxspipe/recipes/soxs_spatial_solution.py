@@ -123,18 +123,18 @@ class soxs_spatial_solution(_base_recipe_):
                 raise TypeError(
                     "Input frames are a mix of %(imageTypes)s" % locals())
 
-            if imageTypes[0] != "LAMP,FMTCHK":
+            if imageTypes[0] != "LAMP,WAVE":
                 raise TypeError(
-                    "Input frames for soxspipe spatial_solution need to be ********* lamp on and lamp off frames for NIR" % locals())
+                    "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames for NIR" % locals())
 
             for i in imageTech:
-                if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
+                if i not in ['ECHELLE,MULTI-PINHOLE', 'IMAGE']:
                     raise TypeError(
-                        "Input frames for soxspipe spatial_solution need to be ********* lamp on and lamp off frames for NIR" % locals())
+                        "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames for NIR" % locals())
 
         else:
             for i in imageTypes:
-                if i not in ["LAMP,FMTCHK", "BIAS", "DARK"]:
+                if i not in ["LAMP,WAVE", "BIAS", "DARK"]:
                     raise TypeError(
                         "Input frames for soxspipe spatial_solution need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
