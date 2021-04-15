@@ -43,6 +43,7 @@ class create_dispersion_map(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``pinholeFrame`` -- the calibrated pinhole frame (single or multi)
+        - ``firstGuessMap`` -- the first guess dispersion map from the `soxs_disp_solution` receipe (needed in `soxs_spat_solution` recipe). Deefault *False*.
 
     **Usage:**
 
@@ -57,7 +58,8 @@ class create_dispersion_map(object):
     mapPath = create_dispersion_map(
         log=log,
         settings=settings,
-        pinholeFrame=frame
+        pinholeFrame=frame,
+        firstGuessMap=False
     ).get()
     ```
 
@@ -67,12 +69,15 @@ class create_dispersion_map(object):
             self,
             log,
             settings,
-            pinholeFrame
+            pinholeFrame,
+            firstGuessMap=False
     ):
         self.log = log
         log.debug("instansiating a new 'create_dispersion_map' object")
         self.settings = settings
         self.pinholeFrame = pinholeFrame
+        self.firstGuessMap = firstGuessMap
+        print(self.firstGuessMap)
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER

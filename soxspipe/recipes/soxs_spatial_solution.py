@@ -214,14 +214,14 @@ class soxs_spatial_solution(_base_recipe_):
                 self.multiPinholeFrame, fileDir, filename=False, overwrite=True)
             print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
 
-        # # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
-        # detector = detect_continuum(
-        #     log=self.log,
-        #     pinholeFlat=self.orderFrame,
-        #     dispersion_map=self.supplementaryInput[arm]["DISP_MAP"],
-        #     settings=self.settings
-        # )
-        # productPath = detector.get()
+        # GENERATE AN UPDATED DISPERSION MAP
+        from soxspipe.commonutils import create_dispersion_map
+        mapPath = create_dispersion_map(
+            log=self.log,
+            settings=self.settings,
+            pinholeFrame=self.multiPinholeFrame,
+            firstGuessMap=self.supplementaryInput[arm]["DISP_MAP"]
+        ).get()
 
         self.clean_up()
 
