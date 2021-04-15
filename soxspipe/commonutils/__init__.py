@@ -9,3 +9,4 @@ from .getpackagepath import getpackagepath
 from .detect_continuum import detect_continuum
 from . import polynomials
 from .filenamer import filenamer
+from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays

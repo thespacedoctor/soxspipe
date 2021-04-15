@@ -19,8 +19,6 @@ from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import detector_lookup
 from os.path import expanduser
 import numpy as np
-import unicodecsv as csv
-from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
 from soxspipe.commonutils.filenamer import filenamer
 import matplotlib.pyplot as plt
@@ -33,6 +31,7 @@ from astropy.stats import sigma_clip, mad_std
 from astropy.visualization import hist
 import collections
 from fundamentals.renderer import list_of_dictionaries
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 
 
 class detect_continuum(object):
@@ -230,46 +229,19 @@ class detect_continuum(object):
         # CREATE THE WAVELENGTH/ORDER ARRAYS TO BE CONVERTED TO PIXELS
         orderArray = np.asarray([])
         wavelengthArray = np.asarray([])
+        orderWavelengthDict = {}
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
 
             wavelengthArray = np.append(wavelengthArray, np.arange(
                 wmin, wmax, (wmax - wmin) / sampleCount))
             orderArray = np.append(orderArray, np.ones(sampleCount) * o)
-        order_wave = (orderArray, wavelengthArray)
+            orderWavelengthDict[o] = wavelengthArray
 
-        # SETUP EMPTY PIXEL ARRAYS
-        pixelArrays = {f"o{k:0.0f}": [] for k in orderNums}
-
-        # READ THE FILE
-        home = expanduser("~")
-        dispersion_map = self.dispersion_map.replace("~", home)
-
-        with open(dispersion_map, 'rb') as csvFile:
-            csvReader = csv.DictReader(
-                csvFile, dialect='excel', delimiter=',', quotechar='"')
-            for row in csvReader:
-                axis = row["axis"]
-                order_deg = int(row["order-deg"])
-                wavelength_deg = int(row["wavelength-deg"])
-                coeff = [float(v) for k, v in row.items() if k not in [
-                    "axis", "order-deg", "wavelength-deg"]]
-                poly = chebyshev_order_wavelength_polynomials(
-                    log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
-
-                if axis == "x":
-                    xcoords = poly(order_wave, *coeff)
-                if axis == "y":
-                    ycoords = poly(order_wave, *coeff)
-        csvFile.close()
-
-        # for o, w, x, y in zip(orderArray, wavelengthArray, xcoords, ycoords):
-        #     print(o, w, x, y)
-
-        xcoords, ycoords, orderArray = zip(
-            *[(x, y, o) for x, y, o in zip(xcoords, ycoords, orderArray) if (x > 0 and y > 0)])
-
-        for o, x, y in zip(orderArray, xcoords, ycoords):
-            pixelArrays[f"o{o:0.0f}"].append((x, y))
+        pixelArrays = dispersion_map_to_pixel_arrays(
+            log=self.log,
+            dispersionMapPath=self.dispersion_map,
+            orderWavelengthDict=orderWavelengthDict
+        )
 
         self.log.debug('completed the ``create_pixel_arrays`` method')
         return pixelArrays
@@ -585,7 +557,7 @@ class detect_continuum(object):
         listOfDictionaries = []
         for k, v in orderLoctions.items():
             orderDict = collections.OrderedDict(sorted({}.items()))
-            orderDict["order"] = int(k.replace("o", ""))
+            orderDict["order"] = k
             orderDict["degy"] = self.polyDeg
             n_coeff = 0
             for i in range(0, self.polyDeg + 1):

@@ -77,7 +77,6 @@ class create_dispersion_map(object):
         self.settings = settings
         self.pinholeFrame = pinholeFrame
         self.firstGuessMap = firstGuessMap
-        print(self.firstGuessMap)
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -114,6 +113,27 @@ class create_dispersion_map(object):
         ```
         """
         self.log.debug('starting the ``get`` method')
+
+        if self.firstGuessMap:
+            import unicodecsv as csv
+            from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
+            with open(self.firstGuessMap, 'rb') as csvFile:
+                csvReader = csv.DictReader(
+                    csvFile, dialect='excel', delimiter=',', quotechar='"')
+                for row in csvReader:
+                    axis = row["axis"]
+                    order_deg = int(row["order-deg"])
+                    wavelength_deg = int(row["wavelength-deg"])
+                    coeff = [float(v) for k, v in row.items() if k not in [
+                        "axis", "order-deg", "wavelength-deg"]]
+                    poly = chebyshev_order_wavelength_polynomials(
+                        log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
+
+                    if axis == "x":
+                        xcoords = poly(order_wave, *coeff)
+                    if axis == "y":
+                        ycoords = poly(order_wave, *coeff)
+            csvFile.close()
 
         # READ PREDICTED LINE POSITIONS FROM FILE
         predictedLines = self.get_predicted_line_list()
