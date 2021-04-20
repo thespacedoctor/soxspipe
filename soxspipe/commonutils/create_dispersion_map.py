@@ -33,6 +33,7 @@ import warnings
 from astropy.visualization import hist
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 
 
 class create_dispersion_map(object):
@@ -106,6 +107,7 @@ class create_dispersion_map(object):
 
         **Usage:**
 
+
         ```eval_rst
         .. todo::
 
@@ -113,27 +115,6 @@ class create_dispersion_map(object):
         ```
         """
         self.log.debug('starting the ``get`` method')
-
-        if self.firstGuessMap:
-            import unicodecsv as csv
-            from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-            with open(self.firstGuessMap, 'rb') as csvFile:
-                csvReader = csv.DictReader(
-                    csvFile, dialect='excel', delimiter=',', quotechar='"')
-                for row in csvReader:
-                    axis = row["axis"]
-                    order_deg = int(row["order-deg"])
-                    wavelength_deg = int(row["wavelength-deg"])
-                    coeff = [float(v) for k, v in row.items() if k not in [
-                        "axis", "order-deg", "wavelength-deg"]]
-                    poly = chebyshev_order_wavelength_polynomials(
-                        log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
-
-                    if axis == "x":
-                        xcoords = poly(order_wave, *coeff)
-                    if axis == "y":
-                        ycoords = poly(order_wave, *coeff)
-            csvFile.close()
 
         # READ PREDICTED LINE POSITIONS FROM FILE
         predictedLines = self.get_predicted_line_list()
@@ -216,6 +197,46 @@ class create_dispersion_map(object):
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
         predictedLines = np.genfromtxt(
             predictedLinesFile, delimiter=',', names=True)
+
+        # WANT TO DETERMINE SYSTEMATIC SHIFT IF FIRST GUESS SOLUTION PRESENT
+        if self.firstGuessMap:
+            slitIndex = int(dp["mid_slit_index"])
+
+            # FILTER THE PREDICTED LINES TO MAKE A DICTIONARY OF PREDICTED LINE
+            # POSITIONS PER ORDER
+            fPredictedLines = predictedLines[np.where(
+                predictedLines["slit_index"] == slitIndex)]
+            orders = np.unique(fPredictedLines["Order"])
+            slitindexes = np.unique(predictedLines["slit_index"])
+            orderWavelengthDict = {
+                o: fPredictedLines[np.where(
+                    fPredictedLines["Order"] == o)]["Wavelength"] for o in orders}
+            orderPredictedXDict = {
+                o: fPredictedLines[np.where(
+                    fPredictedLines["Order"] == o)]["detector_x"] for o in orders}
+            orderPredictedYDict = {
+                o: fPredictedLines[np.where(
+                    fPredictedLines["Order"] == o)]["detector_y"] for o in orders}
+
+            pixelArrays = dispersion_map_to_pixel_arrays(
+                log=self.log,
+                dispersionMapPath=self.firstGuessMap,
+                orderWavelengthDict=orderWavelengthDict
+            )
+
+            # PACK THE PIXEL SHIFTS INTO ORDER ARRAYS
+            for o in orders:
+                xcoords, ycoords = zip(*[(p[0], p[1]) for p in pixelArrays[o]])
+                xshift = orderPredictedXDict[o] - np.array(xcoords)
+                yshift = orderPredictedYDict[o] - np.array(ycoords)
+                # NOW SHIFT ALL LINES FROM PREDICTED LINE LIST
+                for s in slitindexes:
+                    # this = predictedLines[np.where(predictedLines["slit_index"] == s)][
+                    # np.where(predictedLines["Order"] == o)]["detector_x"] -
+                    # xshift
+                    predictedLines[
+                        np.where((predictedLines["slit_index"] == s) & (predictedLines["Order"] == o))]["detector_x"] = predictedLines[
+                        np.where((predictedLines["slit_index"] == s) & (predictedLines["Order"] == o))] - xshift
 
         self.log.debug('completed the ``get_predicted_line_list`` method')
         return predictedLines

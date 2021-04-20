@@ -65,6 +65,23 @@ class test_create_dispersion_map(unittest.TestCase):
         ).get()
         print(mapPath)
 
+    def test_create_dispersion_map_multi_nir_function(self):
+        frame = "~/xshooter-pipeline-data/unittest_data/create_dispersion_map/20170818T173315_NIR_ARC_MULTIPIN.fits"
+        from os.path import expanduser
+        home = expanduser("~")
+        frame = frame.replace("~", home)
+        frame = CCDData.read(frame, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                             hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        from soxspipe.commonutils import create_dispersion_map
+        mapPath = create_dispersion_map(
+            log=log,
+            settings=settings,
+            pinholeFrame=frame,
+            firstGuessMap="~/xshooter-pipeline-data/unittest_data/create_dispersion_map/20170820T153602_NIR_DISP_MAP.csv"
+        ).get()
+        print(mapPath)
+
     def test_create_dispersion_map_function_exception(self):
 
         from soxspipe.commonutils import create_dispersion_map

@@ -29,6 +29,7 @@ UVB:
       1x1: cal/THEO_TAB_MULT_UVB_1x1.csv
       1x2: cal/THEO_TAB_MULT_UVB_1x2.csv
       2x2: cal/THEO_TAB_MULT_UVB_2x2.csv
+  mid_slit_index: 4
   spectral format table: cal/SPECTRAL_FORMAT_TAB_UVB.csv
             
 VIS:
@@ -62,6 +63,7 @@ VIS:
       1x1: cal/THEO_TAB_MULT_VIS_1x1.csv
       1x2: cal/THEO_TAB_MULT_VIS_1x2.csv
       2x2: cal/THEO_TAB_MULT_VIS_2x2.csv
+  mid_slit_index: 4
   spectral format table: cal/SPECTRAL_FORMAT_TAB_VIS.csv
 
 NIR:
@@ -89,5 +91,6 @@ NIR:
       1x1: cal/THEO_TAB_SING_NIR.csv
     multi:
       1x1: cal/THEO_TAB_MULT_NIR.csv
+  mid_slit_index: 4
   spectral format table: cal/SPECTRAL_FORMAT_TAB_NIR.csv
 
