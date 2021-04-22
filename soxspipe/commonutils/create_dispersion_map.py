@@ -34,6 +34,8 @@ from astropy.visualization import hist
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+import pandas as pd
+from tabulate import tabulate
 
 
 class create_dispersion_map(object):
@@ -116,31 +118,41 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``get`` method')
 
+        if self.firstGuessMap:
+            recipe = "soxs-spatial-solution"
+            slit_deg = self.settings[recipe]["slit-deg"]
+        else:
+            recipe = "soxs-disp-solution"
+            slit_deg = 0
+
         # READ PREDICTED LINE POSITIONS FROM FILE
         predictedLines = self.get_predicted_line_list()
 
         # ROUND OFF THE PIXEL POSITIONS
         observed_x = []
         observed_y = []
-        windowSize = self.settings["soxs-disp-solution"]["pixel-window-size"]
+        windowSize = self.settings[recipe]["pixel-window-size"]
         windowHalf = int(windowSize / 2)
 
         # DETECT THE LINES ON THE PINHILE FRAME
-        for x, y in zip(predictedLines["detector_x"].astype(int), predictedLines["detector_y"].astype(int)):
+        for x, y in zip(predictedLines.loc[:, "detector_x"].astype(int), predictedLines.loc[:, "detector_y"].astype(int)):
             found_x, found_y = self.detect_pinhole_arc_line(x, y, windowHalf)
             observed_x.append(found_x)
             observed_y.append(found_y)
 
         # COLLECT INFO FOR DETECTED LINES
         wavelengths = [w for w, x in zip(
-            predictedLines["Wavelength"], observed_x) if x != None]
+            predictedLines.loc[:, "Wavelength"], observed_x) if x != None]
         orders = [w for w, x in zip(
-            predictedLines["Order"], observed_x) if x != None]
+            predictedLines.loc[:, "Order"], observed_x) if x != None]
+        slit_pos = [w for w, x in zip(
+            predictedLines.loc[:, "slit_position"], observed_x) if x != None]
         observed_x = [x for x in observed_x if x != None]
         observed_y = [y for y in observed_y if y != None]
 
-        order_deg = self.settings["soxs-disp-solution"]["order-deg"]
-        wavelength_deg = self.settings["soxs-disp-solution"]["wavelength-deg"]
+        order_deg = self.settings[recipe]["order-deg"]
+        wavelength_deg = self.settings[
+            recipe]["wavelength-deg"]
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         popt_x, popt_y = self.fit_polynomials(
@@ -148,8 +160,10 @@ class create_dispersion_map(object):
             observed_y=observed_y,
             wavelengths=wavelengths,
             orders=orders,
+            slit_pos=slit_pos,
+            wavelength_deg=wavelength_deg,
             order_deg=order_deg,
-            wavelength_deg=wavelength_deg
+            slit_deg=slit_deg,
         )
 
         # WRITE THE MAP TO FILE
@@ -195,49 +209,81 @@ class create_dispersion_map(object):
         calibrationRootPath = self.settings[
             "calibration-data-root"].replace("~", home)
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
-        predictedLines = np.genfromtxt(
-            predictedLinesFile, delimiter=',', names=True)
+
+        # READ CSV FILE TO PANDAS DATAFRAME
+        df = pd.read_csv(predictedLinesFile)
 
         # WANT TO DETERMINE SYSTEMATIC SHIFT IF FIRST GUESS SOLUTION PRESENT
         if self.firstGuessMap:
+            # ADD SOME EXTRA COLUMNS TO DATAFRAME
+            df['observed_x'] = np.nan
+            df['observed_y'] = np.nan
+            df['shift_x'] = np.nan
+            df['shift_y'] = np.nan
+
+            # FILTER THE PREDICTED LINES TO ONLY SLIT POSITION INCLUDED IN
+            # SINGLE PINHOLE FRAMES
             slitIndex = int(dp["mid_slit_index"])
+            mask = (df['slit_index'] == slitIndex)
+            filteredDf = df.loc[mask]
 
-            # FILTER THE PREDICTED LINES TO MAKE A DICTIONARY OF PREDICTED LINE
-            # POSITIONS PER ORDER
-            fPredictedLines = predictedLines[np.where(
-                predictedLines["slit_index"] == slitIndex)]
-            orders = np.unique(fPredictedLines["Order"])
-            slitindexes = np.unique(predictedLines["slit_index"])
-            orderWavelengthDict = {
-                o: fPredictedLines[np.where(
-                    fPredictedLines["Order"] == o)]["Wavelength"] for o in orders}
-            orderPredictedXDict = {
-                o: fPredictedLines[np.where(
-                    fPredictedLines["Order"] == o)]["detector_x"] for o in orders}
-            orderPredictedYDict = {
-                o: fPredictedLines[np.where(
-                    fPredictedLines["Order"] == o)]["detector_y"] for o in orders}
+            # GROUP RESULTS BY ORDER
+            # GET UNIQUE ORDER AND SLIT INDEXES
+            uniqueOrders = filteredDf['Order'].unique()
+            uniqueSlits = df['slit_index'].unique()
+            dfGroups = filteredDf.groupby(['Order'])
 
+            # CREATE orderWavelengthDict FOR dispersion_map_to_pixel_arrays
+            # FUNCTION
+            orderWavelengthDict = {}
+            orderWavelengthDict = {o: dfGroups.get_group(
+                o)['Wavelength'].values for o in uniqueOrders}
+
+            # GET THE OBSERVED PIXELS VALUES
             pixelArrays = dispersion_map_to_pixel_arrays(
                 log=self.log,
                 dispersionMapPath=self.firstGuessMap,
                 orderWavelengthDict=orderWavelengthDict
             )
 
-            # PACK THE PIXEL SHIFTS INTO ORDER ARRAYS
-            for o in orders:
-                xcoords, ycoords = zip(*[(p[0], p[1]) for p in pixelArrays[o]])
-                xshift = orderPredictedXDict[o] - np.array(xcoords)
-                yshift = orderPredictedYDict[o] - np.array(ycoords)
-                # NOW SHIFT ALL LINES FROM PREDICTED LINE LIST
-                for s in slitindexes:
-                    # this = predictedLines[np.where(predictedLines["slit_index"] == s)][
-                    # np.where(predictedLines["Order"] == o)]["detector_x"] -
-                    # xshift
-                    predictedLines[
-                        np.where((predictedLines["slit_index"] == s) & (predictedLines["Order"] == o))]["detector_x"] = predictedLines[
-                        np.where((predictedLines["slit_index"] == s) & (predictedLines["Order"] == o))] - xshift
+            # ITERATE OVER EACH ORDER
+            for o in uniqueOrders:
+                thisGroup = dfGroups.get_group(o).copy()
+                # DETERMINE THE SHIFT IN SINGLE PINHOLE PREDICTED TO OBSERVED
+                # PIXELS
+                thisGroup.loc[:, ('observed_x')], thisGroup.loc[:, ('observed_y')] = zip(
+                    *[(p[0], p[1]) for p in pixelArrays[o]])
+                mask = (df['slit_index'] == slitIndex) & (df['Order'] == o)
+                df.loc[mask, ('observed_x')], df.loc[mask, ('observed_y')] = zip(
+                    *[(p[0], p[1]) for p in pixelArrays[o]])
+                thisGroup.loc[:, 'shift_xx'] = thisGroup[
+                    'detector_x'].values - thisGroup['observed_x'].values
+                thisGroup.loc[:, 'shift_yy'] = thisGroup[
+                    'detector_y'].values - thisGroup['observed_y'].values
+                thisGroup = thisGroup.loc[
+                    :, ['Wavelength', 'Order', 'shift_xx', 'shift_yy']]
 
+                # MERGING SHIFTS INTO MAIN DATAFRAME
+                df = df.merge(thisGroup, on=[
+                    'Wavelength', 'Order'], how='outer')
+                df.loc[df['shift_xx'].notnull(), ['shift_x', 'shift_y']] = df.loc[
+                    df['shift_xx'].notnull(), ['shift_xx', 'shift_yy']].values
+                df.drop(columns=['shift_xx', 'shift_yy'], inplace=True)
+
+            # DROP ROWS WITH MISSING SHIFTS
+            df.dropna(axis='index', how='any', subset=[
+                      'shift_x'], inplace=True)
+
+            # SHIFT DETECTOR LINE PIXEL POSITIONS BY SHIFTS
+            # UPDATE FILTERED VALUES
+            df.loc[:, 'detector_x'] -= df.loc[:, 'shift_x']
+            df.loc[:, 'detector_y'] -= df.loc[:, 'shift_y']
+
+            # DROP HELPER COLUMNS
+            df.drop(columns=['observed_x', 'observed_y',
+                             'shift_x', 'shift_y'], inplace=True)
+
+        predictedLines = df
         self.log.debug('completed the ``get_predicted_line_list`` method')
         return predictedLines
 
@@ -430,9 +476,10 @@ class create_dispersion_map(object):
             observed_y,
             wavelengths,
             orders,
-            order_deg,
+            slit_pos,
             wavelength_deg,
-            slit_deg=False):
+            order_deg,
+            slit_deg):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
@@ -440,9 +487,10 @@ class create_dispersion_map(object):
             - ``observed_x`` -- the measurd y positions of the lines
             - ``wavelengths`` -- the wavelengths of the lines
             - ``orders`` -- the orders of the lines
-            - ``order_deg`` -- degree of the order fitting
+            - ``slit_pos`` -- positions of lines along the slit (arcsec)
             - ``wavelength_deg`` -- degree of wavelength fitting
-            - ``slit_deg`` -- degree of the slit fitting (False for single pinhole)
+            - ``order_deg`` -- degree of the order fitting
+            - ``slit_deg`` -- degree of the slit fitting (0 for single pinhole)
 
         **Return:**
             - ``xcoeff`` -- the x-coefficients post clipping
@@ -452,16 +500,20 @@ class create_dispersion_map(object):
 
         arm = self.arm
 
+        if self.firstGuessMap:
+            recipe = "soxs-spatial-solution"
+        else:
+            recipe = "soxs-disp-solution"
+
         clippedCount = 1
 
         poly = chebyshev_order_wavelength_polynomials(
             log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
 
         clippingSigma = self.settings[
-            "soxs-disp-solution"]["poly-fitting-residual-clipping-sigma"]
-
+            recipe]["poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.settings[
-            "soxs-disp-solution"]["clipping-iteration-limit"]
+            recipe]["clipping-iteration-limit"]
 
         iteration = 0
         while clippedCount > 0 and iteration < clippingIterationLimit:

@@ -44,6 +44,14 @@ soxs-order-centre:
     poly-fitting-residual-clipping-sigma: 1.5
     clipping-iteration-limit: 5
 
+soxs-spatial-solution:
+    pixel-window-size: 3
+    order-deg: 3
+    wavelength-deg: 3
+    slit-deg: 3
+    clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 5
+
 
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data
