@@ -125,20 +125,21 @@ class create_dispersion_map(object):
             recipe = "soxs-disp-solution"
             slit_deg = 0
 
-        # READ PREDICTED LINE POSITIONS FROM FILE
+        # READ PREDICTED LINE POSITIONS FROM FILE - RETURNED AS DATAFRAME
         predictedLines = self.get_predicted_line_list()
 
         # ROUND OFF THE PIXEL POSITIONS
         observed_x = []
         observed_y = []
         windowSize = self.settings[recipe]["pixel-window-size"]
-        windowHalf = int(windowSize / 2)
+        self.windowHalf = int(windowSize / 2)
 
-        # DETECT THE LINES ON THE PINHILE FRAME
-        for x, y in zip(predictedLines.loc[:, "detector_x"].astype(int), predictedLines.loc[:, "detector_y"].astype(int)):
-            found_x, found_y = self.detect_pinhole_arc_line(x, y, windowHalf)
-            observed_x.append(found_x)
-            observed_y.append(found_y)
+        # DETECT THE LINES ON THE PINHILE FRAME AND
+        # ADD OBSERVED LINES TO DATAFRAME
+        predictedLines = predictedLines[
+            ["detector_x", "detector_y"]].apply(self.detect_pinhole_arc_line, axis=1)
+
+        print(tabulate(predictedLines, headers='keys', tablefmt='psql'))
 
         # COLLECT INFO FOR DETECTED LINES
         wavelengths = [w for w, x in zip(
@@ -289,23 +290,21 @@ class create_dispersion_map(object):
 
     def detect_pinhole_arc_line(
             self,
-            x,
-            y,
-            windowHalf):
+            predictedLine):
         """*detect the observed position of an arc-line given the predicted pixel positions*
 
         **Key Arguments:**
-            - ``x`` -- the predicted x-positions
-            - ``y`` -- the predicted y-positions
-            - ``windowHalf`` -- half the width of the image stmap to cut and search (in pixels)
+            - ``predictedLine`` -- single predicted line coordinates from predicted line-list
 
         **Return:**
-            - ``observed_x`` -- the observed x-position of the line (None if not found)
-            - ``observed_y`` -- the observed y-position of the line (None if not found)
+            - ``predictedLine`` -- the line with the observed pixel coordinates appended (if detected, otherwise nan)
         """
         self.log.debug('starting the ``detect_pinhole_arc_line`` method')
 
         pinholeFrame = self.pinholeFrame
+        windowHalf = self.windowHalf
+        x = predictedLine[0]
+        y = predictedLine[1]
 
         # CLIP A STAMP FROM IMAGE AROUNDS PREDICTED POSITION
         xlow = int(np.max([x - windowHalf, 0]))
@@ -342,12 +341,15 @@ class create_dispersion_map(object):
             #             ylow, marker='x', s=30)
             # plt.show()
         else:
-            observed_x = None
-            observed_y = None
+            observed_x = np.nan
+            observed_y = np.nan
         # plt.show()
 
+        predictedLine['observed_x'] = observed_x
+        predictedLine['observed_y'] = observed_y
+
         self.log.debug('completed the ``detect_pinhole_arc_line`` method')
-        return observed_x, observed_y
+        return predictedLine
 
     def write_map_to_file(
             self,
@@ -420,11 +422,12 @@ class create_dispersion_map(object):
             observed_y,
             wavelengths,
             orders,
+            slit_pos,
             xcoeff,
             ycoeff,
             order_deg,
             wavelength_deg,
-            slit_deg=False):
+            slit_deg):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
@@ -432,6 +435,7 @@ class create_dispersion_map(object):
             - ``observed_x`` -- the measurd y positions of the lines
             - ``wavelengths`` -- the wavelengths of the lines
             - ``orders`` -- the orders of the lines
+            - ``slit_pos`` -- the slit positions of the lines
             - ``xcoeff`` -- the x-coefficients
             - ``ycoeff`` -- the y-coefficients
             - ``order_deg`` -- degree of the order fitting
@@ -448,16 +452,16 @@ class create_dispersion_map(object):
 
         arm = self.arm
 
-        # POLY FUNCTION NEEDS A TUPLE AS INPUT
-        order_wave = (orders, wavelengths)
+        # POLY FUNCTION NEEDS A DATAFRAME AS INPUT
+        order_wave_slit = (orders, wavelengths, slit_pos)
 
         poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
 
         # CALCULATE X & Y RESIDUALS BETWEEN OBSERVED LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        xfit = poly(order_wave, *xcoeff)
-        yfit = poly(order_wave, *ycoeff)
+        xfit = poly(order_wave_slit, *xcoeff)
+        yfit = poly(order_wave_slit, *ycoeff)
         residuals_x = np.asarray(xfit) - np.asarray(observed_x)
         residuals_y = np.asarray(yfit) - np.asarray(observed_y)
 
@@ -508,7 +512,7 @@ class create_dispersion_map(object):
         clippedCount = 1
 
         poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
 
         clippingSigma = self.settings[
             recipe]["poly-fitting-residual-clipping-sigma"]
@@ -520,24 +524,26 @@ class create_dispersion_map(object):
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
             # FIRST X
-            coeff = np.ones((order_deg + 1) * (wavelength_deg + 1))
+            coeff = np.ones((order_deg + 1) *
+                            (wavelength_deg + 1) * (slit_deg + 1))
             xcoeff, pcov_x = curve_fit(poly, xdata=(
                 orders, wavelengths), ydata=observed_x, p0=coeff)
 
             # NOW Y
             ycoeff, pcov_y = curve_fit(poly, xdata=(
-                orders, wavelengths), ydata=observed_y, p0=coeff)
+                orders, wavelengths, slit_pos), ydata=observed_y, p0=coeff)
 
             residuals, mean_res, std_res, median_res, residuals_x, residuals_y, xfit, yfit = self.calculate_residuals(
                 observed_x=observed_x,
                 observed_y=observed_y,
                 wavelengths=wavelengths,
                 orders=orders,
+                slit_pos=slit_pos,
                 xcoeff=xcoeff,
                 ycoeff=ycoeff,
                 order_deg=order_deg,
                 wavelength_deg=wavelength_deg,
-                slit_deg=False)
+                slit_deg=slit_deg)
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
@@ -545,8 +551,8 @@ class create_dispersion_map(object):
 
             # MASK DATA ARRAYS WITH CLIPPED RESIDUAL MASK
             startCount = len(observed_x)
-            a = [observed_x, observed_y, wavelengths, orders]
-            observed_x, observed_y, wavelengths, orders = [np.ma.compressed(np.ma.masked_array(
+            a = [observed_x, observed_y, wavelengths, orders, slit_pos]
+            observed_x, observed_y, wavelengths, orders, slit_pos = [np.ma.compressed(np.ma.masked_array(
                 i, masked_residuals.mask)) for i in a]
             clippedCount = startCount - len(observed_x)
             print(f'{clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')

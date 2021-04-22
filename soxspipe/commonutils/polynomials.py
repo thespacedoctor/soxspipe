@@ -16,6 +16,7 @@ import os
 os.environ['TERM'] = 'vt100'
 from fundamentals import tools
 import math
+import numpy as np
 
 
 class chebyshev_order_wavelength_polynomials():
@@ -25,13 +26,14 @@ class chebyshev_order_wavelength_polynomials():
         - ``log`` -- logger
         - ``order_deg`` -- degree of the order polynomial components
         - ``wavelength_deg`` -- degree of wavelength polynomial components
+        - ``slit_deg`` -- degree of the slit polynomial components
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
     poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg).poly
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
     ```
     """
 
@@ -39,11 +41,13 @@ class chebyshev_order_wavelength_polynomials():
             self,
             log,
             order_deg,
-            wavelength_deg
+            wavelength_deg,
+            slit_deg
     ):
         self.log = log
         self.order_deg = order_deg
         self.wavelength_deg = wavelength_deg
+        self.slit_deg = slit_deg
 
         return None
 
@@ -62,20 +66,24 @@ class chebyshev_order_wavelength_polynomials():
         # UNPACK TUPLE INPUT
         orders = order_wave[0]
         wavelengths = order_wave[1]
+        slit_pos = np.zeros_like(wavelengths)
         order_deg = self.order_deg
         wavelength_deg = self.wavelength_deg
+        slit_deg = self.slit_deg
 
         lhsVals = []
 
         # POLYNOMIALS SUMS
-        for order, wave in zip(orders, wavelengths):
+        for order, wave, slit in zip(orders, wavelengths, slit_pos):
             n_coeff = 0
             val = 0
             for i in range(0, order_deg + 1):
                 for j in range(0, wavelength_deg + 1):
-                    val += coeff[n_coeff] * \
-                        math.pow(order, i) * math.pow(wave, j)
-                    n_coeff += 1
+                    for k in range(0, slit_deg + 1):
+                        val += coeff[n_coeff] * \
+                            math.pow(order, i) * math.pow(wave, j) * \
+                            math.pow(slit, k)
+                        n_coeff += 1
             lhsVals.append(val)
 
         self.log.info('completed the ``poly`` method')
