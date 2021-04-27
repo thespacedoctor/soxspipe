@@ -51,11 +51,11 @@ class chebyshev_order_wavelength_polynomials():
 
         return None
 
-    def poly(self, order_wave, *coeff):
+    def poly(self, lineList, *coeff):
         """the polynomial definition
 
         **Key Arguments:**
-        - ``order_wave`` -- a tuple of the order wavelength arrays
+        - ``lineList`` -- a pandas dataframe containing wavelengths, orders and slit positions
         - ``*coeff`` -- a list of the initial coefficients
 
         **Return:**
@@ -64,9 +64,6 @@ class chebyshev_order_wavelength_polynomials():
         self.log.info('starting the ``poly`` method')
 
         # UNPACK TUPLE INPUT
-        orders = order_wave[0]
-        wavelengths = order_wave[1]
-        slit_pos = np.zeros_like(wavelengths)
         order_deg = self.order_deg
         wavelength_deg = self.wavelength_deg
         slit_deg = self.slit_deg
@@ -74,7 +71,10 @@ class chebyshev_order_wavelength_polynomials():
         lhsVals = []
 
         # POLYNOMIALS SUMS
-        for order, wave, slit in zip(orders, wavelengths, slit_pos):
+        for index, row in lineList.iterrows():
+            order = row["Order"]
+            wave = row["Wavelength"]
+            slit = row["slit_position"]
             n_coeff = 0
             val = 0
             for i in range(0, order_deg + 1):

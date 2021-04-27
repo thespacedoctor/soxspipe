@@ -46,15 +46,9 @@ class create_dispersion_map(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``pinholeFrame`` -- the calibrated pinhole frame (single or multi)
-        - ``firstGuessMap`` -- the first guess dispersion map from the `soxs_disp_solution` receipe (needed in `soxs_spat_solution` recipe). Deefault *False*.
+        - ``firstGuessMap`` -- the first guess dispersion map from the `soxs_disp_solution` recipe (needed in `soxs_spat_solution` recipe). Default *False*.
 
     **Usage:**
-
-    ```eval_rst
-    .. todo::
-
-        - add a tutorial about ``create_dispersion_map`` to documentation
-    ```
 
     ```python
     from soxspipe.commonutils import create_dispersion_map
@@ -65,7 +59,6 @@ class create_dispersion_map(object):
         firstGuessMap=False
     ).get()
     ```
-
     """
 
     def __init__(
@@ -76,7 +69,7 @@ class create_dispersion_map(object):
             firstGuessMap=False
     ):
         self.log = log
-        log.debug("instansiating a new 'create_dispersion_map' object")
+        log.debug("instantiating a new 'create_dispersion_map' object")
         self.settings = settings
         self.pinholeFrame = pinholeFrame
         self.firstGuessMap = firstGuessMap
@@ -106,18 +99,10 @@ class create_dispersion_map(object):
 
         **Return:**
             - ``mapPath`` -- path to the file containing the coefficients of the x,y polynomials of the global dispersion map fit
-
-        **Usage:**
-
-
-        ```eval_rst
-        .. todo::
-
-            - update the package tutorial if needed
-        ```
         """
         self.log.debug('starting the ``get`` method')
 
+        # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
             recipe = "soxs-spatial-solution"
             slit_deg = self.settings[recipe]["slit-deg"]
@@ -126,30 +111,20 @@ class create_dispersion_map(object):
             slit_deg = 0
 
         # READ PREDICTED LINE POSITIONS FROM FILE - RETURNED AS DATAFRAME
-        predictedLines = self.get_predicted_line_list()
+        lineList = self.get_predicted_line_list()
 
-        # ROUND OFF THE PIXEL POSITIONS
-        observed_x = []
-        observed_y = []
+        # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME
         windowSize = self.settings[recipe]["pixel-window-size"]
         self.windowHalf = int(windowSize / 2)
 
         # DETECT THE LINES ON THE PINHILE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
-        predictedLines = predictedLines[
-            ["detector_x", "detector_y"]].apply(self.detect_pinhole_arc_line, axis=1)
+        lineList = lineList.apply(
+            self.detect_pinhole_arc_line, axis=1)
 
-        print(tabulate(predictedLines, headers='keys', tablefmt='psql'))
-
-        # COLLECT INFO FOR DETECTED LINES
-        wavelengths = [w for w, x in zip(
-            predictedLines.loc[:, "Wavelength"], observed_x) if x != None]
-        orders = [w for w, x in zip(
-            predictedLines.loc[:, "Order"], observed_x) if x != None]
-        slit_pos = [w for w, x in zip(
-            predictedLines.loc[:, "slit_position"], observed_x) if x != None]
-        observed_x = [x for x in observed_x if x != None]
-        observed_y = [y for y in observed_y if y != None]
+        # DROP MISSING VALUES
+        lineList.dropna(axis='index', how='any', subset=[
+            'observed_x'], inplace=True)
 
         order_deg = self.settings[recipe]["order-deg"]
         wavelength_deg = self.settings[
@@ -157,11 +132,7 @@ class create_dispersion_map(object):
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         popt_x, popt_y = self.fit_polynomials(
-            observed_x=observed_x,
-            observed_y=observed_y,
-            wavelengths=wavelengths,
-            orders=orders,
-            slit_pos=slit_pos,
+            lineList=lineList,
             wavelength_deg=wavelength_deg,
             order_deg=order_deg,
             slit_deg=slit_deg,
@@ -169,14 +140,14 @@ class create_dispersion_map(object):
 
         # WRITE THE MAP TO FILE
         mapPath = self.write_map_to_file(
-            popt_x, popt_y, order_deg, wavelength_deg)
+            popt_x, popt_y, order_deg, wavelength_deg, slit_deg)
 
         self.log.debug('completed the ``get`` method')
         return mapPath
 
     def get_predicted_line_list(
             self):
-        """*lift the predicted line list from the static calcibrations*
+        """*lift the predicted line list from the static calibrations*
 
         **Return:**
             - ``predictedLines`` -- a dictionary of lists detailing Wavelength,Order,slit_index,slit_position,detector_x,detector_y
@@ -303,8 +274,8 @@ class create_dispersion_map(object):
 
         pinholeFrame = self.pinholeFrame
         windowHalf = self.windowHalf
-        x = predictedLine[0]
-        y = predictedLine[1]
+        x = predictedLine['detector_x']
+        y = predictedLine['detector_y']
 
         # CLIP A STAMP FROM IMAGE AROUNDS PREDICTED POSITION
         xlow = int(np.max([x - windowHalf, 0]))
@@ -357,7 +328,7 @@ class create_dispersion_map(object):
             ycoeff,
             order_deg,
             wavelength_deg,
-            slit_deg=False):
+            slit_deg):
         """*write out the fitted polynomial solution coefficients to file*
 
         **Key Arguments:**
@@ -379,22 +350,26 @@ class create_dispersion_map(object):
         coeff_dict_x["axis"] = "x"
         coeff_dict_x["order-deg"] = order_deg
         coeff_dict_x["wavelength-deg"] = wavelength_deg
+        coeff_dict_x["slit-deg"] = slit_deg
         n_coeff = 0
         for i in range(0, order_deg + 1):
             for j in range(0, wavelength_deg + 1):
-                coeff_dict_x[f'c{i}{j}'] = xcoeff[n_coeff]
-                n_coeff += 1
+                for k in range(0, slit_deg + 1):
+                    coeff_dict_x[f'c{i}{j}{k}'] = xcoeff[n_coeff]
+                    n_coeff += 1
 
         # SORT Y COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_y = {}
         coeff_dict_y["axis"] = "y"
         coeff_dict_y["order-deg"] = order_deg
         coeff_dict_y["wavelength-deg"] = wavelength_deg
+        coeff_dict_y["slit-deg"] = slit_deg
         n_coeff = 0
         for i in range(0, order_deg + 1):
             for j in range(0, wavelength_deg + 1):
-                coeff_dict_y[f'c{i}{j}'] = ycoeff[n_coeff]
-                n_coeff += 1
+                for k in range(0, slit_deg + 1):
+                    coeff_dict_y[f'c{i}{j}{k}'] = ycoeff[n_coeff]
+                    n_coeff += 1
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
@@ -418,24 +393,17 @@ class create_dispersion_map(object):
 
     def calculate_residuals(
             self,
-            observed_x,
-            observed_y,
-            wavelengths,
-            orders,
-            slit_pos,
+            lineList,
             xcoeff,
             ycoeff,
             order_deg,
             wavelength_deg,
             slit_deg):
-        """*calculate residuals of the polynomial fits against the observed line postions*
+        """*calculate residuals of the polynomial fits against the observed line positions*
 
         **Key Arguments:**
-            - ``observed_x`` -- the measured x positions of the lines
-            - ``observed_x`` -- the measurd y positions of the lines
-            - ``wavelengths`` -- the wavelengths of the lines
-            - ``orders`` -- the orders of the lines
-            - ``slit_pos`` -- the slit positions of the lines
+
+            - ``lineList`` -- the predicted line list as a data frame
             - ``xcoeff`` -- the x-coefficients
             - ``ycoeff`` -- the y-coefficients
             - ``order_deg`` -- degree of the order fitting
@@ -453,45 +421,38 @@ class create_dispersion_map(object):
         arm = self.arm
 
         # POLY FUNCTION NEEDS A DATAFRAME AS INPUT
-        order_wave_slit = (orders, wavelengths, slit_pos)
-
         poly = chebyshev_order_wavelength_polynomials(
             log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
 
         # CALCULATE X & Y RESIDUALS BETWEEN OBSERVED LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        xfit = poly(order_wave_slit, *xcoeff)
-        yfit = poly(order_wave_slit, *ycoeff)
-        residuals_x = np.asarray(xfit) - np.asarray(observed_x)
-        residuals_y = np.asarray(yfit) - np.asarray(observed_y)
+        lineList["fit_x"] = poly(lineList, *xcoeff)
+        lineList["fit_y"] = poly(lineList, *ycoeff)
+        lineList["residuals_x"] = lineList[
+            "fit_x"] - lineList["observed_x"]
+        lineList["residuals_y"] = lineList[
+            "fit_y"] - lineList["observed_y"]
 
         # CALCULATE COMBINED RESIDUALS AND STATS
-        combined_res = np.sqrt(np.square(residuals_x) + np.square(residuals_y))
-        combined_res_mean = np.mean(combined_res)
-        combined_res_std = np.std(combined_res)
-        combined_res_median = np.median(combined_res)
+        lineList["residuals_xy"] = np.sqrt(np.square(
+            lineList["residuals_x"]) + np.square(lineList["residuals_y"]))
+        combined_res_mean = np.mean(lineList["residuals_xy"])
+        combined_res_std = np.std(lineList["residuals_xy"])
+        combined_res_median = np.median(lineList["residuals_xy"])
 
         self.log.debug('completed the ``calculate_residuals`` method')
-        return combined_res, combined_res_mean, combined_res_std, combined_res_median, residuals_x, residuals_y, xfit, yfit
+        return combined_res_mean, combined_res_std, combined_res_median, lineList
 
     def fit_polynomials(
             self,
-            observed_x,
-            observed_y,
-            wavelengths,
-            orders,
-            slit_pos,
+            lineList,
             wavelength_deg,
             order_deg,
             slit_deg):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
-            - ``observed_x`` -- the measured x positions of the lines
-            - ``observed_x`` -- the measurd y positions of the lines
-            - ``wavelengths`` -- the wavelengths of the lines
-            - ``orders`` -- the orders of the lines
-            - ``slit_pos`` -- positions of lines along the slit (arcsec)
+            - ``lineList`` -- data frame containing order, wavelengths, slit positions and observed pixel positions
             - ``wavelength_deg`` -- degree of wavelength fitting
             - ``order_deg`` -- degree of the order fitting
             - ``slit_deg`` -- degree of the slit fitting (0 for single pinhole)
@@ -522,23 +483,21 @@ class create_dispersion_map(object):
         iteration = 0
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
+            observed_x = lineList["observed_x"].to_numpy()
+            observed_y = lineList["observed_y"].to_numpy()
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
             # FIRST X
             coeff = np.ones((order_deg + 1) *
                             (wavelength_deg + 1) * (slit_deg + 1))
-            xcoeff, pcov_x = curve_fit(poly, xdata=(
-                orders, wavelengths), ydata=observed_x, p0=coeff)
+            xcoeff, pcov_x = curve_fit(
+                poly, xdata=lineList, ydata=observed_x, p0=coeff)
 
             # NOW Y
-            ycoeff, pcov_y = curve_fit(poly, xdata=(
-                orders, wavelengths, slit_pos), ydata=observed_y, p0=coeff)
+            ycoeff, pcov_y = curve_fit(
+                poly, xdata=lineList, ydata=observed_y, p0=coeff)
 
-            residuals, mean_res, std_res, median_res, residuals_x, residuals_y, xfit, yfit = self.calculate_residuals(
-                observed_x=observed_x,
-                observed_y=observed_y,
-                wavelengths=wavelengths,
-                orders=orders,
-                slit_pos=slit_pos,
+            mean_res, std_res, median_res, lineList = self.calculate_residuals(
+                lineList=lineList,
                 xcoeff=xcoeff,
                 ycoeff=ycoeff,
                 order_deg=order_deg,
@@ -547,15 +506,20 @@ class create_dispersion_map(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                residuals, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
-
-            # MASK DATA ARRAYS WITH CLIPPED RESIDUAL MASK
-            startCount = len(observed_x)
-            a = [observed_x, observed_y, wavelengths, orders, slit_pos]
-            observed_x, observed_y, wavelengths, orders, slit_pos = [np.ma.compressed(np.ma.masked_array(
-                i, masked_residuals.mask)) for i in a]
-            clippedCount = startCount - len(observed_x)
+                lineList["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+            lineList["residuals_masked"] = masked_residuals.mask
+            # RETURN BREAKDOWN OF COLUMN VALUE COUNT
+            valCounts = lineList[
+                'residuals_masked'].value_counts(normalize=False)
+            if True in valCounts:
+                clippedCount = valCounts[True]
+            else:
+                clippedCount = 0
             print(f'{clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
+
+            # REMOVE FILTERED ROWS FROM DATA FRAME
+            mask = (lineList['residuals_masked'] == True)
+            lineList.drop(index=lineList[mask].index, inplace=True)
 
         # a = plt.figure(figsize=(40, 15))
         if arm == "UVB":
@@ -575,9 +539,11 @@ class create_dispersion_map(object):
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "observed arc-line positions (post-clipping)", fontsize=10)
-        x = np.ones(observed_x.shape) * \
-            self.pinholeFrame.data.shape[1] - observed_x
-        toprow.scatter(observed_y, x, marker='x', c='red', s=4)
+
+        x = np.ones(lineList.shape[0]) * \
+            self.pinholeFrame.data.shape[1] - lineList["observed_x"]
+        toprow.scatter(lineList["observed_y"],
+                       x, marker='x', c='red', s=4)
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
         toprow.set_ylabel("x-axis", fontsize=8)
@@ -587,9 +553,10 @@ class create_dispersion_map(object):
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         midrow.set_title(
             "global dispersion solution", fontsize=10)
-        xfit = np.ones(len(xfit)) * \
-            self.pinholeFrame.data.shape[1] - xfit
-        midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
+        xfit = np.ones(lineList.shape[0]) * \
+            self.pinholeFrame.data.shape[1] - lineList["fit_x"]
+        midrow.scatter(lineList["fit_y"],
+                       xfit, marker='x', c='blue', s=4)
         # midrow.set_yticklabels([])
         # midrow.set_xticklabels([])
         midrow.set_ylabel("x-axis", fontsize=8)
@@ -598,12 +565,13 @@ class create_dispersion_map(object):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomleft.scatter(residuals_x, residuals_y, alpha=0.4)
+        bottomleft.scatter(lineList["residuals_x"], lineList[
+                           "residuals_y"], alpha=0.4)
         bottomleft.set_xlabel('x residual')
         bottomleft.set_ylabel('y residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
-        hist(residuals, bins='scott', ax=bottomright, histtype='stepfilled',
+        hist(lineList["residuals_xy"], bins='scott', ax=bottomright, histtype='stepfilled',
              alpha=0.7, density=True)
         bottomright.set_xlabel('xy residual')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
