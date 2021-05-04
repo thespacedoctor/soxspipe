@@ -61,32 +61,30 @@ class chebyshev_order_wavelength_polynomials():
         **Return:**
         - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
         """
-        self.log.info('starting the ``poly`` method')
+        self.log.debug('starting the ``poly`` method')
 
         # UNPACK TUPLE INPUT
         order_deg = self.order_deg
         wavelength_deg = self.wavelength_deg
         slit_deg = self.slit_deg
 
-        lhsVals = []
+        # lhsVals = np.sum([v * c for v, c in zip([lineList["Order"].values**i * lineList["Wavelength"].values**j * lineList["slit_position"].values**k for i in range(0, order_deg + 1)
+        # for j in range(0, wavelength_deg + 1) for k in range(0, slit_deg +
+        # 1)], coeff)], axis=0)
 
-        # POLYNOMIALS SUMS
-        for index, row in lineList.iterrows():
-            order = row["Order"]
-            wave = row["Wavelength"]
-            slit = row["slit_position"]
-            n_coeff = 0
-            val = 0
-            for i in range(0, order_deg + 1):
-                for j in range(0, wavelength_deg + 1):
-                    for k in range(0, slit_deg + 1):
-                        val += coeff[n_coeff] * \
-                            math.pow(order, i) * math.pow(wave, j) * \
-                            math.pow(slit, k)
-                        n_coeff += 1
-            lhsVals.append(val)
+        # THE LIST COMPREHENSION ABOVE DID NOT SPEED UP THE NEST LOOPS BELOW -
+        # KEEPING LOOPS!
+        n_coeff = 0
+        lhsVals = np.zeros(len(lineList.index))
+        for i in range(0, order_deg + 1):
+            for j in range(0, wavelength_deg + 1):
+                for k in range(0, slit_deg + 1):
+                    lhsVals += coeff[n_coeff] * lineList["Order"].values**i * \
+                        lineList["Wavelength"].values**j * \
+                        lineList["slit_position"].values**k
+                    n_coeff += 1
 
-        self.log.info('completed the ``poly`` method')
+        self.log.debug('completed the ``poly`` method')
 
         return lhsVals
 

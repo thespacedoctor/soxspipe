@@ -183,81 +183,53 @@ class create_dispersion_map(object):
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 
         # READ CSV FILE TO PANDAS DATAFRAME
-        df = pd.read_csv(predictedLinesFile)
+        lineList = pd.read_csv(predictedLinesFile)
 
         # WANT TO DETERMINE SYSTEMATIC SHIFT IF FIRST GUESS SOLUTION PRESENT
         if self.firstGuessMap:
             # ADD SOME EXTRA COLUMNS TO DATAFRAME
-            df['observed_x'] = np.nan
-            df['observed_y'] = np.nan
-            df['shift_x'] = np.nan
-            df['shift_y'] = np.nan
 
             # FILTER THE PREDICTED LINES TO ONLY SLIT POSITION INCLUDED IN
             # SINGLE PINHOLE FRAMES
             slitIndex = int(dp["mid_slit_index"])
-            mask = (df['slit_index'] == slitIndex)
-            filteredDf = df.loc[mask]
-
-            # GROUP RESULTS BY ORDER
-            # GET UNIQUE ORDER AND SLIT INDEXES
-            uniqueOrders = filteredDf['Order'].unique()
-            uniqueSlits = df['slit_index'].unique()
-            dfGroups = filteredDf.groupby(['Order'])
-
-            # CREATE orderWavelengthDict FOR dispersion_map_to_pixel_arrays
-            # FUNCTION
-            orderWavelengthDict = {}
-            orderWavelengthDict = {o: dfGroups.get_group(
-                o)['Wavelength'].values for o in uniqueOrders}
 
             # GET THE OBSERVED PIXELS VALUES
-            pixelArrays = dispersion_map_to_pixel_arrays(
+            lineList = dispersion_map_to_pixel_arrays(
                 log=self.log,
                 dispersionMapPath=self.firstGuessMap,
-                orderWavelengthDict=orderWavelengthDict
+                lineList=lineList
             )
 
-            # ITERATE OVER EACH ORDER
-            for o in uniqueOrders:
-                thisGroup = dfGroups.get_group(o).copy()
-                # DETERMINE THE SHIFT IN SINGLE PINHOLE PREDICTED TO OBSERVED
-                # PIXELS
-                thisGroup.loc[:, ('observed_x')], thisGroup.loc[:, ('observed_y')] = zip(
-                    *[(p[0], p[1]) for p in pixelArrays[o]])
-                mask = (df['slit_index'] == slitIndex) & (df['Order'] == o)
-                df.loc[mask, ('observed_x')], df.loc[mask, ('observed_y')] = zip(
-                    *[(p[0], p[1]) for p in pixelArrays[o]])
-                thisGroup.loc[:, 'shift_xx'] = thisGroup[
-                    'detector_x'].values - thisGroup['observed_x'].values
-                thisGroup.loc[:, 'shift_yy'] = thisGroup[
-                    'detector_y'].values - thisGroup['observed_y'].values
-                thisGroup = thisGroup.loc[
-                    :, ['Wavelength', 'Order', 'shift_xx', 'shift_yy']]
+            # CREATE A COPY OF THE DATA-FRAME TO DETERMINE SHIFTS
+            tmpList = lineList.copy()
 
-                # MERGING SHIFTS INTO MAIN DATAFRAME
-                df = df.merge(thisGroup, on=[
-                    'Wavelength', 'Order'], how='outer')
-                df.loc[df['shift_xx'].notnull(), ['shift_x', 'shift_y']] = df.loc[
-                    df['shift_xx'].notnull(), ['shift_xx', 'shift_yy']].values
-                df.drop(columns=['shift_xx', 'shift_yy'], inplace=True)
+            mask = (tmpList['slit_index'] == slitIndex)
+            tmpList.loc[mask, 'shift_x'] = tmpList.loc[
+                mask, 'detector_x'].values - tmpList.loc[mask, 'fit_x'].values
+            tmpList.loc[mask, 'shift_y'] = tmpList.loc[
+                mask, 'detector_y'].values - tmpList.loc[mask, 'fit_y'].values
+
+            # MERGING SHIFTS INTO MAIN DATAFRAME
+            tmpList = tmpList.loc[tmpList['shift_x'].notnull(
+            ), ['Wavelength', 'Order', 'shift_x', 'shift_y']]
+            lineList = lineList.merge(tmpList, on=[
+                'Wavelength', 'Order'], how='outer')
 
             # DROP ROWS WITH MISSING SHIFTS
-            df.dropna(axis='index', how='any', subset=[
-                      'shift_x'], inplace=True)
+            lineList.dropna(axis='index', how='any', subset=[
+                'shift_x'], inplace=True)
 
             # SHIFT DETECTOR LINE PIXEL POSITIONS BY SHIFTS
             # UPDATE FILTERED VALUES
-            df.loc[:, 'detector_x'] -= df.loc[:, 'shift_x']
-            df.loc[:, 'detector_y'] -= df.loc[:, 'shift_y']
+            lineList.loc[:, 'detector_x'] -= lineList.loc[:, 'shift_x']
+            lineList.loc[:, 'detector_y'] -= lineList.loc[:, 'shift_y']
 
             # DROP HELPER COLUMNS
-            df.drop(columns=['observed_x', 'observed_y',
-                             'shift_x', 'shift_y'], inplace=True)
+            lineList.drop(columns=['fit_x', 'fit_y',
+                                   'shift_x', 'shift_y'], inplace=True)
 
-        predictedLines = df
         self.log.debug('completed the ``get_predicted_line_list`` method')
-        return predictedLines
+        return lineList
 
     def detect_pinhole_arc_line(
             self,
@@ -286,6 +258,7 @@ class create_dispersion_map(object):
 
         # USE DAOStarFinder TO FIND LINES WITH 2D GUASSIAN FITTING
         mean, median, std = sigma_clipped_stats(stamp, sigma=3.0)
+
         daofind = DAOStarFinder(
             fwhm=2.0, threshold=5. * std, roundlo=-3.0, roundhi=3.0, sharplo=-3.0, sharphi=3.0)
         sources = daofind(stamp - median)
@@ -489,13 +462,17 @@ class create_dispersion_map(object):
             # FIRST X
             coeff = np.ones((order_deg + 1) *
                             (wavelength_deg + 1) * (slit_deg + 1))
+            self.log.info("""curvefit x""" % locals())
+
             xcoeff, pcov_x = curve_fit(
                 poly, xdata=lineList, ydata=observed_x, p0=coeff)
 
             # NOW Y
+            self.log.info("""curvefit y""" % locals())
             ycoeff, pcov_y = curve_fit(
                 poly, xdata=lineList, ydata=observed_y, p0=coeff)
 
+            self.log.info("""calculate_residuals""" % locals())
             mean_res, std_res, median_res, lineList = self.calculate_residuals(
                 lineList=lineList,
                 xcoeff=xcoeff,
@@ -505,6 +482,7 @@ class create_dispersion_map(object):
                 slit_deg=slit_deg)
 
             # SIGMA-CLIP THE DATA
+            self.log.info("""sigma_clip""" % locals())
             masked_residuals = sigma_clip(
                 lineList["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
             lineList["residuals_masked"] = masked_residuals.mask

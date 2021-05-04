@@ -51,11 +51,18 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
 
         dispersionMapPath = "~/xshooter-pipeline-data/unittest_data/detect_continuum/single_pinhole_NIR_disp_map.csv"
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
-        orderWavelengthDict = {11: [850.3, 894.3, 983.2]}
-        pixelArrays = dispersion_map_to_pixel_arrays(
+        import pandas as pd
+        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+        myDict = {
+            "Order": [11, 11, 11, 11, 11],
+            "Wavelength": [2000., 2100., 2200., 2300., 2400.],
+            "slit_position": [0, 0, 0, 0, 0]
+        }
+        lineList = pd.DataFrame(myDict)
+        lineList = dispersion_map_to_pixel_arrays(
             log=log,
             dispersionMapPath=dispersionMapPath,
-            orderWavelengthDict=orderWavelengthDict
+            lineList=lineList
         )
 
     def test_dispersion_map_to_pixel_arrays_function_exception(self):
