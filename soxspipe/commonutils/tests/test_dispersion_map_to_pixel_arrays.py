@@ -67,7 +67,7 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
 
     def test_dispersion_map_to_pixel_arrays_function_exception(self):
 
-        from soxspipe import dispersion_map_to_pixel_arrays
+        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
         try:
             this = dispersion_map_to_pixel_arrays(
                 log=log,

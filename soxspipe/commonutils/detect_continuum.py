@@ -121,6 +121,10 @@ class detect_continuum(object):
         self.peakSigmaLimit = self.settings[
             "soxs-order-centre"]["peak-sigma-limit"]
 
+        # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
+        lineList['cont_x'] = np.nan
+        lineList['cont_y'] = np.nan
+
         # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
         # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
         lineList = lineList.apply(
@@ -300,7 +304,9 @@ class detect_continuum(object):
                 plt.xlabel('Position')
                 plt.ylabel('Flux')
                 plt.show()
-            return None
+            linePixelPostion["cont_x"] = np.nan
+            linePixelPostion["cont_y"] = np.nan
+            return linePixelPostion
 
         # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
         # CENTRE THE GAUSSIAN ON THE PEAK
