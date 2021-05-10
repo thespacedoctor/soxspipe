@@ -165,7 +165,7 @@ class soxs_spatial_solution(_base_recipe_):
             settings=settings,
             inputFrames=fileList
         )
-        spatial_solutionFrame = recipe.produce_product()
+        disp_map = recipe.produce_product()
         ```
         """
         self.log.debug('starting the ``produce_product`` method')
@@ -226,7 +226,7 @@ class soxs_spatial_solution(_base_recipe_):
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
-        return productPath
+        return mapPath
 
     # use the tab-trigger below for new method
     # xt-class-method

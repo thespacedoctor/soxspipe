@@ -353,7 +353,10 @@ class create_dispersion_map(object):
             frame=self.pinholeFrame,
             settings=self.settings
         )
-        filename = filename.split("ARC")[0] + "DISP_MAP.csv"
+        if slit_deg == 0:
+            filename = filename.split("ARC")[0] + "DISP_MAP.csv"
+        else:
+            filename = filename.split("ARC")[0] + "2D_MAP.csv"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
@@ -562,7 +565,10 @@ class create_dispersion_map(object):
             frame=self.pinholeFrame,
             settings=self.settings
         )
-        filename = filename.split("ARC")[0] + "DISP_MAP_RESIDUALS.pdf"
+        if self.firstGuessMap:
+            filename = filename.split("ARC")[0] + "2D_MAP_RESIDUALS.pdf"
+        else:
+            filename = filename.split("ARC")[0] + "DISP_MAP_RESIDUALS.pdf"
 
         # plt.show()
         home = expanduser("~")

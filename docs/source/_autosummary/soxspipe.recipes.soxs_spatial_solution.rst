@@ -1,9 +1,9 @@
-﻿detect_continuum *(class)*
-===============================================
+﻿soxs_spatial_solution *(class)*
+================================================
 
-.. currentmodule:: soxspipe.commonutils
+.. currentmodule:: soxspipe.recipes
 
-.. autoclass:: detect_continuum
+.. autoclass:: soxs_spatial_solution
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,39 +19,31 @@
         
    
         
-            ~detect_continuum.calculate_residuals
+            ~soxs_spatial_solution.clean_up
        
    
         
-            ~detect_continuum.create_pixel_arrays
+            ~soxs_spatial_solution.clip_and_stack
        
    
         
-            ~detect_continuum.fit_1d_gaussian_to_slice
+            ~soxs_spatial_solution.prepare_frames
        
    
         
-            ~detect_continuum.fit_polynomial
+            ~soxs_spatial_solution.produce_product
        
    
         
-            ~detect_continuum.fit_polynomial_bk
+            ~soxs_spatial_solution.subtract_calibrations
        
    
         
-            ~detect_continuum.get
+            ~soxs_spatial_solution.verify_input_frames
        
    
         
-            ~detect_continuum.plot_results
-       
-   
-        
-            ~detect_continuum.read_spectral_format
-       
-   
-        
-            ~detect_continuum.write_order_table_to_file
+            ~soxs_spatial_solution.xsh2soxs
        
    
    .. 
@@ -108,8 +100,24 @@
    ..     
    .. 
    ..     
+   ..          ~soxs_spatial_solution._absolute_path
+   ..      
    .. 
    ..     
+   ..          ~soxs_spatial_solution._prepare_single_frame
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_spatial_solution._trim_frame
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_spatial_solution._verify_input_frames_basics
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_spatial_solution._write
+   ..      
    .. 
    ..     
    .. 

@@ -40,6 +40,7 @@
     .. autosummary::
 
         
+          ~dispersion_map_to_pixel_arrays
           ~filenamer
           ~getpackagepath
         

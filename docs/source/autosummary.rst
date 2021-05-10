@@ -30,7 +30,8 @@ Classes
    soxspipe.recipes.soxs_disp_solution
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark
-   soxspipe.recipes.soxs_order_centres 
+   soxspipe.recipes.soxs_order_centres
+   soxspipe.recipes.soxs_spatial_solution 
 
 
 Functions
@@ -40,6 +41,7 @@ Functions
    :toctree: _autosummary
    :nosignatures:
 
+   soxspipe.commonutils.dispersion_map_to_pixel_arrays
    soxspipe.commonutils.filenamer
    soxspipe.commonutils.getpackagepath
    soxspipe.docstring_test.docsting_test 

@@ -8,7 +8,7 @@ As input the recipe receives the [Dispersion Map](../files/dispersion_map.md) ta
 
 In the static calibration suite we have tables listing the wavelength $\lambda$, order number $n$ and slit position $s$ of the spectral lines alongside a first approximation of their ($X, Y$) pixel-positions on the detector (the same one used by `soxs_disp_solution`).
 
-## Input
+### Input
 
 | Data Type | Content | Related OB |
 |:----|:----|:---|
@@ -17,22 +17,25 @@ In the static calibration suite we have tables listing the wavelength $\lambda$,
 | Static Calibration | Multi-pinhole detector position map | |
 | Raw Science | - | |
 
-## Method
+### Method
 
 Having [prepared](../utils/prepare_frames.md) the multi-pinhole frame the [bias and dark signatures are removed](../utils/subtract_calibrations.md) and the frame is divided through by the master flat frame. The calibrated frame and the first-guess dispersion map are passed to the [`create_dispersion_map`](../utils/create_dispersion_map.md) utility to produce a 2D dispersion solution covering both the spectral and spatial dimensions.
 
 ![](soxs_spatial_solution.png)
 
-## Output
+### Output
 
-* [Dispersion Map](../files/dispersion_map.md) table giving 2D dispersion solution.
+| Data Type | Content |
+|:----|:----|
+| [Dispersion Map](../files/dispersion_map.md) | table giving coefficients of polynomials describing 2D dispersion/spatial solution |
 
-## QC Metrics
+### QC Metrics
 
 | Metric  | Description |
 | :------------ | :----------- |
 | TBC     | ...  |
 
+### Recipe API
 
 ```eval_rst
 .. autoclass:: soxspipe.recipes.soxs_spatial_solution

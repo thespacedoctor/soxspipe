@@ -4,7 +4,7 @@
 
 ```eval_rst
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    soxs_mbias
    soxs_mdark
@@ -22,7 +22,7 @@ This 2D mapping function is determined incrementally via the `soxs_disp_solution
 
 ```eval_rst
 .. toctree::
-   :maxdepth: 4
+   :maxdepth: 1
 
    soxs_disp_solution
    soxs_order_centres

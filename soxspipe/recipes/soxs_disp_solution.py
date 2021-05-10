@@ -46,6 +46,8 @@ class soxs_disp_solution(_base_recipe_):
     ).produce_product()
     ```
 
+    --- 
+
     ```eval_rst
     .. todo::
 
@@ -98,7 +100,7 @@ class soxs_disp_solution(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the soxs_disp_solution recipe*
+        """*verify input frames match those required by the `soxs_disp_solution` recipe*
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -146,10 +148,10 @@ class soxs_disp_solution(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the dispersion map*
+        """*generate a fisrt guess of the dispersion solution*
 
         **Return:**
-            - ``productPath`` -- the path to the dispersion map
+            - ``productPath`` -- the path to the first guess dispersion map
         """
         self.log.debug('starting the ``produce_product`` method')
 

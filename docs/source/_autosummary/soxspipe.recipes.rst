@@ -24,6 +24,7 @@
           ~soxs_mbias
           ~soxs_mdark
           ~soxs_order_centres
+          ~soxs_spatial_solution
         
 
         

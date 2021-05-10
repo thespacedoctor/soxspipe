@@ -26,13 +26,13 @@ from soxspipe.commonutils import keyword_lookup
 
 class soxs_mbias(_base_recipe_):
     """
-    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have the bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
+    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
 
     **Key Arguments**
 
     - ``log`` -- logger
     - ``settings`` -- the settings dictionary
-    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default: `[]`
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
 
     **Usage**
 
@@ -44,6 +44,8 @@ class soxs_mbias(_base_recipe_):
         inputFrames=fileList
     ).produce_product()
     ```
+
+    ---
 
     ```eval_rst
     .. todo::
@@ -130,10 +132,10 @@ class soxs_mbias(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_mbias recipe*
+        """*generate a master bias frame*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+            - ``productPath`` -- the path to the master bias frame
         """
         self.log.debug('starting the ``produce_product`` method')
 

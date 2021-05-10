@@ -44,6 +44,8 @@ class soxs_mdark(_base_recipe_):
     )..produce_product()
     ```
 
+    ---
+
     ```eval_rst
     .. todo::
 
@@ -97,7 +99,7 @@ class soxs_mdark(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the soxs_mdark recipe*
+        """*verify input frame match those required by the soxs_mdark recipe*
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -138,10 +140,10 @@ class soxs_mdark(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_mdark recipe*
+        """*generate a master dark frame*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+            - ``productPath`` -- the path to master dark frame
         """
         self.log.debug('starting the ``produce_product`` method')
 

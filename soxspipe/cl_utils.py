@@ -9,6 +9,7 @@ Usage:
     soxspipe mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
     init                                   setup the soxspipe settings file for the first time
@@ -16,6 +17,7 @@ Options:
     mdark                                  the master dark recipe
     disp_sol                               the disp solution recipe
     order_centres                          the order centres recipe
+    spat_sol                               the spatial solution recipe
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -171,6 +173,15 @@ def main(arguments=None):
             inputFrames=a["inputFrames"]
         ).produce_product()
         print(f"\nThe order centre locations have been saved to an order table: {order_table}")
+
+    if a["spat_sol"]:
+        from soxspipe.recipes import soxs_spatial_solution
+        disp_map = soxs_spatial_solution(
+            log=log,
+            settings=settings,
+            inputFrames=a["inputFrames"]
+        ).produce_product()
+        print(f"\nFull 2D dispersion map saved to: {disp_map}")
 
     # CALL FUNCTIONS/OBJECTS
 
