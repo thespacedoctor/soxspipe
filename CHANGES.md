@@ -1,5 +1,6 @@
 # Release Notes
 
+`soxs_spatial_solution` recipe is now included
 Added a `dispersion_map_to_pixel_arrays` function to convert from order-based and wavelength arrays to pixel arrays (first guess dispersion map only so far)
 lines in a sof file beginning with a `#` are considered as comments and therefore ignored by the pipeline.
 
