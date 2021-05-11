@@ -1,4 +1,4 @@
-## `prepare_frames` - COMPLETED
+## `prepare_frames`
 
 The purpose of [`prepare_frames`](../_api/soxspipe.recipes._base_recipe_.html#soxspipe.recipes._base_recipe_._base_recipe_.prepare_frames) is to prepare the raw SOXS frames for data reduction. 
 

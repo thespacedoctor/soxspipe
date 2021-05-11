@@ -1,4 +1,4 @@
-# `soxs_disp_solution` - COMPLETED
+# `soxs_disp_solution`
 
 The purpose of the [`soxs_disp_solution`](../_api/soxspipe.recipes.soxs_disp_solution.html) is to use a single-pinhole arc-lamp frame (example image above) to generate a first guess dispersion solution.
 
@@ -17,6 +17,7 @@ As input this recipes accepts the [Pinhole Map](../files/pinhole_map.md) file.
 | FITS Image | Master Dark Frame (VIS only) | - |
 | FITS Image | Master Bias Frame (VIS only) | - |
 | FITS Image | Dark frame (Lamp-Off) of equal exposure length as single pinhole frame (Lamp-On) (NIR only) | `SOXS_slt_cal_NIRArcsPinhole` |
+| CSV File | [Pinhole Map](../files/pinhole_map.md) |
 
 ### Parameters
 
@@ -48,7 +49,8 @@ Once the line positions have been measured, a dispersion solution is generated b
 
 The typical solution for the `soxs_disp_solution` recipe has sub-pixel residuals.
 
-[![](https://live.staticflickr.com/65535/50636320023_33a47c36d0_z.png)](https://live.staticflickr.com/65535/50636320023_33a47c36d0_o.png)
+[![](https://live.staticflickr.com/65535/50330665336_accab9eed4_z.png)](https://live.staticflickr.com/65535/50330665336_accab9eed4_o.png)
+
 
 | Metric  | Description |
 | :------------ | :----------- |

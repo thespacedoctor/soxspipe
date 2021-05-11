@@ -39,9 +39,6 @@ class soxs_spatial_solution(_base_recipe_):
     ```eval_rst
     .. todo::
 
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
         - add a tutorial about ``soxs_spatial_solution`` to documentation
     ```
     """
@@ -94,10 +91,7 @@ class soxs_spatial_solution(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the soxs_spatial_solution recipe*
-
-        **Return:**
-            - ``None``
+        """*verify input frames match those required by the `soxs_spatial_solution` recipe*
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -151,10 +145,10 @@ class soxs_spatial_solution(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_spatial_solution recipe*
+        """*generate the 2D dispersion map*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+            - ``productPath`` -- the path to the 2D dispersion map
 
         **Usage**
 

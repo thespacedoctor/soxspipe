@@ -103,7 +103,7 @@ class soxs_order_centres(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the soxs_order_centres recipe*
+        """*verify input frames match those required by the soxs_order_centres recipe*
 
         **Return:**
             - ``None``
@@ -160,10 +160,10 @@ class soxs_order_centres(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_order_centres recipe*
+        """*generate the order-table with polynomal fits of order-centres*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+            - ``productPath`` -- the path to the order-table
         """
         self.log.debug('starting the ``produce_product`` method')
 

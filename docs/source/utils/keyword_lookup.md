@@ -1,4 +1,4 @@
-## `keyword_lookup` - COMPLETED
+## `keyword_lookup`
 
 
 The purpose of the [`keyword_lookup`](../_api/soxspipe.commonutils.keyword_lookup.html) utility is to act as a lookup-reference in the code for specific SOXS FITS Header keywords.
