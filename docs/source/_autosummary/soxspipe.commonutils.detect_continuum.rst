@@ -1,4 +1,4 @@
-detect_continuum *(class)*
+﻿detect_continuum *(class)*
 ===============================================
 
 .. currentmodule:: soxspipe.commonutils
@@ -35,6 +35,10 @@ detect_continuum *(class)*
        
    
         
+            ~detect_continuum.fit_polynomial_bk
+       
+   
+        
             ~detect_continuum.get
        
    
@@ -50,6 +54,8 @@ detect_continuum *(class)*
             ~detect_continuum.write_order_table_to_file
        
    
+   .. 
+   ..     
    .. 
    ..     
    .. 

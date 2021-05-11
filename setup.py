@@ -20,7 +20,9 @@ install_requires = [
     'photutils',
     'matplotlib',
     'numpy',
-    'unicodecsv'
+    'unicodecsv',
+    'pandas',
+    'tabulate'
 ]
 
 # READ THE DOCS SERVERS

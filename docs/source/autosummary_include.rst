@@ -28,15 +28,16 @@
    soxspipe.recipes.soxs_disp_solution
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark
-   soxspipe.recipes.soxs_mflat
    soxspipe.recipes.soxs_order_centres
- 
+   soxspipe.recipes.soxs_spatial_solution 
 
 **Functions**
 
 .. autosummary::
    :nosignatures:
 
+   soxspipe.commonutils.dispersion_map_to_pixel_arrays
+   soxspipe.commonutils.filenamer
    soxspipe.commonutils.getpackagepath
    soxspipe.commonutils.toolkit.cut_image_slice
    soxspipe.commonutils.toolkit.quicklook_image

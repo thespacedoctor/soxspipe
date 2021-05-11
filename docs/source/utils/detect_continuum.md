@@ -1,4 +1,4 @@
-## `detect_continuum` - COMPLETED
+## `detect_continuum`
 
 The purpose of the [`detect_continuum`](../_api/soxspipe.commonutils.detect_continuum.html) utility is to find and fit the order centres with low-level polynomials.
 

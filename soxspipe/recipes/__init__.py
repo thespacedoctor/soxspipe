@@ -7,3 +7,4 @@ from .soxs_mdark import soxs_mdark
 from .soxs_disp_solution import soxs_disp_solution
 from .soxs_order_centres import soxs_order_centres
 from .soxs_mflat import soxs_mflat
+from .soxs_spatial_solution import soxs_spatial_solution

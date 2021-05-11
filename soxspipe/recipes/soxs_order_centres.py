@@ -103,7 +103,7 @@ class soxs_order_centres(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the soxs_order_centres recipe*
+        """*verify input frames match those required by the soxs_order_centres recipe*
 
         **Return:**
             - ``None``
@@ -160,10 +160,10 @@ class soxs_order_centres(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_order_centres recipe*
+        """*generate the order-table with polynomal fits of order-centres*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+            - ``productPath`` -- the path to the order-table
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -182,11 +182,13 @@ class soxs_order_centres(_base_recipe_):
             master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # UVB/VIS DARK
         add_filters = {kw("DPR_CATG"): 'MASTER_DARK_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # NIR DARK
         add_filters = {kw("DPR_TYPE"): 'LAMP,ORDERDEF',
                        kw("DPR_TECH"): 'IMAGE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -217,10 +219,10 @@ class soxs_order_centres(_base_recipe_):
             inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
         if self.settings["save-intermediate-products"]:
-            outDir = self.intermediateRootPath
-            filePath = f"{outDir}/order_definition_{arm}_calibrated.fits"
-            print(f"\nCalibrated single pinhole frame: {filePath}\n")
-            self._write(self.orderFrame, filePath, overwrite=True)
+            fileDir = self.intermediateRootPath
+            filepath = self._write(
+                self.orderFrame, fileDir, filename=False, overwrite=True)
+            print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
         # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
         detector = detect_continuum(

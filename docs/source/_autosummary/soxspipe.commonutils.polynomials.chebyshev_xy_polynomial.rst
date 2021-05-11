@@ -1,4 +1,4 @@
-chebyshev_xy_polynomial *(class)*
+﻿chebyshev_xy_polynomial *(class)*
 ==================================================================
 
 .. currentmodule:: soxspipe.commonutils.polynomials

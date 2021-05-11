@@ -1,4 +1,4 @@
-recipes *(module)*
+﻿recipes *(module)*
 ===========================
 
 
@@ -25,6 +25,7 @@ recipes *(module)*
           ~soxs_mdark
           ~soxs_mflat
           ~soxs_order_centres
+          ~soxs_spatial_solution
         
 
         

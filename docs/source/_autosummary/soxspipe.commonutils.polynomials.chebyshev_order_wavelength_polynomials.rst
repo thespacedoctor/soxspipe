@@ -1,4 +1,4 @@
-chebyshev_order_wavelength_polynomials *(class)*
+﻿chebyshev_order_wavelength_polynomials *(class)*
 =================================================================================
 
 .. currentmodule:: soxspipe.commonutils.polynomials

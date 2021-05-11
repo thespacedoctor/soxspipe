@@ -8,6 +8,7 @@ calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
 intermediate-data-root: ~/Desktop/soxspipe/intermediate
 reduced-data-root: ~/Desktop/soxspipe/reduced
 
+# INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
 save-intermediate-products: True
 
 soxs-mbias:

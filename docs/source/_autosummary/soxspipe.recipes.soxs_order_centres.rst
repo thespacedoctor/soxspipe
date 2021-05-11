@@ -1,4 +1,4 @@
-soxs_order_centres *(class)*
+﻿soxs_order_centres *(class)*
 =============================================
 
 .. currentmodule:: soxspipe.recipes

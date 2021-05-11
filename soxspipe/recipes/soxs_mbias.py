@@ -26,13 +26,13 @@ from soxspipe.commonutils import keyword_lookup
 
 class soxs_mbias(_base_recipe_):
     """
-    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have the bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
+    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
 
     **Key Arguments**
 
     - ``log`` -- logger
     - ``settings`` -- the settings dictionary
-    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default: `[]`
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
 
     **Usage**
 
@@ -44,6 +44,8 @@ class soxs_mbias(_base_recipe_):
         inputFrames=fileList
     ).produce_product()
     ```
+
+    ---
 
     ```eval_rst
     .. todo::
@@ -130,10 +132,10 @@ class soxs_mbias(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_mbias recipe*
+        """*generate a master bias frame*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+            - ``productPath`` -- the path to the master bias frame
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -143,11 +145,6 @@ class soxs_mbias(_base_recipe_):
 
         combined_bias_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mbias")
-
-        x = int(dp["binning"][1])
-        y = int(dp["binning"][0])
-        productPath = self.intermediateRootPath + \
-            "/master_bias_%(arm)s_%(x)sx%(y)s.fits" % locals()
 
         # INSPECTING THE THE UNCERTAINTY MAPS
         # print("individual frame data")
@@ -166,7 +163,13 @@ class soxs_mbias(_base_recipe_):
         #     'float32')
 
         # WRITE TO DISK
-        self._write(combined_bias_mean, productPath, overwrite=True)
+        productPath = self._write(
+            frame=combined_bias_mean,
+            filedir=self.intermediateRootPath,
+            filename=False,
+            overwrite=True
+        )
+
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

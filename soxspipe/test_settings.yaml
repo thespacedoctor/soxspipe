@@ -37,12 +37,21 @@ soxs-disp-solution:
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
-    order-sample-count: 500
-    slice-length: 15
+    order-sample-count: 50
+    slice-length: 10
     peak-sigma-limit: 3
     poly-deg: 5
-    poly-fitting-residual-clipping-sigma: 3
+    poly-fitting-residual-clipping-sigma: 1.5
+    clipping-iteration-limit: 5
+
+soxs-spatial-solution:
+    pixel-window-size: 10
+    order-deg: 3
+    wavelength-deg: 3
+    slit-deg: 3
     clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 5
+
 
 soxs-mflat:
     centre-median-window: 20
@@ -63,6 +72,7 @@ calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
 intermediate-data-root: ~/soxspipe-unittests/intermediate
 reduced-data-root: ~/soxspipe-unittests/reduced
 
+# INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
 save-intermediate-products: True
 
 logging settings:

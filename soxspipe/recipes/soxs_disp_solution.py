@@ -46,6 +46,8 @@ class soxs_disp_solution(_base_recipe_):
     ).produce_product()
     ```
 
+    --- 
+
     ```eval_rst
     .. todo::
 
@@ -98,7 +100,7 @@ class soxs_disp_solution(_base_recipe_):
 
     def verify_input_frames(
             self):
-        """*verify the input frame match those required by the soxs_disp_solution recipe*
+        """*verify input frames match those required by the `soxs_disp_solution` recipe*
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -146,10 +148,10 @@ class soxs_disp_solution(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the dispersion map*
+        """*generate a fisrt guess of the dispersion solution*
 
         **Return:**
-            - ``productPath`` -- the path to the dispersion map
+            - ``productPath`` -- the path to the first guess dispersion map
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -168,11 +170,13 @@ class soxs_disp_solution(_base_recipe_):
             master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # UVB/VIS DARK
         add_filters = {kw("DPR_CATG"): 'MASTER_DARK_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # NIR DARK
         add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK', kw("DPR_TECH"): 'IMAGE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
@@ -189,9 +193,13 @@ class soxs_disp_solution(_base_recipe_):
 
         if self.settings["save-intermediate-products"]:
             outDir = self.intermediateRootPath
-            filePath = f"{outDir}/single_pinhole_{arm}_calibrated.fits"
+            filePath = self._write(
+                frame=self.pinholeFrame,
+                filedir=outDir,
+                filename=False,
+                overwrite=True
+            )
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
-            self._write(self.pinholeFrame, filePath, overwrite=True)
 
         from soxspipe.commonutils import create_dispersion_map
         productPath = create_dispersion_map(

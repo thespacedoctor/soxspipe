@@ -1,4 +1,4 @@
-## `prepare_frames` - COMPLETED
+## `prepare_frames`
 
 The purpose of [`prepare_frames`](../_api/soxspipe.recipes._base_recipe_.html#soxspipe.recipes._base_recipe_._base_recipe_.prepare_frames) is to prepare the raw SOXS frames for data reduction. 
 
@@ -41,3 +41,5 @@ Viewing the image in DS9 (using the command `ds9 -multiframe -tile columns pre_f
 ```eval_rst
 .. automethod:: soxspipe.recipes._base_recipe_.prepare_frames
 ```
+
+

@@ -46,7 +46,7 @@ if not os.path.exists(pathToOutputDir):
 class test_soxs_order_centres(unittest.TestCase):
 
     def test_soxs_order_centres_nir_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-orderpos/sof/order_centre_nir.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-order-centres/sof/20170818_NIR_ORDER_CENTRE.sof"
         # sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-orderpos/nir"
         from soxspipe.recipes import soxs_order_centres
         this = soxs_order_centres(
@@ -58,7 +58,16 @@ class test_soxs_order_centres(unittest.TestCase):
 
     def test_soxs_order_centres_uvb_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-orderpos/sof/order_centre_uvb.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-order-centres/sof/20170818_UVB_ORDER_CENTRE_DLAMP_1x1_fast.sof"
+        from soxspipe.recipes import soxs_order_centres
+        this = soxs_order_centres(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-order-centres/sof/20170818_UVB_ORDER_CENTRE_QLAMP_1x1_fast.sof"
         from soxspipe.recipes import soxs_order_centres
         this = soxs_order_centres(
             log=log,
@@ -68,7 +77,7 @@ class test_soxs_order_centres(unittest.TestCase):
         this.produce_product()
 
     def test_soxs_order_centres_vis_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-orderpos/sof/order_centre_vis.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-order-centres/sof/20170818_VIS_ORDER_CENTRE_1x1_fast.sof"
         from soxspipe.recipes import soxs_order_centres
         this = soxs_order_centres(
             log=log,
