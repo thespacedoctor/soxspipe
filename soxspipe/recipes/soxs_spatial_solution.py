@@ -57,6 +57,7 @@ class soxs_spatial_solution(_base_recipe_):
         self.log = log
         log.debug("instansiating a new 'soxs_spatial_solution' object")
         self.settings = settings
+        self.recipeSettings = settings["soxs-spatial-solution"]
         self.inputFrames = inputFrames
         # xt-self-arg-tmpx
 

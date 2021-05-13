@@ -40,6 +40,7 @@ class detect_order_edges(_base_detect):
         - ``settings`` -- the settings dictionary
         - ``flatFrame`` -- the flat frame to detect the order edges on
         - ``orderCentreTable`` -- the order centre table
+        - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
 
     **Usage:**
 
@@ -56,6 +57,7 @@ class detect_order_edges(_base_detect):
         flatFrame=flatFrame,
         orderCentreTable=orderCentreTable,
         settings=settings,
+        recipeName="soxs-mflat"
     )
     edges.get()
     ```
@@ -67,11 +69,16 @@ class detect_order_edges(_base_detect):
             flatFrame,
             orderCentreTable,
             settings=False,
-
+            recipeName="soxs-mflat"
     ):
         self.log = log
         log.debug("instansiating a new 'detect_order_edges' object")
         self.settings = settings
+        if recipeName:
+            self.recipeSettings = settings[recipeName]
+        else:
+            self.recipeSettings = False
+
         self.orderCentreTable = orderCentreTable
         self.flatFrame = flatFrame
         # xt-self-arg-tmpx
@@ -92,8 +99,7 @@ class detect_order_edges(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        self.polyDeg = self.settings[
-            "soxs-mflat"]["poly-deg"]
+        self.polyDeg = self.recipeSettings["poly-deg"]
 
         return None
 
@@ -109,44 +115,43 @@ class detect_order_edges(_base_detect):
         orderTablePath = None
 
         # GET PARAMETERS FROM SETTINGS
-        sliceLength = int(
-            self.settings["soxs-mflat"]["slice-length-for-edge-detection"])
-        sliceWidth = int(
-            self.settings["soxs-mflat"]["slice-width-for-edge-detection"])
-        minThresholdPercenage = int(
-            self.settings["soxs-mflat"]["min-percentage-threshold-for-edge-detection"]) / 100
-        maxThresholdPercenage = int(
-            self.settings["soxs-mflat"]["max-percentage-threshold-for-edge-detection"]) / 100
+        self.sliceLength = int(
+            self.recipeSettings["slice-length-for-edge-detection"])
+        self.sliceWidth = int(
+            self.recipeSettings["slice-width-for-edge-detection"])
+        self.minThresholdPercenage = int(
+            self.recipeSettings["min-percentage-threshold-for-edge-detection"]) / 100
+        self.maxThresholdPercenage = int(
+            self.recipeSettings["max-percentage-threshold-for-edge-detection"]) / 100
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
-        orders, orderCentres, orderLimits = unpack_order_table(
+        orderTableMeta, orderTablePixels = unpack_order_table(
             log=self.log, orderTablePath=self.orderCentreTable)
 
-        # index = -1
-        # orders, orderCentres, orderLimits = [orders[index]], [
-        #     orderCentres[index]], [orderLimits[index]]
+        # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
+        orderTableMeta["maxThreshold"] = np.nan
+        orderTableMeta["minThreshold"] = np.nan
+        orderTableMeta = orderTableMeta.apply(
+            self.determine_order_flux_threshold, axis=1, orderTablePixels=orderTablePixels)
 
-        # GENERATE ARRAYS OF PIXEL LOCATIONS OF UPPER AND LOWER ORDER EDGES
-        orderEdgeMax = []
-        orderEdgeMin = []
-        halfSlice = sliceLength / 2
-        for xcoords, ycoords in orderCentres:
+        # ADD THRESHOLDS TO orderTablePixels
+        orderTablePixels["maxThreshold"] = np.nan
+        orderTablePixels["minThreshold"] = np.nan
+        uniqueOrders = orderTableMeta['order'].unique()
+        for o in uniqueOrders:
+            orderTablePixels.loc[(orderTablePixels["order"] == o), ["minThreshold", "maxThreshold"]] = orderTableMeta.loc[
+                (orderTableMeta["order"] == o), ["minThreshold", "maxThreshold"]].values
 
-            minThreshold, maxThreshold = self.determine_order_flux_threshold(
-                xcoords, ycoords, minThresholdPercenage, maxThresholdPercenage, sliceWidth, sliceLength)
+        orderTablePixels["xcoord_upper"] = np.nan
+        orderTablePixels["xcoord_lower"] = np.nan
+        orderTablePixels = orderTablePixels.apply(
+            self.determine_lower_upper_edge_pixel_positions, axis=1)
 
-            # FOR EACH PIXEL COORDINATE
-            xmaxArray = []
-            xminArray = []
-            for x, y in zip(xcoords, ycoords):
-                xmin, xmax = self.determine_lower_upper_edge_pixel_positions(
-                    x, y, minThreshold, maxThreshold, sliceWidth, sliceLength)
-                if xmax == None:
-                    continue
-                xmaxArray.append((xmax + int(x - halfSlice), y))
-                xminArray.append((xmin + int(x - halfSlice), y))
-            orderEdgeMax.append(xmaxArray)
-            orderEdgeMin.append(xminArray)
+        # DROP ROWS WITH NAN VALUES
+        orderTablePixels.dropna(axis='index', how='any',
+                                subset=['xcoord_upper'], inplace=True)
+        orderTablePixels.dropna(axis='index', how='any',
+                                subset=['xcoord_lower'], inplace=True)
 
         # PARAMETERS & VARIABLES FOR FITTING EDGES
         orderMaxLocations = {}
@@ -156,47 +161,75 @@ class detect_order_edges(_base_detect):
         allXcoords = []
         allYcoords = []
         ylims = []
-        clippingSigma = self.settings[
-            "soxs-mflat"]["poly-fitting-residual-clipping-sigma"]
-        clippingIterationLimit = self.settings[
-            "soxs-mflat"]["clipping-iteration-limit"]
 
-        # FIRST FIT UPPER EDGE PIXEL-POSTIONS WITH POLYNOMIAL
-        for order, pixelArray in zip(orders, orderEdgeMax):
+        for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-            coeff, residuals, xfit, xcoords, ycoords = self.fit_polynomial(
-                pixelArray=pixelArray,
-                clippingSigma=clippingSigma,
-                clippingIterationLimit=clippingIterationLimit
+            coeff, orderTablePixels = self.fit_polynomial(
+                pixelList=orderTablePixels,
+                order=o,
+                xCol="xcoord_upper",
+                yCol="ycoord"
             )
-            allResiduals.extend(residuals)
-            allXfit.extend(xfit)
-            allXcoords.extend(xcoords)
-            allYcoords.extend(ycoords)
-            orderMaxLocations[order] = coeff
-            print()
+            orderMaxLocations[o] = coeff
 
-        # NOW FIT LOWER EDGE PIXEL-POSTIONS WITH POLYNOMIAL
-        for order, pixelArray in zip(orders, orderEdgeMin):
+        # RENAME SOME INDIVIDUALLY
+        orderTablePixels.rename(columns={
+                                "x_fit": "xcoord_upper_fit", "x_fit_res": "xcoord_upper_fit_res"}, inplace=True)
+
+        for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-            coeff, residuals, xfit, xcoords, ycoords = self.fit_polynomial(
-                pixelArray=pixelArray,
-                clippingSigma=clippingSigma,
-                clippingIterationLimit=clippingIterationLimit
+            coeff, orderTablePixels = self.fit_polynomial(
+                pixelList=orderTablePixels,
+                order=o,
+                xCol="xcoord_lower",
+                yCol="ycoord"
             )
-            allResiduals.extend(residuals)
-            allXfit.extend(xfit)
-            allXcoords.extend(xcoords)
-            allYcoords.extend(ycoords)
-            orderMinLocations[order] = coeff
-            print()
+            orderMinLocations[o] = coeff
+
+        # RENAME SOME INDIVIDUALLY
+        orderTablePixels.rename(columns={
+                                "x_fit": "xcoord_lower_fit", "x_fit_res": "xcoord_lower_fit_res"}, inplace=True)
+
+        # # FIRST FIT UPPER EDGE PIXEL-POSTIONS WITH POLYNOMIAL
+        # for order, pixelArray in zip(orders, orderEdgeMax):
+        #     # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
+        #     coeff, residuals, xfit, xcoords, ycoords = self.fit_polynomial(
+        #         pixelArray=pixelArray,
+        #         clippingSigma=clippingSigma,
+        #         clippingIterationLimit=clippingIterationLimit
+        #     )
+        #     allResiduals.extend(residuals)
+        #     allXfit.extend(xfit)
+        #     allXcoords.extend(xcoords)
+        #     allYcoords.extend(ycoords)
+        #     orderMaxLocations[order] = coeff
+        #     print()
+
+        # # NOW FIT LOWER EDGE PIXEL-POSTIONS WITH POLYNOMIAL
+        # for order, pixelArray in zip(orders, orderEdgeMin):
+        #     # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
+        #     coeff, residuals, xfit, xcoords, ycoords = self.fit_polynomial(
+        #         pixelArray=pixelArray,
+        #         clippingSigma=clippingSigma,
+        #         clippingIterationLimit=clippingIterationLimit
+        #     )
+        #     allResiduals.extend(residuals)
+        #     allXfit.extend(xfit)
+        #     allXcoords.extend(xcoords)
+        #     allYcoords.extend(ycoords)
+        #     orderMinLocations[order] = coeff
+        #     print()
 
         # GENERATE AN OUTPUT PLOT OF RESULTS AND FITTING RESIDUALS
         self.plot_results(
-            allResiduals=allResiduals,
-            allXfit=allXfit,
-            allXcoords=allXcoords,
-            allYcoords=allYcoords,
+            allResiduals=np.concatenate(orderTablePixels[
+                                        'xcoord_lower_fit_res'], orderTablePixels['xcoord_upper_fit_res']),
+            allXfit=np.concatenate(orderTablePixels['xcoord_lower_fit'], orderTablePixels[
+                                   'xcoord_upper_fit']),
+            allXcoords=np.concatenate(
+                orderTablePixels['xcoord_lower'], orderTablePixels['xcoord_upper']),
+            allYcoords=np.concatenate(
+                orderTablePixels['ycoord'], orderTablePixels['ycoord']),
             orderMaxLocations=orderMaxLocations,
             orderMinLocations=orderMinLocations,
             ylims=orderLimits
@@ -325,28 +358,33 @@ class detect_order_edges(_base_detect):
 
     def determine_order_flux_threshold(
             self,
-            xcoords,
-            ycoords,
-            minThresholdPercenage,
-            maxThresholdPercenage,
-            sliceWidth,
-            sliceLength):
+            orderData,
+            orderTablePixels):
         """*determine the flux threshold at the central column of each order*
 
         **Key Arguments:**
-            - ``xcoords`` -- the x-coordinate array for the central trace of the order
-            - ``ycoords`` -- the y-coordinate array for the central trace of the order
-            - ``minThresholdPercenage`` -- the lowest percentage threshold to try and detect order edges at
-            - ``maxThresholdPercenage`` -- the highest percentage threshold to try and detect order edges at
-            - ``sliceWidth`` -- the width of the slice to take from the image (pixels)
-            - ``sliceLength`` -- the length of the slice to take from the image, in the cross-dispersion direction (pixels)
+            - ``orderData`` -- one row in the orderTable
+            - ``orderTablePixels`` the order table containing pixel arrays
 
         **Return:**
-            - ``minThreshold`` -- minimum threshold value in flux
-            - ``maxThreshold`` -- maximum threshold value in flux
+            - ``orderData`` -- orderData with min and max flux thresholds added
         """
         self.log.debug(
             'starting the ``determine_order_flux_threshold`` method')
+
+        minThresholdPercenage = self.minThresholdPercenage
+        maxThresholdPercenage = self.maxThresholdPercenage
+        sliceWidth = self.sliceWidth
+        sliceLength = self.sliceLength
+        order = orderData["order"]
+
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (orderTablePixels['order'] == order)
+        xcoords = orderTablePixels.loc[mask, "xcoord_centre"].values
+        ycoords = orderTablePixels.loc[mask, "ycoord"].values
+
+        # xpd-update-filter-dataframe-column-values
 
         # DETERMINE THE FLUX THRESHOLD FROM THE CENTRAL COLUMN
         # CUT A MEDIAN COLLAPSED SLICE
@@ -361,9 +399,9 @@ class detect_order_edges(_base_detect):
         maxvalue = np.max(
             medSlide[int(len(medSlide) / 2 - 8):int(len(medSlide) / 2 + 8)])
         minvalue = np.min(medSlide)
-        minThreshold = minvalue + \
+        orderData["minThreshold"] = minvalue + \
             (maxvalue - minvalue) * minThresholdPercenage
-        maxThreshold = minvalue + \
+        orderData["maxThreshold"] = minvalue + \
             (maxvalue - minvalue) * maxThresholdPercenage
 
         # SANITY CHECK PLOT OF CROSS-SECTION
@@ -375,8 +413,8 @@ class detect_order_edges(_base_detect):
             plt.plot(x, medSlide, 'rx', alpha=0.8)
             # plt.hlines(maxvalue, 0, len(slice), label='max')
             # plt.hlines(minvalue, 0, len(slice), label='min')
-            plt.hlines(minThreshold, 0, len(slice),
-                       label=f'threshold {minThreshold:0.2f},  {maxThreshold:0.2f}',  colors='red')
+            plt.hlines(orderData["minThreshold"], 0, len(slice),
+                       label=f'threshold {orderData["minThreshold"]:0.2f},  {orderData["maxThreshold"]:0.2f}',  colors='red')
             plt.xlabel('Position')
             plt.ylabel('Flux')
             plt.legend()
@@ -384,32 +422,29 @@ class detect_order_edges(_base_detect):
 
         self.log.debug(
             'completed the ``determine_order_flux_threshold`` method')
-        return minThreshold, maxThreshold
+        return orderData
 
     def determine_lower_upper_edge_pixel_positions(
             self,
-            x,
-            y,
-            minThreshold,
-            maxThreshold,
-            sliceWidth,
-            sliceLength):
+            orderData):
         """*from a pixel postion somewhere on the trace of the order centre, return the lower and upper edges of the order*
 
         **Key Arguments:**
-            - ``x`` -- the pixel postion x value
-            - ``y`` -- the pixel position y value
-            - ``minThreshold`` -- minimum threshold value in flux
-            - ``maxThreshold`` -- maximum threshold value in flux
-            - ``sliceWidth`` -- the width of the slice to take from the image (pixels)
-            - ``sliceLength`` -- the length of the slice to take from the image, in the cross-dispersion direction (pixels)
+            - ``orderData`` -- one row in the orderTable
 
         **Return:**
-            - ``xmin`` -- the lower edge pixel position x value
-            - ``xmax`` -- the upper edge pixel position x value
+            - ``orderData`` -- orderData with upper and lower edge xcoord arrays added
         """
         self.log.debug(
             'starting the ``determine_lower_upper_edge_limits`` method')
+
+        sliceWidth = self.sliceWidth
+        sliceLength = self.sliceLength
+        halfSlice = sliceLength / 2
+        minThreshold = orderData["minThreshold"]
+        maxThreshold = orderData["maxThreshold"]
+        x = orderData["xcoord_centre"]
+        y = orderData["ycoord"]
 
         threshold = minThreshold
 
@@ -417,7 +452,7 @@ class detect_order_edges(_base_detect):
         slice = cut_image_slice(log=self.log, frame=self.flatFrame,
                                 width=sliceWidth, length=sliceLength, x=x, y=y, median=True, plot=False)
         if slice is None:
-            return None, None
+            return orderData
 
         # SMOOTH WITH A MEDIAN FILTER
         medSlide = medfilt(slice, 9)
@@ -441,7 +476,7 @@ class detect_order_edges(_base_detect):
 
         # IF WE STILL DIDN'T GET A HIT THEN REJECT
         if hit == False:
-            return None, None
+            return orderData
 
         # REPORT THE EXACT PIXEL POSTION AT THE FLUX THRESHOLD
         xmax = xmaxguess - \
@@ -454,7 +489,10 @@ class detect_order_edges(_base_detect):
 
         # IF THE WIDTH BETWEEN MIN AND MAX IS TOO SMALL THEN REJECT
         if xmax - xmin < 10:
-            return None, None
+            return orderData
+        else:
+            orderData["xcoord_upper"] = xmax + int(x - halfSlice)
+            orderData["xcoord_lower"] = xmin + int(x - halfSlice)
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if 1 == 0 and random.randint(1, 101) < 2:
@@ -477,7 +515,7 @@ class detect_order_edges(_base_detect):
 
         self.log.debug(
             'completed the ``determine_lower_upper_edge_limits`` method')
-        return xmin, xmax
+        return orderData
 
     def write_order_table_to_file(
             self,

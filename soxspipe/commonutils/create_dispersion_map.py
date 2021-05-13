@@ -211,9 +211,9 @@ class create_dispersion_map(object):
 
             # MERGING SHIFTS INTO MAIN DATAFRAME
             tmpList = tmpList.loc[tmpList['shift_x'].notnull(
-            ), ['Wavelength', 'Order', 'shift_x', 'shift_y']]
+            ), ['wavelength', 'order', 'shift_x', 'shift_y']]
             lineList = lineList.merge(tmpList, on=[
-                'Wavelength', 'Order'], how='outer')
+                'wavelength', 'order'], how='outer')
 
             # DROP ROWS WITH MISSING SHIFTS
             lineList.dropna(axis='index', how='any', subset=[

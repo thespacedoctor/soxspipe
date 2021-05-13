@@ -32,14 +32,14 @@ def dispersion_map_to_pixel_arrays(
 
     - `log` -- logger
     - `dispersionMapPath` -- path to the dispersion map
-    - `lineList` -- a data-frame including 'Order', 'Wavelength' and 'slit_pos' columns
+    - `lineList` -- a data-frame including 'order', 'wavelength' and 'slit_pos' columns
 
     **Usage:**
 
     ```python
     myDict = {
-        "Order": [11, 11, 11],
-        "Wavelength": [850.3, 894.3, 983.2],
+        "order": [11, 11, 11],
+        "wavelength": [850.3, 894.3, 983.2],
         "slit_pos": [0, 0, 0]
     }
     lineList = pd.DataFrame(myDict)

@@ -69,6 +69,7 @@ class soxs_order_centres(_base_recipe_):
         self.log = log
         log.debug("instansiating a new 'soxs_order_centres' object")
         self.settings = settings
+        self.recipeSettings = settings["soxs-order-centre"]
         self.inputFrames = inputFrames
         # xt-self-arg-tmpx
 

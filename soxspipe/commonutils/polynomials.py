@@ -68,7 +68,7 @@ class chebyshev_order_wavelength_polynomials():
         wavelength_deg = self.wavelength_deg
         slit_deg = self.slit_deg
 
-        # lhsVals = np.sum([v * c for v, c in zip([lineList["Order"].values**i * lineList["Wavelength"].values**j * lineList["slit_position"].values**k for i in range(0, order_deg + 1)
+        # lhsVals = np.sum([v * c for v, c in zip([lineList["order"].values**i * lineList["wavelength"].values**j * lineList["slit_position"].values**k for i in range(0, order_deg + 1)
         # for j in range(0, wavelength_deg + 1) for k in range(0, slit_deg +
         # 1)], coeff)], axis=0)
 
@@ -79,8 +79,8 @@ class chebyshev_order_wavelength_polynomials():
         for i in range(0, order_deg + 1):
             for j in range(0, wavelength_deg + 1):
                 for k in range(0, slit_deg + 1):
-                    lhsVals += coeff[n_coeff] * lineList["Order"].values**i * \
-                        lineList["Wavelength"].values**j * \
+                    lhsVals += coeff[n_coeff] * lineList["order"].values**i * \
+                        lineList["wavelength"].values**j * \
                         lineList["slit_position"].values**k
                     n_coeff += 1
 

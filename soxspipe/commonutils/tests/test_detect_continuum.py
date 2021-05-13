@@ -63,7 +63,8 @@ class test_detect_continuum(unittest.TestCase):
             log=log,
             pinholeFlat=pinholeFlat,
             dispersion_map=dispersion_map,
-            settings=settings
+            settings=settings,
+            recipeName="soxs-order-centre"
         )
         this.get()
 

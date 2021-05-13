@@ -26,6 +26,7 @@ from soxspipe.commonutils.toolkit import unpack_order_table
 import numpy.ma as ma
 from soxspipe.commonutils.toolkit import quicklook_image
 from soxspipe.commonutils import detect_order_edges
+import pandas as pd
 
 
 class soxs_mflat(_base_recipe_):
@@ -76,6 +77,7 @@ class soxs_mflat(_base_recipe_):
         self.log = log
         log.debug("instansiating a new 'soxs_mflat' object")
         self.settings = settings
+        self.recipeSettings = settings["soxs-mflat"]
         self.inputFrames = inputFrames
         # xt-self-arg-tmpx
 
@@ -221,22 +223,23 @@ class soxs_mflat(_base_recipe_):
         dp = self.detectorParams
 
         # FIND THE BIAS FRAMES
-        try:
-            filterDict = {kw("DPR_TYPE").lower(): "BIAS"}
-            biasCollection = self.inputFrames.filter(**filterDict)
-            # LIST OF CCDDATA OBJECTS
-            biases = [c for c in biasCollection.ccds(ccd_kwargs={
-                "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
-            bias = biases[0]
-        except:
+        filterDict = {kw("DPR_TYPE").lower(): "BIAS"}
+        biasCollection = self.inputFrames.filter(**filterDict)
+        # LIST OF CCDDATA OBJECTS
+        biases = [c for c in biasCollection.ccds(ccd_kwargs={
+            "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        if len(biasCollection.files) == 0:
             bias = None
             biasCollection = None
+        else:
+            bias = biases[0]
 
         # FIND THE DARK FRAMES
-        try:
-            filterDict = {kw("DPR_TYPE").lower(): "DARK"}
-            darkCollection = self.inputFrames.filter(**filterDict)
-        except:
+        filterDict = {kw("DPR_TYPE").lower(): "DARK"}
+        darkCollection = self.inputFrames.filter(**filterDict)
+
+        if len(darkCollection.files) == 0:
             darkCollection = None
 
         if not darkCollection:
@@ -248,11 +251,11 @@ class soxs_mflat(_base_recipe_):
                 darkCollection = None
 
         # FIND THE FLAT FRAMES
-        try:
-            filterDict = {kw("DPR_TYPE").lower(): "LAMP,(D|Q)?FLAT",
-                          kw("DPR_TECH").lower(): "ECHELLE,SLIT"}
-            flatCollection = self.inputFrames.filter(**filterDict)
-        except:
+        filterDict = {kw("DPR_TYPE").lower(): "LAMP,(D|Q)?FLAT",
+                      kw("DPR_TECH").lower(): "ECHELLE,SLIT"}
+        flatCollection = self.inputFrames.filter(**filterDict)
+
+        if len(flatCollection.files) == 0:
             raise FileNotFoundError(
                 "The mflat recipe needs flat-frames as input, none found")
         # LIST OF CCDDATA OBJECTS
@@ -267,10 +270,11 @@ class soxs_mflat(_base_recipe_):
                     inputFrame=flat, master_bias=bias, dark=None))
 
         # IF DARKS EXIST - FIND CLOSEST IN TIME TO FLAT-FRAME. SUBTRACT BIAS
-        # AND?OR DARK
+        # AND/OR DARK
         if darkCollection:
             darkMjds = [h[kw("MJDOBS").lower()]
                         for h in darkCollection.headers()]
+            print(darkMjds)
             darks = [c for c in darkCollection.ccds(ccd_kwargs={
                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
             for flat in flats:
@@ -317,14 +321,18 @@ class soxs_mflat(_base_recipe_):
             "soxs-mflat"]["centre-median-window"] / 2)
 
         # UNPACK THE ORDER TABLE
-
-        orders, orderCentres, orderLimits = unpack_order_table(
+        orderTableMeta, orderTablePixels = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
+
         mask = np.ones_like(inputFlats[0].data)
-        for xcoords, ycoords in orderCentres:
-            for x, y in zip(xcoords, ycoords):
-                x = int(x)
-                mask[y][x - window:x + window] = 0
+
+        xcoords = orderTablePixels["xcoord_centre"]
+        ycoords = orderTablePixels["ycoord"]
+        xcoords = xcoords.astype(int)
+
+        # UPDATE THE MASK
+        for x, y in zip(xcoords, ycoords):
+            mask[y][x - window:x + window] = 0
 
         normalisedFrames = []
 

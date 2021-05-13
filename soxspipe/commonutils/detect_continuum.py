@@ -33,9 +33,126 @@ import collections
 from fundamentals.renderer import list_of_dictionaries
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import pandas as pd
+from soxspipe.commonutils.toolkit import cut_image_slice
 
 
-class detect_continuum(object):
+class _base_detect(object):
+
+    def fit_polynomial(
+            self,
+            pixelList,
+            order,
+            xCol,
+            yCol):
+        """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
+
+        **Key Arguments:**
+            - ``pixelList`` -- data-frame group containing x,y pixel array
+            - ``order`` -- the order to fit
+            - ``xCol`` -- name of x-pixel column
+            - ``yCol`` -- name of y-pixel column
+
+        **Return:**
+            - ``coeffs`` -- the coefficients of the polynomial fit
+            - ``pixelList`` -- the pixel list but now with fits and residuals included
+        """
+        self.log.debug('starting the ``fit_polynomial`` method')
+
+        arm = self.arm
+
+        clippedCount = 1
+
+        poly = chebyshev_xy_polynomial(
+            log=self.log, deg=self.polyDeg).poly
+        clippingSigma = self.recipeSettings[
+            "poly-fitting-residual-clipping-sigma"]
+        clippingIterationLimit = self.recipeSettings[
+            "clipping-iteration-limit"]
+
+        iteration = 0
+        mask = (pixelList['order'] == order)
+        pixelListFiltered = pixelList.loc[mask]
+        while clippedCount > 0 and iteration < clippingIterationLimit:
+            pixelListFiltered = pixelList.loc[mask]
+            startCount = len(pixelListFiltered.index)
+            iteration += 1
+            # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
+            coeff = np.ones((self.polyDeg + 1))
+            # NOTE X AND Y COLUMN ARE CORRECLY IN xdata AND ydata - WANT TO
+            # FIND X (UNKNOWN) WRT Y (KNOWNN)
+            coeff, pcov_x = curve_fit(
+                poly, xdata=pixelListFiltered[yCol].values, ydata=pixelListFiltered[xCol].values, p0=coeff)
+
+            res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
+                orderPixelList=pixelListFiltered,
+                coeff=coeff,
+                xCol=xCol,
+                yCol=yCol)
+
+            pixelList.loc[mask, "x_fit_res"] = res
+            pixelList.loc[mask, "x_fit"] = xfit
+
+            # SIGMA-CLIP THE DATA
+            masked_residuals = sigma_clip(
+                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+            pixelList.loc[mask, "mask"] = masked_residuals.mask
+
+            # REMOVE FILTERED ROWS FROM DATA FRAME
+            removeMask = (pixelList["mask"] == True)
+            pixelList.drop(index=pixelList[removeMask].index, inplace=True)
+            pixelListFiltered = pixelList.loc[mask]
+            clippedCount = startCount - len(pixelListFiltered.index)
+
+            # MASK DATA ARRAYS WITH CLIPPED RESIDUAL MASK
+            print(f'{clippedCount} pixel positions where clipped in this iteration of fitting an order centre polynomial')
+
+        self.log.debug('completed the ``fit_polynomials`` method')
+        return coeff, pixelList
+
+    def calculate_residuals(
+            self,
+            orderPixelList,
+            coeff,
+            xCol,
+            yCol):
+        """*calculate residuals of the polynomial fits against the observed line postions*
+
+        **Key Arguments:**
+            - ``orderPixelList`` -- pixel list for given order
+            - ``coeff`` -- the coefficients of the fitted polynomial
+            - ``xCol`` -- name of x-pixel column
+            - ``yCol`` -- name of y-pixel column
+
+        **Return:**
+            - ``res`` -- x residuals
+            - ``mean`` -- the mean of the residuals
+            - ``std`` -- the stdev of the residuals
+            - ``median`` -- the median of the residuals
+            - ``xfit`` -- fitted x values
+        """
+        self.log.debug('starting the ``calculate_residuals`` method')
+
+        arm = self.arm
+
+        poly = chebyshev_xy_polynomial(
+            log=self.log, deg=self.polyDeg).poly
+
+        # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
+        # FITTED POSITIONS
+        xfit = poly(
+            orderPixelList[yCol].values, *coeff)
+        res = xfit - orderPixelList[xCol].values
+
+        # CALCULATE COMBINED RESIDUALS AND STATS
+        res_mean = np.mean(res)
+        res_std = np.std(res)
+        res_median = np.median(res)
+
+        self.log.debug('completed the ``calculate_residuals`` method')
+        return res, res_mean, res_std, res_median, xfit
+
+
+class detect_continuum(_base_detect):
     """
     *find and fit the continuum in a pinhole flat frame with low-order polynomials. These polynominals are the central loctions of the orders*
 
@@ -43,7 +160,8 @@ class detect_continuum(object):
         - ``log`` -- logger
         - ``pinholeFlat`` -- calibrationed pinhole flat frame (CCDObject)
         - ``dispersion_map`` -- path to dispersion map csv file containing polynomial fits of the dispersion solution for the frame
-        - ``settings`` -- the settings dictionary
+        - ``settings`` -- the recipe settings dictionary
+        - ``recipeName`` -- the recipe name as given in the settings dictionary
 
     **Usage:**
 
@@ -55,7 +173,8 @@ class detect_continuum(object):
         log=log,
         pinholeFlat=pinholeFlat,
         dispersion_map=dispersion_map,
-        settings=settings
+        settings=settings,
+        recipeName="soxs-order-centre"
     )
     order_table_path = detector.get()
     ```
@@ -67,11 +186,16 @@ class detect_continuum(object):
             log,
             pinholeFlat,
             dispersion_map,
-            settings=False
+            settings=False,
+            recipeName=False
     ):
         self.log = log
         log.debug("instansiating a new 'detect_continuum' object")
         self.settings = settings
+        if recipeName:
+            self.recipeSettings = settings[recipeName]
+        else:
+            self.recipeSettings = False
         self.pinholeFlat = pinholeFlat
         self.dispersion_map = dispersion_map
 
@@ -90,8 +214,7 @@ class detect_continuum(object):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        self.polyDeg = self.settings[
-            "soxs-order-centre"]["poly-deg"]
+        self.polyDeg = self.recipeSettings["poly-deg"]
 
         return None
 
@@ -116,10 +239,8 @@ class detect_continuum(object):
             waveLengthMin,
             waveLengthMax)
         # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
-        self.sliceLength = self.settings[
-            "soxs-order-centre"]["slice-length"]
-        self.peakSigmaLimit = self.settings[
-            "soxs-order-centre"]["peak-sigma-limit"]
+        self.sliceLength = self.recipeSettings["slice-length"]
+        self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         lineList['cont_x'] = np.nan
@@ -138,17 +259,19 @@ class detect_continuum(object):
         print(f"{foundLines} out of {allLines} found ({percent:3.0f}%)")
 
         # GET UNIQUE VALUES IN COLUMN
-        uniqueOrders = lineList['Order'].unique()
+        uniqueOrders = lineList['order'].unique()
 
         orderLoctions = {}
-        lineList['cont_x_fit'] = np.nan
-        lineList['cont_x_fit_res'] = np.nan
+        lineList['x_fit'] = np.nan
+        lineList['x_fit_res'] = np.nan
 
         for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
             coeff, lineList = self.fit_polynomial(
-                lineList=lineList,
-                order=o
+                pixelList=lineList,
+                order=o,
+                xCol="cont_x",
+                yCol="cont_y"
             )
             orderLoctions[o] = coeff
 
@@ -160,8 +283,8 @@ class detect_continuum(object):
             orderLoctions=orderLoctions
         )
 
-        mean_res = np.mean(np.abs(lineList['cont_x_fit_res'].values))
-        std_res = np.std(np.abs(lineList['cont_x_fit_res'].values))
+        mean_res = np.mean(np.abs(lineList['x_fit_res'].values))
+        std_res = np.std(np.abs(lineList['x_fit_res'].values))
 
         print(f'\nThe order centre polynomial fitted against the observed 1D gaussian peak positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixels)')
 
@@ -230,17 +353,17 @@ class detect_continuum(object):
 
         # CREATE THE WAVELENGTH/ORDER ARRAYS TO BE CONVERTED TO PIXELS
         myDict = {
-            "Order": np.asarray([]),
-            "Wavelength": np.asarray([]),
+            "order": np.asarray([]),
+            "wavelength": np.asarray([]),
             "slit_position": np.asarray([])
         }
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
 
             wlArray = np.arange(
                 wmin, wmax, (wmax - wmin) / sampleCount)
-            myDict["Wavelength"] = np.append(myDict["Wavelength"], wlArray)
-            myDict["Order"] = np.append(
-                myDict["Order"], np.ones(len(wlArray)) * o)
+            myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
+            myDict["order"] = np.append(
+                myDict["order"], np.ones(len(wlArray)) * o)
             myDict["slit_position"] = np.append(
                 myDict["slit_position"], np.zeros(len(wlArray)))
 
@@ -270,13 +393,21 @@ class detect_continuum(object):
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
         halfSlice = self.sliceLength / 2
 
-        try:
-            slice = self.pinholeFlat.data[int(linePixelPostion["fit_y"]), max(
-                0, int(linePixelPostion["fit_x"] - halfSlice)):min(2048, int(linePixelPostion["fit_x"] + halfSlice))]
-        except:
+        slice = cut_image_slice(log=self.log, frame=self.pinholeFlat,
+                                width=1, length=self.sliceLength, x=linePixelPostion["fit_x"], y=linePixelPostion["fit_y"], median=True, plot=False)
+
+        if slice is None:
             linePixelPostion["cont_x"] = np.nan
             linePixelPostion["cont_y"] = np.nan
             return linePixelPostion
+
+        # try:
+        #     slice = self.pinholeFlat.data[int(linePixelPostion["fit_y"]), max(
+        #         0, int(linePixelPostion["fit_x"] - halfSlice)):min(2048, int(linePixelPostion["fit_x"] + halfSlice))]
+        # except:
+        #     linePixelPostion["cont_x"] = np.nan
+        #     linePixelPostion["cont_y"] = np.nan
+        #     return linePixelPostion
 
         # CHECK THE SLICE POINTS IF NEEDED
         if 1 == 0:
@@ -334,171 +465,6 @@ class detect_continuum(object):
 
         self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
         return linePixelPostion
-
-    def fit_polynomial(
-            self,
-            lineList,
-            order):
-        """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
-
-        **Key Arguments:**
-            - ``lineList`` -- data-frame group containing x,y pixels of measured 1D guassian peak positions
-            - ``order`` -- the order to fit
-
-        **Return:**
-            - ``coeffs`` -- the coefficients of the polynomial fit
-            - ``residuals`` -- the residuals of the fit compared to original guassian peak positions
-            - ``xfit`` -- the polynomial fits x-positions
-            - ``xcoords`` -- the clean guassian peak x-coordinate list (post-clipping)
-            - ``ycoords`` -- the clean guassian peak x-coordinate list (post-clipping)
-        """
-        self.log.debug('starting the ``fit_polynomial`` method')
-
-        arm = self.arm
-
-        clippedCount = 1
-
-        poly = chebyshev_xy_polynomial(
-            log=self.log, deg=self.polyDeg).poly
-        clippingSigma = self.settings[
-            "soxs-order-centre"]["poly-fitting-residual-clipping-sigma"]
-        clippingIterationLimit = self.settings[
-            "soxs-order-centre"]["clipping-iteration-limit"]
-
-        iteration = 0
-        mask = (lineList['Order'] == order)
-        lineListFiltered = lineList.loc[mask]
-        while clippedCount > 0 and iteration < clippingIterationLimit:
-            lineListFiltered = lineList.loc[mask]
-            startCount = len(lineListFiltered.index)
-            iteration += 1
-            # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((self.polyDeg + 1))
-            coeff, pcov_x = curve_fit(
-                poly, xdata=lineListFiltered["cont_y"].values, ydata=lineListFiltered["cont_x"].values, p0=coeff)
-
-            res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
-                orderLineList=lineListFiltered,
-                coeff=coeff)
-
-            lineList.loc[mask, "cont_x_fit_res"] = res
-            lineList.loc[mask, "cont_x_fit"] = xfit
-
-            # SIGMA-CLIP THE DATA
-            masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
-            lineList.loc[mask, "mask"] = masked_residuals.mask
-
-            # REMOVE FILTERED ROWS FROM DATA FRAME
-            removeMask = (lineList["mask"] == True)
-            lineList.drop(index=lineList[removeMask].index, inplace=True)
-            lineListFiltered = lineList.loc[mask]
-            clippedCount = startCount - len(lineListFiltered.index)
-
-            # MASK DATA ARRAYS WITH CLIPPED RESIDUAL MASK
-            print(f'{clippedCount} pixel positions where clipped in this iteration of fitting an order centre polynomial')
-
-        self.log.debug('completed the ``fit_polynomials`` method')
-        return coeff, lineList
-
-    def fit_polynomial_bk(
-            self,
-            pixelArray):
-        """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
-
-        **Key Arguments:**
-            - ``pixelArray`` -- the array of x,y pixels of measured 1D guassian peak positions
-
-        **Return:**
-            - ``coeffs`` -- the coefficients of the polynomial fit
-            - ``residuals`` -- the residuals of the fit compared to original guassian peak positions
-            - ``xfit`` -- the polynomial fits x-positions
-            - ``xcoords`` -- the clean guassian peak x-coordinate list (post-clipping)
-            - ``ycoords`` -- the clean guassian peak x-coordinate list (post-clipping)
-        """
-        self.log.debug('starting the ``fit_polynomial`` method')
-
-        arm = self.arm
-
-        clippedCount = 1
-
-        poly = chebyshev_xy_polynomial(
-            log=self.log, deg=self.polyDeg).poly
-
-        clippingSigma = self.settings[
-            "soxs-order-centre"]["poly-fitting-residual-clipping-sigma"]
-
-        clippingIterationLimit = self.settings[
-            "soxs-order-centre"]["clipping-iteration-limit"]
-
-        xcoords = [v[0] for v in pixelArray]
-        ycoords = [v[1] for v in pixelArray]
-
-        iteration = 0
-        while clippedCount > 0 and iteration < clippingIterationLimit:
-            iteration += 1
-            # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((self.polyDeg + 1))
-            coeff, pcov_x = curve_fit(
-                poly, xdata=ycoords, ydata=xcoords, p0=coeff)
-
-            residuals, mean_res, std_res, median_res, xfit = self.calculate_residuals(
-                xcoords=xcoords,
-                ycoords=ycoords,
-                coeff=coeff)
-
-            # SIGMA-CLIP THE DATA
-            masked_residuals = sigma_clip(
-                residuals, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
-
-            # MASK DATA ARRAYS WITH CLIPPED RESIDUAL MASK
-            startCount = len(xcoords)
-            a = [xcoords, ycoords, residuals]
-            xcoords, ycoords, residuals = [np.ma.compressed(np.ma.masked_array(
-                i, masked_residuals.mask)) for i in a]
-            clippedCount = startCount - len(xcoords)
-            print(f'{clippedCount} pixel positions where clipped in this iteration of fitting an order centre polynomial')
-
-        self.log.debug('completed the ``fit_polynomials`` method')
-        return coeff, residuals, xfit, xcoords, ycoords
-
-    def calculate_residuals(
-            self,
-            orderLineList,
-            coeff):
-        """*calculate residuals of the polynomial fits against the observed line postions*
-
-        **Key Arguments:**
-            - ``orderLineList`` -- line list containing the continuum centre pixels
-            - ``coeff`` -- the coefficients of the fitted polynomial
-
-        **Return:**
-            - ``res`` -- x residuals
-            - ``mean`` -- the mean of the residuals
-            - ``std`` -- the stdev of the residuals
-            - ``median`` -- the median of the residuals
-            - ``xfit`` -- fitted x values
-        """
-        self.log.debug('starting the ``calculate_residuals`` method')
-
-        arm = self.arm
-
-        poly = chebyshev_xy_polynomial(
-            log=self.log, deg=self.polyDeg).poly
-
-        # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
-        # FITTED POSITIONS
-        xfit = poly(
-            orderLineList["cont_y"].values, *coeff)
-        res = xfit - orderLineList["cont_x"].values
-
-        # CALCULATE COMBINED RESIDUALS AND STATS
-        res_mean = np.mean(res)
-        res_std = np.std(res)
-        res_median = np.median(res)
-
-        self.log.debug('completed the ``calculate_residuals`` method')
-        return res, res_mean, res_std, res_median, xfit
 
     def plot_results(
             self,
@@ -570,7 +536,7 @@ class detect_continuum(object):
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         bottomleft.scatter(lineList['cont_x'].values, lineList[
-                           'cont_x_fit_res'].values, alpha=0.2, s=1)
+                           'x_fit_res'].values, alpha=0.2, s=1)
         bottomleft.set_xlabel('x pixel position')
         bottomleft.set_ylabel('x residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
@@ -578,14 +544,14 @@ class detect_continuum(object):
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         bottomright.scatter(lineList['cont_y'].values, lineList[
-                            'cont_x_fit_res'].values, alpha=0.2, s=1)
+                            'x_fit_res'].values, alpha=0.2, s=1)
         bottomright.set_xlabel('y pixel position')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         # bottomright.set_ylabel('x residual')
         bottomright.set_yticklabels([])
 
-        mean_res = np.mean(np.abs(lineList['cont_x_fit_res'].values))
-        std_res = np.std(np.abs(lineList['cont_x_fit_res'].values))
+        mean_res = np.mean(np.abs(lineList['x_fit_res'].values))
+        std_res = np.std(np.abs(lineList['x_fit_res'].values))
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
