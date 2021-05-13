@@ -29,6 +29,7 @@ from soxspipe.commonutils.toolkit import unpack_order_table
 import collections
 import unicodecsv as csv
 from fundamentals.renderer import list_of_dictionaries
+from soxspipe.commonutils.filenamer import filenamer
 
 
 class detect_order_edges(_base_detect):
@@ -127,6 +128,8 @@ class detect_order_edges(_base_detect):
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderTableMeta, orderTablePixels = unpack_order_table(
             log=self.log, orderTablePath=self.orderCentreTable)
+        orderLimits = zip(
+            orderTableMeta["ymin"].values, orderTableMeta["ymax"].values)
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
         orderTableMeta["maxThreshold"] = np.nan
@@ -156,11 +159,6 @@ class detect_order_edges(_base_detect):
         # PARAMETERS & VARIABLES FOR FITTING EDGES
         orderMaxLocations = {}
         orderMinLocations = {}
-        allResiduals = []
-        allXfit = []
-        allXcoords = []
-        allYcoords = []
-        ylims = []
 
         for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
@@ -221,15 +219,16 @@ class detect_order_edges(_base_detect):
         #     print()
 
         # GENERATE AN OUTPUT PLOT OF RESULTS AND FITTING RESIDUALS
-        self.plot_results(
-            allResiduals=np.concatenate(orderTablePixels[
-                                        'xcoord_lower_fit_res'], orderTablePixels['xcoord_upper_fit_res']),
-            allXfit=np.concatenate(orderTablePixels['xcoord_lower_fit'], orderTablePixels[
-                                   'xcoord_upper_fit']),
-            allXcoords=np.concatenate(
-                orderTablePixels['xcoord_lower'], orderTablePixels['xcoord_upper']),
-            allYcoords=np.concatenate(
-                orderTablePixels['ycoord'], orderTablePixels['ycoord']),
+        allResiduals = np.concatenate((orderTablePixels[
+            'xcoord_lower_fit_res'], orderTablePixels['xcoord_upper_fit_res']))
+        plotPath = self.plot_results(
+            allResiduals=allResiduals,
+            allXfit=np.concatenate((orderTablePixels['xcoord_lower_fit'], orderTablePixels[
+                                   'xcoord_upper_fit'])),
+            allXcoords=np.concatenate((
+                orderTablePixels['xcoord_lower'], orderTablePixels['xcoord_upper'])),
+            allYcoords=np.concatenate((
+                orderTablePixels['ycoord'], orderTablePixels['ycoord'])),
             orderMaxLocations=orderMaxLocations,
             orderMinLocations=orderMinLocations,
             ylims=orderLimits
@@ -238,6 +237,13 @@ class detect_order_edges(_base_detect):
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
         order_table_path = self.write_order_table_to_file(
             upperEdges=orderMaxLocations, lowerEdges=orderMinLocations,  ylims=orderLimits)
+
+        mean_res = np.mean(np.abs(allResiduals))
+        std_res = np.std(np.abs(allResiduals))
+
+        print(f'\nThe order edge polynomials fitted observed order edge positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixels)')
+
+        print(f'\nFind results of the order edge fitting here: {plotPath}')
 
         self.log.debug('completed the ``get`` method')
         return orderTablePath
@@ -348,9 +354,16 @@ class detect_order_edges(_base_detect):
         fig.suptitle(f"detection of order-edge locations - flat-frame\n{subtitle}", fontsize=12)
 
         # plt.show()
+
+        filename = filenamer(
+            log=self.log,
+            frame=self.flatFrame,
+            settings=self.settings
+        )
+        filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
-        filePath = f"{outDir}/flat_{arm}_order_edge_residuals.pdf"
+        filePath = f"{outDir}/{filename}"
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``plot_results`` method')

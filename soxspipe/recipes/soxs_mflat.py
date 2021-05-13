@@ -201,8 +201,8 @@ class soxs_mflat(_base_recipe_):
             from os.path import expanduser
             home = expanduser("~")
             outDir = self.settings["intermediate-data-root"].replace("~", home)
-            filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
-            self._write(combined_normalised_flat, filePath, overwrite=True)
+            # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
+            self._write(combined_normalised_flat, outDir, overwrite=True)
 
         self.clean_up()
 
