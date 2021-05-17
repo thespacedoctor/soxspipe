@@ -51,7 +51,7 @@ if not os.path.exists(pathToOutputDir):
 class test_soxs_mflat(unittest.TestCase):
 
     def test_unpack_order_table_function(self):
-        orderTablePath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/nir/order_locations_NIR.csv"
+        orderTablePath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/nir/order_locations_NIR_locations.csv"
         # UNPACK THE ORDER TABLE
         from soxspipe.commonutils.toolkit import unpack_order_table
         orderPolyTable, orderPixelTable = unpack_order_table(
