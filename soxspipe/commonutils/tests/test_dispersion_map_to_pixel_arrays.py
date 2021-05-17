@@ -54,15 +54,15 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
         import pandas as pd
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {
-            "Order": [11, 11, 11, 11, 11],
-            "Wavelength": [2000., 2100., 2200., 2300., 2400.],
+            "order": [11, 11, 11, 11, 11],
+            "wavelength": [2000., 2100., 2200., 2300., 2400.],
             "slit_position": [0, 0, 0, 0, 0]
         }
-        lineList = pd.DataFrame(myDict)
-        lineList = dispersion_map_to_pixel_arrays(
+        orderPixelTable = pd.DataFrame(myDict)
+        orderPixelTable = dispersion_map_to_pixel_arrays(
             log=log,
             dispersionMapPath=dispersionMapPath,
-            lineList=lineList
+            orderPixelTable=orderPixelTable
         )
 
     def test_dispersion_map_to_pixel_arrays_function_exception(self):

@@ -22,6 +22,7 @@
         
           ~create_dispersion_map
           ~detect_continuum
+          ~detect_order_edges
           ~detector_lookup
           ~keyword_lookup
           ~set_of_files

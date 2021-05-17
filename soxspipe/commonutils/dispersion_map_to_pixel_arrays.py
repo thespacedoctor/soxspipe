@@ -23,7 +23,7 @@ import numpy as np
 def dispersion_map_to_pixel_arrays(
         log,
         dispersionMapPath,
-        lineList):
+        orderPixelTable):
     """*use a first-guess dispersion map to append x,y fits to line-list data frame.* 
 
     Return a line-list with x,y fits given a first guess dispersion map.*
@@ -32,21 +32,21 @@ def dispersion_map_to_pixel_arrays(
 
     - `log` -- logger
     - `dispersionMapPath` -- path to the dispersion map
-    - `lineList` -- a data-frame including 'Order', 'Wavelength' and 'slit_pos' columns
+    - `orderPixelTable` -- a data-frame including 'order', 'wavelength' and 'slit_pos' columns
 
     **Usage:**
 
     ```python
     myDict = {
-        "Order": [11, 11, 11],
-        "Wavelength": [850.3, 894.3, 983.2],
+        "order": [11, 11, 11],
+        "wavelength": [850.3, 894.3, 983.2],
         "slit_pos": [0, 0, 0]
     }
-    lineList = pd.DataFrame(myDict)
-    lineList = dispersion_map_to_pixel_arrays(
+    orderPixelTable = pd.DataFrame(myDict)
+    orderPixelTable = dispersion_map_to_pixel_arrays(
         log=log,
         dispersionMapPath="/path/to/map.csv",
-        lineList=lineList
+        orderPixelTable=orderPixelTable
     )
     ```           
     """
@@ -74,13 +74,13 @@ def dispersion_map_to_pixel_arrays(
     csvFile.close()
 
     # CONVERT THE ORDER-SORTED WAVELENGTH ARRAYS INTO ARRAYS OF PIXEL TUPLES
-    lineList["fit_x"] = poly['x'](lineList, *coeff['x'])
-    lineList["fit_y"] = poly['y'](lineList, *coeff['y'])
+    orderPixelTable["fit_x"] = poly['x'](orderPixelTable, *coeff['x'])
+    orderPixelTable["fit_y"] = poly['y'](orderPixelTable, *coeff['y'])
 
     # FILTER DATA FRAME
     # FIRST CREATE THE MASK
-    mask = (lineList["fit_x"] > 0) & (lineList["fit_y"] > 0)
-    lineList = lineList.loc[mask]
+    mask = (orderPixelTable["fit_x"] > 0) & (orderPixelTable["fit_y"] > 0)
+    orderPixelTable = orderPixelTable.loc[mask]
 
     log.debug('completed the ``dispersion_map_to_pixel_arrays`` function')
-    return lineList
+    return orderPixelTable

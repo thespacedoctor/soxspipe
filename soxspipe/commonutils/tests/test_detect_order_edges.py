@@ -47,32 +47,32 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 
 
-class test_detect_continuum(unittest.TestCase):
+class test_detect_order_edges(unittest.TestCase):
 
-    def test_detect_continuum_function(self):
-        pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/detect_continuum/order_definition_NIR_calibrated.fits"
-        dispersion_map = "~/xshooter-pipeline-data/unittest_data/detect_continuum/single_pinhole_NIR_disp_map.csv"
+    def test_detect_order_edges_function(self):
+
+        flatPath = "~/xshooter-pipeline-data/unittest_data/xshooter-detect-order-edges/first_iteration_NIR_master_flat.fits"
+        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xshooter-detect-order-edges/order_locations_NIR_locations.csv"
         home = expanduser("~")
-        pinholeFlatPath = pinholeFlatPath.replace("~", home)
+        flatPath = flatPath.replace("~", home)
+        orderCentreTable = orderCentreTable.replace("~", home)
+        flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        pinholeFlat = CCDData.read(pinholeFlatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                   hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
-
-        from soxspipe.commonutils import detect_continuum
-        this = detect_continuum(
+        from soxspipe.commonutils import detect_order_edges
+        edges = detect_order_edges(
             log=log,
-            pinholeFlat=pinholeFlat,
-            dispersion_map=dispersion_map,
+            flatFrame=flatFrame,
+            orderCentreTable=orderCentreTable,
             settings=settings,
-            recipeName="soxs-order-centre"
         )
-        this.get()
+        edges.get()
 
-    def test_detect_continuum_function_exception(self):
+    def test_detect_order_edges_function_exception(self):
 
-        from soxspipe.commonutils import detect_continuum
+        from soxspipe.commonutils import detect_order_edges
         try:
-            this = detect_continuum(
+            this = detect_order_edges(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"

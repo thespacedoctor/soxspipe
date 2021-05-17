@@ -7,6 +7,7 @@ Usage:
     soxspipe init
     soxspipe mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
     soxspipe mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -15,6 +16,7 @@ Options:
     init                                   setup the soxspipe settings file for the first time
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
+    mflat                                  the master flat recipe
     disp_sol                               the disp solution recipe
     order_centres                          the order centres recipe
     spat_sol                               the spatial solution recipe
@@ -182,6 +184,16 @@ def main(arguments=None):
             inputFrames=a["inputFrames"]
         ).produce_product()
         print(f"\nFull 2D dispersion map saved to: {disp_map}")
+
+    if a["mflat"]:
+        from soxspipe.recipes import soxs_mflat
+        recipe = soxs_mflat(
+            log=log,
+            settings=settings,
+            inputFrames=a["inputFrames"]
+        )
+        mflatFrame = recipe.produce_product()
+        print(f"\nThe master flat frame has been saved to: {mflatFrame}")
 
     # CALL FUNCTIONS/OBJECTS
 

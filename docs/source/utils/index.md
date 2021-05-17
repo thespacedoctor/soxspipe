@@ -16,5 +16,7 @@ The soxspipe utilities can be viewed as the tool-kit with which the [soxspipe re
    prepare_frames
    set_of_files
    subtract_calibrations
+   detect_continuum
+   detect_order_edges
 ```
 
