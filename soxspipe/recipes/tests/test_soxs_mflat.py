@@ -51,7 +51,7 @@ if not os.path.exists(pathToOutputDir):
 class test_soxs_mflat(unittest.TestCase):
 
     def test_unpack_order_table_function(self):
-        orderTablePath = "/Users/Dave/soxspipe-unittests/intermediate/order_locations_NIR.csv"
+        orderTablePath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/nir/order_locations_NIR.csv"
         # UNPACK THE ORDER TABLE
         from soxspipe.commonutils.toolkit import unpack_order_table
         orderPolyTable, orderPixelTable = unpack_order_table(
@@ -92,16 +92,16 @@ class test_soxs_mflat(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_mflat_uvb_qflat_function(self):
+    # def test_soxs_mflat_uvb_qflat_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/uvb_qflats.sof"
-        from soxspipe.recipes import soxs_mflat
-        this = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/uvb_qflats.sof"
+    #     from soxspipe.recipes import soxs_mflat
+    #     this = soxs_mflat(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
     def test_soxs_mflat_vis_long_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/vis_long_flats.sof"

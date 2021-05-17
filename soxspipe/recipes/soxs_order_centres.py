@@ -230,7 +230,8 @@ class soxs_order_centres(_base_recipe_):
             log=self.log,
             pinholeFlat=self.orderFrame,
             dispersion_map=self.supplementaryInput[arm]["DISP_MAP"],
-            settings=self.settings
+            settings=self.settings,
+            recipeName="soxs-order-centre"
         )
         productPath = detector.get()
 

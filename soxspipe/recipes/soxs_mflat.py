@@ -270,7 +270,6 @@ class soxs_mflat(_base_recipe_):
         if darkCollection:
             darkMjds = [h[kw("MJDOBS").lower()]
                         for h in darkCollection.headers()]
-            print(darkMjds)
             darks = [c for c in darkCollection.ccds(ccd_kwargs={
                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
             for flat in flats:
