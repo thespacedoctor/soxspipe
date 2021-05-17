@@ -32,7 +32,7 @@ def cut_image_slice(
         y,
         median=False,
         plot=False):
-    """*cut and return an N-pixel wide and M-pixels long slice, centred on a given coordinate from an image frame. Also return the origin pixel value for the slice*
+    """*cut and return an N-pixel wide and M-pixels long slice, centred on a given coordinate from an image frame*
 
     **Key Arguments:**
 
@@ -57,10 +57,8 @@ def cut_image_slice(
     """
     log.debug('starting the ``cut_image_slice`` function')
 
-    # print(frame.shape)
     halfSlice = length / 2
-
-    #
+    # NEED AN EVEN PIXEL SIZE
     if (width % 2) != 0:
         halfwidth = (width - 1) / 2
     else:
@@ -73,12 +71,8 @@ def cut_image_slice(
     slice = frame[int(y - halfwidth):int(y + halfwidth + 1),
                   int(x - halfSlice):int(x + halfSlice)]
 
-    # print(int(x - halfSlice), y)
-    # print(slice.data.shape)
-
     if median:
         slice = ma.median(slice, axis=0)
-        # print(slice.mask)
 
     if plot and random.randint(1, 101) < 10000:
         # CHECK THE SLICE POINTS IF NEEDED
@@ -91,9 +85,6 @@ def cut_image_slice(
 
     log.debug('completed the ``cut_image_slice`` function')
     return slice
-
-# use the tab-trigger below for new function
-# xt-def-function
 
 
 def quicklook_image(
@@ -145,7 +136,7 @@ def quicklook_image(
 def unpack_order_table(
         log,
         orderTablePath):
-    """*unpack an order table and return a top-level `orderTableMeta` data-frame and a second `orderTablePixels` data-frame with the central-trace coordinates of each order given
+    """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
 
     **Key Arguments:**
 
@@ -156,41 +147,41 @@ def unpack_order_table(
     ```python
     # UNPACK THE ORDER TABLE
     from soxspipe.commonutils.toolkit import unpack_order_table
-    orderTableMeta, orderTablePixels = unpack_order_table(
+    orderPolyTable, orderPixelTable = unpack_order_table(
         log=self.log, orderTablePath=orderTablePath)
     ```           
     """
     log.debug('starting the ``functionName`` function')
 
     # READ CSV FILE TO PANDAS DATAFRAME
-    orderTableMeta = pd.read_csv(orderTablePath, index_col=False,
+    orderPolyTable = pd.read_csv(orderTablePath, index_col=False,
                                  na_values=['NA', 'MISSING'])
 
     # ADD Y-COORD LIST
     ycoords = [np.arange(l, u, 1) for l, u in zip(
-        orderTableMeta["ymin"].values, orderTableMeta["ymax"].values)]
+        orderPolyTable["ymin"].values, orderPolyTable["ymax"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
-        ycoords, orderTableMeta["order"].values)]
+        ycoords, orderPolyTable["order"].values)]
 
     # RUN COORDINATES THROUGH POLYNOMIALS TO GET X-COORDS
     xcoords_centre = []
     xcoords_edgeup = []
     xcoords_edgelow = []
-    for index, row in orderTableMeta.iterrows():
-        cent_coeff = [float(v) for k, v in row.items() if "CENT_" in k]
+    for index, row in orderPolyTable.iterrows():
+        cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
         poly = chebyshev_xy_polynomial(log=log, deg=int(row["degy_cent"])).poly
         xcoords_centre.append(np.array(poly(ycoords[index], *cent_coeff)))
-        if "degy_edge" in row:
-            degy_edge = int(row["degy_edge"])
+        if "degy_edgeup" in row:
+            degy_edge = int(row["degy_edgeup"])
             edgeup_coeff = [float(v)
-                            for k, v in row.items() if "EDGEUP_" in k]
+                            for k, v in row.items() if "edgeup_" in k]
             poly = chebyshev_xy_polynomial(
                 log=log, deg=degy_edge).poly
             xcoords_edgeup.append(
                 np.array(poly(ycoords[index], *edgeup_coeff)))
 
             edgelow_coeff = [float(v)
-                             for k, v in row.items() if "EDGELOW_" in k]
+                             for k, v in row.items() if "edgelow_" in k]
             poly = chebyshev_xy_polynomial(
                 log=log, deg=degy_edge).poly
             xcoords_edgelow.append(
@@ -208,7 +199,7 @@ def unpack_order_table(
         myDict['xcoord_edgelow'] = np.concatenate(xcoords_edgelow)
 
     # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-    orderTablePixels = pd.DataFrame(myDict)
+    orderPixelTable = pd.DataFrame(myDict)
 
     log.debug('completed the ``functionName`` function')
-    return orderTableMeta, orderTablePixels
+    return orderPolyTable, orderPixelTable

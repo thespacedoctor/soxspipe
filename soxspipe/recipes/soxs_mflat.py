@@ -158,7 +158,7 @@ class soxs_mflat(_base_recipe_):
 
         # LOOK FOR ORDER CENTRE TABLE
         arm = self.arm
-        if arm not in self.supplementaryInput or "ORDER_CENT" not in self.supplementaryInput[arm]:
+        if arm not in self.supplementaryInput or "ORDER_LOCATIONS" not in self.supplementaryInput[arm]:
             raise TypeError(
                 "Need an order centre for %(arm)s - none found with the input files" % locals())
 
@@ -181,7 +181,7 @@ class soxs_mflat(_base_recipe_):
         calibratedFlats = self.calibrate_frame_set()
 
         normalisedFlats = self.normalise_flats(
-            calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_CENT"])
+            calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_LOCATIONS"])
 
         combined_normalised_flat = self.clip_and_stack(
             frames=normalisedFlats, recipe="soxs_mflat")
@@ -189,7 +189,7 @@ class soxs_mflat(_base_recipe_):
         edges = detect_order_edges(
             log=self.log,
             flatFrame=combined_normalised_flat,
-            orderCentreTable=self.supplementaryInput[arm]["ORDER_CENT"],
+            orderCentreTable=self.supplementaryInput[arm]["ORDER_LOCATIONS"],
             settings=self.settings,
         )
         edges.get()
@@ -240,14 +240,10 @@ class soxs_mflat(_base_recipe_):
         darkCollection = self.inputFrames.filter(**filterDict)
 
         if len(darkCollection.files) == 0:
-            darkCollection = None
-
-        if not darkCollection:
-            try:
-                filterDict = {kw("DPR_TYPE").lower(): "LAMP,FLAT",
-                              kw("DPR_TECH").lower(): "IMAGE"}
-                darkCollection = self.inputFrames.filter(**filterDict)
-            except:
+            filterDict = {kw("DPR_TYPE").lower(): "LAMP,FLAT",
+                          kw("DPR_TECH").lower(): "IMAGE"}
+            darkCollection = self.inputFrames.filter(**filterDict)
+            if len(darkCollection.files) == 0:
                 darkCollection = None
 
         # FIND THE FLAT FRAMES

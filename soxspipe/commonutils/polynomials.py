@@ -51,11 +51,11 @@ class chebyshev_order_wavelength_polynomials():
 
         return None
 
-    def poly(self, lineList, *coeff):
+    def poly(self, orderPixelTable, *coeff):
         """the polynomial definition
 
         **Key Arguments:**
-        - ``lineList`` -- a pandas dataframe containing wavelengths, orders and slit positions
+        - ``orderPixelTable`` -- a pandas dataframe containing wavelengths, orders and slit positions
         - ``*coeff`` -- a list of the initial coefficients
 
         **Return:**
@@ -68,20 +68,20 @@ class chebyshev_order_wavelength_polynomials():
         wavelength_deg = self.wavelength_deg
         slit_deg = self.slit_deg
 
-        # lhsVals = np.sum([v * c for v, c in zip([lineList["order"].values**i * lineList["wavelength"].values**j * lineList["slit_position"].values**k for i in range(0, order_deg + 1)
+        # lhsVals = np.sum([v * c for v, c in zip([orderPixelTable["order"].values**i * orderPixelTable["wavelength"].values**j * orderPixelTable["slit_position"].values**k for i in range(0, order_deg + 1)
         # for j in range(0, wavelength_deg + 1) for k in range(0, slit_deg +
         # 1)], coeff)], axis=0)
 
         # THE LIST COMPREHENSION ABOVE DID NOT SPEED UP THE NEST LOOPS BELOW -
         # KEEPING LOOPS!
         n_coeff = 0
-        lhsVals = np.zeros(len(lineList.index))
+        lhsVals = np.zeros(len(orderPixelTable.index))
         for i in range(0, order_deg + 1):
             for j in range(0, wavelength_deg + 1):
                 for k in range(0, slit_deg + 1):
-                    lhsVals += coeff[n_coeff] * lineList["order"].values**i * \
-                        lineList["wavelength"].values**j * \
-                        lineList["slit_position"].values**k
+                    lhsVals += coeff[n_coeff] * orderPixelTable["order"].values**i * \
+                        orderPixelTable["wavelength"].values**j * \
+                        orderPixelTable["slit_position"].values**k
                     n_coeff += 1
 
         self.log.debug('completed the ``poly`` method')

@@ -74,6 +74,7 @@ class _base_detect(object):
         pixelListFiltered = pixelList.loc[mask]
         while clippedCount > 0 and iteration < clippingIterationLimit:
             pixelListFiltered = pixelList.loc[mask]
+
             startCount = len(pixelListFiltered.index)
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
@@ -84,7 +85,7 @@ class _base_detect(object):
                 poly, xdata=pixelListFiltered[yCol].values, ydata=pixelListFiltered[xCol].values, p0=coeff)
 
             res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
-                orderPixelList=pixelListFiltered,
+                orderPixelTable=pixelListFiltered,
                 coeff=coeff,
                 xCol=xCol,
                 yCol=yCol)
@@ -111,14 +112,14 @@ class _base_detect(object):
 
     def calculate_residuals(
             self,
-            orderPixelList,
+            orderPixelTable,
             coeff,
             xCol,
             yCol):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
-            - ``orderPixelList`` -- pixel list for given order
+            - ``orderPixelTable`` -- data-frame containing pixel list for given order
             - ``coeff`` -- the coefficients of the fitted polynomial
             - ``xCol`` -- name of x-pixel column
             - ``yCol`` -- name of y-pixel column
@@ -140,8 +141,8 @@ class _base_detect(object):
         # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
         # FITTED POSITIONS
         xfit = poly(
-            orderPixelList[yCol].values, *coeff)
-        res = xfit - orderPixelList[xCol].values
+            orderPixelTable[yCol].values, *coeff)
+        res = xfit - orderPixelTable[xCol].values
 
         # CALCULATE COMBINED RESIDUALS AND STATS
         res_mean = np.mean(res)
@@ -150,6 +151,40 @@ class _base_detect(object):
 
         self.log.debug('completed the ``calculate_residuals`` method')
         return res, res_mean, res_std, res_median, xfit
+
+    def write_order_table_to_file(
+            self,
+            frame,
+            orderPolyTable):
+        """*write out the fitted polynomial solution coefficients to file*
+
+        **Key Arguments:**
+            - ``frame`` -- the calibration frame used to generate order location data
+            - ``orderPolyTable`` -- data-frames containing centre location coefficients (and possibly also order edge coeffs)
+
+        **Return:**
+            - ``order_table_path`` -- path to the order table file
+        """
+        self.log.debug('starting the ``write_order_table_to_file`` method')
+
+        arm = self.arm
+
+        # DETERMINE WHERE TO WRITE THE FILE
+        home = expanduser("~")
+        outDir = self.settings["intermediate-data-root"].replace("~", home)
+
+        filename = filenamer(
+            log=self.log,
+            frame=frame,
+            settings=self.settings
+        )
+        filename = filename.split("FLAT")[0] + "ORDER_LOCATIONS.csv"
+
+        order_table_path = f"{outDir}/{filename}"
+        orderPolyTable.to_csv(order_table_path)
+
+        self.log.debug('completed the ``write_order_table_to_file`` method')
+        return order_table_path
 
 
 class detect_continuum(_base_detect):
@@ -178,7 +213,6 @@ class detect_continuum(_base_detect):
     )
     order_table_path = detector.get()
     ```
-
     """
 
     def __init__(
@@ -234,7 +268,7 @@ class detect_continuum(_base_detect):
 
         # CONVERT WAVELENGTH TO PIXEL POSTIONS AND RETURN ARRAY OF POSITIONS TO
         # SAMPLE THE TRACES
-        lineList = self.create_pixel_arrays(
+        orderPixelTable = self.create_pixel_arrays(
             orderNums,
             waveLengthMin,
             waveLengthMax)
@@ -243,53 +277,68 @@ class detect_continuum(_base_detect):
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
-        lineList['cont_x'] = np.nan
-        lineList['cont_y'] = np.nan
+        orderPixelTable['cont_x'] = np.nan
+        orderPixelTable['cont_y'] = np.nan
 
         # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
         # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
-        lineList = lineList.apply(
+        orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
-        allLines = len(lineList.index)
+        allLines = len(orderPixelTable.index)
         # DROP ROWS WITH NAN VALUES
-        lineList.dropna(axis='index', how='any',
-                        subset=['cont_x'], inplace=True)
-        foundLines = len(lineList.index)
+        orderPixelTable.dropna(axis='index', how='any',
+                               subset=['cont_x'], inplace=True)
+        foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
         print(f"{foundLines} out of {allLines} found ({percent:3.0f}%)")
 
         # GET UNIQUE VALUES IN COLUMN
-        uniqueOrders = lineList['order'].unique()
+        uniqueOrders = orderPixelTable['order'].unique()
 
-        orderLoctions = {}
-        lineList['x_fit'] = np.nan
-        lineList['x_fit_res'] = np.nan
+        orderLocations = {}
+        orderPixelTable['x_fit'] = np.nan
+        orderPixelTable['x_fit_res'] = np.nan
 
         for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-            coeff, lineList = self.fit_polynomial(
-                pixelList=lineList,
+            coeff, orderPixelTable = self.fit_polynomial(
+                pixelList=orderPixelTable,
                 order=o,
                 xCol="cont_x",
                 yCol="cont_y"
             )
-            orderLoctions[o] = coeff
+            orderLocations[o] = coeff
+
+        # SORT CENTRE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
+        columnsNames = ["order", "degy_cent"]
+        coeffColumns = [f'cent_c{i}' for i in range(0, self.polyDeg + 1)]
+        columnsNames.extend(coeffColumns)
+        myDict = {k: [] for k in columnsNames}
+        for k, v in orderLocations.items():
+            myDict["order"].append(k)
+            myDict["degy_cent"].append(self.polyDeg)
+            n_coeff = 0
+            for i in range(0, self.polyDeg + 1):
+                myDict[f'cent_c{i}'].append(v[n_coeff])
+                n_coeff += 1
+        orderPolyTable = pd.DataFrame(myDict)
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
-        lineList.drop(columns=['mask'], inplace=True)
+        orderPixelTable.drop(columns=['mask'], inplace=True)
 
         plotPath = self.plot_results(
-            lineList=lineList,
-            orderLoctions=orderLoctions
+            orderPixelTable=orderPixelTable,
+            orderPolyTable=orderPolyTable
         )
 
-        mean_res = np.mean(np.abs(lineList['x_fit_res'].values))
-        std_res = np.std(np.abs(lineList['x_fit_res'].values))
+        mean_res = np.mean(np.abs(orderPixelTable['x_fit_res'].values))
+        std_res = np.std(np.abs(orderPixelTable['x_fit_res'].values))
 
         print(f'\nThe order centre polynomial fitted against the observed 1D gaussian peak positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixels)')
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
-        order_table_path = self.write_order_table_to_file(orderLoctions)
+        order_table_path = self.write_order_table_to_file(
+            frame=self.pinholeFlat, orderPolyTable=orderPolyTable)
 
         print(f'\nFind results of the order centre fitting here: {plotPath}')
 
@@ -320,8 +369,6 @@ class detect_continuum(_base_detect):
         spectralFormat = np.genfromtxt(
             spectralFormatFile, delimiter=',', names=True)
 
-        # print(spectralFormat.dtype.names)
-
         # EXTRACT REQUIRED PARAMETERS
         orderNums = spectralFormat["ORDER"]
         waveLengthMin = spectralFormat["WLMINFUL"]
@@ -343,7 +390,7 @@ class detect_continuum(_base_detect):
             - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
 
         **Return:**
-            - ``lineList`` -- a data-frame containing lines and associated pixel locations
+            - ``orderPixelTable`` -- a data-frame containing lines and associated pixel locations
         """
         self.log.debug('starting the ``create_pixel_arrays`` method')
 
@@ -367,26 +414,26 @@ class detect_continuum(_base_detect):
             myDict["slit_position"] = np.append(
                 myDict["slit_position"], np.zeros(len(wlArray)))
 
-        lineList = pd.DataFrame(myDict)
-        lineList = dispersion_map_to_pixel_arrays(
+        orderPixelTable = pd.DataFrame(myDict)
+        orderPixelTable = dispersion_map_to_pixel_arrays(
             log=self.log,
             dispersionMapPath=self.dispersion_map,
-            lineList=lineList
+            orderPixelTable=orderPixelTable
         )
 
         self.log.debug('completed the ``create_pixel_arrays`` method')
-        return lineList
+        return orderPixelTable
 
     def fit_1d_gaussian_to_slice(
             self,
-            linePixelPostion):
+            pixelPostion):
         """*cut a slice from the pinhole flat along the cross-dispersion direction centred on pixel position, fit 1D gaussian and return the peak pixel position*
 
         **Key Arguments:**
-            - ``linePixelPostion`` -- the x,y pixel coordinate from lineList data-frame (series)
+            - ``pixelPostion`` -- the x,y pixel coordinate from orderPixelTable data-frame (series)
 
         **Return:**
-            - ``linePixelPostion`` -- now including gaussian fit peak xy position
+            - ``pixelPostion`` -- now including gaussian fit peak xy position
         """
         self.log.debug('starting the ``fit_1d_gaussian_to_slice`` method')
 
@@ -394,20 +441,12 @@ class detect_continuum(_base_detect):
         halfSlice = self.sliceLength / 2
 
         slice = cut_image_slice(log=self.log, frame=self.pinholeFlat,
-                                width=1, length=self.sliceLength, x=linePixelPostion["fit_x"], y=linePixelPostion["fit_y"], median=True, plot=False)
+                                width=1, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], median=True, plot=False)
 
         if slice is None:
-            linePixelPostion["cont_x"] = np.nan
-            linePixelPostion["cont_y"] = np.nan
-            return linePixelPostion
-
-        # try:
-        #     slice = self.pinholeFlat.data[int(linePixelPostion["fit_y"]), max(
-        #         0, int(linePixelPostion["fit_x"] - halfSlice)):min(2048, int(linePixelPostion["fit_x"] + halfSlice))]
-        # except:
-        #     linePixelPostion["cont_x"] = np.nan
-        #     linePixelPostion["cont_y"] = np.nan
-        #     return linePixelPostion
+            pixelPostion["cont_x"] = np.nan
+            pixelPostion["cont_y"] = np.nan
+            return pixelPostion
 
         # CHECK THE SLICE POINTS IF NEEDED
         if 1 == 0:
@@ -435,9 +474,9 @@ class detect_continuum(_base_detect):
                 plt.xlabel('Position')
                 plt.ylabel('Flux')
                 plt.show()
-            linePixelPostion["cont_x"] = np.nan
-            linePixelPostion["cont_y"] = np.nan
-            return linePixelPostion
+            pixelPostion["cont_x"] = np.nan
+            pixelPostion["cont_y"] = np.nan
+            return pixelPostion
 
         # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
         # CENTRE THE GAUSSIAN ON THE PEAK
@@ -448,9 +487,9 @@ class detect_continuum(_base_detect):
 
         # NOW FIT
         g = fit_g(g_init, np.arange(0, len(slice)), slice)
-        linePixelPostion["cont_x"] = g.mean + \
-            max(0, int(linePixelPostion["fit_x"] - halfSlice))
-        linePixelPostion["cont_y"] = linePixelPostion["fit_y"]
+        pixelPostion["cont_x"] = g.mean + \
+            max(0, int(pixelPostion["fit_x"] - halfSlice))
+        pixelPostion["cont_y"] = pixelPostion["fit_y"]
 
         # PRINT A FEW PLOTS IF NEEDED - GUASSIAN FIT OVERLAYED
         if 1 == 0 and random() < 0.02:
@@ -464,17 +503,17 @@ class detect_continuum(_base_detect):
             plt.show()
 
         self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
-        return linePixelPostion
+        return pixelPostion
 
     def plot_results(
             self,
-            lineList,
-            orderLoctions):
+            orderPixelTable,
+            orderPolyTable):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
-            - ``lineList`` -- list of all residuals
-            - ``orderLoctions`` -- dictionary of order-location polynomial coeff
+            - ``orderPixelTable`` -- the pixel table with residuals of fits
+            - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
 
         **Return:**
             - ``filePath`` -- path to the plot pdf
@@ -501,9 +540,10 @@ class detect_continuum(_base_detect):
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
-        x = np.ones(len(lineList.index)) * \
-            self.pinholeFlat.data.shape[1] - lineList['cont_x'].values
-        toprow.scatter(lineList['cont_y'].values, x, marker='x', c='red', s=4)
+        x = np.ones(len(orderPixelTable.index)) * \
+            self.pinholeFlat.data.shape[1] - orderPixelTable['cont_x'].values
+        toprow.scatter(orderPixelTable[
+                       'cont_y'].values, x, marker='x', c='red', s=4)
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
         toprow.set_ylabel("x-axis", fontsize=8)
@@ -516,7 +556,11 @@ class detect_continuum(_base_detect):
         ylinelist = np.arange(0, self.pinholeFlat.data.shape[0], 3)
         poly = chebyshev_xy_polynomial(
             log=self.log, deg=self.polyDeg).poly
-        for o, coeff in orderLoctions.items():
+
+        # ONLY DO THIS FOR SMALL DATAFRAMES - THIS IS AN ANTIPATTERN
+        for index, row in orderPolyTable.iterrows():
+            o = row["order"]
+            coeff = [float(v) for k, v in row.items() if "cent_" in k]
             xfit = poly(ylinelist, *coeff)
             xfit = np.ones(len(xfit)) * \
                 self.pinholeFlat.data.shape[1] - xfit
@@ -535,7 +579,7 @@ class detect_continuum(_base_detect):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomleft.scatter(lineList['cont_x'].values, lineList[
+        bottomleft.scatter(orderPixelTable['cont_x'].values, orderPixelTable[
                            'x_fit_res'].values, alpha=0.2, s=1)
         bottomleft.set_xlabel('x pixel position')
         bottomleft.set_ylabel('x residual')
@@ -543,15 +587,15 @@ class detect_continuum(_base_detect):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomright.scatter(lineList['cont_y'].values, lineList[
+        bottomright.scatter(orderPixelTable['cont_y'].values, orderPixelTable[
                             'x_fit_res'].values, alpha=0.2, s=1)
         bottomright.set_xlabel('y pixel position')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         # bottomright.set_ylabel('x residual')
         bottomright.set_yticklabels([])
 
-        mean_res = np.mean(np.abs(lineList['x_fit_res'].values))
-        std_res = np.std(np.abs(lineList['x_fit_res'].values))
+        mean_res = np.mean(np.abs(orderPixelTable['x_fit_res'].values))
+        std_res = np.std(np.abs(orderPixelTable['x_fit_res'].values))
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
@@ -571,54 +615,6 @@ class detect_continuum(_base_detect):
 
         self.log.debug('completed the ``plot_results`` method')
         return filePath
-
-    def write_order_table_to_file(
-            self,
-            orderLoctions):
-        """*write out the fitted polynomial solution coefficients to file*
-
-        **Key Arguments:**
-            - ``orderLoctions`` -- dictionary of the order coefficients
-
-        **Return:**
-            - ``order_table_path`` -- path to the order table file
-        """
-        self.log.debug('starting the ``write_order_table_to_file`` method')
-
-        arm = self.arm
-
-        # SORT COEFFICIENT OUTPUT TO WRITE TO FILE
-        listOfDictionaries = []
-        for k, v in orderLoctions.items():
-            orderDict = collections.OrderedDict(sorted({}.items()))
-            orderDict["order"] = k
-            orderDict["degy"] = self.polyDeg
-            n_coeff = 0
-            for i in range(0, self.polyDeg + 1):
-                orderDict[f'CENT_c{i}'] = v[n_coeff]
-                n_coeff += 1
-            listOfDictionaries.append(orderDict)
-
-        # DETERMINE WHERE TO WRITE THE FILE
-        home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
-
-        filename = filenamer(
-            log=self.log,
-            frame=self.pinholeFlat,
-            settings=self.settings
-        )
-        filename = filename.split("FLAT")[0] + "ORDER_CENTRES.csv"
-
-        order_table_path = f"{outDir}/{filename}"
-        dataSet = list_of_dictionaries(
-            log=self.log,
-            listOfDictionaries=listOfDictionaries
-        )
-        csvData = dataSet.csv(filepath=order_table_path)
-
-        self.log.debug('completed the ``write_order_table_to_file`` method')
-        return order_table_path
 
     # use the tab-trigger below for new method
     # xt-class-method
