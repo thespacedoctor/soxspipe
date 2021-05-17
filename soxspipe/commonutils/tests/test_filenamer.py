@@ -61,8 +61,8 @@ class test_filenamer(unittest.TestCase):
             "xshooter-mbias/vis",
             "xshooter-mdark/nir/240s",
             "xshooter-detect-order-edges",
-            "xshooter-flats/uvb/qflat",
-            "xshooter-flats/nir/calibrated",
+            "xshooter-mflat/uvb/qflat",
+            "xshooter-mflat/nir/calibrated",
             "xshooter-order-centres/uvb/",
             "xshooter-disp-solution/nir/"
         ]
