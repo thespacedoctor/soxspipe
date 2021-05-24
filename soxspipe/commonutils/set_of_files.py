@@ -289,6 +289,10 @@ class set_of_files(object):
                 for a in ["NIR", "UVB", "VIS"]:
                     if a.lower() in f.lower():
                         supplementary_sof[a]["ORDER_LOCATIONS"] = f
+            if "2d_map" in f.lower():
+                for a in ["NIR", "UVB", "VIS"]:
+                    if a.lower() in f.lower():
+                        supplementary_sof[a]["2D_MAP"] = f
 
         self.log.debug(
             'completed the ``create_supplimentary_file_dictionary`` method')

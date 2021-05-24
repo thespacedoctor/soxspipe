@@ -366,13 +366,16 @@ class detect_continuum(_base_detect):
             "calibration-data-root"].replace("~", home)
         spectralFormatFile = calibrationRootPath + \
             "/" + dp["spectral format table"]
-        spectralFormat = np.genfromtxt(
-            spectralFormatFile, delimiter=',', names=True)
+
+        # READ CSV FILE TO PANDAS DATAFRAME
+        specFormatTable = pd.read_csv(
+            spectralFormatFile, index_col=False, na_values=['NA', 'MISSING'])
+        # # DATAFRAME INFO
 
         # EXTRACT REQUIRED PARAMETERS
-        orderNums = spectralFormat["ORDER"]
-        waveLengthMin = spectralFormat["WLMINFUL"]
-        waveLengthMax = spectralFormat["WLMAXFUL"]
+        orderNums = specFormatTable["ORDER"].values
+        waveLengthMin = specFormatTable["WLMINFUL"].values
+        waveLengthMax = specFormatTable["WLMAXFUL"].values
 
         self.log.debug('completed the ``read_spectral_format`` method')
         return orderNums, waveLengthMin, waveLengthMax

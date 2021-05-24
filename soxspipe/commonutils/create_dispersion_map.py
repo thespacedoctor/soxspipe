@@ -188,8 +188,8 @@ class create_dispersion_map(object):
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
         listName[:] = [l if l else l for l in listName]
-        orderPixelTable.columns = [d.lower() if d in [
-            "Order", "Wavelength"] else d for d in orderPixelTable.columns]
+        orderPixelTable.columns = [d.lower() if d.lower() in [
+            "order", "wavelength"] else d for d in orderPixelTable.columns]
 
         # WANT TO DETERMINE SYSTEMATIC SHIFT IF FIRST GUESS SOLUTION PRESENT
         if self.firstGuessMap:
