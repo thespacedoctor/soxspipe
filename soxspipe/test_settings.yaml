@@ -65,6 +65,9 @@ soxs-mflat:
     poly-fitting-residual-clipping-sigma: 5
     clipping-iteration-limit: 10
 
+soxs-straighten:
+    asdasd: 1
+
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data
 calibration-data-root: ~/xshooter-pipeline-data/static_calibrations

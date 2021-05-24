@@ -1,4 +1,4 @@
-quicklook_image (*function*)
+﻿quicklook_image (*function*)
 =========================================================
 
 .. currentmodule:: soxspipe.commonutils.toolkit

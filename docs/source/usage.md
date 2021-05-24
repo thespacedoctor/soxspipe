@@ -8,10 +8,10 @@
         soxspipe init
         soxspipe mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
         soxspipe mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    
     
     Options:
         init                                   setup the soxspipe settings file for the first time
