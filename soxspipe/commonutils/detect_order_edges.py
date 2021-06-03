@@ -325,8 +325,6 @@ class detect_order_edges(_base_detect):
         poly = chebyshev_xy_polynomial(
             log=self.log, deg=self.polyDeg).poly
 
-        nqi
-
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit
         # midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
