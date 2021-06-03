@@ -119,6 +119,13 @@ def filenamer(
     elif "LAMP" in frame.header[kw("DPR_TYPE")].upper() and "ORDERDEF" in frame.header[kw("DPR_TYPE")].upper():
         ttype = "flat"
 
+    if ",Q" in frame.header[kw("DPR_TYPE")].upper():
+        lamp = "_QLAMP"
+    elif ",D" in frame.header[kw("DPR_TYPE")].upper():
+        lamp = "_DLAMP"
+    else:
+        lamp = ""
+
     if ttype is None:
         print(repr(frame.header))
         print()
@@ -131,7 +138,7 @@ def filenamer(
         log.error(message)
         raise TypeError(message)
 
-    filename = f"{filename}_{ttype}"
+    filename = f"{filename}{lamp}_{ttype}"
 
     maskSlit = None
     if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,PINHOLE":

@@ -57,7 +57,7 @@ soxs-mflat:
     clipping-lower-simga: 5
     clipping-upper-simga: 5   
     clipping-iteration-count: 5
-    slice-length-for-edge-detection: 60
+    slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 18
     max-percentage-threshold-for-edge-detection: 50

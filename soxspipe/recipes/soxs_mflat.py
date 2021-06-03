@@ -56,13 +56,9 @@ class soxs_mflat(_base_recipe_):
     ```eval_rst
     .. todo::
 
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
         - add a tutorial about ``soxs_mflat`` to documentation
     ```
     """
-    # Initialisation
 
     def __init__(
             self,
@@ -90,7 +86,7 @@ class soxs_mflat(_base_recipe_):
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_mflat - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY soxs_mflat - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
@@ -112,9 +108,6 @@ class soxs_mflat(_base_recipe_):
     def verify_input_frames(
             self):
         """*verify the input frame match those required by the soxs_mflat recipe*
-
-        **Return:**
-            - ``None``
 
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
@@ -168,24 +161,29 @@ class soxs_mflat(_base_recipe_):
 
     def produce_product(
             self):
-        """*The code to generate the product of the soxs_mflat recipe*
+        """*generate the master flat frames updated order location table (with egde detection)*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+            - ``productPath`` -- the path to the master flat frame
         """
         self.log.debug('starting the ``produce_product`` method')
 
         productPath = None
         arm = self.arm
 
+        # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats = self.calibrate_frame_set()
 
+        # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
+        # FLUX TO THAT LEVEL
         normalisedFlats = self.normalise_flats(
             calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_LOCATIONS"])
 
+        # STACK THE NORMALISED FLAT FRAMES
         combined_normalised_flat = self.clip_and_stack(
             frames=normalisedFlats, recipe="soxs_mflat")
 
+        # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
         edges = detect_order_edges(
             log=self.log,
             flatFrame=combined_normalised_flat,
@@ -202,7 +200,11 @@ class soxs_mflat(_base_recipe_):
             home = expanduser("~")
             outDir = self.settings["intermediate-data-root"].replace("~", home)
             # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
-            self._write(combined_normalised_flat, outDir, overwrite=True)
+
+            # NOT THE FINAL PRODUCT!!! CAHNGE TO THE FINAL MFLAT FRAME WHEN
+            # RECIPE COMPLETE
+            productPath = self._write(
+                combined_normalised_flat, outDir, overwrite=True)
 
         self.clean_up()
 
@@ -321,8 +323,8 @@ class soxs_mflat(_base_recipe_):
 
         mask = np.ones_like(inputFlats[0].data)
 
-        xcoords = orderTablePixels["xcoord_centre"]
-        ycoords = orderTablePixels["ycoord"]
+        xcoords = orderTablePixels["xcoord_centre"].values
+        ycoords = orderTablePixels["ycoord"].values
         xcoords = xcoords.astype(int)
 
         # UPDATE THE MASK
@@ -353,9 +355,6 @@ class soxs_mflat(_base_recipe_):
     # use the tab-trigger below for new method
     # xt-class-method
 
-    # Override Method Attributes
-    # method-override-tmpx
-
 
 def nearest_neighbour(singleValue, listOfValues):
     arrayOfValues = np.asarray(listOfValues)
@@ -364,7 +363,3 @@ def nearest_neighbour(singleValue, listOfValues):
     minIndex = np.where(dist == minDist)[0][0]
     matchValue = listOfValues[minIndex]
     return matchValue, minIndex
-
-
-# use the tab-trigger below for new function
-# xt-def-function

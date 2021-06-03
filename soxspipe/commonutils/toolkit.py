@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import random
 import numpy.ma as ma
 import pandas as pd
+import math
 
 
 def cut_image_slice(
@@ -158,7 +159,7 @@ def unpack_order_table(
                                  na_values=['NA', 'MISSING'])
 
     # ADD Y-COORD LIST
-    ycoords = [np.arange(l, u, 1) for l, u in zip(
+    ycoords = [np.arange(math.floor(l), math.ceil(u), 1) for l, u in zip(
         orderPolyTable["ymin"].values, orderPolyTable["ymax"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
         ycoords, orderPolyTable["order"].values)]

@@ -81,8 +81,16 @@ class _base_detect(object):
             coeff = np.ones((self.polyDeg + 1))
             # NOTE X AND Y COLUMN ARE CORRECLY IN xdata AND ydata - WANT TO
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
-            coeff, pcov_x = curve_fit(
-                poly, xdata=pixelListFiltered[yCol].values, ydata=pixelListFiltered[xCol].values, p0=coeff)
+            try:
+                coeff, pcov_x = curve_fit(
+                    poly, xdata=pixelListFiltered[yCol].values, ydata=pixelListFiltered[xCol].values, p0=coeff)
+            except TypeError as e:
+                # REMOVE THIS ORDER FROM PIXEL LIST
+                pixelList.drop(index=pixelList[mask].index, inplace=True)
+                coeff = None
+                return coeff, pixelList
+            except Exception as e:
+                raise e
 
             res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
                 orderPixelTable=pixelListFiltered,
@@ -178,10 +186,11 @@ class _base_detect(object):
             frame=frame,
             settings=self.settings
         )
+        filename = filename.replace("MFLAT", "FLAT")
         filename = filename.split("FLAT")[0] + "ORDER_LOCATIONS.csv"
 
         order_table_path = f"{outDir}/{filename}"
-        orderPolyTable.to_csv(order_table_path)
+        orderPolyTable.to_csv(order_table_path, index=False)
 
         self.log.debug('completed the ``write_order_table_to_file`` method')
         return order_table_path
@@ -310,7 +319,7 @@ class detect_continuum(_base_detect):
             orderLocations[o] = coeff
 
         # SORT CENTRE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
-        columnsNames = ["order", "degy_cent"]
+        columnsNames = ["order", "degy_cent", "ymin", "ymax"]
         coeffColumns = [f'cent_c{i}' for i in range(0, self.polyDeg + 1)]
         columnsNames.extend(coeffColumns)
         myDict = {k: [] for k in columnsNames}
@@ -321,6 +330,11 @@ class detect_continuum(_base_detect):
             for i in range(0, self.polyDeg + 1):
                 myDict[f'cent_c{i}'].append(v[n_coeff])
                 n_coeff += 1
+
+            myDict["ymin"].append(
+                np.min(orderPixelTable.loc[(orderPixelTable['order'] == k)]["fit_y"].values))
+            myDict["ymax"].append(
+                np.max(orderPixelTable.loc[(orderPixelTable['order'] == k)]["fit_y"].values))
         orderPolyTable = pd.DataFrame(myDict)
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
@@ -464,6 +478,12 @@ class detect_continuum(_base_detect):
         # CONTAINING JUST NOISE
         median_r = np.median(slice)
         std_r = mad_std(slice)
+
+        if not median_r:
+            pixelPostion["cont_x"] = np.nan
+            pixelPostion["cont_y"] = np.nan
+            return pixelPostion
+
         peaks, _ = find_peaks(slice, height=median_r +
                               self.peakSigmaLimit * std_r, width=1)
 

@@ -285,7 +285,7 @@ class set_of_files(object):
                 for a in ["NIR", "UVB", "VIS"]:
                     if a.lower() in f.lower():
                         supplementary_sof[a]["DISP_MAP"] = f
-            if "order_locations" in f.lower():
+            if "order_locations" in f.lower() or "order_centres" in f.lower():
                 for a in ["NIR", "UVB", "VIS"]:
                     if a.lower() in f.lower():
                         supplementary_sof[a]["ORDER_LOCATIONS"] = f

@@ -129,8 +129,8 @@ class detect_order_edges(_base_detect):
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderCentreTable)
-        orderLimits = zip(
-            orderPolyTable["ymin"].values, orderPolyTable["ymax"].values)
+        orderLimits = list(zip(
+            orderPolyTable["ymin"].values, orderPolyTable["ymax"].values))
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
         orderPolyTable["maxThreshold"] = np.nan
@@ -157,6 +157,9 @@ class detect_order_edges(_base_detect):
         orderPixelTable.dropna(axis='index', how='any',
                                subset=['xcoord_lower'], inplace=True)
 
+        # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
+        uniqueOrders = orderPixelTable['order'].unique()
+
         # PARAMETERS & VARIABLES FOR FITTING EDGES
         orderMaxLocations = {}
         orderMinLocations = {}
@@ -169,12 +172,15 @@ class detect_order_edges(_base_detect):
                 xCol="xcoord_upper",
                 yCol="ycoord"
             )
-            orderMaxLocations[o] = coeff
+            if not isinstance(coeff, type(None)):
+                orderMaxLocations[o] = coeff
 
         # RENAME SOME INDIVIDUALLY
         orderPixelTable.rename(columns={
             "x_fit": "xcoord_upper_fit", "x_fit_res": "xcoord_upper_fit_res"}, inplace=True)
 
+        # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
+        uniqueOrders = orderPixelTable['order'].unique()
         for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
             coeff, orderPixelTable = self.fit_polynomial(
@@ -183,7 +189,8 @@ class detect_order_edges(_base_detect):
                 xCol="xcoord_lower",
                 yCol="ycoord"
             )
-            orderMinLocations[o] = coeff
+            if not isinstance(coeff, type(None)):
+                orderMinLocations[o] = coeff
 
         # RENAME SOME INDIVIDUALLY
         orderPixelTable.rename(columns={
@@ -318,14 +325,7 @@ class detect_order_edges(_base_detect):
         poly = chebyshev_xy_polynomial(
             log=self.log, deg=self.polyDeg).poly
 
-        for ylim, mincoeff, maxcoeff in zip(ylims, orderMinLocations.values(), orderMaxLocations.values()):
-            ylinelist = np.arange(ylim[0], ylim[1], 3)
-            xfitmin = poly(ylinelist, *mincoeff)
-            xfitmax = poly(ylinelist, *maxcoeff)
-            xfitmin, xfitmax, ylinelist = zip(
-                *[(x1, x2, y) for x1, x2, y in zip(xfitmin, xfitmax, ylinelist) if x1 > 0 and x1 < (self.flatFrame.data.shape[1]) - 10 and x2 > 0 and x2 < (self.flatFrame.data.shape[1]) - 10])
-            # midrow.plot(ylinelist, xfit)
-            midrow.fill_between(ylinelist, xfitmin, xfitmax, alpha=0.4)
+        nqi
 
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit
