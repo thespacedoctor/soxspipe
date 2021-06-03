@@ -9,7 +9,8 @@ from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
 home = expanduser("~")
-
+from astropy.nddata import CCDData
+from astropy import units as u
 packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings.yaml"
 # settingsFile = home + \
@@ -49,9 +50,19 @@ class test_subtract_background(unittest.TestCase):
 
     def test_subtract_background_function(self):
 
-        from soxspipe import subtract_background
+        flatPath = "~/xshooter-pipeline-data/unittest_data/xshooter-detect-order-edges/first_iteration_NIR_master_flat.fits"
+        orderTable = "~/xshooter-pipeline-data/unittest_data/xshooter-detect-order-edges/20170819T155423_NIR_ORDER_LOCATIONS.csv"
+        home = expanduser("~")
+        flatPath = flatPath.replace("~", home)
+        orderTable = orderTable.replace("~", home)
+        flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        from soxspipe.commonutils import subtract_background
         this = subtract_background(
             log=log,
+            frame=flatFrame,
+            orderTable=orderTable,
             settings=settings
         )
         this.get()

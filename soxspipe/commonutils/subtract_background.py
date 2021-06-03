@@ -26,6 +26,8 @@ class subtract_background(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``frame`` -- the frame to subtract background light from
+        - ``orderTable`` -- the order geometry table
 
     **Usage:**
 
@@ -49,25 +51,26 @@ class subtract_background(object):
 
     """
     # Initialisation
-    # 1. @flagged: what are the unique attrributes for each object? Add them
+    # 1. @flagged: what are the unique attributes for each object? Add them
     # to __init__
 
     def __init__(
             self,
             log,
-            settings=False,
-
+            frame,
+            orderTable,
+            settings=False
     ):
         self.log = log
         log.debug("instansiating a new 'subtract_background' object")
         self.settings = settings
         # xt-self-arg-tmpx
 
-        # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
-        # Variable Data Atrributes
+        # 2. @flagged: what are the default attributes each object could have? Add them to variable attribute set here
+        # Variable Data Attributes
 
-        # 3. @flagged: what variable attrributes need overriden in any baseclass(es) used
-        # Override Variable Data Atrributes
+        # 3. @flagged: what variable attributes need overridden in any baseclass(es) used
+        # Override Variable Data Attributes
 
         # Initial Actions
 
@@ -106,6 +109,6 @@ class subtract_background(object):
 
     # xt-class-method
 
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
+    # 5. @flagged: what actions of the base class(es) need amending? amend them here
     # Override Method Attributes
     # method-override-tmpx
