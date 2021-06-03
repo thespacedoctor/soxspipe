@@ -1,4 +1,4 @@
-detect_order_edges *(class)*
+﻿detect_order_edges *(class)*
 =================================================
 
 .. currentmodule:: soxspipe.commonutils
@@ -42,6 +42,18 @@ detect_order_edges *(class)*
             ~detect_order_edges.plot_results
        
    
+        
+            ~detect_order_edges.write_order_table_to_file
+       
+   
+        
+            ~detect_order_edges.write_order_table_to_file_back
+       
+   
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

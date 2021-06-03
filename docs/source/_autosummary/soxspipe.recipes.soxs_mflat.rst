@@ -1,4 +1,4 @@
-soxs_mflat *(class)*
+﻿soxs_mflat *(class)*
 =====================================
 
 .. currentmodule:: soxspipe.recipes

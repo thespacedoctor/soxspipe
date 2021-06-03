@@ -1,4 +1,4 @@
-cut_image_slice (*function*)
+﻿cut_image_slice (*function*)
 =========================================================
 
 .. currentmodule:: soxspipe.commonutils.toolkit

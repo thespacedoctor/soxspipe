@@ -24,12 +24,13 @@
    soxspipe.commonutils.polynomials.chebyshev_order_wavelength_polynomials
    soxspipe.commonutils.polynomials.chebyshev_xy_polynomial
    soxspipe.commonutils.set_of_files
-   soxspipe.recipes._base_recipe_
    soxspipe.recipes.soxs_disp_solution
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark
+   soxspipe.recipes.soxs_mflat
    soxspipe.recipes.soxs_order_centres
-   soxspipe.recipes.soxs_spatial_solution 
+   soxspipe.recipes.soxs_spatial_solution
+   soxspipe.recipes.soxs_straighten 
 
 **Functions**
 

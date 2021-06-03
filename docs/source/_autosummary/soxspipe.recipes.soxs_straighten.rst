@@ -1,9 +1,9 @@
-﻿detect_continuum *(class)*
-===============================================
+﻿soxs_straighten *(class)*
+==========================================
 
-.. currentmodule:: soxspipe.commonutils
+.. currentmodule:: soxspipe.recipes
 
-.. autoclass:: detect_continuum
+.. autoclass:: soxs_straighten
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,35 +19,31 @@
         
    
         
-            ~detect_continuum.calculate_residuals
+            ~soxs_straighten.clean_up
        
    
         
-            ~detect_continuum.create_pixel_arrays
+            ~soxs_straighten.clip_and_stack
        
    
         
-            ~detect_continuum.fit_1d_gaussian_to_slice
+            ~soxs_straighten.prepare_frames
        
    
         
-            ~detect_continuum.fit_polynomial
+            ~soxs_straighten.produce_product
        
    
         
-            ~detect_continuum.get
+            ~soxs_straighten.subtract_calibrations
        
    
         
-            ~detect_continuum.plot_results
+            ~soxs_straighten.verify_input_frames
        
    
         
-            ~detect_continuum.read_spectral_format
-       
-   
-        
-            ~detect_continuum.write_order_table_to_file
+            ~soxs_straighten.xsh2soxs
        
    
    .. 
@@ -104,6 +100,24 @@
    ..     
    .. 
    ..     
+   ..          ~soxs_straighten._absolute_path
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_straighten._prepare_single_frame
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_straighten._trim_frame
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_straighten._verify_input_frames_basics
+   ..      
+   .. 
+   ..     
+   ..          ~soxs_straighten._write
+   ..      
    .. 
    ..     
    .. 

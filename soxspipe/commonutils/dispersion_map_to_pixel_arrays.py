@@ -37,10 +37,11 @@ def dispersion_map_to_pixel_arrays(
     **Usage:**
 
     ```python
+    from soxspipe.commonutils import dispersion_map_to_pixel_arrays
     myDict = {
         "order": [11, 11, 11],
         "wavelength": [850.3, 894.3, 983.2],
-        "slit_pos": [0, 0, 0]
+        "slit_position": [0, 0, 0]
     }
     orderPixelTable = pd.DataFrame(myDict)
     orderPixelTable = dispersion_map_to_pixel_arrays(

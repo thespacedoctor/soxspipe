@@ -26,6 +26,7 @@
           ~soxs_mflat
           ~soxs_order_centres
           ~soxs_spatial_solution
+          ~soxs_straighten
         
 
         
