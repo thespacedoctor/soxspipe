@@ -28,6 +28,7 @@ class subtract_background(object):
         - ``settings`` -- the settings dictionary
         - ``frame`` -- the frame to subtract background light from
         - ``orderTable`` -- the order geometry table
+        - ``orderExt`` -- the order geometry table of inner-order masked along the y-axis
 
     **Usage:**
 
@@ -57,6 +58,7 @@ class subtract_background(object):
             log,
             frame,
             orderTable,
+            orderExt=0.0,
             settings=False
     ):
         self.log = log
@@ -64,6 +66,7 @@ class subtract_background(object):
         self.settings = settings
         self.frame = frame
         self.orderTable = orderTable
+        self.orderExt = orderExt
 
         return None
 
@@ -93,7 +96,7 @@ class subtract_background(object):
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderTable)
+            log=self.log, orderTablePath=self.orderTable, extend=self.orderExt)
 
         self.mask_order_locations(orderPixelTable)
 

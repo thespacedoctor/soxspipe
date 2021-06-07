@@ -63,6 +63,7 @@ class test_subtract_background(unittest.TestCase):
             log=log,
             frame=flatFrame,
             orderTable=orderTable,
+            orderExt=0.1,
             settings=settings
         )
         this.get()
