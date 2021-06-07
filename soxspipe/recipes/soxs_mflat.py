@@ -251,11 +251,13 @@ class soxs_mflat(_base_recipe_):
         # FIND THE FLAT FRAMES
         filterDict = {kw("DPR_TYPE").lower(): "LAMP,(D|Q)?FLAT",
                       kw("DPR_TECH").lower(): "ECHELLE,SLIT"}
-        flatCollection = self.inputFrames.filter(**filterDict)
+        flatCollection = self.inputFrames.filter(
+            regex_match=True, **filterDict)
 
         if len(flatCollection.files) == 0:
             raise FileNotFoundError(
                 "The mflat recipe needs flat-frames as input, none found")
+
         # LIST OF CCDDATA OBJECTS
         flats = [c for c in flatCollection.ccds(ccd_kwargs={
                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]

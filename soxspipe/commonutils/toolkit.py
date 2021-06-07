@@ -91,14 +91,16 @@ def cut_image_slice(
 def quicklook_image(
         log,
         CCDObject,
-        show=True):
+        show=True,
+        ext="data"):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
 
     - ``log`` -- logger
     - ``CCDObject`` -- the CCDObject to plot
-    - ``show`` -- show the image. Set to False to skip.
+    - ``show`` -- show the image. Set to False to skip
+    - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data". 
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
@@ -111,12 +113,23 @@ def quicklook_image(
     if not show:
         return
 
-    frame = CCDObject
+    if ext == "data":
+        frame = CCDObject.data
+    elif ext == "mask":
+        frame = CCDObject.mask
+    elif ext == "err":
+        frame = CCDObject.err
+    else:
+        # ASSUME ONLY NDARRAY
+        frame = CCDObject
+
+    print(frame)
+
     rotatedImg = np.rot90(frame, 1)
     rotatedImg = np.flipud(np.rot90(frame, 1))
 
-    std = np.std(frame.data)
-    mean = np.mean(frame.data)
+    std = np.std(frame)
+    mean = np.mean(frame)
     vmax = mean + 3 * std
     vmin = mean - 3 * std
     plt.figure(figsize=(12, 5))

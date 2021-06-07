@@ -14,10 +14,10 @@ import sys
 import os
 os.environ['TERM'] = 'vt100'
 from fundamentals import tools
+from soxspipe.commonutils.toolkit import unpack_order_table
+import numpy.ma as ma
+import numpy as np
 
-
-# OR YOU CAN REMOVE THE CLASS BELOW AND ADD A WORKER FUNCTION ... SNIPPET TRIGGER BELOW
-# xt-worker-def
 
 class subtract_background(object):
     """
@@ -51,8 +51,6 @@ class subtract_background(object):
 
     """
     # Initialisation
-    # 1. @flagged: what are the unique attributes for each object? Add them
-    # to __init__
 
     def __init__(
             self,
@@ -64,20 +62,11 @@ class subtract_background(object):
         self.log = log
         log.debug("instansiating a new 'subtract_background' object")
         self.settings = settings
-        # xt-self-arg-tmpx
-
-        # 2. @flagged: what are the default attributes each object could have? Add them to variable attribute set here
-        # Variable Data Attributes
-
-        # 3. @flagged: what variable attributes need overridden in any baseclass(es) used
-        # Override Variable Data Attributes
-
-        # Initial Actions
+        self.frame = frame
+        self.orderTable = orderTable
 
         return None
 
-    # 4. @flagged: what actions does each object have to be able to perform? Add them here
-    # Method Attributes
     def get(self):
         """
         *get the subtract_background object*
@@ -102,13 +91,59 @@ class subtract_background(object):
         """
         self.log.debug('starting the ``get`` method')
 
+        # UNPACK THE ORDER TABLE
+        orderPolyTable, orderPixelTable = unpack_order_table(
+            log=self.log, orderTablePath=self.orderTable)
+
+        self.mask_order_locations(orderPixelTable)
+
+        # SUPPRESS MATPLOTLIB WARNINGS
+        # import warnings
+        # warnings.filterwarnings("ignore")
+        # import matplotlib.pyplot as plt
+        # fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
+        # plt.imshow(self.frame.mask, 'gray', interpolation='none')
+        # # plt.imshow(maskImage, 'Reds_r', interpolation='none', alpha=0.3)
+        # plt.show()
+        # plt.imshow(self.frame, 'gray', interpolation='none')
+        # plt.show()
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=self.frame, show=True, ext=None)
+
         subtract_background = None
 
         self.log.debug('completed the ``get`` method')
         return subtract_background
 
-    # xt-class-method
+    def mask_order_locations(
+            self,
+            orderPixelTable):
+        """*mask the order locations and return the masked frame*
 
-    # 5. @flagged: what actions of the base class(es) need amending? amend them here
-    # Override Method Attributes
-    # method-override-tmpx
+        **Key Arguments:**
+            - ``orderPixelTable`` -- the order location in a pandas datafrmae.
+        """
+        self.log.debug('starting the ``mask_order_locations`` method')
+
+        # MASK DATA INSIDE OF ORDERS (EXPAND THE INNER-ORDER AREA IF NEEDED)
+        uniqueOrders = orderPixelTable['order'].unique()
+        expandEdges = 3
+        for o in uniqueOrders:
+            ycoord = orderPixelTable.loc[
+                (orderPixelTable["order"] == o)]["ycoord"]
+            xcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                "xcoord_edgeup"] + expandEdges
+            xcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                "xcoord_edgelow"] - expandEdges
+            xcoord_edgelow, xcoord_edgeup, ycoord = zip(*[(x1, x2, y) for x1, x2, y in zip(xcoord_edgelow, xcoord_edgeup, ycoord) if x1 > 0 and x1 < self.frame.data.shape[
+                                                        1] and x2 > 0 and x2 < self.frame.data.shape[1] and y > 0 and y < self.frame.data.shape[0]])
+            for y, u, l in zip(ycoord, np.ceil(xcoord_edgeup).astype(int), np.floor(xcoord_edgelow).astype(int)):
+                self.frame.mask[y, l:u] = 1
+
+        self.log.debug('completed the ``mask_order_locations`` method')
+        return None
+
+    # use the tab-trigger below for new method
+    # xt-class-method
