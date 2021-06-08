@@ -64,11 +64,15 @@ soxs-mflat:
     poly-deg: 4
     poly-fitting-residual-clipping-sigma: 5
     clipping-iteration-limit: 10
-    order-extension-fraction-for-background-subtraction: 0.1
+    
 
 soxs-straighten:
     asdasd: 1
 
+background-subtraction:
+    order-extension-fraction-for-background-subtraction: 0.1
+    poly-deg: 4
+    smoothing-radius-pixels: 20
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data
 calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
