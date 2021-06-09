@@ -27,6 +27,9 @@ import numpy.ma as ma
 from soxspipe.commonutils.toolkit import quicklook_image
 from soxspipe.commonutils import detect_order_edges
 import pandas as pd
+from soxspipe.commonutils import subtract_background
+from os.path import expanduser
+from soxspipe.commonutils.filenamer import filenamer
 
 
 class soxs_mflat(_base_recipe_):
@@ -190,21 +193,36 @@ class soxs_mflat(_base_recipe_):
             orderCentreTable=self.supplementaryInput[arm]["ORDER_LOCATIONS"],
             settings=self.settings,
         )
-        edges.get()
+        orderTablePath = edges.get()
 
         quicklook_image(
             log=self.log, CCDObject=combined_normalised_flat, show=False)
 
-        if 1 == 1:
-            from os.path import expanduser
-            home = expanduser("~")
-            outDir = self.settings["intermediate-data-root"].replace("~", home)
-            # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
+        background = subtract_background(
+            log=self.log,
+            frame=combined_normalised_flat,
+            orderTable=orderTablePath,
+            settings=self.settings
+        )
+        backgroundFrame, mflat = background.subtract()
 
-            # NOT THE FINAL PRODUCT!!! CAHNGE TO THE FINAL MFLAT FRAME WHEN
-            # RECIPE COMPLETE
-            productPath = self._write(
-                combined_normalised_flat, outDir, overwrite=True)
+        home = expanduser("~")
+        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
+
+        productPath = self._write(
+            mflat, outDir, overwrite=True)
+
+        if 1 == 1:
+            filename = filenamer(
+                log=self.log,
+                frame=mflat,
+                settings=self.settings
+            )
+            filename = filename.replace(".fits", "_background.fits")
+            filepath = self._write(
+                backgroundFrame, outDir, filename=filename, overwrite=True)
+            print(f"\nbackground frame saved to {filepath}\n")
 
         self.clean_up()
 

@@ -24,6 +24,7 @@ from scipy.interpolate import BSpline, splrep
 from soxspipe.commonutils.toolkit import quicklook_image
 from scipy.ndimage.filters import median_filter
 import random
+from os.path import expanduser
 
 
 class subtract_background(object):
@@ -50,7 +51,7 @@ class subtract_background(object):
         orderTable="/path/to/orderTable",
         settings=settings
     )
-    backgroundSubtractedFrame = background.subtracted()
+    backgroundSubtractedFrame = background.subtract()
     ```
 
     """
@@ -94,15 +95,16 @@ class subtract_background(object):
             log=self.log, CCDObject=self.frame, show=False, ext=None)
 
         backgroundFrame = self.create_background_image(
-            rowFitOrder=self.settings['background-subtraction']['bsline-deg'], convolutionRadius=self.settings['background-subtraction']['smoothing-radius-pixels'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
+            rowFitOrder=self.settings['background-subtraction']['bsline-deg'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
 
         backgroundSubtractedFrame = self.frame.subtract(backgroundFrame)
+        backgroundSubtractedFrame.header = self.frame.header
 
         quicklook_image(
             log=self.log, CCDObject=backgroundSubtractedFrame, show=False, ext='data')
 
         self.log.debug('completed the ``subtract`` method')
-        return backgroundSubtractedFrame
+        return backgroundFrame, backgroundSubtractedFrame
 
     def mask_order_locations(
             self,
@@ -135,13 +137,11 @@ class subtract_background(object):
     def create_background_image(
             self,
             rowFitOrder,
-            convolutionRadius,
             medianFilterSize):
         """*model the background image from intra-order flux detected*
 
         **Key Arguments:**
             - ``rowFitOrder`` -- order of the polynomial fit to flux in each row
-            - ``convolutionRadius`` -- radius of the kernel used to convolve the fitted background
             - ``medianFilterSize`` -- the length of the line to median filter in y-direction (after bspline fitting)
         """
         self.log.debug('starting the ``create_background_image`` method')

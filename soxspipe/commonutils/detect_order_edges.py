@@ -247,7 +247,7 @@ class detect_order_edges(_base_detect):
         )
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
-        order_table_path = self.write_order_table_to_file(
+        orderTablePath = self.write_order_table_to_file(
             frame=self.flatFrame, orderPolyTable=orderPolyTable)
         mean_res = np.mean(np.abs(allResiduals))
         std_res = np.std(np.abs(allResiduals))
