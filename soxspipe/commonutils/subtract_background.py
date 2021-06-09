@@ -18,11 +18,12 @@ from soxspipe.commonutils.toolkit import unpack_order_table
 import numpy.ma as ma
 import numpy as np
 import matplotlib.pyplot as plt
-from astropy.convolution import Gaussian2DKernel, Box2DKernel
-from astropy.convolution import convolve
-from scipy.ndimage.filters import median_filter
 from astropy.nddata import CCDData
 from astropy import units as u
+from scipy.interpolate import BSpline, splrep
+from soxspipe.commonutils.toolkit import quicklook_image
+from scipy.ndimage.filters import median_filter
+import random
 
 
 class subtract_background(object):
@@ -68,6 +69,9 @@ class subtract_background(object):
         self.frame = frame
         self.orderTable = orderTable
 
+        quicklook_image(
+            log=self.log, CCDObject=self.frame, show=False, ext='data')
+
         return None
 
     def subtract(self):
@@ -86,14 +90,16 @@ class subtract_background(object):
         # MASK THE INNER ORDER AREA (AND BAD PIXELS)
         self.mask_order_locations(orderPixelTable)
 
+        quicklook_image(
+            log=self.log, CCDObject=self.frame, show=False, ext=None)
+
         backgroundFrame = self.create_background_image(
-            rowFitOrder=self.settings['background-subtraction']['poly-deg'], convolutionRadius=self.settings['background-subtraction']['smoothing-radius-pixels'])
+            rowFitOrder=self.settings['background-subtraction']['bsline-deg'], convolutionRadius=self.settings['background-subtraction']['smoothing-radius-pixels'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
 
         backgroundSubtractedFrame = self.frame.subtract(backgroundFrame)
 
-        from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=backgroundSubtractedFrame, show=False)
+            log=self.log, CCDObject=backgroundSubtractedFrame, show=False, ext='data')
 
         self.log.debug('completed the ``subtract`` method')
         return backgroundSubtractedFrame
@@ -129,12 +135,14 @@ class subtract_background(object):
     def create_background_image(
             self,
             rowFitOrder,
-            convolutionRadius):
+            convolutionRadius,
+            medianFilterSize):
         """*model the background image from intra-order flux detected*
 
         **Key Arguments:**
             - ``rowFitOrder`` -- order of the polynomial fit to flux in each row
             - ``convolutionRadius`` -- radius of the kernel used to convolve the fitted background
+            - ``medianFilterSize`` -- the length of the line to median filter in y-direction (after bspline fitting)
         """
         self.log.debug('starting the ``create_background_image`` method')
 
@@ -147,14 +155,20 @@ class subtract_background(object):
             # SET X TO A MASKED RANGE
             xunmasked = ma.masked_array(np.linspace(
                 0, len(row), len(row), dtype=int), mask=row.mask)
-            fit = ma.polyfit(xunmasked, row, deg=rowFitOrder)
+            # fit = ma.polyfit(xunmasked, row, deg=rowFitOrder)
             xfit = np.linspace(0, len(row), len(row), dtype=int)
-            yfit = np.polyval(fit, xfit)
+            # yfit = np.polyval(fit, xfit)
+
+            t, c, k = splrep(xunmasked[~xunmasked.mask], row[
+                             ~row.mask], s=0.0006, k=rowFitOrder)
+            spline = BSpline(t, c, k, extrapolate=False)
+            yfit = spline(xfit)
 
             # ADD FITTED ROW TO BACKGROUND IMAGE
             backgroundMap[idx, :] = yfit
 
-            if idx == 1000 and 1 == 0:
+            if random.randint(1, 101) == 42 and 1 == 0:
+                print(idx)
                 fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
                 plt.scatter(xunmasked, row)
                 plt.plot(xfit, yfit, 'b')
@@ -162,10 +176,16 @@ class subtract_background(object):
                 plt.xlabel("pixels along row")
                 plt.show()
 
-        kernel = Gaussian2DKernel(convolutionRadius)
-        backgroundMap = convolve(backgroundMap, kernel)
+        quicklook_image(
+            log=self.log, CCDObject=backgroundMap, show=False, ext=None)
 
-        backgroundFrame = CCDData(backgroundFrame, unit=u.electron)
+        backgroundMap = median_filter(
+            backgroundMap, size=(medianFilterSize, medianFilterSize))
+
+        quicklook_image(
+            log=self.log, CCDObject=backgroundMap, show=False, ext=None)
+
+        backgroundMap = CCDData(backgroundMap, unit=u.electron)
 
         self.log.debug('completed the ``create_background_image`` method')
         return backgroundMap
