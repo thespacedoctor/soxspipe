@@ -29,6 +29,7 @@ Classes
    soxspipe.commonutils.polynomials.chebyshev_order_wavelength_polynomials
    soxspipe.commonutils.polynomials.chebyshev_xy_polynomial
    soxspipe.commonutils.set_of_files
+   soxspipe.commonutils.subtract_background
    soxspipe.recipes.soxs_disp_solution
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark

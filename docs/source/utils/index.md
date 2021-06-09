@@ -10,13 +10,14 @@ The soxspipe utilities can be viewed as the tool-kit with which the [soxspipe re
    clip_and_stack
    create_dispersion_map
    create_noise_map
+   detect_continuum
+   detect_order_edges
    detector_lookup
    filenamer
    keyword_lookup
    prepare_frames
    set_of_files
+   subtract_background
    subtract_calibrations
-   detect_continuum
-   detect_order_edges
 ```
 

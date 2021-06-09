@@ -26,6 +26,7 @@
           ~detector_lookup
           ~keyword_lookup
           ~set_of_files
+          ~subtract_background
         
 
         
