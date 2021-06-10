@@ -1,24 +1,26 @@
 # Release Notes
 
-refactoring of polynomial fitting has made creation of dispersion maps ~50 times faster
-Pandas tables are now used through-out code to pass line-lists between methods
-`soxs_spatial_solution` recipe is now included
-Added a `dispersion_map_to_pixel_arrays` function to convert from order-based and wavelength arrays to pixel arrays (first guess dispersion map only so far)
-lines in a sof file beginning with a `#` are considered as comments and therefore ignored by the pipeline.
+## v0.5.0 - June 10, 2021
 
-* **FEATURE:** added a `detect_order_edges` object
-* **FEATURE:** added image slice tool to toolkit
-* **FEATURE:** added a quicklook function in toolkit to quickly visualise a frame
-* **FEATURE:** added function in toolkit to unpack an order table into lists of coordinates, one list per order.
-* **FEATURE:** added a toolkit module for small functions used throughout soxspipe 
-* **ENHANCEMENT:** y limits now added to the order table to show limits of order locations on detector
-* **ENHANCEMENT:** added a fraction of a second tolerance when matching exptimes between darks and science/calibration frames 
 * **FEATURE** Added a new `filenamer` module that implements a strict intermediate and reduced file-naming scheme
-* **REFACTOR:** Change the "SOXSPIPE PRE" date stamp keyword to "SXSPRE" to future-proof for phase III (8 character keyword limit)
+* **FEATURE:** `soxs_mflat` recipe now included
+* **FEATURE:** `soxs_spatial_solution` recipe is now included
+* **FEATURE:** `subtract_background` utility added
+* **FEATURE:** added a `detect_order_edges` object
+* **FEATURE:** Added a `dispersion_map_to_pixel_arrays` function to convert from order-based and wavelength arrays to pixel arrays (first guess dispersion map only so far)
+* **FEATURE:** added a quicklook function in toolkit to quickly visualise a frame
+* **FEATURE:** added a toolkit module for small functions used throughout soxspipe 
+* **FEATURE:** added function in toolkit to unpack an order table into lists of coordinates, one list per order.
+* **FEATURE:** added image slice tool to toolkit
 * **ENHANCEMENT** Added a `-o <outputDirectory>` switch to the command-line to optionally override the 'intermediate-data-root' setting in the settings file.
-* **FIXED:** correct binning reported in product file names
+* **ENHANCEMENT:** added a fraction of a second tolerance when matching exptimes between darks and science/calibration frames 
+* **ENHANCEMENT:** y limits now added to the order table to show limits of order locations on detector
+* **REFACTOR:** Change the "SOXSPIPE PRE" date stamp keyword to "SXSPRE" to future-proof for phase III (8 character keyword limit)
+* **REFACTOR:** Pandas tables are now used through-out code to pass line-lists between methods
+* **REFACTOR:** refactoring of polynomial fitting has made creation of dispersion maps ~50 times faster
 * **REFACTOR:** removed OBID from file names and added readout mode. This information is more helpful at the glance.
-
+* **FIXED:** correct binning reported in product file names
+* **FIXED:** lines in a sof file beginning with a `#` are considered as comments and therefore ignored by the pipeline.
 
 ## v0.4.1 - September 15, 2020
 
