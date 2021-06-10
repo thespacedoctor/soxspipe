@@ -58,7 +58,7 @@ class test_subtract_background(unittest.TestCase):
         flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                  hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        from soxspipe.commonutils import subtract_background
+        from soxspipe.commonutils.subtract_background import subtract_background
         background = subtract_background(
             log=log,
             frame=flatFrame,

@@ -30,6 +30,7 @@ import pandas as pd
 from soxspipe.commonutils import subtract_background
 from os.path import expanduser
 from soxspipe.commonutils.filenamer import filenamer
+from astropy.stats import sigma_clip, mad_std
 
 
 class soxs_mflat(_base_recipe_):
@@ -177,14 +178,47 @@ class soxs_mflat(_base_recipe_):
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats = self.calibrate_frame_set()
 
+        quicklook_image(
+            log=self.log, CCDObject=calibratedFlats[0], show=False)
+
         # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
         # FLUX TO THAT LEVEL
         normalisedFlats = self.normalise_flats(
             calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_LOCATIONS"])
 
+        quicklook_image(
+            log=self.log, CCDObject=normalisedFlats[0], show=False)
+
         # STACK THE NORMALISED FLAT FRAMES
         combined_normalised_flat = self.clip_and_stack(
             frames=normalisedFlats, recipe="soxs_mflat")
+
+        quicklook_image(
+            log=self.log, CCDObject=combined_normalised_flat, show=False)
+
+        # DIVIDE THROUGH BY FIRST-PASS MASTER FRAME TO REMOVE CROSS-PLANE
+        # ILLUMINATION VARIATIONS
+        exposureFrames = []
+        exposureFrames[:] = [
+            n.divide(combined_normalised_flat) for n in calibratedFlats]
+
+        quicklook_image(
+            log=self.log, CCDObject=exposureFrames[0], show=False, stdWindow=0.001)
+
+        # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
+        # FLUX TO THAT LEVEL (AGAIN!)
+        normalisedFlats = self.normalise_flats(
+            calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_LOCATIONS"], exposureFrames=exposureFrames)
+
+        quicklook_image(
+            log=self.log, CCDObject=normalisedFlats[0], show=False)
+
+        # STACK THE RE-NORMALISED FLAT FRAMES
+        combined_normalised_flat = self.clip_and_stack(
+            frames=normalisedFlats, recipe="soxs_mflat")
+
+        quicklook_image(
+            log=self.log, CCDObject=combined_normalised_flat, show=True)
 
         # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
         edges = detect_order_edges(
@@ -205,6 +239,9 @@ class soxs_mflat(_base_recipe_):
             settings=self.settings
         )
         backgroundFrame, mflat = background.subtract()
+
+        quicklook_image(
+            log=self.log, CCDObject=mflat, show=True)
 
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
@@ -319,29 +356,35 @@ class soxs_mflat(_base_recipe_):
         return calibratedFlats
 
     def normalise_flats(
-            self,
-            inputFlats,
-            orderTablePath):
+        self,
+        inputFlats,
+        orderTablePath,
+        exposureFrames=None
+    ):
         """*determine the median exposure for each flat frame and normalise the flux to that level*
 
         **Key Arguments:**
             - ``inputFlats`` -- the input flat field frames
             - ``orderTablePath`` -- path to the order table
+            - ``exposureFrames`` -- frames where flux represents the frames exposure level. Default None.
 
         **Return:**
             - ``normalisedFrames`` -- the normalised flat-field frames (CCDData array)
-        ```
         """
         self.log.debug('starting the ``normalise_flats`` method')
 
+        # DO WE HAVE SEPARATE EXPOSURE FRAMES?
+        if not exposureFrames:
+            exposureFrames = inputFlats
+
         window = int(self.settings[
-            "soxs-mflat"]["centre-median-window"] / 2)
+            "soxs-mflat"]["centre-order-window"] / 2)
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
 
-        mask = np.ones_like(inputFlats[0].data)
+        mask = np.ones_like(exposureFrames[0].data)
 
         xcoords = orderTablePixels["xcoord_centre"].values
         ycoords = orderTablePixels["ycoord"].values
@@ -351,23 +394,31 @@ class soxs_mflat(_base_recipe_):
         for x, y in zip(xcoords, ycoords):
             mask[y][x - window:x + window] = 0
 
+        # COMBINE MASK WITH THE BAD PIXEL MASK
+        mask = (mask == 1) | (inputFlats[0].mask == 1)
         normalisedFrames = []
 
         # PLOT ONE OF THE MASKED FRAMES TO CHECK
-        for frame in [inputFlats[0]]:
+        for frame in [exposureFrames[0]]:
             maskedFrame = ma.array(frame.data, mask=mask)
-            quicklook_image(log=self.log, CCDObject=maskedFrame, show=False)
+            quicklook_image(log=self.log, CCDObject=maskedFrame,
+                            show=False, ext=None)
 
-        for frame in inputFlats:
-            maskedFrame = ma.array(frame.data, mask=mask)
-            median = np.ma.median(maskedFrame)
-            normalisedFrame = frame.divide(median)
+        for frame, exp in zip(inputFlats, exposureFrames):
+            maskedFrame = ma.array(exp.data, mask=mask)
+
+            # SIGMA-CLIP THE DATA BEFORE CALCULATING MEAN
+            maskedFrame = sigma_clip(
+                maskedFrame, sigma_lower=2.5, sigma_upper=2.5, maxiters=3, cenfunc='median', stdfunc=mad_std)
+
+            mean = np.ma.mean(maskedFrame)
+            normalisedFrame = frame.divide(mean)
             normalisedFrame.header = frame.header
             normalisedFrames.append(normalisedFrame)
 
         # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
-        for frame in normalisedFrames:
-            quicklook_image(log=self.log, CCDObject=frame, show=False)
+        quicklook_image(
+            log=self.log, CCDObject=normalisedFrames[0], show=False)
 
         self.log.debug('completed the ``normalise_flats`` method')
         return normalisedFrames

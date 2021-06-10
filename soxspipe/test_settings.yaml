@@ -53,9 +53,9 @@ soxs-spatial-solution:
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-mflat:
-    centre-median-window: 20
-    clipping-lower-simga: 5
-    clipping-upper-simga: 5   
+    centre-order-window: 20
+    clipping-lower-simga: 50
+    clipping-upper-simga: 50   
     clipping-iteration-count: 5
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5

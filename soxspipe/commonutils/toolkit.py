@@ -92,7 +92,8 @@ def quicklook_image(
         log,
         CCDObject,
         show=True,
-        ext="data"):
+        ext="data",
+        stdWindow=3):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
@@ -123,19 +124,23 @@ def quicklook_image(
         # ASSUME ONLY NDARRAY
         frame = CCDObject
 
-    print(frame)
-
     rotatedImg = np.rot90(frame, 1)
     rotatedImg = np.flipud(np.rot90(frame, 1))
 
-    std = np.std(frame)
-    mean = np.mean(frame)
-    vmax = mean + 3 * std
-    vmin = mean - 3 * std
+    std = np.nanstd(frame)
+    mean = np.nanmean(frame)
+    vmax = mean + stdWindow * std
+    vmin = mean - stdWindow * std
+
     plt.figure(figsize=(12, 5))
     plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
                cmap='gray', alpha=1, aspect='auto')
-    plt.colorbar()
+    if mean > 10:
+        fmt = '%1.0f'
+        cbar = plt.colorbar(format=fmt)
+    else:
+        plt.colorbar()
+    # cbar.ticklabel_format(useOffset=False)
     plt.xlabel(
         "y-axis", fontsize=10)
     plt.ylabel(

@@ -10,6 +10,7 @@ SOXSPIPE borrows the informative concept of `recipes' employed by ESO's data red
 
    soxs_mbias
    soxs_mdark
+   soxs_mflat
 ```
 
 ## Dispersion and Spatial Solutions
