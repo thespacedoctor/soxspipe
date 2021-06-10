@@ -69,7 +69,7 @@ class test_subtract_background(unittest.TestCase):
 
     def test_subtract_background_function_exception(self):
 
-        from soxspipe import subtract_background
+        from soxspipe.commonutils.subtract_background import subtract_background
         try:
             this = subtract_background(
                 log=log,
