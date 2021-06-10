@@ -553,6 +553,12 @@ class _base_recipe_(object):
         else:
             ccds = frames
 
+        # COMBINE MASKS AND THEN RESET
+        combinedMask = ccds[0].mask
+        for c in ccds:
+            combinedMask = c.mask | combinedMask
+            c.mask[:, :] = False
+
         # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
         # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
         # MASKED IN ALL INDIVIDUAL IMAGES ARE MASK IN THE FINAL COMBINED IMAGE
@@ -560,8 +566,8 @@ class _base_recipe_(object):
 
         print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
         # PRINT SOME INFO FOR USER
-        badCount = ccds[0].mask.sum()
-        totalPixels = np.size(ccds[0].mask)
+        badCount = combinedMask.sum()
+        totalPixels = np.size(combinedMask)
         percent = (float(badCount) / float(totalPixels)) * 100.
         print(f"The basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
 
@@ -588,9 +594,11 @@ class _base_recipe_(object):
         print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
         combined_frame = combiner.average_combine()
 
+        # RECOMBINE THE COMBINED MASK FROM ABOVE
+        combined_frame.mask = combined_frame.mask | combinedMask
+
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
         # IMAGES
-
         combined_frame.header = ccds[0].header
         try:
             combined_frame.wcs = ccds[0].wcs

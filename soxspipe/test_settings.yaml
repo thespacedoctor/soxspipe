@@ -53,9 +53,9 @@ soxs-spatial-solution:
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-mflat:
-    centre-median-window: 20
-    clipping-lower-simga: 5
-    clipping-upper-simga: 5   
+    centre-order-window: 20
+    clipping-lower-simga: 50
+    clipping-upper-simga: 50   
     clipping-iteration-count: 5
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
@@ -64,10 +64,16 @@ soxs-mflat:
     poly-deg: 4
     poly-fitting-residual-clipping-sigma: 5
     clipping-iteration-limit: 10
+    
 
 soxs-straighten:
     asdasd: 1
 
+# UTILS
+background-subtraction:
+    order-extension-fraction-for-background-subtraction: 1.5
+    bsline-deg: 3
+    median-filter-pixels: 11
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data
 calibration-data-root: ~/xshooter-pipeline-data/static_calibrations

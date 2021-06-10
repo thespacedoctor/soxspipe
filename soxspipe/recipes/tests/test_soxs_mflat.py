@@ -69,7 +69,8 @@ class test_soxs_mflat(unittest.TestCase):
             settings=settings,
             inputFrames=sofPath
         )
-        this.produce_product()
+        mflat = this.produce_product()
+        print(f"The master flat file has been saved to '{mflat}'")
 
     def test_soxs_mflat_nir_short_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/nir_short_flats.sof"

@@ -91,14 +91,17 @@ def cut_image_slice(
 def quicklook_image(
         log,
         CCDObject,
-        show=True):
+        show=True,
+        ext="data",
+        stdWindow=3):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
 
     - ``log`` -- logger
     - ``CCDObject`` -- the CCDObject to plot
-    - ``show`` -- show the image. Set to False to skip.
+    - ``show`` -- show the image. Set to False to skip
+    - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data". 
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
@@ -111,18 +114,33 @@ def quicklook_image(
     if not show:
         return
 
-    frame = CCDObject
+    if ext == "data":
+        frame = CCDObject.data
+    elif ext == "mask":
+        frame = CCDObject.mask
+    elif ext == "err":
+        frame = CCDObject.err
+    else:
+        # ASSUME ONLY NDARRAY
+        frame = CCDObject
+
     rotatedImg = np.rot90(frame, 1)
     rotatedImg = np.flipud(np.rot90(frame, 1))
 
-    std = np.std(frame.data)
-    mean = np.mean(frame.data)
-    vmax = mean + 3 * std
-    vmin = mean - 3 * std
+    std = np.nanstd(frame)
+    mean = np.nanmean(frame)
+    vmax = mean + stdWindow * std
+    vmin = mean - stdWindow * std
+
     plt.figure(figsize=(12, 5))
     plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
                cmap='gray', alpha=1, aspect='auto')
-    plt.colorbar()
+    if mean > 10:
+        fmt = '%1.0f'
+        cbar = plt.colorbar(format=fmt)
+    else:
+        plt.colorbar()
+    # cbar.ticklabel_format(useOffset=False)
     plt.xlabel(
         "y-axis", fontsize=10)
     plt.ylabel(
@@ -136,12 +154,14 @@ def quicklook_image(
 
 def unpack_order_table(
         log,
-        orderTablePath):
+        orderTablePath,
+        extend=0.):
     """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
 
     **Key Arguments:**
 
     - ``orderTablePath`` -- path to the order table
+    - ``extend`` -- fractional increase to the order area in the y-axis (needed for masking)
 
     **Usage:**
 
@@ -149,7 +169,7 @@ def unpack_order_table(
     # UNPACK THE ORDER TABLE
     from soxspipe.commonutils.toolkit import unpack_order_table
     orderPolyTable, orderPixelTable = unpack_order_table(
-        log=self.log, orderTablePath=orderTablePath)
+        log=self.log, orderTablePath=orderTablePath, extend=0.)
     ```           
     """
     log.debug('starting the ``functionName`` function')
@@ -159,8 +179,8 @@ def unpack_order_table(
                                  na_values=['NA', 'MISSING'])
 
     # ADD Y-COORD LIST
-    ycoords = [np.arange(math.floor(l), math.ceil(u), 1) for l, u in zip(
-        orderPolyTable["ymin"].values, orderPolyTable["ymax"].values)]
+    ycoords = [np.arange(math.floor(l) - int(r * extend), math.ceil(u) + int(r * extend), 1) for l, u, r in zip(
+        orderPolyTable["ymin"].values, orderPolyTable["ymax"].values, orderPolyTable["ymax"].values - orderPolyTable["ymin"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
         ycoords, orderPolyTable["order"].values)]
 
