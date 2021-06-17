@@ -34,6 +34,7 @@ class soxs_disp_solution(_base_recipe_):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
+        - ``verbose`` -- verbose. True or False. Default *False*
 
     **Usage**
 
@@ -59,7 +60,8 @@ class soxs_disp_solution(_base_recipe_):
             self,
             log,
             settings=False,
-            inputFrames=[]
+            inputFrames=[],
+            verbose=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
@@ -70,6 +72,7 @@ class soxs_disp_solution(_base_recipe_):
         self.settings = settings
         self.recipeSettings = settings["soxs-disp-solution"]
         self.inputFrames = inputFrames
+        self.verbose = verbose
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)

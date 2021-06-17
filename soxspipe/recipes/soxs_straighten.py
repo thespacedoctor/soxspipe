@@ -32,7 +32,8 @@ class soxs_straighten(_base_recipe_):
 
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
+        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. 
+        - ``verbose`` -- verbose. True or False. Default *False*  
 
     See `produce_product` method for usage.
 
@@ -51,7 +52,8 @@ class soxs_straighten(_base_recipe_):
             self,
             log,
             settings=False,
-            inputFrames=[]
+            inputFrames=[],
+            verbose=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
@@ -62,6 +64,7 @@ class soxs_straighten(_base_recipe_):
         self.settings = settings
         self.recipeSettings = settings["soxs-straighten"]
         self.inputFrames = inputFrames
+        self.verbose = verbose
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS

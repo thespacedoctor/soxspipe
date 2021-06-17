@@ -3,9 +3,16 @@
 The easiest way to install soxspipe is to use `pip` (here we show the install inside of a conda environment):
 
 ``` bash
-conda create -n soxspipe python=3.7 pip
+conda config --add channels astropy
+conda create -n soxspipe python=3.7 pip astroscrappy
 conda activate soxspipe
 pip install soxspipe
+```
+
+As a very basic check to make sure `soxspipe` is correctly installed this command to output the installed version number:
+
+```bash
+soxspipe -v
 ```
 
 Or you can clone the [github repo](https://github.com/thespacedoctor/soxspipe) and install from a local version of the code:

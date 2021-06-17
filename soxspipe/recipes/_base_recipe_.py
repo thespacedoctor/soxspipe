@@ -37,6 +37,7 @@ class _base_recipe_(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``verbose`` -- verbose. True or False. Default *False*
 
     **Usage**
 
@@ -46,7 +47,8 @@ class _base_recipe_(object):
     def __init__(
             self,
             log,
-            settings=False
+            settings=False,
+            verbose=False
     ):
         self.log = log
         log.debug("instansiating a new '__init__' object")
@@ -58,6 +60,7 @@ class _base_recipe_(object):
         self.calibrationRootPath = self._absolute_path(
             settings["calibration-data-root"])
 
+        self.verbose = verbose
         # SET LATER WHEN VERIFYING FRAMES
         self.arm = None
         self.detectorParams = None

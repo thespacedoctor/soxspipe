@@ -42,6 +42,7 @@ class soxs_mflat(_base_recipe_):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+        - ``verbose`` -- verbose. True or False. Default *False*
 
     **Usage**
 
@@ -68,7 +69,8 @@ class soxs_mflat(_base_recipe_):
             self,
             log,
             settings=False,
-            inputFrames=[]
+            inputFrames=[],
+            verbose=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
@@ -79,6 +81,7 @@ class soxs_mflat(_base_recipe_):
         self.settings = settings
         self.recipeSettings = settings["soxs-mflat"]
         self.inputFrames = inputFrames
+        self.verbose = verbose
         # xt-self-arg-tmpx
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
@@ -218,7 +221,7 @@ class soxs_mflat(_base_recipe_):
             frames=normalisedFlats, recipe="soxs_mflat")
 
         quicklook_image(
-            log=self.log, CCDObject=combined_normalised_flat, show=True)
+            log=self.log, CCDObject=combined_normalised_flat, show=False)
 
         # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
         edges = detect_order_edges(
@@ -241,7 +244,7 @@ class soxs_mflat(_base_recipe_):
         backgroundFrame, mflat = background.subtract()
 
         quicklook_image(
-            log=self.log, CCDObject=mflat, show=True)
+            log=self.log, CCDObject=mflat, show=False)
 
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)

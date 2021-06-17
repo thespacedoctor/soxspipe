@@ -1,5 +1,7 @@
 # Release Notes
 
+add a verbosity flag to the command-line and a verbose parameter to each recipe
+
 ## v0.5.0 - June 10, 2021
 
 * **FEATURE** Added a new `filenamer` module that implements a strict intermediate and reduced file-naming scheme
