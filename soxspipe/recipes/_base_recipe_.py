@@ -262,14 +262,15 @@ class _base_recipe_(object):
         filepaths = self.inputFrames.files_filtered(include_path=True)
 
         frameCount = len(filepaths)
-        print("# PREPARING %(frameCount)s RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
+        print("\n# PREPARING %(frameCount)s RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
         preframes = []
         preframes[:] = [self._prepare_single_frame(
             frame=frame, save=save) for frame in filepaths]
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
-            inputFrames=preframes
+            inputFrames=preframes,
+            verbose=self.verbose
         )
         preframes, supplementaryInput = sof.get()
         preframes.sort([kw('MJDOBS').lower()])
@@ -549,12 +550,17 @@ class _base_recipe_(object):
             recipe]["clipping-iteration-count"]
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
-        # ccds = [c for c in self.inputFrames.ccds()]
         if not isinstance(frames, list):
             ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS',
                                                        "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
         else:
             ccds = frames
+
+        imageType = ccds[0].header[kw("DPR_TYPE").lower()].replace(",", "-")
+        imageTech = ccds[0].header[kw("DPR_TECH").lower()].replace(",", "-")
+        imageCat = ccds[0].header[kw("DPR_CATG").lower()].replace(",", "-")
+
+        print(f"\n# MEAN COMBINING {len(frames)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
 
         # COMBINE MASKS AND THEN RESET
         combinedMask = ccds[0].mask
@@ -567,14 +573,14 @@ class _base_recipe_(object):
         # MASKED IN ALL INDIVIDUAL IMAGES ARE MASK IN THE FINAL COMBINED IMAGE
         combiner = Combiner(ccds)
 
-        print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
+        # print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
         # PRINT SOME INFO FOR USER
         badCount = combinedMask.sum()
         totalPixels = np.size(combinedMask)
         percent = (float(badCount) / float(totalPixels)) * 100.
-        print(f"The basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
+        print(f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
 
-        # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INOUT FRAMES - USING
+        # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INPUT FRAMES - USING
         # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
         old_n_masked = -1
         # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
@@ -590,11 +596,12 @@ class _base_recipe_(object):
             extra = ""
             if diff == 0:
                 extra = " - we're done"
-            print("    Clipping iteration %(iteration)s finds %(diff)s more rogue pixels in the set of input frames%(extra)s" % locals())
+            if self.verbose:
+                print("\tClipping iteration %(iteration)s finds %(diff)s more rogue pixels in the set of input frames%(extra)s" % locals())
             iteration += 1
 
         # GENERATE THE COMBINED MEDIAN
-        print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
+        # print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
         combined_frame = combiner.average_combine()
 
         # RECOMBINE THE COMBINED MASK FROM ABOVE
@@ -613,7 +620,7 @@ class _base_recipe_(object):
         # CALCULATE NEW PIXELS ADDED TO MASK
         newBadCount = combined_frame.mask.sum()
         diff = newBadCount - badCount
-        print("%(diff)s new pixels made it into the combined bad-pixel map" % locals())
+        print("\t%(diff)s new pixels made it into the combined bad-pixel map" % locals())
 
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame

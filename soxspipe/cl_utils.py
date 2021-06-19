@@ -146,7 +146,8 @@ def main(arguments=None):
         recipe = soxs_mbias(
             log=log,
             settings=settings,
-            inputFrames=a["inputFrames"]
+            inputFrames=a["inputFrames"],
+            verbose=verbose
         )
         mbiasFrame = recipe.produce_product()
         print("You can find the master bias frame at `%(mbiasFrame)s`" % locals())
@@ -156,7 +157,8 @@ def main(arguments=None):
         recipe = soxs_mdark(
             log=log,
             settings=settings,
-            inputFrames=a["inputFrames"]
+            inputFrames=a["inputFrames"],
+            verbose=verbose
         )
         mdarkFrame = recipe.produce_product()
         print("You can find the master bias frame at `%(mdarkFrame)s`" % locals())
@@ -166,7 +168,8 @@ def main(arguments=None):
         disp_map = soxs_disp_solution(
             log=log,
             settings=settings,
-            inputFrames=a["inputFrames"]
+            inputFrames=a["inputFrames"],
+            verbose=verbose
         ).produce_product()
         print(f"\nSingle pinhole first guess dispersion map saved to: {disp_map}")
 
@@ -175,7 +178,8 @@ def main(arguments=None):
         order_table = soxs_order_centres(
             log=log,
             settings=settings,
-            inputFrames=a["inputFrames"]
+            inputFrames=a["inputFrames"],
+            verbose=verbose
         ).produce_product()
         print(f"\nThe order centre locations have been saved to an order table: {order_table}")
 
@@ -184,7 +188,8 @@ def main(arguments=None):
         disp_map = soxs_spatial_solution(
             log=log,
             settings=settings,
-            inputFrames=a["inputFrames"]
+            inputFrames=a["inputFrames"],
+            verbose=verbose
         ).produce_product()
         print(f"\nFull 2D dispersion map saved to: {disp_map}")
 
@@ -193,7 +198,8 @@ def main(arguments=None):
         recipe = soxs_mflat(
             log=log,
             settings=settings,
-            inputFrames=a["inputFrames"]
+            inputFrames=a["inputFrames"],
+            verbose=verbose
         )
         mflatFrame = recipe.produce_product()
         print(f"\nThe master flat frame has been saved to: {mflatFrame}")

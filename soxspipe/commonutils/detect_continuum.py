@@ -112,8 +112,8 @@ class _base_detect(object):
             pixelListFiltered = pixelList.loc[mask]
             clippedCount = startCount - len(pixelListFiltered.index)
 
-            # MASK DATA ARRAYS WITH CLIPPED RESIDUAL MASK
-            print(f'{clippedCount} pixel positions where clipped in this iteration of fitting an order centre polynomial')
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print(f'\t\tORDER {order:0.0f}: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
         self.log.debug('completed the ``fit_polynomials`` method')
         return coeff, pixelList

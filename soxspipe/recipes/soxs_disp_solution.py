@@ -90,10 +90,11 @@ class soxs_disp_solution(_base_recipe_):
         sys.stdout.write("\x1b[1A\x1b[2K")
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        print("\n# RAW INPUT FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['mjd-obs'])
-        print(self.inputFrames.summary, "\n")
+        if self.verbose:
+            print("# RAW INPUT FRAMES - SUMMARY")
+            print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS

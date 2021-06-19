@@ -43,6 +43,7 @@ class detect_order_edges(_base_detect):
         - ``flatFrame`` -- the flat frame to detect the order edges on
         - ``orderCentreTable`` -- the order centre table
         - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
+        - ``verbose`` -- verbose. True or False. Default *False*
 
     **Usage:**
 
@@ -71,7 +72,8 @@ class detect_order_edges(_base_detect):
             flatFrame,
             orderCentreTable,
             settings=False,
-            recipeName="soxs-mflat"
+            recipeName="soxs-mflat",
+            verbose=False
     ):
         self.log = log
         log.debug("instansiating a new 'detect_order_edges' object")
@@ -83,6 +85,7 @@ class detect_order_edges(_base_detect):
 
         self.orderCentreTable = orderCentreTable
         self.flatFrame = flatFrame
+        self.verbose = verbose
         # xt-self-arg-tmpx
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -114,6 +117,8 @@ class detect_order_edges(_base_detect):
         """
         self.log.debug('starting the ``get`` method')
 
+        print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
+
         orderTablePath = None
 
         # GET PARAMETERS FROM SETTINGS
@@ -133,6 +138,7 @@ class detect_order_edges(_base_detect):
             orderPolyTable["ymin"].values, orderPolyTable["ymax"].values))
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
+        print("\tDETERMINING ORDER FLUX THRESHOLDS")
         orderPolyTable["maxThreshold"] = np.nan
         orderPolyTable["minThreshold"] = np.nan
         orderPolyTable = orderPolyTable.apply(
@@ -146,6 +152,7 @@ class detect_order_edges(_base_detect):
             orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderPolyTable.loc[
                 (orderPolyTable["order"] == o), ["minThreshold", "maxThreshold"]].values
 
+        print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
         orderPixelTable["xcoord_upper"] = np.nan
         orderPixelTable["xcoord_lower"] = np.nan
         orderPixelTable = orderPixelTable.apply(
@@ -164,6 +171,7 @@ class detect_order_edges(_base_detect):
         orderMaxLocations = {}
         orderMinLocations = {}
 
+        print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
         for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
             coeff, orderPixelTable = self.fit_polynomial(
@@ -174,12 +182,14 @@ class detect_order_edges(_base_detect):
             )
             if not isinstance(coeff, type(None)):
                 orderMaxLocations[o] = coeff
+        sys.stdout.write("\x1b[1A\x1b[2K")
 
         # RENAME SOME INDIVIDUALLY
         orderPixelTable.rename(columns={
             "x_fit": "xcoord_upper_fit", "x_fit_res": "xcoord_upper_fit_res"}, inplace=True)
 
         # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
+        print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
         uniqueOrders = orderPixelTable['order'].unique()
         for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
@@ -191,6 +201,7 @@ class detect_order_edges(_base_detect):
             )
             if not isinstance(coeff, type(None)):
                 orderMinLocations[o] = coeff
+        sys.stdout.write("\x1b[1A\x1b[2K")
 
         # RENAME SOME INDIVIDUALLY
         orderPixelTable.rename(columns={
@@ -231,6 +242,7 @@ class detect_order_edges(_base_detect):
             edgeLowTable, on=["order"], how='outer')
 
         # GENERATE AN OUTPUT PLOT OF RESULTS AND FITTING RESIDUALS
+        print("\tMEASURING AND PLOTTING RESIDUALS OF FITS")
         allResiduals = np.concatenate((orderPixelTable[
             'xcoord_lower_fit_res'], orderPixelTable['xcoord_upper_fit_res']))
         plotPath = self.plot_results(

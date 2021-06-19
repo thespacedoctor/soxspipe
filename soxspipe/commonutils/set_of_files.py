@@ -28,7 +28,8 @@ class set_of_files(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
-        - ``keys`` -- key aliases to report in the ImageFileCollection. Default ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX', 'DPR_TYPE', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED']
+        - ``verbose`` -- verbose. True or False. Default *True*
+
 
     **Usage**
 
@@ -55,13 +56,13 @@ class set_of_files(object):
             log,
             settings=False,
             inputFrames=[],
-            keys=['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX',
-                  'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM', 'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT']
+            verbose=True
     ):
         self.log = log
         log.debug("instansiating a new 'sof' object")
         self.settings = settings
         self.inputFrames = inputFrames
+        self.verbose = verbose
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -69,6 +70,14 @@ class set_of_files(object):
             log=self.log,
             settings=self.settings
         ).get
+
+        if self.verbose:
+            keys = ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
+                    'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT']
+        else:
+            keys = ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
+                    'EXPTIME']
+
         keys = kw(keys)
         self.keys = []
         self.keys[:] = [k.lower() for k in keys]
@@ -162,8 +171,7 @@ class set_of_files(object):
             'completed the ``_generate_sof_file_from_directory`` method')
         return sofPath
 
-    def get(
-            self):
+    def get(self):
         """*return the set-of-files as a CCDProc ImageFileCollection*
 
         **Return:**

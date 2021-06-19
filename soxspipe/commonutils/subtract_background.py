@@ -88,9 +88,6 @@ class subtract_background(object):
         orderPolyTable, orderPixelTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTable, extend=self.settings['background-subtraction']['order-extension-fraction-for-background-subtraction'])
 
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable.head(10), headers='keys', tablefmt='psql'))
-
         # MASK THE INNER ORDER AREA (AND BAD PIXELS)
         self.mask_order_locations(orderPixelTable)
 
@@ -123,14 +120,6 @@ class subtract_background(object):
         uniqueOrders = orderPixelTable['order'].unique()
         expandEdges = 3
         for o in uniqueOrders:
-            print(uniqueOrders, o)
-            from tabulate import tabulate
-            print(tabulate(orderPixelTable.head(10),
-                           headers='keys', tablefmt='psql'))
-            print(tabulate(orderPixelTable.loc[
-                (orderPixelTable["order"] == o)].head(10),
-                headers='keys', tablefmt='psql'))
-
             ycoord = orderPixelTable.loc[
                 (orderPixelTable["order"] == o)]["ycoord"]
             xcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][

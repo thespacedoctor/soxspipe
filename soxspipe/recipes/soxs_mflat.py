@@ -100,10 +100,11 @@ class soxs_mflat(_base_recipe_):
         sys.stdout.write("\x1b[1A\x1b[2K")
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        print("\n# RAW INPUT FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['mjd-obs'])
-        print(self.inputFrames.summary, "\n")
+        if self.verbose:
+            print("# RAW INPUT FRAMES - SUMMARY")
+            print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -201,6 +202,7 @@ class soxs_mflat(_base_recipe_):
 
         # DIVIDE THROUGH BY FIRST-PASS MASTER FRAME TO REMOVE CROSS-PLANE
         # ILLUMINATION VARIATIONS
+        print("\n# DIVIDING EACH ORIGINAL FLAT FRAME BY FIRST PASS MASTER FLAT")
         exposureFrames = []
         exposureFrames[:] = [
             n.divide(combined_normalised_flat) for n in calibratedFlats]
@@ -324,6 +326,7 @@ class soxs_mflat(_base_recipe_):
         calibratedFlats = []
         if not darkCollection and bias:
             for flat in flats:
+                print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
                 calibratedFlats.append(self.subtract_calibrations(
                     inputFrame=flat, master_bias=bias, dark=None))
 
@@ -334,6 +337,7 @@ class soxs_mflat(_base_recipe_):
                         for h in darkCollection.headers()]
             darks = [c for c in darkCollection.ccds(ccd_kwargs={
                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+            print("\n# SUBTRACTING MASTER DARK/OFF-LAMP FROM FRAMES")
             for flat in flats:
                 mjd = flat.header[kw("MJDOBS").lower()]
                 matchValue, matchIndex = nearest_neighbour(
@@ -407,6 +411,7 @@ class soxs_mflat(_base_recipe_):
             quicklook_image(log=self.log, CCDObject=maskedFrame,
                             show=False, ext=None)
 
+        print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL")
         for frame, exp in zip(inputFlats, exposureFrames):
             maskedFrame = ma.array(exp.data, mask=mask)
 
