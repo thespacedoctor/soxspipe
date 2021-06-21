@@ -65,6 +65,8 @@ class test_detect_order_edges(unittest.TestCase):
             flatFrame=flatFrame,
             orderCentreTable=orderCentreTable,
             settings=settings,
+            qcTable=self.qc,
+            productsTable=self.products
         )
         edges.get()
 

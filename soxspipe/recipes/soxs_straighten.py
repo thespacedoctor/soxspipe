@@ -62,9 +62,10 @@ class soxs_straighten(_base_recipe_):
         self.log = log
         log.debug("instansiating a new 'soxs_straighten' object")
         self.settings = settings
-        self.recipeSettings = settings["soxs-straighten"]
         self.inputFrames = inputFrames
         self.verbose = verbose
+        self.recipeName = "soxs-straighten"
+        self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS

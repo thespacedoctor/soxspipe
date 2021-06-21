@@ -202,7 +202,6 @@ def main(arguments=None):
             verbose=verbose
         )
         mflatFrame = recipe.produce_product()
-        print(f"\nThe master flat frame has been saved to: {mflatFrame}")
 
     # CALL FUNCTIONS/OBJECTS
 

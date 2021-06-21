@@ -47,6 +47,8 @@ class create_dispersion_map(object):
         - ``settings`` -- the settings dictionary
         - ``pinholeFrame`` -- the calibrated pinhole frame (single or multi)
         - ``firstGuessMap`` -- the first guess dispersion map from the `soxs_disp_solution` recipe (needed in `soxs_spat_solution` recipe). Default *False*.
+        - ``qcTable`` -- the data frame to collect measured QC metrics 
+        - ``productsTable`` -- the data frame to collect output products
 
     **Usage:**
 
@@ -66,13 +68,17 @@ class create_dispersion_map(object):
             log,
             settings,
             pinholeFrame,
-            firstGuessMap=False
+            firstGuessMap=False,
+            qcTable=False,
+            productsTable=False
     ):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
         self.settings = settings
         self.pinholeFrame = pinholeFrame
         self.firstGuessMap = firstGuessMap
+        self.qc = qcTable
+        self.products = productsTable
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -82,6 +88,7 @@ class create_dispersion_map(object):
         ).get
         self.kw = kw
         self.arm = pinholeFrame.header[kw("SEQ_ARM")]
+        self.dateObs = pinholeFrame.header[kw("DATE_OBS")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(

@@ -20,6 +20,7 @@ from astropy.nddata import CCDData
 from astropy import units as u
 from astropy.stats import mad_std
 import ccdproc
+import pandas as pd
 from astropy.nddata.nduncertainty import StdDevUncertainty
 from ccdproc import Combiner
 from soxspipe.commonutils import set_of_files
@@ -28,6 +29,7 @@ from soxspipe.commonutils import detector_lookup
 from datetime import datetime
 from soxspipe.commonutils import filenamer
 import shutil
+from tabulate import tabulate
 
 
 class _base_recipe_(object):
@@ -64,6 +66,26 @@ class _base_recipe_(object):
         # SET LATER WHEN VERIFYING FRAMES
         self.arm = None
         self.detectorParams = None
+        self.dateObs = None
+
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        self.qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": []
+        })
+        self.products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": []
+        })
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -498,6 +520,8 @@ class _base_recipe_(object):
         HDUList.writeto(filepath, output_verify='exception',
                         overwrite=overwrite, checksum=True)
 
+        filepath = os.path.abspath(filepath)
+
         self.log.debug('completed the ``write`` method')
         return filepath
 
@@ -700,6 +724,47 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``subtract_calibrations`` method')
         return calibration_subtracted_frame
+
+    def report_output(
+            self,
+            rformat="stdout"):
+        """*a method to report QC values alongside imtermediate and final products*
+
+        **Key Arguments:**
+            - ``rformat`` -- the format to outout reports as. Default *stdout*. [stdout|....]
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``report_output`` method')
+
+        if not self.verbose:
+            # REMOVE COLUMN FROM DATA FRAME
+            self.products.drop(columns=['file_path'], inplace=True)
+
+        if rformat == "stdout":
+            print(tabulate(self.qc, headers='keys', tablefmt='psql'))
+            print(tabulate(self.products, headers='keys', tablefmt='psql'))
+
+        self.log.debug('completed the ``report_output`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method

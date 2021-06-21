@@ -25,6 +25,7 @@ from soxspipe.commonutils.toolkit import quicklook_image
 from scipy.ndimage.filters import median_filter
 import random
 from os.path import expanduser
+from soxspipe.commonutils import keyword_lookup
 
 
 class subtract_background(object):
@@ -36,6 +37,8 @@ class subtract_background(object):
         - ``settings`` -- the settings dictionary
         - ``frame`` -- the frame to subtract background light from
         - ``orderTable`` -- the order geometry table
+        - ``qcTable`` -- the data frame to collect measured QC metrics 
+        - ``productsTable`` -- the data frame to collect output products
 
     **Usage:**
 
@@ -62,13 +65,28 @@ class subtract_background(object):
             log,
             frame,
             orderTable,
-            settings=False
+            settings=False,
+            qcTable=False,
+            productsTable=False
+
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_background' object")
         self.settings = settings
         self.frame = frame
         self.orderTable = orderTable
+        self.qc = qcTable
+        self.products = productsTable
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        self.kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+        kw = self.kw
+        self.arm = frame.header[kw("SEQ_ARM")]
+        self.dateObs = frame.header[kw("DATE_OBS")]
 
         quicklook_image(
             log=self.log, CCDObject=self.frame, show=False, ext='data')
@@ -83,6 +101,13 @@ class subtract_background(object):
             - ``backgroundSubtractedFrame`` -- a CCDData object of the original input frame with fitted background light subtracted
         """
         self.log.debug('starting the ``subtract`` method')
+
+        kw = self.kw
+        imageType = self.frame.header[kw("DPR_TYPE").lower()].replace(",", "-")
+        imageTech = self.frame.header[kw("DPR_TECH").lower()].replace(",", "-")
+        imageCat = self.frame.header[kw("DPR_CATG").lower()].replace(",", "-")
+
+        print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable = unpack_order_table(

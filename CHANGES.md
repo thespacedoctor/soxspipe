@@ -1,6 +1,8 @@
 # Release Notes
 
 add a verbosity flag to the command-line and a verbose parameter to each recipe
+recipes now have their recipe name as a `recipeName` attribute
+recipes now have a `qc` and `products` attribute. These are pandas data frames used to collect QCs and generated products throughout the life-time of the recipe. They are printed to STDOUT at the end of the recipe (can be used in the future to send post request to health monitor API with JSON content in request body).
 
 ## v0.5.0 - June 10, 2021
 

@@ -31,6 +31,7 @@ import unicodecsv as csv
 from fundamentals.renderer import list_of_dictionaries
 from soxspipe.commonutils.filenamer import filenamer
 import pandas as pd
+from datetime import datetime, date, time
 
 
 class detect_order_edges(_base_detect):
@@ -44,6 +45,8 @@ class detect_order_edges(_base_detect):
         - ``orderCentreTable`` -- the order centre table
         - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
         - ``verbose`` -- verbose. True or False. Default *False*
+        - ``qcTable`` -- the data frame to collect measured QC metrics 
+        - ``productsTable`` -- the data frame to collect output products
 
     **Usage:**
 
@@ -60,9 +63,12 @@ class detect_order_edges(_base_detect):
         flatFrame=flatFrame,
         orderCentreTable=orderCentreTable,
         settings=settings,
-        recipeName="soxs-mflat"
+        recipeName="soxs-mflat",
+        verbose=False,
+        qcTable=False,
+        productsTable=False
     )
-    edges.get()
+    productsTable, qcTable = edges.get()
     ```
     """
 
@@ -73,11 +79,14 @@ class detect_order_edges(_base_detect):
             orderCentreTable,
             settings=False,
             recipeName="soxs-mflat",
-            verbose=False
+            verbose=False,
+            qcTable=False,
+            productsTable=False
     ):
         self.log = log
         log.debug("instansiating a new 'detect_order_edges' object")
         self.settings = settings
+        self.recipeName = recipeName
         if recipeName:
             self.recipeSettings = settings[recipeName]
         else:
@@ -86,7 +95,8 @@ class detect_order_edges(_base_detect):
         self.orderCentreTable = orderCentreTable
         self.flatFrame = flatFrame
         self.verbose = verbose
-        # xt-self-arg-tmpx
+        self.qc = qcTable
+        self.products = productsTable
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -96,6 +106,7 @@ class detect_order_edges(_base_detect):
         ).get
         kw = self.kw
         self.arm = flatFrame.header[kw("SEQ_ARM")]
+        self.dateObs = flatFrame.header[kw("DATE_OBS")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
@@ -264,12 +275,56 @@ class detect_order_edges(_base_detect):
         mean_res = np.mean(np.abs(allResiduals))
         std_res = np.std(np.abs(allResiduals))
 
-        print(f'\nThe order edge polynomials fitted observed order edge positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixels)')
+        orderTablePath = os.path.abspath(orderTablePath)
+        plotPath = os.path.abspath(plotPath)
+        orderTableName = os.path.basename(orderTablePath)
+        plotName = os.path.basename(plotPath)
 
-        print(f'\nFind results of the order edge fitting here: {plotPath}')
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        # RECORD PRODUCTS AND QCs
+        if not isinstance(self.products, bool):
+            self.products = self.products.append({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": "ORDER_LOC",
+                "product_desc": "table of coefficients from polynomial fits to order locations",
+                "file_name": orderTableName,
+                "file_type": "CSV",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "file_path": orderTablePath
+            }, ignore_index=True)
+            self.products = self.products.append({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": "",
+                "product_desc": "visualisation of goodness of order edge fitting",
+                "file_name": plotName,
+                "file_type": "PDF",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "file_path": plotPath
+            }, ignore_index=True)
+        if not isinstance(self.qc, bool):
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "order edge fit mean residual",
+                "qc_value": mean_res,
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "order edge fit residual stdev",
+                "qc_value": std_res,
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow
+            }, ignore_index=True)
 
         self.log.debug('completed the ``get`` method')
-        return orderTablePath
+        return self.products, self.qc
 
     def plot_results(
             self,

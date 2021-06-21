@@ -206,6 +206,8 @@ class detect_continuum(_base_detect):
         - ``dispersion_map`` -- path to dispersion map csv file containing polynomial fits of the dispersion solution for the frame
         - ``settings`` -- the recipe settings dictionary
         - ``recipeName`` -- the recipe name as given in the settings dictionary
+        - ``qcTable`` -- the data frame to collect measured QC metrics 
+        - ``productsTable`` -- the data frame to collect output products
 
     **Usage:**
 
@@ -230,7 +232,9 @@ class detect_continuum(_base_detect):
             pinholeFlat,
             dispersion_map,
             settings=False,
-            recipeName=False
+            recipeName=False,
+            qcTable=False,
+            productsTable=False
     ):
         self.log = log
         log.debug("instansiating a new 'detect_continuum' object")
@@ -241,6 +245,8 @@ class detect_continuum(_base_detect):
             self.recipeSettings = False
         self.pinholeFlat = pinholeFlat
         self.dispersion_map = dispersion_map
+        self.qc = qcTable
+        self.products = productsTable
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -249,6 +255,7 @@ class detect_continuum(_base_detect):
             settings=self.settings
         ).get
         self.arm = pinholeFlat.header[self.kw("SEQ_ARM")]
+        self.dateObs = pinholeFlat.header[self.kw("DATE_OBS")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(

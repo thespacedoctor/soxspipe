@@ -70,9 +70,10 @@ class soxs_disp_solution(_base_recipe_):
         self.log = log
         log.debug("instansiating a new 'soxs_disp_solution' object")
         self.settings = settings
-        self.recipeSettings = settings["soxs-disp-solution"]
         self.inputFrames = inputFrames
         self.verbose = verbose
+        self.recipeName = "soxs-disp-solution"
+        self.recipeSettings = settings[self.recipeName]
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)

@@ -31,6 +31,7 @@ from soxspipe.commonutils import subtract_background
 from os.path import expanduser
 from soxspipe.commonutils.filenamer import filenamer
 from astropy.stats import sigma_clip, mad_std
+from datetime import datetime
 
 
 class soxs_mflat(_base_recipe_):
@@ -79,9 +80,11 @@ class soxs_mflat(_base_recipe_):
         self.log = log
         log.debug("instansiating a new 'soxs_mflat' object")
         self.settings = settings
-        self.recipeSettings = settings["soxs-mflat"]
         self.inputFrames = inputFrames
         self.verbose = verbose
+        self.recipeName = "soxs-mflat"
+        self.recipeSettings = settings[self.recipeName]
+
         # xt-self-arg-tmpx
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
@@ -231,8 +234,14 @@ class soxs_mflat(_base_recipe_):
             flatFrame=combined_normalised_flat,
             orderCentreTable=self.supplementaryInput[arm]["ORDER_LOCATIONS"],
             settings=self.settings,
+            qcTable=self.qc,
+            productsTable=self.products
         )
-        orderTablePath = edges.get()
+        self.products, self.qc = edges.get()
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (self.products['product_label'] == "ORDER_LOC")
+        orderTablePath = self.products.loc[mask]["file_path"].values[0]
 
         quicklook_image(
             log=self.log, CCDObject=combined_normalised_flat, show=False)
@@ -252,8 +261,23 @@ class soxs_mflat(_base_recipe_):
         outDir = self.settings["intermediate-data-root"].replace("~", home)
         # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
 
+        # WRITE MFLAT TO FILE
+        self.dateObs = mflat.header[self.kw("DATE_OBS")]
         productPath = self._write(
             mflat, outDir, overwrite=True)
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        basename = os.path.basename(productPath)
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "MFLAT",
+            "file_name": basename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} master spectroscopic flat frame",
+            "file_path": productPath
+        }, ignore_index=True)
 
         if 1 == 1:
             filename = filenamer(
@@ -264,9 +288,20 @@ class soxs_mflat(_base_recipe_):
             filename = filename.replace(".fits", "_background.fits")
             filepath = self._write(
                 backgroundFrame, outDir, filename=filename, overwrite=True)
-            print(f"\nbackground frame saved to {filepath}\n")
+            filepath = os.path.abspath(filepath)
+            self.products = self.products.append({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": "",
+                "file_name": filename,
+                "file_type": "FITS",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"modelled scatter background light image (removed from master flat)",
+                "file_path": backgroundFrame
+            }, ignore_index=True)
 
         self.clean_up()
+        self.report_output()
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
