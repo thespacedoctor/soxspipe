@@ -54,7 +54,7 @@ class subtract_background(object):
         orderTable="/path/to/orderTable",
         settings=settings
     )
-    backgroundSubtractedFrame = background.subtract()
+    backgroundFrame, backgroundSubtractedFrame = background.subtract()
     ```
 
     """
@@ -113,6 +113,8 @@ class subtract_background(object):
         orderPolyTable, orderPixelTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTable, extend=self.settings['background-subtraction']['order-extension-fraction-for-background-subtraction'])
 
+        originalMask = np.copy(self.frame.mask)
+
         # MASK THE INNER ORDER AREA (AND BAD PIXELS)
         self.mask_order_locations(orderPixelTable)
 
@@ -121,6 +123,9 @@ class subtract_background(object):
 
         backgroundFrame = self.create_background_image(
             rowFitOrder=self.settings['background-subtraction']['bsline-deg'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
+
+        # REPLACE MASK
+        self.frame.mask = originalMask
 
         backgroundSubtractedFrame = self.frame.subtract(backgroundFrame)
         backgroundSubtractedFrame.header = self.frame.header
@@ -175,6 +180,7 @@ class subtract_background(object):
 
         # PLACEHOLDER ARRAY FOR BACKGROUND IMAGE
         backgroundMap = np.zeros_like(self.frame)
+
         for idx, row in enumerate(maskedImage):
 
             # SET X TO A MASKED RANGE
@@ -186,7 +192,7 @@ class subtract_background(object):
 
             t, c, k = splrep(xunmasked[~xunmasked.mask], row[
                              ~row.mask], s=0.0006, k=rowFitOrder)
-            spline = BSpline(t, c, k, extrapolate=False)
+            spline = BSpline(t, c, k, extrapolate=True)
             yfit = spline(xfit)
 
             # ADD FITTED ROW TO BACKGROUND IMAGE

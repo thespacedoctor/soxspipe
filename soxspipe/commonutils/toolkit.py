@@ -22,6 +22,8 @@ import random
 import numpy.ma as ma
 import pandas as pd
 import math
+from soxspipe.commonutils import keyword_lookup
+from datetime import datetime
 
 
 def cut_image_slice(
@@ -224,3 +226,183 @@ def unpack_order_table(
 
     log.debug('completed the ``functionName`` function')
     return orderPolyTable, orderPixelTable
+
+
+def generic_quality_checks(
+        log,
+        frame,
+        settings,
+        recipeName,
+        qcTable):
+    """*measure very basic quality checks on a frame and return the QC table with results appended*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `frame` -- CCDData object
+    - `settings` -- soxspipe settings
+    - `recipeName` -- the name of the recipe
+    - `qcTable` -- the QC pandas data-frame to save the QC measurements
+
+    **Usage:**
+
+    ```eval_rst
+    .. todo::
+
+            add usage info
+            create a sublime snippet for usage
+    ```
+
+    ```python
+    usage code 
+    ```           
+    """
+    log.debug('starting the ``functionName`` function')
+
+    # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+    # FOLDER
+    kw = keyword_lookup(
+        log=log,
+        settings=settings
+    ).get
+    kw = kw
+    arm = frame.header[kw("SEQ_ARM")]
+    dateObs = frame.header[kw("DATE_OBS")]
+
+    nanCount = np.count_nonzero(np.isnan(frame.data))
+
+    utcnow = datetime.utcnow()
+    utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+    qcTable = qcTable.append({
+        "soxspipe_recipe": recipeName,
+        "qc_name": "NaN count",
+        "qc_value": nanCount,
+        "qc_unit": "",
+        "obs_date_utc": dateObs,
+        "reduction_date_utc": utcnow
+    }, ignore_index=True)
+
+    # COUNT BAD-PIXELS
+    badCount = frame.mask.sum()
+    totalPixels = np.size(frame.mask)
+    percent = (float(badCount) / float(totalPixels)) * 100.
+
+    qcTable = qcTable.append({
+        "soxspipe_recipe": recipeName,
+        "qc_name": "bad-pixel count",
+        "qc_value": badCount,
+        "qc_unit": "",
+        "obs_date_utc": dateObs,
+        "reduction_date_utc": utcnow
+    }, ignore_index=True)
+
+    qcTable = qcTable.append({
+        "soxspipe_recipe": recipeName,
+        "qc_name": "bad-pixel percentage",
+        "qc_value": percent,
+        "qc_unit": "",
+        "obs_date_utc": dateObs,
+        "reduction_date_utc": utcnow
+    }, ignore_index=True)
+
+    log.debug('completed the ``functionName`` function')
+    return qcTable
+
+
+def spectroscopic_image_quality_checks(
+        log,
+        frame,
+        orderTablePath,
+        settings,
+        recipeName,
+        qcTable):
+    """*measure and record spectroscopic image quailty checks*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `frame` -- CCDData object
+    - ``orderTablePath`` -- path to the order table
+    - `settings` -- soxspipe settings
+    - `recipeName` -- the name of the recipe
+    - `qcTable` -- the QC pandas data-frame to save the QC measurements
+
+    **Usage:**
+
+    ```eval_rst
+    .. todo::
+
+            add usage info
+            create a sublime snippet for usage
+    ```
+
+    ```python
+    usage code 
+    ```           
+    """
+    log.debug('starting the ``functionName`` function')
+
+    # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+    # FOLDER
+    kw = keyword_lookup(
+        log=log,
+        settings=settings
+    ).get
+    kw = kw
+    arm = frame.header[kw("SEQ_ARM")]
+    dateObs = frame.header[kw("DATE_OBS")]
+
+    # UNPACK THE ORDER TABLE
+    orderTableMeta, orderTablePixels = unpack_order_table(
+        log=log, orderTablePath=orderTablePath)
+
+    mask = np.ones_like(frame.data)
+
+    xcoords_up = orderTablePixels["xcoord_edgeup"].values
+    xcoords_low = orderTablePixels["xcoord_edgelow"].values
+    ycoords = orderTablePixels["ycoord"].values
+    xcoords_up = xcoords_up.astype(int)
+    xcoords_low = xcoords_low.astype(int)
+
+    # UPDATE THE MASK
+    for u, l, y in zip(xcoords_up, xcoords_low, ycoords):
+        mask[y][l:u] = 0
+
+    # COMBINE MASK WITH THE BAD PIXEL MASK
+    mask = (mask == 1) | (frame.mask == 1)
+
+    # PLOT ONE OF THE MASKED FRAMES TO CHECK
+    maskedFrame = ma.array(frame.data, mask=mask)
+    quicklook_image(log=log, CCDObject=np.copy(mask),
+                    show=True, ext=None)
+
+    mean = np.ma.mean(maskedFrame)
+    flux = np.ma.sum(maskedFrame)
+
+    utcnow = datetime.utcnow()
+    utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+    qcTable = qcTable.append({
+        "soxspipe_recipe": recipeName,
+        "qc_name": "Mean inner-order pixel value",
+        "qc_value": mean,
+        "qc_unit": "",
+        "obs_date_utc": dateObs,
+        "reduction_date_utc": utcnow
+    }, ignore_index=True)
+
+    qcTable = qcTable.append({
+        "soxspipe_recipe": recipeName,
+        "qc_name": "Sum of all inner-order pixel values",
+        "qc_value": flux,
+        "qc_unit": "",
+        "obs_date_utc": dateObs,
+        "reduction_date_utc": utcnow
+    }, ignore_index=True)
+
+    log.debug('completed the ``functionName`` function')
+    return qcTable
+
+# use the tab-trigger below for new function
+# xt-def-function
