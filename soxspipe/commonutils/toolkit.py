@@ -375,7 +375,7 @@ def spectroscopic_image_quality_checks(
     # PLOT ONE OF THE MASKED FRAMES TO CHECK
     maskedFrame = ma.array(frame.data, mask=mask)
     quicklook_image(log=log, CCDObject=np.copy(mask),
-                    show=True, ext=None)
+                    show=False, ext=None)
 
     mean = np.ma.mean(maskedFrame)
     flux = np.ma.sum(maskedFrame)

@@ -259,7 +259,7 @@ class soxs_mflat(_base_recipe_):
         # backgroundFrame, mflat = background.subtract()
 
         quicklook_image(
-            log=self.log, CCDObject=mflat, show=False)
+            log=self.log, CCDObject=mflat, show=True)
 
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)

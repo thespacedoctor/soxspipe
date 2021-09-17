@@ -218,7 +218,7 @@ class detect_order_edges(_base_detect):
         orderPixelTable.rename(columns={
             "x_fit": "xcoord_lower_fit", "x_fit_res": "xcoord_lower_fit_res"}, inplace=True)
 
-        # SORT CENTRE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
+        # SORT UPPER EDGE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
         columnsNames = ["order", "degy_edgeup"]
         coeffColumns = [f'edgeup_c{i}' for i in range(0, self.polyDeg + 1)]
         columnsNames.extend(coeffColumns)
@@ -232,7 +232,7 @@ class detect_order_edges(_base_detect):
                 n_coeff += 1
         edgeUpTable = pd.DataFrame(myDict)
 
-        # SORT CENTRE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
+        # SORT LOWER EDGE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
         columnsNames = ["order", "degy_edgelow"]
         coeffColumns = [f'edgelow_c{i}' for i in range(0, self.polyDeg + 1)]
         columnsNames.extend(coeffColumns)
@@ -563,11 +563,11 @@ class detect_order_edges(_base_detect):
         # REPORT THE EXACT PIXEL POSTION AT THE FLUX THRESHOLD
         xmax = xmaxguess - \
             (threshold - medSlide[xmaxguess]) / \
-            (medSlide[xmaxguess - 1] - medSlide[xmaxguess])
+            (medSlide[xmaxguess - 1] - medSlide[xmaxguess]) - 2
 
         xmin = xminguess + \
             (threshold - medSlide[xminguess]) / \
-            (medSlide[xminguess + 1] - medSlide[xminguess])
+            (medSlide[xminguess + 1] - medSlide[xminguess]) + 2
 
         # IF THE WIDTH BETWEEN MIN AND MAX IS TOO SMALL THEN REJECT
         if xmax - xmin < 10:
@@ -577,7 +577,7 @@ class detect_order_edges(_base_detect):
             orderData["xcoord_lower"] = xmin + int(x - halfSlice)
 
         # SANITY CHECK PLOT OF CROSS-SECTION
-        if 1 == 0 and random.randint(1, 101) < 2:
+        if 1 == 0 and random.randint(1, 5001) < 2:
             # CHECK THE SLICE POINTS IF NEEDED
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
