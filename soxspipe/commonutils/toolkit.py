@@ -24,6 +24,7 @@ import pandas as pd
 import math
 from soxspipe.commonutils import keyword_lookup
 from datetime import datetime
+from copy import copy
 
 
 def cut_image_slice(
@@ -133,10 +134,13 @@ def quicklook_image(
     mean = np.nanmean(frame)
     vmax = mean + stdWindow * std
     vmin = mean - stdWindow * std
-
+    palette = copy(plt.cm.gray)
+    # palette.set_over('r', 1.0)
+    # palette.set_under('g', 1.0)
+    palette.set_bad("#dc322f", 1.0)
     plt.figure(figsize=(12, 5))
     plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
-               cmap='gray', alpha=1, aspect='auto')
+               cmap=palette, alpha=1, aspect='auto')
     if mean > 10:
         fmt = '%1.0f'
         cbar = plt.colorbar(format=fmt)

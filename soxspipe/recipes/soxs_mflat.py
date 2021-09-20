@@ -30,7 +30,7 @@ import pandas as pd
 from soxspipe.commonutils import subtract_background
 from os.path import expanduser
 from soxspipe.commonutils.filenamer import filenamer
-from astropy.stats import sigma_clip, mad_std
+from astropy.stats import sigma_clip, mad_std, sigma_clipped_stats
 from datetime import datetime
 from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 
@@ -247,7 +247,7 @@ class soxs_mflat(_base_recipe_):
         quicklook_image(
             log=self.log, CCDObject=combined_normalised_flat, show=False)
 
-        mflat = self.intra_order_to_unity(
+        mflat = self.mask_low_sens_and_inter_order_to_unity(
             frame=combined_normalised_flat, orderTablePath=orderTablePath)
 
         # background = subtract_background(
@@ -259,7 +259,7 @@ class soxs_mflat(_base_recipe_):
         # backgroundFrame, mflat = background.subtract()
 
         quicklook_image(
-            log=self.log, CCDObject=mflat, show=True)
+            log=self.log, CCDObject=mflat, show=False)
 
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
@@ -476,64 +476,73 @@ class soxs_mflat(_base_recipe_):
         self.log.debug('completed the ``normalise_flats`` method')
         return normalisedFrames
 
-    def intra_order_to_unity(
+    def mask_low_sens_and_inter_order_to_unity(
             self,
             frame,
             orderTablePath):
-        """*set intra order pixels to unity*
+        """*set inter-order pixels to unity and and low-sensitivity pixels to bad-pixel mask*
 
         **Key Arguments:**
             - ``frame`` -- the frame to work on
             - ``orderTablePath`` -- path to the order table
 
         **Return:**
-            - ``frame`` -- with intra-order pixels set to 1
-
-        **Usage:**
-
-        ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
+            - ``frame`` -- with inter-order pixels set to 1 and BPM updated with low-sensitivity pixels
         """
-        self.log.debug('starting the ``intra_order_to_unity`` method')
+        self.log.debug(
+            'starting the ``mask_low_sens_and_inter_order_to_unity`` method')
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
 
-        mask = np.ones_like(frame.data)
+        # BAD PIXEL COUNT AT START
+        originalBPM = np.copy(frame.mask)
+
+        interOrderMask = np.ones_like(frame.data)
         xcoords_up = orderTablePixels["xcoord_edgeup"].values
         xcoords_low = orderTablePixels["xcoord_edgelow"].values
         ycoords = orderTablePixels["ycoord"].values
         xcoords_up = xcoords_up.astype(int)
         xcoords_low = xcoords_low.astype(int)
 
-        # UPDATE THE MASK
+        # UPDATE THE MASK TO INCLUDE INTER-ORDER BACKGROUND
         for u, l, y in zip(xcoords_up, xcoords_low, ycoords):
-            mask[y][l:u] = 0
+            interOrderMask[y][l:u] = 0
 
-        # CONVERT TO BOOLEAN MASK
-        mask = ma.make_mask(mask)
-
-        # SET INTRA-ORDER TO 1
-        frame.data[mask] = 1
+        # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
+        interOrderMask = ma.make_mask(interOrderMask)
+        frame.mask = (interOrderMask == 1) | (frame.mask == 1)
 
         # PLOT MASKED FRAMES TO CHECK
         quicklook_image(log=self.log, CCDObject=frame,
                         show=False, ext=None)
 
-        self.log.debug('completed the ``intra_order_to_unity`` method')
+        beforeMask = np.copy(frame.mask)
+
+        # SIGMA-CLIP THE LOW-SENSITIVITY PIXELS
+        frame = sigma_clip(
+            frame, sigma_lower=self.settings["soxs-mflat"]["low-sensitivity-clipping-simga"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc=mad_std)
+
+        # PLOT MASKED FRAMES TO CHECK
+        quicklook_image(log=self.log, CCDObject=frame,
+                        show=False, ext=None)
+
+        lowSensitivityPixelMask = (frame.mask == 1) & (beforeMask != 1)
+        lowSensPixelCount = lowSensitivityPixelMask.sum()
+        print(f"{lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
+
+        frame.mask = (lowSensitivityPixelMask == 1) | (originalBPM == 1)
+
+        # SET INTRA-ORDER TO 1
+        frame.data[interOrderMask] = 1
+
+        # PLOT MASKED FRAMES TO CHECK
+        quicklook_image(log=self.log, CCDObject=frame,
+                        show=True, ext=None)
+
+        self.log.debug(
+            'completed the ``mask_low_sens_and_inter_order_to_unity`` method')
         return frame
 
     # use the tab-trigger below for new method
