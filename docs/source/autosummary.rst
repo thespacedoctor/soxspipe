@@ -34,6 +34,7 @@ Classes
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark
    soxspipe.recipes.soxs_mflat
+   soxspipe.recipes.soxs_nod_mode
    soxspipe.recipes.soxs_order_centres
    soxspipe.recipes.soxs_spatial_solution
    soxspipe.recipes.soxs_straighten 
@@ -50,6 +51,8 @@ Functions
    soxspipe.commonutils.filenamer
    soxspipe.commonutils.getpackagepath
    soxspipe.commonutils.toolkit.cut_image_slice
+   soxspipe.commonutils.toolkit.generic_quality_checks
    soxspipe.commonutils.toolkit.quicklook_image
+   soxspipe.commonutils.toolkit.spectroscopic_image_quality_checks
    soxspipe.commonutils.toolkit.unpack_order_table
    soxspipe.docstring_test.docsting_test 

@@ -35,6 +35,10 @@
        
    
         
+            ~soxs_order_centres.report_output
+       
+   
+        
             ~soxs_order_centres.subtract_calibrations
        
    
@@ -118,6 +122,8 @@
    ..     
    ..          ~soxs_order_centres._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

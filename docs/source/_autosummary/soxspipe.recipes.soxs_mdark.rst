@@ -35,6 +35,10 @@
        
    
         
+            ~soxs_mdark.report_output
+       
+   
+        
             ~soxs_mdark.subtract_calibrations
        
    
@@ -118,6 +122,8 @@
    ..     
    ..          ~soxs_mdark._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

@@ -35,6 +35,10 @@
        
    
         
+            ~soxs_disp_solution.report_output
+       
+   
+        
             ~soxs_disp_solution.subtract_calibrations
        
    
@@ -118,6 +122,8 @@
    ..     
    ..          ~soxs_disp_solution._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 
