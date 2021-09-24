@@ -35,6 +35,10 @@
        
    
         
+            ~soxs_straighten.report_output
+       
+   
+        
             ~soxs_straighten.subtract_calibrations
        
    
@@ -118,6 +122,8 @@
    ..     
    ..          ~soxs_straighten._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

@@ -6,12 +6,12 @@
     
     Usage:
         soxspipe init
-        soxspipe mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
-        soxspipe mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-        soxspipe mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-        soxspipe disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-        soxspipe order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-        soxspipe spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-V] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
+        soxspipe [-V] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-V] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-V] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-V] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-V] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     
     Options:
         init                                   setup the soxspipe settings file for the first time
@@ -27,6 +27,7 @@
         -h, --help                             show this help message
         -v, --version                          show version
         -s, --settings <pathToSettingsFile>    the settings file
+        -V, --verbose                          more verbose output
     
 
 ```

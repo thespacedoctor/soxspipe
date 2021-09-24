@@ -31,6 +31,10 @@
        
    
         
+            ~soxs_mflat.mask_low_sens_and_inter_order_to_unity
+       
+   
+        
             ~soxs_mflat.normalise_flats
        
    
@@ -40,6 +44,10 @@
    
         
             ~soxs_mflat.produce_product
+       
+   
+        
+            ~soxs_mflat.report_output
        
    
         
@@ -126,6 +134,10 @@
    ..     
    ..          ~soxs_mflat._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

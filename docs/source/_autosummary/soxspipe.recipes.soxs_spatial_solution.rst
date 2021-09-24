@@ -35,6 +35,10 @@
        
    
         
+            ~soxs_spatial_solution.report_output
+       
+   
+        
             ~soxs_spatial_solution.subtract_calibrations
        
    
@@ -118,6 +122,8 @@
    ..     
    ..          ~soxs_spatial_solution._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

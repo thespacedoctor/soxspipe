@@ -1,9 +1,9 @@
-﻿soxs_mbias *(class)*
-=====================================
+﻿soxs_nod_mode *(class)*
+========================================
 
 .. currentmodule:: soxspipe.recipes
 
-.. autoclass:: soxs_mbias
+.. autoclass:: soxs_nod_mode
    :members:
    :show-inheritance:
    :inherited-members:
@@ -19,35 +19,35 @@
         
    
         
-            ~soxs_mbias.clean_up
+            ~soxs_nod_mode.clean_up
        
    
         
-            ~soxs_mbias.clip_and_stack
+            ~soxs_nod_mode.clip_and_stack
        
    
         
-            ~soxs_mbias.prepare_frames
+            ~soxs_nod_mode.prepare_frames
        
    
         
-            ~soxs_mbias.produce_product
+            ~soxs_nod_mode.produce_product
        
    
         
-            ~soxs_mbias.report_output
+            ~soxs_nod_mode.report_output
        
    
         
-            ~soxs_mbias.subtract_calibrations
+            ~soxs_nod_mode.subtract_calibrations
        
    
         
-            ~soxs_mbias.verify_input_frames
+            ~soxs_nod_mode.verify_input_frames
        
    
         
-            ~soxs_mbias.xsh2soxs
+            ~soxs_nod_mode.xsh2soxs
        
    
    .. 
@@ -104,23 +104,23 @@
    ..     
    .. 
    ..     
-   ..          ~soxs_mbias._absolute_path
+   ..          ~soxs_nod_mode._absolute_path
    ..      
    .. 
    ..     
-   ..          ~soxs_mbias._prepare_single_frame
+   ..          ~soxs_nod_mode._prepare_single_frame
    ..      
    .. 
    ..     
-   ..          ~soxs_mbias._trim_frame
+   ..          ~soxs_nod_mode._trim_frame
    ..      
    .. 
    ..     
-   ..          ~soxs_mbias._verify_input_frames_basics
+   ..          ~soxs_nod_mode._verify_input_frames_basics
    ..      
    .. 
    ..     
-   ..          ~soxs_mbias._write
+   ..          ~soxs_nod_mode._write
    ..      
    .. 
    ..     
