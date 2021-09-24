@@ -244,6 +244,8 @@ class soxs_mflat(_base_recipe_):
         mask = (self.products['product_label'] == "ORDER_LOC")
         orderTablePath = self.products.loc[mask]["file_path"].values[0]
 
+        self.dateObs = combined_normalised_flat.header[self.kw("DATE_OBS")]
+
         quicklook_image(
             log=self.log, CCDObject=combined_normalised_flat, show=False)
 
@@ -266,7 +268,7 @@ class soxs_mflat(_base_recipe_):
         # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
 
         # WRITE MFLAT TO FILE
-        self.dateObs = mflat.header[self.kw("DATE_OBS")]
+
         productPath = self._write(
             mflat, outDir, overwrite=True)
         utcnow = datetime.utcnow()
@@ -492,6 +494,8 @@ class soxs_mflat(_base_recipe_):
         self.log.debug(
             'starting the ``mask_low_sens_and_inter_order_to_unity`` method')
 
+        print("\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY")
+
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
@@ -521,16 +525,28 @@ class soxs_mflat(_base_recipe_):
         beforeMask = np.copy(frame.mask)
 
         # SIGMA-CLIP THE LOW-SENSITIVITY PIXELS
-        frame = sigma_clip(
+        frameClipped = sigma_clip(
             frame, sigma_lower=self.settings["soxs-mflat"]["low-sensitivity-clipping-simga"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc=mad_std)
 
         # PLOT MASKED FRAMES TO CHECK
         quicklook_image(log=self.log, CCDObject=frame,
                         show=False, ext=None)
 
-        lowSensitivityPixelMask = (frame.mask == 1) & (beforeMask != 1)
+        lowSensitivityPixelMask = (frameClipped.mask == 1) & (beforeMask != 1)
         lowSensPixelCount = lowSensitivityPixelMask.sum()
-        print(f"{lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "low sensitivity pixel count",
+            "qc_value": lowSensPixelCount,
+            "qc_unit": "pixels",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow
+        }, ignore_index=True)
+        print(f"        {lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
 
         frame.mask = (lowSensitivityPixelMask == 1) | (originalBPM == 1)
 

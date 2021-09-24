@@ -1,5 +1,6 @@
 # Release Notes
 
+added bottleneck to the install requirement (makes image combination more efficient)
 masked pixel now coloured red in quicklook plots (easier to differentiate from good pixels)
 inter-order pixel value in flats now set to unity (instead of running background fitting and subtraction)
 low-sensitivity pixels in lamp-flats now identified and added to bad-pixel mask

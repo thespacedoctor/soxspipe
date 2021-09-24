@@ -22,7 +22,8 @@ install_requires = [
     'numpy',
     'unicodecsv',
     'pandas',
-    'tabulate'
+    'tabulate',
+    'bottleneck'
 ]
 
 # READ THE DOCS SERVERS
