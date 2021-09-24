@@ -44,7 +44,7 @@ class soxs_mflat(_base_recipe_):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
-        - ``verbose`` -- verbose. True or False. Default *False*
+        - ``verbose`` -- verbose. True or False. Default *False*  
 
     **Usage**
 
