@@ -31,11 +31,19 @@
        
    
         
+            ~soxs_nod_mode.produce_product
+       
+   
+        
             ~soxs_nod_mode.report_output
        
    
         
             ~soxs_nod_mode.subtract_calibrations
+       
+   
+        
+            ~soxs_nod_mode.verify_input_frames
        
    
         
@@ -114,6 +122,10 @@
    ..     
    ..          ~soxs_nod_mode._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 
