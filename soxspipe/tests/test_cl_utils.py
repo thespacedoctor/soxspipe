@@ -13,7 +13,7 @@ doc = cl_utils.__doc__
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 
 su = tools(
     arguments={"settingsFile": settingsFile},

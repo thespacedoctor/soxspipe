@@ -11,9 +11,9 @@ from os.path import expanduser
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + \
-#     "/git_repos/_misc_/settings/soxspipe/test_settings.yaml"
+#     "/git_repos/_misc_/settings/soxspipe/test_settings_xsh.yaml"
 
 su = tools(
     arguments={"settingsFile": settingsFile},

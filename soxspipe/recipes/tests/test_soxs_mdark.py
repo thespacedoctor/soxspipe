@@ -11,7 +11,7 @@ from os.path import expanduser
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -118,6 +118,28 @@ class test_soxs_mdark(unittest.TestCase):
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
+
+    def test_soxs_mdark_e2e_nir_function(self):
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mdark/sofs/nir_6s_darks.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath,
+            verbose=True
+        )
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mdark/sofs/e2e_nir_900s_darks.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath,
+            verbose=True
+        )
+        # productPath = this.produce_product()
+        # print(f"Here is the final product `{productPath}`")
 
     # def test_soxs_mdark_function(self):
 
