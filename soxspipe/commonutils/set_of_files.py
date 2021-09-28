@@ -18,6 +18,7 @@ from astropy.io import fits
 from ccdproc import ImageFileCollection
 import codecs
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
+from astropy.table import Table, join, hstack
 
 
 class set_of_files(object):
@@ -205,12 +206,15 @@ class set_of_files(object):
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
             sof = ImageFileCollection(
-                self.inputFrames, keywords=self.keys, ext=self.settings['data-extension'])
+                self.inputFrames, ext=self.settings['data-extension'])
             if self.settings['data-extension'] > 0:
-                sof.primExt = ImageFileCollection(
-                    filenames=fitsFiles, location=location, keywords=self.keys, ext=0)
-            else:
-                sof.primExt = None
+                missingKeys = [
+                    k for k in self.keys if k not in sof.summary.colnames]
+                primExt = ImageFileCollection(
+                    filenames=fitsFiles, keywords=missingKeys, ext=0)
+                sof._summary = join(
+                    primExt._summary, sof._summary, keys="file")
+
             supplementaryFilepaths = []
             for d in os.listdir(self.inputFrames):
                 filepath = os.path.join(self.inputFrames, d)
@@ -247,12 +251,15 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, keywords=self.keys, ext=self.settings['data-extension'])
+                filenames=fitsFiles, location=location, ext=self.settings['data-extension'])
             if self.settings['data-extension'] > 0:
-                sof.primExt = ImageFileCollection(
-                    filenames=fitsFiles, location=location, keywords=self.keys, ext=0)
-            else:
-                sof.primExt = None
+                missingKeys = [
+                    k for k in self.keys if k not in sof.summary.colnames]
+                primExt = ImageFileCollection(
+                    filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                sof._summary = join(
+                    primExt._summary, sof._summary, keys="file")
+
         elif isinstance(self.inputFrames, list):
             fitsFiles = [f for f in self.inputFrames if ".fits" in f.lower()]
             # FIND UNIQUE FILE LOCATIONS
@@ -264,17 +271,21 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, keywords=self.keys, ext=self.settings['data-extension'])
+                filenames=fitsFiles, location=location, ext=self.settings['data-extension'])
             if self.settings['data-extension'] > 0:
-                sof.primExt = ImageFileCollection(
-                    filenames=fitsFiles, location=location, keywords=self.keys, ext=0)
-            else:
-                sof.primExt = None
+                missingKeys = [
+                    k for k in self.keys if k not in sof.summary.colnames]
+                primExt = ImageFileCollection(
+                    filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                sof._summary = join(
+                    primExt._summary, sof._summary, keys="file")
             supplementaryFilepaths = [
                 f for f in self.inputFrames if ".fits" not in f.lower() and f[0] != "."]
         else:
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths")
+
+        sof.keywords = self.keys
 
         supplementary_sof = self.create_supplimentary_file_dictionary(
             supplementaryFilepaths)

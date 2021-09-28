@@ -322,12 +322,8 @@ class _base_recipe_(object):
             raise FileNotFoundError(
                 "No image frames where passed to the recipe")
 
-        if self.inputFrames.primExt:
-            arm = self.inputFrames.primExt.values(
-                keyword=kw("SEQ_ARM").lower(), unique=True)
-        else:
-            arm = self.inputFrames.values(
-                keyword=kw("SEQ_ARM").lower(), unique=True)
+        arm = self.inputFrames.values(
+            keyword=kw("SEQ_ARM").lower(), unique=True)
         # MIXED INPUT ARMS ARE BAD
         if len(arm) > 1:
             arms = " and ".join(arms)
