@@ -8,10 +8,10 @@ instrument: soxs
 #     clipping-upper-simga: 5   
 #     clipping-iteration-count: 5
 
-# soxs-mdark:
-#     clipping-lower-simga: 5
-#     clipping-upper-simga: 5   
-#     clipping-iteration-count: 5
+soxs-mdark:
+    clipping-lower-simga: 5
+    clipping-upper-simga: 5   
+    clipping-iteration-count: 5
 
 # soxs-disp-solution:
 #     pixel-window-size: 10
@@ -60,10 +60,18 @@ instrument: soxs
 #     bsline-deg: 3
 #     median-filter-pixels: 11
 
+# KEYS TO USES AS COLUMNS IN QUICKLOOK SUMMARY TABLES PRINTS TO STDOUT
+summary-keys:
+    default: ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
+                    'EXPTIME']
+    verbose: ['MJDOBS', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
+                    'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'DET_GAIN', 'RON', 'BUNIT']
+data-extension: 1
+
 # test-data-root: ~/xshooter-pipeline-data/unittest_data
-# calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
-# intermediate-data-root: ~/soxspipe-unittests/intermediate
-# reduced-data-root: ~/soxspipe-unittests/reduced
+calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/soxs_sim
+intermediate-data-root: ~/soxspipe-unittests/intermediate/soxs_sim
+reduced-data-root: ~/soxspipe-unittests/reduced/soxs_sim
 
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
 save-intermediate-products: True

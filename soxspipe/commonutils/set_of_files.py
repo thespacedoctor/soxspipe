@@ -72,11 +72,9 @@ class set_of_files(object):
         ).get
 
         if self.verbose:
-            keys = ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT']
+            keys = self.settings['summary-keys']['verbose']
         else:
-            keys = ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME']
+            keys = self.settings['summary-keys']['standard']
 
         keys = kw(keys)
         self.keys = []
@@ -206,7 +204,13 @@ class set_of_files(object):
 
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
-            sof = ImageFileCollection(self.inputFrames, keywords=self.keys)
+            sof = ImageFileCollection(
+                self.inputFrames, keywords=self.keys, ext=self.settings['data-extension'])
+            if self.settings['data-extension'] > 0:
+                sof.primExt = ImageFileCollection(
+                    filenames=fitsFiles, location=location, keywords=self.keys, ext=0)
+            else:
+                sof.primExt = None
             supplementaryFilepaths = []
             for d in os.listdir(self.inputFrames):
                 filepath = os.path.join(self.inputFrames, d)
@@ -243,7 +247,12 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, keywords=self.keys)
+                filenames=fitsFiles, location=location, keywords=self.keys, ext=self.settings['data-extension'])
+            if self.settings['data-extension'] > 0:
+                sof.primExt = ImageFileCollection(
+                    filenames=fitsFiles, location=location, keywords=self.keys, ext=0)
+            else:
+                sof.primExt = None
         elif isinstance(self.inputFrames, list):
             fitsFiles = [f for f in self.inputFrames if ".fits" in f.lower()]
             # FIND UNIQUE FILE LOCATIONS
@@ -255,7 +264,12 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, keywords=self.keys)
+                filenames=fitsFiles, location=location, keywords=self.keys, ext=self.settings['data-extension'])
+            if self.settings['data-extension'] > 0:
+                sof.primExt = ImageFileCollection(
+                    filenames=fitsFiles, location=location, keywords=self.keys, ext=0)
+            else:
+                sof.primExt = None
             supplementaryFilepaths = [
                 f for f in self.inputFrames if ".fits" not in f.lower() and f[0] != "."]
         else:

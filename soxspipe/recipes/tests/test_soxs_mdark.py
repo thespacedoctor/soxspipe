@@ -23,6 +23,19 @@ su = tools(
 )
 arguments, settings, log, dbConn = su.setup()
 
+packageDirectory = utKit("").get_project_root()
+settingsFile2 = packageDirectory + "/test_settings_soxs_sim.yaml"
+# settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
+su = tools(
+    arguments={"settingsFile": settingsFile2},
+    docString=__doc__,
+    logLevel="DEBUG",
+    options_first=False,
+    projectName=None,
+    defaultSettingsFile=False
+)
+arguments2, settings2, log2, dbConn2 = su.setup()
+
 # SETUP AND TEARDOWN FIXTURE FUNCTIONS FOR THE ENTIRE MODULE
 moduleDirectory = os.path.dirname(__file__)
 utKit = utKit(moduleDirectory)
@@ -133,8 +146,8 @@ class test_soxs_mdark(unittest.TestCase):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mdark/sofs/e2e_nir_900s_darks.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(
-            log=log,
-            settings=settings,
+            log=log2,
+            settings=settings2,
             inputFrames=sofPath,
             verbose=True
         )

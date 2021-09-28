@@ -3,6 +3,68 @@ version: 1
 # instrument the data belongs to; `xsh` or `soxs`
 instrument: soxs
 
+# soxs-mbias:
+#     clipping-lower-simga: 5
+#     clipping-upper-simga: 5   
+#     clipping-iteration-count: 5
+
+# soxs-mdark:
+#     clipping-lower-simga: 5
+#     clipping-upper-simga: 5   
+#     clipping-iteration-count: 5
+
+# soxs-disp-solution:
+#     pixel-window-size: 10
+#     order-deg: 3
+#     wavelength-deg: 3
+#     clipping-iteration-limit: 10
+#     poly-fitting-residual-clipping-sigma: 5
+
+# soxs-order-centre:
+#     order-sample-count: 50
+#     slice-length: 10
+#     peak-sigma-limit: 3
+#     poly-deg: 5
+#     poly-fitting-residual-clipping-sigma: 1.5
+#     clipping-iteration-limit: 5
+
+# soxs-spatial-solution:
+#     pixel-window-size: 10
+#     order-deg: 3
+#     wavelength-deg: 3
+#     slit-deg: 3
+#     clipping-iteration-limit: 10
+#     poly-fitting-residual-clipping-sigma: 5
+
+# soxs-mflat:
+#     centre-order-window: 20
+#     clipping-lower-simga: 50
+#     clipping-upper-simga: 50   
+#     clipping-iteration-count: 5
+#     slice-length-for-edge-detection: 90
+#     slice-width-for-edge-detection: 5
+#     min-percentage-threshold-for-edge-detection: 20
+#     max-percentage-threshold-for-edge-detection: 50
+#     poly-deg: 4
+#     poly-fitting-residual-clipping-sigma: 5
+#     clipping-iteration-limit: 10
+#     low-sensitivity-clipping-simga: 2
+    
+
+# soxs-straighten:
+#     asdasd: 1
+
+# # UTILS
+# background-subtraction:
+#     order-extension-fraction-for-background-subtraction: 1.5
+#     bsline-deg: 3
+#     median-filter-pixels: 11
+
+# test-data-root: ~/xshooter-pipeline-data/unittest_data
+calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/soxs
+intermediate-data-root: ~/soxspipe-unittests/intermediate/soxs
+reduced-data-root: ~/soxspipe-unittests/reduced/soxs
+
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
 save-intermediate-products: True
 

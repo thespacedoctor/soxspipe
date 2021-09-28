@@ -284,6 +284,7 @@ class _base_recipe_(object):
         filepaths = self.inputFrames.files_filtered(include_path=True)
 
         frameCount = len(filepaths)
+
         print("\n# PREPARING %(frameCount)s RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
         preframes = []
         preframes[:] = [self._prepare_single_frame(
@@ -321,8 +322,12 @@ class _base_recipe_(object):
             raise FileNotFoundError(
                 "No image frames where passed to the recipe")
 
-        arm = self.inputFrames.values(
-            keyword=kw("SEQ_ARM").lower(), unique=True)
+        if self.inputFrames.primExt:
+            arm = self.inputFrames.primExt.values(
+                keyword=kw("SEQ_ARM").lower(), unique=True)
+        else:
+            arm = self.inputFrames.values(
+                keyword=kw("SEQ_ARM").lower(), unique=True)
         # MIXED INPUT ARMS ARE BAD
         if len(arm) > 1:
             arms = " and ".join(arms)
@@ -340,10 +345,15 @@ class _base_recipe_(object):
         ).get(self.arm)
 
         # MIXED BINNING IS BAD
-        cdelt1 = self.inputFrames.values(
-            keyword=kw("CDELT1").lower(), unique=True)
-        cdelt2 = self.inputFrames.values(
-            keyword=kw("CDELT2").lower(), unique=True)
+        if self.arm == "NIR":
+            # NIR ARRAY NEVER BINNED
+            cdelt1 = [1]
+            cdelt2 = [1]
+        else:
+            cdelt1 = self.inputFrames.values(
+                keyword=kw("CDELT1").lower(), unique=True)
+            cdelt2 = self.inputFrames.values(
+                keyword=kw("CDELT2").lower(), unique=True)
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
             print(self.inputFrames.summary)
@@ -364,8 +374,12 @@ class _base_recipe_(object):
         # MIXED GAIN SPEEDS IS BAD
         # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
         # CONAD IS REALLY GAIN AND HAS UNIT OF Electrons/ADU
-        gain = self.inputFrames.values(
-            keyword=kw("CONAD").lower(), unique=True)
+        if self.settings["instrument"] == "xsh":
+            gain = self.inputFrames.values(
+                keyword=kw("CONAD").lower(), unique=True)
+        else:
+            gain = self.inputFrames.values(
+                keyword=kw("GAIN").lower(), unique=True)
         if len(gain) > 1:
             print(self.inputFrames.summary)
             raise TypeError(

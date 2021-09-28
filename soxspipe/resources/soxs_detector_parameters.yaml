@@ -1,0 +1,96 @@
+UVB:
+  # # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
+  # clockwise-rotation: 180
+  # # science pixel values for un-binned frames (binning handled in code)
+  # science-pixels: 
+  #   # NAXIS1 == x-axis
+  #   columns:
+  #     start: 48
+  #     end: 2096
+  #   # NAXIS2 == y-axis
+  #   rows:
+  #     start: 0
+  #     end: 3000
+  # # DEFAULT BINNING [y, x]
+  # binning: [1, 1]
+  # saturation: 65000.
+  # gain: 0.62 # e/ADU
+  # ron: 2.60 # e
+  # bad-pixel map:
+  #   1x1: cal/BP_MAP_RP_UVB_1x1.fits
+  #   1x2: cal/BP_MAP_RP_UVB_1x2.fits
+  #   2x2: cal/BP_MAP_RP_UVB_2x2.fits
+  # predicted pinhole lines:
+  #   single:
+  #     1x1: cal/THEO_TAB_SING_UVB_1x1.csv
+  #     1x2: cal/THEO_TAB_SING_UVB_1x2.csv
+  #     2x2: cal/THEO_TAB_SING_UVB_2x2.csv
+  #   multi:
+  #     1x1: cal/THEO_TAB_MULT_UVB_1x1.csv
+  #     1x2: cal/THEO_TAB_MULT_UVB_1x2.csv
+  #     2x2: cal/THEO_TAB_MULT_UVB_2x2.csv
+  # mid_slit_index: 4
+  # spectral format table: cal/SPECTRAL_FORMAT_TAB_UVB.csv
+            
+VIS:
+  # # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
+  # clockwise-rotation: 0
+  # # science pixel values for un-binned frames (binning handled in code)
+  # science-pixels:
+  #   # NAXIS1 == x-axis
+  #   columns:
+  #     start: 10
+  #     end: 2058
+  #   # NAXIS2 == y-axis
+  #   rows:
+  #     start: 0
+  #     end: 4000
+  # # DEFAULT BINNING [y, x]
+  # binning: [1, 1]
+  # gain: 1.4 # e/ADU
+  # ron: 5.3 # e
+  # saturation: 65535.
+  # bad-pixel map:
+  #   1x1: cal/BP_MAP_RP_VIS_1x1.fits
+  #   1x2: cal/BP_MAP_RP_VIS_1x2.fits
+  #   2x2: cal/BP_MAP_RP_VIS_2x2.fits
+  # predicted pinhole lines:
+  #   single:
+  #     1x1: cal/THEO_TAB_SING_VIS_1x1.csv
+  #     1x2: cal/THEO_TAB_SING_VIS_1x2.csv
+  #     2x2: cal/THEO_TAB_SING_VIS_2x2.csv
+  #   multi:
+  #     1x1: cal/THEO_TAB_MULT_VIS_1x1.csv
+  #     1x2: cal/THEO_TAB_MULT_VIS_1x2.csv
+  #     2x2: cal/THEO_TAB_MULT_VIS_2x2.csv
+  # mid_slit_index: 4
+  # spectral format table: cal/SPECTRAL_FORMAT_TAB_VIS.csv
+
+NIR:
+  # # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
+  # clockwise-rotation: 90
+  # # science pixel values for un-binned frames (binning handled in code)
+  # science-pixels: 
+  #   # NAXIS1 == x-axis
+  #   columns:
+  #     start: 20
+  #     end: 1076
+  #   # NAXIS2 == y-axis
+  #   rows:
+  #     start: 4
+  #     end: 2044
+  # # DEFAULT BINNING [y, x]
+  binning: [1, 1]
+  # saturation: 2.0e5
+  gain: MISSING # e/ADU
+  ron: 7.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
+  # bad-pixel map:
+  #   1x1: cal/BP_MAP_RP_NIR.fits
+  # predicted pinhole lines:
+  #   single:
+  #     1x1: cal/THEO_TAB_SING_NIR.csv
+  #   multi:
+  #     1x1: cal/THEO_TAB_MULT_NIR.csv
+  # mid_slit_index: 4
+  # spectral format table: cal/SPECTRAL_FORMAT_TAB_NIR.csv
+

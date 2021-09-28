@@ -118,8 +118,7 @@ class keyword_lookup(object):
         keywords = []
         for t in tag:
             if t not in self.kwDict:
-                raise LookupError(
-                    "%(tag)s is not in the list of known FITS Header keyword aliases" % locals())
+                raise LookupError(f"{t} is not in the list of known FITS Header keyword aliases")
             keywords.append(self.kwDict[t] + index)
 
         # RETURNING A SINGLE KEYWORD?
