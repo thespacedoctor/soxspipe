@@ -11,6 +11,7 @@
 * **REFACTOR** inter-order pixel value in flats now set to unity (instead of running background fitting and subtraction)
 * **REFACTOR:** recipes now have their recipe name as a `recipeName` attribute
 
+
 ## v0.5.0 - June 10, 2021
 
 * **FEATURE** Added a new `filenamer` module that implements a strict intermediate and reduced file-naming scheme
