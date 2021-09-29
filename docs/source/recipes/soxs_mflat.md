@@ -6,12 +6,12 @@ Sources of this non-uniformity include varying pixel sensitivities, obstructions
 
 ### Input
 
-<! -- FIND OBs HERE : https://docs.google.com/spreadsheets/d/1-3VXkIWcydvpawwVl_C3pNTU3HgnElJaYFAKow65Fl8/edit#gid=0 -->
+<!-- FIND OBs HERE : https://docs.google.com/spreadsheets/d/1-3VXkIWcydvpawwVl_C3pNTU3HgnElJaYFAKow65Fl8/edit#gid=0 -->
 
 | Data Type | Content | Related OB |
 |:----|:----|:---|
 | FITS images | raw flats frames (exposures with identical exposure time and detectors readout parameters) | `SOXS_slt_cal_NIRLampFlat`, `SOXS_slt_cal_NIRLampFlatAtt`, `SOXS_slt_cal_VISLampFlat`, `SOXS_slt_cal_VISLampFlatAtt` |
-| CSV File | [order table](../files/order_table.md) containing coefficients to the polynomial fits describing the order centre locations |
+| CSV File | [order table](../files/order_table.md) containing coefficients to the polynomial fits describing the order centre locations | |
 
 ### Parameters
 
@@ -38,7 +38,7 @@ The individual flat field frames need to have bias and dark signatures removed b
 
 #### Normalising Exposure Levels in Individual Flat Frames
 
-Once calibrated, exposure-levels in the individual flat frames need to be normalised as *total* illumination will vary from frame-to-frame. The of individual frame exposure levels are calculated in two stages.
+Once calibrated, exposure-levels in the individual flat frames need to be normalised as *total* illumination will vary from frame-to-frame. The individual frame exposure levels are calculated in two stages.
 
 In the first stage the mean inner-order pixel-value across the frame is used as a *first approximation* of an individual frame's exposure level. To calculate this mean value, the order locations are used to identify a curved slice N-pixels wide centred on each of the order-centres and bad pixels are masked (see image below). The collected inner order pixel values are then sigma-clipped to excluded out-lying values and a mean value calculated.
 
@@ -66,7 +66,9 @@ These re-normalised flats are then combined for a second time into a master-flat
 
 [![](https://live.staticflickr.com/65535/51237949461_0bc4763a06_b.jpg)](https://live.staticflickr.com/65535/51237949461_0bc4763a06_b.jpg)
 
-As a last step, the scattered background light is fitted and removed from the frame using the [`subtract_background`](../utils/subtract_background.md) utility to produce the final master-flat frame.
+Finally order edges are located with the [`detect_order_edges `](../utils/detect_order_edges.md) utility and the inter-order area pixel value are set to 1. 
+
+Low-sensitivity pixels are flagged and added to the bad-pixel map and a final master-flat frame written to file.
 
 [![](https://live.staticflickr.com/65535/51239008475_b7c0aa33c7_b.jpg)](https://live.staticflickr.com/65535/51239008475_b7c0aa33c7_b.jpg)
 
