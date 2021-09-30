@@ -47,7 +47,7 @@ class create_dispersion_map(object):
         - ``settings`` -- the settings dictionary
         - ``pinholeFrame`` -- the calibrated pinhole frame (single or multi)
         - ``firstGuessMap`` -- the first guess dispersion map from the `soxs_disp_solution` recipe (needed in `soxs_spat_solution` recipe). Default *False*.
-        - ``qcTable`` -- the data frame to collect measured QC metrics 
+        - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
 
     **Usage:**
@@ -527,7 +527,7 @@ class create_dispersion_map(object):
             fig = plt.figure(figsize=(6, 11), constrained_layout=True)
         gs = fig.add_gridspec(6, 4)
 
-        # CREATE THE GID OF AXES
+        # CREATE THE GRID OF AXES
         toprow = fig.add_subplot(gs[0:2, :])
         midrow = fig.add_subplot(gs[2:4, :])
         bottomleft = fig.add_subplot(gs[4:, 0:2])
@@ -539,8 +539,9 @@ class create_dispersion_map(object):
         toprow.set_title(
             "observed arc-line positions (post-clipping)", fontsize=10)
 
-        x = np.ones(orderPixelTable.shape[0]) * \
-            self.pinholeFrame.data.shape[1] - orderPixelTable["observed_x"]
+        x = orderPixelTable["observed_x"]
+        # x = np.ones(orderPixelTable.shape[0]) * \
+        #     self.pinholeFrame.data.shape[1] - orderPixelTable["observed_x"]
         toprow.scatter(orderPixelTable["observed_y"],
                        x, marker='x', c='red', s=4)
 
@@ -555,8 +556,9 @@ class create_dispersion_map(object):
         midrow.set_title(
             "global dispersion solution", fontsize=10)
 
-        xfit = np.ones(orderPixelTable.shape[0]) * \
-            self.pinholeFrame.data.shape[1] - orderPixelTable["fit_x"]
+        xfit = orderPixelTable["fit_x"]
+        # xfit = np.ones(orderPixelTable.shape[0]) * \
+        #     self.pinholeFrame.data.shape[1] - orderPixelTable["fit_x"]
         midrow.scatter(orderPixelTable["fit_y"],
                        xfit, marker='x', c='blue', s=4)
 

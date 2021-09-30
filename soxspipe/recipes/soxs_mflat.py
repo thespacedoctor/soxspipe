@@ -555,7 +555,7 @@ class soxs_mflat(_base_recipe_):
 
         # PLOT MASKED FRAMES TO CHECK
         quicklook_image(log=self.log, CCDObject=frame,
-                        show=True, ext=None)
+                        show=False, ext=None)
 
         self.log.debug(
             'completed the ``mask_low_sens_and_inter_order_to_unity`` method')
