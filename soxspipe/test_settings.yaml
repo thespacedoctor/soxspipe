@@ -76,10 +76,10 @@ background-subtraction:
     bsline-deg: 3
     median-filter-pixels: 11
 
-test-data-root: ~/xshooter-pipeline-data/unittest_data
-calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
-intermediate-data-root: ~/soxspipe-unittests/intermediate
-reduced-data-root: ~/soxspipe-unittests/reduced
+test-data-root: ~/xshooter-pipeline-data/unittest_data/xsh
+calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/xsh
+intermediate-data-root: ~/soxspipe-unittests/intermediate/xsh
+reduced-data-root: ~/soxspipe-unittests/reduced/xsh
 
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
 save-intermediate-products: True

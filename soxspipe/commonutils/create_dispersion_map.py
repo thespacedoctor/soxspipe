@@ -270,6 +270,8 @@ class create_dispersion_map(object):
         ylow = int(np.max([y - windowHalf, 0]))
         yup = int(np.min([y + windowHalf, pinholeFrame.shape[0]]))
         stamp = pinholeFrame[ylow:yup, xlow:xup]
+        # CONVERT TO MASKED ARRAY
+        stamp = np.asanyarray(stamp)
 
         # USE DAOStarFinder TO FIND LINES WITH 2D GUASSIAN FITTING
         mean, median, std = sigma_clipped_stats(stamp, sigma=3.0)
