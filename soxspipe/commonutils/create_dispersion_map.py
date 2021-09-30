@@ -176,7 +176,7 @@ class create_dispersion_map(object):
 
         # FIND THE APPROPRIATE PREDICTED LINE-LIST
         arm = self.arm
-        if kw('WIN_BINX') in pinholeFrame.header:
+        if arm != "NIR" and kw('WIN_BINX') in pinholeFrame.header:
             binx = int(self.pinholeFrame.header[kw('WIN_BINX')])
             biny = int(self.pinholeFrame.header[kw('WIN_BINY')])
         else:

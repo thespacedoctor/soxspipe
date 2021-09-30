@@ -139,6 +139,19 @@ class _base_recipe_(object):
         frame = self.xsh2soxs(frame)
         frame = self._trim_frame(frame)
 
+        # FUDGE BAD-PIXEL MAP CREATION
+        # bpmData = np.random.rand(frame.data.shape[0], frame.data.shape[1])
+        # bpmData[bpmData < 0.995] = 0
+        # bpmData[bpmData > 0] = 1
+        # bpmData = CCDData(bpmData, unit="adu")
+        # from soxspipe.commonutils.toolkit import quicklook_image
+        # quicklook_image(
+        #     log=self.log, CCDObject=bpmData, show=False, ext='data', stdWindow=3)
+        # HDUList = bpmData.to_hdu()
+        # HDUList[0].name = "BPM"
+        # HDUList.writeto("/Users/Dave/Desktop/tmp.fits", output_verify='exception',
+        #                 overwrite=True, checksum=True)
+
         # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
         frame = ccdproc.gain_correct(frame, dp["gain"])
 
@@ -157,7 +170,7 @@ class _base_recipe_(object):
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
         # AS AN EXTENSION
         arm = self.arm
-        if kw('WIN_BINX') in frame.header:
+        if arm != "NIR" and kw('WIN_BINX') in frame.header:
             binx = int(frame.header[kw('WIN_BINX')])
             biny = int(frame.header[kw('WIN_BINY')])
         else:
