@@ -51,8 +51,8 @@ class test_detect_order_edges(unittest.TestCase):
 
     def test_detect_nir_order_edges_function(self):
 
-        flatPath = "~/xshooter-pipeline-data/unittest_data/xshooter-detect-order-edges/first_iteration_NIR_master_flat.fits"
-        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xshooter-detect-order-edges/order_locations_NIR_locations.csv"
+        flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/first_iteration_NIR_master_flat.fits"
+        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/order_locations_NIR_locations.csv"
         home = expanduser("~")
         flatPath = flatPath.replace("~", home)
         orderCentreTable = orderCentreTable.replace("~", home)
@@ -65,15 +65,15 @@ class test_detect_order_edges(unittest.TestCase):
             flatFrame=flatFrame,
             orderCentreTable=orderCentreTable,
             settings=settings,
-            qcTable=self.qc,
-            productsTable=self.products
+            qcTable=False,
+            productsTable=False
         )
         edges.get()
 
     def test_detect_vis_order_edges_function(self):
 
-        flatPath = "~/xshooter-pipeline-data/unittest_data/xshooter-detect-order-edges/first_iteration_VIS_master_flat.fits"
-        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xshooter-detect-order-edges/20170818T172920_VIS_1X1_FAST_ORDER_LOCATIONS.csv"
+        flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/first_iteration_VIS_master_flat.fits"
+        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/20170818T172920_VIS_1X1_FAST_ORDER_LOCATIONS.csv"
         home = expanduser("~")
         flatPath = flatPath.replace("~", home)
         orderCentreTable = orderCentreTable.replace("~", home)

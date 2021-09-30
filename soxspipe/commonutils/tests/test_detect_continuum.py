@@ -50,8 +50,8 @@ if not os.path.exists(pathToOutputDir):
 class test_detect_continuum(unittest.TestCase):
 
     def test_detect_continuum_function(self):
-        pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/detect_continuum/order_definition_NIR_calibrated.fits"
-        dispersion_map = "~/xshooter-pipeline-data/unittest_data/detect_continuum/single_pinhole_NIR_disp_map.csv"
+        pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
+        dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/single_pinhole_NIR_disp_map.csv"
         home = expanduser("~")
         pinholeFlatPath = pinholeFlatPath.replace("~", home)
 

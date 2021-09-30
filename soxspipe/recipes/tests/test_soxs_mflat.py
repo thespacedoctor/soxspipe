@@ -51,7 +51,7 @@ if not os.path.exists(pathToOutputDir):
 class test_soxs_mflat(unittest.TestCase):
 
     def test_unpack_order_table_function(self):
-        orderTablePath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/nir/order_locations_NIR_locations.csv"
+        orderTablePath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/order_locations_NIR_locations.csv"
         # UNPACK THE ORDER TABLE
         from soxspipe.commonutils.toolkit import unpack_order_table
         orderPolyTable, orderPixelTable = unpack_order_table(
@@ -62,9 +62,9 @@ class test_soxs_mflat(unittest.TestCase):
         print(tabulate(orderPixelTable.head(100), headers='keys', tablefmt='psql'))
 
     def test_soxs_mflat_nir_inter_order_to_unity_func(self):
-        orderTable = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/nir/inter_order_low_sens_to_bpm/20170819T150225_NIR_ORDER_LOCATIONS.csv"
-        flat = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/nir/inter_order_low_sens_to_bpm/lamp_flat_nir.fits"
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/nir_long_flats.sof"
+        orderTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/inter_order_low_sens_to_bpm/20170819T150225_NIR_ORDER_LOCATIONS.csv"
+        flat = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/inter_order_low_sens_to_bpm/lamp_flat_nir.fits"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_long_flats.sof"
 
         from os.path import expanduser
         home = expanduser("~")
@@ -89,7 +89,7 @@ class test_soxs_mflat(unittest.TestCase):
         print(f"The master flat file has been saved to '{mflat}'")
 
     def test_soxs_mflat_nir_long_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/nir_long_flats.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_long_flats.sof"
         from soxspipe.recipes import soxs_mflat
         this = soxs_mflat(
             log=log,
@@ -100,7 +100,7 @@ class test_soxs_mflat(unittest.TestCase):
         print(f"The master flat file has been saved to '{mflat}'")
 
     def test_soxs_mflat_nir_short_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/nir_short_flats.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_short_flats.sof"
         from soxspipe.recipes import soxs_mflat
         this = soxs_mflat(
             log=log,
@@ -111,7 +111,7 @@ class test_soxs_mflat(unittest.TestCase):
 
     def test_soxs_mflat_uvb_dflat_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/uvb_dflats.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_dflats.sof"
         from soxspipe.recipes import soxs_mflat
         this = soxs_mflat(
             log=log,
@@ -122,7 +122,7 @@ class test_soxs_mflat(unittest.TestCase):
 
     # def test_soxs_mflat_uvb_qflat_function(self):
 
-    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/uvb_qflats.sof"
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_qflats.sof"
     #     from soxspipe.recipes import soxs_mflat
     #     this = soxs_mflat(
     #         log=log,
@@ -132,7 +132,7 @@ class test_soxs_mflat(unittest.TestCase):
     #     this.produce_product()
 
     def test_soxs_mflat_vis_long_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/vis_long_flats.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_long_flats.sof"
         from soxspipe.recipes import soxs_mflat
         this = soxs_mflat(
             log=log,
@@ -142,7 +142,7 @@ class test_soxs_mflat(unittest.TestCase):
         this.produce_product()
 
     def test_soxs_mflat_vis_short_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof/vis_short_flats.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_short_flats.sof"
         from soxspipe.recipes import soxs_mflat
         this = soxs_mflat(
             log=log,
@@ -166,7 +166,7 @@ class test_soxs_mflat(unittest.TestCase):
 
         from soxspipe.recipes import soxs_mflat
         try:
-            sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mflat/sof//nir_mixed_exptime_darks.sof"
+            sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof//nir_mixed_exptime_darks.sof"
             from soxspipe.recipes import soxs_mflat
             this = soxs_mflat(
                 log=log,

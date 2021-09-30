@@ -59,7 +59,7 @@ class test_mbias(unittest.TestCase):
         print(f"Here is the final product `{productPath}`")
 
     def test_mbias_from_sof_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mbias/sof/bias_uvb_1x1.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mbias/sof/bias_uvb_1x1.sof"
 
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input

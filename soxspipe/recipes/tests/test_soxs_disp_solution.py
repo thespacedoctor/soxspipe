@@ -47,7 +47,7 @@ if not os.path.exists(pathToOutputDir):
 class test_soxs_disp_solution(unittest.TestCase):
 
     def test_soxs_disp_solution_nir_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-disp-solution/sof/20170818_NIR_DISP_SOLUTION.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-disp-solution/sof/20170818_NIR_DISP_SOLUTION.sof"
         from soxspipe.recipes import soxs_disp_solution
         disp_map_path = soxs_disp_solution(
             log=log,
@@ -58,7 +58,7 @@ class test_soxs_disp_solution(unittest.TestCase):
 
     def test_soxs_disp_solution_uvb_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-disp-solution/sof/20170818_UVB_DISP_SOLUTION_1x1_fast.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-disp-solution/sof/20170818_UVB_DISP_SOLUTION_1x1_fast.sof"
         from soxspipe.recipes import soxs_disp_solution
         disp_map_path = soxs_disp_solution(
             log=log,
@@ -68,7 +68,7 @@ class test_soxs_disp_solution(unittest.TestCase):
         print(f"Here is the final product `{disp_map_path}`")
 
     def test_soxs_disp_solution_vis_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-disp-solution/sof/20170818_VIS_DISP_SOLUTION_1x1_fast.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-disp-solution/sof/20170818_VIS_DISP_SOLUTION_1x1_fast.sof"
         from soxspipe.recipes import soxs_disp_solution
         disp_map_path = soxs_disp_solution(
             log=log,
@@ -92,7 +92,7 @@ class test_soxs_disp_solution(unittest.TestCase):
 
         from soxspipe.recipes import soxs_disp_solution
         try:
-            sofPath = "~/xshooter-pipeline-data/unittest_data/xshooter-mdark/sofs/nir_mixed_exptime_darks.sof"
+            sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_mixed_exptime_darks.sof"
             from soxspipe.recipes import soxs_disp_solution
             this = soxs_disp_solution(
                 log=log,

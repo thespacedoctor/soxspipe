@@ -43,66 +43,66 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 
 
-class test_soxs_nod_mode(unittest.TestCase):
+# class test_soxs_nod_mode(unittest.TestCase):
 
-    def test_soxs_nod_mode_nir_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/SOMEDIRECTORY/sofs/nir_6s_darks.sof"
-        from soxspipe.recipes import soxs_nod_mode
-        this = soxs_nod_mode(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+#     def test_soxs_nod_mode_nir_function(self):
+#         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/SOMEDIRECTORY/sofs/nir_6s_darks.sof"
+#         from soxspipe.recipes import soxs_nod_mode
+#         this = soxs_nod_mode(
+#             log=log,
+#             settings=settings,
+#             inputFrames=sofPath
+#         )
+#         this.produce_product()
 
-    def test_soxs_nod_mode_uvb_function(self):
+#     def test_soxs_nod_mode_uvb_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/SOMEDIRECTORY/sofs/uvb_1x1_dark_3600s.sof"
-        from soxspipe.recipes import soxs_nod_mode
-        this = soxs_nod_mode(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+#         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/SOMEDIRECTORY/sofs/uvb_1x1_dark_3600s.sof"
+#         from soxspipe.recipes import soxs_nod_mode
+#         this = soxs_nod_mode(
+#             log=log,
+#             settings=settings,
+#             inputFrames=sofPath
+#         )
+#         this.produce_product()
 
-    def test_soxs_nod_mode_vis_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/SOMEDIRECTORY/sofs/vis_1x1_dark_3600s.sof"
-        from soxspipe.recipes import soxs_nod_mode
-        this = soxs_nod_mode(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+#     def test_soxs_nod_mode_vis_function(self):
+#         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/SOMEDIRECTORY/sofs/vis_1x1_dark_3600s.sof"
+#         from soxspipe.recipes import soxs_nod_mode
+#         this = soxs_nod_mode(
+#             log=log,
+#             settings=settings,
+#             inputFrames=sofPath
+#         )
+#         this.produce_product()
 
-    # def test_soxs_nod_mode_function(self):
+#     # def test_soxs_nod_mode_function(self):
 
-    #     # utKit.refresh_database() # reset database to database found in
-    #     # soxspipe/test/input
-    #     from soxspipe.recipes import soxs_nod_mode
-    #     this = soxs_nod_mode(
-    #         log=log,
-    #         settings=settings
-    #     )
-    #     this.get()
+#     #     # utKit.refresh_database() # reset database to database found in
+#     #     # soxspipe/test/input
+#     #     from soxspipe.recipes import soxs_nod_mode
+#     #     this = soxs_nod_mode(
+#     #         log=log,
+#     #         settings=settings
+#     #     )
+#     #     this.get()
 
-    def test_soxs_nod_mode_function_exception(self):
+#     def test_soxs_nod_mode_function_exception(self):
 
-        from soxspipe.recipes import soxs_nod_mode
-        try:
-            sofPath = "~/xshooter-pipeline-data/unittest_data/SOMEDIRECTORY/sofs/nir_mixed_exptime_darks.sof"
-            from soxspipe.recipes import soxs_nod_mode
-            this = soxs_nod_mode(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath
-            )
-            assert False
-        except Exception as e:
-            assert True
-            print(str(e))
+#         from soxspipe.recipes import soxs_nod_mode
+#         try:
+#             sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/SOMEDIRECTORY/sofs/nir_mixed_exptime_darks.sof"
+#             from soxspipe.recipes import soxs_nod_mode
+#             this = soxs_nod_mode(
+#                 log=log,
+#                 settings=settings,
+#                 inputFrames=sofPath
+#             )
+#             assert False
+#         except Exception as e:
+#             assert True
+#             print(str(e))
 
-        # x-print-testpage-for-pessto-marshall-web-object
+#         # x-print-testpage-for-pessto-marshall-web-object
 
-    # x-class-to-test-named-worker-function
+#     # x-class-to-test-named-worker-function

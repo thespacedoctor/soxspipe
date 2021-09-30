@@ -200,6 +200,7 @@ class set_of_files(object):
 
         from os.path import expanduser
         home = expanduser("~")
+
         if isinstance(self.inputFrames, str) and self.inputFrames[0] == "~":
             self.inputFrames = home + "/" + self.inputFrames[1:]
 
