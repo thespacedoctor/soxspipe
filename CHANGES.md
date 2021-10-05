@@ -1,5 +1,7 @@
 # Release Notes
 
+soxspipe now on conda
+
 ## v0.5.1 - September 29, 2021
 
 * **FEATURE:** recipes now have a `qc` and `products` attribute. These are pandas data frames used to collect QCs and generated products throughout the life-time of the recipe. They are printed to STDOUT at the end of the recipe (can be used in the future to send post request to health monitor API with JSON content in request body).
