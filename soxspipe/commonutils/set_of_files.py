@@ -78,7 +78,7 @@ class set_of_files(object):
         if self.verbose:
             keys = self.settings['summary-keys']['verbose']
         else:
-            keys = self.settings['summary-keys']['standard']
+            keys = self.settings['summary-keys']['default']
 
         keys = kw(keys)
         self.keys = []
