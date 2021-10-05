@@ -85,7 +85,9 @@ def filenamer(
 
     romode = ""
     if kw("DET_READ_SPEED") in frame.header:
-        if "100k" in frame.header[kw("DET_READ_SPEED")].lower():
+        if frame.header[kw("DET_READ_SPEED")] == 1:
+            romode = "_rospeed1"
+        elif "100k" in frame.header[kw("DET_READ_SPEED")].lower():
             romode = "_slow"
         elif "400k" in frame.header[kw("DET_READ_SPEED")].lower():
             romode = "_fast"

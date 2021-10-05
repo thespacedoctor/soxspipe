@@ -302,6 +302,7 @@ class _base_recipe_(object):
         preframes = []
         preframes[:] = [self._prepare_single_frame(
             frame=frame, save=save) for frame in filepaths]
+
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -599,7 +600,7 @@ class _base_recipe_(object):
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
             ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS',
-                                                       "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+                                                       "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE', "unit": u.electron})]
         else:
             ccds = frames
 

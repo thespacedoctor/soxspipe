@@ -30,7 +30,7 @@ class set_of_files(object):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
         - ``verbose`` -- verbose. True or False. Default *True*
-
+        - ``ext`` -- the data extension for the frame. Default 0.
 
     **Usage**
 
@@ -44,7 +44,8 @@ class set_of_files(object):
     sof = set_of_files(
         log=log,
         settings=settings,
-        inputFrames=inputFrames
+        inputFrames=inputFrames,
+        ext=0
     )
     ```
 
@@ -57,13 +58,15 @@ class set_of_files(object):
             log,
             settings=False,
             inputFrames=[],
-            verbose=True
+            verbose=True,
+            ext=0
     ):
         self.log = log
         log.debug("instansiating a new 'sof' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
+        self.ext = ext
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -207,8 +210,8 @@ class set_of_files(object):
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
             sof = ImageFileCollection(
-                self.inputFrames, ext=self.settings['data-extension'])
-            if self.settings['data-extension'] > 0:
+                self.inputFrames, ext=self.ext)
+            if self.ext > 0:
                 missingKeys = [
                     k for k in self.keys if k not in sof.summary.colnames]
                 primExt = ImageFileCollection(
@@ -252,8 +255,8 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, ext=self.settings['data-extension'])
-            if self.settings['data-extension'] > 0:
+                filenames=fitsFiles, location=location, ext=self.ext)
+            if self.ext > 0:
                 missingKeys = [
                     k for k in self.keys if k not in sof.summary.colnames]
                 primExt = ImageFileCollection(
@@ -272,8 +275,8 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, ext=self.settings['data-extension'])
-            if self.settings['data-extension'] > 0:
+                filenames=fitsFiles, location=location, ext=self.ext)
+            if self.ext > 0:
                 missingKeys = [
                     k for k in self.keys if k not in sof.summary.colnames]
                 primExt = ImageFileCollection(
