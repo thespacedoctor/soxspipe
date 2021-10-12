@@ -30,6 +30,7 @@ from datetime import datetime
 from soxspipe.commonutils import filenamer
 import shutil
 from tabulate import tabulate
+import warnings
 
 
 class _base_recipe_(object):
@@ -115,6 +116,9 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``_prepare_single_frame`` method')
+
+        warnings.filterwarnings(
+            'ignore')
 
         kw = self.kw
         dp = self.detectorParams
