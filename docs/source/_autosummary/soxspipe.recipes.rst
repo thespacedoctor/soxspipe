@@ -25,8 +25,10 @@
           ~soxs_mdark
           ~soxs_mflat
           ~soxs_nod_mode
+          ~soxs_offset_mode
           ~soxs_order_centres
           ~soxs_spatial_solution
+          ~soxs_stare_mode
           ~soxs_straighten
         
 

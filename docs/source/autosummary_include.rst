@@ -30,8 +30,10 @@
    soxspipe.recipes.soxs_mdark
    soxspipe.recipes.soxs_mflat
    soxspipe.recipes.soxs_nod_mode
+   soxspipe.recipes.soxs_offset_mode
    soxspipe.recipes.soxs_order_centres
    soxspipe.recipes.soxs_spatial_solution
+   soxspipe.recipes.soxs_stare_mode
    soxspipe.recipes.soxs_straighten 
 
 **Functions**
