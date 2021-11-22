@@ -584,7 +584,7 @@ class _base_recipe_(object):
         imageTech = ccds[0].header[kw("DPR_TECH").lower()].replace(",", "-")
         imageCat = ccds[0].header[kw("DPR_CATG").lower()].replace(",", "-")
 
-        print(f"\n# MEAN COMBINING {len(frames)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
+        print(f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
 
         # COMBINE MASKS AND THEN RESET
         combinedMask = ccds[0].mask

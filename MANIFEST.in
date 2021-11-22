@@ -3,6 +3,7 @@ include *.yaml
 include *.txt
 include *.md
 include *.rst
+include LICENSE
 recursive-include soxspipe *
 global-exclude *.pyo
 global-exclude *.pyc

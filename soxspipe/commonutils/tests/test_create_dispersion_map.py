@@ -50,7 +50,7 @@ if not os.path.exists(pathToOutputDir):
 class test_create_dispersion_map(unittest.TestCase):
 
     def test_create_dispersion_map_single_nir_function(self):
-        frame = "~/xshooter-pipeline-data/unittest_data/create_dispersion_map/single_pinhole_NIR_calibrated.fits"
+        frame = "~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/single_pinhole_NIR_calibrated.fits"
         from os.path import expanduser
         home = expanduser("~")
         frame = frame.replace("~", home)
@@ -66,7 +66,7 @@ class test_create_dispersion_map(unittest.TestCase):
         print(mapPath)
 
     def test_create_dispersion_map_multi_nir_function(self):
-        frame = "~/xshooter-pipeline-data/unittest_data/create_dispersion_map/20170818T173315_NIR_ARC_MULTIPIN.fits"
+        frame = "~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T173315_NIR_ARC_MULTIPIN.fits"
         from os.path import expanduser
         home = expanduser("~")
         frame = frame.replace("~", home)
@@ -78,7 +78,7 @@ class test_create_dispersion_map(unittest.TestCase):
             log=log,
             settings=settings,
             pinholeFrame=frame,
-            firstGuessMap="~/xshooter-pipeline-data/unittest_data/create_dispersion_map/20170820T153602_NIR_DISP_MAP.csv"
+            firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170820T153602_NIR_DISP_MAP.csv"
         ).get()
         print(mapPath)
 
