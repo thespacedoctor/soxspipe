@@ -6,7 +6,6 @@ git+https://github.com/thespacedoctor/sphinx-markdown-parser.git@master#egg=sphi
 m2r
 mdx_include>1.3
 mistune<2.0.0
-extension-helpers
 lxml
 sphinxcontrib-mermaid
 git+https://github.com/readthedocs/readthedocs-sphinx-search@master
