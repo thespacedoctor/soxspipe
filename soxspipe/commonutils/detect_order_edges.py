@@ -369,8 +369,8 @@ class detect_order_edges(_base_detect):
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = np.flipud(np.rot90(self.flatFrame.data, 1))
         # rotatedImg = self.flatFrame.data
-        std = np.std(self.flatFrame.data)
-        mean = np.mean(self.flatFrame.data)
+        std = np.nanstd(self.flatFrame.data)
+        mean = np.nanmean(self.flatFrame.data)
         vmax = mean + 2 * std
         vmin = mean - 1 * std
         toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=1)

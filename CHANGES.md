@@ -1,6 +1,7 @@
 # Release Notes
 
 soxspipe now on conda
+nan ignored when scaling quicklook images
 
 ## v0.5.1 - September 29, 2021
 
