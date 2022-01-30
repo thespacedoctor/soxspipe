@@ -139,11 +139,16 @@ class soxs_spatial_solution(_base_recipe_):
                     raise TypeError(
                         "Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
-        # LOOK FOR ****
+        # LOOK FOR DISP_MAP
         arm = self.arm
         if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
             raise TypeError(
                 "Need a DISP_MAP for %(arm)s - none found with the input files" % locals())
+        # LOOK FOR ORDER CENTRE TABLE
+        arm = self.arm
+        if arm not in self.supplementaryInput or "ORDER_LOCATIONS" not in self.supplementaryInput[arm]:
+            raise TypeError(
+                "Need an order centre for %(arm)s - none found with the input files" % locals())
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
