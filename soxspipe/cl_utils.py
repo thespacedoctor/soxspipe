@@ -150,7 +150,6 @@ def main(arguments=None):
             verbose=verbose
         )
         mbiasFrame = recipe.produce_product()
-        print("You can find the master bias frame at `%(mbiasFrame)s`" % locals())
 
     if a["mdark"]:
         from soxspipe.recipes import soxs_mdark
@@ -161,7 +160,7 @@ def main(arguments=None):
             verbose=verbose
         )
         mdarkFrame = recipe.produce_product()
-        print("You can find the master bias frame at `%(mdarkFrame)s`" % locals())
+        print("You can find the master dark frame at `%(mdarkFrame)s`" % locals())
 
     if a["disp_sol"]:
         from soxspipe.recipes import soxs_disp_solution
