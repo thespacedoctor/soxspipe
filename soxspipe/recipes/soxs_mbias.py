@@ -22,6 +22,8 @@ from astropy.nddata import CCDData
 from astropy import units as u
 import ccdproc
 from soxspipe.commonutils import keyword_lookup
+from datetime import datetime
+from soxspipe.commonutils.toolkit import generic_quality_checks
 
 
 class soxs_mbias(_base_recipe_):
@@ -174,7 +176,27 @@ class soxs_mbias(_base_recipe_):
             filename=False,
             overwrite=True
         )
+        filename = os.path.basename(productPath)
 
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "MBIAS",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} Master bias frame",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        # ADD QUALITY CHECKS
+        self.qc = generic_quality_checks(
+            log=self.log, frame=combined_bias_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
