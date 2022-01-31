@@ -34,6 +34,7 @@ from fundamentals.renderer import list_of_dictionaries
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import pandas as pd
 from soxspipe.commonutils.toolkit import cut_image_slice
+from soxspipe.commonutils.toolkit import read_spectral_format
 
 
 class _base_detect(object):
@@ -280,7 +281,8 @@ class detect_continuum(_base_detect):
         arm = self.arm
 
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
-        orderNums, waveLengthMin, waveLengthMax = self.read_spectral_format()
+        orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
+            log=self.log, settings=self.settings, arm=arm)
 
         # CONVERT WAVELENGTH TO PIXEL POSTIONS AND RETURN ARRAY OF POSITIONS TO
         # SAMPLE THE TRACES
@@ -365,41 +367,6 @@ class detect_continuum(_base_detect):
 
         self.log.debug('completed the ``get`` method')
         return order_table_path
-
-    def read_spectral_format(
-            self):
-        """*read the spectral format table to get some key parameters*
-
-        **Return:**
-            - ``orderNums`` -- a list of the order numbers
-            - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
-            - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
-        """
-        self.log.debug('starting the ``read_spectral_format`` method')
-
-        kw = self.kw
-        pinholeFlat = self.pinholeFlat
-        dp = self.detectorParams
-
-        # READ THE SPECTRAL FORMAT TABLE FILE
-        home = expanduser("~")
-        calibrationRootPath = self.settings[
-            "calibration-data-root"].replace("~", home)
-        spectralFormatFile = calibrationRootPath + \
-            "/" + dp["spectral format table"]
-
-        # READ CSV FILE TO PANDAS DATAFRAME
-        specFormatTable = pd.read_csv(
-            spectralFormatFile, index_col=False, na_values=['NA', 'MISSING'])
-        # # DATAFRAME INFO
-
-        # EXTRACT REQUIRED PARAMETERS
-        orderNums = specFormatTable["ORDER"].values
-        waveLengthMin = specFormatTable["WLMINFUL"].values
-        waveLengthMax = specFormatTable["WLMAXFUL"].values
-
-        self.log.debug('completed the ``read_spectral_format`` method')
-        return orderNums, waveLengthMin, waveLengthMax
 
     def create_pixel_arrays(
             self,
