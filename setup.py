@@ -23,7 +23,8 @@ install_requires = [
     'unicodecsv',
     'pandas',
     'tabulate',
-    'bottleneck'
+    'bottleneck',
+    'multiprocess'
 ]
 
 # READ THE DOCS SERVERS

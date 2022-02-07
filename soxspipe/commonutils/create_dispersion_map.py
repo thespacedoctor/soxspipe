@@ -41,6 +41,7 @@ from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_forma
 from ccdproc import Combiner
 import pandas as pd
 from tabulate import tabulate
+from fundamentals import fmultiprocess
 
 
 class create_dispersion_map(object):
@@ -765,15 +766,17 @@ class create_dispersion_map(object):
         combinedSlitImage = False
         combinedWlImage = False
 
-        slitImages = []
-        wlImages = []
+        # DEFINE AN INPUT ARRAY
+        inputArray = [(order, minWl, maxWl) for order, minWl,
+                      maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
+        results = fmultiprocess(log=self.log, function=self.order_to_image,
+                                inputArray=inputArray, poolSize=False, timeout=900)
+        slitImages = [r[0] for r in results]
+        wlImages = [r[1] for r in results]
 
-        for order, minWl, maxWl in zip(orderNums, waveLengthMin, waveLengthMax):
-
-            slitMap, wlMap = self.order_to_image(order=order,
-                                                 minWl=minWl, maxWl=maxWl)
-            slitImages.append(slitMap)
-            wlImages.append(wlMap)
+        # NOTE TO SELF: if having issue with multiprocessing stalling, try and
+        # import required modules into the mthod/function running this
+        # fmultiprocess function instead of at the module level
 
         slitMap, wlMap, orderMap = self.create_placeholder_images(reverse=True)
 
@@ -812,15 +815,11 @@ class create_dispersion_map(object):
 
     def order_to_image(
             self,
-            order,
-            minWl,
-            maxWl):
+            orderInfo):
         """*convert a single order in the dispersion map to wavelength and slit position images*
 
         **Key Arguments:**
-            - ``order`` -- the order number to generate the images for
-            - ``minWl`` -- the minimum wavelength to consider (from format table)
-            - ``maxWl`` -- the maximum wavelength to consider (from format table)
+            - ``orderInfo`` -- tuple containing the order number to generate the images for, the minimum wavelength to consider (from format table) and maximum wavelength to consider (from format table).
 
         **Return:**
             - ``slitMap`` -- the slit map with order values filled
@@ -837,6 +836,8 @@ class create_dispersion_map(object):
         slitArray = self.slitArray
         gridSlit = self.gridSlit
         gridWl = self.gridWl
+
+        (order, minWl, maxWl) = orderInfo
 
         slitMap, wlMap, orderMap = self.create_placeholder_images(order=order)
 
@@ -857,7 +858,7 @@ class create_dispersion_map(object):
             iteration += 1
 
             orderPixelTable = self.convert_and_fit(
-                order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, plots=False)
+                order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
             g = orderPixelTable.groupby(['pixel_x', 'pixel_y', 'order'])
             g = g.agg(["first", np.sum, np.mean, np.std])
 
@@ -933,6 +934,7 @@ class create_dispersion_map(object):
             bigSlitArray,
             slitMap,
             wlMap,
+            iteration,
             plots=False):
         """*convert wavelength and slit position grids to pixels*
 
@@ -942,6 +944,7 @@ class create_dispersion_map(object):
             - ``bigSlitArray`` -- 1D array of all split-positions to be converted (same length as `bigWlArray`)
             - ``slitMap`` -- place-holder image hosting fitted pixel slit-position values
             - ``wlMap`` -- place-holder image hosting fitted pixel wavelength values
+            - ``iteration`` -- the iteration index (used for CL reporting)
 
         **Return:**
             - ``orderPixelTable`` -- dataframe containing unfitted pixel info
@@ -1082,7 +1085,7 @@ class create_dispersion_map(object):
                 # PIXELS OUTSIDE OF DETECTOR EDGES - IGNORE
                 pass
 
-        print(f"Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
+        print(f"ORDER {order:02d}, iteration {iteration:02d}. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
 
         if plots:
             # PLOT CCDDATA OBJECT
