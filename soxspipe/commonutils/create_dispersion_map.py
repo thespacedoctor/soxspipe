@@ -660,6 +660,7 @@ class create_dispersion_map(object):
         else:
             seedArray = np.zeros((ylen, xlen))
         wlMap = CCDData(seedArray, unit="adu")
+        orderMap = wlMap.copy()
         uniqueOrders = orderPixelTable['order'].unique()
         expandEdges = 0
         for o in uniqueOrders:
@@ -676,9 +677,11 @@ class create_dispersion_map(object):
             if reverse:
                 for y, u, l in zip(ycoord, np.ceil(xcoord_edgeup).astype(int), np.floor(xcoord_edgelow).astype(int)):
                     wlMap.data[y, l:u] = 0
+                    orderMap.data[y, l:u] = o
             else:
                 for y, u, l in zip(ycoord, np.ceil(xcoord_edgeup).astype(int), np.floor(xcoord_edgelow).astype(int)):
                     wlMap.data[y, l:u] = np.NaN
+                    orderMap.data[y, l:u] = np.NaN
 
         # SLIT MAP PLACEHOLDER SAME AS WAVELENGTH MAP PLACEHOLDER
         slitMap = wlMap.copy()
@@ -702,7 +705,7 @@ class create_dispersion_map(object):
             plt.show()
 
         self.log.debug('completed the ``create_placeholder_images`` method')
-        return slitMap, wlMap
+        return slitMap, wlMap, orderMap
 
     def map_to_image(
             self,
@@ -738,6 +741,9 @@ class create_dispersion_map(object):
         kw = self.kw
         dp = self.detectorParams
 
+        self.map_to_image_displacement_threshold = self.recipeSettings[
+            "map_to_image_displacement_threshold"]
+
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
             log=self.log, settings=self.settings, arm=self.arm)
@@ -769,7 +775,7 @@ class create_dispersion_map(object):
             slitImages.append(slitMap)
             wlImages.append(wlMap)
 
-        slitMap, wlMap = self.create_placeholder_images(reverse=True)
+        slitMap, wlMap, orderMap = self.create_placeholder_images(reverse=True)
 
         combinedSlitImage = Combiner(slitImages)
         combinedSlitImage = combinedSlitImage.sum_combine()
@@ -795,7 +801,9 @@ class create_dispersion_map(object):
         primary_hdu.header['EXTNAME'] = 'WAVELENGTH'
         image_hdu = fits.ImageHDU(combinedSlitImage.data)
         image_hdu.header['EXTNAME'] = 'SLIT'
-        hdul = fits.HDUList([primary_hdu, image_hdu])
+        image_hdu2 = fits.ImageHDU(orderMap.data)
+        image_hdu2.header['EXTNAME'] = 'ORDER'
+        hdul = fits.HDUList([primary_hdu, image_hdu, image_hdu2])
         hdul.writeto(dispersion_image_filePath, output_verify='exception',
                      overwrite=True, checksum=False)
 
@@ -830,7 +838,7 @@ class create_dispersion_map(object):
         gridSlit = self.gridSlit
         gridWl = self.gridWl
 
-        slitMap, wlMap = self.create_placeholder_images(order=order)
+        slitMap, wlMap, orderMap = self.create_placeholder_images(order=order)
 
         # GENERATE INITIAL FULL-ORDER WAVELENGTH ARRAY FOR PARTICULAR ORDER
         # (ADD A LITTLE WRIGGLE ROOM AT EACH SIDE OF RANGE)
@@ -854,6 +862,13 @@ class create_dispersion_map(object):
             g = g.agg(["first", np.sum, np.mean, np.std])
 
             estimatedValues = g.reset_index()
+
+            # SET LOWER LIMIT TO SLIT/WAVELENGTH STD
+            limit = self.map_to_image_displacement_threshold / 100
+            estimatedValues["wavelength_std"] = np.where(estimatedValues["wavelength"][
+                "std"] <= limit, limit, estimatedValues["wavelength"]["std"])
+            estimatedValues["slit_position_std"] = np.where(estimatedValues["slit_position"][
+                "std"] <= limit, limit, estimatedValues["slit_position"]["std"])
 
             # SEED GRID ARRAYS ADDED FOR EACH PIXEL
             estimatedValues["gridMeshSlit"] = list(
@@ -883,17 +898,24 @@ class create_dispersion_map(object):
                 'best_offset_y'] * 2 / estimatedValues["fit_y"]["std"]
 
             estimatedValues["wlArrayMin"] = estimatedValues[
-                'guess_wavelength'] - estimatedValues["wavelength"]["std"] * estimatedValues['offset_std_ratio_y']
+                'guess_wavelength'] - estimatedValues["wavelength_std"] * estimatedValues['offset_std_ratio_y']
             estimatedValues["wlArrayMax"] = estimatedValues[
-                'guess_wavelength'] + estimatedValues["wavelength"]["std"] * estimatedValues['offset_std_ratio_y']
+                'guess_wavelength'] + estimatedValues["wavelength_std"] * estimatedValues['offset_std_ratio_y']
             estimatedValues["slArrayMin"] = estimatedValues[
-                'guess_slit_position'] - estimatedValues["slit_position"]["std"] * estimatedValues['offset_std_ratio_x']
+                'guess_slit_position'] - estimatedValues["slit_position_std"] * estimatedValues['offset_std_ratio_x']
             estimatedValues["slArrayMax"] = estimatedValues[
-                'guess_slit_position'] + estimatedValues["slit_position"]["std"] * estimatedValues['offset_std_ratio_x']
+                'guess_slit_position'] + estimatedValues["slit_position_std"] * estimatedValues['offset_std_ratio_x']
             estimatedValues["wlArray"] = estimatedValues["wlArrayMin"] + estimatedValues[
-                "gridMeshWl"] * (estimatedValues["wavelength"]["std"] * (estimatedValues['offset_std_ratio_y'] * 2) / (self.gridSize - 1))
+                "gridMeshWl"] * (estimatedValues["wavelength_std"] * (estimatedValues['offset_std_ratio_y'] * 2) / (self.gridSize - 1))
             estimatedValues["slitArray"] = estimatedValues["slArrayMin"] + estimatedValues[
-                "gridMeshSlit"] * (estimatedValues["slit_position"]["std"] * (estimatedValues['offset_std_ratio_x'] * 2) / (self.gridSize - 1))
+                "gridMeshSlit"] * (estimatedValues["slit_position_std"] * (estimatedValues['offset_std_ratio_x'] * 2) / (self.gridSize - 1))
+
+            # import sqlite3 as sql
+            # # CONNECT TO THE DATABASE
+            # conn = sql.connect("/tmp/pandas_export.db")
+            # # SEND TO DATABASE
+            # estimatedValues.to_sql('my_export_table', con=conn,
+            #                        index=False, if_exists='replace')
 
             # COMBINE ALL PIXEL ARRAYS INTO 2 BIG ARRAYS
             bigWlArray = np.concatenate(estimatedValues["wlArray"].values)
@@ -932,9 +954,6 @@ class create_dispersion_map(object):
         ```
         """
         self.log.debug('starting the ``convert_and_fit`` method')
-
-        map_to_image_displacement_threshold = self.recipeSettings[
-            "map_to_image_displacement_threshold"]
 
         # CREATE PANDAS DATAFRAME WITH LARGE ARRAYS - ONE ROW PER
         # WAVELENGTH-SLIT GRID CELL
@@ -1011,12 +1030,19 @@ class create_dispersion_map(object):
             else:
                 centred = True
 
+            from tabulate import tabulate
+            print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
+            print(f"PIXEL LOCATION STDEV: {np.std(fit_x)}, {np.std(fit_y)}")
+            print(f"OFFSET RATIOS: {offsetStdRatioX}, {offsetStdRatioY}")
+            print(f"WAVELENGTH/SLIT STDEV: {filteredDf['wavelength'].std()}, {filteredDf['wavelength'].std()}")
+            print(f"OFFSET RATIOS: {offsetStdRatioX}, {offsetStdRatioY}")
+
             # print(filteredDf)
             print(f"Pixel ({medX}, {medY})")
             plt.grid()
             plt.xlim([-0.5, 0.5])
             plt.ylim([-0.5, 0.5])
-            plt.plot(fit_x, fit_y, 'o', color='black', label="sample", ms=2)
+            plt.plot(fit_x, fit_y, 'o', color='black', label=f"sample (count = {count})", ms=2)
             plt.plot(np.mean(fit_x), np.mean(fit_y), 'x',
                      color='cyan', label=f"mean (centred = {centred})", ms=3)
             plt.plot(fit_x[0], fit_y[0], 'o', color='green', label=f"closest {filteredDf['residual_xy'].values[0]:0.3f}", ms=2)
@@ -1035,7 +1061,7 @@ class create_dispersion_map(object):
 
         # FILTER TO WL/SLIT POSITION CLOSE ENOUGH TO CENTRE OF PIXEL
         mask = (orderPixelTable['residual_xy'] <
-                map_to_image_displacement_threshold)
+                self.map_to_image_displacement_threshold)
         # KEEP ONLY VALUES CLOSEST TO CENTRE OF PIXEL
         newPixelValue = orderPixelTable.loc[mask].drop_duplicates(
             subset=['pixel_x', 'pixel_y'], keep="first")
