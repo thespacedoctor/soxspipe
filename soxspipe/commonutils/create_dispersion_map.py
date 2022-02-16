@@ -770,12 +770,12 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=900)
+                                inputArray=inputArray[:3], poolSize=False, timeout=900, turnOffMP=True)
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
 
         # NOTE TO SELF: if having issue with multiprocessing stalling, try and
-        # import required modules into the mthod/function running this
+        # import required modules into the method/function running this
         # fmultiprocess function instead of at the module level
 
         slitMap, wlMap, orderMap = self.create_placeholder_images(reverse=True)

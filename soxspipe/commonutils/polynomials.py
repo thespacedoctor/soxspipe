@@ -76,6 +76,16 @@ class chebyshev_order_wavelength_polynomials():
         # KEEPING LOOPS!
         n_coeff = 0
         lhsVals = np.zeros(len(orderPixelTable.index))
+
+        placeholder = [(i, j, k)
+                       for i in range(0, order_deg + 1) for j in range(0, wavelength_deg + 1) for k in range(0, slit_deg + 1)]
+        lhsVals = sum([coeff[n_coeff] * orderPixelTable["order"].values**i *
+                       orderPixelTable["wavelength"].values**j *
+                       orderPixelTable["slit_position"].values**k
+                       for n_coeff, (i, j, k) in enumerate(placeholder)])
+        return lhsVals
+        sys.exit(0)
+
         for i in range(0, order_deg + 1):
             for j in range(0, wavelength_deg + 1):
                 for k in range(0, slit_deg + 1):
