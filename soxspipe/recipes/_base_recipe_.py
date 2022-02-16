@@ -788,8 +788,10 @@ class _base_recipe_(object):
             self.products.drop(columns=['file_path'], inplace=True)
 
         if rformat == "stdout":
-            print(tabulate(self.qc, headers='keys', tablefmt='psql'))
-            print(tabulate(self.products, headers='keys', tablefmt='psql'))
+            print("\n# QCs")
+            print(tabulate(self.qc, headers='keys', tablefmt='psql',showindex=False, stralign="right"))
+            print("\n# RECIPE PRODUCTS")
+            print(tabulate(self.products, headers='keys', tablefmt='psql',showindex=False, stralign="right"))
 
         self.log.debug('completed the ``report_output`` method')
         return None

@@ -93,10 +93,10 @@ class soxs_mbias(_base_recipe_):
         sys.stdout.write("\x1b[1A\x1b[2K")
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
+        # print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['mjd-obs'])
-        print(self.inputFrames.summary, "\n")
+        # print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
