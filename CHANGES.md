@@ -1,6 +1,7 @@
 # Release Notes
 
 soxspipe now on conda
+RON and bias structure QCs now reported by mbias
 removed raw frame reports and neater QC table
 adding QC and product collection in mbias recipe
 fits header keywords neatly sorted before writing to file
