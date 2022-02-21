@@ -10,27 +10,27 @@
     January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
+import warnings
+from tabulate import tabulate
+import shutil
+from soxspipe.commonutils import filenamer
+from datetime import datetime
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils import set_of_files
+from ccdproc import Combiner
+from astropy.nddata.nduncertainty import StdDevUncertainty
+import pandas as pd
+import ccdproc
+from astropy.stats import mad_std
+from astropy import units as u
+from astropy.nddata import CCDData
+import numpy as np
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-import numpy as np
-from astropy.nddata import CCDData
-from astropy import units as u
-from astropy.stats import mad_std
-import ccdproc
-import pandas as pd
-from astropy.nddata.nduncertainty import StdDevUncertainty
-from ccdproc import Combiner
-from soxspipe.commonutils import set_of_files
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import detector_lookup
-from datetime import datetime
-from soxspipe.commonutils import filenamer
-import shutil
-from tabulate import tabulate
-import warnings
 
 
 class _base_recipe_(object):
@@ -534,7 +534,7 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``write`` method')
 
-        ## WRITE QCs TO HEADERS
+        # WRITE QCs TO HEADERS
         for n, v, c, h in zip(self.qc["qc_name"].values, self.qc["qc_value"].values, self.qc["qc_comment"].values, self.qc["to_header"].values):
             if h:
                 frame.header[f"ESO QC {n}".upper()] = (v, c)
@@ -546,8 +546,8 @@ class _base_recipe_(object):
         keywords, values, comments = zip(
             *sorted(zip(keywords, values, comments)))
         frame.header.clear()
-        for k,v,c in zip(keywords, values, comments):
-            frame.header[k] = (v,c)
+        for k, v, c in zip(keywords, values, comments):
+            frame.header[k] = (v, c)
 
         if not filename:
 
@@ -695,7 +695,6 @@ class _base_recipe_(object):
         # print(combined_frame.data)
         # print(np.multiply(combined_frame.uncertainty,combined_frame.data))
 
-
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame
 
@@ -778,29 +777,15 @@ class _base_recipe_(object):
     def report_output(
             self,
             rformat="stdout"):
-        """*a method to report QC values alongside imtermediate and final products*
+        """*a method to report QC values alongside intermediate and final products*
 
         **Key Arguments:**
             - ``rformat`` -- the format to outout reports as. Default *stdout*. [stdout|....]
 
-        **Return:**
-            - None
-
         **Usage:**
 
         ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        self.report_output(rformat="stdout")
         ```
         """
         self.log.debug('starting the ``report_output`` method')
@@ -809,11 +794,14 @@ class _base_recipe_(object):
             # REMOVE COLUMN FROM DATA FRAME
             self.products.drop(columns=['file_path'], inplace=True)
 
+        columns = list(self.qc.columns)
+        columns.remove("to_header")
+
         if rformat == "stdout":
             print("\n# QCs")
-            print(tabulate(self.qc, headers='keys', tablefmt='psql',showindex=False, stralign="right"))
+            print(tabulate(self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
             print("\n# RECIPE PRODUCTS")
-            print(tabulate(self.products, headers='keys', tablefmt='psql',showindex=False, stralign="right"))
+            print(tabulate(self.products, headers='keys', tablefmt='psql', showindex=False, stralign="right"))
 
         self.log.debug('completed the ``report_output`` method')
         return None

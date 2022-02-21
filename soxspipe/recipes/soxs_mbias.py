@@ -25,6 +25,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+import matplotlib.pyplot as plt
 os.environ['TERM'] = 'vt100'
 
 
@@ -156,7 +157,8 @@ class soxs_mbias(_base_recipe_):
             frames=self.inputFrames, recipe="soxs_mbias")
         self.dateObs = combined_bias_mean.header[kw("DATE_OBS")]
 
-        rawRon, mbiasRon = self.calc_ron(combined_bias_mean)
+        self.qc_bias_ron(combined_bias_mean)
+        self.qc_bias_structure(combined_bias_mean)
 
         # INSPECTING THE THE UNCERTAINTY MAPS
         # print("individual frame data")
@@ -226,10 +228,13 @@ class soxs_mbias(_base_recipe_):
         self.log.debug('completed the ``produce_product`` method')
         return productPath
 
-    def calc_ron(
+    def qc_bias_ron(
             self,
             combined_bias_mean):
         """*calculate the read-out-noise on the raw frames*
+
+        **Key Arguments:**
+            - ``combined_bias_mean`` -- the mbias frame
 
         **Return:**
             - ``rawRon`` -- raw read-out-noise in electrons
@@ -238,10 +243,10 @@ class soxs_mbias(_base_recipe_):
         **Usage:**
 
         ```python
-        rawRon, mbiasRon = self.calc_ron(combined_bias_mean)
+        rawRon, mbiasRon = self.qc_bias_ron(combined_bias_mean)
         ```
         """
-        self.log.debug('starting the ``calc_ron`` method')
+        self.log.debug('starting the ``qc_bias_ron`` method')
 
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
@@ -256,7 +261,7 @@ class soxs_mbias(_base_recipe_):
         rawRon = dstd
 
         # PREDICTED MASTER NOISE
-        predictedMasterRon = rawRon/math.sqrt(len(ccds))
+        predictedMasterRon = rawRon / math.sqrt(len(ccds))
 
         dmin, dmax, dmean, dstd = imstats(combined_bias_mean.data)
         masterRon = dstd
@@ -286,8 +291,80 @@ class soxs_mbias(_base_recipe_):
             "to_header": True
         }, ignore_index=True)
 
-        self.log.debug('completed the ``calc_ron`` method')
+        self.log.debug('completed the ``qc_bias_ron`` method')
         return rawRon, masterRon
+
+    def qc_bias_structure(
+            self,
+            combined_bias_mean):
+        """*calculate the structure of the bias*
+
+        **Key Arguments:**
+            - ``combined_bias_mean`` -- the mbias frame
+
+        **Return:**
+            - ``structx`` -- slope of BIAS in X direction
+            - ``structx`` -- slope of BIAS in Y direction
+
+        **Usage:**
+
+        ```python
+        structx, structy = self.qc_bias_structure(combined_bias_mean)
+        ```
+        """
+        self.log.debug('starting the ``qc_bias_structure`` method')
+        plot = False
+
+        collaps_ax1 = np.sum(combined_bias_mean, axis=0)
+        collaps_ax2 = np.sum(combined_bias_mean, axis=1)
+
+        x_axis = np.linspace(0, len(collaps_ax1), len(collaps_ax1), dtype=int)
+        y_axis = np.linspace(0, len(collaps_ax2), len(collaps_ax2), dtype=int)
+
+        # Fitting with a line and collect the slope
+        coeff_ax1 = np.polyfit(x_axis, collaps_ax1, deg=1)
+        coeff_ax2 = np.polyfit(y_axis, collaps_ax2, deg=1)
+
+        if plot == True:
+            plt.plot(x_axis, collaps_ax1)
+            plt.plot(x_axis, np.polyval(coeff_ax1, x_axis))
+            plt.xlabel('x-axis')
+            plt.ylabel('Summed Pixel Values')
+            plt.show()
+
+            plt.plot(y_axis, collaps_ax2)
+            plt.plot(y_axis, np.polyval(coeff_ax2, y_axis))
+            plt.xlabel('y-axis')
+            plt.ylabel('Summed Pixel Values')
+            plt.show()
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "STRUCTX",
+            "qc_value": coeff_ax1[0],
+            "qc_comment": "Slope of BIAS in X direction",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "STRUCTY",
+            "qc_value": coeff_ax2[0],
+            "qc_comment": "Slope of BIAS in Y direction",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.log.debug('completed the ``qc_bias_structure`` method')
+        return coeff_ax1[0], coeff_ax2[0]
 
     # use the tab-trigger below for new method
     # xt-class-method
