@@ -75,8 +75,10 @@ class _base_recipe_(object):
             "qc_name": [],
             "qc_value": [],
             "qc_unit": [],
+            "qc_comment": [],
             "obs_date_utc": [],
-            "reduction_date_utc": []
+            "reduction_date_utc": [],
+            "to_header": []
         })
         self.products = pd.DataFrame({
             "soxspipe_recipe": [],
@@ -192,8 +194,8 @@ class _base_recipe_(object):
 
         # BIAS FRAMES HAVE NO 'FLUX', JUST READNOISE, SO ADD AN EMPTY BAD-PIXEL
         # MAP
-        if frame.header[kw("DPR_TYPE")] == "BIAS":
-            bitMap.data = np.zeros_like(bitMap.data)
+        # if frame.header[kw("DPR_TYPE")] == "BIAS":
+        #     bitMap.data = np.zeros_like(bitMap.data)
 
         # print(bitMap.data.shape)
         # print(frame.data.shape)
@@ -532,6 +534,21 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``write`` method')
 
+        ## WRITE QCs TO HEADERS
+        for n, v, c, h in zip(self.qc["qc_name"].values, self.qc["qc_value"].values, self.qc["qc_comment"].values, self.qc["to_header"].values):
+            if h:
+                frame.header[f"ESO QC {n}".upper()] = (v, c)
+
+        # NEATLY SORT KEYWORDS
+        keywords = [k for k in frame.header if len(k)]
+        values = [frame.header[k] for k in frame.header if len(k)]
+        comments = [frame.header.comments[k] for k in frame.header if len(k)]
+        keywords, values, comments = zip(
+            *sorted(zip(keywords, values, comments)))
+        frame.header.clear()
+        for k,v,c in zip(keywords, values, comments):
+            frame.header[k] = (v,c)
+
         if not filename:
 
             filename = filenamer(
@@ -545,7 +562,7 @@ class _base_recipe_(object):
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
-        HDUList.writeto(filepath, output_verify='exception',
+        HDUList.writeto(filepath, output_verify='fix+warn',
                         overwrite=overwrite, checksum=True)
 
         filepath = os.path.abspath(filepath)
@@ -673,6 +690,11 @@ class _base_recipe_(object):
         newBadCount = combined_frame.mask.sum()
         diff = newBadCount - badCount
         print("\t%(diff)s new pixels made it into the combined bad-pixel map" % locals())
+
+        # print(combined_frame.uncertainty)
+        # print(combined_frame.data)
+        # print(np.multiply(combined_frame.uncertainty,combined_frame.data))
+
 
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame

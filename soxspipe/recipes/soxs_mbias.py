@@ -10,20 +10,22 @@
     January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from astropy.stats import sigma_clip, mad_std
+from soxspipe.commonutils.toolkit import generic_quality_checks
+from datetime import datetime
+from soxspipe.commonutils import keyword_lookup
+import ccdproc
+from astropy import units as u
+from astropy.nddata import CCDData
+import math
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-from astropy import units as u
-import ccdproc
-from soxspipe.commonutils import keyword_lookup
-from datetime import datetime
-from soxspipe.commonutils.toolkit import generic_quality_checks
 
 
 class soxs_mbias(_base_recipe_):
@@ -152,6 +154,9 @@ class soxs_mbias(_base_recipe_):
 
         combined_bias_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mbias")
+        self.dateObs = combined_bias_mean.header[kw("DATE_OBS")]
+
+        rawRon, mbiasRon = self.calc_ron(combined_bias_mean)
 
         # INSPECTING THE THE UNCERTAINTY MAPS
         # print("individual frame data")
@@ -168,6 +173,29 @@ class soxs_mbias(_base_recipe_):
         # combined_bias_mean.data = combined_bias_mean.data.astype('float32')
         # combined_bias_mean.uncertainty = combined_bias_mean.uncertainty.astype(
         #     'float32')
+
+        # ADD QUALITY CHECKS
+        self.qc = generic_quality_checks(
+            log=self.log, frame=combined_bias_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+
+        # DETERMINE MEDIAN BIAS LEVEL
+        maskedDataArray = np.ma.array(
+            combined_bias_mean.data, mask=combined_bias_mean.mask)
+        medianBias = np.ma.median(maskedDataArray)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "MBIAS MEDIAN",
+            "qc_value": medianBias,
+            "qc_comment": "Median level of master bias",
+            "qc_unit": "electrons",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
 
         # WRITE TO DISK
         productPath = self._write(
@@ -192,15 +220,74 @@ class soxs_mbias(_base_recipe_):
             "file_path": productPath
         }, ignore_index=True)
 
-        # ADD QUALITY CHECKS
-        self.qc = generic_quality_checks(
-            log=self.log, frame=combined_bias_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
-
         self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
+
+    def calc_ron(
+            self,
+            combined_bias_mean):
+        """*calculate the read-out-noise on the raw frames*
+
+        **Return:**
+            - ``rawRon`` -- raw read-out-noise in electrons
+            - ``masterRon`` -- combined read-out-noise in mbias
+
+        **Usage:**
+
+        ```python
+        rawRon, mbiasRon = self.calc_ron(combined_bias_mean)
+        ```
+        """
+        self.log.debug('starting the ``calc_ron`` method')
+
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
+                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        # SINGLE FRAME RON
+        raw_one = ccds[0].data
+        raw_two = ccds[1].data
+        raw_diff = raw_two - raw_one
+        def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
+        dmin, dmax, dmean, dstd = imstats(raw_diff)
+        rawRon = dstd
+
+        # PREDICTED MASTER NOISE
+        predictedMasterRon = rawRon/math.sqrt(len(ccds))
+
+        dmin, dmax, dmean, dstd = imstats(combined_bias_mean.data)
+        masterRon = dstd
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "RON MASTER",
+            "qc_value": masterRon,
+            "qc_comment": "Combined RON in MBIAS",
+            "qc_unit": "electrons",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "RON DETECTOR",
+            "qc_value": rawRon,
+            "qc_comment": "RON in single bias",
+            "qc_unit": "electrons",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.log.debug('completed the ``calc_ron`` method')
+        return rawRon, masterRon
 
     # use the tab-trigger below for new method
     # xt-class-method
