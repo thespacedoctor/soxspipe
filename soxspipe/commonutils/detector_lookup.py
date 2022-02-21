@@ -101,6 +101,7 @@ class detector_lookup(object):
         yamlFilePath = os.path.dirname(os.path.dirname(
             __file__)) + "/resources/" + self.instrument + "_detector_parameters.yaml"
 
+
         # YAML CONTENT TO DICTIONARY
         import yaml
         with open(yamlFilePath, 'r') as stream:

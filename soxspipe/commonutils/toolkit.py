@@ -9,22 +9,22 @@
 :Date Created:
     September 18, 2020
 """
+from copy import copy
+from datetime import datetime
+from soxspipe.commonutils import keyword_lookup
+import math
+import pandas as pd
+import numpy.ma as ma
+import random
+import matplotlib.pyplot as plt
+import numpy as np
+import unicodecsv as csv
+from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
-import unicodecsv as csv
-import numpy as np
-import matplotlib.pyplot as plt
-import random
-import numpy.ma as ma
-import pandas as pd
-import math
-from soxspipe.commonutils import keyword_lookup
-from datetime import datetime
-from copy import copy
 
 
 def cut_image_slice(
@@ -121,8 +121,8 @@ def quicklook_image(
         frame = CCDObject.data
     elif ext == "mask":
         frame = CCDObject.mask
-    elif ext == "err":
-        frame = CCDObject.err
+    elif ext == "uncertainty":
+        frame = CCDObject.uncertainty.array
     else:
         # ASSUME ONLY NDARRAY
         frame = CCDObject
@@ -280,34 +280,41 @@ def generic_quality_checks(
 
     qcTable = qcTable.append({
         "soxspipe_recipe": recipeName,
-        "qc_name": "NaN count",
+        "qc_name": "N NAN PIXELS",
         "qc_value": nanCount,
+        "qc_comment": "Number of NaN pixels",
         "qc_unit": "",
         "obs_date_utc": dateObs,
-        "reduction_date_utc": utcnow
+        "reduction_date_utc": utcnow,
+        "to_header": False
     }, ignore_index=True)
 
     # COUNT BAD-PIXELS
     badCount = frame.mask.sum()
     totalPixels = np.size(frame.mask)
-    percent = (float(badCount) / float(totalPixels)) * 100.
+    percent = (float(badCount) / float(totalPixels))
+    percent = float("{:.6f}".format(percent))
 
     qcTable = qcTable.append({
         "soxspipe_recipe": recipeName,
-        "qc_name": "bad-pixel count",
-        "qc_value": badCount,
+        "qc_name": "N BAD PIXELS",
+        "qc_value": int(badCount),
+        "qc_comment": "Number of bad pixels",
         "qc_unit": "",
         "obs_date_utc": dateObs,
-        "reduction_date_utc": utcnow
+        "reduction_date_utc": utcnow,
+        "to_header": True
     }, ignore_index=True)
 
     qcTable = qcTable.append({
         "soxspipe_recipe": recipeName,
-        "qc_name": "bad-pixel percentage",
+        "qc_name": "FRAC BAD PIXELS",
         "qc_value": percent,
+        "qc_comment": "Fraction of bad pixels",
         "qc_unit": "",
         "obs_date_utc": dateObs,
-        "reduction_date_utc": utcnow
+        "reduction_date_utc": utcnow,
+        "to_header": True
     }, ignore_index=True)
 
     log.debug('completed the ``functionName`` function')
@@ -389,20 +396,24 @@ def spectroscopic_image_quality_checks(
 
     qcTable = qcTable.append({
         "soxspipe_recipe": recipeName,
-        "qc_name": "Mean inner-order pixel value",
+        "qc_name": "INNER ORDER PIX MEAN",
         "qc_value": mean,
+        "qc_comment": "Mean inner-order pixel value",
         "qc_unit": "",
         "obs_date_utc": dateObs,
-        "reduction_date_utc": utcnow
+        "reduction_date_utc": utcnow,
+        "to_header": True
     }, ignore_index=True)
 
     qcTable = qcTable.append({
         "soxspipe_recipe": recipeName,
-        "qc_name": "Sum of all inner-order pixel values",
+        "qc_name": "INNER ORDER PIX SUM",
         "qc_value": flux,
+        "qc_comment": "Sum of all inner-order pixel values",
         "qc_unit": "",
         "obs_date_utc": dateObs,
-        "reduction_date_utc": utcnow
+        "reduction_date_utc": utcnow,
+        "to_header": True
     }, ignore_index=True)
 
     log.debug('completed the ``functionName`` function')
