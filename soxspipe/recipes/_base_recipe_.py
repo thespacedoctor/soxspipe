@@ -545,9 +545,13 @@ class _base_recipe_(object):
         comments = [frame.header.comments[k] for k in frame.header if len(k)]
         keywords, values, comments = zip(
             *sorted(zip(keywords, values, comments)))
-        frame.header.clear()
-        for k, v, c in zip(keywords, values, comments):
-            frame.header[k] = (v, c)
+        if "COMMENT" not in keywords and "HISTORY" not in keywords:
+            frame.header.clear()
+            for k, v, c in zip(keywords, values, comments):
+                if k == "COMMENT":
+                    frame.header[k] = v
+                else:
+                    frame.header[k] = (v, c)
 
         if not filename:
 
