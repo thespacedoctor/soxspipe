@@ -813,14 +813,14 @@ class _base_recipe_(object):
 
     def qc_ron(
             self,
-            frameType="MBIAS",
-            frameName="master bias",
+            frameType=False,
+            frameName=False,
             masterFrame=False):
         """*calculate the read-out-noise from bias/dark frames*
 
         **Key Arguments:**
-            - ``frameType`` -- the type of the frame for reporting QC values Default "MBIAS"
-            - ``frameName`` -- the name of the frame in human readable words. Default "master bias"
+            - ``frameType`` -- the type of the frame for reporting QC values. Default *False*
+            - ``frameName`` -- the name of the frame in human readable words. Default *False*
             - ``masterFrame`` -- the master frame (only makes sense to measure RON on master bias). Default *False*
 
         **Return:**
@@ -890,6 +890,8 @@ class _base_recipe_(object):
                 "reduction_date_utc": utcnow,
                 "to_header": True
             }, ignore_index=True)
+        else:
+            masterRon = None
 
         self.log.debug('completed the ``qc_bias_ron`` method')
         return rawRon, masterRon

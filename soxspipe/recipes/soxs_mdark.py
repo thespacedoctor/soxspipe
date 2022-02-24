@@ -167,7 +167,9 @@ class soxs_mdark(_base_recipe_):
             frameName="master dark"
         )
 
-        self.qc_dark_ron()
+        self.qc_ron(
+            frameType="DARK"
+        )
 
         # WRITE TO DISK
         productPath = self._write(
@@ -176,6 +178,23 @@ class soxs_mdark(_base_recipe_):
             filename=False,
             overwrite=True
         )
+        filename = os.path.basename(productPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "MDARK",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} Master dark frame",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
