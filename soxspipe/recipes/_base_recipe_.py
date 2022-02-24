@@ -810,5 +810,53 @@ class _base_recipe_(object):
         self.log.debug('completed the ``report_output`` method')
         return None
 
+    def qc_median_flux_level(
+            self,
+            frame,
+            frameType="MBIAS",
+            frameName="master bias"):
+        """*calculate the median flux level in the frame, excluding masked pixels*
+
+        **Key Arguments:**
+            - ``frame`` -- the frame (CCDData object) to determine the median level.
+            - ``frameType`` -- the type of the frame for reporting QC values Default "MBIAS"
+            - ``frameName`` -- the name of the frame in human readable words. Default "master bias"
+
+        **Return:**
+            - ``medianFlux`` -- median flux level in electrons
+
+        **Usage:**
+
+        ```python
+        medianFlux = self.qc_median_flux_level(
+            frame=myFrame,
+            frameType="MBIAS",
+            frameName="master bias")
+        ```
+        """
+        self.log.debug('starting the ``qc_median_flux_level`` method')
+
+        # DETERMINE MEDIAN BIAS LEVEL
+        maskedDataArray = np.ma.array(
+            frame.data, mask=frame.mask)
+        medianFlux = np.ma.median(maskedDataArray)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": f"{frameType} MEDIAN".upper(),
+            "qc_value": medianFlux,
+            "qc_comment": f"Median flux level of {frameName}",
+            "qc_unit": "electrons",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.log.debug('completed the ``qc_median_flux_level`` method')
+        return medianFlux
+
     # use the tab-trigger below for new method
     # xt-class-method

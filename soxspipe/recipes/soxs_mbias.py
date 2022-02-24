@@ -180,24 +180,11 @@ class soxs_mbias(_base_recipe_):
         self.qc = generic_quality_checks(
             log=self.log, frame=combined_bias_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
 
-        # DETERMINE MEDIAN BIAS LEVEL
-        maskedDataArray = np.ma.array(
-            combined_bias_mean.data, mask=combined_bias_mean.mask)
-        medianBias = np.ma.median(maskedDataArray)
-
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-
-        self.qc = self.qc.append({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "MBIAS MEDIAN",
-            "qc_value": medianBias,
-            "qc_comment": "Median level of master bias",
-            "qc_unit": "electrons",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }, ignore_index=True)
+        medianFlux = self.qc_median_flux_level(
+            frame=combined_bias_mean,
+            frameType="MBIAS",
+            frameName="master bias"
+        )
 
         # WRITE TO DISK
         productPath = self._write(

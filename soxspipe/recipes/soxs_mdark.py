@@ -10,17 +10,18 @@
     January 27, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from soxspipe.commonutils import keyword_lookup
+import ccdproc
+from astropy.nddata import CCDData
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
+from datetime import datetime
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-import ccdproc
-from soxspipe.commonutils import keyword_lookup
 
 
 class soxs_mdark(_base_recipe_):
@@ -79,8 +80,7 @@ class soxs_mdark(_base_recipe_):
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
-            inputFrames=self.inputFrames,
-            ext=self.settings['data-extension']
+            inputFrames=self.inputFrames
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -158,12 +158,20 @@ class soxs_mdark(_base_recipe_):
         kw = self.kw
         dp = self.detectorParams
 
-        combined_bias_mean = self.clip_and_stack(
+        combined_dark_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mdark")
+
+        medianFlux = self.qc_median_flux_level(
+            frame=combined_dark_mean,
+            frameType="MDARK",
+            frameName="master dark"
+        )
+
+        self.qc_dark_ron()
 
         # WRITE TO DISK
         productPath = self._write(
-            frame=combined_bias_mean,
+            frame=combined_dark_mean,
             filedir=self.intermediateRootPath,
             filename=False,
             overwrite=True
@@ -172,6 +180,115 @@ class soxs_mdark(_base_recipe_):
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
+
+    def qc_dark_ron(
+            self):
+        """*calculate the read-out-noise on the raw dark frames*
+
+        **Return:**
+            - ``rawRon`` -- raw read-out-noise in electrons
+
+        **Usage:**
+
+        ```python
+        darkRon = self.qc_dark_ron()
+        ```
+        """
+        self.log.debug('starting the ``qc_dark_ron`` method')
+
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
+                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        # SINGLE FRAME RON
+        raw_one = ccds[0]
+        raw_two = ccds[1]
+        raw_diff = raw_one.subtract(raw_two)
+
+        raw_diff = raw_diff[100:110, 100:110]
+
+        # # PLOT CCDDATA OBJECT
+        # import matplotlib.pyplot as plt
+        # rotatedImg = np.rot90(raw_one[100:110, 100:110], 1)
+        # std = np.std(raw_one[100:110, 100:110])
+        # mean = np.mean(raw_one[100:110, 100:110])
+        # vmax = mean + 3 * std
+        # vmin = mean - 3 * std
+        # plt.figure(figsize=(12, 5))
+        # plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
+        #            cmap='gray', alpha=1)
+        # plt.colorbar()
+        # plt.xlabel(
+        #     "y-axis", fontsize=10)
+        # plt.ylabel(
+        #     "x-axis", fontsize=10)
+        # plt.show()
+
+        # # PLOT CCDDATA OBJECT
+        # import matplotlib.pyplot as plt
+        # rotatedImg = np.rot90(raw_two[100:110, 100:110], 1)
+        # std = np.std(raw_two[100:110, 100:110])
+        # mean = np.mean(raw_two[100:110, 100:110])
+        # vmax = mean + 3 * std
+        # vmin = mean - 3 * std
+        # plt.figure(figsize=(12, 5))
+        # plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
+        #            cmap='gray', alpha=1)
+        # plt.colorbar()
+        # plt.xlabel(
+        #     "y-axis", fontsize=10)
+        # plt.ylabel(
+        #     "x-axis", fontsize=10)
+        # plt.show()
+
+        # # PLOT CCDDATA OBJECT
+        # import matplotlib.pyplot as plt
+        # rotatedImg = np.rot90(raw_diff, 1)
+        # std = np.std(raw_diff)
+        # mean = np.mean(raw_diff)
+        # vmax = mean + 3 * std
+        # vmin = mean - 3 * std
+        # plt.figure(figsize=(12, 5))
+        # plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
+        #            cmap='gray', alpha=1)
+        # plt.colorbar()
+        # plt.xlabel(
+        #     "y-axis", fontsize=10)
+        # plt.ylabel(
+        #     "x-axis", fontsize=10)
+        # plt.show()
+
+        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+        raw_diff = np.ma.array(raw_diff.data, mask=raw_diff.mask)
+        # raw_diff = raw_two - raw_one
+        def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
+        dmin, dmax, dmean, dstd = imstats(raw_diff)
+        print(dmin, dmax, dmean, dstd)
+
+        # from astropy.stats import sigma_clip, mad_std
+        # # SIGMA-CLIP THE DATA
+        # masked_diff = sigma_clip(
+        #     raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc=mad_std)
+        # dmin, dmax, dmean, dstd = imstats(masked_diff)
+
+        # print(dmin, dmax, dmean, dstd)
+        darkRon = dstd
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "RON DETECTOR",
+            "qc_value": darkRon,
+            "qc_comment": "RON in single dark",
+            "qc_unit": "electrons",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.log.debug('completed the ``qc_dark_ron`` method')
+        return darkRon
 
     # use the tab-trigger below for new method
     # xt-class-method
