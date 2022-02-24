@@ -22,7 +22,7 @@ from ccdproc import Combiner
 from astropy.nddata.nduncertainty import StdDevUncertainty
 import pandas as pd
 import ccdproc
-from astropy.stats import mad_std
+from astropy.stats import sigma_clip, mad_std
 from astropy import units as u
 from astropy.nddata import CCDData
 import numpy as np
@@ -847,9 +847,19 @@ class _base_recipe_(object):
                                                  "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
         # SINGLE FRAME RON
-        raw_one = ccds[0].data
-        raw_two = ccds[1].data
-        raw_diff = raw_two - raw_one
+        raw_one = ccds[0]
+        raw_two = ccds[1]
+        raw_diff = raw_one.subtract(raw_two)
+
+        # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
+        masked_diff = sigma_clip(
+            raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc=mad_std)
+
+        combinedMask = raw_diff.mask | masked_diff.mask
+
+        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+        raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
+
         def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
         dmin, dmax, dmean, dstd = imstats(raw_diff)
 
@@ -875,7 +885,6 @@ class _base_recipe_(object):
 
             # PREDICTED MASTER NOISE
             predictedMasterRon = rawRon / math.sqrt(len(ccds))
-            print(predictedMasterRon)
 
             dmin, dmax, dmean, dstd = imstats(masterFrame.data)
             masterRon = dstd
