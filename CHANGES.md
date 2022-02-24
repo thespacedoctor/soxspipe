@@ -2,11 +2,13 @@
 
 soxspipe now on conda
 RON and bias structure QCs now reported by mbias
+RON and bias structure QCs now reported by mdark
 removed raw frame reports and neater QC table
 adding QC and product collection in mbias recipe
 fits header keywords neatly sorted before writing to file
 QCs now being written to FITS header
 QCs have an option to *NOT* (`to_header`) write to FITS header (default is to write)
+Correct management of mask when determining RON on bias and darks
 
 ## v0.5.1 - September 29, 2021
 
