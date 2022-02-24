@@ -29,6 +29,7 @@ import numpy as np
 from fundamentals import tools
 from builtins import object
 import sys
+import math
 import os
 os.environ['TERM'] = 'vt100'
 
@@ -809,6 +810,89 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``report_output`` method')
         return None
+
+    def qc_ron(
+            self,
+            frameType="MBIAS",
+            frameName="master bias",
+            masterFrame=False):
+        """*calculate the read-out-noise from bias/dark frames*
+
+        **Key Arguments:**
+            - ``frameType`` -- the type of the frame for reporting QC values Default "MBIAS"
+            - ``frameName`` -- the name of the frame in human readable words. Default "master bias"
+            - ``masterFrame`` -- the master frame (only makes sense to measure RON on master bias). Default *False*
+
+        **Return:**
+            - ``rawRon`` -- raw read-out-noise in electrons
+            - ``masterRon`` -- combined read-out-noise in mbias
+
+        **Usage:**
+
+        ```python
+        rawRon, mbiasRon = self.qc_ron(
+            frameType="MBIAS",
+            frameName="master bias",
+            masterFrame=masterFrame
+        )
+        ```
+        """
+        self.log.debug('starting the ``qc_bias_ron`` method')
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        # LIST OF RAW CCDDATA OBJECTS
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
+                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        # SINGLE FRAME RON
+        raw_one = ccds[0].data
+        raw_two = ccds[1].data
+        raw_diff = raw_two - raw_one
+        def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
+        dmin, dmax, dmean, dstd = imstats(raw_diff)
+
+        # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
+        rawRon = dstd / math.sqrt(2)
+
+        singleFrameType = frameType
+        if frameType[0] == "M":
+            singleFrameType = frameType[1:]
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "RON DETECTOR",
+            "qc_value": rawRon,
+            "qc_comment": f"RON in single {singleFrameType} (electrons)",
+            "qc_unit": "electrons",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        if masterFrame:
+
+            # PREDICTED MASTER NOISE
+            predictedMasterRon = rawRon / math.sqrt(len(ccds))
+            print(predictedMasterRon)
+
+            dmin, dmax, dmean, dstd = imstats(masterFrame.data)
+            masterRon = dstd
+
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "RON MASTER",
+                "qc_value": masterRon,
+                "qc_comment": f"Combined RON in {frameType} (electrons)",
+                "qc_unit": "electrons",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+
+        self.log.debug('completed the ``qc_bias_ron`` method')
+        return rawRon, masterRon
 
     def qc_median_flux_level(
             self,

@@ -157,7 +157,11 @@ class soxs_mbias(_base_recipe_):
             frames=self.inputFrames, recipe="soxs_mbias")
         self.dateObs = combined_bias_mean.header[kw("DATE_OBS")]
 
-        self.qc_bias_ron(combined_bias_mean)
+        self.qc_ron(
+            frameType="MBIAS",
+            frameName="master bias",
+            masterFrame=combined_bias_mean
+        )
         self.qc_bias_structure(combined_bias_mean)
 
         # INSPECTING THE THE UNCERTAINTY MAPS
@@ -214,72 +218,6 @@ class soxs_mbias(_base_recipe_):
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
-
-    def qc_bias_ron(
-            self,
-            combined_bias_mean):
-        """*calculate the read-out-noise on the raw frames*
-
-        **Key Arguments:**
-            - ``combined_bias_mean`` -- the mbias frame
-
-        **Return:**
-            - ``rawRon`` -- raw read-out-noise in electrons
-            - ``masterRon`` -- combined read-out-noise in mbias
-
-        **Usage:**
-
-        ```python
-        rawRon, mbiasRon = self.qc_bias_ron(combined_bias_mean)
-        ```
-        """
-        self.log.debug('starting the ``qc_bias_ron`` method')
-
-        # LIST OF CCDDATA OBJECTS
-        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
-                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
-
-        # SINGLE FRAME RON
-        raw_one = ccds[0].data
-        raw_two = ccds[1].data
-        raw_diff = raw_two - raw_one
-        def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
-        dmin, dmax, dmean, dstd = imstats(raw_diff)
-        rawRon = dstd
-
-        # PREDICTED MASTER NOISE
-        predictedMasterRon = rawRon / math.sqrt(len(ccds))
-
-        dmin, dmax, dmean, dstd = imstats(combined_bias_mean.data)
-        masterRon = dstd
-
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-
-        self.qc = self.qc.append({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "RON MASTER",
-            "qc_value": masterRon,
-            "qc_comment": "Combined RON in MBIAS",
-            "qc_unit": "electrons",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }, ignore_index=True)
-
-        self.qc = self.qc.append({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "RON DETECTOR",
-            "qc_value": rawRon,
-            "qc_comment": "RON in single bias",
-            "qc_unit": "electrons",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }, ignore_index=True)
-
-        self.log.debug('completed the ``qc_bias_ron`` method')
-        return rawRon, masterRon
 
     def qc_bias_structure(
             self,
