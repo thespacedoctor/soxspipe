@@ -616,6 +616,11 @@ class _base_recipe_(object):
         recipe = recipe.replace("soxs_", "soxs-")
 
         # UNPACK SETTINGS
+        stacked_clipping_sigma = self.settings[
+            recipe]["stacked-clipping-sigma"]
+        stacked_clipping_iterations = self.settings[
+            recipe]["stacked-clipping-iterations"]
+        # UNPACK SETTINGS
         clipping_lower_sigma = self.settings[
             recipe]["clipping-lower-simga"]
         clipping_upper_sigma = self.settings[
@@ -660,9 +665,9 @@ class _base_recipe_(object):
         # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
         new_n_masked = combiner.data_arr.mask.sum()
         iteration = 1
-        while (new_n_masked > old_n_masked and iteration <= clipping_iteration_count):
+        while (new_n_masked > old_n_masked and iteration <= stacked_clipping_iterations):
             combiner.sigma_clipping(
-                low_thresh=clipping_lower_sigma, high_thresh=clipping_upper_sigma, func=np.ma.median, dev_func=mad_std)
+                low_thresh=stacked_clipping_sigma, high_thresh=stacked_clipping_sigma, func=np.ma.median, dev_func=mad_std)
             old_n_masked = new_n_masked
             # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
             new_n_masked = combiner.data_arr.mask.sum()
@@ -681,6 +686,13 @@ class _base_recipe_(object):
         # RECOMBINE THE COMBINED MASK FROM ABOVE
         combined_frame.mask = combined_frame.mask | combinedMask
 
+        # NOW SIMGA-CLIP ACROSS THE FRAME
+        # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
+        if clipping_iteration_count:
+            maskedFrame = sigma_clip(
+                combined_frame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc=mad_std)
+            combined_frame.mask = combined_frame.mask | maskedFrame.mask
+
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
         # IMAGES
         combined_frame.header = ccds[0].header
@@ -694,7 +706,9 @@ class _base_recipe_(object):
         # CALCULATE NEW PIXELS ADDED TO MASK
         newBadCount = combined_frame.mask.sum()
         diff = newBadCount - badCount
-        print("\t%(diff)s new pixels made it into the combined bad-pixel map" % locals())
+        totalPixels = np.size(combinedMask)
+        percent = (float(newBadCount) / float(totalPixels)) * 100.
+        print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
 
         # print(combined_frame.uncertainty)
         # print(combined_frame.data)
@@ -854,7 +868,6 @@ class _base_recipe_(object):
         # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
         masked_diff = sigma_clip(
             raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc=mad_std)
-
         combinedMask = raw_diff.mask | masked_diff.mask
 
         # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY

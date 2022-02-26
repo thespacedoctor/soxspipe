@@ -19,6 +19,7 @@ from soxspipe.commonutils import set_of_files
 from fundamentals import tools
 from builtins import object
 from datetime import datetime
+from soxspipe.commonutils.toolkit import generic_quality_checks
 import sys
 import os
 os.environ['TERM'] = 'vt100'
@@ -161,6 +162,10 @@ class soxs_mdark(_base_recipe_):
 
         combined_dark_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mdark")
+
+        # ADD QUALITY CHECKS
+        self.qc = generic_quality_checks(
+            log=self.log, frame=combined_dark_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
 
         medianFlux = self.qc_median_flux_level(
             frame=combined_dark_mean,
