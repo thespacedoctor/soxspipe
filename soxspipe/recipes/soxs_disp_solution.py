@@ -208,7 +208,7 @@ class soxs_disp_solution(_base_recipe_):
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
 
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath = create_dispersion_map(
+        productPath, mapImagePath = create_dispersion_map(
             log=self.log,
             settings=self.settings,
             pinholeFrame=self.pinholeFrame
@@ -217,7 +217,7 @@ class soxs_disp_solution(_base_recipe_):
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
-        return mapPath, mapImagePath
+        return productPath
 
     # use the tab-trigger below for new method
     # xt-class-method

@@ -235,17 +235,20 @@ class soxs_spatial_solution(_base_recipe_):
 
         # GENERATE AN UPDATED DISPERSION MAP
         from soxspipe.commonutils import create_dispersion_map
-        mapPath = create_dispersion_map(
+        mapPath, mapImagePath = create_dispersion_map(
             log=self.log,
             settings=self.settings,
             pinholeFrame=self.multiPinholeFrame,
-            firstGuessMap=self.supplementaryInput[arm]["DISP_MAP"]
+            firstGuessMap=self.supplementaryInput[arm]["DISP_MAP"],
+            orderTable=order_table,
+            qcTable=False,
+            productsTable=False
         ).get()
 
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
-        return mapPath
+        return mapPath, mapImagePath
 
     # use the tab-trigger below for new method
     # xt-class-method
