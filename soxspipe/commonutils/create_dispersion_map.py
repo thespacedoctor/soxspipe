@@ -857,11 +857,16 @@ class create_dispersion_map(object):
         remainingPixels = 1
         iteration = 0
         iterationLimit = 20
-        while remainingPixels and iteration < iterationLimit:
+        remainingCount = 1
+        while remainingPixels and remainingCount and iteration < iterationLimit:
             iteration += 1
 
-            orderPixelTable = self.convert_and_fit(
+            orderPixelTable, remainingCount = self.convert_and_fit(
                 order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
+
+            if not remainingCount:
+                continue
+
             g = orderPixelTable.groupby(['pixel_x', 'pixel_y', 'order'])
             g = g.agg(["first", np.sum, np.mean, np.std])
 
@@ -951,6 +956,7 @@ class create_dispersion_map(object):
 
         **Return:**
             - ``orderPixelTable`` -- dataframe containing unfitted pixel info
+            - ``remainingCount`` -- number of remaining pixels in orderTable
 
         **Usage:**
 
@@ -1110,5 +1116,7 @@ class create_dispersion_map(object):
                 "x-axis", fontsize=10)
             plt.show()
 
+        remainingCount = len(remainingCount.index)
+
         self.log.debug('completed the ``convert_and_fit`` method')
-        return orderPixelTable
+        return orderPixelTable, remainingCount
