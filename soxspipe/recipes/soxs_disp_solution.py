@@ -10,19 +10,19 @@
     August 25, 2020
 """
 ################# GLOBAL IMPORTS ####################
+import unicodecsv as csv
+from soxspipe.commonutils import keyword_lookup
+import ccdproc
+from astropy import units as u
+from astropy.nddata import CCDData
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-from astropy import units as u
-import ccdproc
-from soxspipe.commonutils import keyword_lookup
-import unicodecsv as csv
 
 
 class soxs_disp_solution(_base_recipe_):
@@ -208,7 +208,7 @@ class soxs_disp_solution(_base_recipe_):
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
 
         from soxspipe.commonutils import create_dispersion_map
-        productPath = create_dispersion_map(
+        mapPath, mapImagePath = create_dispersion_map(
             log=self.log,
             settings=self.settings,
             pinholeFrame=self.pinholeFrame
@@ -217,7 +217,7 @@ class soxs_disp_solution(_base_recipe_):
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
-        return productPath
+        return mapPath, mapImagePath
 
     # use the tab-trigger below for new method
     # xt-class-method

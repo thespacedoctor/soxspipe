@@ -10,19 +10,19 @@
     September  8, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from soxspipe.commonutils import detect_continuum
+from soxspipe.commonutils import keyword_lookup
+import ccdproc
+from astropy import units as u
+from astropy.nddata import CCDData
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-from astropy import units as u
-import ccdproc
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import detect_continuum
 
 
 class soxs_order_centres(_base_recipe_):
