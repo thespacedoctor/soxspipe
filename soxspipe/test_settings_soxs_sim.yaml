@@ -9,6 +9,8 @@ instrument: soxs
 #     clipping-iteration-count: 5
 
 soxs-mdark:
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
     clipping-lower-simga: 5
     clipping-upper-simga: 5   
     clipping-iteration-count: 5

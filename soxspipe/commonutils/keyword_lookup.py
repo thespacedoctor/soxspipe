@@ -155,7 +155,7 @@ class keyword_lookup(object):
         # YAML CONTENT TO DICTIONARY
         import yaml
         with open(yamlFilePath, 'r') as stream:
-            kwDict = yaml.load(stream)
+            kwDict = yaml.safe_load(stream)
 
         self.log.debug('completed the ``_select_dictionary`` method')
         return kwDict

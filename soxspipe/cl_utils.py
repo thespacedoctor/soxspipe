@@ -29,15 +29,15 @@ Options:
     -V, --verbose                          more verbose output
 """
 ################# GLOBAL IMPORTS ####################
+from subprocess import Popen, PIPE, STDOUT
+from fundamentals import tools, times
+from docopt import docopt
+import pickle
+import glob
+import readline
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-import readline
-import glob
-import pickle
-from docopt import docopt
-from fundamentals import tools, times
-from subprocess import Popen, PIPE, STDOUT
 
 
 def tab_complete(text, state):
@@ -150,7 +150,6 @@ def main(arguments=None):
             verbose=verbose
         )
         mbiasFrame = recipe.produce_product()
-        print("You can find the master bias frame at `%(mbiasFrame)s`" % locals())
 
     if a["mdark"]:
         from soxspipe.recipes import soxs_mdark
@@ -161,7 +160,6 @@ def main(arguments=None):
             verbose=verbose
         )
         mdarkFrame = recipe.produce_product()
-        print("You can find the master bias frame at `%(mdarkFrame)s`" % locals())
 
     if a["disp_sol"]:
         from soxspipe.recipes import soxs_disp_solution

@@ -308,19 +308,23 @@ class detect_order_edges(_base_detect):
         if not isinstance(self.qc, bool):
             self.qc = self.qc.append({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "order edge fit mean residual",
+                "qc_name": "ORDER EDGE RES MEAN",
                 "qc_value": mean_res,
+                "qc_comment": "mean residual of order-edge fit",
                 "qc_unit": "pixels",
                 "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow
+                "reduction_date_utc": utcnow,
+                "to_header": True
             }, ignore_index=True)
             self.qc = self.qc.append({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "order edge fit residual stdev",
+                "qc_name": "ORDER EDGE RES STDEV",
                 "qc_value": std_res,
+                "qc_comment": "stdev of residuals to order edge fit",
                 "qc_unit": "pixels",
                 "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow
+                "reduction_date_utc": utcnow,
+                "to_header": True
             }, ignore_index=True)
 
         self.log.debug('completed the ``get`` method')

@@ -20,11 +20,15 @@ version: 1
 instrument: xsh
 
 soxs-mbias:
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
     clipping-lower-simga: 5
     clipping-upper-simga: 5   
     clipping-iteration-count: 5
 
 soxs-mdark:
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
     clipping-lower-simga: 5
     clipping-upper-simga: 5   
     clipping-iteration-count: 5
@@ -54,9 +58,11 @@ soxs-spatial-solution:
 
 soxs-mflat:
     centre-order-window: 20
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
     clipping-lower-simga: 50
     clipping-upper-simga: 50   
-    clipping-iteration-count: 5
+    clipping-iteration-count: 0
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20

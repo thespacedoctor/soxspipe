@@ -101,10 +101,11 @@ class detector_lookup(object):
         yamlFilePath = os.path.dirname(os.path.dirname(
             __file__)) + "/resources/" + self.instrument + "_detector_parameters.yaml"
 
+
         # YAML CONTENT TO DICTIONARY
         import yaml
         with open(yamlFilePath, 'r') as stream:
-            dectDict = yaml.load(stream)
+            dectDict = yaml.safe_load(stream)
 
         self.log.debug('completed the ``_select_dictionary`` method')
         return dectDict
