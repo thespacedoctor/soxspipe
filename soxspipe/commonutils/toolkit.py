@@ -25,6 +25,20 @@ from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
+from fundamentals import tools
+from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+import unicodecsv as csv
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+import numpy.ma as ma
+import pandas as pd
+from soxspipe.commonutils import detector_lookup
+import math
+from soxspipe.commonutils import keyword_lookup
+from datetime import datetime
+from copy import copy
+from os.path import expanduser
 
 
 def cut_image_slice(
@@ -419,5 +433,59 @@ def spectroscopic_image_quality_checks(
     log.debug('completed the ``functionName`` function')
     return qcTable
 
-# use the tab-trigger below for new function
-# xt-def-function
+
+def read_spectral_format(
+        log,
+        settings,
+        arm):
+    """*read the spectral format table to get some key parameters*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `settings` -- soxspipe settings
+    - `arm` -- arm to retrieve format for
+
+    **Return:**
+        - ``orderNums`` -- a list of the order numbers
+        - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
+        - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import read_spectral_format
+    # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
+    orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
+            log=self.log, settings=self.settings, arm=arm)
+    ```   
+    """
+    log.debug('starting the ``read_spectral_format`` function')
+
+    # DETECTOR PARAMETERS LOOKUP OBJECT
+    dp = detector_lookup(
+        log=log,
+        settings=settings
+    ).get(arm)
+
+    science_pixels = dp["science-pixels"]
+
+    # READ THE SPECTRAL FORMAT TABLE FILE
+    home = expanduser("~")
+    calibrationRootPath = settings[
+        "calibration-data-root"].replace("~", home)
+    spectralFormatFile = calibrationRootPath + \
+        "/" + dp["spectral format table"]
+
+    # READ CSV FILE TO PANDAS DATAFRAME
+    specFormatTable = pd.read_csv(
+        spectralFormatFile, index_col=False, na_values=['NA', 'MISSING'])
+    # # DATAFRAME INFO
+
+    # EXTRACT REQUIRED PARAMETERS
+    orderNums = specFormatTable["ORDER"].values
+    waveLengthMin = specFormatTable["WLMINFUL"].values
+    waveLengthMax = specFormatTable["WLMAXFUL"].values
+
+    log.debug('completed the ``read_spectral_format`` function')
+    return orderNums, waveLengthMin, waveLengthMax

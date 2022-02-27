@@ -55,6 +55,11 @@ soxs-spatial-solution:
     slit-deg: 3
     clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
+    # INITIAL SEED GRID RESOLUTION 
+    grid_res_wavelength: 0.03 # in nm
+    grid_res_slit: 0.04 # in arcsec
+    map_to_image_displacement_threshold: 0.01 # in pixels
+    zoom_grid_size: 4
 
 soxs-mflat:
     centre-order-window: 20

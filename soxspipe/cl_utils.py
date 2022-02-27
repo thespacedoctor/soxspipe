@@ -183,13 +183,13 @@ def main(arguments=None):
 
     if a["spat_sol"]:
         from soxspipe.recipes import soxs_spatial_solution
-        disp_map = soxs_spatial_solution(
+        disp_map, mapImage2D = soxs_spatial_solution(
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
             verbose=verbose
         ).produce_product()
-        print(f"\nFull 2D dispersion map saved to: {disp_map}")
+        print(f"\nFull 2D dispersion map saved to: {disp_map} & {mapImage2D}")
 
     if a["mflat"]:
         from soxspipe.recipes import soxs_mflat

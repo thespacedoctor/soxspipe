@@ -31,6 +31,7 @@ UVB:
       2x2: cal/THEO_TAB_MULT_UVB_2x2.csv
   mid_slit_index: 4
   spectral format table: cal/SPECTRAL_FORMAT_TAB_UVB.csv
+  slit_length: 11 #arcsec
             
 VIS:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -65,6 +66,7 @@ VIS:
       2x2: cal/THEO_TAB_MULT_VIS_2x2.csv
   mid_slit_index: 4
   spectral format table: cal/SPECTRAL_FORMAT_TAB_VIS.csv
+  slit_length: 11 #arcsec
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -93,4 +95,5 @@ NIR:
       1x1: cal/THEO_TAB_MULT_NIR.csv
   mid_slit_index: 4
   spectral format table: cal/SPECTRAL_FORMAT_TAB_NIR.csv
+  slit_length: 11 #arcsec
 
