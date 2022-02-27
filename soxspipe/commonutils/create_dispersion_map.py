@@ -10,38 +10,37 @@
     September  1, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from fundamentals import fmultiprocess
+from tabulate import tabulate
+import pandas as pd
+from ccdproc import Combiner
+from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_format
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
+from astropy.visualization import hist
+import warnings
+from photutils.utils import NoDetectionsWarning
+from astropy.nddata import CCDData
+import math
+import numpy as np
+from astropy.stats import sigma_clip, mad_std
+from matplotlib.patches import Rectangle
+import matplotlib.pyplot as plt
+from matplotlib import cm
+from os.path import expanduser
+from fundamentals.renderer import list_of_dictionaries
+from scipy.optimize import curve_fit
+from photutils import DAOStarFinder
+from photutils import datasets
+from astropy.stats import sigma_clipped_stats
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils import keyword_lookup
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import detector_lookup
-from astropy.stats import sigma_clipped_stats
-from photutils import datasets
-from photutils import DAOStarFinder
-from scipy.optimize import curve_fit
-from fundamentals.renderer import list_of_dictionaries
-from os.path import expanduser
-from matplotlib import cm
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-from os.path import expanduser
-from astropy.stats import sigma_clip, mad_std
-import numpy as np
-import math
-from astropy.nddata import CCDData
-from photutils.utils import NoDetectionsWarning
-import warnings
-from astropy.visualization import hist
-from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-from soxspipe.commonutils.filenamer import filenamer
-from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
-from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_format
-from ccdproc import Combiner
-import pandas as pd
-from tabulate import tabulate
-from fundamentals import fmultiprocess
 
 
 class create_dispersion_map(object):
@@ -61,7 +60,7 @@ class create_dispersion_map(object):
 
     ```python
     from soxspipe.commonutils import create_dispersion_map
-    mapPath = create_dispersion_map(
+    mapPath, mapImagePath = create_dispersion_map(
         log=log,
         settings=settings,
         pinholeFrame=frame,
@@ -161,8 +160,12 @@ class create_dispersion_map(object):
         mapPath = self.write_map_to_file(
             popt_x, popt_y, order_deg, wavelength_deg, slit_deg)
 
+        if self.firstGuessMap:
+            mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
+            return mapPath, mapImagePath
+
         self.log.debug('completed the ``get`` method')
-        return mapPath
+        return mapPath, None
 
     def get_predicted_line_list(
             self):
@@ -854,11 +857,16 @@ class create_dispersion_map(object):
         remainingPixels = 1
         iteration = 0
         iterationLimit = 20
-        while remainingPixels and iteration < iterationLimit:
+        remainingCount = 1
+        while remainingPixels and remainingCount and iteration < iterationLimit:
             iteration += 1
 
-            orderPixelTable = self.convert_and_fit(
+            orderPixelTable, remainingCount = self.convert_and_fit(
                 order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
+
+            if not remainingCount:
+                continue
+
             g = orderPixelTable.groupby(['pixel_x', 'pixel_y', 'order'])
             g = g.agg(["first", np.sum, np.mean, np.std])
 
@@ -948,6 +956,7 @@ class create_dispersion_map(object):
 
         **Return:**
             - ``orderPixelTable`` -- dataframe containing unfitted pixel info
+            - ``remainingCount`` -- number of remaining pixels in orderTable
 
         **Usage:**
 
@@ -988,7 +997,7 @@ class create_dispersion_map(object):
         # LARGE DETECTOR PIXELS
         count = orderPixelTable.groupby(
             ['pixel_x', 'pixel_y']).size().reset_index(name='count')
-        orderPixelTable = pd.merge(orderPixelTable, count,  how='left', left_on=[
+        orderPixelTable = pd.merge(orderPixelTable, count, how='left', left_on=[
                                    'pixel_x', 'pixel_y'], right_on=['pixel_x', 'pixel_y'])
         orderPixelTable = orderPixelTable.sort_values(
             ['order', 'pixel_x', 'pixel_y', 'residual_xy'])
@@ -1107,5 +1116,7 @@ class create_dispersion_map(object):
                 "x-axis", fontsize=10)
             plt.show()
 
+        remainingCount = len(remainingCount.index)
+
         self.log.debug('completed the ``convert_and_fit`` method')
-        return orderPixelTable
+        return orderPixelTable, remainingCount

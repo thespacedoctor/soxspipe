@@ -32,7 +32,7 @@ Sources of this non-uniformity include varying pixel sensitivities, obstructions
 
 ![](soxs_mflat.png)
 
-The individual flat field frames need to have bias and dark signatures removed before they are combined. This is achieved with the [`subtract_calibrations`](../utils/subtract_calibrations.md) utility. Here is an example of one such calibrated flat frame:
+The individual flat field frames need to have bias and dark signatures removed before they are combined. This is achieved with the [`detrend`](../utils/detrend.md) utility. Here is an example of one such calibrated flat frame:
 
 [![](https://live.staticflickr.com/65535/51237891523_cc24b22ba7_b.jpg)](https://live.staticflickr.com/65535/51237891523_cc24b22ba7_b.jpg)
 

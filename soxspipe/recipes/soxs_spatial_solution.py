@@ -10,18 +10,18 @@
     March 17, 2021
 """
 ################# GLOBAL IMPORTS ####################
+from soxspipe.commonutils import keyword_lookup
+from astropy import units as u
+import ccdproc
+from astropy.nddata import CCDData
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-import ccdproc
-from astropy import units as u
-from soxspipe.commonutils import keyword_lookup
 
 
 class soxs_spatial_solution(_base_recipe_):
@@ -117,27 +117,29 @@ class soxs_spatial_solution(_base_recipe_):
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
-            # MIXED INPUT IMAGE TYPES ARE BAD
-            if len(imageTypes) > 1:
-                imageTypes = " and ".join(imageTypes)
-                print(self.inputFrames.summary)
-                raise TypeError(
-                    "Input frames are a mix of %(imageTypes)s" % locals())
+            for i in imageTypes:
+                if i not in ["LAMP,WAVE", "LAMP,FLAT"]:
+                    raise TypeError(
+                        f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR.")
 
-            if imageTypes[0] != "LAMP,WAVE":
+            for i in imageTech:
+                if i not in ['ECHELLE,MULTI-PINHOLE', 'IMAGE', 'ECHELLE,SLIT']:
+                    raise TypeError(
+                        f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR.")
+
+            if "LAMP,WAVE" not in imageTypes:
                 raise TypeError(
                     "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames for NIR" % locals())
 
-            for i in imageTech:
-                if i not in ['ECHELLE,MULTI-PINHOLE', 'IMAGE']:
-                    raise TypeError(
-                        "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames for NIR" % locals())
+            if "ECHELLE,MULTI-PINHOLE" not in imageTech:
+                raise TypeError(
+                    "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames for NIR" % locals())
 
         else:
             for i in imageTypes:
-                if i not in ["LAMP,WAVE", "BIAS", "DARK"]:
+                if i not in ["LAMP,WAVE", "BIAS", "DARK", "LAMP,FLAT"]:
                     raise TypeError(
-                        "Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias and possibly a master dark for UVB/VIS" % locals())
+                        f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias. Can optionally supply a master-flat and/or master-dark for UVB/VIS.")
 
         # LOOK FOR DISP_MAP
         arm = self.arm
@@ -183,7 +185,9 @@ class soxs_spatial_solution(_base_recipe_):
 
         master_bias = False
         dark = False
+        master_flat = False
         multi_pinhole_image = False
+        order_table = False
 
         add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -203,6 +207,12 @@ class soxs_spatial_solution(_base_recipe_):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # UVB/VIS/NIR FLAT
+        add_filters = {kw("DPR_CATG"): 'MASTER_LAMP-FLAT_' + arm}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            master_flat = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                       hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
         # MULTIPINHOLE IMAGE
         add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
                        kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}
@@ -210,8 +220,12 @@ class soxs_spatial_solution(_base_recipe_):
             multi_pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        self.multiPinholeFrame = self.subtract_calibrations(
-            inputFrame=multi_pinhole_image, master_bias=master_bias, dark=dark)
+        # ORDER TABLE
+        if "ORDER_LOCATIONS" in self.supplementaryInput[arm]:
+            order_table = self.supplementaryInput[arm]["ORDER_LOCATIONS"]
+
+        self.multiPinholeFrame = self.detrend(
+            inputFrame=multi_pinhole_image, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=order_table)
 
         if self.settings["save-intermediate-products"]:
             fileDir = self.intermediateRootPath
@@ -221,17 +235,20 @@ class soxs_spatial_solution(_base_recipe_):
 
         # GENERATE AN UPDATED DISPERSION MAP
         from soxspipe.commonutils import create_dispersion_map
-        mapPath = create_dispersion_map(
+        mapPath, mapImagePath = create_dispersion_map(
             log=self.log,
             settings=self.settings,
             pinholeFrame=self.multiPinholeFrame,
-            firstGuessMap=self.supplementaryInput[arm]["DISP_MAP"]
+            firstGuessMap=self.supplementaryInput[arm]["DISP_MAP"],
+            orderTable=order_table,
+            qcTable=False,
+            productsTable=False
         ).get()
 
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
-        return mapPath
+        return mapPath, mapImagePath
 
     # use the tab-trigger below for new method
     # xt-class-method

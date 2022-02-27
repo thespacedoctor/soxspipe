@@ -10,29 +10,29 @@
     September 16, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
+from datetime import datetime
+from astropy.stats import sigma_clip, mad_std, sigma_clipped_stats
+from soxspipe.commonutils.filenamer import filenamer
+from os.path import expanduser
+from soxspipe.commonutils import subtract_background
+import pandas as pd
+from soxspipe.commonutils import detect_order_edges
+from soxspipe.commonutils.toolkit import quicklook_image
+import numpy.ma as ma
+from soxspipe.commonutils.toolkit import unpack_order_table
+import matplotlib.pyplot as plt
+from soxspipe.commonutils import keyword_lookup
+import ccdproc
+from astropy.nddata import CCDData
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-import ccdproc
-from soxspipe.commonutils import keyword_lookup
-import matplotlib.pyplot as plt
-from soxspipe.commonutils.toolkit import unpack_order_table
-import numpy.ma as ma
-from soxspipe.commonutils.toolkit import quicklook_image
-from soxspipe.commonutils import detect_order_edges
-import pandas as pd
-from soxspipe.commonutils import subtract_background
-from os.path import expanduser
-from soxspipe.commonutils.filenamer import filenamer
-from astropy.stats import sigma_clip, mad_std, sigma_clipped_stats
-from datetime import datetime
-from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 
 
 class soxs_mflat(_base_recipe_):
@@ -374,7 +374,7 @@ class soxs_mflat(_base_recipe_):
         if not darkCollection and bias:
             for flat in flats:
                 print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
-                calibratedFlats.append(self.subtract_calibrations(
+                calibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=None))
 
         # IF DARKS EXIST - FIND CLOSEST IN TIME TO FLAT-FRAME. SUBTRACT BIAS
@@ -390,7 +390,7 @@ class soxs_mflat(_base_recipe_):
                 matchValue, matchIndex = nearest_neighbour(
                     flat.header[kw("MJDOBS").lower()], darkMjds)
                 dark = darks[matchIndex]
-                calibratedFlats.append(self.subtract_calibrations(
+                calibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=dark))
 
         for frame in calibratedFlats:

@@ -9,23 +9,23 @@
 :Date Created:
     June  3, 2021
 """
+from soxspipe.commonutils import keyword_lookup
+from os.path import expanduser
+import random
+from scipy.ndimage.filters import median_filter
+from soxspipe.commonutils.toolkit import quicklook_image
+from scipy.interpolate import BSpline, splrep
+from astropy import units as u
+from astropy.nddata import CCDData
+import matplotlib.pyplot as plt
+import numpy as np
+import numpy.ma as ma
+from soxspipe.commonutils.toolkit import unpack_order_table
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils.toolkit import unpack_order_table
-import numpy.ma as ma
-import numpy as np
-import matplotlib.pyplot as plt
-from astropy.nddata import CCDData
-from astropy import units as u
-from scipy.interpolate import BSpline, splrep
-from soxspipe.commonutils.toolkit import quicklook_image
-from scipy.ndimage.filters import median_filter
-import random
-from os.path import expanduser
-from soxspipe.commonutils import keyword_lookup
 
 
 class subtract_background(object):
