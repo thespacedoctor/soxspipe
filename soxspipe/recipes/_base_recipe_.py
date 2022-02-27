@@ -21,6 +21,7 @@ from soxspipe.commonutils import set_of_files
 from ccdproc import Combiner
 from astropy.nddata.nduncertainty import StdDevUncertainty
 import pandas as pd
+from soxspipe.commonutils import subtract_background
 import ccdproc
 from astropy.stats import sigma_clip, mad_std
 from astropy import units as u
@@ -717,27 +718,31 @@ class _base_recipe_(object):
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame
 
-    def subtract_calibrations(
+    def detrend(
             self,
             inputFrame,
             master_bias=False,
-            dark=False):
+            dark=False,
+            master_flat=False,
+            order_table=False):
         """*subtract calibration frames from an input frame*
 
         **Key Arguments:**
             - ``inputFrame`` -- the input frame to have calibrations subtracted. CCDData object.
             - ``master_bias`` -- the master bias frame to be subtracted. CCDData object. Default *False*.
             - ``dark`` -- a dark frame to be subtracted. CCDData object. Default *False*.
+            - ``master_flat`` -- divided input frame by this master flat frame. CCDData object. Default *False*.
+            - ``order_table`` -- order table with order edges defined. Used to subtract scattered light background from frames. Default *False*.
 
         **Return:**
             - ``calibration_subtracted_frame`` -- the input frame with the calibration frame(s) subtracted. CCDData object.
 
         **Usage:**
 
-        Within a soxspipe recipe use `subtract_calibrations` like so:
+        Within a soxspipe recipe use `detrend` like so:
 
         ```python
-        myCalibratedFrame = self.subtract_calibrations(
+        myCalibratedFrame = self.detrend(
             inputFrame=inputFrameCCDObject, master_bias=masterBiasCCDObject, dark=darkCCDObject)
         ```
 
@@ -749,7 +754,7 @@ class _base_recipe_(object):
             - code needs written to scale dark frame to exposure time of science/calibration frame
         ```
         """
-        self.log.debug('starting the ``subtract_calibrations`` method')
+        self.log.debug('starting the ``detrend`` method')
 
         arm = self.arm
         kw = self.kw
@@ -763,7 +768,7 @@ class _base_recipe_(object):
         # VERIFY DATA IS IN ORDER
         if master_bias == False and dark == False:
             raise TypeError(
-                "subtract_calibrations method needs a master-bias frame and/or a dark frame to subtract")
+                "detrend method needs at least a master-bias frame and/or a dark frame to subtract")
         if master_bias == False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             raise AttributeError(
                 "Dark and science/calibration frame have differing exposure-times. A master-bias frame needs to be supplied to scale the dark frame to same exposure time as input science/calibration frame")
@@ -771,27 +776,30 @@ class _base_recipe_(object):
             raise AttributeError(
                 "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME")
 
+        processedFrame = inputFrame.copy()
+
+        if master_bias != False:
+            processedFrame = ccdproc.subtract_bias(processedFrame, master_bias)
+
         # DARK WITH MATCHING EXPOSURE TIME
         tolerence = 0.5
-        if dark != False and (int(dark.header[kw("EXPTIME")]) < int(inputFrame.header[kw("EXPTIME")]) + tolerence) and (int(dark.header[kw("EXPTIME")]) > int(inputFrame.header[kw("EXPTIME")]) - tolerence):
-            calibration_subtracted_frame = inputFrame.subtract(dark)
-            calibration_subtracted_frame.header = inputFrame.header
-            try:
-                calibration_subtracted_frame.wcs = inputFrame.wcs
-            except:
-                pass
+        if dark != False and (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence):
+            processedFrame = ccdproc.subtract_bias(processedFrame, dark)
 
-        # ONLY A MASTER BIAS FRAME, NO DARK
-        if dark == False and master_bias != False:
-            calibration_subtracted_frame = inputFrame.subtract(master_bias)
-            calibration_subtracted_frame.header = inputFrame.header
-            try:
-                calibration_subtracted_frame.wcs = inputFrame.wcs
-            except:
-                pass
+        if master_flat != False:
+            processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
-        self.log.debug('completed the ``subtract_calibrations`` method')
-        return calibration_subtracted_frame
+        if order_table != False and 1 == 0:
+            background = subtract_background(
+                log=self.log,
+                frame=processedFrame,
+                orderTable=order_table,
+                settings=self.settings
+            )
+            backgroundFrame, processedFrame = background.subtract()
+
+        self.log.debug('completed the ``detrend`` method')
+        return processedFrame
 
     def report_output(
             self,

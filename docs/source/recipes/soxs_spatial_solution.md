@@ -17,7 +17,7 @@ Each pinhole in the multi-pinhole mask is $\text{0.5"}$ in diameter and the 9 pi
 
 ### Method
 
-Having [prepared](../utils/prepare_frames.md) the multi-pinhole frame the [bias and dark signatures are removed](../utils/subtract_calibrations.md) and the frame is divided through by the master flat frame. The calibrated frame and the first-guess dispersion map are passed to the [`create_dispersion_map`](../utils/create_dispersion_map.md) utility to produce a 2D dispersion solution covering both the spectral and spatial dimensions.
+Having [prepared](../utils/prepare_frames.md) the multi-pinhole frame the [bias and dark signatures are removed](../utils/detrend.md) and the frame is divided through by the master flat frame. The calibrated frame and the first-guess dispersion map are passed to the [`create_dispersion_map`](../utils/create_dispersion_map.md) utility to produce a 2D dispersion solution covering both the spectral and spatial dimensions.
 
 ![](soxs_spatial_solution.png)
 

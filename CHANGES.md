@@ -1,5 +1,6 @@
 # Release Notes
 
+`subtract_calibrations` util renamed to `detrend` and added ability to flat correct
 soxspipe now on conda
 nan ignored when scaling quicklook images
 RON and bias structure QCs now reported by mbias
@@ -59,7 +60,7 @@ better treatment of masked pixels when stacking images (e.g. in mbias and mdark)
 ## v0.4.0 - September 3, 2020
 
 * **FEATURE:** added create_dispersion_map class to be used in `soxs_disp_solution` and `soxs_spatial_solution`
-* **FEATURE:** added a `subtract_calibrations` method to subtract calibration frames (bias and dark) from an input frame
+* **FEATURE:** added a `detrend` method to subtract calibration frames (bias and dark) from an input frame
 * **FEATURE:** added the dispersion solution recipe and unit tests
 * **FEATURE:** added the disp_solution command-line tool
 * **DOCS:** major docs overhaul

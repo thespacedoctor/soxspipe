@@ -221,7 +221,7 @@ class soxs_order_centres(_base_recipe_):
             orderDef_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                           hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        self.orderFrame = self.subtract_calibrations(
+        self.orderFrame = self.detrend(
             inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
         if self.settings["save-intermediate-products"]:

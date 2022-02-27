@@ -31,7 +31,7 @@ As input this recipes accepts the [Pinhole Map](../files/pinhole_map.md) file.
 
 ### Method
 
-After preparing and calibrating the single-pinhole arc-lamp frame (using the [`subtract_calibrations`](../utils/subtract_calibrations.md)), the [`create_dispersion_map`](../utils/create_dispersion_map.md)) util is employed to detect and measure the positions of the arc lines on the frame. Below you can see the bright arc-lines outshining the traces of the order-centres and the detection of one of these lines during the [`create_dispersion_map`](../utils/create_dispersion_map.md)) util.
+After preparing and calibrating the single-pinhole arc-lamp frame (using the [`detrend`](../utils/detrend.md)), the [`create_dispersion_map`](../utils/create_dispersion_map.md)) util is employed to detect and measure the positions of the arc lines on the frame. Below you can see the bright arc-lines outshining the traces of the order-centres and the detection of one of these lines during the [`create_dispersion_map`](../utils/create_dispersion_map.md)) util.
 
 [![{@height=300px}](https://live.staticflickr.com/65535/50293674417_80470ed5f0_z.png)](https://live.staticflickr.com/65535/50293674417_80470ed5f0_o.png) [![{@height=300px}](https://live.staticflickr.com/65535/50294361037_a5a5ddd7f0_m.png)](https://live.staticflickr.com/65535/50294361037_a5a5ddd7f0_o.png)
 

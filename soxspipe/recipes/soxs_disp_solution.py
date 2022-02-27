@@ -194,7 +194,7 @@ class soxs_disp_solution(_base_recipe_):
             pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        self.pinholeFrame = self.subtract_calibrations(
+        self.pinholeFrame = self.detrend(
             inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
 
         if self.settings["save-intermediate-products"]:
