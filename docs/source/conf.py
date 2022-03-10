@@ -23,6 +23,8 @@ class Mock(MagicMock):
         return Mock()
 
 
+MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.colors',
+                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas', 'astropy.nddata.nduncertainty', 'photutils', 'scipy.optimize', 'photutils.utils', 'astropy.visualization', 'scipy.signal', 'numpy.ma', 'scipy.interpolate', 'scipy.ndimage.filters', 'astropy.table', 'scipy.stats.median_absolute_deviation']
 MOCK_MODULES = []
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
 

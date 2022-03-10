@@ -160,7 +160,7 @@ class create_dispersion_map(object):
         mapPath = self.write_map_to_file(
             popt_x, popt_y, order_deg, wavelength_deg, slit_deg)
 
-        if self.firstGuessMap:
+        if self.firstGuessMap and self.orderTable:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
             return mapPath, mapImagePath
 
@@ -773,7 +773,7 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=900)
+                                inputArray=inputArray, poolSize=False, timeout=900, turnOffMP=True)
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
 
