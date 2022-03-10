@@ -27,6 +27,10 @@
        
    
         
+            ~soxs_disp_solution.detrend
+       
+   
+        
             ~soxs_disp_solution.prepare_frames
        
    
@@ -35,11 +39,15 @@
        
    
         
-            ~soxs_disp_solution.report_output
+            ~soxs_disp_solution.qc_median_flux_level
        
    
         
-            ~soxs_disp_solution.subtract_calibrations
+            ~soxs_disp_solution.qc_ron
+       
+   
+        
+            ~soxs_disp_solution.report_output
        
    
         
@@ -122,6 +130,10 @@
    ..     
    ..          ~soxs_disp_solution._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 
