@@ -77,6 +77,10 @@ soxs-mflat:
     clipping-iteration-limit: 10
     low-sensitivity-clipping-simga: 2
     
+soxs-stare:
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
+    clipping-iteration-count: 0
 
 soxs-straighten:
     asdasd: 1

@@ -11,6 +11,7 @@ Usage:
     soxspipe [-V] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-V] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-V] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-V] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
     init                                   setup the soxspipe settings file for the first time
@@ -20,6 +21,7 @@ Options:
     disp_sol                               the disp solution recipe
     order_centres                          the order centres recipe
     spat_sol                               the spatial solution recipe
+    stare                                  reduce stare mode science frames
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -200,6 +202,17 @@ def main(arguments=None):
             verbose=verbose
         )
         mflatFrame = recipe.produce_product()
+
+    if a["stare"]:
+        from soxspipe.recipes import soxs_stare
+        recipe = soxs_stare(
+            log=log,
+            settings=settings,
+            inputFrames=a["inputFrames"],
+            verbose=verbose
+        )
+        reducedStare = recipe.produce_product()
+        print(f"\nReduced stare mode: {reducedStare}")
 
     # CALL FUNCTIONS/OBJECTS
 
