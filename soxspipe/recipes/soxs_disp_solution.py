@@ -22,6 +22,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from datetime import datetime
 os.environ['TERM'] = 'vt100'
 
 
@@ -214,6 +215,23 @@ class soxs_disp_solution(_base_recipe_):
             pinholeFrame=self.pinholeFrame
         ).get()
 
+        filename = os.path.basename(productPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "DISP_MAP",
+            "file_name": filename,
+            "file_type": "CSV",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} first pass dispersion solution",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

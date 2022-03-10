@@ -245,6 +245,37 @@ class soxs_spatial_solution(_base_recipe_):
             productsTable=False
         ).get()
 
+        from datetime import datetime
+        filename = os.path.basename(mapPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "SPAT_SOL",
+            "file_name": filename,
+            "file_type": "CSV",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} full dispersion-spatial solution",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        filename = os.path.basename(mapImagePath)
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "2D_MAP",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} 2D detector map of wavelength, slit position and order",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
+
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
