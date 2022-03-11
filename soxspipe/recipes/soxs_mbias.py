@@ -25,6 +25,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from astropy.stats import sigma_clip, mad_std
 from scipy.stats import median_absolute_deviation
 import matplotlib.pyplot as plt
 os.environ['TERM'] = 'vt100'
@@ -299,7 +300,7 @@ class soxs_mbias(_base_recipe_):
             frames):
         """*calculate the periodic pattern noise based on the raw input bias frames*
 
-        A 2D FFT is applied to each of the raw bias frames and the standard deviation and median absolute deviation calcualted for each result. The maximum std/mad is then added as the ppnmax QC in the master bias frame header. 
+        A 2D FFT is applied to each of the raw bias frames and the standard deviation and median absolute deviation calcualted for each result. The maximum std/mad is then added as the ppnmax QC in the master bias frame header.
 
         **Key Arguments:**
             - ``frames`` -- the raw bias frames (imageFileCollection)
@@ -322,16 +323,23 @@ class soxs_mbias(_base_recipe_):
         for frame in ccds:
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
-            dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray, norm="ortho"))
+            dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
 
-            frame_mad = median_absolute_deviation(dark_image_grey_fourier, axis=None)
-            frame_std = np.std(dark_image_grey_fourier)
+            # SIGMA-CLIP THE DATA
+            masked_dark_image_grey_fourier = sigma_clip(
+                dark_image_grey_fourier, sigma_lower=1000, sigma_upper=1000, maxiters=1, cenfunc='mean')
+            goodData = np.ma.compressed(masked_dark_image_grey_fourier)
 
-            print(frame_std, frame_mad)
+            # frame_mad = median_absolute_deviation(dark_image_grey_fourier, axis=None)
+            # frame_std = np.std(dark_image_grey_fourier)
+            # print(frame_std, frame_mad, frame_std / frame_mad)
+
+            frame_mad = median_absolute_deviation(goodData, axis=None)
+            frame_std = np.std(goodData)
 
             from soxspipe.commonutils.toolkit import quicklook_image
             quicklook_image(
-                log=self.log, CCDObject=abs(dark_image_grey_fourier), show=True, ext=None, stdWindow=0.01)
+                log=self.log, CCDObject=abs(masked_dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
 
             ratios.append(frame_std / frame_mad)
 
