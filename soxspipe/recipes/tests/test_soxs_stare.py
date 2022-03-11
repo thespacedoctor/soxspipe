@@ -43,57 +43,57 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 
 
-class test_soxs_spatial_solution(unittest.TestCase):
+class test_soxs_stare(unittest.TestCase):
 
-    def test_soxs_spatial_solution_nir_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_NIR_SPAT_SOLUTION.sof"
-        from soxspipe.recipes import soxs_spatial_solution
-        this = soxs_spatial_solution(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
-
-    # def test_soxs_spatial_solution_uvb_function(self):
-
-    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_UVB_SPAT_SOLUTION_1x1_fast.sof"
-    #     from soxspipe.recipes import soxs_spatial_solution
-    #     this = soxs_spatial_solution(
+    # def test_soxs_stare_nir_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_6s_darks.sof"
+    #     from soxspipe.recipes import soxs_stare
+    #     this = soxs_stare(
     #         log=log,
     #         settings=settings,
     #         inputFrames=sofPath
     #     )
     #     this.produce_product()
 
-    # def test_soxs_spatial_solution_vis_function(self):
-    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_VIS_SPAT_SOLUTION_1x1_fast.sof"
-    #     from soxspipe.recipes import soxs_spatial_solution
-    #     this = soxs_spatial_solution(
+    # def test_soxs_stare_uvb_function(self):
+
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/uvb_1x1_dark_3600s.sof"
+    #     from soxspipe.recipes import soxs_stare
+    #     this = soxs_stare(
     #         log=log,
     #         settings=settings,
     #         inputFrames=sofPath
     #     )
     #     this.produce_product()
 
-    # def test_soxs_spatial_solution_function(self):
+    # def test_soxs_stare_vis_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/vis_1x1_dark_3600s.sof"
+    #     from soxspipe.recipes import soxs_stare
+    #     this = soxs_stare(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
+
+    # def test_soxs_stare_function(self):
 
     #     # utKit.refresh_database() # reset database to database found in
     #     # soxspipe/test/input
-    #     from soxspipe.recipes import soxs_spatial_solution
-    #     this = soxs_spatial_solution(
+    #     from soxspipe.recipes import soxs_stare
+    #     this = soxs_stare(
     #         log=log,
     #         settings=settings
     #     )
     #     this.get()
 
-    def test_soxs_spatial_solution_function_exception(self):
+    def test_soxs_stare_function_exception(self):
 
-        from soxspipe.recipes import soxs_spatial_solution
+        from soxspipe.recipes import soxs_stare
         try:
-            sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/SOMEDIRECTORY/sofs/nir_mixed_exptime_darks.sof"
-            from soxspipe.recipes import soxs_spatial_solution
-            this = soxs_spatial_solution(
+            sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_mixed_exptime_darks.sof"
+            from soxspipe.recipes import soxs_stare
+            this = soxs_stare(
                 log=log,
                 settings=settings,
                 inputFrames=sofPath

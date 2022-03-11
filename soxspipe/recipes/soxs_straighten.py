@@ -10,18 +10,19 @@
     May 17, 2021
 """
 ################# GLOBAL IMPORTS ####################
+from datetime import datetime
+from soxspipe.commonutils import keyword_lookup
+from astropy import units as u
+import ccdproc
+from astropy.nddata import CCDData
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-import ccdproc
-from astropy import units as u
-from soxspipe.commonutils import keyword_lookup
 
 
 class soxs_straighten(_base_recipe_):
@@ -184,6 +185,14 @@ class soxs_straighten(_base_recipe_):
 
         productPath = None
 
+        # filename = os.path.basename(productPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        # xsoxs-append-to-product-report-table
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

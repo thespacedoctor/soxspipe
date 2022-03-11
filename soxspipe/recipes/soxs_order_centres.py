@@ -20,6 +20,7 @@ from ._base_recipe_ import _base_recipe_
 from soxspipe.commonutils import set_of_files
 from fundamentals import tools
 from builtins import object
+from datetime import datetime
 import sys
 import os
 os.environ['TERM'] = 'vt100'
@@ -240,6 +241,23 @@ class soxs_order_centres(_base_recipe_):
         )
         productPath = detector.get()
 
+        filename = os.path.basename(productPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "ORDER_CENTRES",
+            "file_name": filename,
+            "file_type": "CSV",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} order centre traces",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

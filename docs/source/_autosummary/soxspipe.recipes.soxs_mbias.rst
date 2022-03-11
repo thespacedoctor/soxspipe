@@ -27,6 +27,10 @@
        
    
         
+            ~soxs_mbias.detrend
+       
+   
+        
             ~soxs_mbias.prepare_frames
        
    
@@ -35,11 +39,23 @@
        
    
         
-            ~soxs_mbias.report_output
+            ~soxs_mbias.qc_bias_structure
        
    
         
-            ~soxs_mbias.subtract_calibrations
+            ~soxs_mbias.qc_median_flux_level
+       
+   
+        
+            ~soxs_mbias.qc_periodic_pattern_noise
+       
+   
+        
+            ~soxs_mbias.qc_ron
+       
+   
+        
+            ~soxs_mbias.report_output
        
    
         
@@ -122,6 +138,14 @@
    ..     
    ..          ~soxs_mbias._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

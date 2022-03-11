@@ -43,15 +43,9 @@
        
    
         
-            ~detect_continuum.read_spectral_format
-       
-   
-        
             ~detect_continuum.write_order_table_to_file
        
    
-   .. 
-   ..     
    .. 
    ..     
    .. 
