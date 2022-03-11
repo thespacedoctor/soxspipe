@@ -45,36 +45,36 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_stare(unittest.TestCase):
 
-    def test_soxs_stare_nir_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_6s_darks.sof"
-        from soxspipe.recipes import soxs_stare
-        this = soxs_stare(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+    # def test_soxs_stare_nir_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_6s_darks.sof"
+    #     from soxspipe.recipes import soxs_stare
+    #     this = soxs_stare(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
-    def test_soxs_stare_uvb_function(self):
+    # def test_soxs_stare_uvb_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/uvb_1x1_dark_3600s.sof"
-        from soxspipe.recipes import soxs_stare
-        this = soxs_stare(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/uvb_1x1_dark_3600s.sof"
+    #     from soxspipe.recipes import soxs_stare
+    #     this = soxs_stare(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
-    def test_soxs_stare_vis_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/vis_1x1_dark_3600s.sof"
-        from soxspipe.recipes import soxs_stare
-        this = soxs_stare(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+    # def test_soxs_stare_vis_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/vis_1x1_dark_3600s.sof"
+    #     from soxspipe.recipes import soxs_stare
+    #     this = soxs_stare(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
     # def test_soxs_stare_function(self):
 
