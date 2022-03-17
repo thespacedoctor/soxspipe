@@ -10,13 +10,13 @@
     September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
+import numpy as np
+import math
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-import math
-import numpy as np
 
 
 class chebyshev_order_wavelength_polynomials():
@@ -68,30 +68,20 @@ class chebyshev_order_wavelength_polynomials():
         wavelength_deg = self.wavelength_deg
         slit_deg = self.slit_deg
 
-        # lhsVals = np.sum([v * c for v, c in zip([orderPixelTable["order"].values**i * orderPixelTable["wavelength"].values**j * orderPixelTable["slit_position"].values**k for i in range(0, order_deg + 1)
-        # for j in range(0, wavelength_deg + 1) for k in range(0, slit_deg +
-        # 1)], coeff)], axis=0)
-
-        # THE LIST COMPREHENSION ABOVE DID NOT SPEED UP THE NEST LOOPS BELOW -
-        # KEEPING LOOPS!
         n_coeff = 0
         lhsVals = np.zeros(len(orderPixelTable.index))
 
-        placeholder = [(i, j, k)
-                       for i in range(0, order_deg + 1) for j in range(0, wavelength_deg + 1) for k in range(0, slit_deg + 1)]
-        lhsVals = sum([coeff[n_coeff] * orderPixelTable["order"].values**i *
-                       orderPixelTable["wavelength"].values**j *
-                       orderPixelTable["slit_position"].values**k
-                       for n_coeff, (i, j, k) in enumerate(placeholder)])
-        return lhsVals
-        sys.exit(0)
+        orderVals = orderPixelTable["order"].values
+        wlVals = orderPixelTable["wavelength"].values
+        spVals = orderPixelTable["slit_position"].values
 
+        # FOR LOOPS ARE THE RIGHT TOOL TO PERFORM COMPUTATIONS OR RUN FUNCTIONS. LIST COMPREHENSION IS SLOW IN THESE CASES
         for i in range(0, order_deg + 1):
             for j in range(0, wavelength_deg + 1):
                 for k in range(0, slit_deg + 1):
-                    lhsVals += coeff[n_coeff] * orderPixelTable["order"].values**i * \
-                        orderPixelTable["wavelength"].values**j * \
-                        orderPixelTable["slit_position"].values**k
+                    lhsVals += coeff[n_coeff] * orderVals**i * \
+                        wlVals**j * \
+                        spVals**k
                     n_coeff += 1
 
         self.log.debug('completed the ``poly`` method')
