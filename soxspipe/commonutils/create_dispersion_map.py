@@ -481,12 +481,19 @@ class create_dispersion_map(object):
         clippedCount = 1
 
         poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
 
         clippingSigma = self.settings[
             recipe]["poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.settings[
             recipe]["clipping-iteration-limit"]
+
+        for i in range(0, order_deg + 1):
+            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+        for j in range(0, wavelength_deg + 1):
+            orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
+        for k in range(0, slit_deg + 1):
+            orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
 
         iteration = 0
         while clippedCount > 0 and iteration < clippingIterationLimit:
