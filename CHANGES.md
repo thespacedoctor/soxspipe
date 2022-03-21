@@ -13,6 +13,7 @@ QCs now being written to FITS header
 QCs have an option to *NOT* (`to_header`) write to FITS header (default is to write)
 Correct management of mask when determining RON on bias and darks
 better treatment of masked pixels when stacking images (e.g. in mbias and mdark)
+2D image map of wavelength values, slit-position values and order values written alongside polynomial solutions of full dispersion solution
 
 ## v0.5.1 - September 29, 2021
 

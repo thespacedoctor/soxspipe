@@ -40,17 +40,18 @@
    
         
             ~soxs_mbias.qc_bias_structure
-       
-   
+
         
             ~soxs_mbias.qc_median_flux_level
+       
+        
+            ~soxs_mbias.qc_periodic_pattern_noise
        
    
         
             ~soxs_mbias.qc_ron
        
    
-        
             ~soxs_mbias.report_output
        
    
@@ -61,104 +62,16 @@
         
             ~soxs_mbias.xsh2soxs
        
-   
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   ..          ~soxs_mbias._absolute_path
-   ..      
-   .. 
-   ..     
-   ..          ~soxs_mbias._prepare_single_frame
-   ..      
-   .. 
-   ..     
-   ..          ~soxs_mbias._trim_frame
-   ..      
-   .. 
-   ..     
-   ..          ~soxs_mbias._verify_input_frames_basics
-   ..      
-   .. 
-   ..     
-   ..          ~soxs_mbias._write
-   ..      
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   ..     
-   .. 
-   
-   
+
+            ~soxs_mbias._absolute_path
+
+            ~soxs_mbias._prepare_single_frame
+
+            ~soxs_mbias._trim_frame
+
+            ~soxs_mbias._verify_input_frames_basics
+
+            ~soxs_mbias._write
 
    
    

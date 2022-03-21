@@ -5,4 +5,4 @@ For the UVB-VIS arm we will often need to scale the master-dark frame to match t
 
 This logic is all housed within the [`detrend`](../_api/soxspipe.recipes._base_recipe_.html#soxspipe.recipes._base_recipe_._base_recipe_.detrend) method.
 
-![](subtract_calibrations.png)
+![](detrend.png)
