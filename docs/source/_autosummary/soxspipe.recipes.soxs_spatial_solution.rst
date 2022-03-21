@@ -27,6 +27,10 @@
        
    
         
+            ~soxs_spatial_solution.detrend
+       
+   
+        
             ~soxs_spatial_solution.prepare_frames
        
    
@@ -35,11 +39,15 @@
        
    
         
-            ~soxs_spatial_solution.report_output
+            ~soxs_spatial_solution.qc_median_flux_level
        
    
         
-            ~soxs_spatial_solution.subtract_calibrations
+            ~soxs_spatial_solution.qc_ron
+       
+   
+        
+            ~soxs_spatial_solution.report_output
        
    
         
@@ -122,6 +130,10 @@
    ..     
    ..          ~soxs_spatial_solution._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

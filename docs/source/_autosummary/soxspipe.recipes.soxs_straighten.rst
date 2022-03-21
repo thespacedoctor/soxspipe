@@ -27,6 +27,10 @@
        
    
         
+            ~soxs_straighten.detrend
+       
+   
+        
             ~soxs_straighten.prepare_frames
        
    
@@ -35,11 +39,15 @@
        
    
         
-            ~soxs_straighten.report_output
+            ~soxs_straighten.qc_median_flux_level
        
    
         
-            ~soxs_straighten.subtract_calibrations
+            ~soxs_straighten.qc_ron
+       
+   
+        
+            ~soxs_straighten.report_output
        
    
         
@@ -122,6 +130,10 @@
    ..     
    ..          ~soxs_straighten._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

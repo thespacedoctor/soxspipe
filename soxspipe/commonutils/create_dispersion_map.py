@@ -430,7 +430,7 @@ class create_dispersion_map(object):
 
         # POLY FUNCTION NEEDS A DATAFRAME AS INPUT
         poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
 
         # CALCULATE X & Y RESIDUALS BETWEEN OBSERVED LINE POSITIONS AND POLY
         # FITTED POSITIONS
@@ -480,6 +480,14 @@ class create_dispersion_map(object):
 
         clippedCount = 1
 
+        # ADD EXPONENTS TO ORDERTABLE UP-FRONT
+        for i in range(0, order_deg + 1):
+            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+        for j in range(0, wavelength_deg + 1):
+            orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
+        for k in range(0, slit_deg + 1):
+            orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
+
         poly = chebyshev_order_wavelength_polynomials(
             log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
 
@@ -487,13 +495,6 @@ class create_dispersion_map(object):
             recipe]["poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.settings[
             recipe]["clipping-iteration-limit"]
-
-        for i in range(0, order_deg + 1):
-            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
-        for j in range(0, wavelength_deg + 1):
-            orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
-        for k in range(0, slit_deg + 1):
-            orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
 
         iteration = 0
         while clippedCount > 0 and iteration < clippingIterationLimit:
@@ -732,18 +733,7 @@ class create_dispersion_map(object):
         **Usage:**
 
         ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
         ```
         """
         self.log.debug('starting the ``map_to_image`` method')
@@ -780,7 +770,7 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray[:3], poolSize=False, timeout=900, turnOffMP=True)
+                                inputArray=inputArray, poolSize=False, timeout=900, turnOffMP=False)
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
 
