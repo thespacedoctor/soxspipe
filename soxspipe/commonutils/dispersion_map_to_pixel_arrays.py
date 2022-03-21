@@ -9,15 +9,15 @@
 :Date Created:
     April 15, 2021
 """
+import numpy as np
+from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
+import unicodecsv as csv
+from os.path import expanduser
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from os.path import expanduser
-import unicodecsv as csv
-from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-import numpy as np
 
 
 def dispersion_map_to_pixel_arrays(
@@ -63,15 +63,26 @@ def dispersion_map_to_pixel_arrays(
     with open(dispersion_map, 'rb') as csvFile:
         csvReader = csv.DictReader(
             csvFile, dialect='excel', delimiter=',', quotechar='"')
+        check = 1
         for row in csvReader:
             axis = row["axis"]
             order_deg = int(row["order-deg"])
             wavelength_deg = int(row["wavelength-deg"])
             slit_deg = int(row["slit-deg"])
+
+            if check:
+                for i in range(0, order_deg + 1):
+                    orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+                for j in range(0, wavelength_deg + 1):
+                    orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
+                for k in range(0, slit_deg + 1):
+                    orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
+                check = 0
+
             coeff[axis] = [float(v) for k, v in row.items() if k not in [
                 "axis", "order-deg", "wavelength-deg", "slit-deg"]]
             poly[axis] = chebyshev_order_wavelength_polynomials(
-                log=log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
+                log=log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
     csvFile.close()
 
     # CONVERT THE ORDER-SORTED WAVELENGTH ARRAYS INTO ARRAYS OF PIXEL TUPLES
