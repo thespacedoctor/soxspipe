@@ -1,5 +1,6 @@
 # Release Notes
 
+2D image map now created by create_dispersion_solution
 `subtract_calibrations` util renamed to `detrend` and added ability to flat correct
 soxspipe now on conda
 nan ignored when scaling quicklook images
