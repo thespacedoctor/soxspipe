@@ -32,6 +32,7 @@
    soxspipe.recipes.soxs_nod_mode
    soxspipe.recipes.soxs_order_centres
    soxspipe.recipes.soxs_spatial_solution
+   soxspipe.recipes.soxs_stare
    soxspipe.recipes.soxs_straighten 
 
 **Functions**

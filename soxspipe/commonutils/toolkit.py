@@ -9,7 +9,8 @@
 :Date Created:
     September 18, 2020
 """
-from astropy.table import Table
+
+
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
 from copy import copy
@@ -467,6 +468,7 @@ def read_spectral_format(
         "/" + dp["spectral format table"]
 
     # SPEC FORMAT TO PANDAS DATAFRAME
+    from astropy.table import Table
     dat = Table.read(spectralFormatFile, format='fits')
     specFormatTable = dat.to_pandas()
 
