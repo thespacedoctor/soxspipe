@@ -9,6 +9,9 @@
 :Date Created:
     September 18, 2020
 """
+from astropy.table import Table
+from os.path import expanduser
+from soxspipe.commonutils import detector_lookup
 from copy import copy
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
@@ -25,20 +28,6 @@ from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
-import unicodecsv as csv
-import numpy as np
-import matplotlib.pyplot as plt
-import random
-import numpy.ma as ma
-import pandas as pd
-from soxspipe.commonutils import detector_lookup
-import math
-from soxspipe.commonutils import keyword_lookup
-from datetime import datetime
-from copy import copy
-from os.path import expanduser
 
 
 def cut_image_slice(
@@ -477,10 +466,9 @@ def read_spectral_format(
     spectralFormatFile = calibrationRootPath + \
         "/" + dp["spectral format table"]
 
-    # READ CSV FILE TO PANDAS DATAFRAME
-    specFormatTable = pd.read_csv(
-        spectralFormatFile, index_col=False, na_values=['NA', 'MISSING'])
-    # # DATAFRAME INFO
+    # SPEC FORMAT TO PANDAS DATAFRAME
+    dat = Table.read(spectralFormatFile, format='fits')
+    specFormatTable = dat.to_pandas()
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values

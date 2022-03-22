@@ -39,6 +39,7 @@ from soxspipe.commonutils import keyword_lookup
 from fundamentals import tools
 from builtins import object
 import sys
+from astropy.table import Table
 import os
 os.environ['TERM'] = 'vt100'
 
@@ -204,8 +205,9 @@ class create_dispersion_map(object):
             "calibration-data-root"].replace("~", home)
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 
-        # READ CSV FILE TO PANDAS DATAFRAME
-        orderPixelTable = pd.read_csv(predictedLinesFile)
+        # LINE LIST TO PANDAS DATAFRAME
+        dat = Table.read(predictedLinesFile, format='fits')
+        orderPixelTable = dat.to_pandas()
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -770,7 +772,7 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-        inputArray=inputArray, poolSize=False, timeout=900, turnOffMP=False)
+                                inputArray=inputArray, poolSize=False, timeout=900, turnOffMP=False)
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
