@@ -84,24 +84,24 @@ class test_create_dispersion_map(unittest.TestCase):
 
     # THE MAP TO IMAGE METHOD GETS TESTED IN SPAT_SOL RECIPE
 
-    def test_create_dispersion_map_multi_nir_with_2d_image_function(self):
-        frame = "~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T173315_NIR_ARC_MULTIPIN.fits"
-        from os.path import expanduser
-        home = expanduser("~")
-        frame = frame.replace("~", home)
-        frame = CCDData.read(frame, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                             hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+    # def test_create_dispersion_map_multi_nir_with_2d_image_function(self):
+    #     frame = "~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T173315_NIR_ARC_MULTIPIN.fits"
+    #     from os.path import expanduser
+    #     home = expanduser("~")
+    #     frame = frame.replace("~", home)
+    #     frame = CCDData.read(frame, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+    #                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath = create_dispersion_map(
-            log=log,
-            settings=settings,
-            pinholeFrame=frame,
-            orderTable="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170820T105246_NIR_ORDER_LOCATIONS.csv",
-            firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170820T153602_NIR_DISP_MAP.csv"
-        ).get()
+    #     from soxspipe.commonutils import create_dispersion_map
+    #     mapPath, mapImagePath = create_dispersion_map(
+    #         log=log,
+    #         settings=settings,
+    #         pinholeFrame=frame,
+    #         orderTable="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170820T105246_NIR_ORDER_LOCATIONS.csv",
+    #         firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170820T153602_NIR_DISP_MAP.csv"
+    #     ).get()
 
-        print(mapImagePath)
+    #     print(mapImagePath)
 
     def test_create_dispersion_map_function_exception(self):
 

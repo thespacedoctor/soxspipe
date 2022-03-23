@@ -23,6 +23,7 @@ import warnings
 from photutils.utils import NoDetectionsWarning
 from astropy.nddata import CCDData
 import math
+from astropy.table import Table
 import numpy as np
 from astropy.stats import sigma_clip, mad_std
 from matplotlib.patches import Rectangle
@@ -41,6 +42,7 @@ from builtins import object
 import sys
 from astropy.table import Table
 import os
+from io import StringIO
 os.environ['TERM'] = 'vt100'
 
 
@@ -388,15 +390,21 @@ class create_dispersion_map(object):
             settings=self.settings
         )
         if slit_deg == 0:
-            filename = filename.split("ARC")[0] + "DISP_MAP.csv"
+            filename = filename.split("ARC")[0] + "DISP_MAP.fits"
         else:
-            filename = filename.split("ARC")[0] + "2D_MAP.csv"
+            filename = filename.split("ARC")[0] + "2D_MAP.fits"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
             listOfDictionaries=[coeff_dict_x, coeff_dict_y]
         )
-        csvData = dataSet.csv(filepath=filePath)
+
+        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
+        fakeFile = StringIO(dataSet.csv())
+        df = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
+        fakeFile.close()
+        t = Table.from_pandas(df)
+        t.write(filePath, overwrite=True)
 
         self.log.debug('completed the ``write_map_to_file`` method')
         return filePath
