@@ -9,29 +9,28 @@
 :Date Created:
     September 18, 2020
 """
+from datetime import datetime, date, time
+import pandas as pd
+from soxspipe.commonutils.filenamer import filenamer
+from fundamentals.renderer import list_of_dictionaries
+import unicodecsv as csv
+import collections
+from soxspipe.commonutils.toolkit import unpack_order_table
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils import keyword_lookup
+from os.path import expanduser
+from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+import random
+from scipy.signal import medfilt
+from soxspipe.commonutils import _base_detect
+from soxspipe.commonutils.toolkit import cut_image_slice
+import matplotlib.pyplot as plt
+import numpy as np
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-import numpy as np
-import matplotlib.pyplot as plt
-from soxspipe.commonutils.toolkit import cut_image_slice
-from soxspipe.commonutils import _base_detect
-from scipy.signal import medfilt
-import matplotlib.pyplot as plt
-import random
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
-from os.path import expanduser
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import detector_lookup
-from soxspipe.commonutils.toolkit import unpack_order_table
-import collections
-import unicodecsv as csv
-from fundamentals.renderer import list_of_dictionaries
-from soxspipe.commonutils.filenamer import filenamer
-import pandas as pd
-from datetime import datetime, date, time
 
 
 class detect_order_edges(_base_detect):
@@ -500,7 +499,7 @@ class detect_order_edges(_base_detect):
             # plt.hlines(maxvalue, 0, len(slice), label='max')
             # plt.hlines(minvalue, 0, len(slice), label='min')
             plt.hlines(orderData["minThreshold"], 0, len(slice),
-                       label=f'threshold {orderData["minThreshold"]:0.2f},  {orderData["maxThreshold"]:0.2f}',  colors='red')
+                       label=f'threshold {orderData["minThreshold"]:0.2f},  {orderData["maxThreshold"]:0.2f}', colors='red')
             plt.xlabel('Position')
             plt.ylabel('Flux')
             plt.legend()
@@ -593,7 +592,7 @@ class detect_order_edges(_base_detect):
             # plt.hlines(maxvalue, 0, len(slice), label='max')
             # plt.hlines(minvalue, 0, len(slice), label='min')
             plt.hlines(threshold, 0, len(slice),
-                       label='threshold',  colors='red')
+                       label='threshold', colors='red')
             plt.xlabel('Position')
             plt.ylabel('Flux')
             plt.legend()
@@ -663,12 +662,18 @@ class detect_order_edges(_base_detect):
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
-        order_table_path = f"{outDir}/order_locations_{arm}.csv"
+        order_table_path = f"{outDir}/order_locations_{arm}.fits"
         dataSet = list_of_dictionaries(
             log=self.log,
             listOfDictionaries=listOfDictionaries
         )
-        csvData = dataSet.csv(filepath=order_table_path)
+
+        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
+        fakeFile = StringIO(dataSet.csv())
+        df = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
+        fakeFile.close()
+        t = Table.from_pandas(df)
+        t.write(order_table_path, overwrite=True)
 
         self.log.debug('completed the ``write_order_table_to_file`` method')
         return order_table_path

@@ -184,6 +184,8 @@ def unpack_order_table(
     """
     log.debug('starting the ``functionName`` function')
 
+    print(orderTablePath)
+
     # READ CSV FILE TO PANDAS DATAFRAME
     orderPolyTable = pd.read_csv(orderTablePath, index_col=False,
                                  na_values=['NA', 'MISSING'])
