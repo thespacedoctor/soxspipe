@@ -10,6 +10,8 @@
     September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from astropy.table import Table
+from astropy.io import fits
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
 import pandas as pd
@@ -34,6 +36,8 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+import copy
+from contextlib import suppress
 os.environ['TERM'] = 'vt100'
 
 
@@ -178,6 +182,7 @@ class _base_detect(object):
         self.log.debug('starting the ``write_order_table_to_file`` method')
 
         arm = self.arm
+        kw = self.kw
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
@@ -193,8 +198,32 @@ class _base_detect(object):
 
         order_table_path = f"{outDir}/{filename}"
 
-        t = Table.from_pandas(orderPolyTable)
-        t.write(order_table_path, overwrite=True)
+        header = copy.deepcopy(frame.header)
+        header.pop(kw("DPR_TECH"))
+        header.pop(kw("DPR_CATG"))
+        header.pop(kw("DPR_TYPE"))
+
+        with suppress(KeyError):
+            header.pop(kw("DET_READ_SPEED"))
+        with suppress(KeyError):
+            header.pop(kw("CONAD"))
+        with suppress(KeyError):
+            header.pop(kw("GAIN"))
+        with suppress(KeyError):
+            header.pop(kw("RON"))
+
+        header[kw("PRO_TECH")] = "ECHELLE,SLIT"
+
+        orderPolyTable = Table.from_pandas(orderPolyTable)
+        BinTableHDU = fits.table_to_hdu(orderPolyTable)
+
+        header[kw("SEQ_ARM")] = arm
+        header[kw("PRO_TYPE")] = "REDUCED"
+        header[kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
+        priHDU = fits.PrimaryHDU(header=header)
+
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+        hduList.writeto(order_table_path, checksum=True, overwrite=True)
 
         self.log.debug('completed the ``write_order_table_to_file`` method')
         return order_table_path

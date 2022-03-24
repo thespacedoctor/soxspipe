@@ -9,13 +9,13 @@
 :Date Created:
     March  9, 2021
 """
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils import keyword_lookup
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import detector_lookup
 
 
 def filenamer(

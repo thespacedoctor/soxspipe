@@ -128,14 +128,7 @@ class soxs_mflat(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
-
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
-        imageTech = self.inputFrames.values(
-            keyword=kw("DPR_TECH").lower(), unique=True)
-        imageCat = self.inputFrames.values(
-            keyword=kw("DPR_CATG").lower(), unique=True)
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
@@ -161,9 +154,9 @@ class soxs_mflat(_base_recipe_):
                     raise TypeError(
                         "Input frames for soxspipe mflat need to be slit flat lamp frames and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
-        # LOOK FOR ORDER CENTRE TABLE
+        # LOOK FOR DISP MAP
         arm = self.arm
-        if arm not in self.supplementaryInput or "ORDER_LOCATIONS" not in self.supplementaryInput[arm]:
+        if f"ORDER_TAB_{arm}" not in imageCat:
             raise TypeError(
                 "Need an order centre for %(arm)s - none found with the input files" % locals())
 
@@ -182,6 +175,7 @@ class soxs_mflat(_base_recipe_):
 
         productPath = None
         arm = self.arm
+        kw = self.kw
 
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats = self.calibrate_frame_set()
@@ -189,10 +183,14 @@ class soxs_mflat(_base_recipe_):
         quicklook_image(
             log=self.log, CCDObject=calibratedFlats[0], show=False)
 
+        # FIND THE DARK FRAMES
+        filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
+        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
         # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
         # FLUX TO THAT LEVEL
         normalisedFlats = self.normalise_flats(
-            calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_LOCATIONS"])
+            calibratedFlats, orderTablePath=orderTablePath)
 
         quicklook_image(
             log=self.log, CCDObject=normalisedFlats[0], show=False)
@@ -217,7 +215,7 @@ class soxs_mflat(_base_recipe_):
         # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
         # FLUX TO THAT LEVEL (AGAIN!)
         normalisedFlats = self.normalise_flats(
-            calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_LOCATIONS"], exposureFrames=exposureFrames)
+            calibratedFlats, orderTablePath=orderTablePath, exposureFrames=exposureFrames)
 
         quicklook_image(
             log=self.log, CCDObject=normalisedFlats[0], show=False)
@@ -233,7 +231,7 @@ class soxs_mflat(_base_recipe_):
         edges = detect_order_edges(
             log=self.log,
             flatFrame=combined_normalised_flat,
-            orderCentreTable=self.supplementaryInput[arm]["ORDER_LOCATIONS"],
+            orderCentreTable=orderTablePath,
             settings=self.settings,
             qcTable=self.qc,
             productsTable=self.products

@@ -289,7 +289,7 @@ class detect_order_edges(_base_detect):
                 "product_label": "ORDER_LOC",
                 "product_desc": "table of coefficients from polynomial fits to order locations",
                 "file_name": orderTableName,
-                "file_type": "CSV",
+                "file_type": "FITS",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "file_path": orderTablePath
@@ -327,6 +327,7 @@ class detect_order_edges(_base_detect):
             }, ignore_index=True)
 
         self.log.debug('completed the ``get`` method')
+
         return self.products, self.qc
 
     def plot_results(

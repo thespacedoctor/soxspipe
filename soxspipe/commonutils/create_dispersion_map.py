@@ -43,6 +43,10 @@ import sys
 from astropy.table import Table
 import os
 from io import StringIO
+from contextlib import suppress
+from astropy.io import fits
+
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -353,6 +357,7 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``write_map_to_file`` method')
 
         arm = self.arm
+        kw = self.kw
 
         # SORT X COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_x = {}
@@ -389,10 +394,27 @@ class create_dispersion_map(object):
             frame=self.pinholeFrame,
             settings=self.settings
         )
+
+        header = self.pinholeFrame.header
+        header.pop(kw("DPR_TECH"))
+        header.pop(kw("DPR_CATG"))
+        header.pop(kw("DPR_TYPE"))
+
+        with suppress(KeyError):
+            header.pop(kw("DET_READ_SPEED"))
+        with suppress(KeyError):
+            header.pop(kw("CONAD"))
+        with suppress(KeyError):
+            header.pop(kw("GAIN"))
+        with suppress(KeyError):
+            header.pop(kw("RON"))
+
         if slit_deg == 0:
             filename = filename.split("ARC")[0] + "DISP_MAP.fits"
+            header[kw("PRO_TECH")] = "ECHELLE,PINHOLE"
         else:
             filename = filename.split("ARC")[0] + "2D_MAP.fits"
+            header[kw("PRO_TECH")] = "ECHELLE,MULTI-PINHOLE"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
@@ -404,7 +426,15 @@ class create_dispersion_map(object):
         df = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
         fakeFile.close()
         t = Table.from_pandas(df)
-        t.write(filePath, overwrite=True)
+        BinTableHDU = fits.table_to_hdu(t)
+
+        header[kw("SEQ_ARM")] = arm
+        header[kw("PRO_TYPE")] = "REDUCED"
+        header[kw("PRO_CATG")] = f"DISP_TAB_{arm}".upper()
+        priHDU = fits.PrimaryHDU(header=header)
+
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+        hduList.writeto(filePath, checksum=True, overwrite=True)
 
         self.log.debug('completed the ``write_map_to_file`` method')
         return filePath

@@ -28,6 +28,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from astropy.table import Table
 os.environ['TERM'] = 'vt100'
 
 
@@ -184,11 +185,13 @@ def unpack_order_table(
     """
     log.debug('starting the ``functionName`` function')
 
-    print(orderTablePath)
+    # MAKE RELATIVE HOME PATH ABSOLUTE
 
-    # READ CSV FILE TO PANDAS DATAFRAME
-    orderPolyTable = pd.read_csv(orderTablePath, index_col=False,
-                                 na_values=['NA', 'MISSING'])
+    home = expanduser("~")
+    orderTablePath = orderTablePath.replace("~", home)
+
+    dat = Table.read(orderTablePath, format='fits')
+    orderPolyTable = dat.to_pandas()
 
     # ADD Y-COORD LIST
     ycoords = [np.arange(math.floor(l) - int(r * extend), math.ceil(u) + int(r * extend), 1) for l, u, r in zip(
