@@ -10,31 +10,35 @@
     September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from astropy.table import Table
+from astropy.io import fits
+from soxspipe.commonutils.toolkit import read_spectral_format
+from soxspipe.commonutils.toolkit import cut_image_slice
+import pandas as pd
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+from fundamentals.renderer import list_of_dictionaries
+import collections
+from astropy.visualization import hist
+from astropy.stats import sigma_clip, mad_std
+from scipy.optimize import curve_fit
+from random import random
+from scipy.signal import find_peaks
+from astropy.modeling import models, fitting
+from astropy.stats import mad_std
+import matplotlib.pyplot as plt
+from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+import numpy as np
+from os.path import expanduser
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils import keyword_lookup
+from fundamentals import tools
 from builtins import object
 import sys
 import os
+import copy
+from contextlib import suppress
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import detector_lookup
-from os.path import expanduser
-import numpy as np
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
-from soxspipe.commonutils.filenamer import filenamer
-import matplotlib.pyplot as plt
-from astropy.stats import mad_std
-from astropy.modeling import models, fitting
-from scipy.signal import find_peaks
-from random import random
-from scipy.optimize import curve_fit
-from astropy.stats import sigma_clip, mad_std
-from astropy.visualization import hist
-import collections
-from fundamentals.renderer import list_of_dictionaries
-from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
-import pandas as pd
-from soxspipe.commonutils.toolkit import cut_image_slice
-from soxspipe.commonutils.toolkit import read_spectral_format
 
 
 class _base_detect(object):
@@ -174,9 +178,11 @@ class _base_detect(object):
         **Return:**
             - ``order_table_path`` -- path to the order table file
         """
+        from astropy.table import Table
         self.log.debug('starting the ``write_order_table_to_file`` method')
 
         arm = self.arm
+        kw = self.kw
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
@@ -188,10 +194,36 @@ class _base_detect(object):
             settings=self.settings
         )
         filename = filename.replace("MFLAT", "FLAT")
-        filename = filename.split("FLAT")[0] + "ORDER_LOCATIONS.csv"
+        filename = filename.split("FLAT")[0] + "ORDER_LOCATIONS.fits"
 
         order_table_path = f"{outDir}/{filename}"
-        orderPolyTable.to_csv(order_table_path, index=False)
+
+        header = copy.deepcopy(frame.header)
+        header.pop(kw("DPR_TECH"))
+        header.pop(kw("DPR_CATG"))
+        header.pop(kw("DPR_TYPE"))
+
+        with suppress(KeyError):
+            header.pop(kw("DET_READ_SPEED"))
+        with suppress(KeyError):
+            header.pop(kw("CONAD"))
+        with suppress(KeyError):
+            header.pop(kw("GAIN"))
+        with suppress(KeyError):
+            header.pop(kw("RON"))
+
+        header[kw("PRO_TECH")] = "ECHELLE,SLIT"
+
+        orderPolyTable = Table.from_pandas(orderPolyTable)
+        BinTableHDU = fits.table_to_hdu(orderPolyTable)
+
+        header[kw("SEQ_ARM")] = arm
+        header[kw("PRO_TYPE")] = "REDUCED"
+        header[kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
+        priHDU = fits.PrimaryHDU(header=header)
+
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+        hduList.writeto(order_table_path, checksum=True, overwrite=True)
 
         self.log.debug('completed the ``write_order_table_to_file`` method')
         return order_table_path

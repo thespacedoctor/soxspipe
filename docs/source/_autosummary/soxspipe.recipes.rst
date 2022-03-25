@@ -27,6 +27,7 @@
           ~soxs_nod_mode
           ~soxs_order_centres
           ~soxs_spatial_solution
+          ~soxs_stare
           ~soxs_straighten
         
 

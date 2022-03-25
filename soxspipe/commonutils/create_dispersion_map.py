@@ -23,6 +23,7 @@ import warnings
 from photutils.utils import NoDetectionsWarning
 from astropy.nddata import CCDData
 import math
+
 import numpy as np
 from astropy.stats import sigma_clip, mad_std
 from matplotlib.patches import Rectangle
@@ -39,7 +40,13 @@ from soxspipe.commonutils import keyword_lookup
 from fundamentals import tools
 from builtins import object
 import sys
+from astropy.table import Table
 import os
+from io import StringIO
+from contextlib import suppress
+from astropy.io import fits
+import copy
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -204,8 +211,10 @@ class create_dispersion_map(object):
             "calibration-data-root"].replace("~", home)
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 
-        # READ CSV FILE TO PANDAS DATAFRAME
-        orderPixelTable = pd.read_csv(predictedLinesFile)
+        # LINE LIST TO PANDAS DATAFRAME
+        print(predictedLinesFile)
+        dat = Table.read(predictedLinesFile, format='fits')
+        orderPixelTable = dat.to_pandas()
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -349,6 +358,7 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``write_map_to_file`` method')
 
         arm = self.arm
+        kw = self.kw
 
         # SORT X COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_x = {}
@@ -385,16 +395,47 @@ class create_dispersion_map(object):
             frame=self.pinholeFrame,
             settings=self.settings
         )
+
+        header = copy.deepcopy(self.pinholeFrame.header)
+        header.pop(kw("DPR_TECH"))
+        header.pop(kw("DPR_CATG"))
+        header.pop(kw("DPR_TYPE"))
+
+        with suppress(KeyError):
+            header.pop(kw("DET_READ_SPEED"))
+        with suppress(KeyError):
+            header.pop(kw("CONAD"))
+        with suppress(KeyError):
+            header.pop(kw("GAIN"))
+        with suppress(KeyError):
+            header.pop(kw("RON"))
+
         if slit_deg == 0:
-            filename = filename.split("ARC")[0] + "DISP_MAP.csv"
+            filename = filename.split("ARC")[0] + "DISP_MAP.fits"
+            header[kw("PRO_TECH")] = "ECHELLE,PINHOLE"
         else:
-            filename = filename.split("ARC")[0] + "2D_MAP.csv"
+            filename = filename.split("ARC")[0] + "2D_MAP.fits"
+            header[kw("PRO_TECH")] = "ECHELLE,MULTI-PINHOLE"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
             listOfDictionaries=[coeff_dict_x, coeff_dict_y]
         )
-        csvData = dataSet.csv(filepath=filePath)
+
+        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
+        fakeFile = StringIO(dataSet.csv())
+        df = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
+        fakeFile.close()
+        t = Table.from_pandas(df)
+        BinTableHDU = fits.table_to_hdu(t)
+
+        header[kw("SEQ_ARM")] = arm
+        header[kw("PRO_TYPE")] = "REDUCED"
+        header[kw("PRO_CATG")] = f"DISP_TAB_{arm}".upper()
+        priHDU = fits.PrimaryHDU(header=header)
+
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+        hduList.writeto(filePath, checksum=True, overwrite=True)
 
         self.log.debug('completed the ``write_map_to_file`` method')
         return filePath
@@ -770,7 +811,7 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-        inputArray=inputArray, poolSize=False, timeout=900, turnOffMP=False)
+                                inputArray=inputArray, poolSize=False, timeout=900, turnOffMP=False)
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]

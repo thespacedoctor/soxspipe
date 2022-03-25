@@ -135,8 +135,12 @@ class _base_recipe_(object):
             # CONVERT RELATIVE TO ABSOLUTE PATHS
             frame = self._absolute_path(frame)
             # OPEN THE RAW FRAME - MASK AND UNCERT TO BE POPULATED LATER
-            frame = CCDData.read(frame, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
-                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            try:
+                frame = CCDData.read(frame, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                     hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            except TypeError as e:
+                self.log.info(f"{filepath} is a FITS Binary Table")
+                return filepath
 
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SXSPRE" DOES NOT
         # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
@@ -348,7 +352,7 @@ class _base_recipe_(object):
             keyword=kw("SEQ_ARM").lower(), unique=True)
         # MIXED INPUT ARMS ARE BAD
         if len(arm) > 1:
-            arms = " and ".join(arms)
+            arms = " and ".join(arm)
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of %(imageTypes)s" % locals())
@@ -372,9 +376,13 @@ class _base_recipe_(object):
                 keyword=kw("CDELT1").lower(), unique=True)
             cdelt2 = self.inputFrames.values(
                 keyword=kw("CDELT2").lower(), unique=True)
+            try:
+                cdelt1.remove(None)
+                cdelt2.remove(None)
+            except:
+                pass
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
-            print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of binnings" % locals())
 
@@ -384,10 +392,14 @@ class _base_recipe_(object):
         # MIXED READOUT SPEEDS IS BAD
         readSpeed = self.inputFrames.values(
             keyword=kw("DET_READ_SPEED").lower(), unique=True)
+        from contextlib import suppress
+        with suppress(ValueError):
+            readSpeed.remove(None)
+
         if len(readSpeed) > 1:
             print(self.inputFrames.summary)
             raise TypeError(
-                "Input frames are a mix of readout speeds" % locals())
+                f"Input frames are a mix of readout speeds. {readSpeed}" % locals())
 
         # MIXED GAIN SPEEDS IS BAD
         # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
@@ -398,11 +410,14 @@ class _base_recipe_(object):
         else:
             gain = self.inputFrames.values(
                 keyword=kw("GAIN").lower(), unique=True)
+
+        with suppress(ValueError):
+            gain.remove(None)
         if len(gain) > 1:
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of gain" % locals())
-        if gain[0]:
+        if len(gain) and gain[0]:
             # UVB & VIS
             self.detectorParams["gain"] = gain[0] * u.electron / u.adu
         else:
@@ -413,12 +428,14 @@ class _base_recipe_(object):
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
         ron = self.inputFrames.values(
             keyword=kw("RON").lower(), unique=True)
+        with suppress(ValueError):
+            ron.remove(None)
 
         # MIXED NOISE
         if len(ron) > 1:
             print(self.inputFrames.summary)
-            raise TypeError("Input frames are a mix of readnoise" % locals())
-        if ron[0]:
+            raise TypeError(f"Input frames are a mix of readnoise. {ron}" % locals())
+        if len(ron) and ron[0]:
             # UVB & VIS
             self.detectorParams["ron"] = ron[0] * u.electron
         else:
@@ -426,8 +443,35 @@ class _base_recipe_(object):
             self.detectorParams["ron"] = self.detectorParams[
                 "ron"] * u.electron
 
+        imageTypes = self.inputFrames.values(
+            keyword=kw("DPR_TYPE").lower(), unique=True) + self.inputFrames.values(
+            keyword=kw("PRO_TYPE").lower(), unique=True)
+        imageTech = self.inputFrames.values(
+            keyword=kw("DPR_TECH").lower(), unique=True) + self.inputFrames.values(
+            keyword=kw("PRO_TECH").lower(), unique=True)
+        imageCat = self.inputFrames.values(
+            keyword=kw("DPR_CATG").lower(), unique=True) + self.inputFrames.values(
+            keyword=kw("PRO_CATG").lower(), unique=True)
+
+        def clean_list(myList):
+            myList = list(set(myList))
+            try:
+                myList.remove(None)
+            except:
+                pass
+            try:
+                myList.remove("REDUCED")
+            except:
+                pass
+
+            return myList
+
+        imageTypes = clean_list(imageTypes)
+        imageTech = clean_list(imageTech)
+        imageCat = clean_list(imageCat)
+
         self.log.debug('completed the ``_verify_input_frames_basics`` method')
-        return None
+        return imageTypes, imageTech, imageCat
 
     def clean_up(
             self):

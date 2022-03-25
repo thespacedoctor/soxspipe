@@ -22,15 +22,15 @@ UVB:
     2x2: cal/BP_MAP_RP_UVB_2x2.fits
   predicted pinhole lines:
     single:
-      1x1: cal/THEO_TAB_SING_UVB_1x1.csv
-      1x2: cal/THEO_TAB_SING_UVB_1x2.csv
-      2x2: cal/THEO_TAB_SING_UVB_2x2.csv
+      1x1: cal/THEO_TAB_SING_UVB_1x1.fits
+      1x2: cal/THEO_TAB_SING_UVB_1x2.fits
+      2x2: cal/THEO_TAB_SING_UVB_2x2.fits
     multi:
-      1x1: cal/THEO_TAB_MULT_UVB_1x1.csv
-      1x2: cal/THEO_TAB_MULT_UVB_1x2.csv
-      2x2: cal/THEO_TAB_MULT_UVB_2x2.csv
+      1x1: cal/THEO_TAB_MULT_UVB_1x1.fits
+      1x2: cal/THEO_TAB_MULT_UVB_1x2.fits
+      2x2: cal/THEO_TAB_MULT_UVB_2x2.fits
   mid_slit_index: 4
-  spectral format table: cal/SPECTRAL_FORMAT_TAB_UVB.csv
+  spectral format table: cal/SPECTRAL_FORMAT_TAB_UVB.fits
   slit_length: 11 #arcsec
             
 VIS:
@@ -57,15 +57,15 @@ VIS:
     2x2: cal/BP_MAP_RP_VIS_2x2.fits
   predicted pinhole lines:
     single:
-      1x1: cal/THEO_TAB_SING_VIS_1x1.csv
-      1x2: cal/THEO_TAB_SING_VIS_1x2.csv
-      2x2: cal/THEO_TAB_SING_VIS_2x2.csv
+      1x1: cal/THEO_TAB_SING_VIS_1x1.fits
+      1x2: cal/THEO_TAB_SING_VIS_1x2.fits
+      2x2: cal/THEO_TAB_SING_VIS_2x2.fits
     multi:
-      1x1: cal/THEO_TAB_MULT_VIS_1x1.csv
-      1x2: cal/THEO_TAB_MULT_VIS_1x2.csv
-      2x2: cal/THEO_TAB_MULT_VIS_2x2.csv
+      1x1: cal/THEO_TAB_MULT_VIS_1x1.fits
+      1x2: cal/THEO_TAB_MULT_VIS_1x2.fits
+      2x2: cal/THEO_TAB_MULT_VIS_2x2.fits
   mid_slit_index: 4
-  spectral format table: cal/SPECTRAL_FORMAT_TAB_VIS.csv
+  spectral format table: cal/SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 11 #arcsec
 
 NIR:
@@ -90,10 +90,10 @@ NIR:
     1x1: cal/BP_MAP_RP_NIR.fits
   predicted pinhole lines:
     single:
-      1x1: cal/THEO_TAB_SING_NIR.csv
+      1x1: cal/THEO_TAB_SING_NIR.fits
     multi:
-      1x1: cal/THEO_TAB_MULT_NIR.csv
+      1x1: cal/THEO_TAB_MULT_NIR.fits
   mid_slit_index: 4
-  spectral format table: cal/SPECTRAL_FORMAT_TAB_NIR.csv
+  spectral format table: cal/SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 11 #arcsec
 

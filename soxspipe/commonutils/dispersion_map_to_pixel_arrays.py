@@ -17,6 +17,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from astropy.table import Table
 os.environ['TERM'] = 'vt100'
 
 
@@ -57,33 +58,33 @@ def dispersion_map_to_pixel_arrays(
     home = expanduser("~")
     dispersion_map = dispersionMapPath.replace("~", home)
 
+    # SPEC FORMAT TO PANDAS DATAFRAME
+    dat = Table.read(dispersion_map, format='fits')
+    tableData = dat.to_pandas()
+
     # READ IN THE X- AND Y- GENERATING POLYNOMIALS FROM DISPERSION MAP FILE
     coeff = {}
     poly = {}
-    with open(dispersion_map, 'rb') as csvFile:
-        csvReader = csv.DictReader(
-            csvFile, dialect='excel', delimiter=',', quotechar='"')
-        check = 1
-        for row in csvReader:
-            axis = row["axis"]
-            order_deg = int(row["order-deg"])
-            wavelength_deg = int(row["wavelength-deg"])
-            slit_deg = int(row["slit-deg"])
+    check = 1
+    for index, row in tableData.iterrows():
+        axis = row["axis"].decode("utf-8")
+        order_deg = int(row["order-deg"])
+        wavelength_deg = int(row["wavelength-deg"])
+        slit_deg = int(row["slit-deg"])
 
-            if check:
-                for i in range(0, order_deg + 1):
-                    orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
-                for j in range(0, wavelength_deg + 1):
-                    orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
-                for k in range(0, slit_deg + 1):
-                    orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
-                check = 0
+        if check:
+            for i in range(0, order_deg + 1):
+                orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+            for j in range(0, wavelength_deg + 1):
+                orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
+            for k in range(0, slit_deg + 1):
+                orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
+            check = 0
 
-            coeff[axis] = [float(v) for k, v in row.items() if k not in [
-                "axis", "order-deg", "wavelength-deg", "slit-deg"]]
-            poly[axis] = chebyshev_order_wavelength_polynomials(
-                log=log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
-    csvFile.close()
+        coeff[axis] = [float(v) for k, v in row.items() if k not in [
+            "axis", "order-deg", "wavelength-deg", "slit-deg"]]
+        poly[axis] = chebyshev_order_wavelength_polynomials(
+            log=log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
 
     # CONVERT THE ORDER-SORTED WAVELENGTH ARRAYS INTO ARRAYS OF PIXEL TUPLES
     orderPixelTable["fit_x"] = poly['x'](orderPixelTable, *coeff['x'])

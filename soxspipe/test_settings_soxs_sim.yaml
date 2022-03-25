@@ -66,7 +66,7 @@ soxs-mdark:
 summary-keys:
     default: ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
                     'EXPTIME']
-    verbose: ['MJDOBS', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
+    verbose: ['MJDOBS', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'PRO_TYPE', 'PRO_CATG', 'PRO_TECH', 'SEQ_ARM',
                     'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'DET_GAIN', 'RON', 'BUNIT']
                     
 data-extension: 1
