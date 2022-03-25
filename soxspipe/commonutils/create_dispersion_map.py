@@ -23,7 +23,7 @@ import warnings
 from photutils.utils import NoDetectionsWarning
 from astropy.nddata import CCDData
 import math
-from astropy.table import Table
+
 import numpy as np
 from astropy.stats import sigma_clip, mad_std
 from matplotlib.patches import Rectangle

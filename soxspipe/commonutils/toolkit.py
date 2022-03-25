@@ -28,7 +28,6 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-from astropy.table import Table
 os.environ['TERM'] = 'vt100'
 
 
@@ -184,6 +183,7 @@ def unpack_order_table(
     ```           
     """
     log.debug('starting the ``functionName`` function')
+    from astropy.table import Table
 
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
