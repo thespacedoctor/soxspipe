@@ -154,7 +154,7 @@ class soxs_mflat(_base_recipe_):
                     raise TypeError(
                         "Input frames for soxspipe mflat need to be slit flat lamp frames and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
-        # LOOK FOR DISP MAP
+        # LOOK FOR ORDER TABLE
         arm = self.arm
         if f"ORDER_TAB_{arm}" not in imageCat:
             raise TypeError(
@@ -183,7 +183,7 @@ class soxs_mflat(_base_recipe_):
         quicklook_image(
             log=self.log, CCDObject=calibratedFlats[0], show=False)
 
-        # FIND THE DARK FRAMES
+        # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
         orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 

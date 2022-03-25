@@ -410,13 +410,14 @@ class _base_recipe_(object):
         else:
             gain = self.inputFrames.values(
                 keyword=kw("GAIN").lower(), unique=True)
+
         with suppress(ValueError):
             gain.remove(None)
         if len(gain) > 1:
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of gain" % locals())
-        if gain[0]:
+        if len(gain) and gain[0]:
             # UVB & VIS
             self.detectorParams["gain"] = gain[0] * u.electron / u.adu
         else:
@@ -434,7 +435,7 @@ class _base_recipe_(object):
         if len(ron) > 1:
             print(self.inputFrames.summary)
             raise TypeError(f"Input frames are a mix of readnoise. {ron}" % locals())
-        if ron[0]:
+        if len(ron) and ron[0]:
             # UVB & VIS
             self.detectorParams["ron"] = ron[0] * u.electron
         else:

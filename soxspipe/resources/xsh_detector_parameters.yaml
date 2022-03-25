@@ -61,9 +61,9 @@ VIS:
       1x2: cal/THEO_TAB_SING_VIS_1x2.fits
       2x2: cal/THEO_TAB_SING_VIS_2x2.fits
     multi:
-      1x1: cal/THEO_TAB_MULT_VIS_1x1.csv
-      1x2: cal/THEO_TAB_MULT_VIS_1x2.csv
-      2x2: cal/THEO_TAB_MULT_VIS_2x2.csv
+      1x1: cal/THEO_TAB_MULT_VIS_1x1.fits
+      1x2: cal/THEO_TAB_MULT_VIS_1x2.fits
+      2x2: cal/THEO_TAB_MULT_VIS_2x2.fits
   mid_slit_index: 4
   spectral format table: cal/SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 11 #arcsec

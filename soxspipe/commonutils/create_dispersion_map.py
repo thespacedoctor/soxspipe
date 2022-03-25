@@ -45,7 +45,7 @@ import os
 from io import StringIO
 from contextlib import suppress
 from astropy.io import fits
-
+import copy
 
 os.environ['TERM'] = 'vt100'
 
@@ -212,6 +212,7 @@ class create_dispersion_map(object):
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 
         # LINE LIST TO PANDAS DATAFRAME
+        print(predictedLinesFile)
         dat = Table.read(predictedLinesFile, format='fits')
         orderPixelTable = dat.to_pandas()
 
@@ -395,7 +396,7 @@ class create_dispersion_map(object):
             settings=self.settings
         )
 
-        header = self.pinholeFrame.header
+        header = copy.deepcopy(self.pinholeFrame.header)
         header.pop(kw("DPR_TECH"))
         header.pop(kw("DPR_CATG"))
         header.pop(kw("DPR_TYPE"))
