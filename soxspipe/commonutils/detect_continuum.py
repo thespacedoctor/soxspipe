@@ -68,7 +68,7 @@ class _base_detect(object):
         clippedCount = 1
 
         poly = chebyshev_xy_polynomial(
-            log=self.log, deg=self.polyDeg).poly
+            log=self.log, xdeg=self.polyDeg, order_deg=self.polyDeg).poly
         clippingSigma = self.recipeSettings[
             "poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.recipeSettings[
