@@ -16,6 +16,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+import pandas as pd
 os.environ['TERM'] = 'vt100'
 
 
@@ -105,7 +106,9 @@ class chebyshev_xy_polynomial():
 
     **Key Arguments:**
         - ``log`` -- logger
-        - ``deg`` -- degree of the polynomial components
+        - ``yCol`` -- name of the yCol
+        - ``y_deg`` -- y degree of the polynomial components
+        - ``exponents_included`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
 
     **Usage:**
 
@@ -119,18 +122,22 @@ class chebyshev_xy_polynomial():
     def __init__(
             self,
             log,
-            deg
+            y_deg,
+            yCol=False,
+            exponents_included=False
     ):
         self.log = log
-        self.deg = deg
+        self.y_deg = y_deg
+        self.yCol = yCol
+        self.exponents_included = exponents_included
 
         return None
 
-    def poly(self, yarray, *coeff):
+    def poly(self, orderPixelTable, *coeff):
         """the polynomial definition
 
         **Key Arguments:**
-        - ``yarray`` -- the y coordinates
+        - ``orderPixelTable`` -- data frame with all pixel data arrays
         - ``*coeff`` -- a list of the initial coefficients
 
         **Return:**
@@ -138,18 +145,103 @@ class chebyshev_xy_polynomial():
         """
         self.log.info('starting the ``poly`` method')
 
-        xvals = []
+        n_coeff = 0
+        if not isinstance(orderPixelTable, pd.core.frame.DataFrame):
+            yarray = orderPixelTable
+            lhsVals = np.zeros(len(orderPixelTable))
+        else:
+            yarray = orderPixelTable[self.yCol].values
+            lhsVals = np.zeros(len(orderPixelTable.index))
 
-        # POLYNOMIALS SUMS
-        for y in yarray:
-            n_coeff = 0
-            val = 0
-            for i in range(0, self.deg + 1):
-                val += coeff[n_coeff] * \
-                    math.pow(y, i)
+        if not self.exponents_included:
+            # POLYNOMIALS SUMS
+            for i in range(0, self.y_deg + 1):
+                lhsVals += coeff[n_coeff] * yarray**i
                 n_coeff += 1
-            xvals.append(val)
+        else:
+            for i in range(0, self.y_deg + 1):
+                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values
+                n_coeff += 1
 
         self.log.info('completed the ``poly`` method')
 
-        return xvals
+        return lhsVals
+
+
+class chebyshev_order_xy_polynomials():
+    """*the chebyshev polynomial fits FIX ME*
+
+    **Key Arguments:**
+        - ``log`` -- logger
+        - ``order_deg`` -- degree of the order polynomial components
+        - ``y_deg`` -- degree of y polynomial components
+        - ``yCol`` -- name of the y column (if needed). Default *False*
+        - ``orderCol`` -- name of the order column (if needed). Default *False*
+        - ``exponents_included`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
+    poly = chebyshev_order_wavelength_polynomials(
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
+    ```
+    """
+
+    def __init__(
+            self,
+            log,
+            order_deg,
+            y_deg,
+            yCol=False,
+            orderCol=False,
+            exponents_included=False
+    ):
+        self.log = log
+        self.order_deg = order_deg
+        self.y_deg = y_deg
+        self.yCol = yCol
+        self.orderCol = orderCol
+        self.exponents_included = exponents_included
+
+        return None
+
+    def poly(self, orderPixelTable, *coeff):
+        """the polynomial definition
+
+        **Key Arguments:**
+        - ``orderPixelTable`` -- a pandas dataframe containing x, y, order
+        - ``*coeff`` -- a list of the initial coefficients
+
+        **Return:**
+        - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
+        """
+        self.log.debug('starting the ``poly`` method')
+
+        # UNPACK TUPLE INPUT
+        order_deg = self.order_deg
+        y_deg = self.y_deg
+
+        n_coeff = 0
+        lhsVals = np.zeros(len(orderPixelTable.index))
+
+        # FOR LOOPS ARE THE RIGHT TOOL TO PERFORM COMPUTATIONS OR RUN FUNCTIONS. LIST COMPREHENSION IS SLOW IN THESE CASES
+
+        if self.exponents_included == False:
+            orderVals = orderPixelTable[self.orderCol].values
+            yVals = orderPixelTable[self.yCol].values
+
+            for i in range(0, order_deg + 1):
+                for j in range(0, y_deg + 1):
+                    lhsVals += coeff[n_coeff] * orderVals**i * \
+                        yVals**j
+                    n_coeff += 1
+        else:
+            for i in range(0, order_deg + 1):
+                for j in range(0, y_deg + 1):
+                    lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{i}"].values * orderPixelTable[f"y_pow_{j}"].values
+                    n_coeff += 1
+
+        self.log.debug('completed the ``poly`` method')
+
+        return lhsVals

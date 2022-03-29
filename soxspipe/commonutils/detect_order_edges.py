@@ -184,9 +184,10 @@ class detect_order_edges(_base_detect):
         print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
         for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-            coeff, orderPixelTable = self.fit_polynomial(
+            coeff, orderPixelTable = self.fit_order_polynomial(
                 pixelList=orderPixelTable,
                 order=o,
+                y_deg=self.polyDeg,
                 xCol="xcoord_upper",
                 yCol="ycoord"
             )
@@ -203,9 +204,10 @@ class detect_order_edges(_base_detect):
         uniqueOrders = orderPixelTable['order'].unique()
         for o in uniqueOrders:
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-            coeff, orderPixelTable = self.fit_polynomial(
+            coeff, orderPixelTable = self.fit_order_polynomial(
                 pixelList=orderPixelTable,
                 order=o,
+                y_deg=self.polyDeg,
                 xCol="xcoord_lower",
                 yCol="ycoord"
             )
@@ -394,7 +396,7 @@ class detect_order_edges(_base_detect):
             "order-location fit solutions", fontsize=10)
         ylinelist = np.arange(0, self.flatFrame.data.shape[0], 3)
         poly = chebyshev_xy_polynomial(
-            log=self.log, deg=self.polyDeg).poly
+            log=self.log, y_deg=self.polyDeg).poly
 
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit

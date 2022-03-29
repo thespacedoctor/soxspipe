@@ -203,23 +203,26 @@ def unpack_order_table(
     xcoords_centre = []
     xcoords_edgeup = []
     xcoords_edgelow = []
+    from tabulate import tabulate
+    print(tabulate(orderPolyTable, headers='keys', tablefmt='psql'))
+
     for index, row in orderPolyTable.iterrows():
         cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
-        poly = chebyshev_xy_polynomial(log=log, deg=int(row["degy_cent"])).poly
+        poly = chebyshev_xy_polynomial(log=log, y_deg=int(row["degy_cent"])).poly
         xcoords_centre.append(np.array(poly(ycoords[index], *cent_coeff)))
         if "degy_edgeup" in row:
             degy_edge = int(row["degy_edgeup"])
             edgeup_coeff = [float(v)
                             for k, v in row.items() if "edgeup_" in k]
             poly = chebyshev_xy_polynomial(
-                log=log, deg=degy_edge).poly
+                log=log, y_deg=degy_edge).poly
             xcoords_edgeup.append(
                 np.array(poly(ycoords[index], *edgeup_coeff)))
 
             edgelow_coeff = [float(v)
                              for k, v in row.items() if "edgelow_" in k]
             poly = chebyshev_xy_polynomial(
-                log=log, deg=degy_edge).poly
+                log=log, y_deg=degy_edge).poly
             xcoords_edgelow.append(
                 np.array(poly(ycoords[index], *edgelow_coeff)))
 

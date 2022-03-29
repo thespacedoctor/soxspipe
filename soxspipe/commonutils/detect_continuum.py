@@ -27,7 +27,7 @@ from astropy.modeling import models, fitting
 from astropy.stats import mad_std
 import matplotlib.pyplot as plt
 from soxspipe.commonutils.filenamer import filenamer
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 import numpy as np
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
@@ -36,6 +36,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from io import StringIO
 import copy
 from contextlib import suppress
 os.environ['TERM'] = 'vt100'
@@ -43,32 +44,38 @@ os.environ['TERM'] = 'vt100'
 
 class _base_detect(object):
 
-    def fit_polynomial(
+    def fit_order_polynomial(
             self,
             pixelList,
             order,
+            y_deg,
             xCol,
-            yCol):
+            yCol,
+            exponents_included=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
             - ``pixelList`` -- data-frame group containing x,y pixel array
             - ``order`` -- the order to fit
-            - ``xCol`` -- name of x-pixel column
-            - ``yCol`` -- name of y-pixel column
+            - ``y_deg`` -- degree for polynomial to fit
+            - ``xCol`` -- name of x column
+            - ``yCol`` -- name of y column
+            - ``exponents_included`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
 
         **Return:**
             - ``coeffs`` -- the coefficients of the polynomial fit
             - ``pixelList`` -- the pixel list but now with fits and residuals included
         """
-        self.log.debug('starting the ``fit_polynomial`` method')
+        self.log.debug('starting the ``fit_order_polynomial`` method')
 
         arm = self.arm
+        self.y_deg = y_deg
 
         clippedCount = 1
 
         poly = chebyshev_xy_polynomial(
-            log=self.log, xdeg=self.polyDeg, order_deg=self.polyDeg).poly
+            log=self.log, yCol=yCol, y_deg=y_deg, exponents_included=exponents_included).poly
+
         clippingSigma = self.recipeSettings[
             "poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.recipeSettings[
@@ -77,18 +84,19 @@ class _base_detect(object):
         iteration = 0
         mask = (pixelList['order'] == order)
         pixelListFiltered = pixelList.loc[mask]
+
         while clippedCount > 0 and iteration < clippingIterationLimit:
             pixelListFiltered = pixelList.loc[mask]
 
             startCount = len(pixelListFiltered.index)
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((self.polyDeg + 1))
+            coeff = np.ones((y_deg + 1))
             # NOTE X AND Y COLUMN ARE CORRECLY IN xdata AND ydata - WANT TO
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelListFiltered[yCol].values, ydata=pixelListFiltered[xCol].values, p0=coeff)
+                    poly, xdata=pixelListFiltered, ydata=pixelListFiltered[xCol].values, p0=coeff)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 pixelList.drop(index=pixelList[mask].index, inplace=True)
@@ -100,6 +108,7 @@ class _base_detect(object):
             res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
                 orderPixelTable=pixelListFiltered,
                 coeff=coeff,
+                y_deg=y_deg,
                 xCol=xCol,
                 yCol=yCol)
 
@@ -120,22 +129,106 @@ class _base_detect(object):
             sys.stdout.write("\x1b[1A\x1b[2K")
             print(f'\t\tORDER {order:0.0f}: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
-        self.log.debug('completed the ``fit_polynomials`` method')
+        self.log.debug('completed the ``fit_order_polynomial`` method')
+        return coeff, pixelList
+
+    def fit_global_polynomial(
+            self,
+            pixelList,
+            y_deg,
+            order_deg,
+            exponents_included=False):
+        """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
+
+        **Key Arguments:**
+            - ``pixelList`` -- data-frame group containing x,y pixel array
+            - ``y_deg`` -- degree for polynomial to fit y-values
+            - ``order_deg`` -- degree for polynomial to fit order-values
+            - ``exponents_included`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+
+        **Return:**
+            - ``coeffs`` -- the coefficients of the polynomial fit
+            - ``pixelList`` -- the pixel list but now with fits and residuals included
+        """
+        self.log.debug('starting the ``fit_global_polynomial`` method')
+
+        arm = self.arm
+
+        clippedCount = 1
+
+        poly = chebyshev_order_xy_polynomials(log=self.log, yCol="cont_y", orderCol="order", order_deg=order_deg, y_deg=y_deg, exponents_included=exponents_included).poly
+
+        clippingSigma = self.recipeSettings[
+            "poly-fitting-residual-clipping-sigma"]
+        clippingIterationLimit = self.recipeSettings[
+            "clipping-iteration-limit"]
+
+        iteration = 0
+
+        while clippedCount > 0 and iteration < clippingIterationLimit:
+            startCount = len(pixelList.index)
+            iteration += 1
+            # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
+            coeff = np.ones((self.yDeg + 1) * (self.orderDeg + 1))
+            try:
+                coeff, pcov_x = curve_fit(
+                    poly, xdata=pixelList, ydata=pixelList["cont_x"].values, p0=coeff)
+            except TypeError as e:
+                # REMOVE THIS ORDER FROM PIXEL LIST
+                coeff = None
+                return coeff, pixelList
+            except Exception as e:
+                raise e
+
+            res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
+                orderPixelTable=pixelList,
+                coeff=coeff,
+                y_deg=y_deg,
+                order_deg=order_deg,
+                orderCol="order",
+                xCol="cont_x",
+                yCol="cont_y",
+                globalFit=True)
+
+            pixelList["x_fit_res"] = res
+            pixelList["x_fit"] = xfit
+
+            # SIGMA-CLIP THE DATA
+            masked_residuals = sigma_clip(
+                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+            pixelList["mask"] = masked_residuals.mask
+
+            # REMOVE FILTERED ROWS FROM DATA FRAME
+            removeMask = (pixelList["mask"] == True)
+            pixelList.drop(index=pixelList[removeMask].index, inplace=True)
+            clippedCount = startCount - len(pixelList.index)
+
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+
+        self.log.debug('completed the ``fit_global_polynomial`` method')
         return coeff, pixelList
 
     def calculate_residuals(
             self,
             orderPixelTable,
             coeff,
+            y_deg,
             xCol,
-            yCol):
+            yCol,
+            orderCol=False,
+            order_deg=False,
+            globalFit=False):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
             - ``orderPixelTable`` -- data-frame containing pixel list for given order
             - ``coeff`` -- the coefficients of the fitted polynomial
+            - ``y_deg`` -- degree for polynomial to fit y-values
             - ``xCol`` -- name of x-pixel column
             - ``yCol`` -- name of y-pixel column
+            - ``orderCol`` -- name of the order column (global fits only)
+            - ``order_deg`` -- degree for polynomial to fit order-values (global fits only)
 
         **Return:**
             - ``res`` -- x residuals
@@ -148,13 +241,17 @@ class _base_detect(object):
 
         arm = self.arm
 
-        poly = chebyshev_xy_polynomial(
-            log=self.log, deg=self.polyDeg).poly
+        if globalFit:
+            poly = chebyshev_order_xy_polynomials(
+                log=self.log, yCol=yCol, orderCol=orderCol, order_deg=self.orderDeg, y_deg=self.yDeg).poly
+        else:
+            poly = chebyshev_xy_polynomial(
+                log=self.log, yCol=yCol, y_deg=y_deg).poly
 
         # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
         # FITTED POSITIONS
         xfit = poly(
-            orderPixelTable[yCol].values, *coeff)
+            orderPixelTable, *coeff)
         res = xfit - orderPixelTable[xCol].values
 
         # CALCULATE COMBINED RESIDUALS AND STATS
@@ -241,6 +338,7 @@ class detect_continuum(_base_detect):
         - ``recipeName`` -- the recipe name as given in the settings dictionary
         - ``qcTable`` -- the data frame to collect measured QC metrics 
         - ``productsTable`` -- the data frame to collect output products
+        - ``globalFit`` -- fit with a local (order by order) or global fit
 
     **Usage:**
 
@@ -267,7 +365,8 @@ class detect_continuum(_base_detect):
             settings=False,
             recipeName=False,
             qcTable=False,
-            productsTable=False
+            productsTable=False,
+            globalFit=False
     ):
         self.log = log
         log.debug("instansiating a new 'detect_continuum' object")
@@ -280,6 +379,7 @@ class detect_continuum(_base_detect):
         self.dispersion_map = dispersion_map
         self.qc = qcTable
         self.products = productsTable
+        self.globalFit = globalFit
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -297,7 +397,8 @@ class detect_continuum(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        self.polyDeg = self.recipeSettings["poly-deg"]
+        self.yDeg = self.recipeSettings["y-deg"]
+        self.orderDeg = self.recipeSettings["order-deg"]
 
         return None
 
@@ -349,41 +450,79 @@ class detect_continuum(_base_detect):
         orderPixelTable['x_fit'] = np.nan
         orderPixelTable['x_fit_res'] = np.nan
 
-        for o in uniqueOrders:
+        if self.globalFit:
+            for i in range(0, self.yDeg + 1):
+                orderPixelTable[f"y_pow_{i}"] = orderPixelTable["cont_y"].pow(i)
+            for i in range(0, self.orderDeg + 1):
+                orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-            coeff, orderPixelTable = self.fit_polynomial(
+            coeff, orderPixelTable = self.fit_global_polynomial(
                 pixelList=orderPixelTable,
-                order=o,
-                xCol="cont_x",
-                yCol="cont_y"
+                y_deg=self.yDeg,
+                order_deg=self.orderDeg,
+                exponents_included=True
             )
-            orderLocations[o] = coeff
-
-        # SORT CENTRE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
-        columnsNames = ["order", "degy_cent", "ymin", "ymax"]
-        coeffColumns = [f'cent_c{i}' for i in range(0, self.polyDeg + 1)]
-        columnsNames.extend(coeffColumns)
-        myDict = {k: [] for k in columnsNames}
-        for k, v in orderLocations.items():
-            myDict["order"].append(k)
-            myDict["degy_cent"].append(self.polyDeg)
+            # orderLocations[o] = coeff
+            coeff_dict = {"degorder_cent": self.orderDeg,
+                          "degy_cent": self.yDeg}
             n_coeff = 0
-            for i in range(0, self.polyDeg + 1):
-                myDict[f'cent_c{i}'].append(v[n_coeff])
-                n_coeff += 1
+            for i in range(0, self.orderDeg + 1):
+                for j in range(0, self.yDeg + 1):
+                    coeff_dict[f'c{i}{j}'] = coeff[n_coeff]
+                    n_coeff += 1
+            coeffColumns = coeff_dict.keys()
+            dataSet = list_of_dictionaries(
+                log=self.log,
+                listOfDictionaries=[coeff_dict]
+            )
 
-            myDict["ymin"].append(
-                np.min(orderPixelTable.loc[(orderPixelTable['order'] == k)]["fit_y"].values))
-            myDict["ymax"].append(
-                np.max(orderPixelTable.loc[(orderPixelTable['order'] == k)]["fit_y"].values))
-        orderPolyTable = pd.DataFrame(myDict)
+            # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
+            fakeFile = StringIO(dataSet.csv())
+            orderPolyTable = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
+            fakeFile.close()
+
+        else:
+            for o in uniqueOrders:
+                for i in range(0, self.yDeg + 1):
+                    orderPixelTable[f"y_pow_{i}"] = orderPixelTable["cont_y"].pow(i)
+                # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
+                coeff, orderPixelTable = self.fit_order_polynomial(  # PASS DEG Y not xcol ycol
+                    pixelList=orderPixelTable,
+                    order=o,
+                    y_deg=self.yDeg,
+                    xCol="cont_x",
+                    yCol="cont_y",
+                    exponents_included=True
+                )
+                orderLocations[o] = coeff
+            columnsNames = ["order", "degy_cent", "ymin", "ymax"]
+            coeffColumns = [f'cent_c{i}' for i in range(0, self.yDeg + 1)]
+            columnsNames.extend(coeffColumns)
+
+            # SORT CENTRE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
+            myDict = {k: [] for k in columnsNames}
+            for k, v in orderLocations.items():
+                myDict["order"].append(k)
+                myDict["degy_cent"].append(self.yDeg)
+                n_coeff = 0
+                for i in range(0, self.yDeg + 1):
+                    myDict[f'cent_c{i}'].append(v[n_coeff])
+                    n_coeff += 1
+
+                myDict["ymin"].append(
+                    np.min(orderPixelTable.loc[(orderPixelTable['order'] == k)]["fit_y"].values))
+                myDict["ymax"].append(
+                    np.max(orderPixelTable.loc[(orderPixelTable['order'] == k)]["fit_y"].values))
+
+            orderPolyTable = pd.DataFrame(myDict)
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
         orderPixelTable.drop(columns=['mask'], inplace=True)
 
         plotPath = self.plot_results(
             orderPixelTable=orderPixelTable,
-            orderPolyTable=orderPolyTable
+            orderPolyTable=orderPolyTable,
+            globalFit=self.globalFit
         )
 
         mean_res = np.mean(np.abs(orderPixelTable['x_fit_res'].values))
@@ -537,12 +676,14 @@ class detect_continuum(_base_detect):
     def plot_results(
             self,
             orderPixelTable,
-            orderPolyTable):
+            orderPolyTable,
+            globalFit=False):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
             - ``orderPixelTable`` -- the pixel table with residuals of fits
             - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+            - ``globalFit`` -- are we working woth a global or order-by-order fit? Default *False*
 
         **Return:**
             - ``filePath`` -- path to the plot pdf
@@ -583,19 +724,40 @@ class detect_continuum(_base_detect):
         midrow.set_title(
             "order-location fit solutions", fontsize=10)
         ylinelist = np.arange(0, self.pinholeFlat.data.shape[0], 3)
-        poly = chebyshev_xy_polynomial(
-            log=self.log, deg=self.polyDeg).poly
 
-        # ONLY DO THIS FOR SMALL DATAFRAMES - THIS IS AN ANTIPATTERN
-        for index, row in orderPolyTable.iterrows():
-            o = row["order"]
-            coeff = [float(v) for k, v in row.items() if "cent_" in k]
-            xfit = poly(ylinelist, *coeff)
-            xfit = np.ones(len(xfit)) * \
-                self.pinholeFlat.data.shape[1] - xfit
-            xfit, ylinelist = zip(
-                *[(x, y) for x, y in zip(xfit, ylinelist) if x > 0 and x < (self.pinholeFlat.data.shape[1]) - 10])
-            midrow.plot(ylinelist, xfit)
+        if globalFit:
+            poly = chebyshev_order_xy_polynomials(
+                log=self.log, yCol="y", orderCol="order", order_deg=self.orderDeg, y_deg=self.yDeg).poly
+            for index, row in orderPolyTable.iterrows():
+                coeff = [float(v) for k, v in row.items() if "c" == k[0]]
+            uniqueOrders = orderPixelTable['order'].unique()
+            # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+            myDict = {"y": ylinelist}
+            df = pd.DataFrame(myDict)
+            for o in uniqueOrders:
+                df["order"] = o
+                xfit = poly(df, *coeff)
+                xfit = np.ones(len(xfit)) * \
+                    self.pinholeFlat.data.shape[1] - xfit
+                xfit, yfit = zip(
+                    *[(x, y) for x, y in zip(xfit, ylinelist) if x > 0 and x < (self.pinholeFlat.data.shape[1]) - 10])
+                l = midrow.plot(yfit, xfit)
+                midrow.text(yfit[10], xfit[10] - 20, int(o), fontsize=8, c=l[0].get_color(), verticalalignment='bottom')
+        else:
+            poly = chebyshev_xy_polynomial(
+                log=self.log, y_deg=self.yDeg).poly
+
+            # ONLY DO THIS FOR SMALL DATAFRAMES - THIS IS AN ANTIPATTERN
+            for index, row in orderPolyTable.iterrows():
+                o = row["order"]
+                coeff = [float(v) for k, v in row.items() if "cent_" in k]
+                xfit = poly(np.array(ylinelist), *coeff)
+                xfit = np.ones(len(xfit)) * \
+                    self.pinholeFlat.data.shape[1] - xfit
+                xfit, yfit = zip(
+                    *[(x, y) for x, y in zip(xfit, ylinelist) if x > 0 and x < (self.pinholeFlat.data.shape[1]) - 10])
+                l = midrow.plot(yfit, xfit)
+                midrow.text(yfit[10], xfit[10] - 20, int(o), fontsize=8, c=l[0].get_color(), verticalalignment='bottom')
 
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit

@@ -41,12 +41,13 @@ soxs-disp-solution:
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
-    order-sample-count: 50
+    order-sample-count: 200
     slice-length: 10
     peak-sigma-limit: 3
-    poly-deg: 5
-    poly-fitting-residual-clipping-sigma: 1.5
-    clipping-iteration-limit: 5
+    y-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 3.0
+    clipping-iteration-limit: 10
 
 soxs-spatial-solution:
     pixel-window-size: 10
