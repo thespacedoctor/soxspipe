@@ -71,9 +71,10 @@ class test_filenamer(unittest.TestCase):
             # GENERATE A LIST OF FILE PATHS
             pathToDirectory = f"{utDir}/{dirr}"
             for d in os.listdir(pathToDirectory):
-                filepath = os.path.join(pathToDirectory, d)
-                if os.path.isfile(filepath) and os.path.splitext(filepath)[1] == ".fits":
-                    filestoname.append(filepath)
+                if "DISP" not in d and "ORDER" not in d:
+                    filepath = os.path.join(pathToDirectory, d)
+                    if os.path.isfile(filepath) and os.path.splitext(filepath)[1] == ".fits":
+                        filestoname.append(filepath)
 
         for filepath in filestoname:
             print(f"\nORIG: {filepath}")

@@ -78,7 +78,7 @@ class test_create_dispersion_map(unittest.TestCase):
             log=log,
             settings=settings,
             pinholeFrame=frame,
-            firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170820T153602_NIR_DISP_MAP.csv"
+            firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T172310_NIR_DISP_MAP.fits"
         ).get()
         print(mapPath)
 
