@@ -698,7 +698,7 @@ class create_dispersion_map(object):
         dp = self.detectorParams
 
         # UNPACK THE ORDER TABLE
-        orderPolyTable, orderPixelTable = unpack_order_table(
+        orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTable, extend=0.)
 
         # CREATE THE IMAGE SAME SIZE AS DETECTOR - NAN INSIDE ORDERS, 0 OUTSIDE

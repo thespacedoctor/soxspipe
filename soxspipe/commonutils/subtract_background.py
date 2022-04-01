@@ -110,7 +110,7 @@ class subtract_background(object):
         print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
 
         # UNPACK THE ORDER TABLE
-        orderPolyTable, orderPixelTable = unpack_order_table(
+        orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTable, extend=self.settings['background-subtraction']['order-extension-fraction-for-background-subtraction'])
 
         originalMask = np.copy(self.frame.mask)

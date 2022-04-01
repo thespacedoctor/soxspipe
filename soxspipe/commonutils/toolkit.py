@@ -23,7 +23,7 @@ import random
 import matplotlib.pyplot as plt
 import numpy as np
 import unicodecsv as csv
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
 from builtins import object
 import sys
@@ -190,55 +190,81 @@ def unpack_order_table(
     home = expanduser("~")
     orderTablePath = orderTablePath.replace("~", home)
 
-    dat = Table.read(orderTablePath, format='fits')
+    dat = Table.read(orderTablePath, format='fits', hdu=1)
     orderPolyTable = dat.to_pandas()
+
+    dat = Table.read(orderTablePath, format='fits', hdu=2)
+    orderMetaTable = dat.to_pandas()
 
     # ADD Y-COORD LIST
     ycoords = [np.arange(math.floor(l) - int(r * extend), math.ceil(u) + int(r * extend), 1) for l, u, r in zip(
-        orderPolyTable["ymin"].values, orderPolyTable["ymax"].values, orderPolyTable["ymax"].values - orderPolyTable["ymin"].values)]
+        orderMetaTable["ymin"].values, orderMetaTable["ymax"].values, orderMetaTable["ymax"].values - orderMetaTable["ymin"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
-        ycoords, orderPolyTable["order"].values)]
+        ycoords, orderMetaTable["order"].values)]
+
+    import pandas as pd
+    # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+    myDict = {
+        "ycoord": np.concatenate(ycoords),
+        "order": np.concatenate(orders)
+    }
+    orderPixelTable = pd.DataFrame(myDict)
 
     # RUN COORDINATES THROUGH POLYNOMIALS TO GET X-COORDS
     xcoords_centre = []
     xcoords_edgeup = []
     xcoords_edgelow = []
-    for index, row in orderPolyTable.iterrows():
-        cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
-        poly = chebyshev_xy_polynomial(log=log, deg=int(row["degy_cent"])).poly
-        xcoords_centre.append(np.array(poly(ycoords[index], *cent_coeff)))
-        if "degy_edgeup" in row:
-            degy_edge = int(row["degy_edgeup"])
-            edgeup_coeff = [float(v)
-                            for k, v in row.items() if "edgeup_" in k]
-            poly = chebyshev_xy_polynomial(
-                log=log, deg=degy_edge).poly
-            xcoords_edgeup.append(
-                np.array(poly(ycoords[index], *edgeup_coeff)))
 
-            edgelow_coeff = [float(v)
-                             for k, v in row.items() if "edgelow_" in k]
-            poly = chebyshev_xy_polynomial(
-                log=log, deg=degy_edge).poly
-            xcoords_edgelow.append(
-                np.array(poly(ycoords[index], *edgelow_coeff)))
+    cent_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
+    poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), order_deg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
+    orderPixelTable["xcoord_centre"] = poly(orderPixelTable, *cent_coeff)
 
-    # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-    myDict = {
-        "order": np.concatenate(orders),
-        "ycoord": np.concatenate(ycoords),
-        'xcoord_centre': np.concatenate(xcoords_centre)
-    }
-    # ADD ODER EDGES IF NEEDED
-    if len(xcoords_edgeup):
-        myDict['xcoord_edgeup'] = np.concatenate(xcoords_edgeup)
-        myDict['xcoord_edgelow'] = np.concatenate(xcoords_edgelow)
+    if "degy_edgeup" in orderPolyTable.columns:
+        upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]
+        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgeup"]), order_deg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", yCol="ycoord").poly
+        orderPixelTable["xcoord_edgeup"] = poly(orderPixelTable, *upper_coeff)
 
-    # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-    orderPixelTable = pd.DataFrame(myDict)
+    if "degy_edgelow" in orderPolyTable.columns:
+        upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
+        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgelow"]), order_deg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", yCol="ycoord").poly
+        orderPixelTable["xcoord_edgelow"] = poly(orderPixelTable, *upper_coeff)
+
+    # for index, row in orderPolyTable.iterrows():
+    #     cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
+    #     poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(row["degy_cent"]), order_deg=int(row["degorder_cent"])).poly
+    #     xcoords_centre.append(np.array(poly(ycoords[index], *cent_coeff)))
+    #     if "degy_edgeup" in row:
+    #         degy_edge = int(row["degy_edgeup"])
+    #         edgeup_coeff = [float(v)
+    #                         for k, v in row.items() if "edgeup_" in k]
+    #         poly = chebyshev_xy_polynomial(
+    #             log=log, y_deg=degy_edge).poly
+    #         xcoords_edgeup.append(
+    #             np.array(poly(ycoords[index], *edgeup_coeff)))
+
+    #         edgelow_coeff = [float(v)
+    #                          for k, v in row.items() if "edgelow_" in k]
+    #         poly = chebyshev_xy_polynomial(
+    #             log=log, y_deg=degy_edge).poly
+    #         xcoords_edgelow.append(
+    #             np.array(poly(ycoords[index], *edgelow_coeff)))
+
+    # # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+    # myDict = {
+    #     "order": np.concatenate(orders),
+    #     "ycoord": np.concatenate(ycoords),
+    #     'xcoord_centre': np.concatenate(xcoords_centre)
+    # }
+    # # ADD ODER EDGES IF NEEDED
+    # if len(xcoords_edgeup):
+    #     myDict['xcoord_edgeup'] = np.concatenate(xcoords_edgeup)
+    #     myDict['xcoord_edgelow'] = np.concatenate(xcoords_edgelow)
+
+    # # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+    # orderPixelTable = pd.DataFrame(myDict)
 
     log.debug('completed the ``functionName`` function')
-    return orderPolyTable, orderPixelTable
+    return orderPolyTable, orderPixelTable, orderMetaTable
 
 
 def generic_quality_checks(
@@ -374,7 +400,7 @@ def spectroscopic_image_quality_checks(
     dateObs = frame.header[kw("DATE_OBS")]
 
     # UNPACK THE ORDER TABLE
-    orderTableMeta, orderTablePixels = unpack_order_table(
+    orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
         log=log, orderTablePath=orderTablePath)
 
     mask = np.ones_like(frame.data)

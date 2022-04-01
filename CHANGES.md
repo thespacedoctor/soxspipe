@@ -1,5 +1,6 @@
 # Release Notes
 
+All CSV files moved to FITS binary tables - metadata very useful for developing data organiser
 2D image map now created by create_dispersion_solution
 `subtract_calibrations` util renamed to `detrend` and added ability to flat correct
 soxspipe now on conda
