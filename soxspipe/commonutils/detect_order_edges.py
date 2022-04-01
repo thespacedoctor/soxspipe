@@ -19,7 +19,7 @@ from soxspipe.commonutils.toolkit import unpack_order_table
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial
+from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
 import random
 from scipy.signal import medfilt
 from soxspipe.commonutils import _base_detect
@@ -30,6 +30,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from io import StringIO
 os.environ['TERM'] = 'vt100'
 
 
@@ -114,7 +115,8 @@ class detect_order_edges(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        self.polyDeg = self.recipeSettings["poly-deg"]
+        self.yDeg = self.recipeSettings["y-deg"]
+        self.orderDeg = self.recipeSettings["order-deg"]
 
         return None
 
@@ -142,25 +144,23 @@ class detect_order_edges(_base_detect):
             self.recipeSettings["max-percentage-threshold-for-edge-detection"]) / 100
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
-        orderPolyTable, orderPixelTable = unpack_order_table(
+        orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderCentreTable)
-        orderLimits = list(zip(
-            orderPolyTable["ymin"].values, orderPolyTable["ymax"].values))
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
         print("\tDETERMINING ORDER FLUX THRESHOLDS")
-        orderPolyTable["maxThreshold"] = np.nan
-        orderPolyTable["minThreshold"] = np.nan
-        orderPolyTable = orderPolyTable.apply(
+        orderMetaTable["maxThreshold"] = np.nan
+        orderMetaTable["minThreshold"] = np.nan
+        orderMetaTable = orderMetaTable.apply(
             self.determine_order_flux_threshold, axis=1, orderPixelTable=orderPixelTable)
 
         # ADD THRESHOLDS TO orderPixelTable
         orderPixelTable["maxThreshold"] = np.nan
         orderPixelTable["minThreshold"] = np.nan
-        uniqueOrders = orderPolyTable['order'].unique()
+        uniqueOrders = orderMetaTable['order'].unique()
         for o in uniqueOrders:
-            orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderPolyTable.loc[
-                (orderPolyTable["order"] == o), ["minThreshold", "maxThreshold"]].values
+            orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderMetaTable.loc[
+                (orderMetaTable["order"] == o), ["minThreshold", "maxThreshold"]].values
 
         print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
         orderPixelTable["xcoord_upper"] = np.nan
@@ -174,105 +174,93 @@ class detect_order_edges(_base_detect):
         orderPixelTable.dropna(axis='index', how='any',
                                subset=['xcoord_lower'], inplace=True)
 
+        for o in uniqueOrders:
+            orderMetaTable.loc[(orderMetaTable["order"] == o), "ymin"] = np.nanmin(orderPixelTable.loc[(orderPixelTable["order"] == o), ["ycoord"]].values)
+            orderMetaTable.loc[(orderMetaTable["order"] == o), "ymax"] = np.nanmax(orderPixelTable.loc[(orderPixelTable["order"] == o), ["ycoord"]].values)
+
         # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
         uniqueOrders = orderPixelTable['order'].unique()
 
-        # PARAMETERS & VARIABLES FOR FITTING EDGES
-        orderMaxLocations = {}
-        orderMinLocations = {}
+        # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
+        for i in range(0, self.yDeg + 1):
+            orderPixelTable[f"y_pow_{i}"] = orderPixelTable["ycoord"].pow(i)
+        for i in range(0, self.orderDeg + 1):
+            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
+        # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
-        for o in uniqueOrders:
-            # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-            coeff, orderPixelTable = self.fit_order_polynomial(
-                pixelList=orderPixelTable,
-                order=o,
-                y_deg=self.polyDeg,
-                xCol="xcoord_upper",
-                yCol="ycoord"
-            )
-            if not isinstance(coeff, type(None)):
-                orderMaxLocations[o] = coeff
-        sys.stdout.write("\x1b[1A\x1b[2K")
+        upperCoeff, orderPixelTable = self.fit_global_polynomial(
+            pixelList=orderPixelTable,
+            yCol="ycoord",
+            xCol="xcoord_upper",
+            orderCol="order",
+            y_deg=self.yDeg,
+            order_deg=self.orderDeg,
+            exponents_included=True
+        )
 
         # RENAME SOME INDIVIDUALLY
         orderPixelTable.rename(columns={
             "x_fit": "xcoord_upper_fit", "x_fit_res": "xcoord_upper_fit_res"}, inplace=True)
 
-        # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
+        # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
-        uniqueOrders = orderPixelTable['order'].unique()
-        for o in uniqueOrders:
-            # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-            coeff, orderPixelTable = self.fit_order_polynomial(
-                pixelList=orderPixelTable,
-                order=o,
-                y_deg=self.polyDeg,
-                xCol="xcoord_lower",
-                yCol="ycoord"
-            )
-            if not isinstance(coeff, type(None)):
-                orderMinLocations[o] = coeff
-        sys.stdout.write("\x1b[1A\x1b[2K")
+        lowerCoeff, orderPixelTable = self.fit_global_polynomial(
+            pixelList=orderPixelTable,
+            yCol="ycoord",
+            xCol="xcoord_lower",
+            orderCol="order",
+            y_deg=self.yDeg,
+            order_deg=self.orderDeg,
+            exponents_included=True
+        )
 
         # RENAME SOME INDIVIDUALLY
         orderPixelTable.rename(columns={
             "x_fit": "xcoord_lower_fit", "x_fit_res": "xcoord_lower_fit_res"}, inplace=True)
 
-        # SORT UPPER EDGE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
-        columnsNames = ["order", "degy_edgeup"]
-        coeffColumns = [f'edgeup_c{i}' for i in range(0, self.polyDeg + 1)]
-        columnsNames.extend(coeffColumns)
-        myDict = {k: [] for k in columnsNames}
-        for k, v in orderMaxLocations.items():
-            myDict["order"].append(k)
-            myDict["degy_edgeup"].append(self.polyDeg)
-            n_coeff = 0
-            for i in range(0, self.polyDeg + 1):
-                myDict[f'edgeup_c{i}'].append(v[n_coeff])
+        # orderLocations[o] = coeff
+        coeff_dict = {
+            "degorder_edgeup": self.orderDeg,
+            "degy_edgeup": self.yDeg,
+            "degorder_edgelow": self.orderDeg,
+            "degy_edgelow": self.yDeg
+        }
+        n_coeff = 0
+        for i in range(0, self.orderDeg + 1):
+            for j in range(0, self.yDeg + 1):
+                coeff_dict[f'edgeup_c{i}{j}'] = upperCoeff[n_coeff]
+                coeff_dict[f'edgelow_c{i}{j}'] = lowerCoeff[n_coeff]
                 n_coeff += 1
-        edgeUpTable = pd.DataFrame(myDict)
+        coeffColumns = coeff_dict.keys()
+        dataSet = list_of_dictionaries(
+            log=self.log,
+            listOfDictionaries=[coeff_dict]
+        )
 
-        # SORT LOWER EDGE TRACE COEFFICIENT OUTPUT TO PANDAS DATAFRAME
-        columnsNames = ["order", "degy_edgelow"]
-        coeffColumns = [f'edgelow_c{i}' for i in range(0, self.polyDeg + 1)]
-        columnsNames.extend(coeffColumns)
-        myDict = {k: [] for k in columnsNames}
-        for k, v in orderMinLocations.items():
-            myDict["order"].append(k)
-            myDict["degy_edgelow"].append(self.polyDeg)
-            n_coeff = 0
-            for i in range(0, self.polyDeg + 1):
-                myDict[f'edgelow_c{i}'].append(v[n_coeff])
-                n_coeff += 1
-        edgeLowTable = pd.DataFrame(myDict)
+        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
+        fakeFile = StringIO(dataSet.csv())
+        orderEdgePolyTable = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
+        fakeFile.close()
 
         # MERGE DATAFRAMES
-        orderPolyTable = orderPolyTable.merge(
-            edgeUpTable, on=["order"], how='outer')
-        orderPolyTable = orderPolyTable.merge(
-            edgeLowTable, on=["order"], how='outer')
+        cols_to_use = orderEdgePolyTable.columns.difference(orderPolyTable.columns)
+        orderPolyTable = orderPolyTable.join(
+            orderEdgePolyTable[cols_to_use])
 
         # GENERATE AN OUTPUT PLOT OF RESULTS AND FITTING RESIDUALS
         print("\tMEASURING AND PLOTTING RESIDUALS OF FITS")
         allResiduals = np.concatenate((orderPixelTable[
             'xcoord_lower_fit_res'], orderPixelTable['xcoord_upper_fit_res']))
         plotPath = self.plot_results(
-            allResiduals=allResiduals,
-            allXfit=np.concatenate((orderPixelTable['xcoord_lower_fit'], orderPixelTable[
-                                   'xcoord_upper_fit'])),
-            allXcoords=np.concatenate((
-                orderPixelTable['xcoord_lower'], orderPixelTable['xcoord_upper'])),
-            allYcoords=np.concatenate((
-                orderPixelTable['ycoord'], orderPixelTable['ycoord'])),
-            orderMaxLocations=orderMaxLocations,
-            orderMinLocations=orderMinLocations,
-            ylims=orderLimits
+            orderPixelTable=orderPixelTable,
+            orderPolyTable=orderPolyTable,
+            orderMetaTable=orderMetaTable
         )
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
         orderTablePath = self.write_order_table_to_file(
-            frame=self.flatFrame, orderPolyTable=orderPolyTable)
+            frame=self.flatFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
         mean_res = np.mean(np.abs(allResiduals))
         std_res = np.std(np.abs(allResiduals))
 
@@ -334,28 +322,27 @@ class detect_order_edges(_base_detect):
 
     def plot_results(
             self,
-            allResiduals,
-            allXfit,
-            allXcoords,
-            allYcoords,
-            orderMaxLocations,
-            orderMinLocations,
-            ylims):
+            orderPixelTable,
+            orderPolyTable,
+            orderMetaTable):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
-            - ``allResiduals`` -- list of all residuals
-            - ``allXfit`` -- list of all fitted x-positions
-            - ``allXcoords`` -- cleaned list of all guassian x-pixel positions
-            - ``allYcoords`` -- cleaned list of all guassian y-pixel positions
-            - ``orderMaxLocations`` -- dictionary of upper order-location polynomial coeff
-            - ``orderMinLocations`` -- dictionary of lower order-location polynomial coeff
-            - ``ylims`` -- the limits of the fit
+            - ``orderPixelTable`` -- the pixel table with residuals of fits
+            - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+            - ``orderMetaTable`` -- data-frame containing the limits of the fit
 
         **Return:**
             - ``filePath`` -- path to the plot pdf
         """
         self.log.debug('starting the ``plot_results`` method')
+
+        allResiduals = np.concatenate((orderPixelTable[
+            'xcoord_lower_fit_res'], orderPixelTable['xcoord_upper_fit_res']))
+        allXcoords = np.concatenate((
+            orderPixelTable['xcoord_lower'], orderPixelTable['xcoord_upper'])),
+        allYcoords = np.concatenate((
+            orderPixelTable['ycoord'], orderPixelTable['ycoord'])),
 
         arm = self.arm
 
@@ -395,8 +382,40 @@ class detect_order_edges(_base_detect):
         midrow.set_title(
             "order-location fit solutions", fontsize=10)
         ylinelist = np.arange(0, self.flatFrame.data.shape[0], 3)
-        poly = chebyshev_xy_polynomial(
-            log=self.log, y_deg=self.polyDeg).poly
+
+        poly = chebyshev_order_xy_polynomials(
+            log=self.log, yCol="y", orderCol="order", order_deg=self.orderDeg, y_deg=self.yDeg).poly
+
+        # UPPER
+        for index, row in orderPolyTable.iterrows():
+            coeffupper = [float(v) for k, v in row.items() if "edgeup_" in k]
+            coefflower = [float(v) for k, v in row.items() if "edgelow_" in k]
+
+        uniqueOrders = orderPixelTable['order'].unique()
+        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+        myDict = {"y": ylinelist}
+        df = pd.DataFrame(myDict)
+
+        from tabulate import tabulate
+
+        for o in uniqueOrders:
+            o = int(o)
+            ymin = orderMetaTable.loc[(orderMetaTable["order"] == o), "ymin"].values[0]
+            ymax = orderMetaTable.loc[(orderMetaTable["order"] == o), "ymax"].values[0]
+
+            df["order"] = o
+            xfitup = poly(df, *coeffupper)
+            xfitlow = poly(df, *coefflower)
+            # xfit = np.ones(len(xfit)) * \
+            #     self.flatFrame.data.shape[1] - xfit
+            xfitup, yfitup = zip(
+                *[(x, y) for x, y in zip(xfitup, ylinelist) if x > 0 and x < (self.flatFrame.data.shape[1]) - 10 and y >= ymin and y <= ymax])
+            xfitlow, yfitlow = zip(
+                *[(x, y) for x, y in zip(xfitlow, ylinelist) if x > 0 and x < (self.flatFrame.data.shape[1]) - 10 and y >= ymin and y <= ymax])
+            l = midrow.plot(yfitlow, xfitlow)
+            u = midrow.plot(yfitup, xfitup, c=l[0].get_color())
+            midrow.fill_between(yfitlow, xfitlow, xfitup, alpha=0.4, fc=l[0].get_color())
+            midrow.text(yfitlow[10], xfitlow[10] + 5, int(o), fontsize=6, c='white', verticalalignment='bottom')
 
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit
@@ -604,82 +623,3 @@ class detect_order_edges(_base_detect):
         self.log.debug(
             'completed the ``determine_lower_upper_edge_limits`` method')
         return orderData
-
-    def write_order_table_to_file_back(
-            self,
-            upperEdges,
-            lowerEdges,
-            ylims):
-        """*write out the fitted polynomial solution coefficients to file*
-
-        **Key Arguments:**
-            - ``upperEdges`` -- dictionary of the order upper-edge location coefficients
-            - ``lowerEdges`` -- dictionary of the order lower-edge location coefficients
-            - ``ylims`` -- the y-min, y-max limits of the order
-
-        **Return:**
-            - ``order_table_path`` -- path to the order table file
-        """
-        self.log.debug('starting the ``write_order_table_to_file`` method')
-
-        arm = self.arm
-
-        # SORT UPPER COEFFICIENT OUTPUT TO WRITE TO FILE
-        listOfDictionaries = []
-        for k, v in upperEdges.items():
-            orderDict = collections.OrderedDict(sorted({}.items()))
-            orderDict["order"] = k
-            orderDict["degy_edge"] = self.polyDeg
-            n_coeff = 0
-            for i in range(0, self.polyDeg + 1):
-                orderDict[f'edgeup_c{i}'] = v[n_coeff]
-                n_coeff += 1
-            listOfDictionaries.append(orderDict)
-
-        # SORT LOWER COEFFICIENT OUTPUT TO WRITE TO FILE
-        for k, v in lowerEdges.items():
-            orderDict = collections.OrderedDict(sorted({}.items()))
-            order = k
-            for l in listOfDictionaries:
-                if l["order"] == order:
-                    n_coeff = 0
-                    for i in range(0, self.polyDeg + 1):
-                        l[f'edgelow_c{i}'] = v[n_coeff]
-                        n_coeff += 1
-
-        # RE-ADD CENTRAL ORDERS
-        with open(self.orderCentreTable, 'rb') as csvFile:
-            csvReader = csv.DictReader(
-                csvFile, dialect='excel', delimiter=',', quotechar='"')
-            for row in csvReader:
-                order = int(row["order"])
-                for l in listOfDictionaries:
-                    if l["order"] == order:
-                        l["degy_cent"] = row["degy_cent"]
-                        l["ymin"] = row["ymin"]
-                        l["ymax"] = row["ymax"]
-                        for k, v in row.items():
-                            if "cent_" in k:
-                                l[k] = row[k]
-
-        # DETERMINE WHERE TO WRITE THE FILE
-        home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
-        order_table_path = f"{outDir}/order_locations_{arm}.fits"
-        dataSet = list_of_dictionaries(
-            log=self.log,
-            listOfDictionaries=listOfDictionaries
-        )
-
-        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
-        fakeFile = StringIO(dataSet.csv())
-        df = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
-        fakeFile.close()
-        t = Table.from_pandas(df)
-        t.write(order_table_path, overwrite=True)
-
-        self.log.debug('completed the ``write_order_table_to_file`` method')
-        return order_table_path
-
-    # use the tab-trigger below for new method
-    # xt-class-method

@@ -68,26 +68,6 @@ class test_detect_continuum(unittest.TestCase):
         )
         this.get()
 
-    def test_detect_continuum_global_function(self):
-        pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
-        dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
-        home = expanduser("~")
-        pinholeFlatPath = pinholeFlatPath.replace("~", home)
-
-        pinholeFlat = CCDData.read(pinholeFlatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                   hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
-
-        from soxspipe.commonutils import detect_continuum
-        this = detect_continuum(
-            log=log,
-            pinholeFlat=pinholeFlat,
-            dispersion_map=dispersion_map,
-            settings=settings,
-            recipeName="soxs-order-centre",
-            globalFit=True
-        )
-        this.get()
-
     def test_detect_continuum_function_exception(self):
 
         from soxspipe.commonutils import detect_continuum

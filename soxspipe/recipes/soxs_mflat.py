@@ -433,7 +433,7 @@ class soxs_mflat(_base_recipe_):
             "soxs-mflat"]["centre-order-window"] / 2)
 
         # UNPACK THE ORDER TABLE
-        orderTableMeta, orderTablePixels = unpack_order_table(
+        orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
 
         mask = np.ones_like(exposureFrames[0].data)
@@ -495,8 +495,10 @@ class soxs_mflat(_base_recipe_):
         print("\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY")
 
         # UNPACK THE ORDER TABLE
-        orderTableMeta, orderTablePixels = unpack_order_table(
+        orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
+
+        print(orderTablePath)
 
         # BAD PIXEL COUNT AT START
         originalBPM = np.copy(frame.mask)

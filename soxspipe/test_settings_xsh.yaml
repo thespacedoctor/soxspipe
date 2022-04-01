@@ -46,7 +46,7 @@ soxs-order-centre:
     peak-sigma-limit: 3
     y-deg: 5
     order-deg: 5
-    poly-fitting-residual-clipping-sigma: 3.0
+    poly-fitting-residual-clipping-sigma: 2.0
     clipping-iteration-limit: 10
 
 soxs-spatial-solution:
@@ -73,8 +73,9 @@ soxs-mflat:
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20
     max-percentage-threshold-for-edge-detection: 50
-    poly-deg: 4
-    poly-fitting-residual-clipping-sigma: 5
+    y-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 2.0
     clipping-iteration-limit: 10
     low-sensitivity-clipping-simga: 2
     

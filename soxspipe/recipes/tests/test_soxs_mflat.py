@@ -54,7 +54,7 @@ class test_soxs_mflat(unittest.TestCase):
         orderTablePath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/20170818T173106_NIR_ORDER_LOCATIONS.fits"
         # UNPACK THE ORDER TABLE
         from soxspipe.commonutils.toolkit import unpack_order_table
-        orderPolyTable, orderPixelTable = unpack_order_table(
+        orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=log, orderTablePath=orderTablePath)
 
         from tabulate import tabulate
@@ -109,16 +109,16 @@ class test_soxs_mflat(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_mflat_uvb_dflat_function(self):
+    # def test_soxs_mflat_uvb_dflat_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_dflats.sof"
-        from soxspipe.recipes import soxs_mflat
-        this = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_dflats.sof"
+    #     from soxspipe.recipes import soxs_mflat
+    #     this = soxs_mflat(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
     # def test_soxs_mflat_uvb_qflat_function(self):
 
