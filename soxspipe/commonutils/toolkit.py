@@ -20,14 +20,17 @@ import math
 import pandas as pd
 import numpy.ma as ma
 import random
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import unicodecsv as csv
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
 from builtins import object
+from matplotlib import cm, rc
 import sys
 import os
+from mpl_toolkits.mplot3d import Axes3D
 os.environ['TERM'] = 'vt100'
 
 
@@ -61,7 +64,7 @@ def cut_image_slice(
                                     width=1, length=sliceLength, x=x_fit, y=y_fit, plot=False)
     if slice is None:
         return None
-    ```           
+    ```
     """
     log.debug('starting the ``cut_image_slice`` function')
 
@@ -100,7 +103,9 @@ def quicklook_image(
         CCDObject,
         show=True,
         ext="data",
-        stdWindow=3):
+        stdWindow=3,
+        title=False,
+        surfacePlot=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
@@ -108,15 +113,19 @@ def quicklook_image(
     - ``log`` -- logger
     - ``CCDObject`` -- the CCDObject to plot
     - ``show`` -- show the image. Set to False to skip
-    - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data". 
+    - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data".
+    - ``title`` -- give a title for the plot
+    - ``surfacePlot`` -- plot as a 3D surface plot
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
     quicklook_image(
         log=self.log, CCDObject=myframe, show=True)
-    ```           
+    ```
     """
     log.debug('starting the ``quicklook_image`` function')
+
+    originalRC = dict(mpl.rcParams)
 
     if not show:
         return
@@ -136,27 +145,91 @@ def quicklook_image(
 
     std = np.nanstd(frame)
     mean = np.nanmean(frame)
-    vmax = mean + stdWindow * std
-    vmin = mean - stdWindow * std
-    palette = copy(plt.cm.gray)
-    # palette.set_over('r', 1.0)
-    # palette.set_under('g', 1.0)
+    palette = copy(plt.cm.viridis)
     palette.set_bad("#dc322f", 1.0)
-    plt.figure(figsize=(12, 5))
-    plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
-               cmap=palette, alpha=1, aspect='auto')
+    vmax = mean + stdWindow * 1 * std
+    vmin = mean - stdWindow * 0.1 * std
+
+    if surfacePlot:
+
+        axisColour = '#dddddd'
+        rc('axes', edgecolor=axisColour, labelcolor=axisColour, linewidth=0.6)
+        rc('xtick', color=axisColour)
+        rc('ytick', color=axisColour)
+        rc('grid', color=axisColour)
+        rc('text', color=axisColour)
+
+        fig = plt.figure(figsize=(40, 10))
+        ax = fig.add_subplot(121, projection='3d')
+        plt.gca().invert_yaxis()
+        ax.set_box_aspect(aspect=(2, 1, 1))
+        # Remove gray panes and axis grid
+        ax.xaxis.pane.fill = False
+        ax.zaxis.pane.set_facecolor("#dc322f")
+        ax.zaxis.pane.set_alpha(1.)
+        ax.yaxis.pane.fill = False
+
+        ax.grid(False)
+        # Remove z-axis
+        # ax.w_zaxis.line.set_lw(0.)
+        # ax.set_zticks([])
+
+        X, Y = np.meshgrid(np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]), np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]))
+        surface = ax.plot_surface(X=X, Y=Y, Z=rotatedImg, cmap='viridis', antialiased=True, vmin=vmin, vmax=vmax)
+
+        ax.azim = -120
+        ax.elev = 30
+
+        plt.gca().invert_xaxis()
+        ax.set_xlim(0, rotatedImg.shape[1])
+        ax.set_ylim(0, rotatedImg.shape[0])
+        ax.set_zlim(0, min(np.nanmax(frame), mean + stdWindow * 10 * std))
+
+        backgroundColour = '#404040'
+        fig.set_facecolor(backgroundColour)
+        ax.set_facecolor(backgroundColour)
+        ax.xaxis.pane.set_edgecolor(backgroundColour)
+        ax.yaxis.pane.set_edgecolor(backgroundColour)
+        ax.zaxis.pane.set_edgecolor(backgroundColour)
+
+        plt.xlabel(
+            "y-axis", fontsize=10)
+        plt.ylabel(
+            "x-axis", fontsize=10)
+
+        ax2 = fig.add_subplot(122)
+    else:
+        fig = plt.figure(figsize=(12, 5))
+
+        # palette.set_over('r', 1.0)
+        # palette.set_under('g', 1.0)
+        ax2 = fig.add_subplot(111)
+    ax2.set_box_aspect(0.5)
+    detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
+                              cmap=palette, alpha=1, aspect='auto')
+
+    if surfacePlot:
+        shrink = 0.5
+    else:
+        shrink = 1.0
+
     if mean > 10:
         fmt = '%1.0f'
-        cbar = plt.colorbar(format=fmt)
+        fig.colorbar(detectorPlot, shrink=shrink, format=fmt)
     else:
-        plt.colorbar()
+        fig.colorbar(detectorPlot, shrink=shrink)
+        # plt.colorbar()
+    if title:
+        fig.suptitle(title, fontsize=16)
+    ax2.invert_yaxis()
     # cbar.ticklabel_format(useOffset=False)
     plt.xlabel(
         "y-axis", fontsize=10)
     plt.ylabel(
         "x-axis", fontsize=10)
-    plt.gca().invert_yaxis()
+
     plt.show()
+    mpl.rcParams.update(originalRC)
 
     log.debug('completed the ``quicklook_image`` function')
     return None
@@ -180,7 +253,7 @@ def unpack_order_table(
     from soxspipe.commonutils.toolkit import unpack_order_table
     orderPolyTable, orderPixelTable = unpack_order_table(
         log=self.log, orderTablePath=orderTablePath, extend=0.)
-    ```           
+    ```
     """
     log.debug('starting the ``functionName`` function')
     from astropy.table import Table
@@ -293,8 +366,8 @@ def generic_quality_checks(
     ```
 
     ```python
-    usage code 
-    ```           
+    usage code
+    ```
     """
     log.debug('starting the ``functionName`` function')
 
@@ -384,8 +457,8 @@ def spectroscopic_image_quality_checks(
     ```
 
     ```python
-    usage code 
-    ```           
+    usage code
+    ```
     """
     log.debug('starting the ``functionName`` function')
 
@@ -479,7 +552,7 @@ def read_spectral_format(
     # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
     orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
             log=self.log, settings=self.settings, arm=arm)
-    ```   
+    ```
     """
     log.debug('starting the ``read_spectral_format`` function')
 

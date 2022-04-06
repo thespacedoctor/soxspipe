@@ -56,7 +56,6 @@ instrument: soxs
 
 # # UTILS
 # background-subtraction:
-#     order-extension-fraction-for-background-subtraction: 1.5
 #     bsline-deg: 3
 #     median-filter-pixels: 11
 

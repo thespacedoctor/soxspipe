@@ -833,7 +833,7 @@ class _base_recipe_(object):
         if master_flat != False:
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
-        if order_table != False and 1 == 0:
+        if order_table != False and 1 == 1:
             background = subtract_background(
                 log=self.log,
                 frame=processedFrame,
