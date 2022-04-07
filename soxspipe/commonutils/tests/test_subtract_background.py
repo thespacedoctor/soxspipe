@@ -59,22 +59,22 @@ class test_subtract_background(unittest.TestCase):
                                  hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         from soxspipe.commonutils.subtract_background import subtract_background
-        background = subtract_background
-            log = log,
-            frame = flatFrame,
-            orderTable = orderTable,
-            settings = settings
+        background = subtract_background(
+            log=log,
+            frame=flatFrame,
+            orderTable=orderTable,
+            settings=settings
         )
-        backgroundSubtractedFrame=background.subtract()
+        backgroundSubtractedFrame = background.subtract()
 
     def test_subtract_background_function_exception(self):
 
         from soxspipe.commonutils.subtract_background import subtract_background
         try:
-            this=subtract_background(
-                log = log,
-                settings = settings,
-                fakeKey = "break the code"
+            this = subtract_background(
+                log=log,
+                settings=settings,
+                fakeKey="break the code"
             )
             this.subtract()
             assert False

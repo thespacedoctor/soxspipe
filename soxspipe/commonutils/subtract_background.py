@@ -125,7 +125,7 @@ class subtract_background(object):
         self.mask_order_locations(orderPixelTable)
 
         quicklook_image(
-            log=self.log, CCDObject=self.frame, show=True, ext=None, surfacePlot=True, title="Initial input frame with order pixels masked")
+            log=self.log, CCDObject=self.frame, show=False, ext=None, surfacePlot=True, title="Initial input frame with order pixels masked")
 
         backgroundFrame = self.create_background_image(
             rowFitOrder=self.settings['background-subtraction']['bsline-deg'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
@@ -137,7 +137,7 @@ class subtract_background(object):
         backgroundSubtractedFrame.header = self.frame.header
 
         quicklook_image(
-            log=self.log, CCDObject=backgroundSubtractedFrame, show=True, ext='data')
+            log=self.log, CCDObject=backgroundSubtractedFrame, show=False, ext='data')
 
         self.log.debug('completed the ``subtract`` method')
         return backgroundFrame, backgroundSubtractedFrame
@@ -192,7 +192,7 @@ class subtract_background(object):
         maskedImage = np.ma.array(self.frame.data, mask=mask)
 
         quicklook_image(
-            log=self.log, CCDObject=maskedImage, show=True, ext=True, stdWindow=3, surfacePlot=True, title="Sigma clipped masked image")
+            log=self.log, CCDObject=maskedImage, show=False, ext=True, stdWindow=3, surfacePlot=True, title="Sigma clipped masked image")
 
         # PLACEHOLDER ARRAY FOR BACKGROUND IMAGE
         backgroundMap = np.zeros_like(self.frame)
@@ -213,7 +213,7 @@ class subtract_background(object):
             backgroundMap = griddata((Xdata, Ydata), Zdata, (X, Y), method='cubic')
 
             quicklook_image(
-                log=self.log, CCDObject=backgroundMap, show=True, ext=None, surfacePlot=True, title="Scattered light background image - fitted with Cubic")
+                log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image - fitted with Cubic")
 
         else:
             for idx, row in enumerate(maskedImage):
@@ -250,7 +250,7 @@ class subtract_background(object):
                 # ADD FITTED ROW TO BACKGROUND IMAGE
                 backgroundMap[idx, :] = yfit
 
-                if random.randint(1, 501) == 42 and 1 == 1:
+                if random.randint(1, 501) == 42 and 1 == 0:
                     fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
                     plt.scatter(xmasked, rowmasked)
                     plt.scatter(xmasked, rowmaskedSmoothed)
@@ -260,13 +260,13 @@ class subtract_background(object):
                     plt.show()
 
             quicklook_image(
-                log=self.log, CCDObject=backgroundMap, show=True, ext=None, surfacePlot=True, title="Scattered light background image")
+                log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image")
 
         backgroundMap = medfilt2d(
             backgroundMap, medianFilterSize)
 
         quicklook_image(
-            log=self.log, CCDObject=backgroundMap, show=True, ext=None, surfacePlot=True, title="Scattered light background image with median filtering")
+            log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image with median filtering")
 
         backgroundMap = CCDData(backgroundMap, unit=self.frame.unit)
 
