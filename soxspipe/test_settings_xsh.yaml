@@ -92,9 +92,8 @@ soxs-straighten:
 
 # UTILS
 background-subtraction:
-    order-extension-fraction-for-background-subtraction: 1.5
-    bsline-deg: 3
-    median-filter-pixels: 11
+    bsline-deg: 2
+    median-filter-pixels: 9
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data/xsh
 calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/xsh
