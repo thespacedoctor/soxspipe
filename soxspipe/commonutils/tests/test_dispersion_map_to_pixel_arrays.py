@@ -11,9 +11,9 @@ from os.path import expanduser
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + \
-#     "/git_repos/_misc_/settings/soxspipe/test_settings.yaml"
+#     "/git_repos/_misc_/settings/soxspipe/test_settings_xsh.yaml"
 
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -49,7 +49,7 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
 
     def test_dispersion_map_to_pixel_arrays_function(self):
 
-        dispersionMapPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/single_pinhole_NIR_disp_map.csv"
+        dispersionMapPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
         import pandas as pd
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS

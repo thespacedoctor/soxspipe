@@ -9,13 +9,13 @@
 :Date Created:
     March  9, 2021
 """
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils import keyword_lookup
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import detector_lookup
 
 
 def filenamer(
@@ -85,7 +85,9 @@ def filenamer(
 
     romode = ""
     if kw("DET_READ_SPEED") in frame.header:
-        if "100k" in frame.header[kw("DET_READ_SPEED")].lower():
+        if frame.header[kw("DET_READ_SPEED")] == 1:
+            romode = "_rospeed1"
+        elif "100k" in frame.header[kw("DET_READ_SPEED")].lower():
             romode = "_slow"
         elif "400k" in frame.header[kw("DET_READ_SPEED")].lower():
             romode = "_fast"

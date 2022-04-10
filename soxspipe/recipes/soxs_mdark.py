@@ -10,17 +10,19 @@
     January 27, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from soxspipe.commonutils import keyword_lookup
+import ccdproc
+from astropy.nddata import CCDData
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
+from datetime import datetime
+from soxspipe.commonutils.toolkit import generic_quality_checks
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-import ccdproc
-from soxspipe.commonutils import keyword_lookup
 
 
 class soxs_mdark(_base_recipe_):
@@ -79,7 +81,8 @@ class soxs_mdark(_base_recipe_):
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
-            inputFrames=self.inputFrames
+            inputFrames=self.inputFrames,
+            ext=self.settings['data-extension']
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -114,10 +117,8 @@ class soxs_mdark(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
         # MIXED INPUT IMAGE TYPES ARE BAD
         if len(imageTypes) > 1:
             imageTypes = " and ".join(imageTypes)
@@ -157,16 +158,47 @@ class soxs_mdark(_base_recipe_):
         kw = self.kw
         dp = self.detectorParams
 
-        combined_bias_mean = self.clip_and_stack(
+        combined_dark_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mdark")
+
+        # ADD QUALITY CHECKS
+        self.qc = generic_quality_checks(
+            log=self.log, frame=combined_dark_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+
+        medianFlux = self.qc_median_flux_level(
+            frame=combined_dark_mean,
+            frameType="MDARK",
+            frameName="master dark"
+        )
+
+        self.qc_ron(
+            frameType="DARK"
+        )
 
         # WRITE TO DISK
         productPath = self._write(
-            frame=combined_bias_mean,
+            frame=combined_dark_mean,
             filedir=self.intermediateRootPath,
             filename=False,
             overwrite=True
         )
+        filename = os.path.basename(productPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "MDARK",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} Master dark frame",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

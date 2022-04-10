@@ -27,6 +27,10 @@
        
    
         
+            ~soxs_mdark.detrend
+       
+   
+        
             ~soxs_mdark.prepare_frames
        
    
@@ -35,11 +39,15 @@
        
    
         
-            ~soxs_mdark.report_output
+            ~soxs_mdark.qc_median_flux_level
        
    
         
-            ~soxs_mdark.subtract_calibrations
+            ~soxs_mdark.qc_ron
+       
+   
+        
+            ~soxs_mdark.report_output
        
    
         
@@ -122,6 +130,10 @@
    ..     
    ..          ~soxs_mdark._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

@@ -27,6 +27,10 @@
        
    
         
+            ~soxs_order_centres.detrend
+       
+   
+        
             ~soxs_order_centres.prepare_frames
        
    
@@ -35,11 +39,15 @@
        
    
         
-            ~soxs_order_centres.report_output
+            ~soxs_order_centres.qc_median_flux_level
        
    
         
-            ~soxs_order_centres.subtract_calibrations
+            ~soxs_order_centres.qc_ron
+       
+   
+        
+            ~soxs_order_centres.report_output
        
    
         
@@ -122,6 +130,10 @@
    ..     
    ..          ~soxs_order_centres._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

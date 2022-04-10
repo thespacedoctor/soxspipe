@@ -23,6 +23,14 @@
        
    
         
+            ~create_dispersion_map.convert_and_fit
+       
+   
+        
+            ~create_dispersion_map.create_placeholder_images
+       
+   
+        
             ~create_dispersion_map.detect_pinhole_arc_line
        
    
@@ -39,9 +47,25 @@
        
    
         
+            ~create_dispersion_map.map_to_image
+       
+   
+        
+            ~create_dispersion_map.order_to_image
+       
+   
+        
             ~create_dispersion_map.write_map_to_file
        
    
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

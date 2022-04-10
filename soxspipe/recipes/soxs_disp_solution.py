@@ -10,19 +10,20 @@
     August 25, 2020
 """
 ################# GLOBAL IMPORTS ####################
+import unicodecsv as csv
+from soxspipe.commonutils import keyword_lookup
+import ccdproc
+from astropy import units as u
+from astropy.nddata import CCDData
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
 import sys
 import os
+from datetime import datetime
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-from astropy import units as u
-import ccdproc
-from soxspipe.commonutils import keyword_lookup
-import unicodecsv as csv
 
 
 class soxs_disp_solution(_base_recipe_):
@@ -115,14 +116,7 @@ class soxs_disp_solution(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
-
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
-        imageTech = self.inputFrames.values(
-            keyword=kw("DPR_TECH").lower(), unique=True)
-        imageCat = self.inputFrames.values(
-            keyword=kw("DPR_CATG").lower(), unique=True)
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
@@ -194,7 +188,7 @@ class soxs_disp_solution(_base_recipe_):
             pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        self.pinholeFrame = self.subtract_calibrations(
+        self.pinholeFrame = self.detrend(
             inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
 
         if self.settings["save-intermediate-products"]:
@@ -208,12 +202,29 @@ class soxs_disp_solution(_base_recipe_):
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
 
         from soxspipe.commonutils import create_dispersion_map
-        productPath = create_dispersion_map(
+        productPath, mapImagePath = create_dispersion_map(
             log=self.log,
             settings=self.settings,
             pinholeFrame=self.pinholeFrame
         ).get()
 
+        filename = os.path.basename(productPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "DISP_MAP",
+            "file_name": filename,
+            "file_type": "FITS Table",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} first pass dispersion solution",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

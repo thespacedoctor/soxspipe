@@ -11,7 +11,7 @@ from os.path import expanduser
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -55,26 +55,26 @@ class test_soxs_spatial_solution(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_spatial_solution_uvb_function(self):
+    # def test_soxs_spatial_solution_uvb_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_UVB_SPAT_SOLUTION_1x1_fast.sof"
-        from soxspipe.recipes import soxs_spatial_solution
-        this = soxs_spatial_solution(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_UVB_SPAT_SOLUTION_1x1_fast.sof"
+    #     from soxspipe.recipes import soxs_spatial_solution
+    #     this = soxs_spatial_solution(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
-    def test_soxs_spatial_solution_vis_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_VIS_SPAT_SOLUTION_1x1_fast.sof"
-        from soxspipe.recipes import soxs_spatial_solution
-        this = soxs_spatial_solution(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+    # def test_soxs_spatial_solution_vis_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_VIS_SPAT_SOLUTION_1x1_fast.sof"
+    #     from soxspipe.recipes import soxs_spatial_solution
+    #     this = soxs_spatial_solution(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
     # def test_soxs_spatial_solution_function(self):
 

@@ -10,8 +10,9 @@ from fundamentals import tools
 from os.path import expanduser
 home = expanduser("~")
 
+
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
 su = tools(
     arguments={"settingsFile": settingsFile},

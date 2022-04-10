@@ -31,6 +31,10 @@
        
    
         
+            ~soxs_mflat.detrend
+       
+   
+        
             ~soxs_mflat.mask_low_sens_and_inter_order_to_unity
        
    
@@ -47,11 +51,15 @@
        
    
         
-            ~soxs_mflat.report_output
+            ~soxs_mflat.qc_median_flux_level
        
    
         
-            ~soxs_mflat.subtract_calibrations
+            ~soxs_mflat.qc_ron
+       
+   
+        
+            ~soxs_mflat.report_output
        
    
         
@@ -134,6 +142,10 @@
    ..     
    ..          ~soxs_mflat._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

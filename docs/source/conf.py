@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from soxspipe import cl_utils
 from builtins import str
 import sys
 import os
@@ -20,10 +21,12 @@ class Mock(MagicMock):
     @classmethod
     def __getattr__(cls, name):
         return Mock()
+
+
 MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.colors',
-                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas', 'astropy.nddata.nduncertainty', 'photutils', 'scipy.optimize', 'photutils.utils', 'astropy.visualization', 'scipy.signal', 'numpy.ma', 'scipy.interpolate', 'scipy.ndimage.filters']
+                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas', 'astropy.nddata.nduncertainty', 'photutils', 'scipy.optimize', 'photutils.utils', 'astropy.visualization', 'scipy.signal', 'numpy.ma', 'scipy.interpolate', 'scipy.ndimage.filters', 'astropy.table', 'scipy.stats.median_absolute_deviation']
+MOCK_MODULES = []
 sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
-from soxspipe import cl_utils
 
 # WHERE DOES THIS conf.py FILE LIVE?
 moduleDirectory = os.path.dirname(os.path.realpath(__file__))
@@ -266,7 +269,7 @@ def generateAutosummaryIndex():
     # FOR SUBPACKAGES USE THE SUBPACKAGE TEMPLATE INSTEAD OF DEFAULT MODULE
     # TEMPLATE
     if len(allModules):
-        thisText  = """
+        thisText = """
 Modules
 -------
 
@@ -479,6 +482,7 @@ def setup(app):
     app.add_config_value('markdown_parser_config',
                          markdown_parser_config, True)
     app.add_transform(AutoStructify)
+
 
 # DO THE WORK
 updateUsageMd()

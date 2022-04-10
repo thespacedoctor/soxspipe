@@ -1,4 +1,6 @@
 from __future__ import print_function
+from astropy import units as u
+from astropy.nddata import CCDData
 from builtins import str
 import os
 import unittest
@@ -9,12 +11,10 @@ from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
 home = expanduser("~")
-from astropy.nddata import CCDData
-from astropy import units as u
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + \
-#     "/git_repos/_misc_/settings/soxspipe/test_settings.yaml"
+#     "/git_repos/_misc_/settings/soxspipe/test_settings_xsh.yaml"
 
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -51,7 +51,7 @@ class test_subtract_background(unittest.TestCase):
     def test_subtract_background_function(self):
 
         flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-background/first_iteration_NIR_master_flat.fits"
-        orderTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-background/20170819T132045_NIR_ORDER_LOCATIONS.csv"
+        orderTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-background/20170819T150225_NIR_ORDER_LOCATIONS.fits"
         home = expanduser("~")
         flatPath = flatPath.replace("~", home)
         orderTable = orderTable.replace("~", home)

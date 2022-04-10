@@ -11,7 +11,7 @@ from os.path import expanduser
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + "/.config/soxspipe.recipes/soxspipe.recipes.yaml"
 su = tools(
     arguments={"settingsFile": settingsFile},

@@ -18,6 +18,7 @@ from astropy.io import fits
 from ccdproc import ImageFileCollection
 import codecs
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
+from astropy.table import Table, join, hstack
 
 
 class set_of_files(object):
@@ -29,7 +30,7 @@ class set_of_files(object):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
         - ``verbose`` -- verbose. True or False. Default *True*
-
+        - ``ext`` -- the data extension for the frame. Default 0.
 
     **Usage**
 
@@ -43,7 +44,8 @@ class set_of_files(object):
     sof = set_of_files(
         log=log,
         settings=settings,
-        inputFrames=inputFrames
+        inputFrames=inputFrames,
+        ext=0
     )
     ```
 
@@ -56,13 +58,15 @@ class set_of_files(object):
             log,
             settings=False,
             inputFrames=[],
-            verbose=True
+            verbose=True,
+            ext=0
     ):
         self.log = log
         log.debug("instansiating a new 'sof' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
+        self.ext = ext
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -72,11 +76,9 @@ class set_of_files(object):
         ).get
 
         if self.verbose:
-            keys = ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT']
+            keys = self.settings['summary-keys']['verbose']
         else:
-            keys = ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME']
+            keys = self.settings['summary-keys']['default']
 
         keys = kw(keys)
         self.keys = []
@@ -207,7 +209,16 @@ class set_of_files(object):
 
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
-            sof = ImageFileCollection(self.inputFrames, keywords=self.keys)
+            sof = ImageFileCollection(
+                self.inputFrames, ext=self.ext)
+            if self.ext > 0:
+                missingKeys = [
+                    k for k in self.keys if k not in sof.summary.colnames]
+                primExt = ImageFileCollection(
+                    filenames=fitsFiles, keywords=missingKeys, ext=0)
+                sof._summary = join(
+                    primExt._summary, sof._summary, keys="file")
+
             supplementaryFilepaths = []
             for d in os.listdir(self.inputFrames):
                 filepath = os.path.join(self.inputFrames, d)
@@ -244,7 +255,15 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, keywords=self.keys)
+                filenames=fitsFiles, location=location, ext=self.ext)
+            if self.ext > 0:
+                missingKeys = [
+                    k for k in self.keys if k not in sof.summary.colnames]
+                primExt = ImageFileCollection(
+                    filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                sof._summary = join(
+                    primExt._summary, sof._summary, keys="file")
+
         elif isinstance(self.inputFrames, list):
             fitsFiles = [f for f in self.inputFrames if ".fits" in f.lower()]
             # FIND UNIQUE FILE LOCATIONS
@@ -256,12 +275,21 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, keywords=self.keys)
+                filenames=fitsFiles, location=location, ext=self.ext)
+            if self.ext > 0:
+                missingKeys = [
+                    k for k in self.keys if k not in sof.summary.colnames]
+                primExt = ImageFileCollection(
+                    filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                sof._summary = join(
+                    primExt._summary, sof._summary, keys="file")
             supplementaryFilepaths = [
                 f for f in self.inputFrames if ".fits" not in f.lower() and f[0] != "."]
         else:
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths")
+
+        sof.keywords = self.keys
 
         supplementary_sof = self.create_supplimentary_file_dictionary(
             supplementaryFilepaths)

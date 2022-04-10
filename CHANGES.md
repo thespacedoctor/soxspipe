@@ -1,5 +1,25 @@
 # Release Notes
 
+## v0.6.0 - April 10, 2022
+
+This is only a summary of some of the updates included in this release:
+
+* **ENHANCEMENT:** All CSV files moved to FITS binary tables - metadata very useful for developing data organiser
+* **FEATURE:** 2D image map now created by create_dispersion_solution
+`subtract_calibrations` util renamed to `detrend` and added ability to flat correct
+* **FEATURE:** 2D image map of wavelength values, slit-position values and order values written alongside polynomial solutions of full dispersion solution
+* **FEATURE:** soxspipe now on conda
+* **FEATURE:** QCs now being written to FITS header
+* **FEATURE:** adding QC and product collection in mbias recipe
+* **ENHANCEMENT** RON and bias structure QCs now reported by mbias
+* **ENHANCEMENT** nan ignored when scaling quicklook images
+* **ENHANCEMENT** RON and bias structure QCs now reported by mdark
+* **ENHANCEMENT:** QCs have an option to *NOT* (`to_header`) write to FITS header (default is to write)
+* **REFACTOR:** better treatment of masked pixels when stacking images (e.g. in mbias and mdark)
+* **REFACTOR:** removed raw frame reports and neater QC table
+* **REFACTOR:** fits header keywords neatly sorted before writing to file
+* **FIX:** Correct management of mask when determining RON on bias and darks
+
 ## v0.5.1 - September 29, 2021
 
 * **FEATURE:** recipes now have a `qc` and `products` attribute. These are pandas data frames used to collect QCs and generated products throughout the life-time of the recipe. They are printed to STDOUT at the end of the recipe (can be used in the future to send post request to health monitor API with JSON content in request body).
@@ -47,7 +67,7 @@
 ## v0.4.0 - September 3, 2020
 
 * **FEATURE:** added create_dispersion_map class to be used in `soxs_disp_solution` and `soxs_spatial_solution`
-* **FEATURE:** added a `subtract_calibrations` method to subtract calibration frames (bias and dark) from an input frame
+* **FEATURE:** added a `detrend` method to subtract calibration frames (bias and dark) from an input frame
 * **FEATURE:** added the dispersion solution recipe and unit tests
 * **FEATURE:** added the disp_solution command-line tool
 * **DOCS:** major docs overhaul

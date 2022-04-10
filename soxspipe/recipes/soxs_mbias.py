@@ -10,18 +10,25 @@
     January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from astropy.stats import sigma_clip, mad_std
+from soxspipe.commonutils.toolkit import generic_quality_checks
+from datetime import datetime
+from soxspipe.commonutils import keyword_lookup
+import ccdproc
+from astropy import units as u
+from astropy.nddata import CCDData
+import math
+import numpy as np
+from ._base_recipe_ import _base_recipe_
+from soxspipe.commonutils import set_of_files
+from fundamentals import tools
 from builtins import object
 import sys
 import os
+from astropy.stats import sigma_clip, mad_std
+from scipy.stats import median_absolute_deviation
+import matplotlib.pyplot as plt
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from soxspipe.commonutils import set_of_files
-from ._base_recipe_ import _base_recipe_
-import numpy as np
-from astropy.nddata import CCDData
-from astropy import units as u
-import ccdproc
-from soxspipe.commonutils import keyword_lookup
 
 
 class soxs_mbias(_base_recipe_):
@@ -91,10 +98,10 @@ class soxs_mbias(_base_recipe_):
         sys.stdout.write("\x1b[1A\x1b[2K")
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
+        # print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['mjd-obs'])
-        print(self.inputFrames.summary, "\n")
+        # print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -114,10 +121,8 @@ class soxs_mbias(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
         # MIXED INPUT IMAGE TYPES ARE BAD
         if len(imageTypes) > 1:
             imageTypes = " and ".join(imageTypes)
@@ -150,6 +155,16 @@ class soxs_mbias(_base_recipe_):
 
         combined_bias_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mbias")
+        self.dateObs = combined_bias_mean.header[kw("DATE_OBS")]
+
+        self.qc_periodic_pattern_noise(frames=self.inputFrames)
+
+        self.qc_ron(
+            frameType="MBIAS",
+            frameName="master bias",
+            masterFrame=combined_bias_mean
+        )
+        self.qc_bias_structure(combined_bias_mean)
 
         # INSPECTING THE THE UNCERTAINTY MAPS
         # print("individual frame data")
@@ -167,6 +182,16 @@ class soxs_mbias(_base_recipe_):
         # combined_bias_mean.uncertainty = combined_bias_mean.uncertainty.astype(
         #     'float32')
 
+        # ADD QUALITY CHECKS
+        self.qc = generic_quality_checks(
+            log=self.log, frame=combined_bias_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+
+        medianFlux = self.qc_median_flux_level(
+            frame=combined_bias_mean,
+            frameType="MBIAS",
+            frameName="master bias"
+        )
+
         # WRITE TO DISK
         productPath = self._write(
             frame=combined_bias_mean,
@@ -174,11 +199,166 @@ class soxs_mbias(_base_recipe_):
             filename=False,
             overwrite=True
         )
+        filename = os.path.basename(productPath)
 
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "MBIAS",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} Master bias frame",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
+
+    def qc_bias_structure(
+            self,
+            combined_bias_mean):
+        """*calculate the structure of the bias*
+
+        **Key Arguments:**
+            - ``combined_bias_mean`` -- the mbias frame
+
+        **Return:**
+            - ``structx`` -- slope of BIAS in X direction
+            - ``structx`` -- slope of BIAS in Y direction
+
+        **Usage:**
+
+        ```python
+        structx, structy = self.qc_bias_structure(combined_bias_mean)
+        ```
+        """
+        self.log.debug('starting the ``qc_bias_structure`` method')
+        plot = False
+
+        collaps_ax1 = np.sum(combined_bias_mean, axis=0)
+        collaps_ax2 = np.sum(combined_bias_mean, axis=1)
+
+        x_axis = np.linspace(0, len(collaps_ax1), len(collaps_ax1), dtype=int)
+        y_axis = np.linspace(0, len(collaps_ax2), len(collaps_ax2), dtype=int)
+
+        # Fitting with a line and collect the slope
+        coeff_ax1 = np.polyfit(x_axis, collaps_ax1, deg=1)
+        coeff_ax2 = np.polyfit(y_axis, collaps_ax2, deg=1)
+
+        if plot == True:
+            plt.plot(x_axis, collaps_ax1)
+            plt.plot(x_axis, np.polyval(coeff_ax1, x_axis))
+            plt.xlabel('x-axis')
+            plt.ylabel('Summed Pixel Values')
+            plt.show()
+
+            plt.plot(y_axis, collaps_ax2)
+            plt.plot(y_axis, np.polyval(coeff_ax2, y_axis))
+            plt.xlabel('y-axis')
+            plt.ylabel('Summed Pixel Values')
+            plt.show()
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "STRUCTX",
+            "qc_value": coeff_ax1[0],
+            "qc_comment": "Slope of BIAS in X direction",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "STRUCTY",
+            "qc_value": coeff_ax2[0],
+            "qc_comment": "Slope of BIAS in Y direction",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.log.debug('completed the ``qc_bias_structure`` method')
+        return coeff_ax1[0], coeff_ax2[0]
+
+    def qc_periodic_pattern_noise(
+            self,
+            frames):
+        """*calculate the periodic pattern noise based on the raw input bias frames*
+
+        A 2D FFT is applied to each of the raw bias frames and the standard deviation and median absolute deviation calcualted for each result. The maximum std/mad is then added as the ppnmax QC in the master bias frame header.
+
+        **Key Arguments:**
+            - ``frames`` -- the raw bias frames (imageFileCollection)
+
+        **Return:**
+            - ``ppnmax``
+
+        **Usage:**
+
+        ```python
+        self.qc_periodic_pattern_noise(frames=self.inputFrames)
+        ```
+        """
+        self.log.debug('starting the ``qc_periodic_pattern_noise`` method')
+
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        ratios = []
+        for frame in ccds:
+            # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+            maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
+            dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
+
+            # SIGMA-CLIP THE DATA
+            masked_dark_image_grey_fourier = sigma_clip(
+                dark_image_grey_fourier, sigma_lower=1000, sigma_upper=1000, maxiters=1, cenfunc='mean')
+            goodData = np.ma.compressed(masked_dark_image_grey_fourier)
+
+            # frame_mad = median_absolute_deviation(dark_image_grey_fourier, axis=None)
+            # frame_std = np.std(dark_image_grey_fourier)
+            # print(frame_std, frame_mad, frame_std / frame_mad)
+
+            frame_mad = median_absolute_deviation(goodData, axis=None)
+            frame_std = np.std(goodData)
+
+            from soxspipe.commonutils.toolkit import quicklook_image
+            quicklook_image(
+                log=self.log, CCDObject=abs(masked_dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
+
+            ratios.append(frame_std / frame_mad)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        ppnmax = max(ratios)
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "PPNMAX",
+            "qc_value": ppnmax,
+            "qc_comment": "Max periodic pattern noise ratio in raw bias frames",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+
+        self.log.debug('completed the ``qc_periodic_pattern_noise`` method')
+        return ppnmax
 
     # use the tab-trigger below for new method
     # xt-class-method

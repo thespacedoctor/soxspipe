@@ -1,4 +1,6 @@
 from __future__ import print_function
+from astropy import units as u
+from astropy.nddata import CCDData
 from builtins import str
 import os
 import unittest
@@ -9,13 +11,11 @@ from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
 home = expanduser("~")
-from astropy.nddata import CCDData
-from astropy import units as u
 
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + \
-#     "/git_repos/_misc_/settings/soxspipe/test_settings.yaml"
+#     "/git_repos/_misc_/settings/soxspipe/test_settings_xsh.yaml"
 
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -51,7 +51,7 @@ class test_detect_continuum(unittest.TestCase):
 
     def test_detect_continuum_function(self):
         pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
-        dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/single_pinhole_NIR_disp_map.csv"
+        dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
         home = expanduser("~")
         pinholeFlatPath = pinholeFlatPath.replace("~", home)
 

@@ -11,7 +11,7 @@ from os.path import expanduser
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
-settingsFile = packageDirectory + "/test_settings.yaml"
+settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -22,6 +22,19 @@ su = tools(
     defaultSettingsFile=False
 )
 arguments, settings, log, dbConn = su.setup()
+
+packageDirectory = utKit("").get_project_root()
+settingsFile2 = packageDirectory + "/test_settings_soxs_sim.yaml"
+# settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
+su = tools(
+    arguments={"settingsFile": settingsFile2},
+    docString=__doc__,
+    logLevel="DEBUG",
+    options_first=False,
+    projectName=None,
+    defaultSettingsFile=False
+)
+arguments2, settings2, log2, dbConn2 = su.setup()
 
 # SETUP AND TEARDOWN FIXTURE FUNCTIONS FOR THE ENTIRE MODULE
 moduleDirectory = os.path.dirname(__file__)
@@ -115,6 +128,30 @@ class test_soxs_mdark(unittest.TestCase):
             log=log,
             settings=settings,
             inputFrames=sofPath
+        )
+        productPath = this.produce_product()
+        print(f"Here is the final product `{productPath}`")
+
+    def test_soxs_mdark_e2e_nir_function(self):
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath,
+            verbose=True
+        )
+        productPath = this.produce_product()
+        print(f"Here is the final product `{productPath}`")
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_900s_darks.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath,
+            verbose=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
