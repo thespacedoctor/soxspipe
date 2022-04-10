@@ -12,3 +12,4 @@ git+https://github.com/readthedocs/readthedocs-sphinx-search@main
 docopt
 unicodecsv
 psutil>5.7
+pillow
