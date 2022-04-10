@@ -31,7 +31,11 @@
        
    
         
-            ~detect_continuum.fit_polynomial
+            ~detect_continuum.fit_global_polynomial
+       
+   
+        
+            ~detect_continuum.fit_order_polynomial
        
    
         
@@ -46,6 +50,8 @@
             ~detect_continuum.write_order_table_to_file
        
    
+   .. 
+   ..     
    .. 
    ..     
    .. 

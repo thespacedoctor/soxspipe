@@ -22,6 +22,7 @@
    soxspipe.commonutils.detector_lookup
    soxspipe.commonutils.keyword_lookup
    soxspipe.commonutils.polynomials.chebyshev_order_wavelength_polynomials
+   soxspipe.commonutils.polynomials.chebyshev_order_xy_polynomials
    soxspipe.commonutils.polynomials.chebyshev_xy_polynomial
    soxspipe.commonutils.set_of_files
    soxspipe.commonutils.subtract_background
