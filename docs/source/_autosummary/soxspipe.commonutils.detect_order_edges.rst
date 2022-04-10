@@ -31,7 +31,11 @@
        
    
         
-            ~detect_order_edges.fit_polynomial
+            ~detect_order_edges.fit_global_polynomial
+       
+   
+        
+            ~detect_order_edges.fit_order_polynomial
        
    
         
@@ -44,10 +48,6 @@
    
         
             ~detect_order_edges.write_order_table_to_file
-       
-   
-        
-            ~detect_order_edges.write_order_table_to_file_back
        
    
    .. 
