@@ -31,6 +31,8 @@ from fundamentals import tools
 from builtins import object
 import sys
 import math
+import inspect
+import yaml
 import os
 os.environ['TERM'] = 'vt100'
 
@@ -62,14 +64,35 @@ class _base_recipe_(object):
             settings["intermediate-data-root"])
         self.reducedRootPath = self._absolute_path(
             settings["reduced-data-root"])
-        self.calibrationRootPath = self._absolute_path(
-            settings["calibration-data-root"])
+        from soxspipe.commonutils.toolkit import get_calibrations_path
+        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
         self.verbose = verbose
         # SET LATER WHEN VERIFYING FRAMES
         self.arm = None
         self.detectorParams = None
         self.dateObs = None
+
+        # COLLECT ADVANCED SETTINGS IF AVAILABLE
+        parentDirectory = os.path.dirname(__file__)
+        advs = parentDirectory + "/advanced_settings.yaml"
+        level = 0
+        exists = False
+        count = 1
+        while not exists and len(advs) and count < 10:
+            count += 1
+            level -= 1
+            exists = os.path.exists(advs)
+            if not exists:
+                advs = "/".join(parentDirectory.split("/")
+                                [:level]) + "/advanced_settings.yaml"
+        if not exists:
+            advs = {}
+        else:
+            with open(advs, 'r') as stream:
+                advs = yaml.safe_load(stream)
+        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
+        self.settings = {**advs, **self.settings}
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc = pd.DataFrame({

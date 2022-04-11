@@ -1,5 +1,9 @@
 # Release Notes
 
+## v0.6.1 - April 11, 2022
+
+* **FEATURE:** shipping static calibration files with the code (one less thing for end-users to install and set-up)
+
 ## v0.6.0 - April 10, 2022
 
 This is only a summary of some of the updates included in this release:

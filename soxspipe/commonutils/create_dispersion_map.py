@@ -23,7 +23,7 @@ import warnings
 from photutils.utils import NoDetectionsWarning
 from astropy.nddata import CCDData
 import math
-
+from soxspipe.commonutils.toolkit import get_calibrations_path
 import numpy as np
 from astropy.stats import sigma_clip, mad_std
 from matplotlib.patches import Rectangle
@@ -207,8 +207,8 @@ class create_dispersion_map(object):
 
         # READ THE FILE
         home = expanduser("~")
-        calibrationRootPath = self.settings[
-            "calibration-data-root"].replace("~", home)
+
+        calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 
         # LINE LIST TO PANDAS DATAFRAME
@@ -811,7 +811,7 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=1800, turnOffMP=True)
+                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=False)
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]

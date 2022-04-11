@@ -4,7 +4,6 @@ version: 1
 instrument: xsh
 
 test-data-root: ~/xshooter-pipeline-data/raw_data
-calibration-data-root: ~/xshooter-pipeline-data/static_calibrations
 intermediate-data-root: ~/Desktop/soxspipe/intermediate
 reduced-data-root: ~/Desktop/soxspipe/reduced
 

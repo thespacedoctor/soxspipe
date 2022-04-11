@@ -96,16 +96,10 @@ background-subtraction:
     median-filter-pixels: 9
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data/xsh
-calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/xsh
 intermediate-data-root: ~/soxspipe-unittests/intermediate/xsh
 reduced-data-root: ~/soxspipe-unittests/reduced/xsh
 
-# KEYS TO USES AS COLUMNS IN QUICKLOOK SUMMARY TABLES PRINTS TO STDOUT
-summary-keys:
-    default: ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME']
-    verbose: ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'PRO_TYPE', 'PRO_CATG', 'PRO_TECH','SEQ_ARM',
-                    'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT']
+
 
 data-extension: 0
 
