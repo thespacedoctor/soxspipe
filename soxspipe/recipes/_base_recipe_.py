@@ -62,8 +62,8 @@ class _base_recipe_(object):
             settings["intermediate-data-root"])
         self.reducedRootPath = self._absolute_path(
             settings["reduced-data-root"])
-        self.calibrationRootPath = self._absolute_path(
-            settings["calibration-data-root"])
+        from soxspipe.commonutils.toolkit import get_calibrations_path
+        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
         self.verbose = verbose
         # SET LATER WHEN VERIFYING FRAMES

@@ -1,4 +1,15 @@
-# Quickstart
+# Quickstart Guide
+
+```eval_rst
+.. warning::
+    This quickstart guide is subject to much change during development of the pipeline as new features and ways of operating the pipeline are added.
+```
+
+
+{{install.md}}
+
+
+
 
 This quickstart guide assumes you have already installed `soxspipe` in a conda environment on your machine; if you haven't please go ahead and follow the [install instructions](index.html#installation).
 

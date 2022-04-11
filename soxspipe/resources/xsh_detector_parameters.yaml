@@ -17,20 +17,20 @@ UVB:
   gain: 1.61 # e/ADU (GAIN LIFTED FROM FITS HEADER)
   ron: 2.60 # e
   bad-pixel map:
-    1x1: cal/BP_MAP_RP_UVB_1x1.fits
-    1x2: cal/BP_MAP_RP_UVB_1x2.fits
-    2x2: cal/BP_MAP_RP_UVB_2x2.fits
+    1x1: BP_MAP_RP_UVB_1x1.fits
+    1x2: BP_MAP_RP_UVB_1x2.fits
+    2x2: BP_MAP_RP_UVB_2x2.fits
   predicted pinhole lines:
     single:
-      1x1: cal/THEO_TAB_SING_UVB_1x1.fits
-      1x2: cal/THEO_TAB_SING_UVB_1x2.fits
-      2x2: cal/THEO_TAB_SING_UVB_2x2.fits
+      1x1: THEO_TAB_SING_UVB_1x1.fits
+      1x2: THEO_TAB_SING_UVB_1x2.fits
+      2x2: THEO_TAB_SING_UVB_2x2.fits
     multi:
-      1x1: cal/THEO_TAB_MULT_UVB_1x1.fits
-      1x2: cal/THEO_TAB_MULT_UVB_1x2.fits
-      2x2: cal/THEO_TAB_MULT_UVB_2x2.fits
+      1x1: THEO_TAB_MULT_UVB_1x1.fits
+      1x2: THEO_TAB_MULT_UVB_1x2.fits
+      2x2: THEO_TAB_MULT_UVB_2x2.fits
   mid_slit_index: 4
-  spectral format table: cal/SPECTRAL_FORMAT_TAB_UVB.fits
+  spectral format table: SPECTRAL_FORMAT_TAB_UVB.fits
   slit_length: 11 #arcsec
             
 VIS:
@@ -52,20 +52,20 @@ VIS:
   ron: 5.3 # e
   saturation: 65535.
   bad-pixel map:
-    1x1: cal/BP_MAP_RP_VIS_1x1.fits
-    1x2: cal/BP_MAP_RP_VIS_1x2.fits
-    2x2: cal/BP_MAP_RP_VIS_2x2.fits
+    1x1: BP_MAP_RP_VIS_1x1.fits
+    1x2: BP_MAP_RP_VIS_1x2.fits
+    2x2: BP_MAP_RP_VIS_2x2.fits
   predicted pinhole lines:
     single:
-      1x1: cal/THEO_TAB_SING_VIS_1x1.fits
-      1x2: cal/THEO_TAB_SING_VIS_1x2.fits
-      2x2: cal/THEO_TAB_SING_VIS_2x2.fits
+      1x1: THEO_TAB_SING_VIS_1x1.fits
+      1x2: THEO_TAB_SING_VIS_1x2.fits
+      2x2: THEO_TAB_SING_VIS_2x2.fits
     multi:
-      1x1: cal/THEO_TAB_MULT_VIS_1x1.fits
-      1x2: cal/THEO_TAB_MULT_VIS_1x2.fits
-      2x2: cal/THEO_TAB_MULT_VIS_2x2.fits
+      1x1: THEO_TAB_MULT_VIS_1x1.fits
+      1x2: THEO_TAB_MULT_VIS_1x2.fits
+      2x2: THEO_TAB_MULT_VIS_2x2.fits
   mid_slit_index: 4
-  spectral format table: cal/SPECTRAL_FORMAT_TAB_VIS.fits
+  spectral format table: SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 11 #arcsec
 
 NIR:
@@ -87,13 +87,13 @@ NIR:
   gain: 2.12 # e/ADU
   ron: 8.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
   bad-pixel map:
-    1x1: cal/BP_MAP_RP_NIR.fits
+    1x1: BP_MAP_RP_NIR.fits
   predicted pinhole lines:
     single:
-      1x1: cal/THEO_TAB_SING_NIR.fits
+      1x1: THEO_TAB_SING_NIR.fits
     multi:
-      1x1: cal/THEO_TAB_MULT_NIR.fits
+      1x1: THEO_TAB_MULT_NIR.fits
   mid_slit_index: 4
-  spectral format table: cal/SPECTRAL_FORMAT_TAB_NIR.fits
+  spectral format table: SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 11 #arcsec
 

@@ -583,3 +583,37 @@ def read_spectral_format(
 
     log.debug('completed the ``read_spectral_format`` function')
     return orderNums, waveLengthMin, waveLengthMax
+
+
+def get_calibrations_path(
+        log,
+        settings):
+    """*return the root path to the static calibrations*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - ``settings`` -- the settings dictionary
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import get_calibrations_path
+    calibrationRootPath = get_calibrations_path(log=log, settings=settings)
+    ```           
+    """
+    log.debug('starting the ``get_calibrations_path`` function')
+
+    # GENERATE PATH TO STATIC CALIBRATION DATA
+    if "instrument" in settings:
+        instrument = settings["instrument"]
+    else:
+        instrument = "soxs"
+    calibrationRootPath = os.path.dirname(os.path.dirname(
+        __file__)) + "/resources/static_calibrations/" + instrument
+
+    log.debug('completed the ``get_calibrations_path`` function')
+    return calibrationRootPath
+
+# use the tab-trigger below for new function
+# xt-def-function
