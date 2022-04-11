@@ -96,7 +96,6 @@ background-subtraction:
     median-filter-pixels: 9
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data/xsh
-# calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/xsh
 intermediate-data-root: ~/soxspipe-unittests/intermediate/xsh
 reduced-data-root: ~/soxspipe-unittests/reduced/xsh
 
