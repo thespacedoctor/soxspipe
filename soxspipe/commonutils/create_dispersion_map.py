@@ -811,7 +811,7 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=1800, turnOffMP=True)
+                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=False)
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]

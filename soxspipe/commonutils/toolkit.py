@@ -566,8 +566,8 @@ def read_spectral_format(
 
     # READ THE SPECTRAL FORMAT TABLE FILE
     home = expanduser("~")
-    calibrationRootPath = settings[
-        "calibration-data-root"].replace("~", home)
+
+    calibrationRootPath = get_calibrations_path(log=log, settings=settings)
     spectralFormatFile = calibrationRootPath + \
         "/" + dp["spectral format table"]
 
