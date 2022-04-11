@@ -86,7 +86,6 @@ class _base_recipe_(object):
             if not exists:
                 advs = "/".join(parentDirectory.split("/")
                                 [:level]) + "/advanced_settings.yaml"
-                print(advs)
         if not exists:
             advs = {}
         else:
