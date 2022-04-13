@@ -58,13 +58,37 @@ class test_detect_continuum(unittest.TestCase):
         pinholeFlat = CCDData.read(pinholeFlatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                    hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        import pandas as pd
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": []
+        })
+
         from soxspipe.commonutils import detect_continuum
         this = detect_continuum(
             log=log,
             pinholeFlat=pinholeFlat,
             dispersion_map=dispersion_map,
             settings=settings,
-            recipeName="soxs-order-centre"
+            recipeName="soxs-order-centre",
+            qcTable=qc,
+            productsTable=products
         )
         this.get()
 
