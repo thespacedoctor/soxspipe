@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.6.2 - April 13, 2022
+
+* **ENHANCEMENT:** quickstart guide added for calibration recipes  
+* **FEATURE:** QCs added for dispersion solution and order centre recipes  
+* **REFACTOR:** clean up of stdout information  
+
 ## v0.6.1 - April 11, 2022
 
 * **FEATURE:** shipping static calibration files with the code (one less thing for end-users to install and set-up)
