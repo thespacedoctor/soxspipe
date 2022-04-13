@@ -141,15 +141,15 @@ class test_soxs_mflat(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_mflat_vis_short_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_short_flats.sof"
-        from soxspipe.recipes import soxs_mflat
-        this = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
-        this.produce_product()
+    # def test_soxs_mflat_vis_short_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_short_flats.sof"
+    #     from soxspipe.recipes import soxs_mflat
+    #     this = soxs_mflat(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
     # def test_soxs_mflat_function(self):
 
