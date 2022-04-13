@@ -13,6 +13,7 @@
 import warnings
 from tabulate import tabulate
 import shutil
+import logging
 from soxspipe.commonutils import filenamer
 from datetime import datetime
 from soxspipe.commonutils import detector_lookup
@@ -145,7 +146,9 @@ class _base_recipe_(object):
         self.log.debug('starting the ``_prepare_single_frame`` method')
 
         warnings.filterwarnings(
-            'ignore')
+            action='ignore'
+        )
+        logging.captureWarnings(True)
 
         kw = self.kw
         dp = self.detectorParams
@@ -199,7 +202,7 @@ class _base_recipe_(object):
         else:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
             frame = ccdproc.create_deviation(
-                frame, readnoise=dp["ron"])
+                frame, readnoise=dp["ron"], disregard_nan=True)
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT

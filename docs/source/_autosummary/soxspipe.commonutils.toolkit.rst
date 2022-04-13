@@ -47,6 +47,7 @@
           ~cut_image_slice
           ~expanduser
           ~generic_quality_checks
+          ~get_calibrations_path
           ~quicklook_image
           ~rc
           ~read_spectral_format
