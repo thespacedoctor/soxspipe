@@ -22,6 +22,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from soxspipe.commonutils import create_dispersion_map
 from datetime import datetime
 os.environ['TERM'] = 'vt100'
 
@@ -201,17 +202,23 @@ class soxs_disp_solution(_base_recipe_):
             )
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
 
-        from soxspipe.commonutils import create_dispersion_map
-        productPath, mapImagePath = create_dispersion_map(
+        productPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,
             settings=self.settings,
-            pinholeFrame=self.pinholeFrame
+            pinholeFrame=self.pinholeFrame,
+            qcTable=self.qc,
+            productsTable=self.products
         ).get()
 
         filename = os.path.basename(productPath)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append(productsTable)
+        self.qc = self.qc.append(qcTable)
+
+        self.dateObs = self.pinholeFrame.header[kw("DATE_OBS")]
 
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,

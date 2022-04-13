@@ -60,7 +60,6 @@ instrument: soxs
 #     median-filter-pixels: 11
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data
-calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/soxs
 intermediate-data-root: ~/soxspipe-unittests/intermediate/soxs
 reduced-data-root: ~/soxspipe-unittests/reduced/soxs
 

@@ -214,6 +214,8 @@ class soxs_spatial_solution(_base_recipe_):
             multi_pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        self.dateObs = multi_pinhole_image.header[kw("DATE_OBS")]
+
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
         order_table = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
@@ -233,14 +235,14 @@ class soxs_spatial_solution(_base_recipe_):
 
         # GENERATE AN UPDATED DISPERSION MAP
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,
             settings=self.settings,
             pinholeFrame=self.multiPinholeFrame,
             firstGuessMap=disp_map_table,
             orderTable=order_table,
-            qcTable=False,
-            productsTable=False
+            qcTable=self.qc,
+            productsTable=self.products
         ).get()
 
         from datetime import datetime
@@ -248,6 +250,9 @@ class soxs_spatial_solution(_base_recipe_):
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append(productsTable)
+        self.qc = self.qc.append(qcTable)
 
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,
@@ -277,7 +282,7 @@ class soxs_spatial_solution(_base_recipe_):
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
-        return mapPath, mapImagePath
+        return mapPath, mapImagePath, res_plots
 
     # use the tab-trigger below for new method
     # xt-class-method

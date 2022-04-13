@@ -3,7 +3,7 @@
 The best way to install soxspipe is to use `conda` and install the package in its own isolated environment, as shown here:
 
 ``` bash
-conda create -n soxspipe python=3.8 soxspipe
+conda create -n soxspipe python=3.8 soxspipe -c conda-forge
 conda activate soxspipe
 ```
 

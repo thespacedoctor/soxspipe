@@ -1,19 +1,87 @@
 version: 1
 
-# instrument the data belongs to; `xsh` or `soxs`
-instrument: xsh
 
-test-data-root: ~/xshooter-pipeline-data/raw_data
 intermediate-data-root: ~/Desktop/soxspipe/intermediate
 reduced-data-root: ~/Desktop/soxspipe/reduced
 
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
-save-intermediate-products: True
+save-intermediate-products: False
+
+# instrument the data belongs to; `xsh` or `soxs`
+instrument: xsh
+data-extension: 0
 
 soxs-mbias:
+    stacked-clipping-sigma: 3
+    stacked-clipping-iterations: 5
     clipping-lower-simga: 5
     clipping-upper-simga: 5   
     clipping-iteration-count: 5
+
+soxs-mdark:
+    stacked-clipping-sigma: 3
+    stacked-clipping-iterations: 5
+    clipping-lower-simga: 5
+    clipping-upper-simga: 5   
+    clipping-iteration-count: 5
+
+soxs-disp-solution:
+    pixel-window-size: 10
+    order-deg: 3
+    wavelength-deg: 3
+    clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 5
+
+soxs-order-centre:
+    order-sample-count: 200
+    slice-length: 10
+    peak-sigma-limit: 3
+    y-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 2.0
+    clipping-iteration-limit: 10
+
+soxs-spatial-solution:
+    pixel-window-size: 10
+    order-deg: 3
+    wavelength-deg: 3
+    slit-deg: 3
+    clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 5
+    # INITIAL SEED GRID RESOLUTION 
+    grid_res_wavelength: 0.03 # in nm
+    grid_res_slit: 0.04 # in arcsec
+    map_to_image_displacement_threshold: 0.01 # in pixels
+    zoom_grid_size: 4
+
+soxs-mflat:
+    centre-order-window: 20
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
+    clipping-lower-simga: 50
+    clipping-upper-simga: 50   
+    clipping-iteration-count: 0
+    slice-length-for-edge-detection: 90
+    slice-width-for-edge-detection: 5
+    min-percentage-threshold-for-edge-detection: 20
+    max-percentage-threshold-for-edge-detection: 50
+    y-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 2
+    clipping-iteration-limit: 5
+    low-sensitivity-clipping-simga: 2
+    
+soxs-stare:
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
+    clipping-iteration-count: 0
+    clipping-lower-simga: 10
+    clipping-upper-simga: 10 
+
+# UTILS
+background-subtraction:
+    bsline-deg: 2
+    median-filter-pixels: 9
 
 logging settings:
     formatters:
