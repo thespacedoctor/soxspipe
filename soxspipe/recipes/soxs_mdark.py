@@ -187,6 +187,8 @@ class soxs_mdark(_base_recipe_):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
+        self.dateObs = combined_dark_mean.header[kw("DATE_OBS")]
+
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,
             "product_label": "MDARK",

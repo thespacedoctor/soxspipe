@@ -13,6 +13,7 @@
 import warnings
 from tabulate import tabulate
 import shutil
+import logging
 from soxspipe.commonutils import filenamer
 from datetime import datetime
 from soxspipe.commonutils import detector_lookup
@@ -145,7 +146,9 @@ class _base_recipe_(object):
         self.log.debug('starting the ``_prepare_single_frame`` method')
 
         warnings.filterwarnings(
-            'ignore')
+            action='ignore'
+        )
+        logging.captureWarnings(True)
 
         kw = self.kw
         dp = self.detectorParams
@@ -199,7 +202,7 @@ class _base_recipe_(object):
         else:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
             frame = ccdproc.create_deviation(
-                frame, readnoise=dp["ron"])
+                frame, readnoise=dp["ron"], disregard_nan=True)
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
@@ -348,7 +351,12 @@ class _base_recipe_(object):
         preframes.sort([kw('MJDOBS').lower()])
 
         print("# PREPARED FRAMES - SUMMARY")
-        print(preframes.summary)
+        columns = preframes.summary.colnames
+        if "filename" in columns:
+            columns.remove("file")
+            columns.remove("filename")
+            columns = ["filename"] + columns
+        print(preframes.summary[columns])
 
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
@@ -890,12 +898,24 @@ class _base_recipe_(object):
 
         columns = list(self.qc.columns)
         columns.remove("to_header")
+        columns.remove("obs_date_utc")
+        columns.remove("reduction_date_utc")
+        columns.remove("soxspipe_recipe")
+
+        columns2 = list(self.products.columns)
+        columns2.remove("reduction_date_utc")
+        columns2.remove("soxspipe_recipe")
+
+        try:
+            soxspipe_recipe = self.qc["soxspipe_recipe"].values[0].upper()
+        except:
+            soxspipe_recipe = self.recipeName.upper()
 
         if rformat == "stdout":
-            print("\n# QCs")
+            print(f"\n# {soxspipe_recipe} QCs")
             print(tabulate(self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
-            print("\n# RECIPE PRODUCTS")
-            print(tabulate(self.products, headers='keys', tablefmt='psql', showindex=False, stralign="right"))
+            print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS")
+            print(tabulate(self.products[columns2], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
 
         self.log.debug('completed the ``report_output`` method')
         return None

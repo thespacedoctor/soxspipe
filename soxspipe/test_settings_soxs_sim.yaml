@@ -71,7 +71,6 @@ summary-keys:
 data-extension: 1
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data
-calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/soxs_sim
 intermediate-data-root: ~/soxspipe-unittests/intermediate/soxs_sim
 reduced-data-root: ~/soxspipe-unittests/reduced/soxs_sim
 

@@ -75,8 +75,8 @@ soxs-mflat:
     max-percentage-threshold-for-edge-detection: 50
     y-deg: 5
     order-deg: 5
-    poly-fitting-residual-clipping-sigma: 2.0
-    clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 5.
+    clipping-iteration-limit: 2
     low-sensitivity-clipping-simga: 2
     
 soxs-stare:

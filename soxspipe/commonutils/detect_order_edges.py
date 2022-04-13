@@ -262,6 +262,8 @@ class detect_order_edges(_base_detect):
         orderTablePath = self.write_order_table_to_file(
             frame=self.flatFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
         mean_res = np.mean(np.abs(allResiduals))
+        min_res = np.min(np.abs(allResiduals))
+        max_res = np.max(np.abs(allResiduals))
         std_res = np.std(np.abs(allResiduals))
 
         orderTablePath = os.path.abspath(orderTablePath)
@@ -286,7 +288,7 @@ class detect_order_edges(_base_detect):
             }, ignore_index=True)
             self.products = self.products.append({
                 "soxspipe_recipe": self.recipeName,
-                "product_label": "",
+                "product_label": "ORDER_LOC_RES",
                 "product_desc": "visualisation of goodness of order edge fitting",
                 "file_name": plotName,
                 "file_type": "PDF",
@@ -297,9 +299,9 @@ class detect_order_edges(_base_detect):
         if not isinstance(self.qc, bool):
             self.qc = self.qc.append({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "ORDER EDGE RES MEAN",
-                "qc_value": mean_res,
-                "qc_comment": "mean residual of order-edge fit",
+                "qc_name": "XRESMIN",
+                "qc_value": min_res,
+                "qc_comment": "Minimum residual in order edge fit along x-axis",
                 "qc_unit": "pixels",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -307,9 +309,19 @@ class detect_order_edges(_base_detect):
             }, ignore_index=True)
             self.qc = self.qc.append({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "ORDER EDGE RES STDEV",
+                "qc_name": "XRESMAX",
+                "qc_value": max_res,
+                "qc_comment": "Maximum residual in order edge fit along x-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XRESRMS",
                 "qc_value": std_res,
-                "qc_comment": "stdev of residuals to order edge fit",
+                "qc_comment": "Std-dev of residual order edge fit along x-axis",
                 "qc_unit": "pixels",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,

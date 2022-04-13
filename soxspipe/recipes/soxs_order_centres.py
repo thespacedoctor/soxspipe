@@ -228,19 +228,26 @@ class soxs_order_centres(_base_recipe_):
             print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
         # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+        print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
         detector = detect_continuum(
             log=self.log,
             pinholeFlat=self.orderFrame,
             dispersion_map=disp_map_table,
             settings=self.settings,
-            recipeName="soxs-order-centre"
+            recipeName="soxs-order-centre",
+            qcTable=self.qc,
+            productsTable=self.products
         )
-        productPath = detector.get()
+        productPath, qcTable, productsTable = detector.get()
+
+        self.products = self.products.append(productsTable)
+        self.qc = self.qc.append(qcTable)
 
         filename = os.path.basename(productPath)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        self.dateObs = self.orderFrame.header[kw("DATE_OBS")]
 
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,

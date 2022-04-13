@@ -46,6 +46,7 @@
    soxspipe.commonutils.getpackagepath
    soxspipe.commonutils.toolkit.cut_image_slice
    soxspipe.commonutils.toolkit.generic_quality_checks
+   soxspipe.commonutils.toolkit.get_calibrations_path
    soxspipe.commonutils.toolkit.quicklook_image
    soxspipe.commonutils.toolkit.read_spectral_format
    soxspipe.commonutils.toolkit.spectroscopic_image_quality_checks

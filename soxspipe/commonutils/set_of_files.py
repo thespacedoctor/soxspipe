@@ -9,16 +9,16 @@
 :Date Created:
     January 22, 2020
 """
+from astropy.table import Table, join, hstack
+from soxspipe.commonutils.keyword_lookup import keyword_lookup
+import codecs
+from ccdproc import ImageFileCollection
+from astropy.io import fits
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from astropy.io import fits
-from ccdproc import ImageFileCollection
-import codecs
-from soxspipe.commonutils.keyword_lookup import keyword_lookup
-from astropy.table import Table, join, hstack
 
 
 class set_of_files(object):
@@ -155,7 +155,7 @@ class set_of_files(object):
                         ybin = str(int(hdr[kw('CDELT2')]))
                     catagory = dpr_type + "_" + arm.strip()
                     if kw('CDELT1') in hdr:
-                        catagory  += "_" + \
+                        catagory += "_" + \
                             xbin.strip() + "x" + ybin.strip()
 
                     content += "%(fitsPath)s %(catagory)s\n" % locals()
@@ -283,8 +283,13 @@ class set_of_files(object):
                     filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
                 sof._summary = join(
                     primExt._summary, sof._summary, keys="file")
+            fitsFiles = [os.path.basename(
+                f) for f in fitsFiles]
+            sof._summary["filename"] = fitsFiles
+            self.keys = ["filename"] + self.keys
             supplementaryFilepaths = [
                 f for f in self.inputFrames if ".fits" not in f.lower() and f[0] != "."]
+
         else:
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths")

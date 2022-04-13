@@ -230,12 +230,16 @@ class subtract_background(object):
                 xmasked = xunmasked[~xunmasked.mask]
                 xmin = xmasked.min()
                 xmax = xmasked.max()
-                rowmasked = row[~row.mask].byteswap().newbyteorder()
+                rowmasked = row[~row.mask]
 
                 window = 9
                 hw = math.floor(window / 2)
                 # rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).quantile(.1)
-                rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
+                try:
+                    rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
+                except:
+                    rowmasked = rowmasked.byteswap().newbyteorder()
+                    rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
                 rowmaskedSmoothed[:hw] = rowmaskedSmoothed.iloc[hw + 1]
                 rowmaskedSmoothed[-hw:] = rowmaskedSmoothed.iloc[-hw - 1]
                 rowmasked[:hw] = rowmasked[hw + 1]

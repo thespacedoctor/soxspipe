@@ -50,6 +50,7 @@ if not os.path.exists(pathToOutputDir):
 class test_create_dispersion_map(unittest.TestCase):
 
     def test_create_dispersion_map_single_nir_function(self):
+        import pandas as pd
         frame = "~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/single_pinhole_NIR_calibrated.fits"
         from os.path import expanduser
         home = expanduser("~")
@@ -57,15 +58,39 @@ class test_create_dispersion_map(unittest.TestCase):
         frame = CCDData.read(frame, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                              hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": []
+        })
+
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=log,
             settings=settings,
-            pinholeFrame=frame
+            pinholeFrame=frame,
+            qcTable=qc,
+            productsTable=products
         ).get()
         print(mapPath)
 
     def test_create_dispersion_map_multi_nir_function(self):
+        import pandas as pd
         frame = "~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T173315_NIR_ARC_MULTIPIN.fits"
         from os.path import expanduser
         home = expanduser("~")
@@ -73,12 +98,35 @@ class test_create_dispersion_map(unittest.TestCase):
         frame = CCDData.read(frame, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                              hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": []
+        })
+
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=log,
             settings=settings,
             pinholeFrame=frame,
-            firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T172310_NIR_DISP_MAP.fits"
+            firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T172310_NIR_DISP_MAP.fits",
+            qcTable=qc,
+            productsTable=products
         ).get()
         print(mapPath)
 
@@ -93,7 +141,7 @@ class test_create_dispersion_map(unittest.TestCase):
     #                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
     #     from soxspipe.commonutils import create_dispersion_map
-    #     mapPath, mapImagePath = create_dispersion_map(
+    #     mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
     #         log=log,
     #         settings=settings,
     #         pinholeFrame=frame,
@@ -107,7 +155,7 @@ class test_create_dispersion_map(unittest.TestCase):
 
         from soxspipe.commonutils import create_dispersion_map
         try:
-            this, this2 = create_dispersion_map(
+            this, this2, this3 = create_dispersion_map(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"
