@@ -370,8 +370,8 @@ class soxs_mflat(_base_recipe_):
         # IF NO DARK FRAMES EXIST - JUST A MASTER BIAS. SUBTRACT BIAS.
         calibratedFlats = []
         if not darkCollection and bias:
+            print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
             for flat in flats:
-                print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
                 calibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=None))
 
@@ -498,8 +498,6 @@ class soxs_mflat(_base_recipe_):
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
 
-        print(orderTablePath)
-
         # BAD PIXEL COUNT AT START
         originalBPM = np.copy(frame.mask)
 
@@ -540,8 +538,9 @@ class soxs_mflat(_base_recipe_):
 
         self.qc = self.qc.append({
             "soxspipe_recipe": self.recipeName,
-            "qc_name": "low sensitivity pixel count",
+            "qc_name": "NLOWSENS",
             "qc_value": lowSensPixelCount,
+            "qc_comment": "Number of low-sensitivity pixels found in master flat",
             "qc_unit": "pixels",
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow

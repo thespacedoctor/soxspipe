@@ -58,7 +58,7 @@ class test_create_dispersion_map(unittest.TestCase):
                              hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=log,
             settings=settings,
             pinholeFrame=frame
@@ -74,7 +74,7 @@ class test_create_dispersion_map(unittest.TestCase):
                              hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=log,
             settings=settings,
             pinholeFrame=frame,
@@ -93,7 +93,7 @@ class test_create_dispersion_map(unittest.TestCase):
     #                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
     #     from soxspipe.commonutils import create_dispersion_map
-    #     mapPath, mapImagePath = create_dispersion_map(
+    #     mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
     #         log=log,
     #         settings=settings,
     #         pinholeFrame=frame,
@@ -107,7 +107,7 @@ class test_create_dispersion_map(unittest.TestCase):
 
         from soxspipe.commonutils import create_dispersion_map
         try:
-            this, this2 = create_dispersion_map(
+            this, this2, this3 = create_dispersion_map(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"

@@ -39,6 +39,7 @@ import os
 from io import StringIO
 import copy
 from contextlib import suppress
+from datetime import datetime
 os.environ['TERM'] = 'vt100'
 
 
@@ -140,7 +141,8 @@ class _base_detect(object):
             xCol="cont_x",
             yCol="cont_y",
             orderCol="order",
-            exponents_included=False):
+            exponents_included=False,
+            write_QCs=False):
         """*iteratively fit the global polynomial to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
@@ -205,8 +207,19 @@ class _base_detect(object):
             pixelList.drop(index=pixelList[removeMask].index, inplace=True)
             clippedCount = startCount - len(pixelList.index)
 
-            sys.stdout.write("\x1b[1A\x1b[2K")
-            print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+            if iteration > 1:
+                sys.stdout.write("\x1b[1A\x1b[2K")
+            print(f'\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+
+        res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
+            orderPixelTable=pixelList,
+            coeff=coeff,
+            y_deg=y_deg,
+            order_deg=order_deg,
+            orderCol=orderCol,
+            xCol=xCol,
+            yCol=yCol,
+            write_QCs=write_QCs)
 
         self.log.debug('completed the ``fit_global_polynomial`` method')
         return coeff, pixelList
@@ -219,7 +232,8 @@ class _base_detect(object):
             xCol,
             yCol,
             orderCol=False,
-            order_deg=False):
+            order_deg=False,
+            write_QCs=False):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
@@ -230,6 +244,7 @@ class _base_detect(object):
             - ``yCol`` -- name of y-pixel column
             - ``orderCol`` -- name of the order column (global fits only)
             - ``order_deg`` -- degree for polynomial to fit order-values (global fits only)
+            - ``write_QCs`` -- write the QCs to dataframe? Default *False*
 
         **Return:**
             - ``res`` -- x residuals
@@ -249,12 +264,64 @@ class _base_detect(object):
         # FITTED POSITIONS
         xfit = poly(
             orderPixelTable, *coeff)
-        res = xfit - orderPixelTable[xCol].values
+        res = abs(xfit - orderPixelTable[xCol].values)
+
+        # GET UNIQUE VALUES IN COLUMN
+        uniqueorders = len(orderPixelTable['order'].unique())
 
         # CALCULATE COMBINED RESIDUALS AND STATS
         res_mean = np.mean(res)
         res_std = np.std(res)
         res_median = np.median(res)
+
+        if write_QCs:
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+            tag = "continuum"
+            if "order-centre" in self.recipeName.lower():
+                tag = "order centre"
+
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XRESMIN",
+                "qc_value": res.min(),
+                "qc_comment": f"Minimum residual in {tag} fit along x-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XRESMAX",
+                "qc_value": res.max(),
+                "qc_comment": f"Maximum residual in {tag} fit along x-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XRESRMS",
+                "qc_value": res_std,
+                "qc_comment": f"Std-dev of residual {tag} fit along x-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "NORDERS",
+                "qc_value": uniqueorders,
+                "qc_comment": f"Number of order centre traces found",
+                "qc_unit": None,
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
 
         self.log.debug('completed the ``calculate_residuals`` method')
         return res, res_mean, res_std, res_median, xfit
@@ -374,6 +441,7 @@ class detect_continuum(_base_detect):
             self.recipeSettings = settings[recipeName]
         else:
             self.recipeSettings = False
+        self.recipeName = recipeName
         self.pinholeFlat = pinholeFlat
         self.dispersion_map = dispersion_map
         self.qc = qcTable
@@ -439,7 +507,7 @@ class detect_continuum(_base_detect):
                                subset=['cont_x'], inplace=True)
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
-        print(f"{foundLines} out of {allLines} found ({percent:3.0f}%)")
+        print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = orderPixelTable['order'].unique()
@@ -453,12 +521,16 @@ class detect_continuum(_base_detect):
             orderPixelTable[f"y_pow_{i}"] = orderPixelTable["cont_y"].pow(i)
         for i in range(0, self.orderDeg + 1):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+
+        print("\n# FINDING GLOBAL POLYNOMIAL SOLUTION FOR ORDER CENTRE TRACES\n")
+
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         coeff, orderPixelTable = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             y_deg=self.yDeg,
             order_deg=self.orderDeg,
-            exponents_included=True
+            exponents_included=True,
+            write_QCs=True
         )
 
         # orderLocations[o] = coeff
@@ -488,19 +560,32 @@ class detect_continuum(_base_detect):
             orderPolyTable=orderPolyTable
         )
 
+        from datetime import datetime
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        basename = os.path.basename(plotPath)
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "ORDER_CENTRES_RES",
+            "file_name": basename,
+            "file_type": "PDF",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"Residuals of the order centre polynomial fit",
+            "file_path": plotPath
+        }, ignore_index=True)
+
         mean_res = np.mean(np.abs(orderPixelTable['x_fit_res'].values))
         std_res = np.std(np.abs(orderPixelTable['x_fit_res'].values))
-
-        print(f'\nThe order centre polynomial fitted against the observed 1D gaussian peak positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixels)')
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
         order_table_path = self.write_order_table_to_file(
             frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
 
-        print(f'\nFind results of the order centre fitting here: {plotPath}')
-
         self.log.debug('completed the ``get`` method')
-        return order_table_path
+        return order_table_path, self.qc, self.products
 
     def create_pixel_arrays(
             self,

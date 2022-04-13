@@ -1,13 +1,15 @@
 version: 1
 
-# instrument the data belongs to; `xsh` or `soxs`
-instrument: xsh
 
 intermediate-data-root: ~/Desktop/soxspipe/intermediate
 reduced-data-root: ~/Desktop/soxspipe/reduced
 
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
 save-intermediate-products: False
+
+# instrument the data belongs to; `xsh` or `soxs`
+instrument: xsh
+data-extension: 0
 
 soxs-mbias:
     stacked-clipping-sigma: 3
@@ -65,8 +67,8 @@ soxs-mflat:
     max-percentage-threshold-for-edge-detection: 50
     y-deg: 5
     order-deg: 5
-    poly-fitting-residual-clipping-sigma: 2.0
-    clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 2
+    clipping-iteration-limit: 5
     low-sensitivity-clipping-simga: 2
     
 soxs-stare:
