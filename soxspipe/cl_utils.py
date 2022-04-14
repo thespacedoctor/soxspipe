@@ -208,6 +208,7 @@ def main(arguments=None):
             inputFrames=a["inputFrames"],
             verbose=verbose
         )
+
         reducedStare = recipe.produce_product()
         print(f"\nReduced stare mode: {reducedStare}")
 
