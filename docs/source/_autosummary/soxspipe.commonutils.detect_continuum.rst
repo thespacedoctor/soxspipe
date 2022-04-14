@@ -31,7 +31,11 @@
        
    
         
-            ~detect_continuum.fit_polynomial
+            ~detect_continuum.fit_global_polynomial
+       
+   
+        
+            ~detect_continuum.fit_order_polynomial
        
    
         
@@ -40,10 +44,6 @@
    
         
             ~detect_continuum.plot_results
-       
-   
-        
-            ~detect_continuum.read_spectral_format
        
    
         

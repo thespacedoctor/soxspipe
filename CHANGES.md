@@ -1,18 +1,34 @@
 # Release Notes
 
+## v0.6.2 - April 13, 2022
+
+* **ENHANCEMENT:** quickstart guide added for calibration recipes  
+* **FEATURE:** QCs added for dispersion solution and order centre recipes  
+* **REFACTOR:** clean up of stdout information  
+
+## v0.6.1 - April 11, 2022
+
+* **FEATURE:** shipping static calibration files with the code (one less thing for end-users to install and set-up)
+
+## v0.6.0 - April 10, 2022
+
+This is only a summary of some of the updates included in this release:
+
+* **ENHANCEMENT:** All CSV files moved to FITS binary tables - metadata very useful for developing data organiser
+* **FEATURE:** 2D image map now created by create_dispersion_solution
 `subtract_calibrations` util renamed to `detrend` and added ability to flat correct
-soxspipe now on conda
-nan ignored when scaling quicklook images
-RON and bias structure QCs now reported by mbias
-RON and bias structure QCs now reported by mdark
-removed raw frame reports and neater QC table
-adding QC and product collection in mbias recipe
-fits header keywords neatly sorted before writing to file
-QCs now being written to FITS header
-QCs have an option to *NOT* (`to_header`) write to FITS header (default is to write)
-Correct management of mask when determining RON on bias and darks
-better treatment of masked pixels when stacking images (e.g. in mbias and mdark)
-2D image map of wavelength values, slit-position values and order values written alongside polynomial solutions of full dispersion solution
+* **FEATURE:** 2D image map of wavelength values, slit-position values and order values written alongside polynomial solutions of full dispersion solution
+* **FEATURE:** soxspipe now on conda
+* **FEATURE:** QCs now being written to FITS header
+* **FEATURE:** adding QC and product collection in mbias recipe
+* **ENHANCEMENT** RON and bias structure QCs now reported by mbias
+* **ENHANCEMENT** nan ignored when scaling quicklook images
+* **ENHANCEMENT** RON and bias structure QCs now reported by mdark
+* **ENHANCEMENT:** QCs have an option to *NOT* (`to_header`) write to FITS header (default is to write)
+* **REFACTOR:** better treatment of masked pixels when stacking images (e.g. in mbias and mdark)
+* **REFACTOR:** removed raw frame reports and neater QC table
+* **REFACTOR:** fits header keywords neatly sorted before writing to file
+* **FIX:** Correct management of mask when determining RON on bias and darks
 
 ## v0.5.1 - September 29, 2021
 

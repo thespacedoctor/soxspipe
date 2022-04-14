@@ -117,10 +117,8 @@ class soxs_mdark(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
         # MIXED INPUT IMAGE TYPES ARE BAD
         if len(imageTypes) > 1:
             imageTypes = " and ".join(imageTypes)
@@ -188,6 +186,8 @@ class soxs_mdark(_base_recipe_):
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.dateObs = combined_dark_mean.header[kw("DATE_OBS")]
 
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,

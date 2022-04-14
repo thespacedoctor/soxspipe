@@ -1,4 +1,6 @@
 from __future__ import print_function
+from astropy import units as u
+from astropy.nddata import CCDData
 from builtins import str
 import os
 import unittest
@@ -9,8 +11,6 @@ from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
 home = expanduser("~")
-from astropy.nddata import CCDData
-from astropy import units as u
 
 packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings_xsh.yaml"
@@ -52,7 +52,7 @@ class test_detect_order_edges(unittest.TestCase):
     def test_detect_nir_order_edges_function(self):
 
         flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/first_iteration_NIR_master_flat.fits"
-        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/order_locations_NIR_locations.csv"
+        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/20170819T150225_NIR_ORDER_LOCATIONS.fits"
         home = expanduser("~")
         flatPath = flatPath.replace("~", home)
         orderCentreTable = orderCentreTable.replace("~", home)
@@ -70,24 +70,24 @@ class test_detect_order_edges(unittest.TestCase):
         )
         edges.get()
 
-    def test_detect_vis_order_edges_function(self):
+    # def test_detect_vis_order_edges_function(self):
 
-        flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/first_iteration_VIS_master_flat.fits"
-        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/20170818T172920_VIS_1X1_FAST_ORDER_LOCATIONS.csv"
-        home = expanduser("~")
-        flatPath = flatPath.replace("~", home)
-        orderCentreTable = orderCentreTable.replace("~", home)
-        flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+    #     flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/first_iteration_VIS_master_flat.fits"
+    #     orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/20170818T172920_VIS_1X1_FAST_ORDER_LOCATIONS.fits"
+    #     home = expanduser("~")
+    #     flatPath = flatPath.replace("~", home)
+    #     orderCentreTable = orderCentreTable.replace("~", home)
+    #     flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+    #                              hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        from soxspipe.commonutils import detect_order_edges
-        edges = detect_order_edges(
-            log=log,
-            flatFrame=flatFrame,
-            orderCentreTable=orderCentreTable,
-            settings=settings,
-        )
-        edges.get()
+    #     from soxspipe.commonutils import detect_order_edges
+    #     edges = detect_order_edges(
+    #         log=log,
+    #         flatFrame=flatFrame,
+    #         orderCentreTable=orderCentreTable,
+    #         settings=settings,
+    #     )
+    #     edges.get()
 
     def test_detect_order_edges_function_exception(self):
 

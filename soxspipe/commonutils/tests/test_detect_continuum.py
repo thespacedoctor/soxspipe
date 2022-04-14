@@ -1,4 +1,6 @@
 from __future__ import print_function
+from astropy import units as u
+from astropy.nddata import CCDData
 from builtins import str
 import os
 import unittest
@@ -9,8 +11,6 @@ from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
 home = expanduser("~")
-from astropy.nddata import CCDData
-from astropy import units as u
 
 packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings_xsh.yaml"
@@ -51,12 +51,34 @@ class test_detect_continuum(unittest.TestCase):
 
     def test_detect_continuum_function(self):
         pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
-        dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/single_pinhole_NIR_disp_map.csv"
+        dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
         home = expanduser("~")
         pinholeFlatPath = pinholeFlatPath.replace("~", home)
 
         pinholeFlat = CCDData.read(pinholeFlatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                    hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        import pandas as pd
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": []
+        })
 
         from soxspipe.commonutils import detect_continuum
         this = detect_continuum(
@@ -64,7 +86,9 @@ class test_detect_continuum(unittest.TestCase):
             pinholeFlat=pinholeFlat,
             dispersion_map=dispersion_map,
             settings=settings,
-            recipeName="soxs-order-centre"
+            recipeName="soxs-order-centre",
+            qcTable=qc,
+            productsTable=products
         )
         this.get()
 

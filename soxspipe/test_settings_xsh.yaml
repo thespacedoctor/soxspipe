@@ -41,12 +41,13 @@ soxs-disp-solution:
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
-    order-sample-count: 50
+    order-sample-count: 200
     slice-length: 10
     peak-sigma-limit: 3
-    poly-deg: 5
-    poly-fitting-residual-clipping-sigma: 1.5
-    clipping-iteration-limit: 5
+    y-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 2.0
+    clipping-iteration-limit: 10
 
 soxs-spatial-solution:
     pixel-window-size: 10
@@ -72,36 +73,33 @@ soxs-mflat:
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20
     max-percentage-threshold-for-edge-detection: 50
-    poly-deg: 4
-    poly-fitting-residual-clipping-sigma: 5
-    clipping-iteration-limit: 10
+    y-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 5.
+    clipping-iteration-limit: 2
     low-sensitivity-clipping-simga: 2
     
 soxs-stare:
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
     clipping-iteration-count: 0
+    clipping-lower-simga: 10
+    clipping-upper-simga: 10 
 
+        
 soxs-straighten:
     asdasd: 1
 
 # UTILS
 background-subtraction:
-    order-extension-fraction-for-background-subtraction: 1.5
-    bsline-deg: 3
-    median-filter-pixels: 11
+    bsline-deg: 2
+    median-filter-pixels: 9
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data/xsh
-calibration-data-root: ~/xshooter-pipeline-data/static_calibrations/xsh
 intermediate-data-root: ~/soxspipe-unittests/intermediate/xsh
 reduced-data-root: ~/soxspipe-unittests/reduced/xsh
 
-# KEYS TO USES AS COLUMNS IN QUICKLOOK SUMMARY TABLES PRINTS TO STDOUT
-summary-keys:
-    default: ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME']
-    verbose: ['MJDOBS', 'CDELT1', 'CDELT2', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT']
+
 
 data-extension: 0
 

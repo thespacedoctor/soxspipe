@@ -85,7 +85,7 @@ NIR:
   gain: MISSING # e/ADU
   ron: 7.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
   bad-pixel map:
-    1x1: cal/BP_MAP_RP_NIR.fits
+    1x1: BP_MAP_RP_NIR.fits
   # predicted pinhole lines:
   #   single:
   #     1x1: cal/THEO_TAB_SING_NIR.csv

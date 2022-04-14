@@ -27,6 +27,10 @@
        
    
         
+            ~soxs_nod_mode.detrend
+       
+   
+        
             ~soxs_nod_mode.prepare_frames
        
    
@@ -35,11 +39,15 @@
        
    
         
-            ~soxs_nod_mode.report_output
+            ~soxs_nod_mode.qc_median_flux_level
        
    
         
-            ~soxs_nod_mode.subtract_calibrations
+            ~soxs_nod_mode.qc_ron
+       
+   
+        
+            ~soxs_nod_mode.report_output
        
    
         
@@ -122,6 +130,10 @@
    ..     
    ..          ~soxs_nod_mode._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

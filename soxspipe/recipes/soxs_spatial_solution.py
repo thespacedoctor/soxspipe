@@ -106,14 +106,7 @@ class soxs_spatial_solution(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
-
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
-        imageTech = self.inputFrames.values(
-            keyword=kw("DPR_TECH").lower(), unique=True)
-        imageCat = self.inputFrames.values(
-            keyword=kw("DPR_CATG").lower(), unique=True)
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
@@ -123,7 +116,7 @@ class soxs_spatial_solution(_base_recipe_):
                         f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR.")
 
             for i in imageTech:
-                if i not in ['ECHELLE,MULTI-PINHOLE', 'IMAGE', 'ECHELLE,SLIT']:
+                if i not in ['ECHELLE,MULTI-PINHOLE', 'IMAGE', 'ECHELLE,SLIT', 'ECHELLE,PINHOLE']:
                     raise TypeError(
                         f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR.")
 
@@ -141,14 +134,15 @@ class soxs_spatial_solution(_base_recipe_):
                     raise TypeError(
                         f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias. Can optionally supply a master-flat and/or master-dark for UVB/VIS.")
 
-        # LOOK FOR DISP_MAP
+        # LOOK FOR DISP MAP
         arm = self.arm
-        if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
+        if f"DISP_TAB_{arm}" not in imageCat:
             raise TypeError(
-                "Need a DISP_MAP for %(arm)s - none found with the input files" % locals())
-        # LOOK FOR ORDER CENTRE TABLE
+                "Need a first guess dispersion map for %(arm)s - none found with the input files" % locals())
+
+        # LOOK FOR ORDER TABLE
         arm = self.arm
-        if arm not in self.supplementaryInput or "ORDER_LOCATIONS" not in self.supplementaryInput[arm]:
+        if f"ORDER_TAB_{arm}" not in imageCat:
             raise TypeError(
                 "Need an order centre for %(arm)s - none found with the input files" % locals())
 
@@ -220,9 +214,15 @@ class soxs_spatial_solution(_base_recipe_):
             multi_pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        # ORDER TABLE
-        if "ORDER_LOCATIONS" in self.supplementaryInput[arm]:
-            order_table = self.supplementaryInput[arm]["ORDER_LOCATIONS"]
+        self.dateObs = multi_pinhole_image.header[kw("DATE_OBS")]
+
+        # FIND THE ORDER TABLE
+        filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
+        order_table = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
+        add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            disp_map_table = i
 
         self.multiPinholeFrame = self.detrend(
             inputFrame=multi_pinhole_image, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=order_table)
@@ -235,20 +235,54 @@ class soxs_spatial_solution(_base_recipe_):
 
         # GENERATE AN UPDATED DISPERSION MAP
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,
             settings=self.settings,
             pinholeFrame=self.multiPinholeFrame,
-            firstGuessMap=self.supplementaryInput[arm]["DISP_MAP"],
+            firstGuessMap=disp_map_table,
             orderTable=order_table,
-            qcTable=False,
-            productsTable=False
+            qcTable=self.qc,
+            productsTable=self.products
         ).get()
+
+        from datetime import datetime
+        filename = os.path.basename(mapPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append(productsTable)
+        self.qc = self.qc.append(qcTable)
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "SPAT_SOL",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} full dispersion-spatial solution",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        filename = os.path.basename(mapImagePath)
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "2D_MAP",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} 2D detector map of wavelength, slit position and order",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
 
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')
-        return mapPath, mapImagePath
+        return mapPath, mapImagePath, res_plots
 
     # use the tab-trigger below for new method
     # xt-class-method

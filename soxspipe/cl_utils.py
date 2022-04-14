@@ -171,7 +171,6 @@ def main(arguments=None):
             inputFrames=a["inputFrames"],
             verbose=verbose
         ).produce_product()
-        print(f"\nSingle pinhole first guess dispersion map saved to: {disp_map}")
 
     if a["order_centres"]:
         from soxspipe.recipes import soxs_order_centres
@@ -181,17 +180,15 @@ def main(arguments=None):
             inputFrames=a["inputFrames"],
             verbose=verbose
         ).produce_product()
-        print(f"\nThe order centre locations have been saved to an order table: {order_table}")
 
     if a["spat_sol"]:
         from soxspipe.recipes import soxs_spatial_solution
-        disp_map, mapImage2D = soxs_spatial_solution(
+        disp_map, mapImage2D, res_plots = soxs_spatial_solution(
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
             verbose=verbose
         ).produce_product()
-        print(f"\nFull 2D dispersion map saved to: {disp_map} & {mapImage2D}")
 
     if a["mflat"]:
         from soxspipe.recipes import soxs_mflat

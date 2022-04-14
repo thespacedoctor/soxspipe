@@ -22,6 +22,8 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from soxspipe.commonutils import create_dispersion_map
+from datetime import datetime
 os.environ['TERM'] = 'vt100'
 
 
@@ -115,14 +117,7 @@ class soxs_disp_solution(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
-
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
-        imageTech = self.inputFrames.values(
-            keyword=kw("DPR_TECH").lower(), unique=True)
-        imageCat = self.inputFrames.values(
-            keyword=kw("DPR_CATG").lower(), unique=True)
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
@@ -207,13 +202,36 @@ class soxs_disp_solution(_base_recipe_):
             )
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
 
-        from soxspipe.commonutils import create_dispersion_map
-        productPath, mapImagePath = create_dispersion_map(
+        productPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,
             settings=self.settings,
-            pinholeFrame=self.pinholeFrame
+            pinholeFrame=self.pinholeFrame,
+            qcTable=self.qc,
+            productsTable=self.products
         ).get()
 
+        filename = os.path.basename(productPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = self.products.append(productsTable)
+        self.qc = self.qc.append(qcTable)
+
+        self.dateObs = self.pinholeFrame.header[kw("DATE_OBS")]
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "DISP_MAP",
+            "file_name": filename,
+            "file_type": "FITS Table",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} first pass dispersion solution",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

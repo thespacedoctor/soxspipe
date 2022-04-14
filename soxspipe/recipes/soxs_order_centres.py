@@ -20,6 +20,7 @@ from ._base_recipe_ import _base_recipe_
 from soxspipe.commonutils import set_of_files
 from fundamentals import tools
 from builtins import object
+from datetime import datetime
 import sys
 import os
 os.environ['TERM'] = 'vt100'
@@ -121,14 +122,7 @@ class soxs_order_centres(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
-
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
-        imageTech = self.inputFrames.values(
-            keyword=kw("DPR_TECH").lower(), unique=True)
-        imageCat = self.inputFrames.values(
-            keyword=kw("DPR_CATG").lower(), unique=True)
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
@@ -152,11 +146,11 @@ class soxs_order_centres(_base_recipe_):
             for i in imageTypes:
                 if i not in ["LAMP,ORDERDEF", "BIAS", "DARK", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']:
                     raise TypeError(
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals())
+                        f"Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and a master-bias and possibly a master dark for UVB/VIS. Found {i}" % locals())
 
         # LOOK FOR DISP MAP
         arm = self.arm
-        if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
+        if f"DISP_TAB_{arm}" not in imageCat:
             raise TypeError(
                 "Need a first guess dispersion map for %(arm)s - none found with the input files" % locals())
 
@@ -198,7 +192,6 @@ class soxs_order_centres(_base_recipe_):
         add_filters = {kw("DPR_TYPE"): 'LAMP,ORDERDEF',
                        kw("DPR_TECH"): 'IMAGE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            print(i)
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
@@ -221,6 +214,10 @@ class soxs_order_centres(_base_recipe_):
             orderDef_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                           hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            disp_map_table = i
+
         self.orderFrame = self.detrend(
             inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
@@ -231,15 +228,39 @@ class soxs_order_centres(_base_recipe_):
             print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
         # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+        print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
         detector = detect_continuum(
             log=self.log,
             pinholeFlat=self.orderFrame,
-            dispersion_map=self.supplementaryInput[arm]["DISP_MAP"],
+            dispersion_map=disp_map_table,
             settings=self.settings,
-            recipeName="soxs-order-centre"
+            recipeName="soxs-order-centre",
+            qcTable=self.qc,
+            productsTable=self.products
         )
-        productPath = detector.get()
+        productPath, qcTable, productsTable = detector.get()
 
+        self.products = self.products.append(productsTable)
+        self.qc = self.qc.append(qcTable)
+
+        filename = os.path.basename(productPath)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        self.dateObs = self.orderFrame.header[kw("DATE_OBS")]
+
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "ORDER_CENTRES",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} order centre traces",
+            "file_path": productPath
+        }, ignore_index=True)
+
+        self.report_output()
         self.clean_up()
 
         self.log.debug('completed the ``produce_product`` method')

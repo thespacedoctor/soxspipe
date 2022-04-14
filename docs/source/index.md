@@ -10,6 +10,7 @@
 
    install
    initialisation
+   quickstart
    recipes/index
    utils/index
    files/index

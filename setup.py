@@ -9,12 +9,12 @@ def readme():
     with open(moduleDirectory + '/README.md') as f:
         return f.read()
 
+
 install_requires = [
     'pyyaml==5.4.1',
     'soxspipe',
     'fundamentals',
     'astropy',
-    'pathlib',
     'ccdproc',
     'docopt',
     'photutils',
@@ -32,7 +32,7 @@ exists = os.path.exists("/home/docs/")
 if exists:
     # install_requires = ['fundamentals']
     c_exclude_list = ['healpy', 'astropy',
-                      'numpy', 'sherlock', 'wcsaxes', 'HMpTy', 'ligo-gracedb', 'reproject', 'ccdproc']
+                      'numpy', 'sherlock', 'wcsaxes', 'HMpTy', 'ligo-gracedb', 'reproject', 'ccdproc', 'scipy'],
     for e in c_exclude_list:
         try:
             install_requires.remove(e)

@@ -4,6 +4,7 @@ import os
 import unittest
 import shutil
 import yaml
+import time
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
@@ -42,10 +43,12 @@ if not os.path.exists(pathToOutputDir):
     os.makedirs(pathToOutputDir)
 
 
-class test_cl_utils(unittest.TestCase):
+class test_01_cl_utils(unittest.TestCase):
 
     def test_init(self):
         # TEST CL-OPTIONS
+
+        time.sleep(7)
         command = "soxspipe init"
         args = docopt(doc, command.split(" ")[1:])
         cl_utils.main(args)

@@ -23,6 +23,7 @@ import warnings
 from photutils.utils import NoDetectionsWarning
 from astropy.nddata import CCDData
 import math
+from soxspipe.commonutils.toolkit import get_calibrations_path
 import numpy as np
 from astropy.stats import sigma_clip, mad_std
 from matplotlib.patches import Rectangle
@@ -39,7 +40,14 @@ from soxspipe.commonutils import keyword_lookup
 from fundamentals import tools
 from builtins import object
 import sys
+from astropy.table import Table
 import os
+from io import StringIO
+from contextlib import suppress
+from astropy.io import fits
+import copy
+from datetime import datetime
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -60,7 +68,7 @@ class create_dispersion_map(object):
 
     ```python
     from soxspipe.commonutils import create_dispersion_map
-    mapPath, mapImagePath = create_dispersion_map(
+    mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
         log=log,
         settings=settings,
         pinholeFrame=frame,
@@ -100,8 +108,10 @@ class create_dispersion_map(object):
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
+            self.recipeName = "soxs-spatial-solution"
             self.recipeSettings = self.settings["soxs-spatial-solution"]
         else:
+            self.recipeName = "soxs-disp-solution"
             self.recipeSettings = self.settings["soxs-disp-solution"]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
@@ -141,15 +151,50 @@ class create_dispersion_map(object):
         orderPixelTable = orderPixelTable.apply(
             self.detect_pinhole_arc_line, axis=1)
 
+        totalLines = len(orderPixelTable.index)
+
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
             'observed_x'], inplace=True)
+
+        detectedLines = len(orderPixelTable.index)
+        percentageDetectedLines = (float(detectedLines) / float(totalLines))
+        percentageDetectedLines = float("{:.6f}".format(percentageDetectedLines))
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        if "DISP" in self.recipeName:
+            tag = "single"
+        else:
+            tag = "multi"
+
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "NLINE",
+            "qc_value": detectedLines,
+            "qc_comment": f"Number of lines detected in {tag} pinhole frame",
+            "qc_unit": "lines",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
+        self.qc = self.qc.append({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "PLINE",
+            "qc_value": percentageDetectedLines,
+            "qc_comment": f"Proportion of lines detected in {tag} pinhole frame",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }, ignore_index=True)
 
         order_deg = self.recipeSettings["order-deg"]
         wavelength_deg = self.recipeSettings["wavelength-deg"]
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        popt_x, popt_y = self.fit_polynomials(
+        popt_x, popt_y, res_plots = self.fit_polynomials(
             orderPixelTable=orderPixelTable,
             wavelength_deg=wavelength_deg,
             order_deg=order_deg,
@@ -160,12 +205,12 @@ class create_dispersion_map(object):
         mapPath = self.write_map_to_file(
             popt_x, popt_y, order_deg, wavelength_deg, slit_deg)
 
-        if self.firstGuessMap:
+        if self.firstGuessMap and self.orderTable:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
-            return mapPath, mapImagePath
+            return mapPath, mapImagePath, res_plots, self.qc, self.products
 
         self.log.debug('completed the ``get`` method')
-        return mapPath, None
+        return mapPath, None, res_plots, self.qc, self.products
 
     def get_predicted_line_list(
             self):
@@ -200,12 +245,13 @@ class create_dispersion_map(object):
 
         # READ THE FILE
         home = expanduser("~")
-        calibrationRootPath = self.settings[
-            "calibration-data-root"].replace("~", home)
+
+        calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 
-        # READ CSV FILE TO PANDAS DATAFRAME
-        orderPixelTable = pd.read_csv(predictedLinesFile)
+        # LINE LIST TO PANDAS DATAFRAME
+        dat = Table.read(predictedLinesFile, format='fits')
+        orderPixelTable = dat.to_pandas()
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -349,6 +395,7 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``write_map_to_file`` method')
 
         arm = self.arm
+        kw = self.kw
 
         # SORT X COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_x = {}
@@ -385,16 +432,53 @@ class create_dispersion_map(object):
             frame=self.pinholeFrame,
             settings=self.settings
         )
+
+        header = copy.deepcopy(self.pinholeFrame.header)
+        header.pop(kw("DPR_TECH"))
+        header.pop(kw("DPR_CATG"))
+        header.pop(kw("DPR_TYPE"))
+
+        with suppress(KeyError):
+            header.pop(kw("DET_READ_SPEED"))
+        with suppress(KeyError):
+            header.pop(kw("CONAD"))
+        with suppress(KeyError):
+            header.pop(kw("GAIN"))
+        with suppress(KeyError):
+            header.pop(kw("RON"))
+
         if slit_deg == 0:
-            filename = filename.split("ARC")[0] + "DISP_MAP.csv"
+            filename = filename.split("ARC")[0] + "DISP_MAP.fits"
+            header[kw("PRO_TECH")] = "ECHELLE,PINHOLE"
         else:
-            filename = filename.split("ARC")[0] + "2D_MAP.csv"
+            filename = filename.split("ARC")[0] + "2D_MAP.fits"
+            header[kw("PRO_TECH")] = "ECHELLE,MULTI-PINHOLE"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
             listOfDictionaries=[coeff_dict_x, coeff_dict_y]
         )
-        csvData = dataSet.csv(filepath=filePath)
+
+        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
+        fakeFile = StringIO(dataSet.csv())
+        df = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
+        fakeFile.close()
+        t = Table.from_pandas(df)
+        BinTableHDU = fits.table_to_hdu(t)
+
+        header[kw("SEQ_ARM")] = arm
+        header[kw("PRO_TYPE")] = "REDUCED"
+        header[kw("PRO_CATG")] = f"DISP_TAB_{arm}".upper()
+
+        # WRITE QCs TO HEADERS
+        for n, v, c, h in zip(self.qc["qc_name"].values, self.qc["qc_value"].values, self.qc["qc_comment"].values, self.qc["to_header"].values):
+            if h:
+                header[f"ESO QC {n}".upper()] = (v, c)
+
+        priHDU = fits.PrimaryHDU(header=header)
+
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+        hduList.writeto(filePath, checksum=True, overwrite=True)
 
         self.log.debug('completed the ``write_map_to_file`` method')
         return filePath
@@ -406,7 +490,8 @@ class create_dispersion_map(object):
             ycoeff,
             order_deg,
             wavelength_deg,
-            slit_deg):
+            slit_deg,
+            write_QCs=False):
         """*calculate residuals of the polynomial fits against the observed line positions*
 
         **Key Arguments:**
@@ -417,6 +502,7 @@ class create_dispersion_map(object):
             - ``order_deg`` -- degree of the order fitting
             - ``wavelength_deg`` -- degree of wavelength fitting
             - ``slit_deg`` -- degree of the slit fitting (False for single pinhole)
+            - ``write_QCs`` -- write the QCs to dataframe? Default *False*
 
         **Return:**
             - ``residuals`` -- combined x-y residuals
@@ -428,9 +514,12 @@ class create_dispersion_map(object):
 
         arm = self.arm
 
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
         # POLY FUNCTION NEEDS A DATAFRAME AS INPUT
         poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
 
         # CALCULATE X & Y RESIDUALS BETWEEN OBSERVED LINE POSITIONS AND POLY
         # FITTED POSITIONS
@@ -447,6 +536,100 @@ class create_dispersion_map(object):
         combined_res_mean = np.mean(orderPixelTable["residuals_xy"])
         combined_res_std = np.std(orderPixelTable["residuals_xy"])
         combined_res_median = np.median(orderPixelTable["residuals_xy"])
+
+        if write_QCs:
+            absx = abs(orderPixelTable["residuals_x"])
+            absy = abs(orderPixelTable["residuals_y"])
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XRESMIN",
+                "qc_value": absx.min(),
+                "qc_comment": "Minimum residual in dispersion solution fit along x-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XRESMAX",
+                "qc_value": absx.max(),
+                "qc_comment": "Maximum residual in dispersion solution fit along x-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XRESRMS",
+                "qc_value": absx.std(),
+                "qc_comment": "Std-dev of residual in dispersion solution fit along x-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "YRESMIN",
+                "qc_value": absy.min(),
+                "qc_comment": "Minimum residual in dispersion solution fit along y-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "YRESMAX",
+                "qc_value": absy.max(),
+                "qc_comment": "Maximum residual in dispersion solution fit along y-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "YRESRMS",
+                "qc_value": absy.std(),
+                "qc_comment": "Std-dev of residual in dispersion solution fit along y-axis",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XYRESMIN",
+                "qc_value": orderPixelTable["residuals_xy"].min(),
+                "qc_comment": "Minimum residual in dispersion solution fit (XY combined)",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XYRESMAX",
+                "qc_value": orderPixelTable["residuals_xy"].max(),
+                "qc_comment": "Maximum residual in dispersion solution fit (XY combined)",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "XYRESRMS",
+                "qc_value": orderPixelTable["residuals_xy"].std(),
+                "qc_comment": "Std-dev of residual in dispersion solution (XY combined)",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
 
         self.log.debug('completed the ``calculate_residuals`` method')
         return combined_res_mean, combined_res_std, combined_res_median, orderPixelTable
@@ -468,6 +651,7 @@ class create_dispersion_map(object):
         **Return:**
             - ``xcoeff`` -- the x-coefficients post clipping
             - ``ycoeff`` -- the y-coefficients post clipping
+            - ``res_plots`` -- plot of fit residuals
         """
         self.log.debug('starting the ``fit_polynomials`` method')
 
@@ -480,13 +664,23 @@ class create_dispersion_map(object):
 
         clippedCount = 1
 
+        # ADD EXPONENTS TO ORDERTABLE UP-FRONT
+        for i in range(0, order_deg + 1):
+            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+        for j in range(0, wavelength_deg + 1):
+            orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
+        for k in range(0, slit_deg + 1):
+            orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
+
         poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg).poly
+            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
 
         clippingSigma = self.settings[
             recipe]["poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.settings[
             recipe]["clipping-iteration-limit"]
+
+        print("\n# FINDING DISPERSION SOLUTION\n")
 
         iteration = 0
         while clippedCount > 0 and iteration < clippingIterationLimit:
@@ -514,7 +708,8 @@ class create_dispersion_map(object):
                 ycoeff=ycoeff,
                 order_deg=order_deg,
                 wavelength_deg=wavelength_deg,
-                slit_deg=slit_deg)
+                slit_deg=slit_deg,
+                write_QCs=False)
 
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
@@ -534,6 +729,15 @@ class create_dispersion_map(object):
             mask = (orderPixelTable['residuals_masked'] == True)
             orderPixelTable.drop(index=orderPixelTable[
                                  mask].index, inplace=True)
+
+        mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
+            orderPixelTable=orderPixelTable,
+            xcoeff=xcoeff,
+            ycoeff=ycoeff,
+            order_deg=order_deg,
+            wavelength_deg=wavelength_deg,
+            slit_deg=slit_deg,
+            write_QCs=True)
 
         # a = plt.figure(figsize=(40, 15))
         if arm == "UVB":
@@ -599,27 +803,40 @@ class create_dispersion_map(object):
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
 
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
         # GET FILENAME FOR THE RESIDUAL PLOT
         filename = filenamer(
             log=self.log,
             frame=self.pinholeFrame,
             settings=self.settings
         )
-        if self.firstGuessMap:
-            filename = filename.split("ARC")[0] + "2D_MAP_RESIDUALS.pdf"
-        else:
-            filename = filename.split("ARC")[0] + "DISP_MAP_RESIDUALS.pdf"
-
         # plt.show()
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
-        filePath = f"{outDir}/{filename}"
+
+        if self.firstGuessMap:
+            res_plots = filename.split("ARC")[0] + "2D_MAP_RESIDUALS.pdf"
+            filePath = f"{outDir}/{res_plots}"
+        else:
+            res_plots = filename.split("ARC")[0] + "DISP_MAP_RESIDUALS.pdf"
+            filePath = f"{outDir}/{res_plots}"
+        self.products = self.products.append({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "DISP_MAP_RES",
+            "file_name": res_plots,
+            "file_type": "PDF",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} dispersion solution QC plots",
+            "file_path": filePath
+        }, ignore_index=True)
+
         plt.savefig(filePath)
 
-        print(f'\nThe dispersion maps fitted against the observed arc-line positions with a mean residual of {mean_res:2.2f} pixels (stdev = {std_res:2.2f} pixels)')
-
         self.log.debug('completed the ``fit_polynomials`` method')
-        return xcoeff, ycoeff
+        return xcoeff, ycoeff, res_plots
 
     def create_placeholder_images(
             self,
@@ -649,7 +866,7 @@ class create_dispersion_map(object):
         dp = self.detectorParams
 
         # UNPACK THE ORDER TABLE
-        orderPolyTable, orderPixelTable = unpack_order_table(
+        orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTable, extend=0.)
 
         # CREATE THE IMAGE SAME SIZE AS DETECTOR - NAN INSIDE ORDERS, 0 OUTSIDE
@@ -725,21 +942,12 @@ class create_dispersion_map(object):
         **Usage:**
 
         ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
         ```
         """
         self.log.debug('starting the ``map_to_image`` method')
+
+        print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
         self.dispersionMapPath = dispersionMapPath
         kw = self.kw
@@ -773,12 +981,13 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=900)
+                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=False)
+
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
 
         # NOTE TO SELF: if having issue with multiprocessing stalling, try and
-        # import required modules into the mthod/function running this
+        # import required modules into the method/function running this
         # fmultiprocess function instead of at the module level
 
         slitMap, wlMap, orderMap = self.create_placeholder_images(reverse=True)
@@ -1094,6 +1303,7 @@ class create_dispersion_map(object):
                 # PIXELS OUTSIDE OF DETECTOR EDGES - IGNORE
                 pass
 
+        sys.stdout.write("\x1b[1A\x1b[2K")
         print(f"ORDER {order:02d}, iteration {iteration:02d}. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
 
         if plots:

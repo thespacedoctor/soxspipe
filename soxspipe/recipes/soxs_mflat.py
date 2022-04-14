@@ -128,14 +128,7 @@ class soxs_mflat(_base_recipe_):
         kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
-        self._verify_input_frames_basics()
-
-        imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True)
-        imageTech = self.inputFrames.values(
-            keyword=kw("DPR_TECH").lower(), unique=True)
-        imageCat = self.inputFrames.values(
-            keyword=kw("DPR_CATG").lower(), unique=True)
+        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
@@ -161,9 +154,9 @@ class soxs_mflat(_base_recipe_):
                     raise TypeError(
                         "Input frames for soxspipe mflat need to be slit flat lamp frames and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
-        # LOOK FOR ORDER CENTRE TABLE
+        # LOOK FOR ORDER TABLE
         arm = self.arm
-        if arm not in self.supplementaryInput or "ORDER_LOCATIONS" not in self.supplementaryInput[arm]:
+        if f"ORDER_TAB_{arm}" not in imageCat:
             raise TypeError(
                 "Need an order centre for %(arm)s - none found with the input files" % locals())
 
@@ -182,6 +175,7 @@ class soxs_mflat(_base_recipe_):
 
         productPath = None
         arm = self.arm
+        kw = self.kw
 
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats = self.calibrate_frame_set()
@@ -189,10 +183,14 @@ class soxs_mflat(_base_recipe_):
         quicklook_image(
             log=self.log, CCDObject=calibratedFlats[0], show=False)
 
+        # FIND THE ORDER TABLE
+        filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
+        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
         # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
         # FLUX TO THAT LEVEL
         normalisedFlats = self.normalise_flats(
-            calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_LOCATIONS"])
+            calibratedFlats, orderTablePath=orderTablePath)
 
         quicklook_image(
             log=self.log, CCDObject=normalisedFlats[0], show=False)
@@ -217,7 +215,7 @@ class soxs_mflat(_base_recipe_):
         # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
         # FLUX TO THAT LEVEL (AGAIN!)
         normalisedFlats = self.normalise_flats(
-            calibratedFlats, orderTablePath=self.supplementaryInput[arm]["ORDER_LOCATIONS"], exposureFrames=exposureFrames)
+            calibratedFlats, orderTablePath=orderTablePath, exposureFrames=exposureFrames)
 
         quicklook_image(
             log=self.log, CCDObject=normalisedFlats[0], show=False)
@@ -233,7 +231,7 @@ class soxs_mflat(_base_recipe_):
         edges = detect_order_edges(
             log=self.log,
             flatFrame=combined_normalised_flat,
-            orderCentreTable=self.supplementaryInput[arm]["ORDER_LOCATIONS"],
+            orderCentreTable=orderTablePath,
             settings=self.settings,
             qcTable=self.qc,
             productsTable=self.products
@@ -372,8 +370,8 @@ class soxs_mflat(_base_recipe_):
         # IF NO DARK FRAMES EXIST - JUST A MASTER BIAS. SUBTRACT BIAS.
         calibratedFlats = []
         if not darkCollection and bias:
+            print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
             for flat in flats:
-                print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
                 calibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=None))
 
@@ -435,7 +433,7 @@ class soxs_mflat(_base_recipe_):
             "soxs-mflat"]["centre-order-window"] / 2)
 
         # UNPACK THE ORDER TABLE
-        orderTableMeta, orderTablePixels = unpack_order_table(
+        orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
 
         mask = np.ones_like(exposureFrames[0].data)
@@ -497,7 +495,7 @@ class soxs_mflat(_base_recipe_):
         print("\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY")
 
         # UNPACK THE ORDER TABLE
-        orderTableMeta, orderTablePixels = unpack_order_table(
+        orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath)
 
         # BAD PIXEL COUNT AT START
@@ -540,8 +538,9 @@ class soxs_mflat(_base_recipe_):
 
         self.qc = self.qc.append({
             "soxspipe_recipe": self.recipeName,
-            "qc_name": "low sensitivity pixel count",
+            "qc_name": "NLOWSENS",
             "qc_value": lowSensPixelCount,
+            "qc_comment": "Number of low-sensitivity pixels found in master flat",
             "qc_unit": "pixels",
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow
