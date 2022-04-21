@@ -30,6 +30,7 @@ from builtins import object
 from matplotlib import cm, rc
 import sys
 import os
+from astropy.io import fits
 from mpl_toolkits.mplot3d import Axes3D
 os.environ['TERM'] = 'vt100'
 
@@ -614,6 +615,61 @@ def get_calibrations_path(
 
     log.debug('completed the ``get_calibrations_path`` function')
     return calibrationRootPath
+
+
+def twoD_disp_map_image_to_dataframe(
+        log,
+        twoDMapPath,
+        assosiatedFrame=False):
+    """*convert the 2D dispersion image map to a pandas dataframe*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `twoDMapPath` -- 2D dispersion map image path
+    - `assosiatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+    mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, assosiatedFrame=objectFrame)
+    ```           
+    """
+    log.debug('starting the ``twoD_disp_map_image_to_dataframe`` function')
+
+    # MAKE RELATIVE HOME PATH ABSOLUTE
+    from os.path import expanduser
+    home = expanduser("~")
+    if twoDMapPath[0] == "~":
+        twoDMapPath = twoDMapPath.replace("~", home)
+
+    hdul = fits.open(twoDMapPath)
+
+    # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
+    xdim = hdul[0].data.shape[1]
+    ydim = hdul[0].data.shape[0]
+
+    xarray = np.tile(np.arange(0, xdim), ydim)
+    yarray = np.repeat(np.arange(0, ydim), xdim)
+
+    thisDict = {
+        "x": xarray,
+        "y": yarray,
+        "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+        "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
+        "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+    }
+
+    if assosiatedFrame:
+        thisDict["flux"] = assosiatedFrame.data.flatten().byteswap().newbyteorder()
+
+    mapDF = pd.DataFrame.from_dict(thisDict)
+
+    mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+
+    log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
+    return mapDF
 
 # use the tab-trigger below for new function
 # xt-def-function

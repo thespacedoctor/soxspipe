@@ -47,12 +47,51 @@ if not os.path.exists(pathToOutputDir):
 
 class test_subtract_sky(unittest.TestCase):
 
+    def test_2D_image_to_DF_function(self):
+
+        objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_single.fits"
+        objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
+
+        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+        mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap)
+
+        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+        from astropy.nddata import CCDData
+        from astropy import units as u
+        # MAKE RELATIVE HOME PATH ABSOLUTE
+        from os.path import expanduser
+        home = expanduser("~")
+        if objectPath[0] == "~":
+            objectPath = objectPath.replace("~", home)
+
+        objectFrame = CCDData.read(objectPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+        mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, assosiatedFrame=objectFrame)
+
+        from tabulate import tabulate
+        print(tabulate(mapDF.head(100), headers='keys', tablefmt='psql'))
+
     def test_subtract_sky_function(self):
+
+        objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_single.fits"
+        objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
+
+        # UNIT READ FROM BUNIT KEYWORD OF FITS FILE UNLESS EXPLICITLY SUPPLIED
+        # CCDDATA BEHAVES LIKE A NUMPY (MASKED IF MASK SET) ARRAY
+        # UNMASKED DATA ACCESSED VIA frame.data
+        from astropy.nddata import CCDData
+        from astropy import units as u
+        objectFrame = CCDData.read(objectPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         from soxspipe.commonutils import subtract_sky
         this = subtract_sky(
             log=log,
-            settings=settings
+            settings=settings,
+            objectFrame=objectFrame,
+            twoDMapDF=asdasd
         )
         this.get()
 
