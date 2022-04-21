@@ -1,5 +1,7 @@
 # Release Notes
 
+added a `twoD_disp_map_image_to_dataframe` function to toolkit
+
 ## v0.6.2 - April 13, 2022
 
 * **ENHANCEMENT:** quickstart guide added for calibration recipes  

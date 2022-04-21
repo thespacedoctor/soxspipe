@@ -29,6 +29,7 @@ from fundamentals import tools
 from builtins import object
 from matplotlib import cm, rc
 import sys
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import os
 from astropy.io import fits
 from mpl_toolkits.mplot3d import Axes3D
@@ -106,7 +107,9 @@ def quicklook_image(
         ext="data",
         stdWindow=3,
         title=False,
-        surfacePlot=False):
+        surfacePlot=False,
+        dispMap=False,
+        dispMapDF=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
@@ -117,6 +120,8 @@ def quicklook_image(
     - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data".
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
+    - ``dispMap`` -- path to dispersion map. Default *False*
+    - ``dispMapDF`` -- pandas dataframe of dispersion map wavelength, order and slit-postion
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
@@ -205,6 +210,51 @@ def quicklook_image(
         # palette.set_over('r', 1.0)
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
+
+    if dispMap and not isinstance(dispMapDF, bool):
+        uniqueOrders = dispMapDF['order'].unique()
+        wlLims = []
+        spLims = []
+
+        for o in uniqueOrders:
+            filDF = dispMapDF.loc[dispMapDF["order"] == o]
+            wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
+            spLims.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
+
+        for o, wlLim, spLim in zip(uniqueOrders, wlLims, spLims):
+            wlRange = np.arange(wlLim[0], wlLim[1], 1)
+            wlRange = np.append(wlRange, [wlLim[1]])
+            for e in spLim:
+                myDict = {
+                    "order": np.full_like(wlRange, o),
+                    "wavelength": wlRange,
+                    "slit_position": np.full_like(wlRange, e)
+                }
+                orderPixelTable = pd.DataFrame(myDict)
+                orderPixelTable = dispersion_map_to_pixel_arrays(
+                    log=log,
+                    dispersionMapPath=dispMap,
+                    orderPixelTable=orderPixelTable
+                )
+                ax2.plot(orderPixelTable["fit_y"], orderPixelTable["fit_x"], "w:", alpha=0.5)
+            spRange = np.arange(spLim[0], spLim[1], 1)
+            spRange = np.append(spRange, [spLim[1]])
+            wlRange = np.arange(wlLim[0], wlLim[1], 15)
+            wlRange = np.append(wlRange, [wlLim[1]])
+            for l in wlRange:
+                myDict = {
+                    "order": np.full_like(spRange, o),
+                    "wavelength": np.full_like(spRange, l),
+                    "slit_position": spRange
+                }
+                orderPixelTable = pd.DataFrame(myDict)
+                orderPixelTable = dispersion_map_to_pixel_arrays(
+                    log=log,
+                    dispersionMapPath=dispMap,
+                    orderPixelTable=orderPixelTable
+                )
+                ax2.plot(orderPixelTable["fit_y"], orderPixelTable["fit_x"], "w:", alpha=0.5)
+
     ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
                               cmap=palette, alpha=1, aspect='auto')

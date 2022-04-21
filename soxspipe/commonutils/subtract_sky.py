@@ -9,11 +9,11 @@
 :Date Created:
     April 14, 2022
 """
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
 
 
 # OR YOU CAN REMOVE THE CLASS BELOW AND ADD A WORKER FUNCTION ... SNIPPET TRIGGER BELOW
@@ -26,6 +26,9 @@ class subtract_sky(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``objectFrame`` -- the image frame in need of sky subtraction
+        - ``twoDMap`` -- 2D dispersion map image path
+        - ``dispMap`` -- path to dispersion map. Default * False*
 
     **Usage:**
 
@@ -55,12 +58,19 @@ class subtract_sky(object):
     def __init__(
             self,
             log,
+            twoDMap,
+            objectFrame,
+            dispMap=False,
             settings=False,
 
     ):
         self.log = log
         log.debug("instansiating a new 'subtract_sky' object")
         self.settings = settings
+        self.objectFrame = objectFrame
+        self.twoDMap = twoDMap
+        self.dispMap = dispMap
+
         # xt-self-arg-tmpx
 
         # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
@@ -70,6 +80,15 @@ class subtract_sky(object):
         # Override Variable Data Atrributes
 
         # Initial Actions
+        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+        self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame)
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=objectFrame, show=True, ext=False, stdWindow=5, title="Object Frame with dispersion solution grid", surfacePlot=True, dispMap=dispMap, dispMapDF=self.mapDF)
+
+        from tabulate import tabulate
+        print(tabulate(self.mapDF.head(100), headers='keys', tablefmt='psql'))
 
         return None
 
