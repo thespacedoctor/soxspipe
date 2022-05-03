@@ -8,6 +8,9 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+from soxspipe.commonutils.filenamer import filenamer
+from os.path import expanduser
+import pandas as pd
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -75,8 +78,8 @@ class test_subtract_sky(unittest.TestCase):
 
     def test_subtract_sky_function(self):
 
-        objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_single.fits"
+        objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
         twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
         dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP.fits"
 
@@ -92,15 +95,41 @@ class test_subtract_sky(unittest.TestCase):
 
         objectFrame = CCDData.read(objectPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": []
+        })
+
         from soxspipe.commonutils import subtract_sky
         this = subtract_sky(
             log=log,
             settings=settings,
             objectFrame=objectFrame,
             twoDMap=twoDMap,
+            qcTable=qc,
+            productsTable=products,
             dispMap=dispMap
         )
-        this.get()
+        skymodelCCDData, skySubtractedCCDData, qcTable, productsTable = this.subtract()
+
+        from tabulate import tabulate
+        print(tabulate(productsTable, headers='keys', tablefmt='psql'))
 
     def test_subtract_sky_function_exception(self):
 

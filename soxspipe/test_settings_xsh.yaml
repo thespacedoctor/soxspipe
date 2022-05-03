@@ -86,6 +86,16 @@ soxs-stare:
     clipping-lower-simga: 10
     clipping-upper-simga: 10 
 
+sky-subtraction:
+    # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+    median_clipping_sigma: 4
+    median_clipping_iterations: 15
+    # ROLLING WINDOW LENGTH IN DATA POINTS
+    median_rolling_window_size: 44
+    # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+    percential_clipping_sigma: 2
+    percential_clipping_iterations: 9
+    percential_rolling_window_size: 15
         
 soxs-straighten:
     asdasd: 1

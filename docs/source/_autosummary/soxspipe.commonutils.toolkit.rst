@@ -45,6 +45,7 @@
         
           ~copy
           ~cut_image_slice
+          ~dispersion_map_to_pixel_arrays
           ~expanduser
           ~generic_quality_checks
           ~get_calibrations_path
@@ -52,6 +53,7 @@
           ~rc
           ~read_spectral_format
           ~spectroscopic_image_quality_checks
+          ~twoD_disp_map_image_to_dataframe
           ~unpack_order_table
         
         

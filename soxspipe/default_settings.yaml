@@ -33,12 +33,19 @@ soxs-disp-solution:
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
+    # NUMBER OF CROSS-ORDER SLICES PER ORDER
     order-sample-count: 200
+    # LENGTH OF EACH SLICE (PIXELS)
     slice-length: 10
+    # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
     peak-sigma-limit: 3
+    # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
     y-deg: 5
+    # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
     order-deg: 5
+    # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
     poly-fitting-residual-clipping-sigma: 2.0
+    # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
     clipping-iteration-limit: 10
 
 soxs-spatial-solution:
@@ -77,6 +84,17 @@ soxs-stare:
     clipping-iteration-count: 0
     clipping-lower-simga: 10
     clipping-upper-simga: 10 
+
+sky-subtraction:
+    # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+    median_clipping_sigma: 4
+    median_clipping_iterations: 10
+    # ROLLING WINDOW LENGTH IN DATA POINTS
+    median_rolling_window_size: 44
+    # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+    percential_clipping_sigma: 2.0
+    percential_clipping_iteration: 2
+    percential_rolling_window_size: 15
 
 # UTILS
 background-subtraction:

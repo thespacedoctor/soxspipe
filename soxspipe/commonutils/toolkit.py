@@ -670,7 +670,8 @@ def get_calibrations_path(
 def twoD_disp_map_image_to_dataframe(
         log,
         twoDMapPath,
-        assosiatedFrame=False):
+        assosiatedFrame=False,
+        removeMaskedPixels=False):
     """*convert the 2D dispersion image map to a pandas dataframe*
 
     **Key Arguments:**
@@ -678,6 +679,7 @@ def twoD_disp_map_image_to_dataframe(
     - `log` -- logger
     - `twoDMapPath` -- 2D dispersion map image path
     - `assosiatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
+    - `removeMaskedPixels` -- remove the masked pixels from the assosicated image? Default *False*
 
     **Usage:**
 
@@ -713,8 +715,12 @@ def twoD_disp_map_image_to_dataframe(
 
     if assosiatedFrame:
         thisDict["flux"] = assosiatedFrame.data.flatten().byteswap().newbyteorder()
+        thisDict["mask"] = assosiatedFrame.mask.flatten().byteswap().newbyteorder()
 
     mapDF = pd.DataFrame.from_dict(thisDict)
+    if removeMaskedPixels:
+        mask = (mapDF["mask"] == False)
+        mapDF = mapDF.loc[mask]
 
     mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 

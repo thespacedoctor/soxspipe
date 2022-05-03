@@ -26,6 +26,7 @@
    soxspipe.commonutils.polynomials.chebyshev_xy_polynomial
    soxspipe.commonutils.set_of_files
    soxspipe.commonutils.subtract_background
+   soxspipe.commonutils.subtract_sky
    soxspipe.recipes.soxs_disp_solution
    soxspipe.recipes.soxs_mbias
    soxspipe.recipes.soxs_mdark
@@ -50,5 +51,6 @@
    soxspipe.commonutils.toolkit.quicklook_image
    soxspipe.commonutils.toolkit.read_spectral_format
    soxspipe.commonutils.toolkit.spectroscopic_image_quality_checks
+   soxspipe.commonutils.toolkit.twoD_disp_map_image_to_dataframe
    soxspipe.commonutils.toolkit.unpack_order_table
    soxspipe.docstring_test.docsting_test 

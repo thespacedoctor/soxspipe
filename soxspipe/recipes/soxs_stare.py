@@ -17,6 +17,7 @@ from astropy.nddata import CCDData
 import numpy as np
 from ._base_recipe_ import _base_recipe_
 from soxspipe.commonutils import set_of_files
+from soxspipe.commonutils import subtract_sky
 from fundamentals import tools
 from builtins import object
 import sys
@@ -197,6 +198,17 @@ class soxs_stare(_base_recipe_):
 
         combined_object = self.detrend(
             inputFrame=combined_object, master_bias=False, dark=dark, master_flat=master_flat, order_table=False)
+
+        skymodel = subtract_sky(
+            log=self.log,
+            settings=self.settings,
+            objectFrame=combined_object,
+            twoDMap=twoDMap,
+            qcTable=self.qc,
+            productsTable=self.products,
+            dispMap=dispMap
+        )
+        skymodelCCDData, skySubtractedCCDData, self.qc, self.products = skymodel.subtract()
 
         from os.path import expanduser
         home = expanduser("~")
