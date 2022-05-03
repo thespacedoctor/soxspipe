@@ -196,8 +196,12 @@ class soxs_stare(_base_recipe_):
             master_flat = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # FIND THE ORDER TABLE
+        filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
+        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
         combined_object = self.detrend(
-            inputFrame=combined_object, master_bias=False, dark=dark, master_flat=master_flat, order_table=False)
+            inputFrame=combined_object, master_bias=False, dark=dark, master_flat=master_flat, order_table=orderTablePath)
 
         skymodel = subtract_sky(
             log=self.log,
