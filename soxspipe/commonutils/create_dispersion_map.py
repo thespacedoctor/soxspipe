@@ -469,6 +469,7 @@ class create_dispersion_map(object):
         header[kw("SEQ_ARM")] = arm
         header[kw("PRO_TYPE")] = "REDUCED"
         header[kw("PRO_CATG")] = f"DISP_TAB_{arm}".upper()
+        self.dispMapHeader = header
 
         # WRITE QCs TO HEADERS
         for n, v, c, h in zip(self.qc["qc_name"].values, self.qc["qc_value"].values, self.qc["qc_comment"].values, self.qc["to_header"].values):
@@ -952,6 +953,7 @@ class create_dispersion_map(object):
         self.dispersionMapPath = dispersionMapPath
         kw = self.kw
         dp = self.detectorParams
+        arm = self.arm
 
         self.map_to_image_displacement_threshold = self.recipeSettings[
             "map_to_image_displacement_threshold"]
@@ -1011,8 +1013,10 @@ class create_dispersion_map(object):
 
         dispersion_image_filePath = f"{outDir}/{filename}"
         # WRITE CCDDATA OBJECT TO FILE
-        from astropy.io import fits
-        primary_hdu = fits.PrimaryHDU(combinedWlImage.data)
+        # from astropy.io import fits
+        header = copy.deepcopy(self.dispMapHeader)
+        header[kw("PRO_CATG")] = f"DISP_IMAGE_{arm}".upper()
+        primary_hdu = fits.PrimaryHDU(combinedWlImage.data, header=header)
         primary_hdu.header['EXTNAME'] = 'WAVELENGTH'
         image_hdu = fits.ImageHDU(combinedSlitImage.data)
         image_hdu.header['EXTNAME'] = 'SLIT'
@@ -1056,7 +1060,7 @@ class create_dispersion_map(object):
         # GENERATE INITIAL FULL-ORDER WAVELENGTH ARRAY FOR PARTICULAR ORDER
         # (ADD A LITTLE WRIGGLE ROOM AT EACH SIDE OF RANGE)
         wlArray = np.arange(minWl - 20, maxWl + 20, self.recipeSettings[
-                            "grid_res_wavelength"])
+            "grid_res_wavelength"])
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
         bigSlitArray = np.concatenate(
             [np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
@@ -1105,7 +1109,7 @@ class create_dispersion_map(object):
                 "mean"], estimatedValues["wavelength"][
                 "first"])
             estimatedValues['guess_slit_position'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
-                                                              "residual_xy"]["first"], estimatedValues["slit_position"]["mean"], estimatedValues["slit_position"]["first"])
+                "residual_xy"]["first"], estimatedValues["slit_position"]["mean"], estimatedValues["slit_position"]["first"])
             estimatedValues['best_offset_x'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
                 "residual_xy"]["first"], abs(estimatedValues["mean_offset_x"]), abs(estimatedValues["residual_x"]["first"]))
             estimatedValues['best_offset_y'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
@@ -1207,7 +1211,7 @@ class create_dispersion_map(object):
         count = orderPixelTable.groupby(
             ['pixel_x', 'pixel_y']).size().reset_index(name='count')
         orderPixelTable = pd.merge(orderPixelTable, count, how='left', left_on=[
-                                   'pixel_x', 'pixel_y'], right_on=['pixel_x', 'pixel_y'])
+            'pixel_x', 'pixel_y'], right_on=['pixel_x', 'pixel_y'])
         orderPixelTable = orderPixelTable.sort_values(
             ['order', 'pixel_x', 'pixel_y', 'residual_xy'])
 

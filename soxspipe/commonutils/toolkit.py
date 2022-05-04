@@ -713,16 +713,28 @@ def twoD_disp_map_image_to_dataframe(
         "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
     }
 
-    if assosiatedFrame:
-        thisDict["flux"] = assosiatedFrame.data.flatten().byteswap().newbyteorder()
-        thisDict["mask"] = assosiatedFrame.mask.flatten().byteswap().newbyteorder()
+    try:
+        if assosiatedFrame:
+            thisDict["flux"] = assosiatedFrame.data.flatten()
+            thisDict["mask"] = assosiatedFrame.mask.flatten()
 
-    mapDF = pd.DataFrame.from_dict(thisDict)
-    if removeMaskedPixels:
-        mask = (mapDF["mask"] == False)
-        mapDF = mapDF.loc[mask]
+        mapDF = pd.DataFrame.from_dict(thisDict)
+        if removeMaskedPixels:
+            mask = (mapDF["mask"] == False)
+            mapDF = mapDF.loc[mask]
 
-    mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+    except:
+        if assosiatedFrame:
+            thisDict["flux"] = assosiatedFrame.data.flatten().byteswap().newbyteorder()
+            thisDict["mask"] = assosiatedFrame.mask.flatten().byteswap().newbyteorder()
+
+        mapDF = pd.DataFrame.from_dict(thisDict)
+        if removeMaskedPixels:
+            mask = (mapDF["mask"] == False)
+            mapDF = mapDF.loc[mask]
+
+        mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
     log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
     return mapDF

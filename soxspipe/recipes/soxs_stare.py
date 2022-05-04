@@ -123,7 +123,7 @@ class soxs_stare(_base_recipe_):
                         f"Found a {i} file. Input frames for soxspipe stare need to be OBJECT, ***. Can optionally supply a master-flat for NIR.")
 
             for i in imageTech:
-                if i not in ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT"]:
+                if i not in ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE"]:
                     raise TypeError(
                         "Input frames for soxspipe stare need to be ********* lamp on and lamp off frames for NIR" % locals())
 
@@ -199,6 +199,14 @@ class soxs_stare(_base_recipe_):
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
         orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
+        # FIND THE 2D MAP TABLE
+        filterDict = {kw("PRO_CATG").lower(): f"DISP_TAB_{arm}"}
+        dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
+        # FIND THE 2D MAP IMAGE
+        filterDict = {kw("PRO_CATG").lower(): f"DISP_IMAGE_{arm}"}
+        twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
         combined_object = self.detrend(
             inputFrame=combined_object, master_bias=False, dark=dark, master_flat=master_flat, order_table=orderTablePath)

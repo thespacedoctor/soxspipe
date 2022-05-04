@@ -94,6 +94,8 @@ class test_subtract_sky(unittest.TestCase):
             objectPath = objectPath.replace("~", home)
 
         objectFrame = CCDData.read(objectPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+        objectFrame.data.byteswap().newbyteorder()
+        objectFrame.mask.byteswap().newbyteorder()
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         qc = pd.DataFrame({

@@ -23,7 +23,7 @@ from copy import copy
 from datetime import datetime
 from matplotlib import colors
 from soxspipe.commonutils import keyword_lookup
-from scipy.interpolate import BSpline, splrep
+from scipy.interpolate import BSpline, splrep, splev
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.toolkit import quicklook_image
 from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
@@ -110,8 +110,6 @@ class subtract_sky(object):
         self.arm = objectFrame.header[kw("SEQ_ARM")]
         self.dateObs = objectFrame.header[kw("DATE_OBS")]
 
-        self.skymodelCCDData, self.skySubtractedCCDData = self.create_placeholder_images()
-
         # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
         self.filenameTemplate = filenamer(
             log=self.log,
@@ -133,15 +131,17 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``get`` method')
 
+        skymodelCCDData, skySubtractedCCDData = self.create_placeholder_images()
+
         uniqueOrders = self.mapDF['order'].unique()
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
         for o in uniqueOrders:
             imageMapOrder = self.mapDF[self.mapDF["order"] == o]
-            imageMapOrderWithObject, imageMapOrder = self.get_over_sampled_sky_from_order(imageMapOrder, o, ignoreBP=False)
+            imageMapOrderWithObject, imageMapOrder = self.get_over_sampled_sky_from_order(imageMapOrder, o, ignoreBP=True)
             imageMapOrder = self.fit_bspline_to_sky(imageMapOrder, o,)
-            self.add_data_to_placeholder_images(imageMapOrder)
+            skymodelCCDData, skySubtractedCCDData = self.add_data_to_placeholder_images(imageMapOrder, skymodelCCDData, skySubtractedCCDData)
             if o == 25:
                 qc_plot_path = self.plot_sky_sampling(order=o, imageMapOrderWithObjectDF=imageMapOrderWithObject, imageMapOrderDF=imageMapOrder)
                 basename = os.path.basename(qc_plot_path)
@@ -172,7 +172,7 @@ class subtract_sky(object):
         }, ignore_index=True)
 
         # WRITE CCDDATA OBJECT TO FILE
-        HDUList = self.skymodelCCDData.to_hdu(
+        HDUList = skymodelCCDData.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
         HDUList.writeto(filePath, output_verify='exception',
@@ -196,14 +196,14 @@ class subtract_sky(object):
         print(filePath)
 
         # WRITE CCDDATA OBJECT TO FILE
-        HDUList = self.skySubtractedCCDData.to_hdu(
+        HDUList = skySubtractedCCDData.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
         HDUList.writeto(filePath, output_verify='exception',
                         overwrite=True, checksum=True)
 
         self.log.debug('completed the ``get`` method')
-        return self.skymodelCCDData, self.skySubtractedCCDData, self.qc, self.products
+        return skymodelCCDData, skySubtractedCCDData, self.qc, self.products
 
     def get_over_sampled_sky_from_order(
             self,
@@ -257,7 +257,7 @@ class subtract_sky(object):
 
         if ignoreBP:
             # REMOVE FILTERED ROWS FROM DATA FRAME
-            mask = (imageMapOrder['masked'] == True)
+            mask = (imageMapOrder['mask'] == True)
             imageMapOrder.drop(index=imageMapOrder[mask].index, inplace=True)
 
         # CLIP THE MOST DEVIANT PIXELS WITHIN A WAVELENGTH ROLLING WINDOW - BAD-PIXELS AND CRHs
@@ -302,7 +302,7 @@ class subtract_sky(object):
 
         # SET COLOURS FOR VARIOUS STAGES
         medianColor = "#dc322f"
-        percentileColor = "#dc322f"
+        percentileColor = "blue"
         skyColor = "purple"
         rawColor = "#93a1a1"
         # SET PLOT LAYER ORDERS
@@ -312,14 +312,14 @@ class subtract_sky(object):
         unclippedZ = 1
         # SET MARKER SIZES
         rawMS = 0.5
-        medianMS = 0.5
-        percentileMS = 0.5
+        medianMS = 3
+        percentileMS = 3
 
         # MAKE A COPY OF THE FRAME TO NOT ALTER ORIGINAL DATA
         frame = self.objectFrame.copy()
 
         # SETUP THE PLOT SUB-PANELS
-        fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=320)
+        fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=100)
         gs = fig.add_gridspec(10, 4)
         # CREATE THE GID OF AXES
         onerow = fig.add_subplot(gs[1:2, :])
@@ -549,6 +549,7 @@ class subtract_sky(object):
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
         filePath = f"{outDir}/{filename}"
+        plt.show()
         plt.savefig(filePath, dpi='figure')
 
         self.log.debug('completed the ``plot_sky_sampling`` method')
@@ -610,7 +611,7 @@ class subtract_sky(object):
                 imageMapOrderDF.loc[imageMapOrderDF["residual_windowed_sigma"].abs() > sigma_clip_limit, "clipped"] = True
             else:
                 # CLIP ONLY HIGH VALUES
-                imageMapOrderDF.loc[imageMapOrderDF["residual_windowed_sigma"] > sigma_clip_limit, "clipped"] = True
+                imageMapOrderDF.loc[((imageMapOrderDF["residual_windowed_sigma"] > sigma_clip_limit) & (imageMapOrderDF["residual_global_sigma_old"] > 0.2)), "clipped"] = True
 
             if newlyClipped == -1:
                 totalClipped = len(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True].index)
@@ -677,6 +678,15 @@ class subtract_sky(object):
         t, c, k = splrep(goodWl, goodFlux, t=seedKnots[1:-1], w=goodWeights, s=0.0, k=rowFitOrder, task=-1)
         spline = BSpline(t, c, k, extrapolate=True)
 
+        # t for knots
+        # c of coefficients
+        # k for order
+        # t, c, k = splrep(goodWl, goodFlux, w=goodWeights, s=0.0, k=rowFitOrder)
+        # spline = BSpline(t, c, k, extrapolate=True)
+
+        # spl = splrep(goodWl, goodFlux)
+        # imageMapOrder["sky_model"] = splev(imageMapOrder["wavelength"].values, spl)
+
         imageMapOrder["sky_model"] = spline(imageMapOrder["wavelength"].values)
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
 
@@ -713,7 +723,9 @@ class subtract_sky(object):
 
     def add_data_to_placeholder_images(
             self,
-            imageMapOrderDF):
+            imageMapOrderDF,
+            skymodelCCDData,
+            skySubtractedCCDData):
         """*add sky-model and sky-subtracted data to placeholder images*
 
         **Key Arguments:**
@@ -727,13 +739,17 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``add_data_to_placeholder_images`` method')
 
-        for x, y, skypixel in zip(imageMapOrderDF["x"], imageMapOrderDF["y"], imageMapOrderDF["sky_model"]):
-            self.skymodelCCDData.data[y][x] = skypixel
-        for x, y, skypixel in zip(imageMapOrderDF["x"], imageMapOrderDF["y"], imageMapOrderDF["sky_subtracted_flux"]):
-            self.skySubtractedCCDData.data[y][x] = skypixel
+        # DROP MISSING VALUES
+        df = imageMapOrderDF.copy()
+        df.dropna(axis='index', how='any', subset=['sky_model'], inplace=True)
+
+        for x, y, skypixel in zip(df["x"], df["y"], df["sky_model"]):
+            skymodelCCDData.data[y][x] = skypixel
+        for x, y, skypixel in zip(df["x"], df["y"], df["sky_subtracted_flux"]):
+            skySubtractedCCDData.data[y][x] = skypixel
 
         self.log.debug('completed the ``add_data_to_placeholder_images`` method')
-        return None
+        return skymodelCCDData, skySubtractedCCDData
 
     # use the tab-trigger below for new method
     # xt-class-method
