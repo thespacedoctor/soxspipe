@@ -46,7 +46,7 @@ soxs-order-centre:
     peak-sigma-limit: 3
     y-deg: 5
     order-deg: 5
-    poly-fitting-residual-clipping-sigma: 2.0
+    poly-fitting-residual-clipping-sigma: 4.0
     clipping-iteration-limit: 10
 
 soxs-spatial-solution:
@@ -76,7 +76,7 @@ soxs-mflat:
     y-deg: 5
     order-deg: 5
     poly-fitting-residual-clipping-sigma: 5.
-    clipping-iteration-limit: 2
+    clipping-iteration-limit: 
     low-sensitivity-clipping-simga: 2
     
 soxs-stare:

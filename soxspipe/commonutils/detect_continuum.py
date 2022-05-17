@@ -194,8 +194,8 @@ class _base_detect(object):
                 xCol=xCol,
                 yCol=yCol)
 
-            pixelList["x_fit_res"] = res
-            pixelList["x_fit"] = xfit
+            pixelList[f"{xCol}_fit_res"] = res
+            pixelList[f"{xCol}_fit"] = xfit
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
@@ -505,6 +505,7 @@ class detect_continuum(_base_detect):
         # DROP ROWS WITH NAN VALUES
         orderPixelTable.dropna(axis='index', how='any',
                                subset=['cont_x'], inplace=True)
+
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
         print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
@@ -513,8 +514,8 @@ class detect_continuum(_base_detect):
         uniqueOrders = orderPixelTable['order'].unique()
 
         orderLocations = {}
-        orderPixelTable['x_fit'] = np.nan
-        orderPixelTable['x_fit_res'] = np.nan
+        orderPixelTable['cont_x_fit'] = np.nan
+        orderPixelTable['cont_x_fit_res'] = np.nan
 
         # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
         for i in range(0, self.yDeg + 1):
@@ -532,6 +533,15 @@ class detect_continuum(_base_detect):
             exponents_included=True,
             write_QCs=True
         )
+
+        # # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
+        # coeff, orderPixelTable = self.fit_global_polynomial(
+        #     pixelList=orderPixelTable,
+        #     y_deg=self.yDeg,
+        #     order_deg=self.orderDeg,
+        #     exponents_included=True,
+        #     xCol="stddev"
+        # )
 
         # orderLocations[o] = coeff
         coeff_dict = {"degorder_cent": self.orderDeg,
@@ -577,8 +587,8 @@ class detect_continuum(_base_detect):
             "file_path": plotPath
         }, ignore_index=True)
 
-        mean_res = np.mean(np.abs(orderPixelTable['x_fit_res'].values))
-        std_res = np.std(np.abs(orderPixelTable['x_fit_res'].values))
+        mean_res = np.mean(np.abs(orderPixelTable['cont_x_fit_res'].values))
+        std_res = np.std(np.abs(orderPixelTable['cont_x_fit_res'].values))
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
         order_table_path = self.write_order_table_to_file(
@@ -706,16 +716,18 @@ class detect_continuum(_base_detect):
         pixelPostion["cont_x"] = g.mean + \
             max(0, int(pixelPostion["fit_x"] - halfSlice))
         pixelPostion["cont_y"] = pixelPostion["fit_y"]
+        pixelPostion["amplitude"] = g.amplitude.value
+        pixelPostion["stddev"] = g.stddev.value
 
-        # PRINT A FEW PLOTS IF NEEDED - GUASSIAN FIT OVERLAYED
+        # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAYED
         if 1 == 0 and random() < 0.02:
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
             plt.xlabel('Position')
             plt.ylabel('Flux')
-            guassx = np.arange(0, max(x), 0.05)
-            plt.plot(guassx, g(guassx), label='Gaussian')
+            gaussx = np.arange(0, max(x), 0.05)
+            plt.plot(gaussx, g(gaussx), label='Gaussian')
             plt.show()
 
         self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
@@ -820,7 +832,7 @@ class detect_continuum(_base_detect):
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         bottomleft.scatter(orderPixelTable['cont_x'].values, orderPixelTable[
-                           'x_fit_res'].values, alpha=0.2, s=1)
+                           'cont_x_fit_res'].values, alpha=0.2, s=1)
         bottomleft.set_xlabel('x pixel position')
         bottomleft.set_ylabel('x residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
@@ -828,14 +840,14 @@ class detect_continuum(_base_detect):
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         bottomright.scatter(orderPixelTable['cont_y'].values, orderPixelTable[
-                            'x_fit_res'].values, alpha=0.2, s=1)
+                            'cont_x_fit_res'].values, alpha=0.2, s=1)
         bottomright.set_xlabel('y pixel position')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         # bottomright.set_ylabel('x residual')
         bottomright.set_yticklabels([])
 
-        mean_res = np.mean(np.abs(orderPixelTable['x_fit_res'].values))
-        std_res = np.std(np.abs(orderPixelTable['x_fit_res'].values))
+        mean_res = np.mean(np.abs(orderPixelTable['cont_x_fit_res'].values))
+        std_res = np.std(np.abs(orderPixelTable['cont_x_fit_res'].values))
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
