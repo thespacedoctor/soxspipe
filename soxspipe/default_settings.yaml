@@ -87,14 +87,15 @@ soxs-stare:
 
 sky-subtraction:
     # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-    median_clipping_sigma: 4
-    median_clipping_iterations: 10
+    median_clipping_sigma: 4.5
+    median_clipping_iterations: 3
     # ROLLING WINDOW LENGTH IN DATA POINTS
-    median_rolling_window_size: 44
+    median_rolling_window_size: 31
     # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-    percential_clipping_sigma: 2.0
-    percential_clipping_iteration: 2
+    percential_clipping_sigma: 2.9
+    percential_clipping_iterations: 10
     percential_rolling_window_size: 15
+    bspline_order: 3
 
 # UTILS
 background-subtraction:

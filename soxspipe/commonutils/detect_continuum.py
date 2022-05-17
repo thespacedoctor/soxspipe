@@ -264,7 +264,7 @@ class _base_detect(object):
         # FITTED POSITIONS
         xfit = poly(
             orderPixelTable, *coeff)
-        res = abs(xfit - orderPixelTable[xCol].values)
+        res = xfit - orderPixelTable[xCol].values
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueorders = len(orderPixelTable['order'].unique())

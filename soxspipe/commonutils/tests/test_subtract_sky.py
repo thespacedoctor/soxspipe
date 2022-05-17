@@ -81,7 +81,7 @@ class test_subtract_sky(unittest.TestCase):
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_single.fits"
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
         twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
-        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP.fits"
+        dispMap = "~/xshooter-pipeline-dTata/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP.fits"
 
         # UNIT READ FROM BUNIT KEYWORD OF FITS FILE UNLESS EXPLICITLY SUPPLIED
         # CCDDATA BEHAVES LIKE A NUMPY (MASKED IF MASK SET) ARRAY

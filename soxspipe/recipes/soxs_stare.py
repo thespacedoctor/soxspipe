@@ -18,6 +18,7 @@ import numpy as np
 from ._base_recipe_ import _base_recipe_
 from soxspipe.commonutils import set_of_files
 from soxspipe.commonutils import subtract_sky
+from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 from fundamentals import tools
 from builtins import object
 import sys
@@ -226,10 +227,10 @@ class soxs_stare(_base_recipe_):
         home = expanduser("~")
         fileDir = self.settings["intermediate-data-root"].replace("~", home)
         # filename = "/override/filename.fits"
-        filepath = self._write(combined_object, fileDir, filename="tmp.fits", overwrite=True)
-        print(f"\nxxx frame saved to {filepath}\n")
+        filepath = self._write(combined_object, fileDir, filename="combined_object_frame.fits", overwrite=True)
+        # print(f"\nxxx frame saved to {filepath}\n")
 
-        sys.exit(0)
+        # sys.exit(0)
 
         # OBJECT
         # add_filters = {kw("DPR_CATG"): 'OBJECT'}
@@ -241,9 +242,9 @@ class soxs_stare(_base_recipe_):
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
-            log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+            log=self.log, frame=skySubtractedCCDData, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
         self.qc = spectroscopic_image_quality_checks(
-            log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
+            log=self.log, frame=skySubtractedCCDData, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
 
         self.clean_up()
         self.report_output()

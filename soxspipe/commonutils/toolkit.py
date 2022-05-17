@@ -669,6 +669,7 @@ def get_calibrations_path(
 
 def twoD_disp_map_image_to_dataframe(
         log,
+        slit_length,
         twoDMapPath,
         assosiatedFrame=False,
         removeMaskedPixels=False):
@@ -735,6 +736,11 @@ def twoD_disp_map_image_to_dataframe(
             mapDF = mapDF.loc[mask]
 
         mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+
+    # REMOVE FILTERED ROWS FROM DATA FRAME
+    # slit_length = slit_length * 0.9
+    mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
+    mapDF.drop(index=mapDF[mask].index, inplace=True)
 
     log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
     return mapDF

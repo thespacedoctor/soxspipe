@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 # encoding: utf-8
 """
@@ -210,7 +211,6 @@ def main(arguments=None):
         )
 
         reducedStare = recipe.produce_product()
-        print(f"\nReduced stare mode: {reducedStare}")
 
     # CALL FUNCTIONS/OBJECTS
 
