@@ -762,7 +762,7 @@ class create_dispersion_map(object):
         # x = np.ones(orderPixelTable.shape[0]) * \
         #     self.pinholeFrame.data.shape[1] - orderPixelTable["observed_x"]
         toprow.scatter(orderPixelTable["observed_y"],
-                       x, marker='x', c='red', s=4)
+                       x, marker='o', c='red', s=0.3, alpha=0.6)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -779,7 +779,7 @@ class create_dispersion_map(object):
         # xfit = np.ones(orderPixelTable.shape[0]) * \
         #     self.pinholeFrame.data.shape[1] - orderPixelTable["fit_x"]
         midrow.scatter(orderPixelTable["fit_y"],
-                       xfit, marker='x', c='blue', s=4)
+                       xfit, marker='o', c='blue', s=1, alpha=0.6)
 
         # midrow.set_yticklabels([])
         # midrow.set_xticklabels([])
@@ -833,7 +833,7 @@ class create_dispersion_map(object):
             "file_path": filePath
         }, ignore_index=True)
 
-        plt.savefig(filePath)
+        plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``fit_polynomials`` method')
         return xcoeff, ycoeff, res_plots

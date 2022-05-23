@@ -47,7 +47,7 @@ soxs-order-centre:
     y-deg: 5
     order-deg: 5
     poly-fitting-residual-clipping-sigma: 4.0
-    clipping-iteration-limit: 10
+    clipping-iteration-limit: 1
 
 soxs-spatial-solution:
     pixel-window-size: 10

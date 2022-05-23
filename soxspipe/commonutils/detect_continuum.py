@@ -270,9 +270,9 @@ class _base_detect(object):
         uniqueorders = len(orderPixelTable['order'].unique())
 
         # CALCULATE COMBINED RESIDUALS AND STATS
-        res_mean = np.mean(res)
-        res_std = np.std(res)
-        res_median = np.median(res)
+        res_mean = np.ma.mean(res)
+        res_std = np.ma.std(res)
+        res_median = np.ma.median(res)
 
         if write_QCs:
             utcnow = datetime.utcnow()
@@ -534,15 +534,6 @@ class detect_continuum(_base_detect):
             write_QCs=True
         )
 
-        # # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        # coeff, orderPixelTable = self.fit_global_polynomial(
-        #     pixelList=orderPixelTable,
-        #     y_deg=self.yDeg,
-        #     order_deg=self.orderDeg,
-        #     exponents_included=True,
-        #     xCol="stddev"
-        # )
-
         # orderLocations[o] = coeff
         coeff_dict = {"degorder_cent": self.orderDeg,
                       "degy_cent": self.yDeg}
@@ -550,6 +541,23 @@ class detect_continuum(_base_detect):
         for i in range(0, self.orderDeg + 1):
             for j in range(0, self.yDeg + 1):
                 coeff_dict[f'cent_{i}{j}'] = coeff[n_coeff]
+                n_coeff += 1
+
+        # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
+        coeff, orderPixelTable = self.fit_global_polynomial(
+            pixelList=orderPixelTable,
+            y_deg=self.yDeg,
+            order_deg=self.orderDeg,
+            exponents_included=True,
+            xCol="stddev"
+        )
+        # orderLocations[o] = coeff
+        coeff_dict["degorder_std"] = self.orderDeg,
+        coeff_dict["degy_std"] = self.yDeg
+        n_coeff = 0
+        for i in range(0, self.orderDeg + 1):
+            for j in range(0, self.yDeg + 1):
+                coeff_dict[f'std_{i}{j}'] = coeff[n_coeff]
                 n_coeff += 1
         coeffColumns = coeff_dict.keys()
         dataSet = list_of_dictionaries(
@@ -618,16 +626,50 @@ class detect_continuum(_base_detect):
         sampleCount = self.settings[
             "soxs-order-centre"]["order-sample-count"]
 
-        # CREATE THE WAVELENGTH/ORDER ARRAYS TO BE CONVERTED TO PIXELS
+        # FIND THE PIXEL RANGES FOR ALL ORDERS
         myDict = {
             "order": np.asarray([]),
             "wavelength": np.asarray([]),
             "slit_position": np.asarray([])
         }
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
+            wlArray = np.array([wmin, wmax])
+            myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
+            myDict["order"] = np.append(
+                myDict["order"], np.ones(len(wlArray)) * o)
+            myDict["slit_position"] = np.append(
+                myDict["slit_position"], np.zeros(len(wlArray)))
+        orderPixelTable = pd.DataFrame(myDict)
+        orderPixelTable = dispersion_map_to_pixel_arrays(
+            log=self.log,
+            dispersionMapPath=self.dispersion_map,
+            orderPixelTable=orderPixelTable,
+            removeOffDetectorLocation=False
+        )
+        orderPixelRanges = []
+        for o in orderNums:
+            ymin = orderPixelTable.loc[orderPixelTable["order"] == o, "fit_y"].min()
+            ymax = orderPixelTable.loc[orderPixelTable["order"] == o, "fit_y"].max()
+            if ymin < 0:
+                ymin = 0
+            if ymax > self.detectorParams["science-pixels"]["rows"]["end"]:
+                ymax = self.detectorParams["science-pixels"]["rows"]["end"]
+            yrange = ymax - ymin
+            orderPixelRanges.append(yrange)
 
+        smallestRange = min(orderPixelRanges)
+        samplePixelSep = int(smallestRange / sampleCount)
+
+        # CREATE THE WAVELENGTH/ORDER ARRAYS TO BE CONVERTED TO PIXELS
+        myDict = {
+            "order": np.asarray([]),
+            "wavelength": np.asarray([]),
+            "slit_position": np.asarray([])
+        }
+        for o, wmin, wmax, pixelRange in zip(orderNums, waveLengthMin, waveLengthMax, orderPixelRanges):
+            orderSampleCount = int(pixelRange / samplePixelSep)
             wlArray = np.arange(
-                wmin, wmax, (wmax - wmin) / sampleCount)
+                wmin, wmax, (wmax - wmin) / orderSampleCount)
             myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
             myDict["order"] = np.append(
                 myDict["order"], np.ones(len(wlArray)) * o)
@@ -660,8 +702,8 @@ class detect_continuum(_base_detect):
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
         halfSlice = self.sliceLength / 2
 
-        slice = cut_image_slice(log=self.log, frame=self.pinholeFlat,
-                                width=1, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], median=True, plot=False)
+        slice, x_offset, y_centre = cut_image_slice(log=self.log, frame=self.pinholeFlat,
+                                                    width=1, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], median=True, plot=False)
 
         if slice is None:
             pixelPostion["cont_x"] = np.nan
@@ -679,7 +721,7 @@ class detect_continuum(_base_detect):
 
         # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
         # CONTAINING JUST NOISE
-        median_r = np.median(slice)
+        median_r = np.ma.median(slice)
         std_r = mad_std(slice)
 
         if not median_r:
@@ -713,21 +755,22 @@ class detect_continuum(_base_detect):
 
         # NOW FIT
         g = fit_g(g_init, np.arange(0, len(slice)), slice)
-        pixelPostion["cont_x"] = g.mean + \
-            max(0, int(pixelPostion["fit_x"] - halfSlice))
-        pixelPostion["cont_y"] = pixelPostion["fit_y"]
+        pixelPostion["cont_x"] = g.mean.value + \
+            max(0, x_offset)
+        pixelPostion["cont_y"] = y_centre
         pixelPostion["amplitude"] = g.amplitude.value
         pixelPostion["stddev"] = g.stddev.value
 
         # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAYED
-        if 1 == 0 and random() < 0.02:
+        if 1 == 0 and random() < 0.02 and pixelPostion["order"] == 11:
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
             plt.xlabel('Position')
             plt.ylabel('Flux')
             gaussx = np.arange(0, max(x), 0.05)
-            plt.plot(gaussx, g(gaussx), label='Gaussian')
+            plt.plot(gaussx, g(gaussx), label=f'Mean = {g.mean.value:0.2f}, std = {g.stddev.value:0.2f}, cont_x = {pixelPostion["cont_x"]:0.2f}, fit_x = {pixelPostion["fit_x"]:0.2f},cont_y = {pixelPostion["cont_y"]:0.2f},fit_y = {pixelPostion["fit_y"]:0.2f}')
+            plt.legend()
             plt.show()
 
         self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
@@ -765,19 +808,22 @@ class detect_continuum(_base_detect):
         bottomright = fig.add_subplot(gs[4:, 2:])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = np.rot90(self.pinholeFlat.data, 1)
+        rotatedImg = np.flipud(np.rot90(self.pinholeFlat.data, 1))
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
-        x = np.ones(len(orderPixelTable.index)) * \
-            self.pinholeFlat.data.shape[1] - orderPixelTable['cont_x'].values
+
+        x = orderPixelTable['cont_x'].values
         toprow.scatter(orderPixelTable[
-                       'cont_y'].values, x, marker='x', c='red', s=4)
+                       'cont_y'].values, x, marker='o', c='red', s=1, alpha=0.6)
+
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
+
         toprow.set_ylabel("x-axis", fontsize=8)
         toprow.set_xlabel("y-axis", fontsize=8)
         toprow.tick_params(axis='both', which='major', labelsize=9)
+        toprow.invert_yaxis()
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         midrow.set_title(
@@ -787,7 +833,8 @@ class detect_continuum(_base_detect):
         poly = chebyshev_order_xy_polynomials(
             log=self.log, yCol="y", orderCol="order", order_deg=self.orderDeg, y_deg=self.yDeg).poly
         for index, row in orderPolyTable.iterrows():
-            coeff = [float(v) for k, v in row.items() if "cent_" in k]
+            cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
+            std_coeff = [float(v) for k, v in row.items() if "std_" in k]
         uniqueOrders = orderPixelTable['order'].unique()
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {"y": ylinelist}
@@ -798,17 +845,21 @@ class detect_continuum(_base_detect):
         xmax = []
         for o in uniqueOrders:
             df["order"] = o
-            xfit = poly(df, *coeff)
-            xfit = np.ones(len(xfit)) * \
-                self.pinholeFlat.data.shape[1] - xfit
-            xfit, yfit = zip(
-                *[(x, y) for x, y in zip(xfit, ylinelist) if x > 0 and x < (self.pinholeFlat.data.shape[1]) - 10])
-            l = midrow.plot(yfit, xfit)
+            xfit = poly(df, *cent_coeff)
+            stdfit = poly(df, *std_coeff)
+            xfit, yfit, stdfit, lower, upper = zip(
+                *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, ylinelist, stdfit) if x > 0 and x < (self.pinholeFlat.data.shape[1]) - 10])
+            # lower = xfit - 3 * stdfit
+            # upper = xfit + 3 * stdfit
+            c = midrow.plot(yfit, xfit, linewidth=0.7)
+            midrow.fill_between(yfit, lower, upper, color=c[0].get_color(), alpha=0.3)
+
             ymin.append(min(yfit))
             ymax.append(max(yfit))
             xmin.append(self.pinholeFlat.data.shape[1] - max(xfit))
             xmax.append(self.pinholeFlat.data.shape[1] - min(xfit))
             midrow.text(yfit[10], xfit[10] - 20, int(o), fontsize=6, c="white", verticalalignment='bottom')
+        midrow.invert_yaxis()
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         orderMetaTable = {
@@ -863,7 +914,8 @@ class detect_continuum(_base_detect):
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
         filePath = f"{outDir}/{filename}"
-        plt.savefig(filePath)
+        plt.show()
+        plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``plot_results`` method')
         return filePath, orderMetaTable
