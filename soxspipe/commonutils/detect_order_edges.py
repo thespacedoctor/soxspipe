@@ -408,8 +408,6 @@ class detect_order_edges(_base_detect):
         myDict = {"y": ylinelist}
         df = pd.DataFrame(myDict)
 
-        from tabulate import tabulate
-
         for o in uniqueOrders:
             o = int(o)
             ymin = orderMetaTable.loc[(orderMetaTable["order"] == o), "ymin"].values[0]
