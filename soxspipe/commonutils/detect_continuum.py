@@ -35,6 +35,7 @@ from soxspipe.commonutils import keyword_lookup
 from fundamentals import tools
 from builtins import object
 import sys
+import math
 import os
 from io import StringIO
 import copy
@@ -798,14 +799,15 @@ class detect_continuum(_base_detect):
         if arm == "UVB":
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
         else:
-            fig = plt.figure(figsize=(6, 11), constrained_layout=True)
-        gs = fig.add_gridspec(6, 4)
+            fig = plt.figure(figsize=(6, 12), constrained_layout=True)
+        gs = fig.add_gridspec(7, 4)
 
         # CREATE THE GID OF AXES
         toprow = fig.add_subplot(gs[0:2, :])
         midrow = fig.add_subplot(gs[2:4, :])
-        bottomleft = fig.add_subplot(gs[4:, 0:2])
-        bottomright = fig.add_subplot(gs[4:, 2:])
+        bottomleft = fig.add_subplot(gs[4:6, 0:2])
+        bottomright = fig.add_subplot(gs[4:6, 2:])
+        fwhmaxis = fig.add_subplot(gs[6:7, :])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = np.flipud(np.rot90(self.pinholeFlat.data, 1))
@@ -820,8 +822,8 @@ class detect_continuum(_base_detect):
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
 
-        toprow.set_ylabel("x-axis", fontsize=8)
-        toprow.set_xlabel("y-axis", fontsize=8)
+        toprow.set_ylabel("x-axis", fontsize=10)
+        toprow.set_xlabel("y-axis", fontsize=10)
         toprow.tick_params(axis='both', which='major', labelsize=9)
         toprow.invert_yaxis()
 
@@ -858,8 +860,9 @@ class detect_continuum(_base_detect):
             ymax.append(max(yfit))
             xmin.append(self.pinholeFlat.data.shape[1] - max(xfit))
             xmax.append(self.pinholeFlat.data.shape[1] - min(xfit))
-            midrow.text(yfit[10], xfit[10] - 20, int(o), fontsize=6, c="white", verticalalignment='bottom')
+            midrow.text(yfit[10], xfit[10] + 10, int(o), fontsize=6, c="white", verticalalignment='bottom')
         midrow.invert_yaxis()
+        midrow.set_ylim(0, self.pinholeFlat.data.shape[1])
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         orderMetaTable = {
@@ -876,26 +879,32 @@ class detect_continuum(_base_detect):
         # midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
         # midrow.set_yticklabels([])
         # midrow.set_xticklabels([])
-        midrow.set_ylabel("x-axis", fontsize=8)
-        midrow.set_xlabel("y-axis", fontsize=8)
+        midrow.set_ylabel("x-axis", fontsize=10)
+        midrow.set_xlabel("y-axis", fontsize=10)
         midrow.tick_params(axis='both', which='major', labelsize=9)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         bottomleft.scatter(orderPixelTable['cont_x'].values, orderPixelTable[
                            'cont_x_fit_res'].values, alpha=0.2, s=1)
-        bottomleft.set_xlabel('x pixel position')
-        bottomleft.set_ylabel('x residual')
+        bottomleft.set_xlabel('x pixel position', fontsize=10)
+        bottomleft.set_ylabel('x residual', fontsize=10)
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         bottomright.scatter(orderPixelTable['cont_y'].values, orderPixelTable[
                             'cont_x_fit_res'].values, alpha=0.2, s=1)
-        bottomright.set_xlabel('y pixel position')
+        bottomright.set_xlabel('y pixel position', fontsize=10)
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         # bottomright.set_ylabel('x residual')
         bottomright.set_yticklabels([])
+
+        stdToFwhm = 2 * (2 * math.log(2))**0.5
+        fwhmaxis.scatter(orderPixelTable['wavelength'].values, orderPixelTable['stddev_fit'].values * stdToFwhm, alpha=0.2, s=1)
+        fwhmaxis.set_xlabel('wavelegth (nm)', fontsize=10)
+        fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
+        fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)
 
         mean_res = np.mean(np.abs(orderPixelTable['cont_x_fit_res'].values))
         std_res = np.std(np.abs(orderPixelTable['cont_x_fit_res'].values))
@@ -914,7 +923,7 @@ class detect_continuum(_base_detect):
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
         filePath = f"{outDir}/{filename}"
-        plt.show()
+        plt.tight_layout()
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``plot_results`` method')

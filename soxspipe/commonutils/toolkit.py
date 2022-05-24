@@ -294,6 +294,10 @@ def unpack_order_table(
     poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), order_deg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
     orderPixelTable["xcoord_centre"] = poly(orderPixelTable, *cent_coeff)
 
+    std_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "std_" in k]
+    poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), order_deg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
+    orderPixelTable["std"] = poly(orderPixelTable, *std_coeff)
+
     if "degy_edgeup" in orderPolyTable.columns:
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]
         poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgeup"]), order_deg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", yCol="ycoord").poly
