@@ -24,7 +24,8 @@ os.environ['TERM'] = 'vt100'
 def dispersion_map_to_pixel_arrays(
         log,
         dispersionMapPath,
-        orderPixelTable):
+        orderPixelTable,
+        removeOffDetectorLocation=True):
     """*use a first-guess dispersion map to append x,y fits to line-list data frame.* 
 
     Return a line-list with x,y fits given a first guess dispersion map.*
@@ -34,6 +35,7 @@ def dispersion_map_to_pixel_arrays(
     - `log` -- logger
     - `dispersionMapPath` -- path to the dispersion map
     - `orderPixelTable` -- a data-frame including 'order', 'wavelength' and 'slit_pos' columns
+    - `removeOffDetectorLocation` -- if data points are found to lie off the detector plane then remove them from the resutls. Default *True*
 
     **Usage:**
 
@@ -90,10 +92,11 @@ def dispersion_map_to_pixel_arrays(
     orderPixelTable["fit_x"] = poly['x'](orderPixelTable, *coeff['x'])
     orderPixelTable["fit_y"] = poly['y'](orderPixelTable, *coeff['y'])
 
-    # FILTER DATA FRAME
-    # FIRST CREATE THE MASK
-    mask = (orderPixelTable["fit_x"] > 0) & (orderPixelTable["fit_y"] > 0)
-    orderPixelTable = orderPixelTable.loc[mask]
+    if removeOffDetectorLocation:
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (orderPixelTable["fit_x"] > 0) & (orderPixelTable["fit_y"] > 0)
+        orderPixelTable = orderPixelTable.loc[mask]
 
     log.debug('completed the ``dispersion_map_to_pixel_arrays`` function')
     return orderPixelTable

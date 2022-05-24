@@ -77,10 +77,12 @@ def cut_image_slice(
 
     # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
     if (x > frame.shape[1] - halfSlice) or (y > frame.shape[0] - halfwidth) or (x < halfSlice) or (y < halfwidth):
-        return None
+        return None, None, None
 
+    x_offset = int(x - halfSlice)
     slice = frame[int(y - halfwidth):int(y + halfwidth + 1),
-                  int(x - halfSlice):int(x + halfSlice)]
+                  x_offset:int(x + halfSlice)]
+    y_centre = (int(y + halfwidth + 1) + int(y - halfwidth)) / 2
 
     if median:
         slice = ma.median(slice, axis=0)
@@ -95,7 +97,7 @@ def cut_image_slice(
         plt.show()
 
     log.debug('completed the ``cut_image_slice`` function')
-    return slice
+    return slice, x_offset, y_centre
 
 
 def quicklook_image(
@@ -291,6 +293,11 @@ def unpack_order_table(
     cent_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
     poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), order_deg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
     orderPixelTable["xcoord_centre"] = poly(orderPixelTable, *cent_coeff)
+
+    std_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "std_" in k]
+    if len(std_coeff):
+        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), order_deg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
+        orderPixelTable["std"] = poly(orderPixelTable, *std_coeff)
 
     if "degy_edgeup" in orderPolyTable.columns:
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]

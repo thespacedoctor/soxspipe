@@ -510,8 +510,8 @@ class detect_order_edges(_base_detect):
         index = int(len(xcoords) / 2)
         x = xcoords[index]
         y = ycoords[index]
-        slice = cut_image_slice(log=self.log, frame=self.flatFrame,
-                                width=sliceWidth, length=sliceLength, x=x, y=y, median=True, plot=False)
+        slice, x_offset, y_centre = cut_image_slice(log=self.log, frame=self.flatFrame,
+                                                    width=sliceWidth, length=sliceLength, x=x, y=y, median=True, plot=False)
         # SMOOTH WITH A MEDIAN FILTER
         medSlide = medfilt(slice, 9)
         # DETERMINE THRESHOLD FLUX VALUE
@@ -568,8 +568,8 @@ class detect_order_edges(_base_detect):
         threshold = minThreshold
 
         # CUT A MEDIAN COLLAPSED SLICE
-        slice = cut_image_slice(log=self.log, frame=self.flatFrame,
-                                width=sliceWidth, length=sliceLength, x=x, y=y, median=True, plot=False)
+        slice, x_offset, y_centre = cut_image_slice(log=self.log, frame=self.flatFrame,
+                                                    width=sliceWidth, length=sliceLength, x=x, y=y, median=True, plot=False)
         if slice is None:
             return orderData
 
