@@ -76,7 +76,7 @@ soxs-mflat:
     y-deg: 5
     order-deg: 5
     poly-fitting-residual-clipping-sigma: 5.
-    clipping-iteration-limit: 
+    clipping-iteration-limit: 5
     low-sensitivity-clipping-simga: 2
     
 soxs-stare:
