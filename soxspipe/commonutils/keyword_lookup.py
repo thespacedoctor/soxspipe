@@ -10,11 +10,11 @@
     February 26, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
 
 
 class keyword_lookup(object):
@@ -156,6 +156,9 @@ class keyword_lookup(object):
         import yaml
         with open(yamlFilePath, 'r') as stream:
             kwDict = yaml.safe_load(stream)
+        for k, v in kwDict.items():
+            if isinstance(v, str):
+                kwDict[k] = v.lower()
 
         self.log.debug('completed the ``_select_dictionary`` method')
         return kwDict

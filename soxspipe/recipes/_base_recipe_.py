@@ -345,7 +345,8 @@ class _base_recipe_(object):
             log=self.log,
             settings=self.settings,
             inputFrames=preframes,
-            verbose=self.verbose
+            verbose=self.verbose,
+            ext=self.settings['data-extension']
         )
         preframes, supplementaryInput = sof.get()
         preframes.sort([kw('MJDOBS').lower()])
@@ -444,6 +445,7 @@ class _base_recipe_(object):
 
         with suppress(ValueError):
             gain.remove(None)
+
         if len(gain) > 1:
             print(self.inputFrames.summary)
             raise TypeError(
@@ -551,7 +553,7 @@ class _base_recipe_(object):
         # NP ROTATION OF ARRAYS IS IN COUNTER-CLOCKWISE DIRECTION
         rotationIndex = int(dp["clockwise-rotation"] / 90.)
 
-        if self.settings["instrument"] == "xsh" and rotationIndex > 0:
+        if rotationIndex > 0:
             frame.data = np.rot90(frame.data, rotationIndex)
 
         self.log.debug('completed the ``xsh2soxs`` method')

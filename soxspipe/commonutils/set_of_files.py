@@ -256,6 +256,7 @@ class set_of_files(object):
                 location = None
             sof = ImageFileCollection(
                 filenames=fitsFiles, location=location, ext=self.ext)
+
             if self.ext > 0:
                 missingKeys = [
                     k for k in self.keys if k not in sof.summary.colnames]
@@ -276,6 +277,7 @@ class set_of_files(object):
                 location = None
             sof = ImageFileCollection(
                 filenames=fitsFiles, location=location, ext=self.ext)
+
             if self.ext > 0:
                 missingKeys = [
                     k for k in self.keys if k not in sof.summary.colnames]

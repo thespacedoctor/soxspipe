@@ -468,6 +468,7 @@ class detect_order_edges(_base_detect):
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
         filePath = f"{outDir}/{filename}"
+        plt.tight_layout()
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``plot_results`` method')

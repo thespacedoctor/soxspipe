@@ -440,7 +440,7 @@ class create_dispersion_map(object):
 
         with suppress(KeyError):
             header.pop(kw("DET_READ_SPEED"))
-        with suppress(KeyError):
+        with suppress(KeyError, LookupError):
             header.pop(kw("CONAD"))
         with suppress(KeyError):
             header.pop(kw("GAIN"))
@@ -657,6 +657,14 @@ class create_dispersion_map(object):
 
         arm = self.arm
 
+        # XSH
+        rotateImage = 90
+        flipImage = 1
+
+        # SOXS
+        rotateImage = 0
+        flipImage = 0
+
         if self.firstGuessMap:
             recipe = "soxs-spatial-solution"
         else:
@@ -740,7 +748,7 @@ class create_dispersion_map(object):
             write_QCs=True)
 
         # a = plt.figure(figsize=(40, 15))
-        if arm == "UVB":
+        if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
         else:
             fig = plt.figure(figsize=(6, 11), constrained_layout=True)
@@ -753,7 +761,11 @@ class create_dispersion_map(object):
         bottomright = fig.add_subplot(gs[4:, 2:])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = np.flipud(np.rot90(self.pinholeFrame.data, 1))
+        rotatedImg = self.pinholeFrame.data
+        if rotateImage > 0:
+            rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
+        if flipImage:
+            rotatedImg = np.flipud(rotatedImg)
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "observed arc-line positions (post-clipping)", fontsize=10)
@@ -761,15 +773,29 @@ class create_dispersion_map(object):
         x = orderPixelTable["observed_x"]
         # x = np.ones(orderPixelTable.shape[0]) * \
         #     self.pinholeFrame.data.shape[1] - orderPixelTable["observed_x"]
-        toprow.scatter(orderPixelTable["observed_y"],
-                       x, marker='o', c='red', s=0.3, alpha=0.6)
+        if ((rotateImage / 90) % 2) != 0:
+            swapAxes = True
+        else:
+            swapAxes = False
 
-        # toprow.set_yticklabels([])
-        # toprow.set_xticklabels([])
-        toprow.set_ylabel("x-axis", fontsize=8)
-        toprow.set_xlabel("y-axis", fontsize=8)
+        if swapAxes:
+            toprow.scatter(orderPixelTable["observed_y"],
+                           x, marker='o', c='red', s=0.3, alpha=0.6)
+        else:
+            toprow.scatter(x,
+                           orderPixelTable["observed_y"], marker='o', c='red', s=0.3, alpha=0.6)
+
+        if swapAxes:
+            toprow.set_ylabel("x-axis", fontsize=8)
+            toprow.set_xlabel("y-axis", fontsize=8)
+        else:
+            toprow.set_xlabel("x-axis", fontsize=8)
+            toprow.set_ylabel("y-axis", fontsize=8)
+
         toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.invert_yaxis()
+
+        if flipImage or swapAxes:
+            toprow.invert_yaxis()
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         midrow.set_title(
@@ -778,22 +804,37 @@ class create_dispersion_map(object):
         xfit = orderPixelTable["fit_x"]
         # xfit = np.ones(orderPixelTable.shape[0]) * \
         #     self.pinholeFrame.data.shape[1] - orderPixelTable["fit_x"]
-        midrow.scatter(orderPixelTable["fit_y"],
-                       xfit, marker='o', c='blue', s=1, alpha=0.6)
+        if swapAxes:
+            midrow.scatter(orderPixelTable["fit_y"],
+                           xfit, marker='o', c='blue', s=1, alpha=0.6)
+        else:
+            midrow.scatter(xfit,
+                           orderPixelTable["fit_y"], marker='o', c='blue', s=1, alpha=0.6)
 
         # midrow.set_yticklabels([])
         # midrow.set_xticklabels([])
-        midrow.set_ylabel("x-axis", fontsize=8)
-        midrow.set_xlabel("y-axis", fontsize=8)
+        if swapAxes:
+            midrow.set_ylabel("x-axis", fontsize=8)
+            midrow.set_xlabel("y-axis", fontsize=8)
+        else:
+            midrow.set_xlabel("x-axis", fontsize=8)
+            midrow.set_ylabel("y-axis", fontsize=8)
         midrow.tick_params(axis='both', which='major', labelsize=9)
-        midrow.invert_yaxis()
+        if flipImage or swapAxes:
+            midrow.invert_yaxis()
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomleft.scatter(orderPixelTable["residuals_x"], orderPixelTable[
-                           "residuals_y"], alpha=0.4)
-        bottomleft.set_xlabel('x residual')
-        bottomleft.set_ylabel('y residual')
+        if swapAxes:
+            bottomleft.scatter(orderPixelTable["residuals_x"], orderPixelTable[
+                               "residuals_y"], alpha=0.4)
+            bottomleft.set_xlabel('x residual')
+            bottomleft.set_ylabel('y residual')
+        else:
+            bottomleft.scatter(orderPixelTable[
+                               "residuals_y"], orderPixelTable["residuals_x"], alpha=0.4)
+            bottomleft.set_xlabel('y residual')
+            bottomleft.set_ylabel('x residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
         hist(orderPixelTable["residuals_xy"], bins='scott', ax=bottomright, histtype='stepfilled',
@@ -833,6 +874,7 @@ class create_dispersion_map(object):
             "file_path": filePath
         }, ignore_index=True)
 
+        plt.tight_layout()
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``fit_polynomials`` method')

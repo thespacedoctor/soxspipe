@@ -15,12 +15,12 @@ soxs-mdark:
     clipping-upper-simga: 5   
     clipping-iteration-count: 5
 
-# soxs-disp-solution:
-#     pixel-window-size: 10
-#     order-deg: 3
-#     wavelength-deg: 3
-#     clipping-iteration-limit: 10
-#     poly-fitting-residual-clipping-sigma: 5
+soxs-disp-solution:
+    pixel-window-size: 10
+    order-deg: 3
+    wavelength-deg: 3
+    clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 5
 
 # soxs-order-centre:
 #     order-sample-count: 50

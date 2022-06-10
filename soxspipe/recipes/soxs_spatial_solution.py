@@ -71,7 +71,8 @@ class soxs_spatial_solution(_base_recipe_):
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
-            inputFrames=self.inputFrames
+            inputFrames=self.inputFrames,
+            ext=self.settings['data-extension']
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 

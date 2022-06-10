@@ -82,7 +82,8 @@ class soxs_disp_solution(_base_recipe_):
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
-            inputFrames=self.inputFrames
+            inputFrames=self.inputFrames,
+            ext=self.settings['data-extension']
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -165,6 +166,9 @@ class soxs_disp_solution(_base_recipe_):
         master_bias = False
         dark = False
         pinhole_image = False
+
+        from tabulate import tabulate
+        print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
 
         add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
