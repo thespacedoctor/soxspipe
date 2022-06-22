@@ -195,8 +195,8 @@ class detect_order_edges(_base_detect):
             xCol="xcoord_upper",
             orderCol="order",
             y_deg=self.yDeg,
-            order_deg=self.orderDeg,
-            exponents_included=True
+            orderDeg=self.orderDeg,
+            exponentsIncluded=True
         )
 
         # RENAME SOME INDIVIDUALLY
@@ -211,8 +211,8 @@ class detect_order_edges(_base_detect):
             xCol="xcoord_lower",
             orderCol="order",
             y_deg=self.yDeg,
-            order_deg=self.orderDeg,
-            exponents_included=True
+            orderDeg=self.orderDeg,
+            exponentsIncluded=True
         )
 
         # RENAME SOME INDIVIDUALLY
@@ -396,7 +396,7 @@ class detect_order_edges(_base_detect):
         ylinelist = np.arange(0, self.flatFrame.data.shape[0], 3)
 
         poly = chebyshev_order_xy_polynomials(
-            log=self.log, yCol="y", orderCol="order", order_deg=self.orderDeg, y_deg=self.yDeg).poly
+            log=self.log, yCol="y", orderCol="order", orderDeg=self.orderDeg, y_deg=self.yDeg).poly
 
         # UPPER
         for index, row in orderPolyTable.iterrows():

@@ -156,9 +156,6 @@ class keyword_lookup(object):
         import yaml
         with open(yamlFilePath, 'r') as stream:
             kwDict = yaml.safe_load(stream)
-        for k, v in kwDict.items():
-            if isinstance(v, str):
-                kwDict[k] = v.lower()
 
         self.log.debug('completed the ``_select_dictionary`` method')
         return kwDict

@@ -92,5 +92,5 @@ NIR:
     multi:
       1x1: SOXS_PINHOLE_TAB_NIR.fits
   mid_slit_index: 4
-  spectral format table: SPECTRAL_FORMAT_TAB_NIR.fits
+  spectral format table: SOXS_SPECTRAL_FORMAT_TAB_NIR.fits
 

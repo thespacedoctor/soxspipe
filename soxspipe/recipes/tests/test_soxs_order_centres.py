@@ -58,6 +58,17 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_order_centres(unittest.TestCase):
 
+    def test_soxs_order_centres_soxs_sim_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/ORDER_CENTRE/sof/SOXSIM_NIR_ORDER_CENTRE.sof"
+        # sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-orderpos/nir"
+        from soxspipe.recipes import soxs_order_centres
+        this = soxs_order_centres(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
     def test_soxs_order_centres_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_NIR_ORDER_CENTRE.sof"
         # sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-orderpos/nir"

@@ -17,18 +17,19 @@ soxs-mdark:
 
 soxs-disp-solution:
     pixel-window-size: 10
-    order-deg: 3
-    wavelength-deg: 3
+    order-deg: 5
+    wavelength-deg: 5
     clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
 
-# soxs-order-centre:
-#     order-sample-count: 50
-#     slice-length: 10
-#     peak-sigma-limit: 3
-#     poly-deg: 5
-#     poly-fitting-residual-clipping-sigma: 1.5
-#     clipping-iteration-limit: 5
+soxs-order-centre:
+    order-sample-count: 200
+    slice-length: 10
+    peak-sigma-limit: 3
+    x-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 4.0
+    clipping-iteration-limit: 1
 
 # soxs-spatial-solution:
 #     pixel-window-size: 10
@@ -61,13 +62,7 @@ soxs-disp-solution:
 #     bsline-deg: 3
 #     median-filter-pixels: 11
 
-# KEYS TO USES AS COLUMNS IN QUICKLOOK SUMMARY TABLES PRINTS TO STDOUT
-summary-keys:
-    default: ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME']
-    verbose: ['MJDOBS', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'PRO_TYPE', 'PRO_CATG', 'PRO_TECH', 'SEQ_ARM',
-                    'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'DET_GAIN', 'RON', 'BUNIT']
-                    
+
 data-extension: 1
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data

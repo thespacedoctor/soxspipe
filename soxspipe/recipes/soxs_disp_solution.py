@@ -95,7 +95,7 @@ class soxs_disp_solution(_base_recipe_):
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
-        self.inputFrames.sort(['mjd-obs'])
+        self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
             print("# RAW INPUT FRAMES - SUMMARY")
             print(self.inputFrames.summary, "\n")
@@ -167,9 +167,6 @@ class soxs_disp_solution(_base_recipe_):
         dark = False
         pinhole_image = False
 
-        from tabulate import tabulate
-        print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
-
         add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
@@ -183,6 +180,11 @@ class soxs_disp_solution(_base_recipe_):
 
         # NIR DARK
         add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK', kw("DPR_TECH"): 'IMAGE'}
+        # from tabulate import tabulate
+        # print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
+        # print(self.inputFrames.files_filtered(include_path=True, **add_filters))
+        # sys.exit(0)
+
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')

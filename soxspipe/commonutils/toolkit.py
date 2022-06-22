@@ -41,6 +41,7 @@ def cut_image_slice(
         length,
         x,
         y,
+        sliceAxis="x",
         median=False,
         plot=False):
     """*cut and return an N-pixel wide and M-pixels long slice, centred on a given coordinate from an image frame*
@@ -53,6 +54,7 @@ def cut_image_slice(
     - ``length`` -- length of the slice
     - ``x`` -- x-coordinate
     - ``y`` -- y-coordinate
+    - ``sliceAxis`` -- the axis along which slice is to be taken. Default *x*
     - ``median`` -- collapse the slice to a median value across its width
     - ``plot`` -- generate a plot of slice. Useful for debugging.
 
@@ -75,29 +77,51 @@ def cut_image_slice(
     else:
         halfwidth = width / 2
 
+    if sliceAxis == "x":
+        axisA = x
+        axisB = y
+    elif sliceAxis == "y":
+        axisB = x
+        axisA = y
+    else:
+        raise ValueError("sliceAxis needs to be eith 'x' or 'y'")
+
     # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
-    if (x > frame.shape[1] - halfSlice) or (y > frame.shape[0] - halfwidth) or (x < halfSlice) or (y < halfwidth):
+    if (axisA > frame.shape[1] - halfSlice) or (axisB > frame.shape[0] - halfwidth) or (axisA < halfSlice) or (axisB < halfwidth):
         return None, None, None
 
-    x_offset = int(x - halfSlice)
-    slice = frame[int(y - halfwidth):int(y + halfwidth + 1),
-                  x_offset:int(x + halfSlice)]
-    y_centre = (int(y + halfwidth + 1) + int(y - halfwidth)) / 2
+    slice_length_offset = int(axisA - halfSlice)
+    if sliceAxis == "x":
+        sliceFull = frame[int(axisB - halfwidth):int(axisB + halfwidth + 1),
+                          slice_length_offset:int(axisA + halfSlice)]
+    else:
+        sliceFull = frame[slice_length_offset:int(axisA + halfSlice), int(axisB - halfwidth):int(axisB + halfwidth + 1)]
+    slice_width_centre = (int(axisB + halfwidth + 1) + int(axisB - halfwidth)) / 2
 
     if median:
-        slice = ma.median(slice, axis=0)
+        if sliceAxis == "y":
+            slice = ma.median(sliceFull, axis=1)
+        else:
+            slice = ma.median(sliceFull, axis=0)
 
     if plot and random.randint(1, 101) < 10000:
         # CHECK THE SLICE POINTS IF NEEDED
-        x = np.arange(0, len(slice))
+        if sliceAxis == "y":
+            sliceImg = np.rot90(sliceFull, 1)
+        else:
+            sliceImg = sliceFull
+        plt.imshow(sliceImg)
+        plt.show()
+        xx = np.arange(0, len(slice))
         plt.figure(figsize=(8, 5))
-        plt.plot(x, slice, 'ko')
+        plt.plot(xx, slice, 'ko', label=f"x={x}, y={y}, sliceAxis={sliceAxis}")
         plt.xlabel('Position')
         plt.ylabel('Flux')
+        plt.legend()
         plt.show()
 
     log.debug('completed the ``cut_image_slice`` function')
-    return slice, x_offset, y_centre
+    return slice, slice_length_offset, slice_width_centre
 
 
 def quicklook_image(
@@ -142,8 +166,16 @@ def quicklook_image(
         # ASSUME ONLY NDARRAY
         frame = CCDObject
 
-    rotatedImg = np.rot90(frame, 1)
-    rotatedImg = np.flipud(np.rot90(frame, 1))
+    try:
+        inst = CCDObject.header["INSTRUME"]
+    except:
+        inst = "XSHOOTER"
+
+    if inst == "SOXS":
+        rotatedImg = frame
+    else:
+        rotatedImg = np.rot90(frame, 1)
+        rotatedImg = np.flipud(rotatedImg)
 
     std = np.nanstd(frame)
     mean = np.nanmean(frame)
@@ -163,7 +195,8 @@ def quicklook_image(
 
         fig = plt.figure(figsize=(40, 10))
         ax = fig.add_subplot(121, projection='3d')
-        plt.gca().invert_yaxis()
+        if inst == "XSHOOTER":
+            plt.gca().invert_yaxis()
         ax.set_box_aspect(aspect=(2, 1, 1))
         # Remove gray panes and axis grid
         ax.xaxis.pane.fill = False
@@ -179,14 +212,18 @@ def quicklook_image(
         X, Y = np.meshgrid(np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]), np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]))
         surface = ax.plot_surface(X=X, Y=Y, Z=rotatedImg, cmap='viridis', antialiased=True, vmin=vmin, vmax=vmax)
 
-        ax.azim = -120
+        if inst == "SOXS":
+            ax.azim = 70
+        else:
+            ax.azim = -120
         ax.elev = 30
 
-        plt.gca().invert_xaxis()
         ax.set_xlim(0, rotatedImg.shape[1])
         ax.set_ylim(0, rotatedImg.shape[0])
         ax.set_zlim(0, min(np.nanmax(frame), mean + stdWindow * 10 * std))
 
+        if inst == "SOXS":
+            ax.invert_yaxis()
         backgroundColour = '#404040'
         fig.set_facecolor(backgroundColour)
         ax.set_facecolor(backgroundColour)
@@ -194,10 +231,16 @@ def quicklook_image(
         ax.yaxis.pane.set_edgecolor(backgroundColour)
         ax.zaxis.pane.set_edgecolor(backgroundColour)
 
-        plt.xlabel(
-            "y-axis", fontsize=10)
-        plt.ylabel(
-            "x-axis", fontsize=10)
+        if inst == "SOXS":
+            plt.xlabel(
+                "x-axis", fontsize=10)
+            plt.ylabel(
+                "y-axis", fontsize=10)
+        else:
+            plt.xlabel(
+                "y-axis", fontsize=10)
+            plt.ylabel(
+                "x-axis", fontsize=10)
 
         ax2 = fig.add_subplot(122)
     else:
@@ -223,12 +266,19 @@ def quicklook_image(
         # plt.colorbar()
     if title:
         fig.suptitle(title, fontsize=16)
-    ax2.invert_yaxis()
+    if inst == "XSHOOTER":
+        ax2.invert_yaxis()
     # cbar.ticklabel_format(useOffset=False)
-    plt.xlabel(
-        "y-axis", fontsize=10)
-    plt.ylabel(
-        "x-axis", fontsize=10)
+    if inst == "SOXS":
+        plt.xlabel(
+            "x-axis", fontsize=10)
+        plt.ylabel(
+            "y-axis", fontsize=10)
+    else:
+        plt.xlabel(
+            "y-axis", fontsize=10)
+        plt.ylabel(
+            "x-axis", fontsize=10)
 
     plt.show()
     mpl.rcParams.update(originalRC)
@@ -291,27 +341,27 @@ def unpack_order_table(
     xcoords_edgelow = []
 
     cent_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
-    poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), order_deg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
+    poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
     orderPixelTable["xcoord_centre"] = poly(orderPixelTable, *cent_coeff)
 
     std_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "std_" in k]
     if len(std_coeff):
-        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), order_deg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
+        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
         orderPixelTable["std"] = poly(orderPixelTable, *std_coeff)
 
     if "degy_edgeup" in orderPolyTable.columns:
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]
-        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgeup"]), order_deg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", yCol="ycoord").poly
+        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgeup"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", yCol="ycoord").poly
         orderPixelTable["xcoord_edgeup"] = poly(orderPixelTable, *upper_coeff)
 
     if "degy_edgelow" in orderPolyTable.columns:
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
-        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgelow"]), order_deg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", yCol="ycoord").poly
+        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", yCol="ycoord").poly
         orderPixelTable["xcoord_edgelow"] = poly(orderPixelTable, *upper_coeff)
 
     # for index, row in orderPolyTable.iterrows():
     #     cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
-    #     poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(row["degy_cent"]), order_deg=int(row["degorder_cent"])).poly
+    #     poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(row["degy_cent"]), orderDeg=int(row["degorder_cent"])).poly
     #     xcoords_centre.append(np.array(poly(ycoords[index], *cent_coeff)))
     #     if "degy_edgeup" in row:
     #         degy_edge = int(row["degy_edgeup"])

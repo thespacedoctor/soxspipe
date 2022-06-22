@@ -1,5 +1,7 @@
 # Release Notes
 
+dispersion solution now working with simulated NIR SOXS data
+
 ## v0.6.2 - April 13, 2022
 
 * **ENHANCEMENT:** quickstart guide added for calibration recipes  
@@ -40,7 +42,6 @@ This is only a summary of some of the updates included in this release:
 * **ENHANCEMENT** add a verbosity flag to the command-line and a verbose parameter to each recipe
 * **REFACTOR** inter-order pixel value in flats now set to unity (instead of running background fitting and subtraction)
 * **REFACTOR:** recipes now have their recipe name as a `recipeName` attribute
-
 
 ## v0.5.0 - June 10, 2021
 

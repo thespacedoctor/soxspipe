@@ -105,6 +105,7 @@ class create_dispersion_map(object):
         self.kw = kw
         self.arm = pinholeFrame.header[kw("SEQ_ARM")]
         self.dateObs = pinholeFrame.header[kw("DATE_OBS")]
+        self.inst = pinholeFrame.header[kw("INSTRUME")]
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -122,6 +123,13 @@ class create_dispersion_map(object):
 
         warnings.simplefilter('ignore', NoDetectionsWarning)
 
+        if self.inst == "SOXS":
+            self.axisA = "y"
+            self.axisB = "x"
+        elif self.inst == "XSHOOTER":
+            self.axisA = "x"
+            self.axisB = "y"
+
         return None
 
     def get(self):
@@ -135,9 +143,9 @@ class create_dispersion_map(object):
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
-            slit_deg = self.recipeSettings["slit-deg"]
+            slitDeg = self.recipeSettings["slit-deg"]
         else:
-            slit_deg = 0
+            slitDeg = 0
 
         # READ PREDICTED LINE POSITIONS FROM FILE - RETURNED AS DATAFRAME
         orderPixelTable = self.get_predicted_line_list()
@@ -190,20 +198,20 @@ class create_dispersion_map(object):
             "to_header": True
         }, ignore_index=True)
 
-        order_deg = self.recipeSettings["order-deg"]
-        wavelength_deg = self.recipeSettings["wavelength-deg"]
+        orderDeg = self.recipeSettings["order-deg"]
+        wavelengthDeg = self.recipeSettings["wavelength-deg"]
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         popt_x, popt_y, res_plots = self.fit_polynomials(
             orderPixelTable=orderPixelTable,
-            wavelength_deg=wavelength_deg,
-            order_deg=order_deg,
-            slit_deg=slit_deg,
+            wavelengthDeg=wavelengthDeg,
+            orderDeg=orderDeg,
+            slitDeg=slitDeg,
         )
 
         # WRITE THE MAP TO FILE
         mapPath = self.write_map_to_file(
-            popt_x, popt_y, order_deg, wavelength_deg, slit_deg)
+            popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
 
         if self.firstGuessMap and self.orderTable:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
@@ -253,11 +261,21 @@ class create_dispersion_map(object):
         dat = Table.read(predictedLinesFile, format='fits')
         orderPixelTable = dat.to_pandas()
 
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable.head(10), headers='keys', tablefmt='psql'))
+        print("\n\n")
+
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
         listName[:] = [l if l else l for l in listName]
         orderPixelTable.columns = [d.lower() if d.lower() in [
             "order", "wavelength"] else d for d in orderPixelTable.columns]
+
+        if not self.firstGuessMap:
+            slitIndex = int(dp["mid_slit_index"])
+            # REMOVE FILTERED ROWS FROM DATA FRAME
+            mask = (orderPixelTable['slit_index'] != slitIndex)
+            orderPixelTable.drop(index=orderPixelTable[mask].index, inplace=True)
 
         # WANT TO DETERMINE SYSTEMATIC SHIFT IF FIRST GUESS SOLUTION PRESENT
         if self.firstGuessMap:
@@ -341,8 +359,13 @@ class create_dispersion_map(object):
             fwhm=2.0, threshold=5. * std, roundlo=-3.0, roundhi=3.0, sharplo=-3.0, sharphi=3.0)
         sources = daofind(stamp - median)
 
-        # plt.clf()
-        # plt.imshow(stamp)
+        import random
+        ran = random.randint(1, 300)
+
+        if 1 == 0 and ran == 200:
+            import matplotlib.pyplot as plt
+            plt.clf()
+            plt.imshow(stamp)
         old_resid = windowHalf * 4
         if sources:
             # FIND SOURCE CLOSEST TO CENTRE
@@ -359,9 +382,10 @@ class create_dispersion_map(object):
             else:
                 observed_x = sources[0]['xcentroid'] + xlow
                 observed_y = sources[0]['ycentroid'] + ylow
-            # plt.scatter(observed_x - xlow, observed_y -
-            #             ylow, marker='x', s=30)
-            # plt.show()
+            if 1 == 0 and ran == 200:
+                plt.scatter(observed_x - xlow, observed_y -
+                            ylow, marker='x', s=30)
+                plt.show()
         else:
             observed_x = np.nan
             observed_y = np.nan
@@ -377,17 +401,17 @@ class create_dispersion_map(object):
             self,
             xcoeff,
             ycoeff,
-            order_deg,
-            wavelength_deg,
-            slit_deg):
+            orderDeg,
+            wavelengthDeg,
+            slitDeg):
         """*write out the fitted polynomial solution coefficients to file*
 
         **Key Arguments:**
             - ``xcoeff`` -- the x-coefficients
             - ``ycoeff`` -- the y-coefficients
-            - ``order_deg`` -- degree of the order fitting
-            - ``wavelength_deg`` -- degree of wavelength fitting
-            - ``slit_deg`` -- degree of the slit fitting (False for single pinhole)
+            - ``orderDeg`` -- degree of the order fitting
+            - ``wavelengthDeg`` -- degree of wavelength fitting
+            - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
 
         **Return:**
             - ``disp_map_path`` -- path to the saved file
@@ -400,26 +424,26 @@ class create_dispersion_map(object):
         # SORT X COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_x = {}
         coeff_dict_x["axis"] = "x"
-        coeff_dict_x["order-deg"] = order_deg
-        coeff_dict_x["wavelength-deg"] = wavelength_deg
-        coeff_dict_x["slit-deg"] = slit_deg
+        coeff_dict_x["order-deg"] = orderDeg
+        coeff_dict_x["wavelength-deg"] = wavelengthDeg
+        coeff_dict_x["slit-deg"] = slitDeg
         n_coeff = 0
-        for i in range(0, order_deg + 1):
-            for j in range(0, wavelength_deg + 1):
-                for k in range(0, slit_deg + 1):
+        for i in range(0, orderDeg + 1):
+            for j in range(0, wavelengthDeg + 1):
+                for k in range(0, slitDeg + 1):
                     coeff_dict_x[f'c{i}{j}{k}'] = xcoeff[n_coeff]
                     n_coeff += 1
 
         # SORT Y COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_y = {}
         coeff_dict_y["axis"] = "y"
-        coeff_dict_y["order-deg"] = order_deg
-        coeff_dict_y["wavelength-deg"] = wavelength_deg
-        coeff_dict_y["slit-deg"] = slit_deg
+        coeff_dict_y["order-deg"] = orderDeg
+        coeff_dict_y["wavelength-deg"] = wavelengthDeg
+        coeff_dict_y["slit-deg"] = slitDeg
         n_coeff = 0
-        for i in range(0, order_deg + 1):
-            for j in range(0, wavelength_deg + 1):
-                for k in range(0, slit_deg + 1):
+        for i in range(0, orderDeg + 1):
+            for j in range(0, wavelengthDeg + 1):
+                for k in range(0, slitDeg + 1):
                     coeff_dict_y[f'c{i}{j}{k}'] = ycoeff[n_coeff]
                     n_coeff += 1
 
@@ -447,12 +471,12 @@ class create_dispersion_map(object):
         with suppress(KeyError):
             header.pop(kw("RON"))
 
-        if slit_deg == 0:
+        if slitDeg == 0:
             filename = filename.split("ARC")[0] + "DISP_MAP.fits"
-            header[kw("PRO_TECH")] = "ECHELLE,PINHOLE"
+            header[kw("PRO_TECH").upper()] = "ECHELLE,PINHOLE"
         else:
             filename = filename.split("ARC")[0] + "2D_MAP.fits"
-            header[kw("PRO_TECH")] = "ECHELLE,MULTI-PINHOLE"
+            header[kw("PRO_TECH").upper()] = "ECHELLE,MULTI-PINHOLE"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
             log=self.log,
@@ -466,9 +490,9 @@ class create_dispersion_map(object):
         t = Table.from_pandas(df)
         BinTableHDU = fits.table_to_hdu(t)
 
-        header[kw("SEQ_ARM")] = arm
-        header[kw("PRO_TYPE")] = "REDUCED"
-        header[kw("PRO_CATG")] = f"DISP_TAB_{arm}".upper()
+        header[kw("SEQ_ARM").upper()] = arm
+        header[kw("PRO_TYPE").upper()] = "REDUCED"
+        header[kw("PRO_CATG").upper()] = f"DISP_TAB_{arm}".upper()
 
         # WRITE QCs TO HEADERS
         for n, v, c, h in zip(self.qc["qc_name"].values, self.qc["qc_value"].values, self.qc["qc_comment"].values, self.qc["to_header"].values):
@@ -488,10 +512,10 @@ class create_dispersion_map(object):
             orderPixelTable,
             xcoeff,
             ycoeff,
-            order_deg,
-            wavelength_deg,
-            slit_deg,
-            write_QCs=False):
+            orderDeg,
+            wavelengthDeg,
+            slitDeg,
+            writeQCs=False):
         """*calculate residuals of the polynomial fits against the observed line positions*
 
         **Key Arguments:**
@@ -499,10 +523,10 @@ class create_dispersion_map(object):
             - ``orderPixelTable`` -- the predicted line list as a data frame
             - ``xcoeff`` -- the x-coefficients
             - ``ycoeff`` -- the y-coefficients
-            - ``order_deg`` -- degree of the order fitting
-            - ``wavelength_deg`` -- degree of wavelength fitting
-            - ``slit_deg`` -- degree of the slit fitting (False for single pinhole)
-            - ``write_QCs`` -- write the QCs to dataframe? Default *False*
+            - ``orderDeg`` -- degree of the order fitting
+            - ``wavelengthDeg`` -- degree of wavelength fitting
+            - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
+            - ``writeQCs`` -- write the QCs to dataframe? Default *False*
 
         **Return:**
             - ``residuals`` -- combined x-y residuals
@@ -519,7 +543,7 @@ class create_dispersion_map(object):
 
         # POLY FUNCTION NEEDS A DATAFRAME AS INPUT
         poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
+            log=self.log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True).poly
 
         # CALCULATE X & Y RESIDUALS BETWEEN OBSERVED LINE POSITIONS AND POLY
         # FITTED POSITIONS
@@ -537,7 +561,7 @@ class create_dispersion_map(object):
         combined_res_std = np.std(orderPixelTable["residuals_xy"])
         combined_res_median = np.median(orderPixelTable["residuals_xy"])
 
-        if write_QCs:
+        if writeQCs:
             absx = abs(orderPixelTable["residuals_x"])
             absy = abs(orderPixelTable["residuals_y"])
             self.qc = self.qc.append({
@@ -637,16 +661,16 @@ class create_dispersion_map(object):
     def fit_polynomials(
             self,
             orderPixelTable,
-            wavelength_deg,
-            order_deg,
-            slit_deg):
+            wavelengthDeg,
+            orderDeg,
+            slitDeg):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
             - ``orderPixelTable`` -- data frame containing order, wavelengths, slit positions and observed pixel positions
-            - ``wavelength_deg`` -- degree of wavelength fitting
-            - ``order_deg`` -- degree of the order fitting
-            - ``slit_deg`` -- degree of the slit fitting (0 for single pinhole)
+            - ``wavelengthDeg`` -- degree of wavelength fitting
+            - ``orderDeg`` -- degree of the order fitting
+            - ``slitDeg`` -- degree of the slit fitting (0 for single pinhole)
 
         **Return:**
             - ``xcoeff`` -- the x-coefficients post clipping
@@ -658,12 +682,13 @@ class create_dispersion_map(object):
         arm = self.arm
 
         # XSH
-        rotateImage = 90
-        flipImage = 1
-
-        # SOXS
-        rotateImage = 0
-        flipImage = 0
+        if self.inst == "XSHOOTER":
+            rotateImage = 90
+            flipImage = 1
+        else:
+            # SOXS
+            rotateImage = 0
+            flipImage = 0
 
         if self.firstGuessMap:
             recipe = "soxs-spatial-solution"
@@ -673,15 +698,15 @@ class create_dispersion_map(object):
         clippedCount = 1
 
         # ADD EXPONENTS TO ORDERTABLE UP-FRONT
-        for i in range(0, order_deg + 1):
+        for i in range(0, orderDeg + 1):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
-        for j in range(0, wavelength_deg + 1):
+        for j in range(0, wavelengthDeg + 1):
             orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
-        for k in range(0, slit_deg + 1):
+        for k in range(0, slitDeg + 1):
             orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
 
         poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
+            log=self.log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True).poly
 
         clippingSigma = self.settings[
             recipe]["poly-fitting-residual-clipping-sigma"]
@@ -697,8 +722,8 @@ class create_dispersion_map(object):
             observed_y = orderPixelTable["observed_y"].to_numpy()
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
             # FIRST X
-            coeff = np.ones((order_deg + 1) *
-                            (wavelength_deg + 1) * (slit_deg + 1))
+            coeff = np.ones((orderDeg + 1) *
+                            (wavelengthDeg + 1) * (slitDeg + 1))
             self.log.info("""curvefit x""" % locals())
 
             xcoeff, pcov_x = curve_fit(
@@ -714,10 +739,10 @@ class create_dispersion_map(object):
                 orderPixelTable=orderPixelTable,
                 xcoeff=xcoeff,
                 ycoeff=ycoeff,
-                order_deg=order_deg,
-                wavelength_deg=wavelength_deg,
-                slit_deg=slit_deg,
-                write_QCs=False)
+                orderDeg=orderDeg,
+                wavelengthDeg=wavelengthDeg,
+                slitDeg=slitDeg,
+                writeQCs=False)
 
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
@@ -742,10 +767,10 @@ class create_dispersion_map(object):
             orderPixelTable=orderPixelTable,
             xcoeff=xcoeff,
             ycoeff=ycoeff,
-            order_deg=order_deg,
-            wavelength_deg=wavelength_deg,
-            slit_deg=slit_deg,
-            write_QCs=True)
+            orderDeg=orderDeg,
+            wavelengthDeg=wavelengthDeg,
+            slitDeg=slitDeg,
+            writeQCs=True)
 
         # a = plt.figure(figsize=(40, 15))
         if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
@@ -762,79 +787,42 @@ class create_dispersion_map(object):
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = self.pinholeFrame.data
-        if rotateImage > 0:
+        if self.axisA == "x":
             rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
-        if flipImage:
             rotatedImg = np.flipud(rotatedImg)
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "observed arc-line positions (post-clipping)", fontsize=10)
 
-        x = orderPixelTable["observed_x"]
-        # x = np.ones(orderPixelTable.shape[0]) * \
-        #     self.pinholeFrame.data.shape[1] - orderPixelTable["observed_x"]
-        if ((rotateImage / 90) % 2) != 0:
-            swapAxes = True
-        else:
-            swapAxes = False
-
-        if swapAxes:
-            toprow.scatter(orderPixelTable["observed_y"],
-                           x, marker='o', c='red', s=0.3, alpha=0.6)
-        else:
-            toprow.scatter(x,
-                           orderPixelTable["observed_y"], marker='o', c='red', s=0.3, alpha=0.6)
-
-        if swapAxes:
-            toprow.set_ylabel("x-axis", fontsize=8)
-            toprow.set_xlabel("y-axis", fontsize=8)
-        else:
-            toprow.set_xlabel("x-axis", fontsize=8)
-            toprow.set_ylabel("y-axis", fontsize=8)
+        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='red', s=0.3, alpha=0.6)
+        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=8)
+        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=8)
 
         toprow.tick_params(axis='both', which='major', labelsize=9)
 
-        if flipImage or swapAxes:
+        if self.axisA == "x":
             toprow.invert_yaxis()
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         midrow.set_title(
             "global dispersion solution", fontsize=10)
 
-        xfit = orderPixelTable["fit_x"]
-        # xfit = np.ones(orderPixelTable.shape[0]) * \
-        #     self.pinholeFrame.data.shape[1] - orderPixelTable["fit_x"]
-        if swapAxes:
-            midrow.scatter(orderPixelTable["fit_y"],
-                           xfit, marker='o', c='blue', s=1, alpha=0.6)
-        else:
-            midrow.scatter(xfit,
-                           orderPixelTable["fit_y"], marker='o', c='blue', s=1, alpha=0.6)
+        xfit = orderPixelTable[f"fit_{self.axisA}"]
+        midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
+                       orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=1, alpha=0.6)
 
-        # midrow.set_yticklabels([])
-        # midrow.set_xticklabels([])
-        if swapAxes:
-            midrow.set_ylabel("x-axis", fontsize=8)
-            midrow.set_xlabel("y-axis", fontsize=8)
-        else:
-            midrow.set_xlabel("x-axis", fontsize=8)
-            midrow.set_ylabel("y-axis", fontsize=8)
+        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=8)
+        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=8)
         midrow.tick_params(axis='both', which='major', labelsize=9)
-        if flipImage or swapAxes:
+        if self.axisA == "x":
             midrow.invert_yaxis()
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        if swapAxes:
-            bottomleft.scatter(orderPixelTable["residuals_x"], orderPixelTable[
-                               "residuals_y"], alpha=0.4)
-            bottomleft.set_xlabel('x residual')
-            bottomleft.set_ylabel('y residual')
-        else:
-            bottomleft.scatter(orderPixelTable[
-                               "residuals_y"], orderPixelTable["residuals_x"], alpha=0.4)
-            bottomleft.set_xlabel('y residual')
-            bottomleft.set_ylabel('x residual')
+        bottomleft.scatter(orderPixelTable[f"residuals_{self.axisA}"], orderPixelTable[
+            f"residuals_{self.axisB}"], alpha=0.4)
+        bottomleft.set_xlabel(f'{self.axisA} residual')
+        bottomleft.set_ylabel(f'{self.axisB} residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
         hist(orderPixelTable["residuals_xy"], bins='scott', ax=bottomright, histtype='stepfilled',
@@ -936,7 +924,7 @@ class create_dispersion_map(object):
             xcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
                 "xcoord_edgelow"] - expandEdges
             xcoord_edgelow, xcoord_edgeup, ycoord = zip(*[(x1, x2, y) for x1, x2, y in zip(xcoord_edgelow, xcoord_edgeup, ycoord) if x1 > 0 and x1 < wlMap.data.shape[
-                                                        1] and x2 > 0 and x2 < wlMap.data.shape[1] and y > 0 and y < wlMap.data.shape[0]])
+                1] and x2 > 0 and x2 < wlMap.data.shape[1] and y > 0 and y < wlMap.data.shape[0]])
             if reverse:
                 for y, u, l in zip(ycoord, np.ceil(xcoord_edgeup).astype(int), np.floor(xcoord_edgelow).astype(int)):
                     wlMap.data[y, l:u] = 0
@@ -1098,7 +1086,7 @@ class create_dispersion_map(object):
         # GENERATE INITIAL FULL-ORDER WAVELENGTH ARRAY FOR PARTICULAR ORDER
         # (ADD A LITTLE WRIGGLE ROOM AT EACH SIDE OF RANGE)
         wlArray = np.arange(minWl - 20, maxWl + 20, self.recipeSettings[
-                            "grid_res_wavelength"])
+            "grid_res_wavelength"])
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
         bigSlitArray = np.concatenate(
             [np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
@@ -1147,7 +1135,7 @@ class create_dispersion_map(object):
                 "mean"], estimatedValues["wavelength"][
                 "first"])
             estimatedValues['guess_slit_position'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
-                                                              "residual_xy"]["first"], estimatedValues["slit_position"]["mean"], estimatedValues["slit_position"]["first"])
+                "residual_xy"]["first"], estimatedValues["slit_position"]["mean"], estimatedValues["slit_position"]["first"])
             estimatedValues['best_offset_x'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
                 "residual_xy"]["first"], abs(estimatedValues["mean_offset_x"]), abs(estimatedValues["residual_x"]["first"]))
             estimatedValues['best_offset_y'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
@@ -1249,7 +1237,7 @@ class create_dispersion_map(object):
         count = orderPixelTable.groupby(
             ['pixel_x', 'pixel_y']).size().reset_index(name='count')
         orderPixelTable = pd.merge(orderPixelTable, count, how='left', left_on=[
-                                   'pixel_x', 'pixel_y'], right_on=['pixel_x', 'pixel_y'])
+            'pixel_x', 'pixel_y'], right_on=['pixel_x', 'pixel_y'])
         orderPixelTable = orderPixelTable.sort_values(
             ['order', 'pixel_x', 'pixel_y', 'residual_xy'])
 

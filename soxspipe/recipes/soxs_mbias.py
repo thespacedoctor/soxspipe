@@ -101,7 +101,7 @@ class soxs_mbias(_base_recipe_):
 
         # print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
-        self.inputFrames.sort(['mjd-obs'])
+        self.inputFrames.sort(['MJD-OBS'])
         # print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
