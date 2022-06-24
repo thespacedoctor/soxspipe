@@ -261,10 +261,6 @@ class create_dispersion_map(object):
         dat = Table.read(predictedLinesFile, format='fits')
         orderPixelTable = dat.to_pandas()
 
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable.head(10), headers='keys', tablefmt='psql'))
-        print("\n\n")
-
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
         listName[:] = [l if l else l for l in listName]

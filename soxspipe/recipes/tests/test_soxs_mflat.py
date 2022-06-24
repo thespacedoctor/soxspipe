@@ -112,6 +112,17 @@ class test_soxs_mflat(unittest.TestCase):
         mflat = this.produce_product()
         print(f"The master flat file has been saved to '{mflat}'")
 
+    def test_soxs_mflat_nir_soxssim_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/FLAT/sof/SOXSIM_NIR_FLATS.sof"
+        from soxspipe.recipes import soxs_mflat
+        this = soxs_mflat(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath
+        )
+        mflat = this.produce_product()
+        print(f"The master flat file has been saved to '{mflat}'")
+
     def test_soxs_mflat_nir_short_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_short_flats.sof"
         from soxspipe.recipes import soxs_mflat

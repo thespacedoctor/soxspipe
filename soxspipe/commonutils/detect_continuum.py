@@ -834,10 +834,8 @@ class detect_continuum(_base_detect):
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
-
-        aa = orderPixelTable[f'cont_{self.axisA}'].values
         toprow.scatter(orderPixelTable[
-                       f'cont_{self.axisB}'].values, aa, marker='o', c='red', s=1, alpha=0.6)
+                       f'cont_{self.axisB}'].values, orderPixelTable[f'cont_{self.axisA}'].values, marker='o', c='red', s=1, alpha=0.6)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -889,17 +887,13 @@ class detect_continuum(_base_detect):
             xmax.append(axisALength - min(xfit))
             midrow.text(yfit[10], xfit[10] + 10, int(o), fontsize=6, c="white", verticalalignment='bottom')
 
-        if self.axisA == "x":
-            midrow.invert_yaxis()
-        midrow.set_ylim(0, axisALength)
-
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         orderMetaTable = {
             "order": uniqueOrders,
-            "{self.axisB}min": ymin,
-            "{self.axisB}max": ymax,
-            "{self.axisA}min": xmin,
-            "{self.axisA}max": xmax,
+            f"{self.axisB}min": ymin,
+            f"{self.axisB}max": ymax,
+            f"{self.axisA}min": xmin,
+            f"{self.axisA}max": xmax,
         }
         orderMetaTable = pd.DataFrame(orderMetaTable)
 
@@ -911,6 +905,10 @@ class detect_continuum(_base_detect):
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=10)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=10)
         midrow.tick_params(axis='both', which='major', labelsize=9)
+
+        if self.axisA == "x":
+            midrow.invert_yaxis()
+            midrow.set_ylim(0, axisALength)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
@@ -931,7 +929,7 @@ class detect_continuum(_base_detect):
 
         stdToFwhm = 2 * (2 * math.log(2))**0.5
         fwhmaxis.scatter(orderPixelTable['wavelength'].values, orderPixelTable['stddev_fit'].values * stdToFwhm, alpha=0.2, s=1)
-        fwhmaxis.set_xlabel('wavelegth (nm)', fontsize=10)
+        fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
         fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
         fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)
 

@@ -39,19 +39,22 @@ soxs-order-centre:
 #     clipping-iteration-limit: 10
 #     poly-fitting-residual-clipping-sigma: 5
 
-# soxs-mflat:
-#     centre-order-window: 20
-#     clipping-lower-simga: 50
-#     clipping-upper-simga: 50   
-#     clipping-iteration-count: 5
-#     slice-length-for-edge-detection: 90
-#     slice-width-for-edge-detection: 5
-#     min-percentage-threshold-for-edge-detection: 20
-#     max-percentage-threshold-for-edge-detection: 50
-#     poly-deg: 4
-#     poly-fitting-residual-clipping-sigma: 5
-#     clipping-iteration-limit: 10
-#     low-sensitivity-clipping-simga: 2
+soxs-mflat:
+    centre-order-window: 13
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
+    clipping-lower-simga: 50
+    clipping-upper-simga: 50   
+    clipping-iteration-count: 0
+    slice-length-for-edge-detection: 90
+    slice-width-for-edge-detection: 5
+    min-percentage-threshold-for-edge-detection: 20
+    max-percentage-threshold-for-edge-detection: 50
+    y-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 5.0
+    clipping-iteration-limit: 2
+    low-sensitivity-clipping-simga: 2
     
 
 # soxs-straighten:

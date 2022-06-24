@@ -80,14 +80,19 @@ def cut_image_slice(
     if sliceAxis == "x":
         axisA = x
         axisB = y
+        axisALen = frame.shape[1]
+        axisBLen = frame.shape[0]
     elif sliceAxis == "y":
         axisB = x
         axisA = y
+        axisALen = frame.shape[0]
+        axisBLen = frame.shape[1]
     else:
         raise ValueError("sliceAxis needs to be eith 'x' or 'y'")
 
     # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
-    if (axisA > frame.shape[1] - halfSlice) or (axisB > frame.shape[0] - halfwidth) or (axisA < halfSlice) or (axisB < halfwidth):
+    if (axisA > axisALen - halfSlice) or (axisB > axisBLen - halfwidth) or (axisA < halfSlice) or (axisB < halfwidth):
+        print("slice beyond bounds")
         return None, None, None
 
     slice_length_offset = int(axisA - halfSlice)
@@ -114,7 +119,10 @@ def cut_image_slice(
         plt.show()
         xx = np.arange(0, len(slice))
         plt.figure(figsize=(8, 5))
-        plt.plot(xx, slice, 'ko', label=f"x={x}, y={y}, sliceAxis={sliceAxis}")
+        if sliceAxis == "y":
+            plt.plot(xx, slice, 'ko', label=f"x={axisB}, y={axisA}, sliceAxis={sliceAxis}")
+        if sliceAxis == "x":
+            plt.plot(xx, slice, 'ko', label=f"x={axisA}, y={axisB}, sliceAxis={sliceAxis}")
         plt.xlabel('Position')
         plt.ylabel('Flux')
         plt.legend()
@@ -131,7 +139,8 @@ def quicklook_image(
         ext="data",
         stdWindow=3,
         title=False,
-        surfacePlot=False):
+        surfacePlot=False,
+        inst=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
@@ -142,6 +151,7 @@ def quicklook_image(
     - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data".
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
+    - ``inst`` -- provide instrument name if no header exists
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
@@ -166,16 +176,17 @@ def quicklook_image(
         # ASSUME ONLY NDARRAY
         frame = CCDObject
 
-    try:
-        inst = CCDObject.header["INSTRUME"]
-    except:
-        inst = "XSHOOTER"
+    if inst is False:
+        try:
+            inst = CCDObject.header["INSTRUME"]
+        except:
+            inst = "XSHOOTER"
 
     if inst == "SOXS":
-        rotatedImg = frame
-    else:
+        rotatedImg = np.flipud(frame)
+    if inst == "XSHOOTER":
         rotatedImg = np.rot90(frame, 1)
-        rotatedImg = np.flipud(rotatedImg)
+    rotatedImg = np.flipud(rotatedImg)
 
     std = np.nanstd(frame)
     mean = np.nanmean(frame)
@@ -220,7 +231,7 @@ def quicklook_image(
 
         ax.set_xlim(0, rotatedImg.shape[1])
         ax.set_ylim(0, rotatedImg.shape[0])
-        ax.set_zlim(0, min(np.nanmax(frame), mean + stdWindow * 10 * std))
+        # ax.set_zlim(0, min(np.nanmax(frame), mean + stdWindow * 10 * std))
 
         if inst == "SOXS":
             ax.invert_yaxis()
@@ -321,77 +332,45 @@ def unpack_order_table(
     dat = Table.read(orderTablePath, format='fits', hdu=2)
     orderMetaTable = dat.to_pandas()
 
-    # ADD Y-COORD LIST
-    ycoords = [np.arange(math.floor(l) - int(r * extend), math.ceil(u) + int(r * extend), 1) for l, u, r in zip(
-        orderMetaTable["ymin"].values, orderMetaTable["ymax"].values, orderMetaTable["ymax"].values - orderMetaTable["ymin"].values)]
+    if "degy_cent" in orderPolyTable.columns:
+        axisA = "x"
+        axisB = "y"
+    else:
+        axisA = "y"
+        axisB = "x"
+
+    # ADD AXIS B COORD LIST
+    axisBcoords = [np.arange(math.floor(l) - int(r * extend), math.ceil(u) + int(r * extend), 1) for l, u, r in zip(
+        orderMetaTable[f"{axisB}min"].values, orderMetaTable[f"{axisB}max"].values, orderMetaTable[f"{axisB}max"].values - orderMetaTable[f"{axisB}min"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
-        ycoords, orderMetaTable["order"].values)]
+        axisBcoords, orderMetaTable["order"].values)]
 
     import pandas as pd
     # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
     myDict = {
-        "ycoord": np.concatenate(ycoords),
+        f"{axisB}coord": np.concatenate(axisBcoords),
         "order": np.concatenate(orders)
     }
     orderPixelTable = pd.DataFrame(myDict)
 
-    # RUN COORDINATES THROUGH POLYNOMIALS TO GET X-COORDS
-    xcoords_centre = []
-    xcoords_edgeup = []
-    xcoords_edgelow = []
-
     cent_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
-    poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
-    orderPixelTable["xcoord_centre"] = poly(orderPixelTable, *cent_coeff)
+    poly = chebyshev_order_xy_polynomials(log=log, axisBCol=f"{axisB}coord", orderCol="order", orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"])).poly
+    orderPixelTable[f"{axisA}coord_centre"] = poly(orderPixelTable, *cent_coeff)
 
     std_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "std_" in k]
     if len(std_coeff):
-        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", axisBCol=f"{axisB}coord").poly
         orderPixelTable["std"] = poly(orderPixelTable, *std_coeff)
 
-    if "degy_edgeup" in orderPolyTable.columns:
+    if f"deg{axisB}_edgeup" in orderPolyTable.columns:
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]
-        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgeup"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", yCol="ycoord").poly
-        orderPixelTable["xcoord_edgeup"] = poly(orderPixelTable, *upper_coeff)
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgeup"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", axisBCol=f"{axisB}coord").poly
+        orderPixelTable[f"{axisA}coord_edgeup"] = poly(orderPixelTable, *upper_coeff)
 
-    if "degy_edgelow" in orderPolyTable.columns:
+    if f"deg{axisB}_edgelow" in orderPolyTable.columns:
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
-        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", yCol="ycoord").poly
-        orderPixelTable["xcoord_edgelow"] = poly(orderPixelTable, *upper_coeff)
-
-    # for index, row in orderPolyTable.iterrows():
-    #     cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
-    #     poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(row["degy_cent"]), orderDeg=int(row["degorder_cent"])).poly
-    #     xcoords_centre.append(np.array(poly(ycoords[index], *cent_coeff)))
-    #     if "degy_edgeup" in row:
-    #         degy_edge = int(row["degy_edgeup"])
-    #         edgeup_coeff = [float(v)
-    #                         for k, v in row.items() if "edgeup_" in k]
-    #         poly = chebyshev_xy_polynomial(
-    #             log=log, y_deg=degy_edge).poly
-    #         xcoords_edgeup.append(
-    #             np.array(poly(ycoords[index], *edgeup_coeff)))
-
-    #         edgelow_coeff = [float(v)
-    #                          for k, v in row.items() if "edgelow_" in k]
-    #         poly = chebyshev_xy_polynomial(
-    #             log=log, y_deg=degy_edge).poly
-    #         xcoords_edgelow.append(
-    #             np.array(poly(ycoords[index], *edgelow_coeff)))
-
-    # # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-    # myDict = {
-    #     "order": np.concatenate(orders),
-    #     "ycoord": np.concatenate(ycoords),
-    #     'xcoord_centre': np.concatenate(xcoords_centre)
-    # }
-    # # ADD ODER EDGES IF NEEDED
-    # if len(xcoords_edgeup):
-    #     myDict['xcoord_edgeup'] = np.concatenate(xcoords_edgeup)
-    #     myDict['xcoord_edgelow'] = np.concatenate(xcoords_edgelow)
-
-    # # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-    # orderPixelTable = pd.DataFrame(myDict)
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
+        orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
 
     log.debug('completed the ``functionName`` function')
     return orderPolyTable, orderPixelTable, orderMetaTable
@@ -529,20 +508,28 @@ def spectroscopic_image_quality_checks(
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
+    inst = frame.header[kw("INSTRUME")]
+    if inst == "SOXS":
+        axisA = "y"
+        axisB = "x"
+    elif inst == "XSHOOTER":
+        axisA = "x"
+        axisB = "y"
+
     # UNPACK THE ORDER TABLE
     orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
         log=log, orderTablePath=orderTablePath)
 
     mask = np.ones_like(frame.data)
 
-    xcoords_up = orderTablePixels["xcoord_edgeup"].values
-    xcoords_low = orderTablePixels["xcoord_edgelow"].values
-    ycoords = orderTablePixels["ycoord"].values
-    xcoords_up = xcoords_up.astype(int)
-    xcoords_low = xcoords_low.astype(int)
+    axisACoords_up = orderTablePixels[f"{axisA}coord_edgeup"].values
+    axisACoords_low = orderTablePixels[f"{axisA}coord_edgelow"].values
+    axisBCoords = orderTablePixels[f"{axisB}coord"].values
+    axisACoords_up = axisACoords_up.astype(int)
+    axisACoords_low = axisACoords_low.astype(int)
 
     # UPDATE THE MASK
-    for u, l, y in zip(xcoords_up, xcoords_low, ycoords):
+    for u, l, y in zip(axisACoords_up, axisACoords_low, axisBCoords):
         mask[y][l:u] = 0
 
     # COMBINE MASK WITH THE BAD PIXEL MASK

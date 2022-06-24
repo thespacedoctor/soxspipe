@@ -20,6 +20,7 @@ from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import set_of_files
 from ccdproc import Combiner
+from contextlib import suppress
 from astropy.nddata.nduncertainty import StdDevUncertainty
 import pandas as pd
 from soxspipe.commonutils import subtract_background
@@ -382,6 +383,18 @@ class _base_recipe_(object):
         arm = self.inputFrames.values(
             keyword=kw("SEQ_ARM"), unique=True)
 
+        inst = self.inputFrames.values(kw("INSTRUME"), unique=True)
+        with suppress(ValueError):
+            inst.remove(None)
+        self.inst = inst[0]
+
+        if self.inst == "SOXS":
+            self.axisA = "y"
+            self.axisB = "x"
+        elif self.inst == "XSHOOTER":
+            self.axisA = "x"
+            self.axisB = "y"
+
         # MIXED INPUT ARMS ARE BAD
         if len(arm) > 1:
             arms = " and ".join(arm)
@@ -424,7 +437,7 @@ class _base_recipe_(object):
         # MIXED READOUT SPEEDS IS BAD
         readSpeed = self.inputFrames.values(
             keyword=kw("DET_READ_SPEED"), unique=True)
-        from contextlib import suppress
+
         with suppress(ValueError):
             readSpeed.remove(None)
 
