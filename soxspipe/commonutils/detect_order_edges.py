@@ -368,17 +368,22 @@ class detect_order_edges(_base_detect):
         arm = self.arm
 
         # a = plt.figure(figsize=(40, 15))
-        if arm == "UVB":
-            fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
+        if arm == "UVB" or self.inst == "SOXS":
+            fig = plt.figure(figsize=(5, 13.5), constrained_layout=True)
+            # CREATE THE GID OF AXES
+            gs = fig.add_gridspec(6, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:, 0:2])
+            bottomright = fig.add_subplot(gs[4:, 2:])
         else:
             fig = plt.figure(figsize=(6, 11), constrained_layout=True)
-        gs = fig.add_gridspec(6, 4)
-
-        # CREATE THE GID OF AXES
-        toprow = fig.add_subplot(gs[0:2, :])
-        midrow = fig.add_subplot(gs[2:4, :])
-        bottomleft = fig.add_subplot(gs[4:, 0:2])
-        bottomright = fig.add_subplot(gs[4:, 2:])
+            # CREATE THE GID OF AXES
+            gs = fig.add_gridspec(6, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:, 0:2])
+            bottomright = fig.add_subplot(gs[4:, 2:])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = self.flatFrame.data
@@ -398,8 +403,8 @@ class detect_order_edges(_base_detect):
         toprow.scatter(allAxisBCoords, allAxisACoords, marker='x', c='red', s=0.2)
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
-        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=8)
-        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=8)
+        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
 
         midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.9)
@@ -453,8 +458,8 @@ class detect_order_edges(_base_detect):
         # midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
         # midrow.set_yticklabels([])
         # midrow.set_xticklabels([])
-        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=8)
-        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=8)
+        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
 
         # PLOT THE FINAL RESULTS:
@@ -523,9 +528,6 @@ class detect_order_edges(_base_detect):
         axisAcoords = orderPixelTable.loc[mask, f"{self.axisA}coord_centre"].values
         axisBcoords = orderPixelTable.loc[mask, f"{self.axisB}coord"].values
 
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable.loc[mask], headers='keys', tablefmt='psql'))
-
         # xpd-update-filter-dataframe-column-values
 
         # DETERMINE THE FLUX THRESHOLD FROM THE CENTRAL COLUMN
@@ -539,7 +541,7 @@ class detect_order_edges(_base_detect):
             x = axisBcoords[index]
 
         slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.flatFrame,
-                                                                         width=sliceWidth, length=sliceLength, x=x, y=y, sliceAxis=self.axisA, median=True, plot=True)
+                                                                         width=sliceWidth, length=sliceLength, x=x, y=y, sliceAxis=self.axisA, median=True, plot=False)
         # SMOOTH WITH A MEDIAN FILTER
         medSlide = medfilt(slice, 9)
         # DETERMINE THRESHOLD FLUX VALUE
@@ -553,7 +555,7 @@ class detect_order_edges(_base_detect):
             (maxvalue - minvalue) * maxThresholdPercenage
 
         # SANITY CHECK PLOT OF CROSS-SECTION
-        if 1 == 1:
+        if 1 == 0:
             # CHECK THE SLICE POINTS IF NEEDED
             print(order)
             x = np.arange(0, len(slice))

@@ -250,7 +250,7 @@ class soxs_mflat(_base_recipe_):
         # )
         # backgroundFrame, mflat = background.subtract()
 
-        quicklook_image(log=self.log, CCDObject=mflat, show=True, ext=None, surfacePlot=True, title="Final master flat frame")
+        quicklook_image(log=self.log, CCDObject=mflat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
 
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
@@ -519,7 +519,7 @@ class soxs_mflat(_base_recipe_):
         frame.mask = (interOrderMask == 1) | (frame.mask == 1)
 
         # PLOT MASKED FRAMES TO CHECK
-        quicklook_image(log=self.log, CCDObject=frame, show=True, ext=None, surfacePlot=True, title="Masking inter-order pixels")
+        quicklook_image(log=self.log, CCDObject=frame, show=False, ext=None, surfacePlot=True, title="Masking inter-order pixels")
 
         beforeMask = np.copy(frame.mask)
 
@@ -550,7 +550,7 @@ class soxs_mflat(_base_recipe_):
         frame.data[interOrderMask] = 1
 
         # PLOT MASKED FRAMES TO CHECK
-        quicklook_image(log=self.log, CCDObject=frame, show=True, ext=None, surfacePlot=True, title="Low Sensitivity pixels masked and inter-order pixel set to 1")
+        quicklook_image(log=self.log, CCDObject=frame, show=False, ext=None, surfacePlot=True, title="Low Sensitivity pixels masked and inter-order pixel set to 1")
 
         self.log.debug(
             'completed the ``mask_low_sens_and_inter_order_to_unity`` method')

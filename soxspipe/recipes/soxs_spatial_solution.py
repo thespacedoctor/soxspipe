@@ -84,7 +84,7 @@ class soxs_spatial_solution(_base_recipe_):
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
-        self.inputFrames.sort(['mjd-obs'])
+        self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
             print("# RAW INPUT FRAMES - SUMMARY")
             print(self.inputFrames.summary, "\n")
@@ -218,7 +218,7 @@ class soxs_spatial_solution(_base_recipe_):
         self.dateObs = multi_pinhole_image.header[kw("DATE_OBS")]
 
         # FIND THE ORDER TABLE
-        filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
+        filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
         order_table = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
         add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}

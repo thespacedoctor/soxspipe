@@ -780,7 +780,7 @@ class detect_continuum(_base_detect):
         pixelPostion["stddev"] = g.stddev.value
 
         # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAYED
-        if 1 == 0 and random() < 0.02 and pixelPostion["order"] == 11:
+        if 1 == 1 and random() < 0.02 and pixelPostion["order"] == 11:
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
@@ -813,18 +813,24 @@ class detect_continuum(_base_detect):
         arm = self.arm
 
         # a = plt.figure(figsize=(40, 15))
-        if arm == "UVB":
+        if arm == "UVB" or self.inst == "SOXS":
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
+            # CREATE THE GID OF AXES
+            gs = fig.add_gridspec(6, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:5, 0:2])
+            bottomright = fig.add_subplot(gs[4:5, 2:])
+            fwhmaxis = fig.add_subplot(gs[5:6, :])
         else:
             fig = plt.figure(figsize=(6, 12), constrained_layout=True)
-        gs = fig.add_gridspec(7, 4)
-
-        # CREATE THE GID OF AXES
-        toprow = fig.add_subplot(gs[0:2, :])
-        midrow = fig.add_subplot(gs[2:4, :])
-        bottomleft = fig.add_subplot(gs[4:6, 0:2])
-        bottomright = fig.add_subplot(gs[4:6, 2:])
-        fwhmaxis = fig.add_subplot(gs[6:7, :])
+            # CREATE THE GID OF AXES
+            gs = fig.add_gridspec(7, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:6, 0:2])
+            bottomright = fig.add_subplot(gs[4:6, 2:])
+            fwhmaxis = fig.add_subplot(gs[6:7, :])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = self.pinholeFlat.data
@@ -840,8 +846,8 @@ class detect_continuum(_base_detect):
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
 
-        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=10)
-        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=10)
+        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
         if self.axisA == "x":
             toprow.invert_yaxis()
@@ -902,8 +908,8 @@ class detect_continuum(_base_detect):
         # midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
         # midrow.set_yticklabels([])
         # midrow.set_xticklabels([])
-        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=10)
-        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=10)
+        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
 
         if self.axisA == "x":
@@ -932,6 +938,12 @@ class detect_continuum(_base_detect):
         fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
         fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
         fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)
+
+        print(stdToFwhm)
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable.head(10), headers='keys', tablefmt='psql'))
+
+        sys.exit(0)
 
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))

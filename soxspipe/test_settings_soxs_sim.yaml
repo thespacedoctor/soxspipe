@@ -20,7 +20,7 @@ soxs-disp-solution:
     order-deg: 5
     wavelength-deg: 5
     clipping-iteration-limit: 10
-    poly-fitting-residual-clipping-sigma: 5
+    poly-fitting-residual-clipping-sigma: 4
 
 soxs-order-centre:
     order-sample-count: 200
@@ -31,13 +31,18 @@ soxs-order-centre:
     poly-fitting-residual-clipping-sigma: 4.0
     clipping-iteration-limit: 1
 
-# soxs-spatial-solution:
-#     pixel-window-size: 10
-#     order-deg: 3
-#     wavelength-deg: 3
-#     slit-deg: 3
-#     clipping-iteration-limit: 10
-#     poly-fitting-residual-clipping-sigma: 5
+soxs-spatial-solution:
+    pixel-window-size: 10
+    order-deg: 3
+    wavelength-deg: 3
+    slit-deg: 3
+    clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 5
+    # INITIAL SEED GRID RESOLUTION 
+    grid_res_wavelength: 0.03 # in nm
+    grid_res_slit: 0.04 # in arcsec
+    map_to_image_displacement_threshold: 0.01 # in pixels
+    zoom_grid_size: 4
 
 soxs-mflat:
     centre-order-window: 13
@@ -52,7 +57,7 @@ soxs-mflat:
     max-percentage-threshold-for-edge-detection: 50
     y-deg: 5
     order-deg: 5
-    poly-fitting-residual-clipping-sigma: 5.0
+    poly-fitting-residual-clipping-sigma: 3.0
     clipping-iteration-limit: 2
     low-sensitivity-clipping-simga: 2
     
@@ -60,10 +65,10 @@ soxs-mflat:
 # soxs-straighten:
 #     asdasd: 1
 
-# # UTILS
-# background-subtraction:
-#     bsline-deg: 3
-#     median-filter-pixels: 11
+# UTILS
+background-subtraction:
+    bsline-deg: 2
+    median-filter-pixels: 9
 
 
 data-extension: 1

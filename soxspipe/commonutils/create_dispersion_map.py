@@ -161,6 +161,8 @@ class create_dispersion_map(object):
 
         totalLines = len(orderPixelTable.index)
 
+        print(totalLines)
+
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
             'observed_x'], inplace=True)
@@ -351,14 +353,22 @@ class create_dispersion_map(object):
         # USE DAOStarFinder TO FIND LINES WITH 2D GUASSIAN FITTING
         mean, median, std = sigma_clipped_stats(stamp, sigma=3.0)
 
-        daofind = DAOStarFinder(
-            fwhm=2.0, threshold=5. * std, roundlo=-3.0, roundhi=3.0, sharplo=-3.0, sharphi=3.0)
-        sources = daofind(stamp - median)
+        if 1 == 0:
+            import matplotlib.pyplot as plt
+            plt.clf()
+            plt.imshow(stamp)
+
+        try:
+            daofind = DAOStarFinder(
+                fwhm=2.0, threshold=5. * std, roundlo=-3.0, roundhi=3.0, sharplo=-3.0, sharphi=3.0)
+            sources = daofind(stamp - median)
+        except:
+            sources = None
 
         import random
         ran = random.randint(1, 300)
 
-        if 1 == 0 and ran == 200:
+        if 1 == 1 and ran == 200:
             import matplotlib.pyplot as plt
             plt.clf()
             plt.imshow(stamp)
@@ -771,15 +781,20 @@ class create_dispersion_map(object):
         # a = plt.figure(figsize=(40, 15))
         if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
+            # CREATE THE GRID OF AXES
+            gs = fig.add_gridspec(5, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:, 0:2])
+            bottomright = fig.add_subplot(gs[4:, 2:])
         else:
             fig = plt.figure(figsize=(6, 11), constrained_layout=True)
-        gs = fig.add_gridspec(6, 4)
-
-        # CREATE THE GRID OF AXES
-        toprow = fig.add_subplot(gs[0:2, :])
-        midrow = fig.add_subplot(gs[2:4, :])
-        bottomleft = fig.add_subplot(gs[4:, 0:2])
-        bottomright = fig.add_subplot(gs[4:, 2:])
+            # CREATE THE GRID OF AXES
+            gs = fig.add_gridspec(6, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:, 0:2])
+            bottomright = fig.add_subplot(gs[4:, 2:])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = self.pinholeFrame.data
@@ -791,8 +806,8 @@ class create_dispersion_map(object):
             "observed arc-line positions (post-clipping)", fontsize=10)
 
         toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='red', s=0.3, alpha=0.6)
-        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=8)
-        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=8)
+        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
 
         toprow.tick_params(axis='both', which='major', labelsize=9)
 
@@ -807,8 +822,8 @@ class create_dispersion_map(object):
         midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
                        orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=1, alpha=0.6)
 
-        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=8)
-        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=8)
+        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
         if self.axisA == "x":
             midrow.invert_yaxis()
@@ -910,25 +925,40 @@ class create_dispersion_map(object):
         orderMap = wlMap.copy()
         uniqueOrders = orderPixelTable['order'].unique()
         expandEdges = 0
+
+        if self.axisA == "x":
+            axisALen = wlMap.data.shape[1]
+            axisBLen = wlMap.data.shape[0]
+        else:
+            axisALen = wlMap.data.shape[0]
+            axisBLen = wlMap.data.shape[1]
+
         for o in uniqueOrders:
             if order and o != order:
                 continue
-            ycoord = orderPixelTable.loc[
-                (orderPixelTable["order"] == o)]["ycoord"]
-            xcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][
-                "xcoord_edgeup"] + expandEdges
-            xcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
-                "xcoord_edgelow"] - expandEdges
-            xcoord_edgelow, xcoord_edgeup, ycoord = zip(*[(x1, x2, y) for x1, x2, y in zip(xcoord_edgelow, xcoord_edgeup, ycoord) if x1 > 0 and x1 < wlMap.data.shape[
-                1] and x2 > 0 and x2 < wlMap.data.shape[1] and y > 0 and y < wlMap.data.shape[0]])
+            axisBcoord = orderPixelTable.loc[
+                (orderPixelTable["order"] == o)][f"{self.axisB}coord"]
+            axisACoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                f"{self.axisA}coord_edgeup"] + expandEdges
+            axisACoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                f"{self.axisA}coord_edgelow"] - expandEdges
+            axisACoord_edgelow, axisACoord_edgeup, axisBcoord = zip(*[(l, u, b) for l, u, b in zip(axisACoord_edgelow, axisACoord_edgeup, axisBcoord) if l > 0 and l < axisALen and u > 0 and u < axisALen and b > 0 and b < axisBLen])
             if reverse:
-                for y, u, l in zip(ycoord, np.ceil(xcoord_edgeup).astype(int), np.floor(xcoord_edgelow).astype(int)):
-                    wlMap.data[y, l:u] = 0
-                    orderMap.data[y, l:u] = o
+                for b, u, l in zip(axisBcoord, np.ceil(axisACoord_edgeup).astype(int), np.floor(axisACoord_edgelow).astype(int)):
+                    if self.axisA == "x":
+                        wlMap.data[b, l:u] = 0
+                        orderMap.data[b, l:u] = o
+                    else:
+                        wlMap.data[l:u, b] = 0
+                        orderMap.data[l:u, b] = o
             else:
-                for y, u, l in zip(ycoord, np.ceil(xcoord_edgeup).astype(int), np.floor(xcoord_edgelow).astype(int)):
-                    wlMap.data[y, l:u] = np.NaN
-                    orderMap.data[y, l:u] = np.NaN
+                for b, u, l in zip(axisBcoord, np.ceil(axisACoord_edgeup).astype(int), np.floor(axisACoord_edgelow).astype(int)):
+                    if self.axisA == "x":
+                        wlMap.data[b, l:u] = np.NaN
+                        orderMap.data[b, l:u] = np.NaN
+                    else:
+                        wlMap.data[l:u, b] = np.NaN
+                        orderMap.data[l:u, b] = np.NaN
 
         # SLIT MAP PLACEHOLDER SAME AS WAVELENGTH MAP PLACEHOLDER
         slitMap = wlMap.copy()
@@ -1005,9 +1035,9 @@ class create_dispersion_map(object):
 
         # DEFINE AN INPUT ARRAY
         inputArray = [(order, minWl, maxWl) for order, minWl,
-                      maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
+                      maxWl in zip(orderNums[1:2], waveLengthMin[1:2], waveLengthMax[1:2])]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=False)
+                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=True)
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
@@ -1097,7 +1127,7 @@ class create_dispersion_map(object):
             iteration += 1
 
             orderPixelTable, remainingCount = self.convert_and_fit(
-                order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
+                order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=True)
 
             if not remainingCount:
                 continue

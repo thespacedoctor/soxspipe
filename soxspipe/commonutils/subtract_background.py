@@ -94,6 +94,15 @@ class subtract_background(object):
         self.arm = frame.header[kw("SEQ_ARM")]
         self.dateObs = frame.header[kw("DATE_OBS")]
 
+        self.inst = frame.header[kw("INSTRUME")]
+
+        if self.inst == "SOXS":
+            self.axisA = "y"
+            self.axisB = "x"
+        elif self.inst == "XSHOOTER":
+            self.axisA = "x"
+            self.axisB = "y"
+
         quicklook_image(
             log=self.log, CCDObject=self.frame, show=False, ext='data', stdWindow=3, surfacePlot=True, title="Initial input frame needing scattered light subtraction")
 
@@ -125,7 +134,7 @@ class subtract_background(object):
         self.mask_order_locations(orderPixelTable)
 
         quicklook_image(
-            log=self.log, CCDObject=self.frame, show=True, ext=None, surfacePlot=True, title="Initial input frame with order pixels masked")
+            log=self.log, CCDObject=self.frame, show=False, ext=None, surfacePlot=True, title="Initial input frame with order pixels masked")
 
         backgroundFrame = self.create_background_image(
             rowFitOrder=self.settings['background-subtraction']['bsline-deg'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
@@ -167,10 +176,13 @@ class subtract_background(object):
             axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][
                 f"{self.axisA}coord_edgeup"] + expandEdges
             axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
-                f"{self.axisA}_edgelow"] - expandEdges
-            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(*[(x1, x2, y) for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord) if x1 > 0 and x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen])
+                f"{self.axisA}coord_edgelow"] - expandEdges
+            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(*[(x1, x2, b) for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord) if x1 > 0 and x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen])
             for b, u, l in zip(axisBcoord, np.ceil(axisAcoord_edgeup).astype(int), np.floor(axisAcoord_edgelow).astype(int)):
-                self.frame.mask[b, l:u] = 1
+                if self.axisA == "x":
+                    self.frame.mask[b, l:u] = 1
+                else:
+                    self.frame.mask[l:u, b] = 1
 
         self.log.debug('completed the ``mask_order_locations`` method')
         return None
