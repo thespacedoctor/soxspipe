@@ -134,7 +134,7 @@ class test_soxs_mdark(unittest.TestCase):
 
     def test_soxs_mdark_e2e_nir_folder_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark/nir/"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark/nir/180"
         # sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(

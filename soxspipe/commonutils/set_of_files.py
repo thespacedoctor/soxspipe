@@ -329,18 +329,17 @@ class set_of_files(object):
 
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
-            sof = ImageFileCollection(
-                self.inputFrames, keywords=self.keys, ext=self.ext)
+            sofSeed = ImageFileCollection(location=self.inputFrames, ext=self.ext)
             if self.ext > 0:
                 foundKeys = [
-                    k for k in self.keys if k in sof.summary.colnames]
+                    k for k in self.keys if (k.lower() in sofSeed.summary.colnames or k in sofSeed.summary.colnames)]
                 sof = ImageFileCollection(
-                    filenames=fitsFiles, keywords=foundKeys, location=location, ext=self.ext)
+                    keywords=foundKeys, location=self.inputFrames, ext=self.ext)
                 missingKeys = [
-                    k for k in self.keys if (k.lower() not in sof.summary.colnames and k not in sof.summary.colnames)]
+                    k for k in self.keys if (k.lower() not in sofSeed.summary.colnames and k not in sofSeed.summary.colnames)]
                 if len(missingKeys):
                     primExt = ImageFileCollection(
-                        filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                        keywords=missingKeys, location=self.inputFrames, ext=0)
                     sof._summary = join(
                         primExt._summary, sof._summary, keys="file")
 

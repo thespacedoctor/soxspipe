@@ -383,6 +383,9 @@ class _base_recipe_(object):
         arm = self.inputFrames.values(
             keyword=kw("SEQ_ARM"), unique=True)
 
+        from tabulate import tabulate
+        print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
+
         inst = self.inputFrames.values(kw("INSTRUME"), unique=True)
         with suppress(ValueError):
             inst.remove(None)
