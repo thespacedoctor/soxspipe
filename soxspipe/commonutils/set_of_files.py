@@ -329,8 +329,8 @@ class set_of_files(object):
 
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
-            sofSeed = ImageFileCollection(location=self.inputFrames, ext=self.ext)
             if self.ext > 0:
+                sofSeed = ImageFileCollection(location=self.inputFrames, ext=self.ext)
                 foundKeys = [
                     k for k in self.keys if (k.lower() in sofSeed.summary.colnames or k in sofSeed.summary.colnames)]
                 sof = ImageFileCollection(
@@ -342,6 +342,8 @@ class set_of_files(object):
                         keywords=missingKeys, location=self.inputFrames, ext=0)
                     sof._summary = join(
                         primExt._summary, sof._summary, keys="file")
+            else:
+                sof = ImageFileCollection(location=self.inputFrames, keywords=self.keys, ext=self.ext)
 
             supplementaryFilepaths = []
             for d in os.listdir(self.inputFrames):
@@ -350,6 +352,7 @@ class set_of_files(object):
                     supplementaryFilepaths.append(filepath)
 
         elif isinstance(self.inputFrames, str) and os.path.isfile(self.inputFrames) and '.sof' in self.inputFrames:
+
             readFile = codecs.open(
                 self.inputFrames, encoding='utf-8', mode='r')
             thisData = readFile.read()
