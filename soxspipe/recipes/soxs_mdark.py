@@ -132,7 +132,7 @@ class soxs_mdark(_base_recipe_):
                 "Input frames not DARK frames" % locals())
 
         exptimes = self.inputFrames.values(
-            keyword=kw("EXPTIME").lower(), unique=True)
+            keyword=kw("EXPTIME"), unique=True)
         # MIXED INPUT IMAGE TYPES ARE BAD
         if len(exptimes) > 1:
             exptimes = [str(e) for e in exptimes]

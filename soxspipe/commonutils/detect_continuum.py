@@ -939,12 +939,6 @@ class detect_continuum(_base_detect):
         fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
         fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)
 
-        print(stdToFwhm)
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable.head(10), headers='keys', tablefmt='psql'))
-
-        sys.exit(0)
-
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 

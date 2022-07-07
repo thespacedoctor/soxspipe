@@ -118,9 +118,9 @@ class subtract_background(object):
         self.log.debug('starting the ``subtract`` method')
 
         kw = self.kw
-        imageType = self.frame.header[kw("DPR_TYPE").lower()].replace(",", "-")
-        imageTech = self.frame.header[kw("DPR_TECH").lower()].replace(",", "-")
-        imageCat = self.frame.header[kw("DPR_CATG").lower()].replace(",", "-")
+        imageType = self.frame.header[kw("DPR_TYPE")].replace(",", "-")
+        imageTech = self.frame.header[kw("DPR_TECH")].replace(",", "-")
+        imageCat = self.frame.header[kw("DPR_CATG")].replace(",", "-")
 
         print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
 
