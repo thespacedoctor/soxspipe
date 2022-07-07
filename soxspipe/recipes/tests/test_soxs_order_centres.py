@@ -23,6 +23,19 @@ su = tools(
 )
 arguments, settings, log, dbConn = su.setup()
 
+packageDirectory = utKit("").get_project_root()
+settingsFile2 = packageDirectory + "/test_settings_soxs_sim.yaml"
+# settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
+su = tools(
+    arguments={"settingsFile": settingsFile2},
+    docString=__doc__,
+    logLevel="DEBUG",
+    options_first=False,
+    projectName=None,
+    defaultSettingsFile=False
+)
+arguments2, settings2, log2, dbConn2 = su.setup()
+
 # SETUP AND TEARDOWN FIXTURE FUNCTIONS FOR THE ENTIRE MODULE
 moduleDirectory = os.path.dirname(__file__)
 utKit = utKit(moduleDirectory)
@@ -44,6 +57,17 @@ if not os.path.exists(pathToOutputDir):
 
 
 class test_soxs_order_centres(unittest.TestCase):
+
+    def test_soxs_order_centres_soxs_sim_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/ORDER_CENTRE/sof/SOXSIM_NIR_ORDER_CENTRE.sof"
+        # sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-orderpos/nir"
+        from soxspipe.recipes import soxs_order_centres
+        this = soxs_order_centres(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath
+        )
+        this.produce_product()
 
     def test_soxs_order_centres_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_NIR_ORDER_CENTRE.sof"

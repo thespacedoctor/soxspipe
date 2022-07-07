@@ -84,7 +84,8 @@ class soxs_order_centres(_base_recipe_):
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
-            inputFrames=self.inputFrames
+            inputFrames=self.inputFrames,
+            ext=self.settings['data-extension']
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -96,7 +97,7 @@ class soxs_order_centres(_base_recipe_):
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
-        self.inputFrames.sort(['mjd-obs'])
+        self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
             print("# RAW INPUT FRAMES - SUMMARY")
             print(self.inputFrames.summary, "\n")

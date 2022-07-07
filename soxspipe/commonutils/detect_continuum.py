@@ -50,19 +50,19 @@ class _base_detect(object):
             self,
             pixelList,
             order,
-            y_deg,
-            xCol,
-            yCol,
-            exponents_included=False):
+            axisBDeg,
+            axisACol,
+            axisBCol,
+            exponentsIncluded=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
             - ``pixelList`` -- data-frame group containing x,y pixel array
             - ``order`` -- the order to fit
-            - ``y_deg`` -- degree for polynomial to fit
-            - ``xCol`` -- name of x column
-            - ``yCol`` -- name of y column
-            - ``exponents_included`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+            - ``axisBDeg`` -- degree for polynomial to fit
+            - ``axisACol`` -- name of columns containing axis to be fitted
+            - ``axisBCol`` -- name of columns containing free axis (values known)
+            - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
 
         **Return:**
             - ``coeffs`` -- the coefficients of the polynomial fit
@@ -71,12 +71,12 @@ class _base_detect(object):
         self.log.debug('starting the ``fit_order_polynomial`` method')
 
         arm = self.arm
-        self.y_deg = y_deg
+        self.axisBDeg = axisBDeg
 
         clippedCount = 1
 
         poly = chebyshev_xy_polynomial(
-            log=self.log, yCol=yCol, y_deg=y_deg, exponents_included=exponents_included).poly
+            log=self.log, axisBCol=axisBCol, axisBDeg=self.axisBDeg, exponentsIncluded=exponentsIncluded).poly
 
         clippingSigma = self.recipeSettings[
             "poly-fitting-residual-clipping-sigma"]
@@ -93,12 +93,12 @@ class _base_detect(object):
             startCount = len(pixelListFiltered.index)
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((y_deg + 1))
+            coeff = np.ones((self.axisBDeg + 1))
             # NOTE X AND Y COLUMN ARE CORRECLY IN xdata AND ydata - WANT TO
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelListFiltered, ydata=pixelListFiltered[xCol].values, p0=coeff)
+                    poly, xdata=pixelListFiltered, ydata=pixelListFiltered[axisACol].values, p0=coeff)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 pixelList.drop(index=pixelList[mask].index, inplace=True)
@@ -110,9 +110,8 @@ class _base_detect(object):
             res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
                 orderPixelTable=pixelListFiltered,
                 coeff=coeff,
-                y_deg=y_deg,
-                xCol=xCol,
-                yCol=yCol)
+                axisACol=axisACol,
+                axisBCol=axisBCol)
 
             pixelList.loc[mask, "x_fit_res"] = res
             pixelList.loc[mask, "x_fit"] = xfit
@@ -137,20 +136,16 @@ class _base_detect(object):
     def fit_global_polynomial(
             self,
             pixelList,
-            y_deg,
-            order_deg,
-            xCol="cont_x",
-            yCol="cont_y",
+            axisACol="cont_x",
+            axisBCol="cont_y",
             orderCol="order",
-            exponents_included=False,
-            write_QCs=False):
-        """*iteratively fit the global polynomial to the data, clipping residuals with each iteration*
+            exponentsIncluded=False,
+            writeQCs=False):
+        """*iteratively fit the global polynomial to the data, fitting axisA as a function of axisB, clipping residuals with each iteration*
 
         **Key Arguments:**
             - ``pixelList`` -- data-frame group containing x,y pixel array
-            - ``y_deg`` -- degree for polynomial to fit y-values
-            - ``order_deg`` -- degree for polynomial to fit order-values
-            - ``exponents_included`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+            - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
 
         **Return:**
             - ``coeffs`` -- the coefficients of the polynomial fit
@@ -162,7 +157,7 @@ class _base_detect(object):
 
         clippedCount = 1
 
-        poly = chebyshev_order_xy_polynomials(log=self.log, yCol=yCol, orderCol=orderCol, order_deg=order_deg, y_deg=y_deg, exponents_included=exponents_included).poly
+        poly = chebyshev_order_xy_polynomials(log=self.log, axisBCol=axisBCol, orderCol=orderCol, orderDeg=self.orderDeg, axisBDeg=self.axisBDeg, axisB=self.axisB, exponentsIncluded=exponentsIncluded).poly
 
         clippingSigma = self.recipeSettings[
             "poly-fitting-residual-clipping-sigma"]
@@ -175,10 +170,10 @@ class _base_detect(object):
             startCount = len(pixelList.index)
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((self.yDeg + 1) * (self.orderDeg + 1))
+            coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelList, ydata=pixelList[xCol].values, p0=coeff)
+                    poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 coeff = None
@@ -189,14 +184,12 @@ class _base_detect(object):
             res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
                 orderPixelTable=pixelList,
                 coeff=coeff,
-                y_deg=y_deg,
-                order_deg=order_deg,
                 orderCol=orderCol,
-                xCol=xCol,
-                yCol=yCol)
+                axisACol=axisACol,
+                axisBCol=axisBCol)
 
-            pixelList[f"{xCol}_fit_res"] = res
-            pixelList[f"{xCol}_fit"] = xfit
+            pixelList[f"{axisACol}_fit_res"] = res
+            pixelList[f"{axisACol}_fit"] = xfit
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
@@ -215,12 +208,10 @@ class _base_detect(object):
         res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
             orderPixelTable=pixelList,
             coeff=coeff,
-            y_deg=y_deg,
-            order_deg=order_deg,
             orderCol=orderCol,
-            xCol=xCol,
-            yCol=yCol,
-            write_QCs=write_QCs)
+            axisACol=axisACol,
+            axisBCol=axisBCol,
+            writeQCs=writeQCs)
 
         self.log.debug('completed the ``fit_global_polynomial`` method')
         return coeff, pixelList
@@ -229,23 +220,19 @@ class _base_detect(object):
             self,
             orderPixelTable,
             coeff,
-            y_deg,
-            xCol,
-            yCol,
+            axisACol,
+            axisBCol,
             orderCol=False,
-            order_deg=False,
-            write_QCs=False):
+            writeQCs=False):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
             - ``orderPixelTable`` -- data-frame containing pixel list for given order
             - ``coeff`` -- the coefficients of the fitted polynomial
-            - ``y_deg`` -- degree for polynomial to fit y-values
-            - ``xCol`` -- name of x-pixel column
-            - ``yCol`` -- name of y-pixel column
+            - ``axisACol`` -- name of x-pixel column
+            - ``axisBCol`` -- name of y-pixel column
             - ``orderCol`` -- name of the order column (global fits only)
-            - ``order_deg`` -- degree for polynomial to fit order-values (global fits only)
-            - ``write_QCs`` -- write the QCs to dataframe? Default *False*
+            - ``writeQCs`` -- write the QCs to dataframe? Default *False*
 
         **Return:**
             - ``res`` -- x residuals
@@ -259,13 +246,13 @@ class _base_detect(object):
         arm = self.arm
 
         poly = chebyshev_order_xy_polynomials(
-            log=self.log, yCol=yCol, orderCol=orderCol, order_deg=self.orderDeg, y_deg=self.yDeg).poly
+            log=self.log, axisBCol=axisBCol, orderCol=orderCol, orderDeg=self.orderDeg, axisBDeg=self.axisBDeg).poly
 
         # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
         # FITTED POSITIONS
         xfit = poly(
             orderPixelTable, *coeff)
-        res = xfit - orderPixelTable[xCol].values
+        res = xfit - orderPixelTable[axisACol].values
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueorders = len(orderPixelTable['order'].unique())
@@ -275,7 +262,7 @@ class _base_detect(object):
         res_std = np.ma.std(res)
         res_median = np.ma.median(res)
 
-        if write_QCs:
+        if writeQCs:
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -456,6 +443,7 @@ class detect_continuum(_base_detect):
         ).get
         self.arm = pinholeFlat.header[self.kw("SEQ_ARM")]
         self.dateObs = pinholeFlat.header[self.kw("DATE_OBS")]
+        self.inst = pinholeFlat.header[self.kw("INSTRUME")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
@@ -464,7 +452,10 @@ class detect_continuum(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        self.yDeg = self.recipeSettings["y-deg"]
+        if self.inst == "SOXS":
+            self.axisBDeg = self.recipeSettings["x-deg"]
+        elif self.inst == "XSHOOTER":
+            self.axisBDeg = self.recipeSettings["y-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 
         return None
@@ -494,12 +485,27 @@ class detect_continuum(_base_detect):
         self.sliceLength = self.recipeSettings["slice-length"]
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
 
+        if self.inst == "SOXS":
+            self.axisA = "y"
+            self.axisB = "x"
+            coeff_dict = {"degorder_cent": self.orderDeg,
+                          "degx_cent": self.axisBDeg}
+
+        elif self.inst == "XSHOOTER":
+            self.axisA = "x"
+            self.axisB = "y"
+            coeff_dict = {"degorder_cent": self.orderDeg,
+                          "degy_cent": self.axisBDeg}
+
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
-        orderPixelTable['cont_x'] = np.nan
-        orderPixelTable['cont_y'] = np.nan
+        orderPixelTable[f'cont_{self.axisA}'] = np.nan
+        orderPixelTable[f'cont_{self.axisB}'] = np.nan
 
         # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
         # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
         allLines = len(orderPixelTable.index)
@@ -515,12 +521,12 @@ class detect_continuum(_base_detect):
         uniqueOrders = orderPixelTable['order'].unique()
 
         orderLocations = {}
-        orderPixelTable['cont_x_fit'] = np.nan
-        orderPixelTable['cont_x_fit_res'] = np.nan
+        orderPixelTable[f'cont_{self.axisA}_fit'] = np.nan
+        orderPixelTable[f'cont_{self.axisA}_fit_res'] = np.nan
 
         # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
-        for i in range(0, self.yDeg + 1):
-            orderPixelTable[f"y_pow_{i}"] = orderPixelTable["cont_y"].pow(i)
+        for i in range(0, self.axisBDeg + 1):
+            orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"cont_{self.axisB}"].pow(i)
         for i in range(0, self.orderDeg + 1):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
@@ -529,35 +535,31 @@ class detect_continuum(_base_detect):
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         coeff, orderPixelTable = self.fit_global_polynomial(
             pixelList=orderPixelTable,
-            y_deg=self.yDeg,
-            order_deg=self.orderDeg,
-            exponents_included=True,
-            write_QCs=True
+            axisACol=f"cont_{self.axisA}",
+            axisBCol=f"cont_{self.axisB}",
+            exponentsIncluded=True,
+            writeQCs=True
         )
 
-        # orderLocations[o] = coeff
-        coeff_dict = {"degorder_cent": self.orderDeg,
-                      "degy_cent": self.yDeg}
         n_coeff = 0
         for i in range(0, self.orderDeg + 1):
-            for j in range(0, self.yDeg + 1):
+            for j in range(0, self.axisBDeg + 1):
                 coeff_dict[f'cent_{i}{j}'] = coeff[n_coeff]
                 n_coeff += 1
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         coeff, orderPixelTable = self.fit_global_polynomial(
             pixelList=orderPixelTable,
-            y_deg=self.yDeg,
-            order_deg=self.orderDeg,
-            exponents_included=True,
-            xCol="stddev"
+            axisACol="stddev",
+            axisBCol=f"cont_{self.axisB}",
+            exponentsIncluded=True
         )
         # orderLocations[o] = coeff
         coeff_dict["degorder_std"] = self.orderDeg,
-        coeff_dict["degy_std"] = self.yDeg
+        coeff_dict[f"deg{self.axisB}_std"] = self.axisBDeg
         n_coeff = 0
         for i in range(0, self.orderDeg + 1):
-            for j in range(0, self.yDeg + 1):
+            for j in range(0, self.axisBDeg + 1):
                 coeff_dict[f'std_{i}{j}'] = coeff[n_coeff]
                 n_coeff += 1
         coeffColumns = coeff_dict.keys()
@@ -596,8 +598,8 @@ class detect_continuum(_base_detect):
             "file_path": plotPath
         }, ignore_index=True)
 
-        mean_res = np.mean(np.abs(orderPixelTable['cont_x_fit_res'].values))
-        std_res = np.std(np.abs(orderPixelTable['cont_x_fit_res'].values))
+        mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+        std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
         order_table_path = self.write_order_table_to_file(
@@ -648,15 +650,23 @@ class detect_continuum(_base_detect):
             removeOffDetectorLocation=False
         )
         orderPixelRanges = []
+        if self.inst == "SOXS":
+            axis = "x"
+            rowCol = "columns"
+        else:
+            axis = "y"
+            rowCol = "rows"
+
         for o in orderNums:
-            ymin = orderPixelTable.loc[orderPixelTable["order"] == o, "fit_y"].min()
-            ymax = orderPixelTable.loc[orderPixelTable["order"] == o, "fit_y"].max()
-            if ymin < 0:
-                ymin = 0
-            if ymax > self.detectorParams["science-pixels"]["rows"]["end"]:
-                ymax = self.detectorParams["science-pixels"]["rows"]["end"]
-            yrange = ymax - ymin
-            orderPixelRanges.append(yrange)
+            amin = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].min()
+            amax = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].max()
+            if amin < 0:
+                amin = 0
+            if amax > self.detectorParams["science-pixels"][rowCol]["end"]:
+                amax = self.detectorParams["science-pixels"][rowCol]["end"]
+
+            arange = amax - amin
+            orderPixelRanges.append(arange)
 
         smallestRange = min(orderPixelRanges)
         samplePixelSep = int(smallestRange / sampleCount)
@@ -703,12 +713,19 @@ class detect_continuum(_base_detect):
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
         halfSlice = self.sliceLength / 2
 
-        slice, x_offset, y_centre = cut_image_slice(log=self.log, frame=self.pinholeFlat,
-                                                    width=1, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], median=True, plot=False)
+        if self.inst == "SOXS":
+            sliceAxis = "y"
+            sliceAntiAxis = "x"
+        else:
+            sliceAxis = "x"
+            sliceAntiAxis = "y"
+
+        slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.pinholeFlat,
+                                                                         width=1, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
 
         if slice is None:
-            pixelPostion["cont_x"] = np.nan
-            pixelPostion["cont_y"] = np.nan
+            pixelPostion[f"cont_{self.axisA}"] = np.nan
+            pixelPostion[f"cont_{self.axisB}"] = np.nan
             return pixelPostion
 
         # CHECK THE SLICE POINTS IF NEEDED
@@ -726,8 +743,8 @@ class detect_continuum(_base_detect):
         std_r = mad_std(slice)
 
         if not median_r:
-            pixelPostion["cont_x"] = np.nan
-            pixelPostion["cont_y"] = np.nan
+            pixelPostion[f"cont_{self.axisA}"] = np.nan
+            pixelPostion[f"cont_{self.axisB}"] = np.nan
             return pixelPostion
 
         peaks, _ = find_peaks(slice, height=median_r +
@@ -743,8 +760,8 @@ class detect_continuum(_base_detect):
                 plt.xlabel('Position')
                 plt.ylabel('Flux')
                 plt.show()
-            pixelPostion["cont_x"] = np.nan
-            pixelPostion["cont_y"] = np.nan
+            pixelPostion[f"cont_{self.axisA}"] = np.nan
+            pixelPostion[f"cont_{self.axisB}"] = np.nan
             return pixelPostion
 
         # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
@@ -756,21 +773,21 @@ class detect_continuum(_base_detect):
 
         # NOW FIT
         g = fit_g(g_init, np.arange(0, len(slice)), slice)
-        pixelPostion["cont_x"] = g.mean.value + \
-            max(0, x_offset)
-        pixelPostion["cont_y"] = y_centre
+        pixelPostion[f"cont_{sliceAxis}"] = g.mean.value + \
+            max(0, slice_length_offset)
+        pixelPostion[f"cont_{sliceAntiAxis}"] = slice_width_centre
         pixelPostion["amplitude"] = g.amplitude.value
         pixelPostion["stddev"] = g.stddev.value
 
         # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAYED
-        if 1 == 0 and random() < 0.02 and pixelPostion["order"] == 11:
+        if 1 == 1 and random() < 0.02 and pixelPostion["order"] == 11:
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
             plt.xlabel('Position')
             plt.ylabel('Flux')
             gaussx = np.arange(0, max(x), 0.05)
-            plt.plot(gaussx, g(gaussx), label=f'Mean = {g.mean.value:0.2f}, std = {g.stddev.value:0.2f}, cont_x = {pixelPostion["cont_x"]:0.2f}, fit_x = {pixelPostion["fit_x"]:0.2f},cont_y = {pixelPostion["cont_y"]:0.2f},fit_y = {pixelPostion["fit_y"]:0.2f}')
+            plt.plot(gaussx, g(gaussx), label=f'Mean = {g.mean.value:0.2f}, std = {g.stddev.value:0.2f}, cont_{self.axisA} = {pixelPostion[f"cont_{self.axisA}"]:0.2f}, fit_{self.axisA} = {pixelPostion[f"fit_{self.axisA}"]:0.2f},cont_{self.axisB} = {pixelPostion[f"cont_{self.axisB}"]:0.2f},fit_y = {pixelPostion[f"fit_{self.axisB}"]:0.2f}')
             plt.legend()
             plt.show()
 
@@ -796,50 +813,64 @@ class detect_continuum(_base_detect):
         arm = self.arm
 
         # a = plt.figure(figsize=(40, 15))
-        if arm == "UVB":
+        if arm == "UVB" or self.inst == "SOXS":
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
+            # CREATE THE GID OF AXES
+            gs = fig.add_gridspec(6, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:5, 0:2])
+            bottomright = fig.add_subplot(gs[4:5, 2:])
+            fwhmaxis = fig.add_subplot(gs[5:6, :])
         else:
             fig = plt.figure(figsize=(6, 12), constrained_layout=True)
-        gs = fig.add_gridspec(7, 4)
-
-        # CREATE THE GID OF AXES
-        toprow = fig.add_subplot(gs[0:2, :])
-        midrow = fig.add_subplot(gs[2:4, :])
-        bottomleft = fig.add_subplot(gs[4:6, 0:2])
-        bottomright = fig.add_subplot(gs[4:6, 2:])
-        fwhmaxis = fig.add_subplot(gs[6:7, :])
+            # CREATE THE GID OF AXES
+            gs = fig.add_gridspec(7, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:6, 0:2])
+            bottomright = fig.add_subplot(gs[4:6, 2:])
+            fwhmaxis = fig.add_subplot(gs[6:7, :])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = np.flipud(np.rot90(self.pinholeFlat.data, 1))
+        rotatedImg = self.pinholeFlat.data
+        if self.axisA == "x":
+            rotatedImg = np.rot90(rotatedImg, 1)
+            rotatedImg = np.flipud(rotatedImg)
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
-
-        x = orderPixelTable['cont_x'].values
         toprow.scatter(orderPixelTable[
-                       'cont_y'].values, x, marker='o', c='red', s=1, alpha=0.6)
+                       f'cont_{self.axisB}'].values, orderPixelTable[f'cont_{self.axisA}'].values, marker='o', c='red', s=1, alpha=0.6)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
 
-        toprow.set_ylabel("x-axis", fontsize=10)
-        toprow.set_xlabel("y-axis", fontsize=10)
+        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.invert_yaxis()
+        if self.axisA == "x":
+            toprow.invert_yaxis()
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         midrow.set_title(
             "order-location fit solutions", fontsize=10)
-        ylinelist = np.arange(0, self.pinholeFlat.data.shape[0], 3)
+        if self.axisB == "y":
+            axisALength = self.pinholeFlat.data.shape[1]
+            axisBLength = self.pinholeFlat.data.shape[0]
+        elif self.axisB == "x":
+            axisALength = self.pinholeFlat.data.shape[0]
+            axisBLength = self.pinholeFlat.data.shape[1]
+        axisBlinelist = np.arange(0, axisBLength, 3)
 
         poly = chebyshev_order_xy_polynomials(
-            log=self.log, yCol="y", orderCol="order", order_deg=self.orderDeg, y_deg=self.yDeg).poly
+            log=self.log, axisBCol=self.axisB, orderCol="order", orderDeg=self.orderDeg, axisBDeg=self.axisBDeg).poly
         for index, row in orderPolyTable.iterrows():
             cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
             std_coeff = [float(v) for k, v in row.items() if "std_" in k]
         uniqueOrders = orderPixelTable['order'].unique()
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-        myDict = {"y": ylinelist}
+        myDict = {f"{self.axisB}": axisBlinelist}
         df = pd.DataFrame(myDict)
         ymin = []
         ymax = []
@@ -850,7 +881,7 @@ class detect_continuum(_base_detect):
             xfit = poly(df, *cent_coeff)
             stdfit = poly(df, *std_coeff)
             xfit, yfit, stdfit, lower, upper = zip(
-                *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, ylinelist, stdfit) if x > 0 and x < (self.pinholeFlat.data.shape[1]) - 10])
+                *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
             # lower = xfit - 3 * stdfit
             # upper = xfit + 3 * stdfit
             c = midrow.plot(yfit, xfit, linewidth=0.7)
@@ -858,19 +889,17 @@ class detect_continuum(_base_detect):
 
             ymin.append(min(yfit))
             ymax.append(max(yfit))
-            xmin.append(self.pinholeFlat.data.shape[1] - max(xfit))
-            xmax.append(self.pinholeFlat.data.shape[1] - min(xfit))
+            xmin.append(axisALength - max(xfit))
+            xmax.append(axisALength - min(xfit))
             midrow.text(yfit[10], xfit[10] + 10, int(o), fontsize=6, c="white", verticalalignment='bottom')
-        midrow.invert_yaxis()
-        midrow.set_ylim(0, self.pinholeFlat.data.shape[1])
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         orderMetaTable = {
             "order": uniqueOrders,
-            "ymin": ymin,
-            "ymax": ymax,
-            "xmin": xmin,
-            "xmax": xmax,
+            f"{self.axisB}min": ymin,
+            f"{self.axisB}max": ymax,
+            f"{self.axisA}min": xmin,
+            f"{self.axisA}max": xmax,
         }
         orderMetaTable = pd.DataFrame(orderMetaTable)
 
@@ -879,35 +908,45 @@ class detect_continuum(_base_detect):
         # midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
         # midrow.set_yticklabels([])
         # midrow.set_xticklabels([])
-        midrow.set_ylabel("x-axis", fontsize=10)
-        midrow.set_xlabel("y-axis", fontsize=10)
+        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
+
+        if self.axisA == "x":
+            midrow.invert_yaxis()
+            midrow.set_ylim(0, axisALength)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomleft.scatter(orderPixelTable['cont_x'].values, orderPixelTable[
-                           'cont_x_fit_res'].values, alpha=0.2, s=1)
-        bottomleft.set_xlabel('x pixel position', fontsize=10)
-        bottomleft.set_ylabel('x residual', fontsize=10)
+        bottomleft.scatter(orderPixelTable[f'cont_{self.axisA}'].values, orderPixelTable[
+                           f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1)
+        bottomleft.set_xlabel(f'{self.axisA} pixel position', fontsize=10)
+        bottomleft.set_ylabel(f'{self.axisA} residual', fontsize=10)
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomright.scatter(orderPixelTable['cont_y'].values, orderPixelTable[
-                            'cont_x_fit_res'].values, alpha=0.2, s=1)
-        bottomright.set_xlabel('y pixel position', fontsize=10)
+        bottomright.scatter(orderPixelTable[f'cont_{self.axisB}'].values, orderPixelTable[
+                            f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1)
+        bottomright.set_xlabel(f'{self.axisB} pixel position', fontsize=10)
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         # bottomright.set_ylabel('x residual')
         bottomright.set_yticklabels([])
 
         stdToFwhm = 2 * (2 * math.log(2))**0.5
         fwhmaxis.scatter(orderPixelTable['wavelength'].values, orderPixelTable['stddev_fit'].values * stdToFwhm, alpha=0.2, s=1)
-        fwhmaxis.set_xlabel('wavelegth (nm)', fontsize=10)
+        fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
         fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
         fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)
 
-        mean_res = np.mean(np.abs(orderPixelTable['cont_x_fit_res'].values))
-        std_res = np.std(np.abs(orderPixelTable['cont_x_fit_res'].values))
+        print(stdToFwhm)
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable.head(10), headers='keys', tablefmt='psql'))
+
+        sys.exit(0)
+
+        mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+        std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)

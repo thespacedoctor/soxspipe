@@ -20,6 +20,7 @@ from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import set_of_files
 from ccdproc import Combiner
+from contextlib import suppress
 from astropy.nddata.nduncertainty import StdDevUncertainty
 import pandas as pd
 from soxspipe.commonutils import subtract_background
@@ -348,7 +349,7 @@ class _base_recipe_(object):
             verbose=self.verbose
         )
         preframes, supplementaryInput = sof.get()
-        preframes.sort([kw('MJDOBS').lower()])
+        preframes.sort([kw('MJDOBS')])
 
         print("# PREPARED FRAMES - SUMMARY")
         columns = preframes.summary.colnames
@@ -380,7 +381,20 @@ class _base_recipe_(object):
                 "No image frames where passed to the recipe")
 
         arm = self.inputFrames.values(
-            keyword=kw("SEQ_ARM").lower(), unique=True)
+            keyword=kw("SEQ_ARM"), unique=True)
+
+        inst = self.inputFrames.values(kw("INSTRUME"), unique=True)
+        with suppress(ValueError):
+            inst.remove(None)
+        self.inst = inst[0]
+
+        if self.inst == "SOXS":
+            self.axisA = "y"
+            self.axisB = "x"
+        elif self.inst == "XSHOOTER":
+            self.axisA = "x"
+            self.axisB = "y"
+
         # MIXED INPUT ARMS ARE BAD
         if len(arm) > 1:
             arms = " and ".join(arm)
@@ -404,9 +418,9 @@ class _base_recipe_(object):
             cdelt2 = [1]
         else:
             cdelt1 = self.inputFrames.values(
-                keyword=kw("CDELT1").lower(), unique=True)
+                keyword=kw("CDELT1"), unique=True)
             cdelt2 = self.inputFrames.values(
-                keyword=kw("CDELT2").lower(), unique=True)
+                keyword=kw("CDELT2"), unique=True)
             try:
                 cdelt1.remove(None)
                 cdelt2.remove(None)
@@ -422,8 +436,8 @@ class _base_recipe_(object):
 
         # MIXED READOUT SPEEDS IS BAD
         readSpeed = self.inputFrames.values(
-            keyword=kw("DET_READ_SPEED").lower(), unique=True)
-        from contextlib import suppress
+            keyword=kw("DET_READ_SPEED"), unique=True)
+
         with suppress(ValueError):
             readSpeed.remove(None)
 
@@ -437,13 +451,14 @@ class _base_recipe_(object):
         # CONAD IS REALLY GAIN AND HAS UNIT OF Electrons/ADU
         if self.settings["instrument"] == "xsh":
             gain = self.inputFrames.values(
-                keyword=kw("CONAD").lower(), unique=True)
+                keyword=kw("CONAD"), unique=True)
         else:
             gain = self.inputFrames.values(
-                keyword=kw("GAIN").lower(), unique=True)
+                keyword=kw("GAIN"), unique=True)
 
         with suppress(ValueError):
             gain.remove(None)
+
         if len(gain) > 1:
             print(self.inputFrames.summary)
             raise TypeError(
@@ -458,7 +473,7 @@ class _base_recipe_(object):
 
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
         ron = self.inputFrames.values(
-            keyword=kw("RON").lower(), unique=True)
+            keyword=kw("RON"), unique=True)
         with suppress(ValueError):
             ron.remove(None)
 
@@ -475,14 +490,14 @@ class _base_recipe_(object):
                 "ron"] * u.electron
 
         imageTypes = self.inputFrames.values(
-            keyword=kw("DPR_TYPE").lower(), unique=True) + self.inputFrames.values(
-            keyword=kw("PRO_TYPE").lower(), unique=True)
+            keyword=kw("DPR_TYPE"), unique=True) + self.inputFrames.values(
+            keyword=kw("PRO_TYPE"), unique=True)
         imageTech = self.inputFrames.values(
-            keyword=kw("DPR_TECH").lower(), unique=True) + self.inputFrames.values(
-            keyword=kw("PRO_TECH").lower(), unique=True)
+            keyword=kw("DPR_TECH"), unique=True) + self.inputFrames.values(
+            keyword=kw("PRO_TECH"), unique=True)
         imageCat = self.inputFrames.values(
-            keyword=kw("DPR_CATG").lower(), unique=True) + self.inputFrames.values(
-            keyword=kw("PRO_CATG").lower(), unique=True)
+            keyword=kw("DPR_CATG"), unique=True) + self.inputFrames.values(
+            keyword=kw("PRO_CATG"), unique=True)
 
         def clean_list(myList):
             myList = list(set(myList))
@@ -551,7 +566,7 @@ class _base_recipe_(object):
         # NP ROTATION OF ARRAYS IS IN COUNTER-CLOCKWISE DIRECTION
         rotationIndex = int(dp["clockwise-rotation"] / 90.)
 
-        if self.settings["instrument"] == "xsh" and rotationIndex > 0:
+        if rotationIndex > 0:
             frame.data = np.rot90(frame.data, rotationIndex)
 
         self.log.debug('completed the ``xsh2soxs`` method')
@@ -711,9 +726,9 @@ class _base_recipe_(object):
         else:
             ccds = frames
 
-        imageType = ccds[0].header[kw("DPR_TYPE").lower()].replace(",", "-")
-        imageTech = ccds[0].header[kw("DPR_TECH").lower()].replace(",", "-")
-        imageCat = ccds[0].header[kw("DPR_CATG").lower()].replace(",", "-")
+        imageType = ccds[0].header[kw("DPR_TYPE")].replace(",", "-")
+        imageTech = ccds[0].header[kw("DPR_TECH")].replace(",", "-")
+        imageCat = ccds[0].header[kw("DPR_CATG")].replace(",", "-")
 
         print(f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
 

@@ -9,15 +9,135 @@
 :Date Created:
     January 22, 2020
 """
+import os
+import sys
+from builtins import object
+from fundamentals import tools
+from astropy.io import fits
 from astropy.table import Table, join, hstack
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
 import codecs
 from ccdproc import ImageFileCollection
-from astropy.io import fits
-from fundamentals import tools
-from builtins import object
-import sys
-import os
+
+
+from collections import OrderedDict
+from os import listdir, path
+
+
+class ImageFileCollection(ImageFileCollection):
+    def _dict_from_fits_header(self, file_name, input_summary=None,
+                               missing_marker=None):
+        """
+        Construct an ordered dictionary whose keys are the header keywords
+        and values are a list of the values from this file and the input
+        dictionary. If the input dictionary is ordered then that order is
+        preserved.
+
+        Parameters
+        ----------
+        file_name : str
+            Name of FITS file.
+
+        input_summary : dict or None, optional
+            Existing dictionary to which new values should be appended.
+            Default is ``None``.
+
+        missing_marker : any type, optional
+            Fill value for missing header-keywords.
+            Default is ``None``.
+
+        Returns
+        -------
+        file_table : `~astropy.table.Table`
+        """
+
+        def _add_val_to_dict(key, value, tbl_dict, n_previous, missing_marker):
+            try:
+                tbl_dict[key].append(value)
+            except KeyError:
+                tbl_dict[key] = [missing_marker] * n_previous
+                tbl_dict[key].append(value)
+
+        if input_summary is None:
+            summary = OrderedDict()
+            n_previous = 0
+        else:
+            summary = input_summary
+            n_previous = len(summary['file'])
+
+        h = fits.getheader(file_name, self.ext)
+
+        assert 'file' not in h
+
+        if self.location:
+            # We have a location and can reconstruct the path using it
+            name_for_file_column = path.basename(file_name)
+        else:
+            # No location, so use whatever path the user passed in
+            name_for_file_column = file_name
+
+        # Try opening header before this so that file name is only added if
+        # file is valid FITS
+        try:
+            summary['file'].append(name_for_file_column)
+        except KeyError:
+            summary['file'] = [name_for_file_column]
+
+        missing_in_this_file = [k for k in summary if (k not in h and
+                                                       k != 'file')]
+
+        multi_entry_keys = {'comment': [],
+                            'history': []}
+
+        alreadyencountered = set()
+        for k, v in h.items():
+            if k == '':
+                continue
+
+            if k in ['comment', 'history']:
+                multi_entry_keys[k].append(str(v))
+                # Accumulate these in a separate dictionary until the
+                # end to avoid adding multiple entries to summary.
+                continue
+            elif k in alreadyencountered:
+                # The "normal" multi-entries HISTORY, COMMENT and BLANK are
+                # already processed so any further duplication is probably
+                # a mistake. It would lead to problems in ImageFileCollection
+                # to add it as well, so simply ignore those.
+                warnings.warn(
+                    'Header from file "{f}" contains multiple entries for '
+                    '"{k}", the pair "{k}={v}" will be ignored.'
+                    ''.format(k=k, v=v, f=file_name),
+                    UserWarning)
+                continue
+            else:
+                # Add the key to the already encountered keys so we don't add
+                # it more than once.
+                alreadyencountered.add(k)
+
+            _add_val_to_dict(k, v, summary, n_previous, missing_marker)
+
+        for k, v in multi_entry_keys.items():
+            if v:
+                joined = ','.join(v)
+                _add_val_to_dict(k, joined, summary, n_previous,
+                                 missing_marker)
+
+        for missing in missing_in_this_file:
+            summary[missing].append(missing_marker)
+
+        return summary
+
+    def _set_column_name_case_to_match_keywords(self, header_keys, summary_table):
+        for k in header_keys:
+            k_lower = k.lower()
+            if k_lower != k:
+                try:
+                    summary_table.rename_column(k_lower, k)
+                except KeyError:
+                    pass
+
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -82,8 +202,8 @@ class set_of_files(object):
 
         keys = kw(keys)
         self.keys = []
-        self.keys[:] = [k.lower() for k in keys]
-
+        self.keys[:] = [k for k in keys]
+        self.keys.append("file")
         # Initial Actions
         # FIX RELATIVE HOME PATHS
         from os.path import expanduser
@@ -210,14 +330,19 @@ class set_of_files(object):
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
             sof = ImageFileCollection(
-                self.inputFrames, ext=self.ext)
+                self.inputFrames, keywords=self.keys, ext=self.ext)
             if self.ext > 0:
+                foundKeys = [
+                    k for k in self.keys if k in sof.summary.colnames]
+                sof = ImageFileCollection(
+                    filenames=fitsFiles, keywords=foundKeys, location=location, ext=self.ext)
                 missingKeys = [
-                    k for k in self.keys if k not in sof.summary.colnames]
-                primExt = ImageFileCollection(
-                    filenames=fitsFiles, keywords=missingKeys, ext=0)
-                sof._summary = join(
-                    primExt._summary, sof._summary, keys="file")
+                    k for k in self.keys if (k.lower() not in sof.summary.colnames and k not in sof.summary.colnames)]
+                if len(missingKeys):
+                    primExt = ImageFileCollection(
+                        filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                    sof._summary = join(
+                        primExt._summary, sof._summary, keys="file")
 
             supplementaryFilepaths = []
             for d in os.listdir(self.inputFrames):
@@ -254,15 +379,24 @@ class set_of_files(object):
                     f) for f in fitsFiles]
             else:
                 location = None
-            sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, ext=self.ext)
+
             if self.ext > 0:
+                sofSeed = ImageFileCollection(
+                    filenames=fitsFiles, location=location, ext=self.ext)
+                foundKeys = [
+                    k for k in self.keys if (k.lower() in sofSeed.summary.colnames or k in sofSeed.summary.colnames)]
+                sof = ImageFileCollection(
+                    filenames=fitsFiles, keywords=foundKeys, location=location, ext=self.ext)
                 missingKeys = [
-                    k for k in self.keys if k not in sof.summary.colnames]
-                primExt = ImageFileCollection(
-                    filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
-                sof._summary = join(
-                    primExt._summary, sof._summary, keys="file")
+                    k for k in self.keys if (k.lower() not in sofSeed.summary.colnames and k not in sofSeed.summary.colnames)]
+                if len(missingKeys):
+                    primExt = ImageFileCollection(
+                        filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                    sof._summary = join(
+                        primExt._summary, sof._summary, keys="file")
+            else:
+                sof = ImageFileCollection(
+                    filenames=fitsFiles, keywords=self.keys, location=location, ext=self.ext)
 
         elif isinstance(self.inputFrames, list):
             fitsFiles = [f for f in self.inputFrames if ".fits" in f.lower()]
@@ -275,14 +409,20 @@ class set_of_files(object):
             else:
                 location = None
             sof = ImageFileCollection(
-                filenames=fitsFiles, location=location, ext=self.ext)
+                filenames=fitsFiles, keywords=self.keys, location=location, ext=self.ext)
+
             if self.ext > 0:
+                foundKeys = [
+                    k for k in self.keys if (k.lower() in sof.summary.colnames or k in sof.summary.colnames)]
+                sof = ImageFileCollection(
+                    filenames=fitsFiles, keywords=foundKeys, location=location, ext=self.ext)
                 missingKeys = [
-                    k for k in self.keys if k not in sof.summary.colnames]
-                primExt = ImageFileCollection(
-                    filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
-                sof._summary = join(
-                    primExt._summary, sof._summary, keys="file")
+                    k for k in self.keys if (k.lower() not in sof.summary.colnames and k not in sof.summary.colnames)]
+                if len(missingKeys):
+                    primExt = ImageFileCollection(
+                        filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                    sof._summary = join(
+                        primExt._summary, sof._summary, keys="file")
             fitsFiles = [os.path.basename(
                 f) for f in fitsFiles]
             sof._summary["filename"] = fitsFiles
@@ -293,8 +433,6 @@ class set_of_files(object):
         else:
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths")
-
-        sof.keywords = self.keys
 
         supplementary_sof = self.create_supplimentary_file_dictionary(
             supplementaryFilepaths)

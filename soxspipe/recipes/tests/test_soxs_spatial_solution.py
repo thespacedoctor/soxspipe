@@ -23,6 +23,19 @@ su = tools(
 )
 arguments, settings, log, dbConn = su.setup()
 
+packageDirectory = utKit("").get_project_root()
+settingsFile2 = packageDirectory + "/test_settings_soxs_sim.yaml"
+# settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
+su = tools(
+    arguments={"settingsFile": settingsFile2},
+    docString=__doc__,
+    logLevel="DEBUG",
+    options_first=False,
+    projectName=None,
+    defaultSettingsFile=False
+)
+arguments2, settings2, log2, dbConn2 = su.setup()
+
 # SETUP AND TEARDOWN FIXTURE FUNCTIONS FOR THE ENTIRE MODULE
 moduleDirectory = os.path.dirname(__file__)
 utKit = utKit(moduleDirectory)
@@ -45,15 +58,25 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_spatial_solution(unittest.TestCase):
 
-    # def test_soxs_spatial_solution_nir_function(self):
-    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_NIR_SPAT_SOLUTION.sof"
-    #     from soxspipe.recipes import soxs_spatial_solution
-    #     this = soxs_spatial_solution(
-    #         log=log,
-    #         settings=settings,
-    #         inputFrames=sofPath
-    #     )
-    #     this.produce_product()
+    def test_soxs_spatial_solution_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/MPH_ARC/sof/SOXSIM_MPH_ARC.sof"
+        from soxspipe.recipes import soxs_spatial_solution
+        this = soxs_spatial_solution(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+    def test_soxs_spatial_solution_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_NIR_SPAT_SOLUTION.sof"
+        from soxspipe.recipes import soxs_spatial_solution
+        this = soxs_spatial_solution(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
 
     # def test_soxs_spatial_solution_uvb_function(self):
 

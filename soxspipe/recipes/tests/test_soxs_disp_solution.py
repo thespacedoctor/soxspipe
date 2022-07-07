@@ -24,6 +24,19 @@ su = tools(
 )
 arguments, settings, log, dbConn = su.setup()
 
+packageDirectory = utKit("").get_project_root()
+settingsFile2 = packageDirectory + "/test_settings_soxs_sim.yaml"
+# settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
+su = tools(
+    arguments={"settingsFile": settingsFile2},
+    docString=__doc__,
+    logLevel="DEBUG",
+    options_first=False,
+    projectName=None,
+    defaultSettingsFile=False
+)
+arguments2, settings2, log2, dbConn2 = su.setup()
+
 # SETUP AND TEARDOWN FIXTURE FUNCTIONS FOR THE ENTIRE MODULE
 moduleDirectory = os.path.dirname(__file__)
 utKit = utKit(moduleDirectory)
@@ -46,6 +59,16 @@ if not os.path.exists(pathToOutputDir):
 
 
 class test_soxs_disp_solution(unittest.TestCase):
+
+    def test_soxs_sim_disp_solution_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/disp-solution/sof/NIR_DISP_SOLUTION.sof"
+        from soxspipe.recipes import soxs_disp_solution
+        disp_map_path = soxs_disp_solution(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath
+        ).produce_product()
+        print(f"Here is the final product `{disp_map_path}`")
 
     def test_soxs_disp_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-disp-solution/sof/20170818_NIR_DISP_SOLUTION.sof"

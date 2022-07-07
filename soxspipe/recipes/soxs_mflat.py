@@ -44,7 +44,7 @@ class soxs_mflat(_base_recipe_):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
-        - ``verbose`` -- verbose. True or False. Default *False*  
+        - ``verbose`` -- verbose. True or False. Default *False*
 
     **Usage**
 
@@ -93,7 +93,8 @@ class soxs_mflat(_base_recipe_):
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
-            inputFrames=self.inputFrames
+            inputFrames=self.inputFrames,
+            ext=self.settings['data-extension']
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -105,7 +106,7 @@ class soxs_mflat(_base_recipe_):
         print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
-        self.inputFrames.sort(['mjd-obs'])
+        self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
             print("# RAW INPUT FRAMES - SUMMARY")
             print(self.inputFrames.summary, "\n")
@@ -146,7 +147,7 @@ class soxs_mflat(_base_recipe_):
             for i in imageTech:
                 if i not in ['ECHELLE,SLIT', 'IMAGE']:
                     raise TypeError(
-                        "Input frames for soxspipe mflat need to be slit flat lamp on and lamp off frames for NIR" % locals())
+                        f"Input frames for soxspipe mflat need to be slit flat lamp on and lamp off frames for NIR. You have provided {imageTech}" % locals())
 
         else:
             for i in imageTypes:
@@ -180,11 +181,10 @@ class soxs_mflat(_base_recipe_):
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats = self.calibrate_frame_set()
 
-        quicklook_image(
-            log=self.log, CCDObject=calibratedFlats[0], show=False)
+        quicklook_image(log=self.log, CCDObject=calibratedFlats[0], show=False, ext="Data", surfacePlot=True, title="Single bias and/or dark subtracted flat frame")
 
         # FIND THE ORDER TABLE
-        filterDict = {kw("PRO_CATG").lower(): f"ORDER_TAB_{arm}"}
+        filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
         orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
         # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
@@ -192,15 +192,13 @@ class soxs_mflat(_base_recipe_):
         normalisedFlats = self.normalise_flats(
             calibratedFlats, orderTablePath=orderTablePath)
 
-        quicklook_image(
-            log=self.log, CCDObject=normalisedFlats[0], show=False)
+        quicklook_image(log=self.log, CCDObject=normalisedFlats[0], show=False, ext=True, surfacePlot=True, title="Single normalised flat frame")
 
         # STACK THE NORMALISED FLAT FRAMES
         combined_normalised_flat = self.clip_and_stack(
             frames=normalisedFlats, recipe="soxs_mflat")
 
-        quicklook_image(
-            log=self.log, CCDObject=combined_normalised_flat, show=False)
+        quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Combined normalised flat frames")
 
         # DIVIDE THROUGH BY FIRST-PASS MASTER FRAME TO REMOVE CROSS-PLANE
         # ILLUMINATION VARIATIONS
@@ -209,23 +207,20 @@ class soxs_mflat(_base_recipe_):
         exposureFrames[:] = [
             n.divide(combined_normalised_flat) for n in calibratedFlats]
 
-        quicklook_image(
-            log=self.log, CCDObject=exposureFrames[0], show=False, stdWindow=0.001)
+        quicklook_image(log=self.log, CCDObject=exposureFrames[0], show=False, ext=None, surfacePlot=True, title="Single exposure map of flat frame", inst=self.inst)
 
         # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
         # FLUX TO THAT LEVEL (AGAIN!)
         normalisedFlats = self.normalise_flats(
             calibratedFlats, orderTablePath=orderTablePath, exposureFrames=exposureFrames)
 
-        quicklook_image(
-            log=self.log, CCDObject=normalisedFlats[0], show=False)
+        quicklook_image(log=self.log, CCDObject=normalisedFlats[0], show=False, ext=None, surfacePlot=True, title="Single re-normalised flat frame")
 
         # STACK THE RE-NORMALISED FLAT FRAMES
         combined_normalised_flat = self.clip_and_stack(
             frames=normalisedFlats, recipe="soxs_mflat")
 
-        quicklook_image(
-            log=self.log, CCDObject=combined_normalised_flat, show=False)
+        quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Recombined normalised flat frames")
 
         # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
         edges = detect_order_edges(
@@ -244,9 +239,6 @@ class soxs_mflat(_base_recipe_):
 
         self.dateObs = combined_normalised_flat.header[self.kw("DATE_OBS")]
 
-        quicklook_image(
-            log=self.log, CCDObject=combined_normalised_flat, show=False)
-
         mflat = self.mask_low_sens_and_inter_order_to_unity(
             frame=combined_normalised_flat, orderTablePath=orderTablePath)
 
@@ -258,8 +250,7 @@ class soxs_mflat(_base_recipe_):
         # )
         # backgroundFrame, mflat = background.subtract()
 
-        quicklook_image(
-            log=self.log, CCDObject=mflat, show=False)
+        quicklook_image(log=self.log, CCDObject=mflat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
 
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
@@ -330,7 +321,7 @@ class soxs_mflat(_base_recipe_):
         dp = self.detectorParams
 
         # FIND THE BIAS FRAMES
-        filterDict = {kw("DPR_TYPE").lower(): "BIAS"}
+        filterDict = {kw("DPR_TYPE"): "BIAS"}
         biasCollection = self.inputFrames.filter(**filterDict)
         # LIST OF CCDDATA OBJECTS
         biases = [c for c in biasCollection.ccds(ccd_kwargs={
@@ -343,21 +334,24 @@ class soxs_mflat(_base_recipe_):
             bias = biases[0]
 
         # FIND THE DARK FRAMES
-        filterDict = {kw("DPR_TYPE").lower(): "DARK"}
+        filterDict = {kw("DPR_TYPE"): "DARK"}
         darkCollection = self.inputFrames.filter(**filterDict)
 
         if len(darkCollection.files) == 0:
-            filterDict = {kw("DPR_TYPE").lower(): "LAMP,FLAT",
-                          kw("DPR_TECH").lower(): "IMAGE"}
+            filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
+                          kw("DPR_TECH"): "IMAGE"}
             darkCollection = self.inputFrames.filter(**filterDict)
             if len(darkCollection.files) == 0:
                 darkCollection = None
 
         # FIND THE FLAT FRAMES
-        filterDict = {kw("DPR_TYPE").lower(): "LAMP,(D|Q)?FLAT",
-                      kw("DPR_TECH").lower(): "ECHELLE,SLIT"}
+        filterDict = {kw("DPR_TYPE"): "LAMP,(D|Q)?FLAT",
+                      kw("DPR_TECH"): "ECHELLE,SLIT"}
         flatCollection = self.inputFrames.filter(
             regex_match=True, **filterDict)
+
+        from tabulate import tabulate
+        print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
 
         if len(flatCollection.files) == 0:
             raise FileNotFoundError(
@@ -378,15 +372,15 @@ class soxs_mflat(_base_recipe_):
         # IF DARKS EXIST - FIND CLOSEST IN TIME TO FLAT-FRAME. SUBTRACT BIAS
         # AND/OR DARK
         if darkCollection:
-            darkMjds = [h[kw("MJDOBS").lower()]
+            darkMjds = [h[kw("MJDOBS")]
                         for h in darkCollection.headers()]
             darks = [c for c in darkCollection.ccds(ccd_kwargs={
                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
             print("\n# SUBTRACTING MASTER DARK/OFF-LAMP FROM FRAMES")
             for flat in flats:
-                mjd = flat.header[kw("MJDOBS").lower()]
+                mjd = flat.header[kw("MJDOBS")]
                 matchValue, matchIndex = nearest_neighbour(
-                    flat.header[kw("MJDOBS").lower()], darkMjds)
+                    flat.header[kw("MJDOBS")], darkMjds)
                 dark = darks[matchIndex]
                 calibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=dark))
@@ -438,13 +432,17 @@ class soxs_mflat(_base_recipe_):
 
         mask = np.ones_like(exposureFrames[0].data)
 
-        xcoords = orderTablePixels["xcoord_centre"].values
-        ycoords = orderTablePixels["ycoord"].values
-        xcoords = xcoords.astype(int)
+        axisAcoords = orderTablePixels[f"{self.axisA}coord_centre"].values
+        axisBcoords = orderTablePixels[f"{self.axisB}coord"].values
+        axisAcoords = axisAcoords.astype(int)
 
         # UPDATE THE MASK
-        for x, y in zip(xcoords, ycoords):
-            mask[y][x - window:x + window] = 0
+        if self.axisA == "x":
+            for x, y in zip(axisAcoords, axisBcoords):
+                mask[y][x - window:x + window] = 0
+        else:
+            for y, x in zip(axisAcoords, axisBcoords):
+                mask[y][x - window:x + window] = 0
 
         # COMBINE MASK WITH THE BAD PIXEL MASK
         mask = (mask == 1) | (inputFlats[0].mask == 1)
@@ -453,8 +451,7 @@ class soxs_mflat(_base_recipe_):
         # PLOT ONE OF THE MASKED FRAMES TO CHECK
         for frame in [exposureFrames[0]]:
             maskedFrame = ma.array(frame.data, mask=mask)
-            quicklook_image(log=self.log, CCDObject=maskedFrame,
-                            show=False, ext=None)
+            quicklook_image(log=self.log, CCDObject=maskedFrame, show=False, ext=None, surfacePlot=True, title="Single masked flat frame")
 
         print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL")
         for frame, exp in zip(inputFlats, exposureFrames):
@@ -502,33 +499,33 @@ class soxs_mflat(_base_recipe_):
         originalBPM = np.copy(frame.mask)
 
         interOrderMask = np.ones_like(frame.data)
-        xcoords_up = orderTablePixels["xcoord_edgeup"].values
-        xcoords_low = orderTablePixels["xcoord_edgelow"].values
-        ycoords = orderTablePixels["ycoord"].values
-        xcoords_up = xcoords_up.astype(int)
-        xcoords_low = xcoords_low.astype(int)
+        axisAcoords_up = orderTablePixels[f"{self.axisA}coord_edgeup"].values
+        axisAcoords_low = orderTablePixels[f"{self.axisA}coord_edgelow"].values
+        axisBcoords = orderTablePixels[f"{self.axisB}coord"].values
+        axisAcoords_up = axisAcoords_up.astype(int)
+        axisAcoords_low = axisAcoords_low.astype(int)
+
+        print(interOrderMask.shape)
 
         # UPDATE THE MASK TO INCLUDE INTER-ORDER BACKGROUND
-        for u, l, y in zip(xcoords_up, xcoords_low, ycoords):
-            interOrderMask[y][l:u] = 0
+        for u, l, b in zip(axisAcoords_up, axisAcoords_low, axisBcoords):
+            if self.axisA == "x":
+                interOrderMask[b, l:u] = 0
+            else:
+                interOrderMask[l:u, b] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
         interOrderMask = ma.make_mask(interOrderMask)
         frame.mask = (interOrderMask == 1) | (frame.mask == 1)
 
         # PLOT MASKED FRAMES TO CHECK
-        quicklook_image(log=self.log, CCDObject=frame,
-                        show=False, ext=None)
+        quicklook_image(log=self.log, CCDObject=frame, show=False, ext=None, surfacePlot=True, title="Masking inter-order pixels")
 
         beforeMask = np.copy(frame.mask)
 
         # SIGMA-CLIP THE LOW-SENSITIVITY PIXELS
         frameClipped = sigma_clip(
             frame, sigma_lower=self.settings["soxs-mflat"]["low-sensitivity-clipping-simga"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc=mad_std)
-
-        # PLOT MASKED FRAMES TO CHECK
-        quicklook_image(log=self.log, CCDObject=frame,
-                        show=False, ext=None)
 
         lowSensitivityPixelMask = (frameClipped.mask == 1) & (beforeMask != 1)
         lowSensPixelCount = lowSensitivityPixelMask.sum()
@@ -553,8 +550,7 @@ class soxs_mflat(_base_recipe_):
         frame.data[interOrderMask] = 1
 
         # PLOT MASKED FRAMES TO CHECK
-        quicklook_image(log=self.log, CCDObject=frame,
-                        show=False, ext=None)
+        quicklook_image(log=self.log, CCDObject=frame, show=False, ext=None, surfacePlot=True, title="Low Sensitivity pixels masked and inter-order pixel set to 1")
 
         self.log.debug(
             'completed the ``mask_low_sens_and_inter_order_to_unity`` method')

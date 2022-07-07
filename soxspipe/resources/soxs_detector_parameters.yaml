@@ -86,11 +86,11 @@ NIR:
   ron: 7.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
   bad-pixel map:
     1x1: BP_MAP_RP_NIR.fits
-  # predicted pinhole lines:
-  #   single:
-  #     1x1: cal/THEO_TAB_SING_NIR.csv
-  #   multi:
-  #     1x1: cal/THEO_TAB_MULT_NIR.csv
-  # mid_slit_index: 4
-  # spectral format table: cal/SPECTRAL_FORMAT_TAB_NIR.csv
-
+  predicted pinhole lines:
+    single:
+      1x1: SOXS_PINHOLE_TAB_NIR.fits
+    multi:
+      1x1: SOXS_PINHOLE_TAB_NIR.fits
+  mid_slit_index: 4
+  spectral format table: SOXS_SPECTRAL_FORMAT_TAB_NIR.fits
+  slit_length: 11 #arcsec
