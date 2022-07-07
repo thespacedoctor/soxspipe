@@ -92,7 +92,6 @@ def cut_image_slice(
 
     # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
     if (axisA > axisALen - halfSlice) or (axisB > axisBLen - halfwidth) or (axisA < halfSlice) or (axisB < halfwidth):
-        print("slice beyond bounds")
         return None, None, None
 
     slice_length_offset = int(axisA - halfSlice)
