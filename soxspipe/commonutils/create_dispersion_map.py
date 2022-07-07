@@ -161,8 +161,6 @@ class create_dispersion_map(object):
 
         totalLines = len(orderPixelTable.index)
 
-        print(totalLines)
-
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
             'observed_x'], inplace=True)
@@ -368,7 +366,7 @@ class create_dispersion_map(object):
         import random
         ran = random.randint(1, 300)
 
-        if 1 == 1 and ran == 200:
+        if 1 == 0 and ran == 200:
             import matplotlib.pyplot as plt
             plt.clf()
             plt.imshow(stamp)
@@ -762,7 +760,12 @@ class create_dispersion_map(object):
                 clippedCount = valCounts[True]
             else:
                 clippedCount = 0
-            print(f'{clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
+
+            if iteration > 1:
+                # Cursor up one line and clear line
+                sys.stdout.write("\x1b[1A\x1b[2K")
+
+            print(f'ITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
             mask = (orderPixelTable['residuals_masked'] == True)
@@ -1035,9 +1038,9 @@ class create_dispersion_map(object):
 
         # DEFINE AN INPUT ARRAY
         inputArray = [(order, minWl, maxWl) for order, minWl,
-                      maxWl in zip(orderNums[1:2], waveLengthMin[1:2], waveLengthMax[1:2])]
+                      maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=True)
+                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=False)
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
@@ -1127,7 +1130,7 @@ class create_dispersion_map(object):
             iteration += 1
 
             orderPixelTable, remainingCount = self.convert_and_fit(
-                order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=True)
+                order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
 
             if not remainingCount:
                 continue
@@ -1172,17 +1175,17 @@ class create_dispersion_map(object):
                 'best_offset_y'] * 2 / estimatedValues["fit_y"]["std"]
 
             estimatedValues["wlArrayMin"] = estimatedValues[
-                'guess_wavelength'] - estimatedValues["wavelength_std"] * estimatedValues['offset_std_ratio_y']
+                'guess_wavelength'] - estimatedValues["wavelength_std"] * estimatedValues[f'offset_std_ratio_{self.axisB}']
             estimatedValues["wlArrayMax"] = estimatedValues[
-                'guess_wavelength'] + estimatedValues["wavelength_std"] * estimatedValues['offset_std_ratio_y']
+                'guess_wavelength'] + estimatedValues["wavelength_std"] * estimatedValues[f'offset_std_ratio_{self.axisB}']
             estimatedValues["slArrayMin"] = estimatedValues[
-                'guess_slit_position'] - estimatedValues["slit_position_std"] * estimatedValues['offset_std_ratio_x']
+                'guess_slit_position'] - estimatedValues["slit_position_std"] * estimatedValues[f'offset_std_ratio_{self.axisA}']
             estimatedValues["slArrayMax"] = estimatedValues[
-                'guess_slit_position'] + estimatedValues["slit_position_std"] * estimatedValues['offset_std_ratio_x']
+                'guess_slit_position'] + estimatedValues["slit_position_std"] * estimatedValues[f'offset_std_ratio_{self.axisA}']
             estimatedValues["wlArray"] = estimatedValues["wlArrayMin"] + estimatedValues[
-                "gridMeshWl"] * (estimatedValues["wavelength_std"] * (estimatedValues['offset_std_ratio_y'] * 2) / (self.gridSize - 1))
+                "gridMeshWl"] * (estimatedValues["wavelength_std"] * (estimatedValues[f'offset_std_ratio_{self.axisB}'] * 2) / (self.gridSize - 1))
             estimatedValues["slitArray"] = estimatedValues["slArrayMin"] + estimatedValues[
-                "gridMeshSlit"] * (estimatedValues["slit_position_std"] * (estimatedValues['offset_std_ratio_x'] * 2) / (self.gridSize - 1))
+                "gridMeshSlit"] * (estimatedValues["slit_position_std"] * (estimatedValues[f'offset_std_ratio_{self.axisA}'] * 2) / (self.gridSize - 1))
 
             # import sqlite3 as sql
             # # CONNECT TO THE DATABASE
@@ -1311,7 +1314,7 @@ class create_dispersion_map(object):
             print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
             print(f"PIXEL LOCATION STDEV: {np.std(fit_x)}, {np.std(fit_y)}")
             print(f"OFFSET RATIOS: {offsetStdRatioX}, {offsetStdRatioY}")
-            print(f"WAVELENGTH/SLIT STDEV: {filteredDf['wavelength'].std()}, {filteredDf['wavelength'].std()}")
+            print(f"WAVELENGTH/SLIT STDEV: {filteredDf['wavelength'].std()}, {filteredDf['slit_position'].std()}")
             print(f"OFFSET RATIOS: {offsetStdRatioX}, {offsetStdRatioY}")
 
             # print(filteredDf)
@@ -1360,26 +1363,29 @@ class create_dispersion_map(object):
                 pass
 
         sys.stdout.write("\x1b[1A\x1b[2K")
-        print(f"ORDER {order:02d}, iteration {iteration:02d}. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
+        percentageFound = (1 - (np.count_nonzero(np.isnan(wlMap.data)) / np.count_nonzero(wlMap.data))) * 100
+        print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
 
         if plots:
             # PLOT CCDDATA OBJECT
-            rotatedImg = np.rot90(slitMap.data, 3)
-            std = np.nanstd(slitMap.data)
-            mean = np.nanmean(slitMap.data)
+            rotatedImg = slitMap.data
+            if self.axisA == "x":
+                rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
+                rotatedImg = np.flipud(rotatedImg)
+            std = np.nanstd(rotatedImg)
+            mean = np.nanmean(rotatedImg)
             cmap = cm.gray
             cmap.set_bad(color='#ADD8E6')
-            vmax = np.nanmax(slitMap.data)
-            vmin = np.nanmin(slitMap.data)
+            vmax = np.nanmax(rotatedImg)
+            vmin = np.nanmin(rotatedImg)
             plt.figure(figsize=(24, 10))
             plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
                        cmap=cmap, alpha=1)
-            plt.gca().invert_yaxis()
+            if self.axisA == "x":
+                plt.gca().invert_yaxis()
             plt.colorbar()
-            plt.xlabel(
-                "y-axis", fontsize=10)
-            plt.ylabel(
-                "x-axis", fontsize=10)
+            plt.ylabel(f"{self.axisA}-axis", fontsize=12)
+            plt.xlabel(f"{self.axisB}-axis", fontsize=12)
             plt.show()
 
         remainingCount = len(remainingCount.index)
