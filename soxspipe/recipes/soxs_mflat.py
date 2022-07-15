@@ -155,6 +155,14 @@ class soxs_mflat(_base_recipe_):
                     raise TypeError(
                         "Input frames for soxspipe mflat need to be slit flat lamp frames and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
+        if "LAMP,QFLAT" in imageTypes or "LAMP,DFLAT" in imageTypes:
+            if "LAMP,QFLAT" in imageTypes and "LAMP,DFLAT" in imageTypes:
+                pass
+            else:
+                for i in imageTypes:
+                    if "LAMP" in i:
+                        self.log.warning(f'Only "{i}" image types found. Please include both D2 and QTH lamp flats')
+
         # LOOK FOR ORDER TABLE
         arm = self.arm
         if f"ORDER_TAB_{arm}" not in imageCat:
@@ -179,127 +187,170 @@ class soxs_mflat(_base_recipe_):
         kw = self.kw
 
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
-        calibratedFlats = self.calibrate_frame_set()
+        calibratedFlats, dcalibratedFlats, qcalibratedFlats = self.calibrate_frame_set()
 
-        quicklook_image(log=self.log, CCDObject=calibratedFlats[0], show=False, ext="Data", surfacePlot=True, title="Single bias and/or dark subtracted flat frame")
+        allCalibratedFlats = calibratedFlats + dcalibratedFlats + qcalibratedFlats
+        quicklook_image(log=self.log, CCDObject=allCalibratedFlats[0], show=False, ext="Data", surfacePlot=True, title="Single bias and/or dark subtracted flat frame")
 
-        # FIND THE ORDER TABLE
-        filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        calibratedFlatSet = [calibratedFlats, dcalibratedFlats, qcalibratedFlats]
+        flatKeywords = ["LAMP,ORDERDEF", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']
+        lampTag = ["", "_DLAMP", "_QLAMP"]
+        normalisedFlatSet = []
+        combinedNormalisedFlatSet = []
+        orderTableSet = []
+        detectionCountSet = []
 
-        # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
-        # FLUX TO THAT LEVEL
-        normalisedFlats = self.normalise_flats(
-            calibratedFlats, orderTablePath=orderTablePath)
+        for cf, fk, tag in zip(calibratedFlatSet, flatKeywords, lampTag):
+            if len(cf) == 0:
+                orderTableSet.append(None)
+                normalisedFlatSet.append(None)
+                combinedNormalisedFlatSet.append(None)
+                continue
+            # FIND THE ORDER TABLE
+            filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}", kw("OBJECT"): fk}
+            orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
+            if len(orderTablePaths) == 1:
+                orderTablePath = orderTablePaths[0]
+                orderTableSet.append(orderTablePath)
+            else:
+                orderTablePath.append(None)
 
-        quicklook_image(log=self.log, CCDObject=normalisedFlats[0], show=False, ext=True, surfacePlot=True, title="Single normalised flat frame")
+            # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
+            # FLUX TO THAT LEVEL
+            normalisedFlats = self.normalise_flats(
+                cf, orderTablePath=orderTablePath)
 
-        # STACK THE NORMALISED FLAT FRAMES
-        combined_normalised_flat = self.clip_and_stack(
-            frames=normalisedFlats, recipe="soxs_mflat")
+            quicklook_image(log=self.log, CCDObject=normalisedFlats[0], show=False, ext=True, surfacePlot=True, title="Single normalised flat frame")
+            # STACK THE NORMALISED FLAT FRAMES
+            combined_normalised_flat = self.clip_and_stack(
+                frames=normalisedFlats, recipe="soxs_mflat")
+            quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Combined normalised flat frames")
 
-        quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Combined normalised flat frames")
+            # DIVIDE THROUGH BY FIRST-PASS MASTER FRAME TO REMOVE CROSS-PLANE
+            # ILLUMINATION VARIATIONS
+            print("\n# DIVIDING EACH ORIGINAL FLAT FRAME BY FIRST PASS MASTER FLAT")
+            exposureFrames = []
+            exposureFrames[:] = [
+                n.divide(combined_normalised_flat) for n in cf]
+            quicklook_image(log=self.log, CCDObject=exposureFrames[0], show=False, ext=None, surfacePlot=True, title="Single exposure map of flat frame", inst=self.inst)
 
-        # DIVIDE THROUGH BY FIRST-PASS MASTER FRAME TO REMOVE CROSS-PLANE
-        # ILLUMINATION VARIATIONS
-        print("\n# DIVIDING EACH ORIGINAL FLAT FRAME BY FIRST PASS MASTER FLAT")
-        exposureFrames = []
-        exposureFrames[:] = [
-            n.divide(combined_normalised_flat) for n in calibratedFlats]
+            # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
+            # FLUX TO THAT LEVEL (AGAIN!)
+            normalisedFlats = self.normalise_flats(
+                cf, orderTablePath=orderTablePath, exposureFrames=exposureFrames)
 
-        quicklook_image(log=self.log, CCDObject=exposureFrames[0], show=False, ext=None, surfacePlot=True, title="Single exposure map of flat frame", inst=self.inst)
+            quicklook_image(log=self.log, CCDObject=normalisedFlats[0], show=False, ext=None, surfacePlot=True, title="Single re-normalised flat frame")
 
-        # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
-        # FLUX TO THAT LEVEL (AGAIN!)
-        normalisedFlats = self.normalise_flats(
-            calibratedFlats, orderTablePath=orderTablePath, exposureFrames=exposureFrames)
+            # STACK THE RE-NORMALISED FLAT FRAMES
+            combined_normalised_flat = self.clip_and_stack(
+                frames=normalisedFlats, recipe="soxs_mflat")
 
-        quicklook_image(log=self.log, CCDObject=normalisedFlats[0], show=False, ext=None, surfacePlot=True, title="Single re-normalised flat frame")
+            quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Recombined normalised flat frames")
 
-        # STACK THE RE-NORMALISED FLAT FRAMES
-        combined_normalised_flat = self.clip_and_stack(
-            frames=normalisedFlats, recipe="soxs_mflat")
-
-        quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Recombined normalised flat frames")
-
-        # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
-        edges = detect_order_edges(
-            log=self.log,
-            flatFrame=combined_normalised_flat,
-            orderCentreTable=orderTablePath,
-            settings=self.settings,
-            qcTable=self.qc,
-            productsTable=self.products
-        )
-        self.products, self.qc = edges.get()
-        # FILTER DATA FRAME
-        # FIRST CREATE THE MASK
-        mask = (self.products['product_label'] == "ORDER_LOC")
-        orderTablePath = self.products.loc[mask]["file_path"].values[0]
-
-        self.dateObs = combined_normalised_flat.header[self.kw("DATE_OBS")]
-
-        mflat = self.mask_low_sens_and_inter_order_to_unity(
-            frame=combined_normalised_flat, orderTablePath=orderTablePath)
-
-        # background = subtract_background(
-        #     log=self.log,
-        #     frame=combined_normalised_flat,
-        #     orderTable=orderTablePath,
-        #     settings=self.settings
-        # )
-        # backgroundFrame, mflat = background.subtract()
-
-        quicklook_image(log=self.log, CCDObject=mflat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
-
-        home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
-        # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
-
-        # WRITE MFLAT TO FILE
-
-        productPath = self._write(
-            mflat, outDir, overwrite=True)
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-        basename = os.path.basename(productPath)
-        self.products = self.products.append({
-            "soxspipe_recipe": self.recipeName,
-            "product_label": "MFLAT",
-            "file_name": basename,
-            "file_type": "FITS",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"{self.arm} master spectroscopic flat frame",
-            "file_path": productPath
-        }, ignore_index=True)
-
-        if 1 == 0:
-            filename = filenamer(
+            # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
+            edges = detect_order_edges(
                 log=self.log,
-                frame=mflat,
-                settings=self.settings
+                flatFrame=combined_normalised_flat,
+                orderCentreTable=orderTablePath,
+                settings=self.settings,
+                qcTable=self.qc,
+                productsTable=self.products,
+                tag=tag
             )
-            filename = filename.replace(".fits", "_background.fits")
-            filepath = self._write(
-                backgroundFrame, outDir, filename=filename, overwrite=True)
-            filepath = os.path.abspath(filepath)
+            self.products, self.qc, orderDetectionCounts = edges.get()
+
+            if tag:
+                orderDetectionCounts.rename(columns={"order": tag}, inplace=True)
+                orderDetectionCounts.index.names = ['order']
+                from tabulate import tabulate
+                print(tabulate(orderDetectionCounts, headers='keys', tablefmt='psql'))
+
+            detectionCountSet.append(orderDetectionCounts)
+
+            # FILTER DATA FRAME
+            # FIRST CREATE THE MASK
+            mask = (self.products['product_label'] == f"ORDER_LOC{tag}")
+            orderTablePath = self.products.loc[mask]["file_path"].values[0]
+
+            self.dateObs = combined_normalised_flat.header[self.kw("DATE_OBS")]
+
+            mflat = self.mask_low_sens_and_inter_order_to_unity(
+                frame=combined_normalised_flat, orderTablePath=orderTablePath)
+
+            # background = subtract_background(
+            #     log=self.log,
+            #     frame=combined_normalised_flat,
+            #     orderTable=orderTablePath,
+            #     settings=self.settings
+            # )
+            # backgroundFrame, mflat = background.subtract()
+
+            quicklook_image(log=self.log, CCDObject=mflat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
+
+            home = expanduser("~")
+            outDir = self.settings["intermediate-data-root"].replace("~", home)
+            # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
+
+            # WRITE MFLAT TO FILE
+
+            productPath = self._write(
+                mflat, outDir, overwrite=True)
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            basename = os.path.basename(productPath)
             self.products = self.products.append({
                 "soxspipe_recipe": self.recipeName,
-                "product_label": "",
-                "file_name": filename,
+                "product_label": f"MFLAT{tag}",
+                "file_name": basename,
                 "file_type": "FITS",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "product_desc": f"modelled scatter background light image (removed from master flat)",
-                "file_path": backgroundFrame
+                "product_desc": f"{self.arm} master spectroscopic flat frame",
+                "file_path": productPath
             }, ignore_index=True)
 
-        # ADD QUALITY CHECKS
-        self.qc = generic_quality_checks(
-            log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
-        self.qc = spectroscopic_image_quality_checks(
-            log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
+            if 1 == 0:
+                filename = filenamer(
+                    log=self.log,
+                    frame=mflat,
+                    settings=self.settings
+                )
+                filename = filename.replace(".fits", "_background.fits")
+                filepath = self._write(
+                    backgroundFrame, outDir, filename=filename, overwrite=True)
+                filepath = os.path.abspath(filepath)
+                self.products = self.products.append({
+                    "soxspipe_recipe": self.recipeName,
+                    "product_label": "",
+                    "file_name": filename,
+                    "file_type": "FITS",
+                    "obs_date_utc": self.dateObs,
+                    "reduction_date_utc": utcnow,
+                    "product_desc": f"modelled scatter background light image (removed from master flat)",
+                    "file_path": backgroundFrame
+                }, ignore_index=True)
+
+            # ADD QUALITY CHECKS
+            self.qc = generic_quality_checks(
+                log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+            self.qc = spectroscopic_image_quality_checks(
+                log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
+
+        # UV-STITCHING
+        if len(detectionCountSet) > 1:
+            # MERGE DATAFRAMES
+            detectionCount = pd.merge(detectionCountSet[0], detectionCountSet[1], left_index=True, right_index=True)
+            detectionCount["best_frame"] = detectionCount.idxmax(axis=1)
+            mask = (detectionCount['best_frame'] == "_QLAMP")
+            orderFlip = detectionCount.loc[mask]
+            # xpd-update-filter-dataframe-column-values
+            from tabulate import tabulate
+            print(tabulate(orderFlip, headers='keys', tablefmt='psql'))
+            orderFlip = orderFlip.index.max()
+            print("orderFlip", orderFlip)
+
+            # how = left, right, outer, inner, cross
+            # https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.merge.html
 
         self.clean_up()
         self.report_output()
@@ -345,28 +396,46 @@ class soxs_mflat(_base_recipe_):
                 darkCollection = None
 
         # FIND THE FLAT FRAMES
-        filterDict = {kw("DPR_TYPE"): "LAMP,(D|Q)?FLAT",
+        filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
                       kw("DPR_TECH"): "ECHELLE,SLIT"}
-        flatCollection = self.inputFrames.filter(
-            regex_match=True, **filterDict)
+        flatCollection = self.inputFrames.filter(**filterDict)
+
+        filterDict = {kw("DPR_TYPE"): "LAMP,DFLAT",
+                      kw("DPR_TECH"): "ECHELLE,SLIT"}
+        dflatCollection = self.inputFrames.filter(**filterDict)
+        filterDict = {kw("DPR_TYPE"): "LAMP,QFLAT",
+                      kw("DPR_TECH"): "ECHELLE,SLIT"}
+        qflatCollection = self.inputFrames.filter(**filterDict)
 
         from tabulate import tabulate
         print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
 
-        if len(flatCollection.files) == 0:
+        if len(flatCollection.files) == 0 and len(dflatCollection.files) == 0 and len(qflatCollection.files) == 0:
             raise FileNotFoundError(
                 "The mflat recipe needs flat-frames as input, none found")
 
         # LIST OF CCDDATA OBJECTS
         flats = [c for c in flatCollection.ccds(ccd_kwargs={
                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        dflats = [c for c in dflatCollection.ccds(ccd_kwargs={
+            "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        qflats = [c for c in qflatCollection.ccds(ccd_kwargs={
+            "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
         # IF NO DARK FRAMES EXIST - JUST A MASTER BIAS. SUBTRACT BIAS.
         calibratedFlats = []
+        dcalibratedFlats = []
+        qcalibratedFlats = []
         if not darkCollection and bias:
             print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
             for flat in flats:
                 calibratedFlats.append(self.detrend(
+                    inputFrame=flat, master_bias=bias, dark=None))
+            for flat in dflats:
+                dcalibratedFlats.append(self.detrend(
+                    inputFrame=flat, master_bias=bias, dark=None))
+            for flat in qflats:
+                qcalibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=None))
 
         # IF DARKS EXIST - FIND CLOSEST IN TIME TO FLAT-FRAME. SUBTRACT BIAS
@@ -399,7 +468,7 @@ class soxs_mflat(_base_recipe_):
                 self._write(frame, filePath, overwrite=True)
 
         self.log.debug('completed the ``calibrate_frame_set`` method')
-        return calibratedFlats
+        return calibratedFlats, dcalibratedFlats, qcalibratedFlats
 
     def normalise_flats(
         self,
