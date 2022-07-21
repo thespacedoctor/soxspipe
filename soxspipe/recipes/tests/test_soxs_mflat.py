@@ -157,7 +157,7 @@ class test_soxs_mflat(unittest.TestCase):
 
     def test_soxs_mflat_uvb_combined_flat_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_d_and_q_flats_quick.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_d_and_q_flats.sof"
         from soxspipe.recipes import soxs_mflat
         this = soxs_mflat(
             log=log,

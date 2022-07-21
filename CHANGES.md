@@ -1,6 +1,9 @@
 # Release Notes
 
 dispersion solution now working with simulated NIR SOXS data
+UV D-Lamp and QTH-Lamp master flats now being stitched together
+mflat docs brought up-to-date
+
 
 ## v0.6.2 - April 13, 2022
 

@@ -81,7 +81,7 @@ class _base_detect(object):
         clippingSigma = self.recipeSettings[
             "poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.recipeSettings[
-            "clipping-iteration-limit"]
+            "poly-clipping-iteration-limit"]
 
         iteration = 0
         mask = (pixelList['order'] == order)
@@ -162,7 +162,7 @@ class _base_detect(object):
         clippingSigma = self.recipeSettings[
             "poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.recipeSettings[
-            "clipping-iteration-limit"]
+            "poly-clipping-iteration-limit"]
 
         iteration = 0
 
@@ -452,10 +452,7 @@ class detect_continuum(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        if self.inst == "SOXS":
-            self.axisBDeg = self.recipeSettings["x-deg"]
-        elif self.inst == "XSHOOTER":
-            self.axisBDeg = self.recipeSettings["y-deg"]
+        self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 
         return None

@@ -29,24 +29,24 @@ soxs-disp-solution:
     pixel-window-size: 10
     order-deg: 3
     wavelength-deg: 3
-    clipping-iteration-limit: 10
+    poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
     order-sample-count: 200
     slice-length: 10
     peak-sigma-limit: 3
-    y-deg: 5
+    disp-axis-deg: 5
     order-deg: 5
     poly-fitting-residual-clipping-sigma: 2.0
-    clipping-iteration-limit: 10
+    poly-clipping-iteration-limit: 10
 
 soxs-spatial-solution:
     pixel-window-size: 10
     order-deg: 3
     wavelength-deg: 3
     slit-deg: 3
-    clipping-iteration-limit: 10
+    poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
     # INITIAL SEED GRID RESOLUTION 
     grid_res_wavelength: 0.03 # in nm
@@ -65,10 +65,10 @@ soxs-mflat:
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20
     max-percentage-threshold-for-edge-detection: 50
-    y-deg: 5
+    disp-axis-deg: 5
     order-deg: 5
     poly-fitting-residual-clipping-sigma: 2
-    clipping-iteration-limit: 5
+    poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-simga: 2
     
 soxs-stare:

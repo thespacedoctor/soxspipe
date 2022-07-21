@@ -119,7 +119,7 @@ class detect_order_edges(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        self.axisBDeg = self.recipeSettings["y-deg"]
+        self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 
         self.inst = flatFrame.header[kw("INSTRUME")]
@@ -170,9 +170,9 @@ class detect_order_edges(_base_detect):
         orderPixelTable["maxThreshold"] = np.nan
         orderPixelTable["minThreshold"] = np.nan
         uniqueOrders = orderMetaTable['order'].unique()
+
         for o in uniqueOrders:
-            orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderMetaTable.loc[
-                (orderMetaTable["order"] == o), ["minThreshold", "maxThreshold"]].values
+            orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderMetaTable.loc[(orderMetaTable["order"] == o), ["minThreshold", "maxThreshold"]].values
 
         print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
         orderPixelTable[f"{self.axisA}coord_upper"] = np.nan

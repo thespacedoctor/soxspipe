@@ -339,7 +339,7 @@ def unpack_order_table(
         axisB = "x"
 
     # ADD AXIS B COORD LIST
-    axisBcoords = [np.arange(math.floor(l) - int(r * extend), math.ceil(u) + int(r * extend), 1) for l, u, r in zip(
+    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 3200 if (math.ceil(u) + int(r * extend)) > 3200 else (math.ceil(u) + int(r * extend)), 1) for l, u, r in zip(
         orderMetaTable[f"{axisB}min"].values, orderMetaTable[f"{axisB}max"].values, orderMetaTable[f"{axisB}max"].values - orderMetaTable[f"{axisB}min"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
@@ -643,7 +643,7 @@ def get_calibrations_path(
     ```python
     from soxspipe.commonutils.toolkit import get_calibrations_path
     calibrationRootPath = get_calibrations_path(log=log, settings=settings)
-    ```           
+    ```
     """
     log.debug('starting the ``get_calibrations_path`` function')
 

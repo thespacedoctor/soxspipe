@@ -715,7 +715,7 @@ class create_dispersion_map(object):
         clippingSigma = self.settings[
             recipe]["poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.settings[
-            recipe]["clipping-iteration-limit"]
+            recipe]["poly-clipping-iteration-limit"]
 
         print("\n# FINDING DISPERSION SOLUTION\n")
 
