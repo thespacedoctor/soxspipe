@@ -46,8 +46,9 @@ class detect_order_edges(_base_detect):
         - ``orderCentreTable`` -- the order centre table
         - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
         - ``verbose`` -- verbose. True or False. Default *False*
-        - ``qcTable`` -- the data frame to collect measured QC metrics 
+        - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
+        - ``tag`` -- e.g. '_DLAMP' to differentiate between UV-VIS lamps
 
     **Usage:**
 
@@ -69,7 +70,7 @@ class detect_order_edges(_base_detect):
         qcTable=False,
         productsTable=False
     )
-    productsTable, qcTable = edges.get()
+    productsTable, qcTable, orderDetectionCounts = edges.get()
     ```
     """
 
@@ -82,7 +83,8 @@ class detect_order_edges(_base_detect):
             recipeName="soxs-mflat",
             verbose=False,
             qcTable=False,
-            productsTable=False
+            productsTable=False,
+            tag=""
     ):
         self.log = log
         log.debug("instansiating a new 'detect_order_edges' object")
@@ -98,6 +100,7 @@ class detect_order_edges(_base_detect):
         self.verbose = verbose
         self.qc = qcTable
         self.products = productsTable
+        self.tag = tag
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -116,7 +119,7 @@ class detect_order_edges(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        self.axisBDeg = self.recipeSettings["y-deg"]
+        self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 
         self.inst = flatFrame.header[kw("INSTRUME")]
@@ -167,9 +170,9 @@ class detect_order_edges(_base_detect):
         orderPixelTable["maxThreshold"] = np.nan
         orderPixelTable["minThreshold"] = np.nan
         uniqueOrders = orderMetaTable['order'].unique()
+
         for o in uniqueOrders:
-            orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderMetaTable.loc[
-                (orderMetaTable["order"] == o), ["minThreshold", "maxThreshold"]].values
+            orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderMetaTable.loc[(orderMetaTable["order"] == o), ["minThreshold", "maxThreshold"]].values
 
         print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
         orderPixelTable[f"{self.axisA}coord_upper"] = np.nan
@@ -184,9 +187,7 @@ class detect_order_edges(_base_detect):
                                subset=[f"{self.axisA}coord_lower"], inplace=True)
 
         # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
-        print(uniqueOrders)
         uniqueOrders = orderPixelTable['order'].unique()
-        print(uniqueOrders)
 
         for o in uniqueOrders:
             orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"] = np.nanmin(orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values)
@@ -247,6 +248,9 @@ class detect_order_edges(_base_detect):
             listOfDictionaries=[coeff_dict]
         )
 
+        # RETURN BREAKDOWN OF ORDER EDGE DETECTION POSITION COUNTS (NEEDED TO COMPARE D and Q LAMPS)
+        orderDetectionCounts = orderPixelTable['order'].value_counts(normalize=False).sort_index().to_frame()
+
         # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
         fakeFile = StringIO(dataSet.csv())
         orderEdgePolyTable = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
@@ -287,7 +291,7 @@ class detect_order_edges(_base_detect):
         if not isinstance(self.products, bool):
             self.products = self.products.append({
                 "soxspipe_recipe": self.recipeName,
-                "product_label": "ORDER_LOC",
+                "product_label": f"ORDER_LOC{self.tag}",
                 "product_desc": "table of coefficients from polynomial fits to order locations",
                 "file_name": orderTableName,
                 "file_type": "FITS",
@@ -297,7 +301,7 @@ class detect_order_edges(_base_detect):
             }, ignore_index=True)
             self.products = self.products.append({
                 "soxspipe_recipe": self.recipeName,
-                "product_label": "ORDER_LOC_RES",
+                "product_label": f"ORDER_LOC_RES{self.tag}",
                 "product_desc": "visualisation of goodness of order edge fitting",
                 "file_name": plotName,
                 "file_type": "PDF",
@@ -339,7 +343,7 @@ class detect_order_edges(_base_detect):
 
         self.log.debug('completed the ``get`` method')
 
-        return self.products, self.qc
+        return self.products, self.qc, orderDetectionCounts
 
     def plot_results(
             self,
