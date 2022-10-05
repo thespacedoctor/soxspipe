@@ -19,7 +19,7 @@ from datetime import datetime
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import set_of_files
-from ccdproc import Combiner
+from ccdproc import Combiner as OriginalCombiner
 from astropy.nddata.nduncertainty import StdDevUncertainty
 import pandas as pd
 from soxspipe.commonutils import subtract_background
@@ -35,7 +35,32 @@ import math
 import inspect
 import yaml
 import os
+import bottleneck as bn
 os.environ['TERM'] = 'vt100'
+
+
+class Combiner(OriginalCombiner):
+
+    def average_combine(self):
+        """
+        """
+        data, masked_values, scale_func = \
+            self._combination_setup(None,
+                                    bn.nanmean,
+                                    None)
+
+        mean = scale_func(data, axis=0)
+        mask = (masked_values == len(self.data_arr))
+
+        # create the combined image with a dtype that matches the combiner
+        combined_image = CCDData(np.asarray(mean, dtype=self.dtype),
+                                 mask=mask, unit=self.unit)
+
+        # update the meta data
+        combined_image.meta['NCOMBINE'] = len(data)
+
+        # return the combined image
+        return combined_image
 
 
 class _base_recipe_(object):
@@ -654,12 +679,14 @@ class _base_recipe_(object):
     def clip_and_stack(
             self,
             frames,
-            recipe):
+            recipe,
+            ignore_input_masks=False):
         """*mean combine input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function*
 
         **Key Arguments:**
             - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
             - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
+            - ``ignore_input_masks`` -- ignore the input masks during clip and stacking?
 
         **Return:**
             - ``combined_frame`` -- the combined master frame (with updated bad-pixel and uncertainty maps)
@@ -721,7 +748,8 @@ class _base_recipe_(object):
         combinedMask = ccds[0].mask
         for c in ccds:
             combinedMask = c.mask | combinedMask
-            c.mask[:, :] = False
+            if ignore_input_masks:
+                c.mask[:, :] = False
 
         # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
         # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
@@ -741,32 +769,50 @@ class _base_recipe_(object):
         # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
         new_n_masked = combiner.data_arr.mask.sum()
         iteration = 1
-        while (new_n_masked > old_n_masked and iteration <= stacked_clipping_iterations):
-            combiner.sigma_clipping(
-                low_thresh=stacked_clipping_sigma, high_thresh=stacked_clipping_sigma, func=np.ma.median, dev_func=mad_std)
-            old_n_masked = new_n_masked
-            # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
-            new_n_masked = combiner.data_arr.mask.sum()
-            diff = new_n_masked - old_n_masked
-            extra = ""
-            if diff == 0:
-                extra = " - we're done"
-            if self.verbose:
-                print("\tClipping iteration %(iteration)s finds %(diff)s more rogue pixels in the set of input frames%(extra)s" % locals())
-            iteration += 1
 
-        # GENERATE THE COMBINED MEDIAN
+        # SIGMA CLIPPING OVERWRITES ORIGINAL MASKS - COPY HERE TO READD
+        # preclipped_masks = np.copy(combiner.data_arr.mask)
+        totalPixels = np.size(combinedMask)
+
+        combiner.data_arr.mask = sigma_clip(combiner.data_arr.data,
+                                            sigma_lower=stacked_clipping_sigma,
+                                            sigma_upper=stacked_clipping_sigma,
+                                            axis=0,
+                                            copy=False,
+                                            maxiters=stacked_clipping_iterations,
+                                            cenfunc='median',
+                                            stdfunc='mad_std',
+                                            masked=True).mask
+        old_n_masked = new_n_masked
+        # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
+        new_n_masked = combiner.data_arr.mask.sum()
+        diff = new_n_masked - old_n_masked
+        if self.verbose:
+            percent = 100 * combiner.data_arr.mask[0].sum() / totalPixels
+            print(f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)")
+
+        # GENERATE THE COMBINED MEAN
         # print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
         combined_frame = combiner.average_combine()
 
         # RECOMBINE THE COMBINED MASK FROM ABOVE
         combined_frame.mask = combined_frame.mask | combinedMask
 
+        # INVIDUAL UPDATED MASKS (POST CLIPPING)
+        new_individual_masks = combiner.data_arr.mask
+        masked_values = new_individual_masks.sum(axis=0)
+
+        # A HACK TO THE COMBINER OBJECT TO COMBINE ERROR MAPS EXACTLY AS DATA WAS COMBINED
+        for i, ccd in enumerate(ccds):
+            combiner.data_arr.data[i] = ccd.uncertainty.array
+        combined_uncertainty = combiner.average_combine()
+        combined_frame.uncertainty = combined_uncertainty.data / (np.sqrt(len(new_individual_masks) - masked_values))
+
         # NOW SIMGA-CLIP ACROSS THE FRAME
         # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
         if clipping_iteration_count:
             maskedFrame = sigma_clip(
-                combined_frame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc=mad_std)
+                combined_frame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
             combined_frame.mask = combined_frame.mask | maskedFrame.mask
 
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
@@ -785,10 +831,6 @@ class _base_recipe_(object):
         totalPixels = np.size(combinedMask)
         percent = (float(newBadCount) / float(totalPixels)) * 100.
         print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
-
-        # print(combined_frame.uncertainty)
-        # print(combined_frame.data)
-        # print(np.multiply(combined_frame.uncertainty,combined_frame.data))
 
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame
@@ -994,7 +1036,10 @@ class _base_recipe_(object):
             # PREDICTED MASTER NOISE
             predictedMasterRon = rawRon / math.sqrt(len(ccds))
 
-            dmin, dmax, dmean, dstd = imstats(masterFrame.data)
+            # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+            tmp = np.ma.array(masterFrame.data, mask=combinedMask)
+
+            dmin, dmax, dmean, dstd = imstats(tmp)
             masterRon = dstd
 
             self.qc = self.qc.append({

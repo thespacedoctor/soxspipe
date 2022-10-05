@@ -154,7 +154,7 @@ class soxs_mbias(_base_recipe_):
         dp = self.detectorParams
 
         combined_bias_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mbias")
+            frames=self.inputFrames, recipe="soxs_mbias", ignore_input_masks=True)
         self.dateObs = combined_bias_mean.header[kw("DATE_OBS")]
 
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
@@ -242,8 +242,8 @@ class soxs_mbias(_base_recipe_):
         self.log.debug('starting the ``qc_bias_structure`` method')
         plot = False
 
-        collaps_ax1 = np.sum(combined_bias_mean, axis=0)
-        collaps_ax2 = np.sum(combined_bias_mean, axis=1)
+        collaps_ax1 = np.nansum(combined_bias_mean, axis=0)
+        collaps_ax2 = np.nansum(combined_bias_mean, axis=1)
 
         x_axis = np.linspace(0, len(collaps_ax1), len(collaps_ax1), dtype=int)
         y_axis = np.linspace(0, len(collaps_ax2), len(collaps_ax2), dtype=int)
