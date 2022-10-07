@@ -142,7 +142,7 @@ def quicklook_image(
         title=False,
         surfacePlot=False,
         dispMap=False,
-        dispMapDF=False):
+        dispMapDF=False,
         inst=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
@@ -154,9 +154,9 @@ def quicklook_image(
     - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data".
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
-    - ``inst`` -- provide instrument name if no header exists
     - ``dispMap`` -- path to dispersion map. Default *False*
     - ``dispMapDF`` -- pandas dataframe of dispersion map wavelength, order and slit-postion
+    - ``inst`` -- provide instrument name if no header exists
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
