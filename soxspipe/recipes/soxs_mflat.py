@@ -197,7 +197,7 @@ class soxs_mflat(_base_recipe_):
 
         # STACK THE NORMALISED FLAT FRAMES
         combined_normalised_flat = self.clip_and_stack(
-            frames=normalisedFlats, recipe="soxs_mflat")
+            frames=normalisedFlats, recipe="soxs_mflat", ignore_input_masks=False, post_stack_clipping=True)
 
         quicklook_image(
             log=self.log, CCDObject=combined_normalised_flat, show=False)
@@ -222,7 +222,7 @@ class soxs_mflat(_base_recipe_):
 
         # STACK THE RE-NORMALISED FLAT FRAMES
         combined_normalised_flat = self.clip_and_stack(
-            frames=normalisedFlats, recipe="soxs_mflat")
+            frames=normalisedFlats, recipe="soxs_mflat", ignore_input_masks=False, post_stack_clipping=True)
 
         quicklook_image(
             log=self.log, CCDObject=combined_normalised_flat, show=False)

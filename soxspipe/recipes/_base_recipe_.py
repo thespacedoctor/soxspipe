@@ -699,7 +699,7 @@ class _base_recipe_(object):
 
         ```python
         combined_bias_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mbias")
+            frames=self.inputFrames, recipe="soxs_mbias", ignore_input_masks=False, post_stack_clipping=True)
         ```
 
         ---

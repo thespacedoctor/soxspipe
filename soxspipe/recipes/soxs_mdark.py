@@ -159,7 +159,7 @@ class soxs_mdark(_base_recipe_):
         dp = self.detectorParams
 
         combined_dark_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mdark")
+            frames=self.inputFrames, recipe="soxs_mdark", ignore_input_masks=False, post_stack_clipping=True)
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(

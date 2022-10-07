@@ -181,7 +181,7 @@ class soxs_stare(_base_recipe_):
             allObjectFrames.append(singleFrame)
 
         combined_object = self.clip_and_stack(
-            frames=allObjectFrames, recipe="soxs_stare")
+            frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=False, post_stack_clipping=True)
         self.dateObs = combined_object.header[kw("DATE_OBS")]
 
         # NIR DARK
