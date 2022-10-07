@@ -10,11 +10,11 @@
     February 26, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
 
 
 class keyword_lookup(object):

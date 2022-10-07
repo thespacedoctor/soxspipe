@@ -28,6 +28,19 @@ su = tools(
 )
 arguments, settings, log, dbConn = su.setup()
 
+packageDirectory = utKit("").get_project_root()
+settingsFile2 = packageDirectory + "/test_settings_soxs_sim.yaml"
+# settingsFile = home + "/.config/soxspipe/soxspipe.yaml"
+su = tools(
+    arguments={"settingsFile": settingsFile2},
+    docString=__doc__,
+    logLevel="DEBUG",
+    options_first=False,
+    projectName=None,
+    defaultSettingsFile=False
+)
+arguments2, settings2, log2, dbConn2 = su.setup()
+
 # SETUP AND TEARDOWN FIXTURE FUNCTIONS FOR THE ENTIRE MODULE
 moduleDirectory = os.path.dirname(__file__)
 utKit = utKit(moduleDirectory)
@@ -99,6 +112,17 @@ class test_soxs_mflat(unittest.TestCase):
         mflat = this.produce_product()
         print(f"The master flat file has been saved to '{mflat}'")
 
+    def test_soxs_mflat_nir_soxssim_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/FLAT/sof/SOXSIM_NIR_FLATS.sof"
+        from soxspipe.recipes import soxs_mflat
+        this = soxs_mflat(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath
+        )
+        mflat = this.produce_product()
+        print(f"The master flat file has been saved to '{mflat}'")
+
     def test_soxs_mflat_nir_short_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_short_flats.sof"
         from soxspipe.recipes import soxs_mflat
@@ -109,30 +133,9 @@ class test_soxs_mflat(unittest.TestCase):
         )
         this.produce_product()
 
-    # def test_soxs_mflat_uvb_dflat_function(self):
+    def test_soxs_mflat_uvb_dflat_function(self):
 
-    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_dflats.sof"
-    #     from soxspipe.recipes import soxs_mflat
-    #     this = soxs_mflat(
-    #         log=log,
-    #         settings=settings,
-    #         inputFrames=sofPath
-    #     )
-    #     this.produce_product()
-
-    # def test_soxs_mflat_uvb_qflat_function(self):
-
-    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_qflats.sof"
-    #     from soxspipe.recipes import soxs_mflat
-    #     this = soxs_mflat(
-    #         log=log,
-    #         settings=settings,
-    #         inputFrames=sofPath
-    #     )
-    #     this.produce_product()
-
-    def test_soxs_mflat_vis_long_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_long_flats.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_dflats.sof"
         from soxspipe.recipes import soxs_mflat
         this = soxs_mflat(
             log=log,
@@ -140,6 +143,38 @@ class test_soxs_mflat(unittest.TestCase):
             inputFrames=sofPath
         )
         this.produce_product()
+
+    def test_soxs_mflat_uvb_qflat_function(self):
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_qflats.sof"
+        from soxspipe.recipes import soxs_mflat
+        this = soxs_mflat(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+    def test_soxs_mflat_uvb_combined_flat_function(self):
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_d_and_q_flats.sof"
+        from soxspipe.recipes import soxs_mflat
+        this = soxs_mflat(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
+
+    # def test_soxs_mflat_vis_long_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_long_flats.sof"
+    #     from soxspipe.recipes import soxs_mflat
+    #     this = soxs_mflat(
+    #         log=log,
+    #         settings=settings,
+    #         inputFrames=sofPath
+    #     )
+    #     this.produce_product()
 
     # def test_soxs_mflat_vis_short_function(self):
     #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_short_flats.sof"

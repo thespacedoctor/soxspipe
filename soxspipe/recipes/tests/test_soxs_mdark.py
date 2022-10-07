@@ -132,9 +132,10 @@ class test_soxs_mdark(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    def test_soxs_mdark_e2e_nir_function(self):
+    def test_soxs_mdark_e2e_nir_folder_function(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark/nir/180"
+        # sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(
             log=log2,
@@ -145,7 +146,21 @@ class test_soxs_mdark(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_900s_darks.sof"
+    def test_soxs_mdark_e2e_nir_function(self):
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark/sofs/soxsim_nir_180s_darks.sof"
+        # sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
+        from soxspipe.recipes import soxs_mdark
+        this = soxs_mdark(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath,
+            verbose=True
+        )
+        productPath = this.produce_product()
+        print(f"Here is the final product `{productPath}`")
+
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark_CR/sofs/soxsim_nir_300s_wCRH_darks.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(
             log=log2,

@@ -43,6 +43,7 @@ def cut_image_slice(
         length,
         x,
         y,
+        sliceAxis="x",
         median=False,
         plot=False):
     """*cut and return an N-pixel wide and M-pixels long slice, centred on a given coordinate from an image frame*
@@ -55,6 +56,7 @@ def cut_image_slice(
     - ``length`` -- length of the slice
     - ``x`` -- x-coordinate
     - ``y`` -- y-coordinate
+    - ``sliceAxis`` -- the axis along which slice is to be taken. Default *x*
     - ``median`` -- collapse the slice to a median value across its width
     - ``plot`` -- generate a plot of slice. Useful for debugging.
 
@@ -77,27 +79,58 @@ def cut_image_slice(
     else:
         halfwidth = width / 2
 
-    # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
-    if (x > frame.shape[1] - halfSlice) or (y > frame.shape[0] - halfwidth) or (x < halfSlice) or (y < halfwidth):
-        return None
+    if sliceAxis == "x":
+        axisA = x
+        axisB = y
+        axisALen = frame.shape[1]
+        axisBLen = frame.shape[0]
+    elif sliceAxis == "y":
+        axisB = x
+        axisA = y
+        axisALen = frame.shape[0]
+        axisBLen = frame.shape[1]
+    else:
+        raise ValueError("sliceAxis needs to be eith 'x' or 'y'")
 
-    slice = frame[int(y - halfwidth):int(y + halfwidth + 1),
-                  int(x - halfSlice):int(x + halfSlice)]
+    # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
+    if (axisA > axisALen - halfSlice) or (axisB > axisBLen - halfwidth) or (axisA < halfSlice) or (axisB < halfwidth):
+        return None, None, None
+
+    slice_length_offset = int(axisA - halfSlice)
+    if sliceAxis == "x":
+        sliceFull = frame[int(axisB - halfwidth):int(axisB + halfwidth + 1),
+                          slice_length_offset:int(axisA + halfSlice)]
+    else:
+        sliceFull = frame[slice_length_offset:int(axisA + halfSlice), int(axisB - halfwidth):int(axisB + halfwidth + 1)]
+    slice_width_centre = (int(axisB + halfwidth + 1) + int(axisB - halfwidth)) / 2
 
     if median:
-        slice = ma.median(slice, axis=0)
+        if sliceAxis == "y":
+            slice = ma.median(sliceFull, axis=1)
+        else:
+            slice = ma.median(sliceFull, axis=0)
 
     if plot and random.randint(1, 101) < 10000:
         # CHECK THE SLICE POINTS IF NEEDED
-        x = np.arange(0, len(slice))
+        if sliceAxis == "y":
+            sliceImg = np.rot90(sliceFull, 1)
+        else:
+            sliceImg = sliceFull
+        plt.imshow(sliceImg)
+        plt.show()
+        xx = np.arange(0, len(slice))
         plt.figure(figsize=(8, 5))
-        plt.plot(x, slice, 'ko')
+        if sliceAxis == "y":
+            plt.plot(xx, slice, 'ko', label=f"x={axisB}, y={axisA}, sliceAxis={sliceAxis}")
+        if sliceAxis == "x":
+            plt.plot(xx, slice, 'ko', label=f"x={axisA}, y={axisB}, sliceAxis={sliceAxis}")
         plt.xlabel('Position')
         plt.ylabel('Flux')
+        plt.legend()
         plt.show()
 
     log.debug('completed the ``cut_image_slice`` function')
-    return slice
+    return slice, slice_length_offset, slice_width_centre
 
 
 def quicklook_image(
@@ -110,6 +143,7 @@ def quicklook_image(
         surfacePlot=False,
         dispMap=False,
         dispMapDF=False):
+        inst=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
@@ -120,6 +154,7 @@ def quicklook_image(
     - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data".
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
+    - ``inst`` -- provide instrument name if no header exists
     - ``dispMap`` -- path to dispersion map. Default *False*
     - ``dispMapDF`` -- pandas dataframe of dispersion map wavelength, order and slit-postion
 
@@ -146,8 +181,17 @@ def quicklook_image(
         # ASSUME ONLY NDARRAY
         frame = CCDObject
 
-    rotatedImg = np.rot90(frame, 1)
-    rotatedImg = np.flipud(np.rot90(frame, 1))
+    if inst is False:
+        try:
+            inst = CCDObject.header["INSTRUME"]
+        except:
+            inst = "XSHOOTER"
+
+    if inst == "SOXS":
+        rotatedImg = np.flipud(frame)
+    if inst == "XSHOOTER":
+        rotatedImg = np.rot90(frame, 1)
+    rotatedImg = np.flipud(rotatedImg)
 
     std = np.nanstd(frame)
     mean = np.nanmean(frame)
@@ -167,7 +211,8 @@ def quicklook_image(
 
         fig = plt.figure(figsize=(40, 10))
         ax = fig.add_subplot(121, projection='3d')
-        plt.gca().invert_yaxis()
+        if inst == "XSHOOTER":
+            plt.gca().invert_yaxis()
         ax.set_box_aspect(aspect=(2, 1, 1))
         # Remove gray panes and axis grid
         ax.xaxis.pane.fill = False
@@ -183,14 +228,18 @@ def quicklook_image(
         X, Y = np.meshgrid(np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]), np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]))
         surface = ax.plot_surface(X=X, Y=Y, Z=rotatedImg, cmap='viridis', antialiased=True, vmin=vmin, vmax=vmax)
 
-        ax.azim = -120
+        if inst == "SOXS":
+            ax.azim = 70
+        else:
+            ax.azim = -120
         ax.elev = 30
 
-        plt.gca().invert_xaxis()
         ax.set_xlim(0, rotatedImg.shape[1])
         ax.set_ylim(0, rotatedImg.shape[0])
-        ax.set_zlim(0, min(np.nanmax(frame), mean + stdWindow * 10 * std))
+        # ax.set_zlim(0, min(np.nanmax(frame), mean + stdWindow * 10 * std))
 
+        if inst == "SOXS":
+            ax.invert_yaxis()
         backgroundColour = '#404040'
         fig.set_facecolor(backgroundColour)
         ax.set_facecolor(backgroundColour)
@@ -198,10 +247,16 @@ def quicklook_image(
         ax.yaxis.pane.set_edgecolor(backgroundColour)
         ax.zaxis.pane.set_edgecolor(backgroundColour)
 
-        plt.xlabel(
-            "y-axis", fontsize=10)
-        plt.ylabel(
-            "x-axis", fontsize=10)
+        if inst == "SOXS":
+            plt.xlabel(
+                "x-axis", fontsize=10)
+            plt.ylabel(
+                "y-axis", fontsize=10)
+        else:
+            plt.xlabel(
+                "y-axis", fontsize=10)
+            plt.ylabel(
+                "x-axis", fontsize=10)
 
         ax2 = fig.add_subplot(122)
     else:
@@ -272,12 +327,19 @@ def quicklook_image(
         # plt.colorbar()
     if title:
         fig.suptitle(title, fontsize=16)
-    ax2.invert_yaxis()
+    if inst == "XSHOOTER":
+        ax2.invert_yaxis()
     # cbar.ticklabel_format(useOffset=False)
-    plt.xlabel(
-        "y-axis", fontsize=10)
-    plt.ylabel(
-        "x-axis", fontsize=10)
+    if inst == "SOXS":
+        plt.xlabel(
+            "x-axis", fontsize=10)
+        plt.ylabel(
+            "y-axis", fontsize=10)
+    else:
+        plt.xlabel(
+            "y-axis", fontsize=10)
+        plt.ylabel(
+            "x-axis", fontsize=10)
 
     plt.show()
     mpl.rcParams.update(originalRC)
@@ -320,72 +382,45 @@ def unpack_order_table(
     dat = Table.read(orderTablePath, format='fits', hdu=2)
     orderMetaTable = dat.to_pandas()
 
-    # ADD Y-COORD LIST
-    ycoords = [np.arange(math.floor(l) - int(r * extend), math.ceil(u) + int(r * extend), 1) for l, u, r in zip(
-        orderMetaTable["ymin"].values, orderMetaTable["ymax"].values, orderMetaTable["ymax"].values - orderMetaTable["ymin"].values)]
+    if "degy_cent" in orderPolyTable.columns:
+        axisA = "x"
+        axisB = "y"
+    else:
+        axisA = "y"
+        axisB = "x"
+
+    # ADD AXIS B COORD LIST
+    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 3200 if (math.ceil(u) + int(r * extend)) > 3200 else (math.ceil(u) + int(r * extend)), 1) for l, u, r in zip(
+        orderMetaTable[f"{axisB}min"].values, orderMetaTable[f"{axisB}max"].values, orderMetaTable[f"{axisB}max"].values - orderMetaTable[f"{axisB}min"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
-        ycoords, orderMetaTable["order"].values)]
+        axisBcoords, orderMetaTable["order"].values)]
 
     import pandas as pd
     # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
     myDict = {
-        "ycoord": np.concatenate(ycoords),
+        f"{axisB}coord": np.concatenate(axisBcoords),
         "order": np.concatenate(orders)
     }
     orderPixelTable = pd.DataFrame(myDict)
 
-    # RUN COORDINATES THROUGH POLYNOMIALS TO GET X-COORDS
-    xcoords_centre = []
-    xcoords_edgeup = []
-    xcoords_edgelow = []
-
     cent_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
-    poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_cent"]), order_deg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", yCol="ycoord").poly
-    orderPixelTable["xcoord_centre"] = poly(orderPixelTable, *cent_coeff)
+    poly = chebyshev_order_xy_polynomials(log=log, axisBCol=f"{axisB}coord", orderCol="order", orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"])).poly
+    orderPixelTable[f"{axisA}coord_centre"] = poly(orderPixelTable, *cent_coeff)
 
-    if "degy_edgeup" in orderPolyTable.columns:
+    std_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "std_" in k]
+    if len(std_coeff):
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", axisBCol=f"{axisB}coord").poly
+        orderPixelTable["std"] = poly(orderPixelTable, *std_coeff)
+
+    if f"deg{axisB}_edgeup" in orderPolyTable.columns:
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]
-        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgeup"]), order_deg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", yCol="ycoord").poly
-        orderPixelTable["xcoord_edgeup"] = poly(orderPixelTable, *upper_coeff)
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgeup"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", axisBCol=f"{axisB}coord").poly
+        orderPixelTable[f"{axisA}coord_edgeup"] = poly(orderPixelTable, *upper_coeff)
 
-    if "degy_edgelow" in orderPolyTable.columns:
+    if f"deg{axisB}_edgelow" in orderPolyTable.columns:
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
-        poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(orderPolyTable.iloc[0]["degy_edgelow"]), order_deg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", yCol="ycoord").poly
-        orderPixelTable["xcoord_edgelow"] = poly(orderPixelTable, *upper_coeff)
-
-    # for index, row in orderPolyTable.iterrows():
-    #     cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
-    #     poly = chebyshev_order_xy_polynomials(log=log, y_deg=int(row["degy_cent"]), order_deg=int(row["degorder_cent"])).poly
-    #     xcoords_centre.append(np.array(poly(ycoords[index], *cent_coeff)))
-    #     if "degy_edgeup" in row:
-    #         degy_edge = int(row["degy_edgeup"])
-    #         edgeup_coeff = [float(v)
-    #                         for k, v in row.items() if "edgeup_" in k]
-    #         poly = chebyshev_xy_polynomial(
-    #             log=log, y_deg=degy_edge).poly
-    #         xcoords_edgeup.append(
-    #             np.array(poly(ycoords[index], *edgeup_coeff)))
-
-    #         edgelow_coeff = [float(v)
-    #                          for k, v in row.items() if "edgelow_" in k]
-    #         poly = chebyshev_xy_polynomial(
-    #             log=log, y_deg=degy_edge).poly
-    #         xcoords_edgelow.append(
-    #             np.array(poly(ycoords[index], *edgelow_coeff)))
-
-    # # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-    # myDict = {
-    #     "order": np.concatenate(orders),
-    #     "ycoord": np.concatenate(ycoords),
-    #     'xcoord_centre': np.concatenate(xcoords_centre)
-    # }
-    # # ADD ODER EDGES IF NEEDED
-    # if len(xcoords_edgeup):
-    #     myDict['xcoord_edgeup'] = np.concatenate(xcoords_edgeup)
-    #     myDict['xcoord_edgelow'] = np.concatenate(xcoords_edgelow)
-
-    # # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-    # orderPixelTable = pd.DataFrame(myDict)
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
+        orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
 
     log.debug('completed the ``functionName`` function')
     return orderPolyTable, orderPixelTable, orderMetaTable
@@ -523,20 +558,28 @@ def spectroscopic_image_quality_checks(
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
+    inst = frame.header[kw("INSTRUME")]
+    if inst == "SOXS":
+        axisA = "y"
+        axisB = "x"
+    elif inst == "XSHOOTER":
+        axisA = "x"
+        axisB = "y"
+
     # UNPACK THE ORDER TABLE
     orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
         log=log, orderTablePath=orderTablePath)
 
     mask = np.ones_like(frame.data)
 
-    xcoords_up = orderTablePixels["xcoord_edgeup"].values
-    xcoords_low = orderTablePixels["xcoord_edgelow"].values
-    ycoords = orderTablePixels["ycoord"].values
-    xcoords_up = xcoords_up.astype(int)
-    xcoords_low = xcoords_low.astype(int)
+    axisACoords_up = orderTablePixels[f"{axisA}coord_edgeup"].values
+    axisACoords_low = orderTablePixels[f"{axisA}coord_edgelow"].values
+    axisBCoords = orderTablePixels[f"{axisB}coord"].values
+    axisACoords_up = axisACoords_up.astype(int)
+    axisACoords_low = axisACoords_low.astype(int)
 
     # UPDATE THE MASK
-    for u, l, y in zip(xcoords_up, xcoords_low, ycoords):
+    for u, l, y in zip(axisACoords_up, axisACoords_low, axisBCoords):
         mask[y][l:u] = 0
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
@@ -651,7 +694,7 @@ def get_calibrations_path(
     ```python
     from soxspipe.commonutils.toolkit import get_calibrations_path
     calibrationRootPath = get_calibrations_path(log=log, settings=settings)
-    ```           
+    ```
     """
     log.debug('starting the ``get_calibrations_path`` function')
 

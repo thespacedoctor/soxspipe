@@ -15,59 +15,62 @@ soxs-mdark:
     clipping-upper-sigma: 5   
     clipping-iteration-count: 5
 
-# soxs-disp-solution:
-#     pixel-window-size: 10
-#     order-deg: 3
-#     wavelength-deg: 3
-#     clipping-iteration-limit: 10
-#     poly-fitting-residual-clipping-sigma: 5
+soxs-disp-solution:
+    pixel-window-size: 10
+    order-deg: 5
+    wavelength-deg: 5
+    poly-clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 4
 
-# soxs-order-centre:
-#     order-sample-count: 50
-#     slice-length: 10
-#     peak-sigma-limit: 3
-#     poly-deg: 5
-#     poly-fitting-residual-clipping-sigma: 1.5
-#     clipping-iteration-limit: 5
+soxs-order-centre:
+    order-sample-count: 200
+    slice-length: 10
+    peak-sigma-limit: 3
+    disp-axis-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 4.0
+    poly-clipping-iteration-limit: 1
 
-# soxs-spatial-solution:
-#     pixel-window-size: 10
-#     order-deg: 3
-#     wavelength-deg: 3
-#     slit-deg: 3
-#     clipping-iteration-limit: 10
-#     poly-fitting-residual-clipping-sigma: 5
+soxs-spatial-solution:
+    pixel-window-size: 10
+    order-deg: 3
+    wavelength-deg: 3
+    slit-deg: 3
+    poly-clipping-iteration-limit: 10
+    poly-fitting-residual-clipping-sigma: 5
+    # INITIAL SEED GRID RESOLUTION 
+    grid_res_wavelength: 0.03 # in nm
+    grid_res_slit: 0.04 # in arcsec
+    map_to_image_displacement_threshold: 0.01 # in pixels
+    zoom_grid_size: 4
 
-# soxs-mflat:
-#     centre-order-window: 20
-#     clipping-lower-sigma: 50
-#     clipping-upper-sigma: 50   
-#     clipping-iteration-count: 5
-#     slice-length-for-edge-detection: 90
-#     slice-width-for-edge-detection: 5
-#     min-percentage-threshold-for-edge-detection: 20
-#     max-percentage-threshold-for-edge-detection: 50
-#     poly-deg: 4
-#     poly-fitting-residual-clipping-sigma: 5
-#     clipping-iteration-limit: 10
-#     low-sensitivity-clipping-simga: 2
+soxs-mflat:
+    centre-order-window: 13
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
+    clipping-lower-simga: 50
+    clipping-upper-simga: 50   
+    clipping-iteration-count: 0
+    slice-length-for-edge-detection: 90
+    slice-width-for-edge-detection: 5
+    min-percentage-threshold-for-edge-detection: 20
+    max-percentage-threshold-for-edge-detection: 50
+    disp-axis-deg: 5
+    order-deg: 5
+    poly-fitting-residual-clipping-sigma: 3.0
+    poly-clipping-iteration-limit: 2
+    low-sensitivity-clipping-simga: 2
     
 
 # soxs-straighten:
 #     asdasd: 1
 
-# # UTILS
-# background-subtraction:
-#     bsline-deg: 3
-#     median-filter-pixels: 11
+# UTILS
+background-subtraction:
+    bsline-deg: 2
+    median-filter-pixels: 9
 
-# KEYS TO USES AS COLUMNS IN QUICKLOOK SUMMARY TABLES PRINTS TO STDOUT
-summary-keys:
-    default: ['MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME']
-    verbose: ['MJDOBS', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'PRO_TYPE', 'PRO_CATG', 'PRO_TECH', 'SEQ_ARM',
-                    'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'DET_GAIN', 'RON', 'BUNIT']
-                    
+
 data-extension: 1
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data

@@ -17,7 +17,7 @@ instrument: soxs
 #     pixel-window-size: 10
 #     order-deg: 3
 #     wavelength-deg: 3
-#     clipping-iteration-limit: 10
+#     poly-clipping-iteration-limit: 10
 #     poly-fitting-residual-clipping-sigma: 5
 
 # soxs-order-centre:
@@ -26,14 +26,14 @@ instrument: soxs
 #     peak-sigma-limit: 3
 #     poly-deg: 5
 #     poly-fitting-residual-clipping-sigma: 1.5
-#     clipping-iteration-limit: 5
+#     poly-clipping-iteration-limit: 5
 
 # soxs-spatial-solution:
 #     pixel-window-size: 10
 #     order-deg: 3
 #     wavelength-deg: 3
 #     slit-deg: 3
-#     clipping-iteration-limit: 10
+#     poly-clipping-iteration-limit: 10
 #     poly-fitting-residual-clipping-sigma: 5
 
 # soxs-mflat:
@@ -47,7 +47,7 @@ instrument: soxs
 #     max-percentage-threshold-for-edge-detection: 50
 #     poly-deg: 4
 #     poly-fitting-residual-clipping-sigma: 5
-#     clipping-iteration-limit: 10
+#     poly-clipping-iteration-limit: 10
 #     low-sensitivity-clipping-simga: 2
     
 

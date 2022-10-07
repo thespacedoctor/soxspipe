@@ -1,5 +1,9 @@
 # Release Notes
 
+dispersion solution now working with simulated NIR SOXS data
+UV D-Lamp and QTH-Lamp master flats now being stitched together
+mflat docs brought up-to-date
+
 quicklook now renders dispersion solution grid
 added a `twoD_disp_map_image_to_dataframe` function to toolkit
 errors in error maps now being treated correctly and propagating to combined images
@@ -45,7 +49,6 @@ This is only a summary of some of the updates included in this release:
 * **ENHANCEMENT** add a verbosity flag to the command-line and a verbose parameter to each recipe
 * **REFACTOR** inter-order pixel value in flats now set to unity (instead of running background fitting and subtraction)
 * **REFACTOR:** recipes now have their recipe name as a `recipeName` attribute
-
 
 ## v0.5.0 - June 10, 2021
 

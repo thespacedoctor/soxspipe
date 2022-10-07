@@ -24,7 +24,8 @@ os.environ['TERM'] = 'vt100'
 def dispersion_map_to_pixel_arrays(
         log,
         dispersionMapPath,
-        orderPixelTable):
+        orderPixelTable,
+        removeOffDetectorLocation=True):
     """*use a first-guess dispersion map to append x,y fits to line-list data frame.* 
 
     Return a line-list with x,y fits given a first guess dispersion map.*
@@ -34,6 +35,7 @@ def dispersion_map_to_pixel_arrays(
     - `log` -- logger
     - `dispersionMapPath` -- path to the dispersion map
     - `orderPixelTable` -- a data-frame including 'order', 'wavelength' and 'slit_pos' columns
+    - `removeOffDetectorLocation` -- if data points are found to lie off the detector plane then remove them from the resutls. Default *True*
 
     **Usage:**
 
@@ -68,32 +70,33 @@ def dispersion_map_to_pixel_arrays(
     check = 1
     for index, row in tableData.iterrows():
         axis = row["axis"].decode("utf-8")
-        order_deg = int(row["order-deg"])
-        wavelength_deg = int(row["wavelength-deg"])
-        slit_deg = int(row["slit-deg"])
+        orderDeg = int(row["order-deg"])
+        wavelengthDeg = int(row["wavelength-deg"])
+        slitDeg = int(row["slit-deg"])
 
         if check:
-            for i in range(0, order_deg + 1):
+            for i in range(0, orderDeg + 1):
                 orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
-            for j in range(0, wavelength_deg + 1):
+            for j in range(0, wavelengthDeg + 1):
                 orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
-            for k in range(0, slit_deg + 1):
+            for k in range(0, slitDeg + 1):
                 orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
             check = 0
 
         coeff[axis] = [float(v) for k, v in row.items() if k not in [
             "axis", "order-deg", "wavelength-deg", "slit-deg"]]
         poly[axis] = chebyshev_order_wavelength_polynomials(
-            log=log, order_deg=order_deg, wavelength_deg=wavelength_deg, slit_deg=slit_deg, exponents_included=True).poly
+            log=log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True).poly
 
     # CONVERT THE ORDER-SORTED WAVELENGTH ARRAYS INTO ARRAYS OF PIXEL TUPLES
     orderPixelTable["fit_x"] = poly['x'](orderPixelTable, *coeff['x'])
     orderPixelTable["fit_y"] = poly['y'](orderPixelTable, *coeff['y'])
 
-    # FILTER DATA FRAME
-    # FIRST CREATE THE MASK
-    mask = (orderPixelTable["fit_x"] > 0) & (orderPixelTable["fit_y"] > 0)
-    orderPixelTable = orderPixelTable.loc[mask]
+    if removeOffDetectorLocation:
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (orderPixelTable["fit_x"] > 0) & (orderPixelTable["fit_y"] > 0)
+        orderPixelTable = orderPixelTable.loc[mask]
 
     log.debug('completed the ``dispersion_map_to_pixel_arrays`` function')
     return orderPixelTable

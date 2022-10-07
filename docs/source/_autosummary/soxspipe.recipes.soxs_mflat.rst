@@ -63,6 +63,10 @@
        
    
         
+            ~soxs_mflat.stitch_uv_mflats
+       
+   
+        
             ~soxs_mflat.verify_input_frames
        
    
@@ -142,6 +146,8 @@
    ..     
    ..          ~soxs_mflat._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

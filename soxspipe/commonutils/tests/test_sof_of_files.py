@@ -61,6 +61,7 @@ class test_set_of_files(unittest.TestCase):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
         from soxspipe.commonutils import set_of_files
+        print(directory)
         sof = set_of_files(
             log=log,
             settings=settings,

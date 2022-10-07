@@ -29,7 +29,7 @@ soxs-disp-solution:
     pixel-window-size: 10
     order-deg: 3
     wavelength-deg: 3
-    clipping-iteration-limit: 10
+    poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
@@ -40,20 +40,20 @@ soxs-order-centre:
     # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
     peak-sigma-limit: 3
     # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-    y-deg: 5
+    disp-axis-deg: 5
     # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
     order-deg: 5
     # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
     poly-fitting-residual-clipping-sigma: 2.0
     # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-    clipping-iteration-limit: 10
+    poly-clipping-iteration-limit: 10
 
 soxs-spatial-solution:
     pixel-window-size: 10
     order-deg: 3
     wavelength-deg: 3
     slit-deg: 3
-    clipping-iteration-limit: 10
+    poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
     # INITIAL SEED GRID RESOLUTION 
     grid_res_wavelength: 0.03 # in nm
@@ -72,10 +72,10 @@ soxs-mflat:
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20
     max-percentage-threshold-for-edge-detection: 50
-    y-deg: 5
+    disp-axis-deg: 5
     order-deg: 5
     poly-fitting-residual-clipping-sigma: 2
-    clipping-iteration-limit: 5
+    poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-simga: 2
     
 soxs-stare:

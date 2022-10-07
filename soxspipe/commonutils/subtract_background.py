@@ -94,6 +94,15 @@ class subtract_background(object):
         self.arm = frame.header[kw("SEQ_ARM")]
         self.dateObs = frame.header[kw("DATE_OBS")]
 
+        self.inst = frame.header[kw("INSTRUME")]
+
+        if self.inst == "SOXS":
+            self.axisA = "y"
+            self.axisB = "x"
+        elif self.inst == "XSHOOTER":
+            self.axisA = "x"
+            self.axisB = "y"
+
         quicklook_image(
             log=self.log, CCDObject=self.frame, show=False, ext='data', stdWindow=3, surfacePlot=True, title="Initial input frame needing scattered light subtraction")
 
@@ -109,9 +118,9 @@ class subtract_background(object):
         self.log.debug('starting the ``subtract`` method')
 
         kw = self.kw
-        imageType = self.frame.header[kw("DPR_TYPE").lower()].replace(",", "-")
-        imageTech = self.frame.header[kw("DPR_TECH").lower()].replace(",", "-")
-        imageCat = self.frame.header[kw("DPR_CATG").lower()].replace(",", "-")
+        imageType = self.frame.header[kw("DPR_TYPE")].replace(",", "-")
+        imageTech = self.frame.header[kw("DPR_TECH")].replace(",", "-")
+        imageCat = self.frame.header[kw("DPR_CATG")].replace(",", "-")
 
         print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
 
@@ -154,18 +163,26 @@ class subtract_background(object):
 
         # MASK DATA INSIDE OF ORDERS (EXPAND THE INNER-ORDER AREA IF NEEDED)
         uniqueOrders = orderPixelTable['order'].unique()
+        if self.axisA == "x":
+            axisALen = self.frame.data.shape[1]
+            axisBLen = self.frame.data.shape[0]
+        else:
+            axisALen = self.frame.data.shape[0]
+            axisBLen = self.frame.data.shape[1]
         expandEdges = 2
         for o in uniqueOrders:
-            ycoord = orderPixelTable.loc[
-                (orderPixelTable["order"] == o)]["ycoord"]
-            xcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][
-                "xcoord_edgeup"] + expandEdges
-            xcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
-                "xcoord_edgelow"] - expandEdges
-            xcoord_edgelow, xcoord_edgeup, ycoord = zip(*[(x1, x2, y) for x1, x2, y in zip(xcoord_edgelow, xcoord_edgeup, ycoord) if x1 > 0 and x1 < self.frame.data.shape[
-                                                        1] and x2 > 0 and x2 < self.frame.data.shape[1] and y > 0 and y < self.frame.data.shape[0]])
-            for y, u, l in zip(ycoord, np.ceil(xcoord_edgeup).astype(int), np.floor(xcoord_edgelow).astype(int)):
-                self.frame.mask[y, l:u] = 1
+            axisBcoord = orderPixelTable.loc[
+                (orderPixelTable["order"] == o)][f"{self.axisB}coord"]
+            axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                f"{self.axisA}coord_edgeup"] + expandEdges
+            axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                f"{self.axisA}coord_edgelow"] - expandEdges
+            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(*[(x1, x2, b) for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord) if x1 > 0 and x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen])
+            for b, u, l in zip(axisBcoord, np.ceil(axisAcoord_edgeup).astype(int), np.floor(axisAcoord_edgelow).astype(int)):
+                if self.axisA == "x":
+                    self.frame.mask[b, l:u] = 1
+                else:
+                    self.frame.mask[l:u, b] = 1
 
         self.log.debug('completed the ``mask_order_locations`` method')
         return None
