@@ -4,15 +4,15 @@ version: 1
 instrument: soxs
 
 # soxs-mbias:
-#     clipping-lower-simga: 5
-#     clipping-upper-simga: 5   
+#     clipping-lower-sigma: 5
+#     clipping-upper-sigma: 5   
 #     clipping-iteration-count: 5
 
 soxs-mdark:
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-lower-simga: 5
-    clipping-upper-simga: 5   
+    clipping-lower-sigma: 5
+    clipping-upper-sigma: 5   
     clipping-iteration-count: 5
 
 # soxs-disp-solution:
@@ -40,8 +40,8 @@ soxs-mdark:
 
 # soxs-mflat:
 #     centre-order-window: 20
-#     clipping-lower-simga: 50
-#     clipping-upper-simga: 50   
+#     clipping-lower-sigma: 50
+#     clipping-upper-sigma: 50   
 #     clipping-iteration-count: 5
 #     slice-length-for-edge-detection: 90
 #     slice-width-for-edge-detection: 5

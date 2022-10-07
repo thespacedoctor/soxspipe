@@ -2,6 +2,8 @@
 
 quicklook now renders dispersion solution grid
 added a `twoD_disp_map_image_to_dataframe` function to toolkit
+errors in error maps now being treated correctly and propagating to combined images
+\~40% speed gain in combining images.
 
 ## v0.6.2 - April 13, 2022
 

@@ -14,15 +14,15 @@ data-extension: 0
 soxs-mbias:
     stacked-clipping-sigma: 3
     stacked-clipping-iterations: 5
-    clipping-lower-simga: 5
-    clipping-upper-simga: 5   
+    clipping-lower-sigma: 5
+    clipping-upper-sigma: 5   
     clipping-iteration-count: 5
 
 soxs-mdark:
     stacked-clipping-sigma: 3
     stacked-clipping-iterations: 5
-    clipping-lower-simga: 5
-    clipping-upper-simga: 5   
+    clipping-lower-sigma: 5
+    clipping-upper-sigma: 5   
     clipping-iteration-count: 5
 
 soxs-disp-solution:
@@ -65,8 +65,8 @@ soxs-mflat:
     centre-order-window: 20
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-lower-simga: 50
-    clipping-upper-simga: 50   
+    clipping-lower-sigma: 50
+    clipping-upper-sigma: 50   
     clipping-iteration-count: 0
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
@@ -82,8 +82,8 @@ soxs-stare:
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
     clipping-iteration-count: 0
-    clipping-lower-simga: 10
-    clipping-upper-simga: 10 
+    clipping-lower-sigma: 10
+    clipping-upper-sigma: 10 
 
 sky-subtraction:
     # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)

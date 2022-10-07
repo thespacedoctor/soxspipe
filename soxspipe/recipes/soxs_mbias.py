@@ -10,11 +10,11 @@
     January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
-from astropy.stats import sigma_clip, mad_std
+
 from soxspipe.commonutils.toolkit import generic_quality_checks
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-import ccdproc
+from astropy.stats import sigma_clip
 from astropy import units as u
 from astropy.nddata import CCDData
 import math
@@ -25,8 +25,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-from astropy.stats import sigma_clip, mad_std
-from scipy.stats import median_absolute_deviation
+from scipy.stats import median_abs_deviation
 import matplotlib.pyplot as plt
 os.environ['TERM'] = 'vt100'
 
@@ -153,34 +152,42 @@ class soxs_mbias(_base_recipe_):
         kw = self.kw
         dp = self.detectorParams
 
-        combined_bias_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mbias", ignore_input_masks=True)
-        self.dateObs = combined_bias_mean.header[kw("DATE_OBS")]
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtact_mean_bias_level(c) for c in ccds])
+        masterMeanBiasLevel = np.mean(meanBiasLevels)
+        masterMedianBiasLevel = np.median(meanBiasLevels)
+        rawRon = np.mean(rons)
+
+        combined_noise = self.clip_and_stack(
+            frames=list(noiseFrames), recipe="soxs_mbias", ignore_input_masks=True, post_stack_clipping=True)
+
+        masterRon = np.std(combined_noise.data)
+
+        # FILL MASKED PIXELS WITH 0
+        combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled()
+        combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
+        combined_bias_mean = combined_noise
+        combined_bias_mean.mask[:] = False
+
+        # # MULTIPROCESSING HERE ADDS A SELF_DEFEATING OVERHEAD
+        # from fundamentals import fmultiprocess
+        # # DEFINE AN INPUT ARRAY
+        # results = fmultiprocess(log=self.log, function=self.subtact_mean_bias_level,
+        #                         inputArray=ccds, poolSize=False, timeout=300)
 
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
 
         self.qc_ron(
             frameType="MBIAS",
             frameName="master bias",
-            masterFrame=combined_bias_mean
+            masterFrame=combined_bias_mean,
+            rawRon=rawRon,
+            masterRon=masterRon
         )
+
         self.qc_bias_structure(combined_bias_mean)
-
-        # INSPECTING THE THE UNCERTAINTY MAPS
-        # print("individual frame data")
-        # for a in ccds:
-        #     print(a.data[0][0])
-        # print("\ncombined frame data")
-        # print(combined_bias_mean.data[0][0])
-        # print("individual frame error")
-        # for a in ccds:
-        #     print(a.uncertainty[0][0])
-        # print("combined frame error")
-        # print(combined_bias_mean.uncertainty[0][0])
-
-        # combined_bias_mean.data = combined_bias_mean.data.astype('float32')
-        # combined_bias_mean.uncertainty = combined_bias_mean.uncertainty.astype(
-        #     'float32')
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
@@ -189,7 +196,8 @@ class soxs_mbias(_base_recipe_):
         medianFlux = self.qc_median_flux_level(
             frame=combined_bias_mean,
             frameType="MBIAS",
-            frameName="master bias"
+            frameName="master bias",
+            medianFlux=masterMedianBiasLevel
         )
 
         # WRITE TO DISK
@@ -328,11 +336,11 @@ class soxs_mbias(_base_recipe_):
                 dark_image_grey_fourier, sigma_lower=1000, sigma_upper=1000, maxiters=1, cenfunc='mean')
             goodData = np.ma.compressed(masked_dark_image_grey_fourier)
 
-            # frame_mad = median_absolute_deviation(dark_image_grey_fourier, axis=None)
+            # frame_mad = median_abs_deviation(dark_image_grey_fourier, axis=None)
             # frame_std = np.std(dark_image_grey_fourier)
             # print(frame_std, frame_mad, frame_std / frame_mad)
 
-            frame_mad = median_absolute_deviation(goodData, axis=None)
+            frame_mad = median_abs_deviation(goodData, axis=None)
             frame_std = np.std(goodData)
 
             from soxspipe.commonutils.toolkit import quicklook_image
@@ -359,6 +367,46 @@ class soxs_mbias(_base_recipe_):
 
         self.log.debug('completed the ``qc_periodic_pattern_noise`` method')
         return ppnmax
+
+    def subtact_mean_bias_level(
+            self,
+            rawBias):
+        """*iteratively median sigma-clip raw bias data frames before calculating and removing the mean bias level*
+
+        **Key Arguments:**
+            - ``rawBias`` -- the raw bias frame
+
+        **Return:**
+            - `meanBiasLevel` -- the frame mean bias level
+            - `noiseFrame` -- the raw bias frame with mean bias level removed
+
+        **Usage:**
+
+        ```python
+        meanBiasLevel, ron, noiseFrame = self.subtact_mean_bias_level(rawBias)
+        ```
+        """
+        self.log.debug('starting the ``subtact_mean_bias_level`` method')
+
+        # UNPACK SETTINGS
+        clipping_lower_sigma = self.settings[
+            "soxs-mbias"]["clipping-lower-sigma"]
+        clipping_upper_sigma = self.settings[
+            "soxs-mbias"]["clipping-upper-sigma"]
+        clipping_iteration_count = self.settings[
+            "soxs-mbias"]["clipping-iteration-count"]
+
+        maskedFrame = sigma_clip(
+            rawBias, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
+        # DETERMINE MEDIAN BIAS LEVEL
+        maskedDataArray = np.ma.array(
+            maskedFrame.data, mask=maskedFrame.mask)
+        meanBiasLevel = np.ma.mean(maskedDataArray)
+        ron = np.ma.std(maskedDataArray)
+        rawBias.data -= meanBiasLevel
+
+        self.log.debug('completed the ``subtact_mean_bias_level`` method')
+        return meanBiasLevel, ron, rawBias
 
     # use the tab-trigger below for new method
     # xt-class-method

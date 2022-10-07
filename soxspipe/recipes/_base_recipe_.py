@@ -680,13 +680,15 @@ class _base_recipe_(object):
             self,
             frames,
             recipe,
-            ignore_input_masks=False):
+            ignore_input_masks=False,
+            post_stack_clipping=True):
         """*mean combine input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function*
 
         **Key Arguments:**
             - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
             - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
             - ``ignore_input_masks`` -- ignore the input masks during clip and stacking?
+            - ``post_stack_clipping`` -- allow cross-plane clipping on combined frame. Clipping settings in setting file. Default *True*.
 
         **Return:**
             - ``combined_frame`` -- the combined master frame (with updated bad-pixel and uncertainty maps)
@@ -725,9 +727,9 @@ class _base_recipe_(object):
             recipe]["stacked-clipping-iterations"]
         # UNPACK SETTINGS
         clipping_lower_sigma = self.settings[
-            recipe]["clipping-lower-simga"]
+            recipe]["clipping-lower-sigma"]
         clipping_upper_sigma = self.settings[
-            recipe]["clipping-upper-simga"]
+            recipe]["clipping-upper-sigma"]
         clipping_iteration_count = self.settings[
             recipe]["clipping-iteration-count"]
 
@@ -966,13 +968,17 @@ class _base_recipe_(object):
             self,
             frameType=False,
             frameName=False,
-            masterFrame=False):
+            masterFrame=False,
+            rawRon=False,
+            masterRon=False):
         """*calculate the read-out-noise from bias/dark frames*
 
         **Key Arguments:**
             - ``frameType`` -- the type of the frame for reporting QC values. Default *False*
             - ``frameName`` -- the name of the frame in human readable words. Default *False*
             - ``masterFrame`` -- the master frame (only makes sense to measure RON on master bias). Default *False*
+            - ``rawRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
+            - ``masterRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
 
         **Return:**
             - ``rawRon`` -- raw read-out-noise in electrons
@@ -993,48 +999,50 @@ class _base_recipe_(object):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        # LIST OF RAW CCDDATA OBJECTS
-        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
-                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        if not rawRon:
+            # LIST OF RAW CCDDATA OBJECTS
+            ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
+                                                     "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        # SINGLE FRAME RON
-        raw_one = ccds[0]
-        raw_two = ccds[1]
-        raw_diff = raw_one.subtract(raw_two)
+            # SINGLE FRAME RON
+            raw_one = ccds[0]
+            raw_two = ccds[1]
+            raw_diff = raw_one.subtract(raw_two)
 
-        # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
-        masked_diff = sigma_clip(
-            raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc=mad_std)
-        combinedMask = raw_diff.mask | masked_diff.mask
+            # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
+            masked_diff = sigma_clip(
+                raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc=mad_std)
+            combinedMask = raw_diff.mask | masked_diff.mask
 
-        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
-        raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
+            # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+            raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
 
-        def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
-        dmin, dmax, dmean, dstd = imstats(raw_diff)
+            def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
+            dmin, dmax, dmean, dstd = imstats(raw_diff)
 
-        # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
-        rawRon = dstd / math.sqrt(2)
+            # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
+            rawRon = dstd / math.sqrt(2)
 
-        singleFrameType = frameType
-        if frameType[0] == "M":
-            singleFrameType = frameType[1:]
+        if rawRon:
+            singleFrameType = frameType
+            if frameType[0] == "M":
+                singleFrameType = frameType[1:]
 
-        self.qc = self.qc.append({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "RON DETECTOR",
-            "qc_value": rawRon,
-            "qc_comment": f"RON in single {singleFrameType} (electrons)",
-            "qc_unit": "electrons",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "RON DETECTOR",
+                "qc_value": rawRon,
+                "qc_comment": f"RON in single {singleFrameType} (electrons)",
+                "qc_unit": "electrons",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
 
-        if masterFrame:
+        if masterFrame and not masterRon:
 
             # PREDICTED MASTER NOISE
-            predictedMasterRon = rawRon / math.sqrt(len(ccds))
+            # predictedMasterRon = rawRon / math.sqrt(len(ccds))
 
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             tmp = np.ma.array(masterFrame.data, mask=combinedMask)
@@ -1042,6 +1050,7 @@ class _base_recipe_(object):
             dmin, dmax, dmean, dstd = imstats(tmp)
             masterRon = dstd
 
+        elif masterRon:
             self.qc = self.qc.append({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "RON MASTER",
@@ -1062,13 +1071,15 @@ class _base_recipe_(object):
             self,
             frame,
             frameType="MBIAS",
-            frameName="master bias"):
+            frameName="master bias",
+            medianFlux=False):
         """*calculate the median flux level in the frame, excluding masked pixels*
 
         **Key Arguments:**
             - ``frame`` -- the frame (CCDData object) to determine the median level.
             - ``frameType`` -- the type of the frame for reporting QC values Default "MBIAS"
             - ``frameName`` -- the name of the frame in human readable words. Default "master bias"
+            - ``medianFlux`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
 
         **Return:**
             - ``medianFlux`` -- median flux level in electrons
@@ -1084,10 +1095,11 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``qc_median_flux_level`` method')
 
-        # DETERMINE MEDIAN BIAS LEVEL
-        maskedDataArray = np.ma.array(
-            frame.data, mask=frame.mask)
-        medianFlux = np.ma.median(maskedDataArray)
+        if not medianFlux:
+            # DETERMINE MEDIAN BIAS LEVEL
+            maskedDataArray = np.ma.array(
+                frame.data, mask=frame.mask)
+            medianFlux = np.ma.median(maskedDataArray)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
