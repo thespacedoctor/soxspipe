@@ -752,7 +752,7 @@ class create_dispersion_map(object):
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
             masked_residuals = sigma_clip(
-                orderPixelTable["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+                orderPixelTable["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
             orderPixelTable["residuals_masked"] = masked_residuals.mask
             # RETURN BREAKDOWN OF COLUMN VALUE COUNT
             valCounts = orderPixelTable[
@@ -845,7 +845,10 @@ class create_dispersion_map(object):
         bottomright.set_xlabel('xy residual')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
+        if self.firstGuessMap:
+            fig.suptitle(f"residuals of global dispersion solution fitting - multi-pinhole\n{subtitle}", fontsize=12)
+        else:
+            fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")

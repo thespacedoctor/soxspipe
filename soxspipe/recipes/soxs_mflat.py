@@ -228,7 +228,7 @@ class soxs_mflat(_base_recipe_):
             quicklook_image(log=self.log, CCDObject=normalisedFlats[0], show=False, ext=True, surfacePlot=True, title="Single normalised flat frame")
             # STACK THE NORMALISED FLAT FRAMES
             combined_normalised_flat = self.clip_and_stack(
-                frames=normalisedFlats, recipe="soxs_mflat")
+                frames=normalisedFlats, recipe="soxs_mflat", ignore_input_masks=False, post_stack_clipping=True)
             quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Combined normalised flat frames")
 
             # DIVIDE THROUGH BY FIRST-PASS MASTER FRAME TO REMOVE CROSS-PLANE
@@ -248,7 +248,7 @@ class soxs_mflat(_base_recipe_):
 
             # STACK THE RE-NORMALISED FLAT FRAMES
             combined_normalised_flat = self.clip_and_stack(
-                frames=normalisedFlats, recipe="soxs_mflat")
+                frames=normalisedFlats, recipe="soxs_mflat", ignore_input_masks=False, post_stack_clipping=True)
 
             quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Recombined normalised flat frames")
 
@@ -536,7 +536,7 @@ class soxs_mflat(_base_recipe_):
 
             # SIGMA-CLIP THE DATA BEFORE CALCULATING MEAN
             maskedFrame = sigma_clip(
-                maskedFrame, sigma_lower=2.5, sigma_upper=2.5, maxiters=3, cenfunc='median', stdfunc=mad_std)
+                maskedFrame, sigma_lower=2.5, sigma_upper=2.5, maxiters=3, cenfunc='median', stdfunc='mad_std')
 
             mean = np.ma.mean(maskedFrame)
             normalisedFrame = frame.divide(mean)
@@ -725,8 +725,8 @@ class soxs_mflat(_base_recipe_):
                 stitchedFlat.uncertainty.array[y, x:] = dmflatScaled.uncertainty.array[y, x:]
                 stitchedCombinedNormalised.data[y, :x] = self.combinedNormalisedFlatSet[1].data[y, :x]
 
-        stitchedCombinedNormalised.header[kw("DPR_TYPE")] = stitchedCombinedNormalised.header[kw("DPR_TYPE")].replace(",D", "D").replace(",Q", "Q")
-        stitchedFlat.header[kw("DPR_TYPE")] = stitchedFlat.header[kw("DPR_TYPE")].replace(",D", "D").replace(",Q", "Q")
+        stitchedCombinedNormalised.header[kw("DPR_TYPE")] = stitchedCombinedNormalised.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
+        stitchedFlat.header[kw("DPR_TYPE")] = stitchedFlat.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
 
         # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
         edges = detect_order_edges(

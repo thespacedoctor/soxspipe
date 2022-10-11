@@ -118,7 +118,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
             pixelList.loc[mask, "mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -193,7 +193,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
             pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME

@@ -778,27 +778,14 @@ class _base_recipe_(object):
         badCount = combinedMask.sum()
         totalPixels = np.size(combinedMask)
         percent = (float(badCount) / float(totalPixels)) * 100.
-        print(f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
+        if imageType != "BIAS":
+            print(f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
 
         # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INPUT FRAMES - USING
         # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
         old_n_masked = -1
         # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
         new_n_masked = combiner.data_arr.mask.sum()
-        iteration = 1
-        while (new_n_masked > old_n_masked and iteration <= stacked_clipping_iterations):
-            combiner.sigma_clipping(
-                low_thresh=stacked_clipping_sigma, high_thresh=stacked_clipping_sigma, func=np.ma.median, dev_func=mad_std)
-            old_n_masked = new_n_masked
-            # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
-            new_n_masked = combiner.data_arr.mask.sum()
-            diff = new_n_masked - old_n_masked
-            extra = ""
-            if diff == 0:
-                extra = " - we're done"
-            if self.verbose:
-                print("\tClipping iteration %(iteration)s finds %(diff)s more rogue pixels in the set of input frames%(extra)s" % locals())
-            iteration += 1
 
         # SIGMA CLIPPING OVERWRITES ORIGINAL MASKS - COPY HERE TO READD
         # preclipped_masks = np.copy(combiner.data_arr.mask)
@@ -853,14 +840,15 @@ class _base_recipe_(object):
         except:
             pass
         combined_frame.header[
-            kw("DPR_CATG")] = "MASTER_%(imageType)s_%(arm)s" % locals()
+            kw("DPR_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
 
         # CALCULATE NEW PIXELS ADDED TO MASK
-        newBadCount = combined_frame.mask.sum()
-        diff = newBadCount - badCount
-        totalPixels = np.size(combinedMask)
-        percent = (float(newBadCount) / float(totalPixels)) * 100.
-        print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
+        if imageType != "BIAS":
+            newBadCount = combined_frame.mask.sum()
+            diff = newBadCount - badCount
+            totalPixels = np.size(combinedMask)
+            percent = (float(newBadCount) / float(totalPixels)) * 100.
+            print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
 
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame
@@ -1039,7 +1027,7 @@ class _base_recipe_(object):
 
             # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
             masked_diff = sigma_clip(
-                raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc=mad_std)
+                raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc='mad_std')
             combinedMask = raw_diff.mask | masked_diff.mask
 
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY

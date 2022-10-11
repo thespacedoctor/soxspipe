@@ -167,7 +167,7 @@ class soxs_mbias(_base_recipe_):
         masterRon = np.std(combined_noise.data)
 
         # FILL MASKED PIXELS WITH 0
-        combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled()
+        combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
         combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
         combined_bias_mean = combined_noise
         combined_bias_mean.mask[:] = False
