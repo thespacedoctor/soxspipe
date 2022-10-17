@@ -189,8 +189,10 @@ def quicklook_image(
 
     if inst == "SOXS":
         rotatedImg = np.flipud(frame)
-    if inst == "XSHOOTER":
+    elif inst == "XSHOOTER":
         rotatedImg = np.rot90(frame, 1)
+    else:
+        rotatedImg = frame
     rotatedImg = np.flipud(rotatedImg)
 
     std = np.nanstd(frame)

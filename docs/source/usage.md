@@ -12,6 +12,7 @@
         soxspipe [-V] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-V] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-V] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-V] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     
     Options:
         init                                   setup the soxspipe settings file for the first time
@@ -21,6 +22,7 @@
         disp_sol                               the disp solution recipe
         order_centres                          the order centres recipe
         spat_sol                               the spatial solution recipe
+        stare                                  reduce stare mode science frames
     
         inputFrames                            path to a directory of frames or a set-of-files file
     

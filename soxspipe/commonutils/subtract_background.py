@@ -203,7 +203,7 @@ class subtract_background(object):
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA
         clippedDataMask = sigma_clip(
-            maskedImage, sigma_lower=2, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc=mad_std)
+            maskedImage, sigma_lower=2, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
         # COMBINE MASK WITH THE BAD PIXEL MASK
         mask = (clippedDataMask.mask == 1) | (self.frame.mask == 1)
         maskedImage = np.ma.array(self.frame.data, mask=mask)
