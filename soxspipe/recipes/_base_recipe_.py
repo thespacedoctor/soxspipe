@@ -1134,5 +1134,46 @@ class _base_recipe_(object):
         self.log.debug('completed the ``qc_median_flux_level`` method')
         return medianFlux
 
+    def subtact_mean_flux_level(
+            self,
+            rawFrame):
+        """*iteratively median sigma-clip raw bias data frames before calculating and removing the mean bias level*
+
+        **Key Arguments:**
+            - ``rawFrame`` -- the raw bias frame
+
+        **Return:**
+            - `meanFluxLevel` -- the frame mean bias level
+            - `fluxStd` -- the standard deviation of the flux destribution (RON)
+            - `noiseFrame` -- the raw bias frame with mean bias level removed
+
+        **Usage:**
+
+        ```python
+        meanFluxLevel, fluxStd, noiseFrame = self.subtact_mean_flux_level(rawFrame)
+        ```
+        """
+        self.log.debug('starting the ``subtact_mean_flux_level`` method')
+
+        # UNPACK SETTINGS
+        clipping_lower_sigma = self.settings[
+            "soxs-mbias"]["clipping-lower-sigma"]
+        clipping_upper_sigma = self.settings[
+            "soxs-mbias"]["clipping-upper-sigma"]
+        clipping_iteration_count = self.settings[
+            "soxs-mbias"]["clipping-iteration-count"]
+
+        maskedFrame = sigma_clip(
+            rawFrame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
+        # DETERMINE MEDIAN BIAS LEVEL
+        maskedDataArray = np.ma.array(
+            maskedFrame.data, mask=maskedFrame.mask)
+        meanFluxLevel = np.ma.mean(maskedDataArray)
+        fluxStd = np.ma.std(maskedDataArray)
+        rawFrame.data -= meanFluxLevel
+
+        self.log.debug('completed the ``subtact_mean_flux_level`` method')
+        return meanFluxLevel, fluxStd, rawFrame
+
     # use the tab-trigger below for new method
     # xt-class-method

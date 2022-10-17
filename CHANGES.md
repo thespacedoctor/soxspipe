@@ -1,5 +1,8 @@
+
 # Release Notes
 
+
+updated workflow for master bias combination
 dispersion solution now working with simulated NIR SOXS data
 UV D-Lamp and QTH-Lamp master flats now being stitched together
 mflat docs brought up-to-date

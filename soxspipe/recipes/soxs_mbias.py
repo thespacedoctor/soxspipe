@@ -156,7 +156,7 @@ class soxs_mbias(_base_recipe_):
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        meanBiasLevels, rons, noiseFrames = zip(*[self.subtact_mean_bias_level(c) for c in ccds])
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtact_mean_flux_level(c) for c in ccds])
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
@@ -175,7 +175,7 @@ class soxs_mbias(_base_recipe_):
         # # MULTIPROCESSING HERE ADDS A SELF_DEFEATING OVERHEAD
         # from fundamentals import fmultiprocess
         # # DEFINE AN INPUT ARRAY
-        # results = fmultiprocess(log=self.log, function=self.subtact_mean_bias_level,
+        # results = fmultiprocess(log=self.log, function=self.subtact_mean_flux_level,
         #                         inputArray=ccds, poolSize=False, timeout=300)
 
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
@@ -368,46 +368,6 @@ class soxs_mbias(_base_recipe_):
 
         self.log.debug('completed the ``qc_periodic_pattern_noise`` method')
         return ppnmax
-
-    def subtact_mean_bias_level(
-            self,
-            rawBias):
-        """*iteratively median sigma-clip raw bias data frames before calculating and removing the mean bias level*
-
-        **Key Arguments:**
-            - ``rawBias`` -- the raw bias frame
-
-        **Return:**
-            - `meanBiasLevel` -- the frame mean bias level
-            - `noiseFrame` -- the raw bias frame with mean bias level removed
-
-        **Usage:**
-
-        ```python
-        meanBiasLevel, ron, noiseFrame = self.subtact_mean_bias_level(rawBias)
-        ```
-        """
-        self.log.debug('starting the ``subtact_mean_bias_level`` method')
-
-        # UNPACK SETTINGS
-        clipping_lower_sigma = self.settings[
-            "soxs-mbias"]["clipping-lower-sigma"]
-        clipping_upper_sigma = self.settings[
-            "soxs-mbias"]["clipping-upper-sigma"]
-        clipping_iteration_count = self.settings[
-            "soxs-mbias"]["clipping-iteration-count"]
-
-        maskedFrame = sigma_clip(
-            rawBias, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
-        # DETERMINE MEDIAN BIAS LEVEL
-        maskedDataArray = np.ma.array(
-            maskedFrame.data, mask=maskedFrame.mask)
-        meanBiasLevel = np.ma.mean(maskedDataArray)
-        ron = np.ma.std(maskedDataArray)
-        rawBias.data -= meanBiasLevel
-
-        self.log.debug('completed the ``subtact_mean_bias_level`` method')
-        return meanBiasLevel, ron, rawBias
 
     # use the tab-trigger below for new method
     # xt-class-method
