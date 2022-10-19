@@ -1165,6 +1165,7 @@ class _base_recipe_(object):
 
         maskedFrame = sigma_clip(
             rawFrame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
+
         # DETERMINE MEDIAN BIAS LEVEL
         maskedDataArray = np.ma.array(
             maskedFrame.data, mask=maskedFrame.mask)

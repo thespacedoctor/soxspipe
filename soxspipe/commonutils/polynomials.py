@@ -21,7 +21,7 @@ os.environ['TERM'] = 'vt100'
 
 
 class chebyshev_order_wavelength_polynomials():
-    """*the chebyshev polynomial fits for the single pinhole frames; to be iteratively fitted to minimise errors*
+    """*the chebyshev polynomial fits for the single frames; to be iteratively fitted to minimise errors*
 
     **Key Arguments:**
         - ``log`` -- logger

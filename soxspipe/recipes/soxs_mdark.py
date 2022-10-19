@@ -21,6 +21,7 @@ from builtins import object
 from datetime import datetime
 from soxspipe.commonutils.toolkit import generic_quality_checks
 import sys
+import math
 import os
 os.environ['TERM'] = 'vt100'
 
@@ -158,8 +159,25 @@ class soxs_mdark(_base_recipe_):
         kw = self.kw
         dp = self.detectorParams
 
-        combined_dark_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mdark", ignore_input_masks=False, post_stack_clipping=True)
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        meanFluxLevels, rons, noiseFrames = zip(*[self.subtact_mean_flux_level(c) for c in ccds])
+        masterMeanFluxLevel = np.mean(meanFluxLevels)
+        masterMedianFluxLevel = np.median(meanFluxLevels)
+        rawRon = np.mean(rons)
+
+        combined_noise = self.clip_and_stack(
+            frames=list(noiseFrames), recipe="soxs_mdark", ignore_input_masks=False, post_stack_clipping=True)
+
+        maskedDataArray = np.ma.array(combined_noise.data, mask=combined_noise.mask)
+        masterRon = np.std(maskedDataArray)
+
+        # FILL MASKED PIXELS WITH 0
+        combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanFluxLevel
+        combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
+        combined_dark_mean = combined_noise
+        combined_dark_mean.mask = combined_noise.mask
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
@@ -168,7 +186,8 @@ class soxs_mdark(_base_recipe_):
         medianFlux = self.qc_median_flux_level(
             frame=combined_dark_mean,
             frameType="MDARK",
-            frameName="master dark"
+            frameName="master dark",
+            medianFlux=masterMedianFluxLevel
         )
 
         self.qc_ron(
