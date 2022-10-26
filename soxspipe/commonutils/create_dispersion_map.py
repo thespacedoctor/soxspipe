@@ -454,6 +454,11 @@ class create_dispersion_map(object):
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir += f"product/{self.recipeName}/"
+        outDir = outDir.replace("//", "/")
+        # Recursively create missing directories
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
 
         filename = filenamer(
             log=self.log,
@@ -860,8 +865,13 @@ class create_dispersion_map(object):
             settings=self.settings
         )
         # plt.show()
+
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf/"
+        outDir = outDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIes
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
 
         if self.firstGuessMap:
             res_plots = filename.split("ARC")[0] + "2D_MAP_RESIDUALS.pdf"

@@ -35,6 +35,7 @@ class soxs_nod_mode(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
+        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
     See `produce_product` method for usage.
 
@@ -54,18 +55,18 @@ class soxs_nod_mode(_base_recipe_):
             log,
             settings=False,
             inputFrames=[],
-            verbose=False
+            verbose=False,
+            overwrite=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
         super(soxs_nod_mode, self).__init__(
-            log=log, settings=settings)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-nod-mode")
         self.log = log
         log.debug("instansiating a new 'soxs_nod_mode' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeName = "soxs-nod-mode"
         self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 

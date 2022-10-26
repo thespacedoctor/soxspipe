@@ -71,7 +71,7 @@ def filenamer(
         ).get(arm)
 
     dateStamp = frame.header[kw("DATE_OBS")].replace(
-        "-", "").replace(":", "").split(".")[0]
+        "-", ".").replace(":", ".")
     obid = frame.header[kw("OBS_ID")]
     arm = frame.header[kw("SEQ_ARM")].lower()
     # x = int(dp["binning"][1])

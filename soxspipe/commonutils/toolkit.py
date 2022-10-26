@@ -763,6 +763,7 @@ def twoD_disp_map_image_to_dataframe(
         if assosiatedFrame:
             thisDict["flux"] = assosiatedFrame.data.flatten()
             thisDict["mask"] = assosiatedFrame.mask.flatten()
+            thisDict["error"] = assosiatedFrame.uncertainty.flatten()
 
         mapDF = pd.DataFrame.from_dict(thisDict)
         if removeMaskedPixels:
@@ -774,6 +775,7 @@ def twoD_disp_map_image_to_dataframe(
         if assosiatedFrame:
             thisDict["flux"] = assosiatedFrame.data.flatten().byteswap().newbyteorder()
             thisDict["mask"] = assosiatedFrame.mask.flatten().byteswap().newbyteorder()
+            thisDict["error"] = assosiatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
 
         mapDF = pd.DataFrame.from_dict(thisDict)
         if removeMaskedPixels:

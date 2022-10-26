@@ -71,7 +71,10 @@ class _base_recipe_(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
+        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+        - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
 
     **Usage**
 
@@ -82,10 +85,15 @@ class _base_recipe_(object):
             self,
             log,
             settings=False,
-            verbose=False
+            inputFrames=False,
+            verbose=False,
+            overwrite=False,
+            recipeName=False
     ):
         self.log = log
+
         log.debug("instansiating a new '__init__' object")
+        self.recipeName = recipeName
         self.settings = settings
         self.intermediateRootPath = self._absolute_path(
             settings["intermediate-data-root"])
@@ -99,6 +107,17 @@ class _base_recipe_(object):
         self.arm = None
         self.detectorParams = None
         self.dateObs = None
+
+        if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
+            self.sofName = os.path.basename(inputFrames).replace(".sof", "")
+            productPath = self.intermediateRootPath + "/product/" + self.recipeName + "/" + self.sofName + ".fits"
+            self.productPath = productPath.replace("//", "/")
+            if os.path.exists(self.productPath) and not overwrite:
+                print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                sys.exit(0)
+        else:
+            self.sofName = False
+            self.productPath = False
 
         # COLLECT ADVANCED SETTINGS IF AVAILABLE
         parentDirectory = os.path.dirname(__file__)
@@ -301,7 +320,8 @@ class _base_recipe_(object):
             frame=frame,
             filedir=outDir,
             filename=filenameNoExtension + "_pre" + extension,
-            overwrite=True
+            overwrite=True,
+            product=False
         )
 
         self.log.debug('completed the ``_prepare_single_frame`` method')
@@ -632,7 +652,8 @@ class _base_recipe_(object):
             frame,
             filedir,
             filename=False,
-            overwrite=True):
+            overwrite=True,
+            product=True):
         """*write frame to disk at the specified location*
 
         **Key Arguments:**
@@ -640,6 +661,7 @@ class _base_recipe_(object):
             - ``filedir`` -- the location to save the frame
             - ``filename`` -- the filename to save the file as. Default: **False** (standardised filename generated in code)
             - ``overwrite`` -- if a file exists at the filepath then choose to overwrite the file. Default: True
+            - ``product`` -- is this a recipe product?
 
         **Usage:**
 
@@ -650,6 +672,8 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``write`` method')
+
+        kw = self.kw
 
         # WRITE QCs TO HEADERS
         for n, v, c, h in zip(self.qc["qc_name"].values, self.qc["qc_value"].values, self.qc["qc_comment"].values, self.qc["to_header"].values):
@@ -670,6 +694,8 @@ class _base_recipe_(object):
                 else:
                     frame.header[k] = (v, c)
 
+        if not filename and self.sofName:
+            filename = self.sofName + ".fits"
         if not filename:
 
             filename = filenamer(
@@ -677,6 +703,20 @@ class _base_recipe_(object):
                 frame=frame,
                 settings=self.settings
             )
+
+        if product:
+            removeKw = ["DPR_TECH", "DPR_CATG", "DPR_TYPE"]
+            for k in removeKw:
+                try:
+                    frame.header.pop(kw(k))
+                except:
+                    pass
+
+            filedir += f"/product/{self.recipeName}/"
+            filedir = filedir.replace("//", "/")
+            # Recursively create missing directories
+            if not os.path.exists(filedir):
+                os.makedirs(filedir)
 
         filepath = filedir + "/" + filename
 
@@ -726,6 +766,10 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``clip_and_stack`` method')
+
+        if len(frames) == 1:
+            self.log.warning("Only 1 frame was sent to the clip and stack method. Returning the frame was no further processing.")
+            return frames[0]
 
         arm = self.arm
         kw = self.kw
@@ -839,8 +883,6 @@ class _base_recipe_(object):
             combined_frame.wcs = ccds[0].wcs
         except:
             pass
-        combined_frame.header[
-            kw("DPR_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
 
         # CALCULATE NEW PIXELS ADDED TO MASK
         if imageType != "BIAS":
@@ -1175,6 +1217,52 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``subtact_mean_flux_level`` method')
         return meanFluxLevel, fluxStd, rawFrame
+
+    def update_fits_keywords(
+            self,
+            frame):
+        """*update fits keywords to comply with ESO Phase 3 standards*
+
+        **Key Arguments:**
+            - ``frame`` -- the frame to update
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``update_fits_keywords`` method')
+
+        arm = self.arm
+        kw = self.kw
+        dp = self.detectorParams
+        imageType = self.imageType
+
+        frame.header[kw("SEQ_ARM").upper()] = arm
+        frame.header[kw("PRO_TYPE").upper()] = "REDUCED"
+
+        # PROD CATG
+        if imageType in ["BIAS", "DARK"]:
+            frame.header[
+                kw("PRO_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
+
+        self.log.debug('completed the ``update_fits_keywords`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method

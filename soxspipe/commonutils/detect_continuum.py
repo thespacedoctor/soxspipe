@@ -337,7 +337,11 @@ class _base_detect(object):
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
+        outDir = outDir.replace("//", "/")
+        # Recursively create missing directories
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
 
         filename = filenamer(
             log=self.log,
@@ -777,7 +781,7 @@ class detect_continuum(_base_detect):
         pixelPostion["stddev"] = g.stddev.value
 
         # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAYED
-        if 1 == 1 and random() < 0.02 and pixelPostion["order"] == 11:
+        if 1 == 0 and random() < 0.02 and pixelPostion["order"] == 11:
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
@@ -951,7 +955,12 @@ class detect_continuum(_base_detect):
         filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
 
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
+        outDir = outDir.replace("//", "")
+        # Recursively create missing directories
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
+
         filePath = f"{outDir}/{filename}"
         plt.tight_layout()
         plt.savefig(filePath, dpi=720)

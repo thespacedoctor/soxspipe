@@ -6,13 +6,13 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe init
-    soxspipe [-V] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
-    soxspipe [-V] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
+    soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
     init                                   setup the soxspipe settings file for the first time
@@ -30,6 +30,7 @@ Options:
     -v, --version                          show version
     -s, --settings <pathToSettingsFile>    the settings file
     -V, --verbose                          more verbose output
+    -x, --overwrite                        more verbose output
 """
 ################# GLOBAL IMPORTS ####################
 from subprocess import Popen, PIPE, STDOUT
@@ -150,7 +151,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         )
         mbiasFrame = recipe.produce_product()
 
@@ -160,7 +162,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         )
         mdarkFrame = recipe.produce_product()
 
@@ -170,7 +173,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         ).produce_product()
 
     if a["order_centres"]:
@@ -179,7 +183,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         ).produce_product()
 
     if a["spat_sol"]:
@@ -188,7 +193,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         ).produce_product()
 
     if a["mflat"]:
@@ -197,7 +203,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         )
         mflatFrame = recipe.produce_product()
 
@@ -207,7 +214,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         )
 
         reducedStare = recipe.produce_product()

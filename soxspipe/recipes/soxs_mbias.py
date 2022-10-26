@@ -40,6 +40,7 @@ class soxs_mbias(_base_recipe_):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
     **Usage**
 
@@ -66,17 +67,16 @@ class soxs_mbias(_base_recipe_):
             log,
             settings=False,
             inputFrames=[],
-            verbose=False
-
+            verbose=False,
+            overwrite=False
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(soxs_mbias, self).__init__(log=log, settings=settings)
+        super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
         self.log = log
         log.debug("instansiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeName = "soxs-mbias"
         self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
@@ -201,6 +201,10 @@ class soxs_mbias(_base_recipe_):
             medianFlux=masterMedianBiasLevel
         )
 
+        self.update_fits_keywords(
+            frame=combined_bias_mean
+        )
+
         # WRITE TO DISK
         productPath = self._write(
             frame=combined_bias_mean,
@@ -212,6 +216,8 @@ class soxs_mbias(_base_recipe_):
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.dateObs = combined_bias_mean.header[self.kw("DATE_OBS")]
 
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,

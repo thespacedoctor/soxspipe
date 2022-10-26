@@ -35,6 +35,8 @@ class soxs_stare(_base_recipe_):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
+        - ``verbose`` -- verbose. True or False. Default *False*
+        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
 
     See `produce_product` method for usage.
@@ -55,18 +57,18 @@ class soxs_stare(_base_recipe_):
             log,
             settings=False,
             inputFrames=[],
-            verbose=False
+            verbose=False,
+            overwrite=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
         super(soxs_stare, self).__init__(
-            log=log, settings=settings)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-stare")
         self.log = log
         log.debug("instansiating a new 'soxs_stare' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeName = "soxs-stare"
         self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
@@ -193,7 +195,7 @@ class soxs_stare(_base_recipe_):
                 allObjectFrames.append(singleFrame)
 
         combined_object = self.clip_and_stack(
-            frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=False, post_stack_clipping=True)
+            frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=False, post_stack_clipping=False)
         self.dateObs = combined_object.header[kw("DATE_OBS")]
 
         add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
