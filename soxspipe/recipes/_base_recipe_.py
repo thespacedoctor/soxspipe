@@ -99,15 +99,8 @@ class _base_recipe_(object):
             settings["intermediate-data-root"])
         self.reducedRootPath = self._absolute_path(
             settings["reduced-data-root"])
-        from soxspipe.commonutils.toolkit import get_calibrations_path
-        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
-        self.verbose = verbose
-        # SET LATER WHEN VERIFYING FRAMES
-        self.arm = None
-        self.detectorParams = None
-        self.dateObs = None
-
+        # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             productPath = self.intermediateRootPath + "/product/" + self.recipeName + "/" + self.sofName + ".fits"
@@ -118,6 +111,15 @@ class _base_recipe_(object):
         else:
             self.sofName = False
             self.productPath = False
+
+        from soxspipe.commonutils.toolkit import get_calibrations_path
+        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+
+        self.verbose = verbose
+        # SET LATER WHEN VERIFYING FRAMES
+        self.arm = None
+        self.detectorParams = None
+        self.dateObs = None
 
         # COLLECT ADVANCED SETTINGS IF AVAILABLE
         parentDirectory = os.path.dirname(__file__)

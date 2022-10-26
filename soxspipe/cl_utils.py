@@ -36,7 +36,6 @@ Options:
 from subprocess import Popen, PIPE, STDOUT
 from fundamentals import tools, times
 from docopt import docopt
-import pickle
 import glob
 import readline
 import sys
@@ -45,6 +44,7 @@ os.environ['TERM'] = 'vt100'
 
 
 def tab_complete(text, state):
+
     return (glob.glob(text + '*') + [None])[state]
 
 
@@ -53,6 +53,7 @@ def main(arguments=None):
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
     """
     # setup the command-line util settings
+    print("main")
     su = tools(
         arguments=arguments,
         docString=__doc__,

@@ -70,13 +70,12 @@ class soxs_order_centres(_base_recipe_):
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
         super(soxs_order_centres, self).__init__(
-            log=log, settings=settings)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-order-centre")
         self.log = log
         log.debug("instansiating a new 'soxs_order_centres' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeName = "soxs-order-centre"
         self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 

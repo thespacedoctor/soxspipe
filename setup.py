@@ -24,7 +24,8 @@ install_requires = [
     'pandas',
     'tabulate',
     'bottleneck',
-    'multiprocess'
+    'multiprocess',
+    'fastentrypoints'
 ]
 
 # READ THE DOCS SERVERS
