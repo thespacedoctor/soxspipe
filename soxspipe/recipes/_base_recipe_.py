@@ -18,17 +18,10 @@ from soxspipe.commonutils import filenamer
 from datetime import datetime
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import set_of_files
-from ccdproc import Combiner as OriginalCombiner
 from contextlib import suppress
-from astropy.nddata.nduncertainty import StdDevUncertainty
-import pandas as pd
 from soxspipe.commonutils import subtract_background
-import ccdproc
-from astropy.stats import sigma_clip, mad_std
-from astropy import units as u
-from astropy.nddata import CCDData
-import numpy as np
+
+
 from fundamentals import tools
 from builtins import object
 import sys
@@ -36,32 +29,8 @@ import math
 import inspect
 import yaml
 import os
-import bottleneck as bn
+
 os.environ['TERM'] = 'vt100'
-
-
-class Combiner(OriginalCombiner):
-
-    def average_combine(self):
-        """
-        """
-        data, masked_values, scale_func = \
-            self._combination_setup(None,
-                                    bn.nanmean,
-                                    None)
-
-        mean = scale_func(data, axis=0)
-        mask = (masked_values == len(self.data_arr))
-
-        # create the combined image with a dtype that matches the combiner
-        combined_image = CCDData(np.asarray(mean, dtype=self.dtype),
-                                 mask=mask, unit=self.unit)
-
-        # update the meta data
-        combined_image.meta['NCOMBINE'] = len(data)
-
-        # return the combined image
-        return combined_image
 
 
 class _base_recipe_(object):
@@ -91,6 +60,8 @@ class _base_recipe_(object):
             recipeName=False
     ):
         self.log = log
+
+        import pandas as pd
 
         log.debug("instansiating a new '__init__' object")
         self.recipeName = recipeName
@@ -191,6 +162,11 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``_prepare_single_frame`` method')
+
+        from astropy.nddata import CCDData
+        import ccdproc
+        from astropy import units as u
+        import numpy as np
 
         warnings.filterwarnings(
             action='ignore'
@@ -378,6 +354,8 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``prepare_frames`` method')
 
+        from soxspipe.commonutils.set_of_files import set_of_files
+
         kw = self.kw
 
         filepaths = self.inputFrames.files_filtered(include_path=True)
@@ -419,6 +397,8 @@ class _base_recipe_(object):
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
         self.log.debug('starting the ``_verify_input_frames_basics`` method')
+
+        from astropy import units as u
 
         kw = self.kw
 
@@ -606,6 +586,7 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``xsh2soxs`` method')
+        import numpy as np
 
         kw = self.kw
         dp = self.detectorParams
@@ -628,6 +609,8 @@ class _base_recipe_(object):
             - ``frame`` -- the CCDData frame to be trimmed
         """
         self.log.debug('starting the ``_trim_frame`` method')
+
+        import ccdproc
 
         kw = self.kw
         arm = self.arm
@@ -768,6 +751,11 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``clip_and_stack`` method')
+
+        from astropy.stats import sigma_clip, mad_std
+        from soxspipe.commonutils.combiner import Combiner
+        from astropy import units as u
+        import numpy as np
 
         if len(frames) == 1:
             self.log.warning("Only 1 frame was sent to the clip and stack method. Returning the frame was no further processing.")
@@ -935,6 +923,8 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``detrend`` method')
 
+        import ccdproc
+
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
@@ -1056,6 +1046,9 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``qc_bias_ron`` method')
 
+        from astropy.stats import sigma_clip
+        import numpy as np
+
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -1155,6 +1148,8 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``qc_median_flux_level`` method')
 
+        import numpy as np
+
         if not medianFlux:
             # DETERMINE MEDIAN BIAS LEVEL
             maskedDataArray = np.ma.array(
@@ -1198,6 +1193,9 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``subtact_mean_flux_level`` method')
+
+        from astropy.stats import sigma_clip, mad_std
+        import numpy as np
 
         # UNPACK SETTINGS
         clipping_lower_sigma = self.settings[

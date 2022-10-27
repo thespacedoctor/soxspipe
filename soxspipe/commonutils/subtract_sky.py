@@ -9,11 +9,8 @@
 :Date Created:
     April 14, 2022
 """
-from astropy.stats import sigma_clip, mad_std
+
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-import pandas as pd
-import numpy.ma as ma
-import numpy as np
 from fundamentals import tools
 from builtins import object
 from soxspipe.commonutils import detector_lookup
@@ -21,21 +18,16 @@ from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import sys
 import os
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib import cm
-import scipy
 from copy import copy
 from datetime import datetime
-from matplotlib import colors
+
 from soxspipe.commonutils import keyword_lookup
-import scipy.interpolate as ip
+
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.toolkit import quicklook_image
 from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
 from os.path import expanduser
 os.environ['TERM'] = 'vt100'
-pd.options.mode.chained_assignment = None
 
 
 class subtract_sky(object):
@@ -152,6 +144,10 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``get`` method')
 
+        import numpy as np
+        import pandas as pd
+        pd.options.mode.chained_assignment = None
+
         print(f'\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME')
 
         skymodelCCDData, skySubtractedCCDData = self.create_placeholder_images()
@@ -189,6 +185,7 @@ class subtract_sky(object):
             # residuals = imageMapOrder.loc[imageMapOrder["clipped"] == False]["sky_subtracted_flux"]
             # slit = imageMapOrder.loc[imageMapOrder["clipped"] == False]["slit_position"]
 
+            # import matplotlib.pyplot as plt
             # plt.scatter(residuals, slit, s=0.5, alpha=0.1)
             # plt.xlim([-1000, 1000])
             # plt.show()
@@ -384,6 +381,14 @@ class subtract_sky(object):
         ```
         """
         self.log.debug('starting the ``plot_sky_sampling`` method')
+
+        import numpy as np
+        import matplotlib.patches as mpatches
+        import matplotlib.pyplot as plt
+        import scipy.interpolate as ip
+        import numpy.ma as ma
+        from matplotlib import cm
+        from matplotlib import colors
 
         # SET COLOURS FOR VARIOUS STAGES
         medianColor = "blue"
@@ -786,6 +791,9 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``fit_bspline_curve_to_sky`` method')
 
+        import numpy as np
+        import scipy.interpolate as ip
+
         # VARIABLES TO PLAY WITH
         # 1. WEIGHTS ... IF USING WEIGHTS YOU NEED s=0. If the errors in the y values have standard-deviation given by the vector d, then w should be 1/d. Default is ones(len(x)). Note weights are relative to one another (don't have to by between 0-1)
         # 2. KNOT PLACEMENT. The knots needed for task=-1. If given then task is automatically set to -1.
@@ -910,6 +918,9 @@ class subtract_sky(object):
         # fp: The weighted sum of squared residuals of the spline approximation.
 
         from csaps import csaps
+        import numpy as np
+        import matplotlib.pyplot as plt
+
         np.random.seed(1234)
         xdata = [np.linspace(-3, 3, 41), np.linspace(-3.5, 3.5, 31)]
         i, j = np.meshgrid(*xdata, indexing='ij')
@@ -1029,6 +1040,8 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``create_placeholder_images`` method')
 
+        import numpy as np
+
         # CREATE AN IMAGE ARRAY TO HOST WAVELENGTH AND SLIT-POSITIONS
         skymodelCCDData = self.objectFrame.copy()
         skymodelCCDData.data[:] = np.nan
@@ -1079,6 +1092,10 @@ class subtract_sky(object):
             - ``filePath`` -- path to the plot pdf
         """
         self.log.debug('starting the ``plot_results`` method')
+
+        import matplotlib.pyplot as plt
+        import numpy.ma as ma
+        import numpy as np
 
         arm = self.arm
 
@@ -1190,6 +1207,9 @@ class subtract_sky(object):
         ```
         """
         self.log.debug('starting the ``rectify_order`` method')
+
+        import numpy as np
+        import pandas as pd
 
         dispMap = self.dispMap
         kw = self.kw
@@ -1333,6 +1353,9 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``fit_surface_to_sky`` method')
 
+        import numpy as np
+        from astropy.stats import sigma_clip
+
         # FIX ME - ADD TO SETTINGS FILE
         orderDeg = 0
         wavelengthDeg = 2
@@ -1448,6 +1471,8 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``calculate_residuals`` method')
 
+        import numpy as np
+
         arm = self.arm
 
         utcnow = datetime.utcnow()
@@ -1501,6 +1526,9 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``clip_object_slit_positions`` method')
 
+        import numpy as np
+        import pandas as pd
+
         # COMBINE ALL ORDERS AND KEEP ONLY PIXELS FLAGGED AS POTENTIAL OBJECT
         allimageMapOrder = pd.concat(order_dataframes)
         mask = (allimageMapOrder['object'] == True)
@@ -1537,6 +1565,7 @@ class subtract_sky(object):
         #     object_ranges.append([lower, upper])
 
         if 1 == 0:
+            import matplotlib.pyplot as plt
             print(object_ranges)
             width = (maxsp - minsp) / nbins
             fig, ax = plt.subplots()

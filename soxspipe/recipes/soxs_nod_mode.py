@@ -12,12 +12,7 @@
 ################# GLOBAL IMPORTS ####################
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-from astropy import units as u
-import ccdproc
-from astropy.nddata import CCDData
-import numpy as np
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
 from fundamentals import tools
 from builtins import object
 import sys
@@ -73,6 +68,7 @@ class soxs_nod_mode(_base_recipe_):
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,

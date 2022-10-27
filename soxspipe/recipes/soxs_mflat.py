@@ -11,22 +11,15 @@
 """
 from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 from datetime import datetime
-from astropy.stats import sigma_clip, mad_std, sigma_clipped_stats
+
 from soxspipe.commonutils.filenamer import filenamer
 from os.path import expanduser
 from soxspipe.commonutils import subtract_background
-import pandas as pd
 from soxspipe.commonutils import detect_order_edges
 from soxspipe.commonutils.toolkit import quicklook_image
-import numpy.ma as ma
 from soxspipe.commonutils.toolkit import unpack_order_table
-import matplotlib.pyplot as plt
 from soxspipe.commonutils import keyword_lookup
-import ccdproc
-from astropy.nddata import CCDData
-import numpy as np
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
 from fundamentals import tools
 from builtins import object
 import sys
@@ -88,6 +81,7 @@ class soxs_mflat(_base_recipe_):
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -179,6 +173,8 @@ class soxs_mflat(_base_recipe_):
             - ``productPath`` -- the path to the master flat frame
         """
         self.log.debug('starting the ``produce_product`` method')
+
+        import pandas as pd
 
         productPath = None
         arm = self.arm
@@ -497,6 +493,10 @@ class soxs_mflat(_base_recipe_):
         """
         self.log.debug('starting the ``normalise_flats`` method')
 
+        import numpy.ma as ma
+        import numpy as np
+        from astropy.stats import sigma_clip
+
         # DO WE HAVE SEPARATE EXPOSURE FRAMES?
         if not exposureFrames:
             exposureFrames = inputFlats
@@ -570,6 +570,11 @@ class soxs_mflat(_base_recipe_):
         self.log.debug(
             'starting the ``mask_low_sens_and_inter_order_to_unity`` method')
 
+        import pandas as pd
+        import numpy.ma as ma
+        import numpy as np
+        from astropy.stats import sigma_clip
+
         print("\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY")
 
         # UNPACK THE ORDER TABLE
@@ -626,7 +631,7 @@ class soxs_mflat(_base_recipe_):
 
         # SIGMA-CLIP THE LOW-SENSITIVITY PIXELS
         frameClipped = sigma_clip(
-            frame, sigma_lower=self.settings["soxs-mflat"]["low-sensitivity-clipping-simga"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc=mad_std)
+            frame, sigma_lower=self.settings["soxs-mflat"]["low-sensitivity-clipping-simga"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc='mad_std')
 
         lowSensitivityPixelMask = (frameClipped.mask == 1) & (beforeMask != 1)
         lowSensPixelCount = lowSensitivityPixelMask.sum()
@@ -684,6 +689,8 @@ class soxs_mflat(_base_recipe_):
         ```
         """
         self.log.debug('starting the ``stitch_uv_mflats`` method')
+
+        import pandas as pd
 
         kw = self.kw
 
@@ -756,6 +763,7 @@ class soxs_mflat(_base_recipe_):
 
 
 def nearest_neighbour(singleValue, listOfValues):
+    import numpy as np
     arrayOfValues = np.asarray(listOfValues)
     dist = np.square(arrayOfValues - singleValue)
     minDist = np.amin(dist)

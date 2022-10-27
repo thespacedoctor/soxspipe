@@ -9,7 +9,7 @@
 :Date Created:
     April 15, 2021
 """
-import numpy as np
+
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 import unicodecsv as csv
 from os.path import expanduser
@@ -17,7 +17,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-from astropy.table import Table
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -55,6 +55,8 @@ def dispersion_map_to_pixel_arrays(
     ```           
     """
     log.debug('starting the ``dispersion_map_to_pixel_arrays`` function')
+
+    from astropy.table import Table
 
     # READ THE FILE
     home = expanduser("~")

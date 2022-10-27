@@ -25,7 +25,6 @@ install_requires = [
     'tabulate',
     'bottleneck',
     'multiprocess',
-    'fastentrypoints'
 ]
 
 # READ THE DOCS SERVERS

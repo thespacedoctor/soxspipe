@@ -11,11 +11,9 @@
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
-import ccdproc
-from astropy.nddata import CCDData
-import numpy as np
+
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
+
 from fundamentals import tools
 from builtins import object
 from datetime import datetime
@@ -80,6 +78,7 @@ class soxs_mdark(_base_recipe_):
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -155,6 +154,8 @@ class soxs_mdark(_base_recipe_):
             - ``productPath`` -- the path to master dark frame
         """
         self.log.debug('starting the ``produce_product`` method')
+
+        import numpy as np
 
         arm = self.arm
         kw = self.kw

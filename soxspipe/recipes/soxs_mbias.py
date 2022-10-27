@@ -14,19 +14,14 @@
 from soxspipe.commonutils.toolkit import generic_quality_checks
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-from astropy.stats import sigma_clip
-from astropy import units as u
-from astropy.nddata import CCDData
 import math
-import numpy as np
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
 from fundamentals import tools
 from builtins import object
 import sys
 import os
-from scipy.stats import median_abs_deviation
-import matplotlib.pyplot as plt
+
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -83,6 +78,7 @@ class soxs_mbias(_base_recipe_):
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -148,6 +144,8 @@ class soxs_mbias(_base_recipe_):
             - ``productPath`` -- the path to the master bias frame
         """
         self.log.debug('starting the ``produce_product`` method')
+
+        import numpy as np
 
         arm = self.arm
         kw = self.kw
@@ -255,6 +253,8 @@ class soxs_mbias(_base_recipe_):
         ```
         """
         self.log.debug('starting the ``qc_bias_structure`` method')
+
+        import numpy as np
         plot = False
 
         collaps_ax1 = np.nansum(combined_bias_mean, axis=0)
@@ -268,6 +268,7 @@ class soxs_mbias(_base_recipe_):
         coeff_ax2 = np.polyfit(y_axis, collaps_ax2, deg=1)
 
         if plot == True:
+            import matplotlib.pyplot as plt
             plt.plot(x_axis, collaps_ax1)
             plt.plot(x_axis, np.polyval(coeff_ax1, x_axis))
             plt.xlabel('x-axis')
@@ -328,6 +329,10 @@ class soxs_mbias(_base_recipe_):
         ```
         """
         self.log.debug('starting the ``qc_periodic_pattern_noise`` method')
+
+        from scipy.stats import median_abs_deviation
+        from astropy.stats import sigma_clip
+        import numpy as np
 
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]

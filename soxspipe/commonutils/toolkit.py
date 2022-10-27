@@ -17,22 +17,21 @@ from copy import copy
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
 import math
-import pandas as pd
-import numpy.ma as ma
+
+
 import random
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import numpy as np
+
+
 import unicodecsv as csv
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
 from builtins import object
-from matplotlib import cm, rc
+
 import sys
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import os
-from astropy.io import fits
-from mpl_toolkits.mplot3d import Axes3D
+
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -71,6 +70,9 @@ def cut_image_slice(
     ```
     """
     log.debug('starting the ``cut_image_slice`` function')
+
+    import numpy.ma as ma
+    import numpy as np
 
     halfSlice = length / 2
     # NEED AN EVEN PIXEL SIZE
@@ -111,6 +113,7 @@ def cut_image_slice(
             slice = ma.median(sliceFull, axis=0)
 
     if plot and random.randint(1, 101) < 10000:
+        import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
             sliceImg = np.rot90(sliceFull, 1)
@@ -166,10 +169,15 @@ def quicklook_image(
     """
     log.debug('starting the ``quicklook_image`` function')
 
+    import pandas as pd
+    import matplotlib as mpl
+    import numpy as np
+
     originalRC = dict(mpl.rcParams)
 
     if not show:
         return
+    import matplotlib.pyplot as plt
 
     if ext == "data":
         frame = CCDObject.data
@@ -203,6 +211,8 @@ def quicklook_image(
     vmin = mean - stdWindow * 0.1 * std
 
     if surfacePlot:
+
+        from matplotlib import rc
 
         axisColour = '#dddddd'
         rc('axes', edgecolor=axisColour, labelcolor=axisColour, linewidth=0.6)
@@ -372,7 +382,8 @@ def unpack_order_table(
     """
     log.debug('starting the ``functionName`` function')
     from astropy.table import Table
-
+    import pandas as pd
+    import numpy as np
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
     home = expanduser("~")
@@ -397,7 +408,6 @@ def unpack_order_table(
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
 
-    import pandas as pd
     # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
     myDict = {
         f"{axisB}coord": np.concatenate(axisBcoords),
@@ -458,6 +468,8 @@ def generic_quality_checks(
     ```
     """
     log.debug('starting the ``functionName`` function')
+
+    import numpy as np
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -549,6 +561,9 @@ def spectroscopic_image_quality_checks(
     ```
     """
     log.debug('starting the ``functionName`` function')
+
+    import numpy.ma as ma
+    import numpy as np
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -735,6 +750,10 @@ def twoD_disp_map_image_to_dataframe(
     ```           
     """
     log.debug('starting the ``twoD_disp_map_image_to_dataframe`` function')
+
+    import pandas as pd
+    import numpy as np
+    from astropy.io import fits
 
     # MAKE RELATIVE HOME PATH ABSOLUTE
     from os.path import expanduser

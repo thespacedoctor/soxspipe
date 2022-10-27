@@ -10,25 +10,23 @@
     September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
-from astropy.table import Table
-from astropy.io import fits
+
+
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
-import pandas as pd
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from fundamentals.renderer import list_of_dictionaries
 import collections
-from astropy.visualization import hist
-from astropy.stats import sigma_clip, mad_std
-from scipy.optimize import curve_fit
+
+
+
 from random import random
-from scipy.signal import find_peaks
-from astropy.modeling import models, fitting
-from astropy.stats import mad_std
-import matplotlib.pyplot as plt
+
+
+
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
-import numpy as np
+
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
@@ -69,6 +67,10 @@ class _base_detect(object):
             - ``pixelList`` -- the pixel list but now with fits and residuals included
         """
         self.log.debug('starting the ``fit_order_polynomial`` method')
+
+        import numpy as np
+        from astropy.stats import sigma_clip
+        from scipy.optimize import curve_fit
 
         arm = self.arm
         self.axisBDeg = axisBDeg
@@ -152,6 +154,10 @@ class _base_detect(object):
             - ``pixelList`` -- the pixel list but now with fits and residuals included
         """
         self.log.debug('starting the ``fit_global_polynomial`` method')
+
+        import numpy as np
+        from astropy.stats import sigma_clip
+        from scipy.optimize import curve_fit
 
         arm = self.arm
 
@@ -243,6 +249,8 @@ class _base_detect(object):
         """
         self.log.debug('starting the ``calculate_residuals`` method')
 
+        import numpy as np
+
         arm = self.arm
 
         poly = chebyshev_order_xy_polynomials(
@@ -330,6 +338,7 @@ class _base_detect(object):
             - ``order_table_path`` -- path to the order table file
         """
         from astropy.table import Table
+        from astropy.io import fits
         self.log.debug('starting the ``write_order_table_to_file`` method')
 
         arm = self.arm
@@ -469,6 +478,9 @@ class detect_continuum(_base_detect):
             - ``order_table_path`` -- file path to the order centre table giving polynomial coeffs to each order fit
         """
         self.log.debug('starting the ``get`` method')
+
+        import numpy as np
+        import pandas as pd
 
         arm = self.arm
 
@@ -626,6 +638,9 @@ class detect_continuum(_base_detect):
         """
         self.log.debug('starting the ``create_pixel_arrays`` method')
 
+        import numpy as np
+        import pandas as pd
+
         # READ ORDER SAMPLING RESOLUTION FROM SETTINGS
         sampleCount = self.settings[
             "soxs-order-centre"]["order-sample-count"]
@@ -711,6 +726,11 @@ class detect_continuum(_base_detect):
         """
         self.log.debug('starting the ``fit_1d_gaussian_to_slice`` method')
 
+        import numpy as np
+        from astropy.stats import mad_std
+        from astropy.modeling import models, fitting
+        from scipy.signal import find_peaks
+
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
         halfSlice = self.sliceLength / 2
 
@@ -731,6 +751,7 @@ class detect_continuum(_base_detect):
 
         # CHECK THE SLICE POINTS IF NEEDED
         if 1 == 0:
+            import matplotlib.pyplot as plt
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
@@ -810,6 +831,10 @@ class detect_continuum(_base_detect):
             - ``orderMetaTable`` -- dataframe of useful order fit metadata
         """
         self.log.debug('starting the ``plot_results`` method')
+
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
 
         arm = self.arm
 

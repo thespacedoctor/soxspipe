@@ -53,7 +53,6 @@ def main(arguments=None):
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
     """
     # setup the command-line util settings
-    print("main")
     su = tools(
         arguments=arguments,
         docString=__doc__,
@@ -233,7 +232,3 @@ def main(arguments=None):
              (endTime, runningTime, ))
 
     return
-
-
-if __name__ == '__main__':
-    main()

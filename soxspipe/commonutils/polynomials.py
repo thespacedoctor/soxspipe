@@ -10,13 +10,13 @@
     September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
-import numpy as np
+
 import math
 from fundamentals import tools
 from builtins import object
 import sys
 import os
-import pandas as pd
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -66,6 +66,8 @@ class chebyshev_order_wavelength_polynomials():
         - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
         """
         self.log.debug('starting the ``poly`` method')
+
+        import numpy as np
 
         # UNPACK TUPLE INPUT
         orderDeg = self.orderDeg
@@ -145,6 +147,9 @@ class chebyshev_xy_polynomial():
         """
         self.log.info('starting the ``poly`` method')
 
+        import numpy as np
+        import pandas as pd
+
         n_coeff = 0
         if not isinstance(orderPixelTable, pd.core.frame.DataFrame):
             yarray = orderPixelTable
@@ -220,6 +225,8 @@ class chebyshev_order_xy_polynomials():
         - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
         """
         self.log.debug('starting the ``poly`` method')
+
+        import numpy as np
 
         # UNPACK TUPLE INPUT
         orderDeg = self.orderDeg
