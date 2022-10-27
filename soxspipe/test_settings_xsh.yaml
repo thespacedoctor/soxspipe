@@ -25,9 +25,9 @@ soxs-mbias:
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
     # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-simga: 5
+    clipping-lower-sigma: 5
     # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-simga: 5   
+    clipping-upper-sigma: 5   
     # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
     clipping-iteration-count: 5
 
@@ -37,9 +37,9 @@ soxs-mdark:
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
     # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-simga: 5
+    clipping-lower-sigma: 5
     # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-simga: 5   
+    clipping-upper-sigma: 5   
     # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
     clipping-iteration-count: 5
 
@@ -83,9 +83,9 @@ soxs-mflat:
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
     # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-simga: 50
+    clipping-lower-sigma: 50
     # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-simga: 50   
+    clipping-upper-sigma: 50   
     # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
     clipping-iteration-count: 0
     # width of the slice to cut along the centre of each order when determining mean exposure level
@@ -120,7 +120,31 @@ soxs-stare:
     clipping-upper-simga: 10 
     # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
     clipping-iteration-count: 0
+    clipping-lower-sigma: 10
+    clipping-upper-sigma: 10 
 
+# sky-subtraction:
+#     # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+#     median_clipping_sigma: 4.0
+#     median_clipping_iterations: 15
+#     # ROLLING WINDOW LENGTH IN DATA POINTS
+#     median_rolling_window_size: 44
+#     # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+#     percential_clipping_sigma: 2.
+#     percential_clipping_iterations: 3
+#     percential_rolling_window_size: 15
+
+sky-subtraction:
+    # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+    median_clipping_sigma: 4.5
+    median_clipping_iterations: 3
+    # ROLLING WINDOW LENGTH IN DATA POINTS
+    median_rolling_window_size: 31
+    # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+    percential_clipping_sigma: 2.9
+    percential_clipping_iterations: 10
+    percential_rolling_window_size: 15
+    bspline_order: 3
         
 soxs-straighten:
     asdasd: 1

@@ -12,21 +12,14 @@
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
 import random
-from scipy.ndimage.filters import median_filter
-from scipy.signal import medfilt2d
 from soxspipe.commonutils.toolkit import quicklook_image
-from scipy.interpolate import BSpline, splrep
-from astropy import units as u
-from astropy.nddata import CCDData
-import matplotlib.pyplot as plt
-import numpy as np
-import numpy.ma as ma
+
 from soxspipe.commonutils.toolkit import unpack_order_table
 from fundamentals import tools
 from builtins import object
 import sys
 import math
-import pandas as pd
+
 import os
 os.environ['TERM'] = 'vt100'
 
@@ -117,6 +110,8 @@ class subtract_background(object):
         """
         self.log.debug('starting the ``subtract`` method')
 
+        import numpy as np
+
         kw = self.kw
         imageType = self.frame.header[kw("DPR_TYPE")].replace(",", "-")
         imageTech = self.frame.header[kw("DPR_TECH")].replace(",", "-")
@@ -161,6 +156,8 @@ class subtract_background(object):
         """
         self.log.debug('starting the ``mask_order_locations`` method')
 
+        import numpy as np
+
         # MASK DATA INSIDE OF ORDERS (EXPAND THE INNER-ORDER AREA IF NEEDED)
         uniqueOrders = orderPixelTable['order'].unique()
         if self.axisA == "x":
@@ -200,10 +197,17 @@ class subtract_background(object):
         self.log.debug('starting the ``create_background_image`` method')
 
         from astropy.stats import sigma_clip, mad_std
+        import numpy as np
+        import pandas as pd
+        from astropy.nddata import CCDData
+        from scipy.signal import medfilt2d
+        from scipy.interpolate import BSpline, splrep
+        import numpy.ma as ma
+
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA
         clippedDataMask = sigma_clip(
-            maskedImage, sigma_lower=2, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc=mad_std)
+            maskedImage, sigma_lower=2, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
         # COMBINE MASK WITH THE BAD PIXEL MASK
         mask = (clippedDataMask.mask == 1) | (self.frame.mask == 1)
         maskedImage = np.ma.array(self.frame.data, mask=mask)
@@ -215,7 +219,7 @@ class subtract_background(object):
         backgroundMap = np.zeros_like(self.frame)
 
         if self.surfaceFit:
-
+            import matplotlib.pyplot as plt
             fig = plt.figure(figsize=(40, 10))
             from scipy.interpolate import griddata
             flatMask = mask.flatten()
@@ -272,6 +276,7 @@ class subtract_background(object):
                 backgroundMap[idx, :] = yfit
 
                 if random.randint(1, 501) == 42 and 1 == 0:
+                    import matplotlib.pyplot as plt
                     fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
                     plt.scatter(xmasked, rowmasked)
                     plt.scatter(xmasked, rowmaskedSmoothed)

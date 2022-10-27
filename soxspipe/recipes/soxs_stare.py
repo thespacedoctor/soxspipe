@@ -11,12 +11,9 @@
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
-from astropy import units as u
-import ccdproc
-from astropy.nddata import CCDData
-import numpy as np
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
+from soxspipe.commonutils import subtract_sky
+from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 from fundamentals import tools
 from builtins import object
 import sys
@@ -33,6 +30,8 @@ class soxs_stare(_base_recipe_):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
+        - ``verbose`` -- verbose. True or False. Default *False*
+        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
 
     See `produce_product` method for usage.
@@ -53,24 +52,25 @@ class soxs_stare(_base_recipe_):
             log,
             settings=False,
             inputFrames=[],
-            verbose=False
+            verbose=False,
+            overwrite=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
         super(soxs_stare, self).__init__(
-            log=log, settings=settings)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-stare")
         self.log = log
         log.debug("instansiating a new 'soxs_stare' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeName = "soxs-stare"
         self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_filesw
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -117,18 +117,18 @@ class soxs_stare(_base_recipe_):
         if self.arm == "NIR":
 
             for i in imageTypes:
-                if i not in ["OBJECT", "LAMP,FLAT", "DARK"]:
+                if i not in ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX"]:
                     raise TypeError(
                         f"Found a {i} file. Input frames for soxspipe stare need to be OBJECT, ***. Can optionally supply a master-flat for NIR.")
 
             for i in imageTech:
-                if i not in ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT"]:
+                if i not in ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
                     raise TypeError(
                         "Input frames for soxspipe stare need to be ********* lamp on and lamp off frames for NIR" % locals())
 
         else:
             for i in imageTypes:
-                if i not in ["LAMP,FMTCHK", "BIAS", "DARK"]:
+                if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK"]:
                     raise TypeError(
                         "Input frames for soxspipe stare need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals())
 
@@ -163,11 +163,16 @@ class soxs_stare(_base_recipe_):
         """
         self.log.debug('starting the ``produce_product`` method')
 
+        from astropy.nddata import CCDData
+        from astropy import units as u
+
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
 
         productPath = None
+        master_bias = False
+        dark = False
 
         # OBJECT FRAMES
         add_filters = {kw("DPR_TYPE"): 'OBJECT',
@@ -178,9 +183,30 @@ class soxs_stare(_base_recipe_):
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
             allObjectFrames.append(singleFrame)
 
+        # FLUX STD FRAMES
+        if not len(allObjectFrames):
+            add_filters = {kw("DPR_TYPE"): 'STD,FLUX',
+                           kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
+            allObjectFrames = []
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                           hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+                allObjectFrames.append(singleFrame)
+
         combined_object = self.clip_and_stack(
-            frames=allObjectFrames, recipe="soxs_stare")
+            frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=False, post_stack_clipping=False)
         self.dateObs = combined_object.header[kw("DATE_OBS")]
+
+        add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                       hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        # UVB/VIS DARK
+        add_filters = {kw("DPR_CATG"): 'MASTER_DARK_' + arm}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # NIR DARK
         add_filters = {kw("DPR_TYPE"): 'DARK',
@@ -195,17 +221,40 @@ class soxs_stare(_base_recipe_):
             master_flat = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        # FIND THE ORDER TABLE
+        filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
+        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
+        # FIND THE 2D MAP TABLE
+        filterDict = {kw("PRO_CATG"): f"DISP_TAB_{arm}"}
+        dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
+        # FIND THE 2D MAP IMAGE
+        filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
+        twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+
         combined_object = self.detrend(
-            inputFrame=combined_object, master_bias=False, dark=dark, master_flat=master_flat, order_table=False)
+            inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
+
+        skymodel = subtract_sky(
+            log=self.log,
+            settings=self.settings,
+            objectFrame=combined_object,
+            twoDMap=twoDMap,
+            qcTable=self.qc,
+            productsTable=self.products,
+            dispMap=dispMap
+        )
+        skymodelCCDData, skySubtractedCCDData, self.qc, self.products = skymodel.subtract()
 
         from os.path import expanduser
         home = expanduser("~")
         fileDir = self.settings["intermediate-data-root"].replace("~", home)
         # filename = "/override/filename.fits"
-        filepath = self._write(combined_object, fileDir, filename="tmp.fits", overwrite=True)
-        print(f"\nxxx frame saved to {filepath}\n")
+        filepath = self._write(combined_object, fileDir, filename="combined_object_frame.fits", overwrite=True)
+        # print(f"\nxxx frame saved to {filepath}\n")
 
-        sys.exit(0)
+        # sys.exit(0)
 
         # OBJECT
         # add_filters = {kw("DPR_CATG"): 'OBJECT'}
@@ -217,9 +266,9 @@ class soxs_stare(_base_recipe_):
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
-            log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+            log=self.log, frame=skySubtractedCCDData, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
         self.qc = spectroscopic_image_quality_checks(
-            log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
+            log=self.log, frame=skySubtractedCCDData, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
 
         self.clean_up()
         self.report_output()

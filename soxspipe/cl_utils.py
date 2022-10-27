@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 # encoding: utf-8
 """
@@ -5,12 +6,13 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe init
-    soxspipe [-V] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
-    soxspipe [-V] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-V] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
+    soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
     init                                   setup the soxspipe settings file for the first time
@@ -20,6 +22,7 @@ Options:
     disp_sol                               the disp solution recipe
     order_centres                          the order centres recipe
     spat_sol                               the spatial solution recipe
+    stare                                  reduce stare mode science frames
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -27,12 +30,12 @@ Options:
     -v, --version                          show version
     -s, --settings <pathToSettingsFile>    the settings file
     -V, --verbose                          more verbose output
+    -x, --overwrite                        more verbose output
 """
 ################# GLOBAL IMPORTS ####################
 from subprocess import Popen, PIPE, STDOUT
 from fundamentals import tools, times
 from docopt import docopt
-import pickle
 import glob
 import readline
 import sys
@@ -41,6 +44,7 @@ os.environ['TERM'] = 'vt100'
 
 
 def tab_complete(text, state):
+
     return (glob.glob(text + '*') + [None])[state]
 
 
@@ -147,7 +151,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         )
         mbiasFrame = recipe.produce_product()
 
@@ -157,7 +162,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         )
         mdarkFrame = recipe.produce_product()
 
@@ -167,7 +173,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         ).produce_product()
 
     if a["order_centres"]:
@@ -176,7 +183,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         ).produce_product()
 
     if a["spat_sol"]:
@@ -185,7 +193,8 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         ).produce_product()
 
     if a["mflat"]:
@@ -194,9 +203,22 @@ def main(arguments=None):
             log=log,
             settings=settings,
             inputFrames=a["inputFrames"],
-            verbose=verbose
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
         )
         mflatFrame = recipe.produce_product()
+
+    if a["stare"]:
+        from soxspipe.recipes import soxs_stare
+        recipe = soxs_stare(
+            log=log,
+            settings=settings,
+            inputFrames=a["inputFrames"],
+            verbose=verbose,
+            overwrite=a["overwriteFlag"]
+        )
+
+        reducedStare = recipe.produce_product()
 
     # CALL FUNCTIONS/OBJECTS
 
@@ -210,7 +232,3 @@ def main(arguments=None):
              (endTime, runningTime, ))
 
     return
-
-
-if __name__ == '__main__':
-    main()

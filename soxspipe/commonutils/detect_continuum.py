@@ -10,25 +10,23 @@
     September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
-from astropy.table import Table
-from astropy.io import fits
+
+
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
-import pandas as pd
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from fundamentals.renderer import list_of_dictionaries
 import collections
-from astropy.visualization import hist
-from astropy.stats import sigma_clip, mad_std
-from scipy.optimize import curve_fit
+
+
+
 from random import random
-from scipy.signal import find_peaks
-from astropy.modeling import models, fitting
-from astropy.stats import mad_std
-import matplotlib.pyplot as plt
+
+
+
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
-import numpy as np
+
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
@@ -69,6 +67,10 @@ class _base_detect(object):
             - ``pixelList`` -- the pixel list but now with fits and residuals included
         """
         self.log.debug('starting the ``fit_order_polynomial`` method')
+
+        import numpy as np
+        from astropy.stats import sigma_clip
+        from scipy.optimize import curve_fit
 
         arm = self.arm
         self.axisBDeg = axisBDeg
@@ -118,7 +120,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
             pixelList.loc[mask, "mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -152,6 +154,10 @@ class _base_detect(object):
             - ``pixelList`` -- the pixel list but now with fits and residuals included
         """
         self.log.debug('starting the ``fit_global_polynomial`` method')
+
+        import numpy as np
+        from astropy.stats import sigma_clip
+        from scipy.optimize import curve_fit
 
         arm = self.arm
 
@@ -193,7 +199,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
             pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -242,6 +248,8 @@ class _base_detect(object):
             - ``xfit`` -- fitted x values
         """
         self.log.debug('starting the ``calculate_residuals`` method')
+
+        import numpy as np
 
         arm = self.arm
 
@@ -330,6 +338,7 @@ class _base_detect(object):
             - ``order_table_path`` -- path to the order table file
         """
         from astropy.table import Table
+        from astropy.io import fits
         self.log.debug('starting the ``write_order_table_to_file`` method')
 
         arm = self.arm
@@ -337,7 +346,11 @@ class _base_detect(object):
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
+        outDir = outDir.replace("//", "/")
+        # Recursively create missing directories
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
 
         filename = filenamer(
             log=self.log,
@@ -465,6 +478,9 @@ class detect_continuum(_base_detect):
             - ``order_table_path`` -- file path to the order centre table giving polynomial coeffs to each order fit
         """
         self.log.debug('starting the ``get`` method')
+
+        import numpy as np
+        import pandas as pd
 
         arm = self.arm
 
@@ -622,6 +638,9 @@ class detect_continuum(_base_detect):
         """
         self.log.debug('starting the ``create_pixel_arrays`` method')
 
+        import numpy as np
+        import pandas as pd
+
         # READ ORDER SAMPLING RESOLUTION FROM SETTINGS
         sampleCount = self.settings[
             "soxs-order-centre"]["order-sample-count"]
@@ -707,6 +726,11 @@ class detect_continuum(_base_detect):
         """
         self.log.debug('starting the ``fit_1d_gaussian_to_slice`` method')
 
+        import numpy as np
+        from astropy.stats import mad_std
+        from astropy.modeling import models, fitting
+        from scipy.signal import find_peaks
+
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
         halfSlice = self.sliceLength / 2
 
@@ -727,6 +751,7 @@ class detect_continuum(_base_detect):
 
         # CHECK THE SLICE POINTS IF NEEDED
         if 1 == 0:
+            import matplotlib.pyplot as plt
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
@@ -777,7 +802,7 @@ class detect_continuum(_base_detect):
         pixelPostion["stddev"] = g.stddev.value
 
         # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAYED
-        if 1 == 1 and random() < 0.02 and pixelPostion["order"] == 11:
+        if 1 == 0 and random() < 0.02 and pixelPostion["order"] == 11:
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
@@ -806,6 +831,10 @@ class detect_continuum(_base_detect):
             - ``orderMetaTable`` -- dataframe of useful order fit metadata
         """
         self.log.debug('starting the ``plot_results`` method')
+
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
 
         arm = self.arm
 
@@ -951,7 +980,12 @@ class detect_continuum(_base_detect):
         filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
 
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
+        outDir = outDir.replace("//", "")
+        # Recursively create missing directories
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
+
         filePath = f"{outDir}/{filename}"
         plt.tight_layout()
         plt.savefig(filePath, dpi=720)

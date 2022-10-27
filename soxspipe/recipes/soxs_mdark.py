@@ -11,16 +11,15 @@
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
-import ccdproc
-from astropy.nddata import CCDData
-import numpy as np
+
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
+
 from fundamentals import tools
 from builtins import object
 from datetime import datetime
 from soxspipe.commonutils.toolkit import generic_quality_checks
 import sys
+import math
 import os
 os.environ['TERM'] = 'vt100'
 
@@ -35,6 +34,7 @@ class soxs_mdark(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
+        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
     **Usage**
 
@@ -61,23 +61,24 @@ class soxs_mdark(_base_recipe_):
             log,
             settings=False,
             inputFrames=[],
-            verbose=False
+            verbose=False,
+            overwrite=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(soxs_mdark, self).__init__(log=log, settings=settings)
+        super(soxs_mdark, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mdark")
         self.log = log
         log.debug("instansiating a new 'soxs_mdark' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeName = "soxs-mdark"
         self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -154,12 +155,31 @@ class soxs_mdark(_base_recipe_):
         """
         self.log.debug('starting the ``produce_product`` method')
 
+        import numpy as np
+
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
 
-        combined_dark_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mdark")
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        meanFluxLevels, rons, noiseFrames = zip(*[self.subtact_mean_flux_level(c) for c in ccds])
+        masterMeanFluxLevel = np.mean(meanFluxLevels)
+        masterMedianFluxLevel = np.median(meanFluxLevels)
+        rawRon = np.mean(rons)
+
+        combined_noise = self.clip_and_stack(
+            frames=list(noiseFrames), recipe="soxs_mdark", ignore_input_masks=False, post_stack_clipping=True)
+
+        maskedDataArray = np.ma.array(combined_noise.data, mask=combined_noise.mask)
+        masterRon = np.std(maskedDataArray)
+
+        # FILL MASKED PIXELS WITH 0
+        combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanFluxLevel
+        combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
+        combined_dark_mean = combined_noise
+        combined_dark_mean.mask = combined_noise.mask
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
@@ -168,11 +188,16 @@ class soxs_mdark(_base_recipe_):
         medianFlux = self.qc_median_flux_level(
             frame=combined_dark_mean,
             frameType="MDARK",
-            frameName="master dark"
+            frameName="master dark",
+            medianFlux=masterMedianFluxLevel
         )
 
         self.qc_ron(
             frameType="DARK"
+        )
+
+        self.update_fits_keywords(
+            frame=combined_dark_mean
         )
 
         # WRITE TO DISK

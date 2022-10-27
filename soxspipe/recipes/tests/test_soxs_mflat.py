@@ -93,7 +93,8 @@ class test_soxs_mflat(unittest.TestCase):
         this = soxs_mflat(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         mflat = this.mask_low_sens_and_inter_order_to_unity(
             orderTablePath=orderTable,
@@ -107,7 +108,8 @@ class test_soxs_mflat(unittest.TestCase):
         this = soxs_mflat(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         mflat = this.produce_product()
         print(f"The master flat file has been saved to '{mflat}'")
@@ -118,7 +120,8 @@ class test_soxs_mflat(unittest.TestCase):
         this = soxs_mflat(
             log=log2,
             settings=settings2,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         mflat = this.produce_product()
         print(f"The master flat file has been saved to '{mflat}'")
@@ -129,7 +132,8 @@ class test_soxs_mflat(unittest.TestCase):
         this = soxs_mflat(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -140,7 +144,8 @@ class test_soxs_mflat(unittest.TestCase):
         this = soxs_mflat(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -151,7 +156,8 @@ class test_soxs_mflat(unittest.TestCase):
         this = soxs_mflat(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -162,7 +168,8 @@ class test_soxs_mflat(unittest.TestCase):
         this = soxs_mflat(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -206,7 +213,8 @@ class test_soxs_mflat(unittest.TestCase):
             this = soxs_mflat(
                 log=log,
                 settings=settings,
-                inputFrames=sofPath
+                inputFrames=sofPath,
+                overwrite=True
             )
             assert False
         except Exception as e:

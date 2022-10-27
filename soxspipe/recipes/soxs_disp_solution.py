@@ -12,12 +12,8 @@
 ################# GLOBAL IMPORTS ####################
 import unicodecsv as csv
 from soxspipe.commonutils import keyword_lookup
-import ccdproc
-from astropy import units as u
-from astropy.nddata import CCDData
-import numpy as np
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
+
 from fundamentals import tools
 from builtins import object
 import sys
@@ -37,6 +33,7 @@ class soxs_disp_solution(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
+        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
     **Usage**
 
@@ -63,7 +60,8 @@ class soxs_disp_solution(_base_recipe_):
             log,
             settings=False,
             inputFrames=[],
-            verbose=False
+            verbose=False,
+            overwrite=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
@@ -79,6 +77,7 @@ class soxs_disp_solution(_base_recipe_):
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -157,6 +156,9 @@ class soxs_disp_solution(_base_recipe_):
         """
         self.log.debug('starting the ``produce_product`` method')
 
+        from astropy.nddata import CCDData
+        from astropy import units as u
+
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
@@ -167,13 +169,13 @@ class soxs_disp_solution(_base_recipe_):
         dark = False
         pinhole_image = False
 
-        add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
+        add_filters = {kw("PRO_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # UVB/VIS DARK
-        add_filters = {kw("DPR_CATG"): 'MASTER_DARK_' + arm}
+        add_filters = {kw("PRO_CATG"): 'MASTER_DARK_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -204,7 +206,8 @@ class soxs_disp_solution(_base_recipe_):
                 frame=self.pinholeFrame,
                 filedir=outDir,
                 filename=False,
-                overwrite=True
+                overwrite=True,
+                product=False
             )
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
 

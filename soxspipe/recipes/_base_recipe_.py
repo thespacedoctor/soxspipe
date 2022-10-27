@@ -18,17 +18,10 @@ from soxspipe.commonutils import filenamer
 from datetime import datetime
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import set_of_files
-from ccdproc import Combiner
 from contextlib import suppress
-from astropy.nddata.nduncertainty import StdDevUncertainty
-import pandas as pd
 from soxspipe.commonutils import subtract_background
-import ccdproc
-from astropy.stats import sigma_clip, mad_std
-from astropy import units as u
-from astropy.nddata import CCDData
-import numpy as np
+
+
 from fundamentals import tools
 from builtins import object
 import sys
@@ -36,6 +29,7 @@ import math
 import inspect
 import yaml
 import os
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -46,7 +40,10 @@ class _base_recipe_(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
+        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+        - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
 
     **Usage**
 
@@ -57,15 +54,35 @@ class _base_recipe_(object):
             self,
             log,
             settings=False,
-            verbose=False
+            inputFrames=False,
+            verbose=False,
+            overwrite=False,
+            recipeName=False
     ):
         self.log = log
+
+        import pandas as pd
+
         log.debug("instansiating a new '__init__' object")
+        self.recipeName = recipeName
         self.settings = settings
         self.intermediateRootPath = self._absolute_path(
             settings["intermediate-data-root"])
         self.reducedRootPath = self._absolute_path(
             settings["reduced-data-root"])
+
+        # CHECK IF PRODUCT ALREADY EXISTS
+        if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
+            self.sofName = os.path.basename(inputFrames).replace(".sof", "")
+            productPath = self.intermediateRootPath + "/product/" + self.recipeName + "/" + self.sofName + ".fits"
+            self.productPath = productPath.replace("//", "/")
+            if os.path.exists(self.productPath) and not overwrite:
+                print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                sys.exit(0)
+        else:
+            self.sofName = False
+            self.productPath = False
+
         from soxspipe.commonutils.toolkit import get_calibrations_path
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
@@ -145,6 +162,11 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``_prepare_single_frame`` method')
+
+        from astropy.nddata import CCDData
+        import ccdproc
+        from astropy import units as u
+        import numpy as np
 
         warnings.filterwarnings(
             action='ignore'
@@ -276,7 +298,8 @@ class _base_recipe_(object):
             frame=frame,
             filedir=outDir,
             filename=filenameNoExtension + "_pre" + extension,
-            overwrite=True
+            overwrite=True,
+            product=False
         )
 
         self.log.debug('completed the ``_prepare_single_frame`` method')
@@ -331,6 +354,8 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``prepare_frames`` method')
 
+        from soxspipe.commonutils.set_of_files import set_of_files
+
         kw = self.kw
 
         filepaths = self.inputFrames.files_filtered(include_path=True)
@@ -372,6 +397,8 @@ class _base_recipe_(object):
         If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
         """
         self.log.debug('starting the ``_verify_input_frames_basics`` method')
+
+        from astropy import units as u
 
         kw = self.kw
 
@@ -559,6 +586,7 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``xsh2soxs`` method')
+        import numpy as np
 
         kw = self.kw
         dp = self.detectorParams
@@ -581,6 +609,8 @@ class _base_recipe_(object):
             - ``frame`` -- the CCDData frame to be trimmed
         """
         self.log.debug('starting the ``_trim_frame`` method')
+
+        import ccdproc
 
         kw = self.kw
         arm = self.arm
@@ -607,7 +637,8 @@ class _base_recipe_(object):
             frame,
             filedir,
             filename=False,
-            overwrite=True):
+            overwrite=True,
+            product=True):
         """*write frame to disk at the specified location*
 
         **Key Arguments:**
@@ -615,6 +646,7 @@ class _base_recipe_(object):
             - ``filedir`` -- the location to save the frame
             - ``filename`` -- the filename to save the file as. Default: **False** (standardised filename generated in code)
             - ``overwrite`` -- if a file exists at the filepath then choose to overwrite the file. Default: True
+            - ``product`` -- is this a recipe product?
 
         **Usage:**
 
@@ -625,6 +657,8 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``write`` method')
+
+        kw = self.kw
 
         # WRITE QCs TO HEADERS
         for n, v, c, h in zip(self.qc["qc_name"].values, self.qc["qc_value"].values, self.qc["qc_comment"].values, self.qc["to_header"].values):
@@ -645,6 +679,8 @@ class _base_recipe_(object):
                 else:
                     frame.header[k] = (v, c)
 
+        if not filename and self.sofName:
+            filename = self.sofName + ".fits"
         if not filename:
 
             filename = filenamer(
@@ -652,6 +688,20 @@ class _base_recipe_(object):
                 frame=frame,
                 settings=self.settings
             )
+
+        if product:
+            removeKw = ["DPR_TECH", "DPR_CATG", "DPR_TYPE"]
+            for k in removeKw:
+                try:
+                    frame.header.pop(kw(k))
+                except:
+                    pass
+
+            filedir += f"/product/{self.recipeName}/"
+            filedir = filedir.replace("//", "/")
+            # Recursively create missing directories
+            if not os.path.exists(filedir):
+                os.makedirs(filedir)
 
         filepath = filedir + "/" + filename
 
@@ -669,12 +719,16 @@ class _base_recipe_(object):
     def clip_and_stack(
             self,
             frames,
-            recipe):
+            recipe,
+            ignore_input_masks=False,
+            post_stack_clipping=True):
         """*mean combine input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function*
 
         **Key Arguments:**
             - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
             - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
+            - ``ignore_input_masks`` -- ignore the input masks during clip and stacking?
+            - ``post_stack_clipping`` -- allow cross-plane clipping on combined frame. Clipping settings in setting file. Default *True*.
 
         **Return:**
             - ``combined_frame`` -- the combined master frame (with updated bad-pixel and uncertainty maps)
@@ -685,7 +739,7 @@ class _base_recipe_(object):
 
         ```python
         combined_bias_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mbias")
+            frames=self.inputFrames, recipe="soxs_mbias", ignore_input_masks=False, post_stack_clipping=True)
         ```
 
         ---
@@ -697,6 +751,15 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``clip_and_stack`` method')
+
+        from astropy.stats import sigma_clip, mad_std
+        from soxspipe.commonutils.combiner import Combiner
+        from astropy import units as u
+        import numpy as np
+
+        if len(frames) == 1:
+            self.log.warning("Only 1 frame was sent to the clip and stack method. Returning the frame was no further processing.")
+            return frames[0]
 
         arm = self.arm
         kw = self.kw
@@ -713,9 +776,9 @@ class _base_recipe_(object):
             recipe]["stacked-clipping-iterations"]
         # UNPACK SETTINGS
         clipping_lower_sigma = self.settings[
-            recipe]["clipping-lower-simga"]
+            recipe]["clipping-lower-sigma"]
         clipping_upper_sigma = self.settings[
-            recipe]["clipping-upper-simga"]
+            recipe]["clipping-upper-sigma"]
         clipping_iteration_count = self.settings[
             recipe]["clipping-iteration-count"]
 
@@ -736,7 +799,8 @@ class _base_recipe_(object):
         combinedMask = ccds[0].mask
         for c in ccds:
             combinedMask = c.mask | combinedMask
-            c.mask[:, :] = False
+            if ignore_input_masks:
+                c.mask[:, :] = False
 
         # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
         # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
@@ -748,40 +812,58 @@ class _base_recipe_(object):
         badCount = combinedMask.sum()
         totalPixels = np.size(combinedMask)
         percent = (float(badCount) / float(totalPixels)) * 100.
-        print(f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
+        if imageType != "BIAS":
+            print(f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
 
         # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INPUT FRAMES - USING
         # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
         old_n_masked = -1
         # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
         new_n_masked = combiner.data_arr.mask.sum()
-        iteration = 1
-        while (new_n_masked > old_n_masked and iteration <= stacked_clipping_iterations):
-            combiner.sigma_clipping(
-                low_thresh=stacked_clipping_sigma, high_thresh=stacked_clipping_sigma, func=np.ma.median, dev_func=mad_std)
-            old_n_masked = new_n_masked
-            # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
-            new_n_masked = combiner.data_arr.mask.sum()
-            diff = new_n_masked - old_n_masked
-            extra = ""
-            if diff == 0:
-                extra = " - we're done"
-            if self.verbose:
-                print("\tClipping iteration %(iteration)s finds %(diff)s more rogue pixels in the set of input frames%(extra)s" % locals())
-            iteration += 1
 
-        # GENERATE THE COMBINED MEDIAN
+        # SIGMA CLIPPING OVERWRITES ORIGINAL MASKS - COPY HERE TO READD
+        # preclipped_masks = np.copy(combiner.data_arr.mask)
+        totalPixels = np.size(combinedMask)
+
+        combiner.data_arr.mask = sigma_clip(combiner.data_arr.data,
+                                            sigma_lower=stacked_clipping_sigma,
+                                            sigma_upper=stacked_clipping_sigma,
+                                            axis=0,
+                                            copy=False,
+                                            maxiters=stacked_clipping_iterations,
+                                            cenfunc='median',
+                                            stdfunc='mad_std',
+                                            masked=True).mask
+        old_n_masked = new_n_masked
+        # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
+        new_n_masked = combiner.data_arr.mask.sum()
+        diff = new_n_masked - old_n_masked
+        if self.verbose:
+            percent = 100 * combiner.data_arr.mask[0].sum() / totalPixels
+            print(f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)")
+
+        # GENERATE THE COMBINED MEAN
         # print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
         combined_frame = combiner.average_combine()
 
         # RECOMBINE THE COMBINED MASK FROM ABOVE
         combined_frame.mask = combined_frame.mask | combinedMask
 
+        # INVIDUAL UPDATED MASKS (POST CLIPPING)
+        new_individual_masks = combiner.data_arr.mask
+        masked_values = new_individual_masks.sum(axis=0)
+
+        # A HACK TO THE COMBINER OBJECT TO COMBINE ERROR MAPS EXACTLY AS DATA WAS COMBINED
+        for i, ccd in enumerate(ccds):
+            combiner.data_arr.data[i] = ccd.uncertainty.array
+        combined_uncertainty = combiner.average_combine()
+        combined_frame.uncertainty = combined_uncertainty.data / (np.sqrt(len(new_individual_masks) - masked_values))
+
         # NOW SIMGA-CLIP ACROSS THE FRAME
         # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
         if clipping_iteration_count:
             maskedFrame = sigma_clip(
-                combined_frame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc=mad_std)
+                combined_frame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
             combined_frame.mask = combined_frame.mask | maskedFrame.mask
 
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
@@ -791,19 +873,14 @@ class _base_recipe_(object):
             combined_frame.wcs = ccds[0].wcs
         except:
             pass
-        combined_frame.header[
-            kw("DPR_CATG")] = "MASTER_%(imageType)s_%(arm)s" % locals()
 
         # CALCULATE NEW PIXELS ADDED TO MASK
-        newBadCount = combined_frame.mask.sum()
-        diff = newBadCount - badCount
-        totalPixels = np.size(combinedMask)
-        percent = (float(newBadCount) / float(totalPixels)) * 100.
-        print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
-
-        # print(combined_frame.uncertainty)
-        # print(combined_frame.data)
-        # print(np.multiply(combined_frame.uncertainty,combined_frame.data))
+        if imageType != "BIAS":
+            newBadCount = combined_frame.mask.sum()
+            diff = newBadCount - badCount
+            totalPixels = np.size(combinedMask)
+            percent = (float(newBadCount) / float(totalPixels)) * 100.
+            print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
 
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame
@@ -845,6 +922,8 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``detrend`` method')
+
+        import ccdproc
 
         arm = self.arm
         kw = self.kw
@@ -939,13 +1018,17 @@ class _base_recipe_(object):
             self,
             frameType=False,
             frameName=False,
-            masterFrame=False):
+            masterFrame=False,
+            rawRon=False,
+            masterRon=False):
         """*calculate the read-out-noise from bias/dark frames*
 
         **Key Arguments:**
             - ``frameType`` -- the type of the frame for reporting QC values. Default *False*
             - ``frameName`` -- the name of the frame in human readable words. Default *False*
             - ``masterFrame`` -- the master frame (only makes sense to measure RON on master bias). Default *False*
+            - ``rawRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
+            - ``masterRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
 
         **Return:**
             - ``rawRon`` -- raw read-out-noise in electrons
@@ -963,55 +1046,64 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``qc_bias_ron`` method')
 
+        from astropy.stats import sigma_clip
+        import numpy as np
+
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        # LIST OF RAW CCDDATA OBJECTS
-        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
-                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        if not rawRon:
+            # LIST OF RAW CCDDATA OBJECTS
+            ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
+                                                     "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        # SINGLE FRAME RON
-        raw_one = ccds[0]
-        raw_two = ccds[1]
-        raw_diff = raw_one.subtract(raw_two)
+            # SINGLE FRAME RON
+            raw_one = ccds[0]
+            raw_two = ccds[1]
+            raw_diff = raw_one.subtract(raw_two)
 
-        # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
-        masked_diff = sigma_clip(
-            raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc=mad_std)
-        combinedMask = raw_diff.mask | masked_diff.mask
+            # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
+            masked_diff = sigma_clip(
+                raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc='mad_std')
+            combinedMask = raw_diff.mask | masked_diff.mask
 
-        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
-        raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
+            # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+            raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
 
-        def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
-        dmin, dmax, dmean, dstd = imstats(raw_diff)
+            def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
+            dmin, dmax, dmean, dstd = imstats(raw_diff)
 
-        # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
-        rawRon = dstd / math.sqrt(2)
+            # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
+            rawRon = dstd / math.sqrt(2)
 
-        singleFrameType = frameType
-        if frameType[0] == "M":
-            singleFrameType = frameType[1:]
+        if rawRon:
+            singleFrameType = frameType
+            if frameType[0] == "M":
+                singleFrameType = frameType[1:]
 
-        self.qc = self.qc.append({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "RON DETECTOR",
-            "qc_value": rawRon,
-            "qc_comment": f"RON in single {singleFrameType} (electrons)",
-            "qc_unit": "electrons",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }, ignore_index=True)
+            self.qc = self.qc.append({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "RON DETECTOR",
+                "qc_value": rawRon,
+                "qc_comment": f"RON in single {singleFrameType} (electrons)",
+                "qc_unit": "electrons",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }, ignore_index=True)
 
-        if masterFrame:
+        if masterFrame and not masterRon:
 
             # PREDICTED MASTER NOISE
-            predictedMasterRon = rawRon / math.sqrt(len(ccds))
+            # predictedMasterRon = rawRon / math.sqrt(len(ccds))
 
-            dmin, dmax, dmean, dstd = imstats(masterFrame.data)
+            # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+            tmp = np.ma.array(masterFrame.data, mask=combinedMask)
+
+            dmin, dmax, dmean, dstd = imstats(tmp)
             masterRon = dstd
 
+        elif masterRon:
             self.qc = self.qc.append({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "RON MASTER",
@@ -1032,13 +1124,15 @@ class _base_recipe_(object):
             self,
             frame,
             frameType="MBIAS",
-            frameName="master bias"):
+            frameName="master bias",
+            medianFlux=False):
         """*calculate the median flux level in the frame, excluding masked pixels*
 
         **Key Arguments:**
             - ``frame`` -- the frame (CCDData object) to determine the median level.
             - ``frameType`` -- the type of the frame for reporting QC values Default "MBIAS"
             - ``frameName`` -- the name of the frame in human readable words. Default "master bias"
+            - ``medianFlux`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
 
         **Return:**
             - ``medianFlux`` -- median flux level in electrons
@@ -1054,10 +1148,13 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``qc_median_flux_level`` method')
 
-        # DETERMINE MEDIAN BIAS LEVEL
-        maskedDataArray = np.ma.array(
-            frame.data, mask=frame.mask)
-        medianFlux = np.ma.median(maskedDataArray)
+        import numpy as np
+
+        if not medianFlux:
+            # DETERMINE MEDIAN BIAS LEVEL
+            maskedDataArray = np.ma.array(
+                frame.data, mask=frame.mask)
+            medianFlux = np.ma.median(maskedDataArray)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -1075,6 +1172,97 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``qc_median_flux_level`` method')
         return medianFlux
+
+    def subtact_mean_flux_level(
+            self,
+            rawFrame):
+        """*iteratively median sigma-clip raw bias data frames before calculating and removing the mean bias level*
+
+        **Key Arguments:**
+            - ``rawFrame`` -- the raw bias frame
+
+        **Return:**
+            - `meanFluxLevel` -- the frame mean bias level
+            - `fluxStd` -- the standard deviation of the flux destribution (RON)
+            - `noiseFrame` -- the raw bias frame with mean bias level removed
+
+        **Usage:**
+
+        ```python
+        meanFluxLevel, fluxStd, noiseFrame = self.subtact_mean_flux_level(rawFrame)
+        ```
+        """
+        self.log.debug('starting the ``subtact_mean_flux_level`` method')
+
+        from astropy.stats import sigma_clip, mad_std
+        import numpy as np
+
+        # UNPACK SETTINGS
+        clipping_lower_sigma = self.settings[
+            "soxs-mbias"]["clipping-lower-sigma"]
+        clipping_upper_sigma = self.settings[
+            "soxs-mbias"]["clipping-upper-sigma"]
+        clipping_iteration_count = self.settings[
+            "soxs-mbias"]["clipping-iteration-count"]
+
+        maskedFrame = sigma_clip(
+            rawFrame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
+
+        # DETERMINE MEDIAN BIAS LEVEL
+        maskedDataArray = np.ma.array(
+            maskedFrame.data, mask=maskedFrame.mask)
+        meanFluxLevel = np.ma.mean(maskedDataArray)
+        fluxStd = np.ma.std(maskedDataArray)
+        rawFrame.data -= meanFluxLevel
+
+        self.log.debug('completed the ``subtact_mean_flux_level`` method')
+        return meanFluxLevel, fluxStd, rawFrame
+
+    def update_fits_keywords(
+            self,
+            frame):
+        """*update fits keywords to comply with ESO Phase 3 standards*
+
+        **Key Arguments:**
+            - ``frame`` -- the frame to update
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``update_fits_keywords`` method')
+
+        arm = self.arm
+        kw = self.kw
+        dp = self.detectorParams
+        imageType = self.imageType
+
+        frame.header[kw("SEQ_ARM").upper()] = arm
+        frame.header[kw("PRO_TYPE").upper()] = "REDUCED"
+
+        # PROD CATG
+        if imageType in ["BIAS", "DARK"]:
+            frame.header[
+                kw("PRO_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
+
+        self.log.debug('completed the ``update_fits_keywords`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method

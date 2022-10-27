@@ -10,24 +10,18 @@
     January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
-from astropy.stats import sigma_clip, mad_std
+
 from soxspipe.commonutils.toolkit import generic_quality_checks
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-import ccdproc
-from astropy import units as u
-from astropy.nddata import CCDData
 import math
-import numpy as np
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
 from fundamentals import tools
 from builtins import object
 import sys
 import os
-from astropy.stats import sigma_clip, mad_std
-from scipy.stats import median_absolute_deviation
-import matplotlib.pyplot as plt
+
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -41,6 +35,7 @@ class soxs_mbias(_base_recipe_):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
     **Usage**
 
@@ -67,23 +62,23 @@ class soxs_mbias(_base_recipe_):
             log,
             settings=False,
             inputFrames=[],
-            verbose=False
-
+            verbose=False,
+            overwrite=False
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(soxs_mbias, self).__init__(log=log, settings=settings)
+        super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
         self.log = log
         log.debug("instansiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeName = "soxs-mbias"
         self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -150,38 +145,48 @@ class soxs_mbias(_base_recipe_):
         """
         self.log.debug('starting the ``produce_product`` method')
 
+        import numpy as np
+
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
 
-        combined_bias_mean = self.clip_and_stack(
-            frames=self.inputFrames, recipe="soxs_mbias")
-        self.dateObs = combined_bias_mean.header[kw("DATE_OBS")]
+        # LIST OF CCDDATA OBJECTS
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtact_mean_flux_level(c) for c in ccds])
+        masterMeanBiasLevel = np.mean(meanBiasLevels)
+        masterMedianBiasLevel = np.median(meanBiasLevels)
+        rawRon = np.mean(rons)
+
+        combined_noise = self.clip_and_stack(
+            frames=list(noiseFrames), recipe="soxs_mbias", ignore_input_masks=True, post_stack_clipping=True)
+
+        masterRon = np.std(combined_noise.data)
+
+        # FILL MASKED PIXELS WITH 0
+        combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
+        combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
+        combined_bias_mean = combined_noise
+        combined_bias_mean.mask[:] = False
+
+        # # MULTIPROCESSING HERE ADDS A SELF_DEFEATING OVERHEAD
+        # from fundamentals import fmultiprocess
+        # # DEFINE AN INPUT ARRAY
+        # results = fmultiprocess(log=self.log, function=self.subtact_mean_flux_level,
+        #                         inputArray=ccds, poolSize=False, timeout=300)
 
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
 
         self.qc_ron(
             frameType="MBIAS",
             frameName="master bias",
-            masterFrame=combined_bias_mean
+            masterFrame=combined_bias_mean,
+            rawRon=rawRon,
+            masterRon=masterRon
         )
+
         self.qc_bias_structure(combined_bias_mean)
-
-        # INSPECTING THE THE UNCERTAINTY MAPS
-        # print("individual frame data")
-        # for a in ccds:
-        #     print(a.data[0][0])
-        # print("\ncombined frame data")
-        # print(combined_bias_mean.data[0][0])
-        # print("individual frame error")
-        # for a in ccds:
-        #     print(a.uncertainty[0][0])
-        # print("combined frame error")
-        # print(combined_bias_mean.uncertainty[0][0])
-
-        # combined_bias_mean.data = combined_bias_mean.data.astype('float32')
-        # combined_bias_mean.uncertainty = combined_bias_mean.uncertainty.astype(
-        #     'float32')
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
@@ -190,7 +195,12 @@ class soxs_mbias(_base_recipe_):
         medianFlux = self.qc_median_flux_level(
             frame=combined_bias_mean,
             frameType="MBIAS",
-            frameName="master bias"
+            frameName="master bias",
+            medianFlux=masterMedianBiasLevel
+        )
+
+        self.update_fits_keywords(
+            frame=combined_bias_mean
         )
 
         # WRITE TO DISK
@@ -204,6 +214,8 @@ class soxs_mbias(_base_recipe_):
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.dateObs = combined_bias_mean.header[self.kw("DATE_OBS")]
 
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,
@@ -241,10 +253,12 @@ class soxs_mbias(_base_recipe_):
         ```
         """
         self.log.debug('starting the ``qc_bias_structure`` method')
+
+        import numpy as np
         plot = False
 
-        collaps_ax1 = np.sum(combined_bias_mean, axis=0)
-        collaps_ax2 = np.sum(combined_bias_mean, axis=1)
+        collaps_ax1 = np.nansum(combined_bias_mean, axis=0)
+        collaps_ax2 = np.nansum(combined_bias_mean, axis=1)
 
         x_axis = np.linspace(0, len(collaps_ax1), len(collaps_ax1), dtype=int)
         y_axis = np.linspace(0, len(collaps_ax2), len(collaps_ax2), dtype=int)
@@ -254,6 +268,7 @@ class soxs_mbias(_base_recipe_):
         coeff_ax2 = np.polyfit(y_axis, collaps_ax2, deg=1)
 
         if plot == True:
+            import matplotlib.pyplot as plt
             plt.plot(x_axis, collaps_ax1)
             plt.plot(x_axis, np.polyval(coeff_ax1, x_axis))
             plt.xlabel('x-axis')
@@ -315,6 +330,10 @@ class soxs_mbias(_base_recipe_):
         """
         self.log.debug('starting the ``qc_periodic_pattern_noise`` method')
 
+        from scipy.stats import median_abs_deviation
+        from astropy.stats import sigma_clip
+        import numpy as np
+
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
@@ -329,11 +348,11 @@ class soxs_mbias(_base_recipe_):
                 dark_image_grey_fourier, sigma_lower=1000, sigma_upper=1000, maxiters=1, cenfunc='mean')
             goodData = np.ma.compressed(masked_dark_image_grey_fourier)
 
-            # frame_mad = median_absolute_deviation(dark_image_grey_fourier, axis=None)
+            # frame_mad = median_abs_deviation(dark_image_grey_fourier, axis=None)
             # frame_std = np.std(dark_image_grey_fourier)
             # print(frame_std, frame_mad, frame_std / frame_mad)
 
-            frame_mad = median_absolute_deviation(goodData, axis=None)
+            frame_mad = median_abs_deviation(goodData, axis=None)
             frame_std = np.std(goodData)
 
             from soxspipe.commonutils.toolkit import quicklook_image

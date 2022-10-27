@@ -12,39 +12,34 @@
 ################# GLOBAL IMPORTS ####################
 from fundamentals import fmultiprocess
 from tabulate import tabulate
-import pandas as pd
-from ccdproc import Combiner
+
+
 from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_format
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-from astropy.visualization import hist
+
 import warnings
-from photutils.utils import NoDetectionsWarning
-from astropy.nddata import CCDData
+
+
 import math
 from soxspipe.commonutils.toolkit import get_calibrations_path
-import numpy as np
-from astropy.stats import sigma_clip, mad_std
-from matplotlib.patches import Rectangle
-import matplotlib.pyplot as plt
-from matplotlib import cm
+
+
 from os.path import expanduser
 from fundamentals.renderer import list_of_dictionaries
-from scipy.optimize import curve_fit
-from photutils import DAOStarFinder
-from photutils import datasets
-from astropy.stats import sigma_clipped_stats
+
+
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from fundamentals import tools
 from builtins import object
 import sys
-from astropy.table import Table
+
 import os
 from io import StringIO
 from contextlib import suppress
-from astropy.io import fits
+
 import copy
 from datetime import datetime
 
@@ -89,6 +84,9 @@ class create_dispersion_map(object):
     ):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
+
+        from photutils.utils import NoDetectionsWarning
+
         self.settings = settings
         self.pinholeFrame = pinholeFrame
         self.firstGuessMap = firstGuessMap
@@ -229,6 +227,8 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``get_predicted_line_list`` method')
 
+        from astropy.table import Table
+
         kw = self.kw
         pinholeFrame = self.pinholeFrame
         dp = self.detectorParams
@@ -334,6 +334,10 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``detect_pinhole_arc_line`` method')
 
+        import numpy as np
+        from photutils import DAOStarFinder
+        from astropy.stats import sigma_clipped_stats
+
         pinholeFrame = self.pinholeFrame
         windowHalf = self.windowHalf
         x = predictedLine['detector_x']
@@ -353,7 +357,7 @@ class create_dispersion_map(object):
 
         if 1 == 0:
             import matplotlib.pyplot as plt
-            plt.clf()
+            pclf()
             plt.imshow(stamp)
 
         try:
@@ -422,6 +426,10 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``write_map_to_file`` method')
 
+        import pandas as pd
+        from astropy.table import Table
+        from astropy.io import fits
+
         arm = self.arm
         kw = self.kw
 
@@ -454,6 +462,11 @@ class create_dispersion_map(object):
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir += f"product/{self.recipeName}/"
+        outDir = outDir.replace("//", "/")
+        # Recursively create missing directories
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
 
         filename = filenamer(
             log=self.log,
@@ -497,6 +510,7 @@ class create_dispersion_map(object):
         header[kw("SEQ_ARM").upper()] = arm
         header[kw("PRO_TYPE").upper()] = "REDUCED"
         header[kw("PRO_CATG").upper()] = f"DISP_TAB_{arm}".upper()
+        self.dispMapHeader = header
 
         # WRITE QCs TO HEADERS
         for n, v, c, h in zip(self.qc["qc_name"].values, self.qc["qc_value"].values, self.qc["qc_comment"].values, self.qc["to_header"].values):
@@ -539,6 +553,8 @@ class create_dispersion_map(object):
             - ``median`` -- the median of the combine residuals
         """
         self.log.debug('starting the ``calculate_residuals`` method')
+
+        import numpy as np
 
         arm = self.arm
 
@@ -683,6 +699,10 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``fit_polynomials`` method')
 
+        import numpy as np
+        from astropy.stats import sigma_clip
+        from scipy.optimize import curve_fit
+
         arm = self.arm
 
         # XSH
@@ -750,8 +770,9 @@ class create_dispersion_map(object):
 
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
+
             masked_residuals = sigma_clip(
-                orderPixelTable["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc=mad_std)
+                orderPixelTable["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
             orderPixelTable["residuals_masked"] = masked_residuals.mask
             # RETURN BREAKDOWN OF COLUMN VALUE COUNT
             valCounts = orderPixelTable[
@@ -782,6 +803,7 @@ class create_dispersion_map(object):
             writeQCs=True)
 
         # a = plt.figure(figsize=(40, 15))
+        import matplotlib.pyplot as plt
         if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
             # CREATE THE GRID OF AXES
@@ -839,12 +861,16 @@ class create_dispersion_map(object):
         bottomleft.set_ylabel(f'{self.axisB} residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
+        from astropy.visualization import hist
         hist(orderPixelTable["residuals_xy"], bins='scott', ax=bottomright, histtype='stepfilled',
              alpha=0.7, density=True)
         bottomright.set_xlabel('xy residual')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
+        if self.firstGuessMap:
+            fig.suptitle(f"residuals of global dispersion solution fitting - multi-pinhole\n{subtitle}", fontsize=12)
+        else:
+            fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -856,8 +882,13 @@ class create_dispersion_map(object):
             settings=self.settings
         )
         # plt.show()
+
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf/"
+        outDir = outDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIes
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
 
         if self.firstGuessMap:
             res_plots = filename.split("ARC")[0] + "2D_MAP_RESIDUALS.pdf"
@@ -905,6 +936,9 @@ class create_dispersion_map(object):
         ```
         """
         self.log.debug('starting the ``create_placeholder_images`` method')
+
+        import numpy as np
+        from astropy.nddata import CCDData
 
         kw = self.kw
         dp = self.detectorParams
@@ -1006,11 +1040,16 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``map_to_image`` method')
 
+        from soxspipe.commonutils.combiner import Combiner
+        import numpy as np
+        from astropy.io import fits
+
         print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
         self.dispersionMapPath = dispersionMapPath
         kw = self.kw
         dp = self.detectorParams
+        arm = self.arm
 
         self.map_to_image_displacement_threshold = self.recipeSettings[
             "map_to_image_displacement_threshold"]
@@ -1070,8 +1109,10 @@ class create_dispersion_map(object):
 
         dispersion_image_filePath = f"{outDir}/{filename}"
         # WRITE CCDDATA OBJECT TO FILE
-        from astropy.io import fits
-        primary_hdu = fits.PrimaryHDU(combinedWlImage.data)
+        # from astropy.io import fits
+        header = copy.deepcopy(self.dispMapHeader)
+        header[kw("PRO_CATG")] = f"DISP_IMAGE_{arm}".upper()
+        primary_hdu = fits.PrimaryHDU(combinedWlImage.data, header=header)
         primary_hdu.header['EXTNAME'] = 'WAVELENGTH'
         image_hdu = fits.ImageHDU(combinedSlitImage.data)
         image_hdu.header['EXTNAME'] = 'SLIT'
@@ -1103,6 +1144,8 @@ class create_dispersion_map(object):
         ```
         """
         self.log.debug('starting the ``order_to_image`` method')
+
+        import numpy as np
 
         slitArray = self.slitArray
         gridSlit = self.gridSlit
@@ -1235,6 +1278,9 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``convert_and_fit`` method')
 
+        import pandas as pd
+        import numpy as np
+
         # CREATE PANDAS DATAFRAME WITH LARGE ARRAYS - ONE ROW PER
         # WAVELENGTH-SLIT GRID CELL
         myDict = {
@@ -1319,6 +1365,8 @@ class create_dispersion_map(object):
 
             # print(filteredDf)
             print(f"Pixel ({medX}, {medY})")
+            import matplotlib.pyplot as plt
+            from matplotlib.patches import Rectangle
             plt.grid()
             plt.xlim([-0.5, 0.5])
             plt.ylim([-0.5, 0.5])
@@ -1367,6 +1415,7 @@ class create_dispersion_map(object):
         print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
 
         if plots:
+            from matplotlib import cm
             # PLOT CCDDATA OBJECT
             rotatedImg = slitMap.data
             if self.axisA == "x":

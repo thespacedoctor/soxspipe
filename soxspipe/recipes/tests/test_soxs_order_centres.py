@@ -65,7 +65,8 @@ class test_soxs_order_centres(unittest.TestCase):
         this = soxs_order_centres(
             log=log2,
             settings=settings2,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -76,7 +77,8 @@ class test_soxs_order_centres(unittest.TestCase):
         this = soxs_order_centres(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -87,7 +89,8 @@ class test_soxs_order_centres(unittest.TestCase):
         this = soxs_order_centres(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -96,7 +99,8 @@ class test_soxs_order_centres(unittest.TestCase):
         this = soxs_order_centres(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -106,7 +110,8 @@ class test_soxs_order_centres(unittest.TestCase):
         this = soxs_order_centres(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -119,7 +124,8 @@ class test_soxs_order_centres(unittest.TestCase):
             this = soxs_order_centres(
                 log=log,
                 settings=settings,
-                inputFrames=sofPath
+                inputFrames=sofPath,
+                overwrite=True
             )
             assert False
         except Exception as e:

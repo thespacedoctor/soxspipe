@@ -59,6 +59,10 @@
        
    
         
+            ~soxs_mbias.subtact_mean_bias_level
+       
+   
+        
             ~soxs_mbias.verify_input_frames
        
    
@@ -138,6 +142,8 @@
    ..     
    ..          ~soxs_mbias._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 

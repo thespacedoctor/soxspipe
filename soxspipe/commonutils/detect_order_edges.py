@@ -10,7 +10,7 @@
     September 18, 2020
 """
 from datetime import datetime, date, time
-import pandas as pd
+
 from soxspipe.commonutils.filenamer import filenamer
 from fundamentals.renderer import list_of_dictionaries
 import unicodecsv as csv
@@ -21,11 +21,11 @@ from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
 from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
 import random
-from scipy.signal import medfilt
+
 from soxspipe.commonutils import _base_detect
 from soxspipe.commonutils.toolkit import cut_image_slice
-import matplotlib.pyplot as plt
-import numpy as np
+
+
 from fundamentals import tools
 from builtins import object
 import random
@@ -140,6 +140,9 @@ class detect_order_edges(_base_detect):
             - ``orderTablePath`` -- path to the new order table
         """
         self.log.debug('starting the ``get`` method')
+
+        import numpy as np
+        import pandas as pd
 
         print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
 
@@ -362,6 +365,10 @@ class detect_order_edges(_base_detect):
         """
         self.log.debug('starting the ``plot_results`` method')
 
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
+
         allResiduals = np.concatenate((orderPixelTable[
             f"{self.axisA}coord_lower_fit_res"], orderPixelTable[f"{self.axisA}coord_upper_fit_res"]))
         allAxisACoords = np.concatenate((
@@ -520,6 +527,9 @@ class detect_order_edges(_base_detect):
         self.log.debug(
             'starting the ``determine_order_flux_threshold`` method')
 
+        import numpy as np
+        from scipy.signal import medfilt
+
         minThresholdPercenage = self.minThresholdPercenage
         maxThresholdPercenage = self.maxThresholdPercenage
         sliceWidth = self.sliceWidth
@@ -560,6 +570,7 @@ class detect_order_edges(_base_detect):
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if 1 == 0:
+            import matplotlib.pyplot as plt
             # CHECK THE SLICE POINTS IF NEEDED
             print(order)
             x = np.arange(0, len(slice))
@@ -592,6 +603,9 @@ class detect_order_edges(_base_detect):
         """
         self.log.debug(
             'starting the ``determine_lower_upper_edge_limits`` method')
+
+        import numpy as np
+        from scipy.signal import medfilt
 
         sliceWidth = self.sliceWidth
         sliceLength = self.sliceLength
@@ -659,6 +673,7 @@ class detect_order_edges(_base_detect):
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if 1 == 0 and random.randint(1, 5001) < 2:
+            import matplotlib.pyplot as plt
             # CHECK THE SLICE POINTS IF NEEDED
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))

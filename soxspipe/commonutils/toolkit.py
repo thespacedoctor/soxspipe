@@ -17,20 +17,21 @@ from copy import copy
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
 import math
-import pandas as pd
-import numpy.ma as ma
+
+
 import random
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import numpy as np
+
+
 import unicodecsv as csv
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
 from builtins import object
-from matplotlib import cm, rc
+
 import sys
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import os
-from mpl_toolkits.mplot3d import Axes3D
+
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -69,6 +70,9 @@ def cut_image_slice(
     ```
     """
     log.debug('starting the ``cut_image_slice`` function')
+
+    import numpy.ma as ma
+    import numpy as np
 
     halfSlice = length / 2
     # NEED AN EVEN PIXEL SIZE
@@ -109,6 +113,7 @@ def cut_image_slice(
             slice = ma.median(sliceFull, axis=0)
 
     if plot and random.randint(1, 101) < 10000:
+        import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
             sliceImg = np.rot90(sliceFull, 1)
@@ -139,6 +144,8 @@ def quicklook_image(
         stdWindow=3,
         title=False,
         surfacePlot=False,
+        dispMap=False,
+        dispMapDF=False,
         inst=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
@@ -150,6 +157,8 @@ def quicklook_image(
     - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data".
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
+    - ``dispMap`` -- path to dispersion map. Default *False*
+    - ``dispMapDF`` -- pandas dataframe of dispersion map wavelength, order and slit-postion
     - ``inst`` -- provide instrument name if no header exists
 
     ```python
@@ -160,10 +169,15 @@ def quicklook_image(
     """
     log.debug('starting the ``quicklook_image`` function')
 
+    import pandas as pd
+    import matplotlib as mpl
+    import numpy as np
+
     originalRC = dict(mpl.rcParams)
 
     if not show:
         return
+    import matplotlib.pyplot as plt
 
     if ext == "data":
         frame = CCDObject.data
@@ -183,8 +197,10 @@ def quicklook_image(
 
     if inst == "SOXS":
         rotatedImg = np.flipud(frame)
-    if inst == "XSHOOTER":
+    elif inst == "XSHOOTER":
         rotatedImg = np.rot90(frame, 1)
+    else:
+        rotatedImg = frame
     rotatedImg = np.flipud(rotatedImg)
 
     std = np.nanstd(frame)
@@ -195,6 +211,8 @@ def quicklook_image(
     vmin = mean - stdWindow * 0.1 * std
 
     if surfacePlot:
+
+        from matplotlib import rc
 
         axisColour = '#dddddd'
         rc('axes', edgecolor=axisColour, labelcolor=axisColour, linewidth=0.6)
@@ -259,6 +277,51 @@ def quicklook_image(
         # palette.set_over('r', 1.0)
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
+
+    if dispMap and not isinstance(dispMapDF, bool):
+        uniqueOrders = dispMapDF['order'].unique()
+        wlLims = []
+        spLims = []
+
+        for o in uniqueOrders:
+            filDF = dispMapDF.loc[dispMapDF["order"] == o]
+            wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
+            spLims.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
+
+        for o, wlLim, spLim in zip(uniqueOrders, wlLims, spLims):
+            wlRange = np.arange(wlLim[0], wlLim[1], 1)
+            wlRange = np.append(wlRange, [wlLim[1]])
+            for e in spLim:
+                myDict = {
+                    "order": np.full_like(wlRange, o),
+                    "wavelength": wlRange,
+                    "slit_position": np.full_like(wlRange, e)
+                }
+                orderPixelTable = pd.DataFrame(myDict)
+                orderPixelTable = dispersion_map_to_pixel_arrays(
+                    log=log,
+                    dispersionMapPath=dispMap,
+                    orderPixelTable=orderPixelTable
+                )
+                ax2.plot(orderPixelTable["fit_y"], orderPixelTable["fit_x"], "w:", alpha=0.5)
+            spRange = np.arange(spLim[0], spLim[1], 1)
+            spRange = np.append(spRange, [spLim[1]])
+            wlRange = np.arange(wlLim[0], wlLim[1], 15)
+            wlRange = np.append(wlRange, [wlLim[1]])
+            for l in wlRange:
+                myDict = {
+                    "order": np.full_like(spRange, o),
+                    "wavelength": np.full_like(spRange, l),
+                    "slit_position": spRange
+                }
+                orderPixelTable = pd.DataFrame(myDict)
+                orderPixelTable = dispersion_map_to_pixel_arrays(
+                    log=log,
+                    dispersionMapPath=dispMap,
+                    orderPixelTable=orderPixelTable
+                )
+                ax2.plot(orderPixelTable["fit_y"], orderPixelTable["fit_x"], "w:", alpha=0.5)
+
     ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
                               cmap=palette, alpha=1, aspect='auto')
@@ -319,7 +382,8 @@ def unpack_order_table(
     """
     log.debug('starting the ``functionName`` function')
     from astropy.table import Table
-
+    import pandas as pd
+    import numpy as np
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
     home = expanduser("~")
@@ -344,7 +408,6 @@ def unpack_order_table(
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
 
-    import pandas as pd
     # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
     myDict = {
         f"{axisB}coord": np.concatenate(axisBcoords),
@@ -405,6 +468,8 @@ def generic_quality_checks(
     ```
     """
     log.debug('starting the ``functionName`` function')
+
+    import numpy as np
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -496,6 +561,9 @@ def spectroscopic_image_quality_checks(
     ```
     """
     log.debug('starting the ``functionName`` function')
+
+    import numpy.ma as ma
+    import numpy as np
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -657,6 +725,91 @@ def get_calibrations_path(
 
     log.debug('completed the ``get_calibrations_path`` function')
     return calibrationRootPath
+
+
+def twoD_disp_map_image_to_dataframe(
+        log,
+        slit_length,
+        twoDMapPath,
+        assosiatedFrame=False,
+        removeMaskedPixels=False):
+    """*convert the 2D dispersion image map to a pandas dataframe*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `twoDMapPath` -- 2D dispersion map image path
+    - `assosiatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
+    - `removeMaskedPixels` -- remove the masked pixels from the assosicated image? Default *False*
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+    mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, assosiatedFrame=objectFrame)
+    ```           
+    """
+    log.debug('starting the ``twoD_disp_map_image_to_dataframe`` function')
+
+    import pandas as pd
+    import numpy as np
+    from astropy.io import fits
+
+    # MAKE RELATIVE HOME PATH ABSOLUTE
+    from os.path import expanduser
+    home = expanduser("~")
+    if twoDMapPath[0] == "~":
+        twoDMapPath = twoDMapPath.replace("~", home)
+
+    hdul = fits.open(twoDMapPath)
+
+    # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
+    xdim = hdul[0].data.shape[1]
+    ydim = hdul[0].data.shape[0]
+
+    xarray = np.tile(np.arange(0, xdim), ydim)
+    yarray = np.repeat(np.arange(0, ydim), xdim)
+
+    thisDict = {
+        "x": xarray,
+        "y": yarray,
+        "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+        "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
+        "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+    }
+
+    try:
+        if assosiatedFrame:
+            thisDict["flux"] = assosiatedFrame.data.flatten()
+            thisDict["mask"] = assosiatedFrame.mask.flatten()
+            thisDict["error"] = assosiatedFrame.uncertainty.flatten()
+
+        mapDF = pd.DataFrame.from_dict(thisDict)
+        if removeMaskedPixels:
+            mask = (mapDF["mask"] == False)
+            mapDF = mapDF.loc[mask]
+
+        mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+    except:
+        if assosiatedFrame:
+            thisDict["flux"] = assosiatedFrame.data.flatten().byteswap().newbyteorder()
+            thisDict["mask"] = assosiatedFrame.mask.flatten().byteswap().newbyteorder()
+            thisDict["error"] = assosiatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
+
+        mapDF = pd.DataFrame.from_dict(thisDict)
+        if removeMaskedPixels:
+            mask = (mapDF["mask"] == False)
+            mapDF = mapDF.loc[mask]
+
+        mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+
+    # REMOVE FILTERED ROWS FROM DATA FRAME
+    # slit_length = slit_length * 0.9
+    mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
+    mapDF.drop(index=mapDF[mask].index, inplace=True)
+
+    log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
+    return mapDF
 
 # use the tab-trigger below for new function
 # xt-def-function

@@ -13,8 +13,7 @@ import os
 import sys
 from builtins import object
 from fundamentals import tools
-from astropy.io import fits
-from astropy.table import Table, join, hstack
+
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
 import codecs
 from ccdproc import ImageFileCollection
@@ -50,6 +49,7 @@ class ImageFileCollection(ImageFileCollection):
         -------
         file_table : `~astropy.table.Table`
         """
+        from astropy.io import fits
 
         def _add_val_to_dict(key, value, tbl_dict, n_previous, missing_marker):
             try:
@@ -160,7 +160,7 @@ class set_of_files(object):
     # inputFrames = "/path/to/a/directory"
     # inputFrames = ['/path/to/one.fits','/path/to/two.fits','/path/to/three.fits']
     inputFrames = '/path/to/myfiles.sof'
-    from soxspipe.commonutils import set_of_files
+    from soxspipe.commonutils.set_of_files import set_of_files
     sof = set_of_files(
         log=log,
         settings=settings,
@@ -229,7 +229,7 @@ class set_of_files(object):
         **Usage**
 
         ```python
-        from soxspipe.commonutils import set_of_files
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=log,
             settings=settings
@@ -240,6 +240,8 @@ class set_of_files(object):
         """
         self.log.debug(
             'starting the ``_generate_sof_file_from_directory`` method')
+
+        from astropy.io import fits
 
         from soxspipe.commonutils import keyword_lookup
         kw = keyword_lookup(
@@ -307,7 +309,7 @@ class set_of_files(object):
         # inputFrames = "/path/to/a/directory"
         # inputFrames = ['/path/to/one.fits','/path/to/two.fits','/path/to/three.fits']
         inputFrames = '/path/to/myfiles.sof'
-        from soxspipe.commonutils import set_of_files
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=log,
             settings=settings,
@@ -320,6 +322,8 @@ class set_of_files(object):
         `inputFrames` can be a directory, a list of fits filepaths or a set-of-files (SOF) file.
         """
         self.log.debug('starting the ``get`` method')
+
+        from astropy.table import join
 
         from os.path import expanduser
         home = expanduser("~")

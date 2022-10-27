@@ -11,22 +11,15 @@
 """
 from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 from datetime import datetime
-from astropy.stats import sigma_clip, mad_std, sigma_clipped_stats
+
 from soxspipe.commonutils.filenamer import filenamer
 from os.path import expanduser
 from soxspipe.commonutils import subtract_background
-import pandas as pd
 from soxspipe.commonutils import detect_order_edges
 from soxspipe.commonutils.toolkit import quicklook_image
-import numpy.ma as ma
 from soxspipe.commonutils.toolkit import unpack_order_table
-import matplotlib.pyplot as plt
 from soxspipe.commonutils import keyword_lookup
-import ccdproc
-from astropy.nddata import CCDData
-import numpy as np
 from ._base_recipe_ import _base_recipe_
-from soxspipe.commonutils import set_of_files
 from fundamentals import tools
 from builtins import object
 import sys
@@ -44,6 +37,7 @@ class soxs_mflat(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
+        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
     **Usage**
 
@@ -71,22 +65,23 @@ class soxs_mflat(_base_recipe_):
             log,
             settings=False,
             inputFrames=[],
-            verbose=False
+            verbose=False,
+            overwrite=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
         super(soxs_mflat, self).__init__(
-            log=log, settings=settings)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mflat")
         self.log = log
         log.debug("instansiating a new 'soxs_mflat' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeName = "soxs-mflat"
         self.recipeSettings = settings[self.recipeName]
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -179,6 +174,8 @@ class soxs_mflat(_base_recipe_):
         """
         self.log.debug('starting the ``produce_product`` method')
 
+        import pandas as pd
+
         productPath = None
         arm = self.arm
         kw = self.kw
@@ -228,7 +225,7 @@ class soxs_mflat(_base_recipe_):
             quicklook_image(log=self.log, CCDObject=normalisedFlats[0], show=False, ext=True, surfacePlot=True, title="Single normalised flat frame")
             # STACK THE NORMALISED FLAT FRAMES
             combined_normalised_flat = self.clip_and_stack(
-                frames=normalisedFlats, recipe="soxs_mflat")
+                frames=normalisedFlats, recipe="soxs_mflat", ignore_input_masks=False, post_stack_clipping=True)
             quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Combined normalised flat frames")
 
             # DIVIDE THROUGH BY FIRST-PASS MASTER FRAME TO REMOVE CROSS-PLANE
@@ -248,7 +245,7 @@ class soxs_mflat(_base_recipe_):
 
             # STACK THE RE-NORMALISED FLAT FRAMES
             combined_normalised_flat = self.clip_and_stack(
-                frames=normalisedFlats, recipe="soxs_mflat")
+                frames=normalisedFlats, recipe="soxs_mflat", ignore_input_masks=False, post_stack_clipping=True)
 
             quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Recombined normalised flat frames")
 
@@ -496,6 +493,10 @@ class soxs_mflat(_base_recipe_):
         """
         self.log.debug('starting the ``normalise_flats`` method')
 
+        import numpy.ma as ma
+        import numpy as np
+        from astropy.stats import sigma_clip
+
         # DO WE HAVE SEPARATE EXPOSURE FRAMES?
         if not exposureFrames:
             exposureFrames = inputFlats
@@ -536,7 +537,7 @@ class soxs_mflat(_base_recipe_):
 
             # SIGMA-CLIP THE DATA BEFORE CALCULATING MEAN
             maskedFrame = sigma_clip(
-                maskedFrame, sigma_lower=2.5, sigma_upper=2.5, maxiters=3, cenfunc='median', stdfunc=mad_std)
+                maskedFrame, sigma_lower=2.5, sigma_upper=2.5, maxiters=3, cenfunc='median', stdfunc='mad_std')
 
             mean = np.ma.mean(maskedFrame)
             normalisedFrame = frame.divide(mean)
@@ -568,6 +569,11 @@ class soxs_mflat(_base_recipe_):
         """
         self.log.debug(
             'starting the ``mask_low_sens_and_inter_order_to_unity`` method')
+
+        import pandas as pd
+        import numpy.ma as ma
+        import numpy as np
+        from astropy.stats import sigma_clip
 
         print("\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY")
 
@@ -625,7 +631,7 @@ class soxs_mflat(_base_recipe_):
 
         # SIGMA-CLIP THE LOW-SENSITIVITY PIXELS
         frameClipped = sigma_clip(
-            frame, sigma_lower=self.settings["soxs-mflat"]["low-sensitivity-clipping-simga"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc=mad_std)
+            frame, sigma_lower=self.settings["soxs-mflat"]["low-sensitivity-clipping-simga"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc='mad_std')
 
         lowSensitivityPixelMask = (frameClipped.mask == 1) & (beforeMask != 1)
         lowSensPixelCount = lowSensitivityPixelMask.sum()
@@ -684,6 +690,8 @@ class soxs_mflat(_base_recipe_):
         """
         self.log.debug('starting the ``stitch_uv_mflats`` method')
 
+        import pandas as pd
+
         kw = self.kw
 
         # MERGE DETECTION DATAFRAMES - LISTING ALL ORDER EGDE LOCATIONS FOUND FOR EACH ORDER IN D AND QTH LAMP FRAMES
@@ -725,8 +733,8 @@ class soxs_mflat(_base_recipe_):
                 stitchedFlat.uncertainty.array[y, x:] = dmflatScaled.uncertainty.array[y, x:]
                 stitchedCombinedNormalised.data[y, :x] = self.combinedNormalisedFlatSet[1].data[y, :x]
 
-        stitchedCombinedNormalised.header[kw("DPR_TYPE")] = stitchedCombinedNormalised.header[kw("DPR_TYPE")].replace(",D", "D").replace(",Q", "Q")
-        stitchedFlat.header[kw("DPR_TYPE")] = stitchedFlat.header[kw("DPR_TYPE")].replace(",D", "D").replace(",Q", "Q")
+        stitchedCombinedNormalised.header[kw("DPR_TYPE")] = stitchedCombinedNormalised.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
+        stitchedFlat.header[kw("DPR_TYPE")] = stitchedFlat.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
 
         # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
         edges = detect_order_edges(
@@ -755,6 +763,7 @@ class soxs_mflat(_base_recipe_):
 
 
 def nearest_neighbour(singleValue, listOfValues):
+    import numpy as np
     arrayOfValues = np.asarray(listOfValues)
     dist = np.square(arrayOfValues - singleValue)
     minDist = np.amin(dist)

@@ -48,7 +48,7 @@ class test_set_of_files(unittest.TestCase):
     def test01_set_of_files_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
-        from soxspipe.commonutils import set_of_files
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=log,
             settings=settings
@@ -60,7 +60,7 @@ class test_set_of_files(unittest.TestCase):
     def test_sof_to_collection_from_directory_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
-        from soxspipe.commonutils import set_of_files
+        from soxspipe.commonutils.set_of_files import set_of_files
         print(directory)
         sof = set_of_files(
             log=log,
@@ -73,7 +73,7 @@ class test_set_of_files(unittest.TestCase):
     def test_sof_to_collection_from_sof_file_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
-        from soxspipe.commonutils import set_of_files
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=log,
             settings=settings,
@@ -96,7 +96,7 @@ class test_set_of_files(unittest.TestCase):
             if os.path.isfile(filename) and ".fits" in d:
                 fileList.append(filename)
 
-        from soxspipe.commonutils import set_of_files
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=log,
             settings=settings,
@@ -108,7 +108,7 @@ class test_set_of_files(unittest.TestCase):
     def test_validate_sof_frames_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
-        from soxspipe.commonutils import set_of_files
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=log,
             settings=settings
@@ -120,7 +120,7 @@ class test_set_of_files(unittest.TestCase):
 
     def test_set_of_files_function_exception(self):
 
-        from soxspipe.commonutils import set_of_files
+        from soxspipe.commonutils.set_of_files import set_of_files
         try:
             this = set_of_files(
                 log=log,

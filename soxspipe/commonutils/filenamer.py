@@ -71,7 +71,7 @@ def filenamer(
         ).get(arm)
 
     dateStamp = frame.header[kw("DATE_OBS")].replace(
-        "-", "").replace(":", "").split(".")[0]
+        "-", ".").replace(":", ".")
     obid = frame.header[kw("OBS_ID")]
     arm = frame.header[kw("SEQ_ARM")].lower()
     # x = int(dp["binning"][1])
@@ -120,6 +120,9 @@ def filenamer(
         ttype = "arc"
     elif "LAMP" in frame.header[kw("DPR_TYPE")].upper() and "ORDERDEF" in frame.header[kw("DPR_TYPE")].upper():
         ttype = "flat"
+    elif "OBJECT" in frame.header[kw("DPR_TYPE")].upper() and "STARE" in frame.header[kw("DPR_TECH")].upper():
+        object = frame.header[kw("OBJECT")].upper()
+        ttype = f"object_stare_{object}".replace(" ", "_").replace("-", "_").replace("__", "_").replace("__", "_")
 
     if ",Q" in frame.header[kw("DPR_TYPE")].upper():
         lamp = "_QLAMP"
@@ -149,6 +152,8 @@ def filenamer(
         maskSlit = "multipin"
 
     if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,SLIT" and ttype in ("mflat", "flat"):
+        maskSlit = "slit"
+    if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,SLIT,STARE" and "object" in ttype:
         maskSlit = "slit"
 
     # EXTRA PARAMETERS NEEDED FOR SPECTRUM
