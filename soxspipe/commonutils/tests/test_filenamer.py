@@ -63,7 +63,6 @@ class test_filenamer(unittest.TestCase):
             "xshooter-detect-order-edges",
             "xshooter-mflat/uvb/qflat",
             "xshooter-mflat/nir/calibrated",
-            "xshooter-order-centres/uvb/",
             "xshooter-disp-solution/nir/"
         ]
         filestoname = []

@@ -206,7 +206,8 @@ class soxs_disp_solution(_base_recipe_):
                 frame=self.pinholeFrame,
                 filedir=outDir,
                 filename=False,
-                overwrite=True
+                overwrite=True,
+                product=False
             )
             print(f"\nCalibrated single pinhole frame: {filePath}\n")
 

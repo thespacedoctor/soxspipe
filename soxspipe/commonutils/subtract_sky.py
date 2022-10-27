@@ -224,7 +224,7 @@ class subtract_sky(object):
                         "file_path": qc_plot_path
                     }, ignore_index=True)
 
-        plt.show()
+        # plt.show()
 
         filename = self.filenameTemplate.replace("_SLIT", "_SKYMODEL")
         home = expanduser("~")
@@ -675,7 +675,7 @@ class subtract_sky(object):
         outDir = self.settings["intermediate-data-root"].replace("~", home)
         filePath = f"{outDir}/{filename}"
         # REMOVE ME
-        plt.show()
+        # plt.show()
         plt.savefig(filePath, dpi='figure')
 
         self.log.debug('completed the ``plot_sky_sampling`` method')

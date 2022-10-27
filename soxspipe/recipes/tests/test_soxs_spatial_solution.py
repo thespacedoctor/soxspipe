@@ -64,17 +64,19 @@ class test_soxs_spatial_solution(unittest.TestCase):
         this = soxs_spatial_solution(
             log=log2,
             settings=settings2,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
-    def test_soxs_spatial_solution_nir_function(self):
+    def test_soxs_spatial_solution_nir_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_NIR_SPAT_SOLUTION.sof"
         from soxspipe.recipes import soxs_spatial_solution
         this = soxs_spatial_solution(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         this.produce_product()
 
@@ -119,7 +121,8 @@ class test_soxs_spatial_solution(unittest.TestCase):
             this = soxs_spatial_solution(
                 log=log,
                 settings=settings,
-                inputFrames=sofPath
+                inputFrames=sofPath,
+                overwrite=True
             )
             assert False
         except Exception as e:

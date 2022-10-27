@@ -232,7 +232,7 @@ class soxs_spatial_solution(_base_recipe_):
         if self.settings["save-intermediate-products"]:
             fileDir = self.intermediateRootPath
             filepath = self._write(
-                self.multiPinholeFrame, fileDir, filename=False, overwrite=True)
+                self.multiPinholeFrame, fileDir, filename=False, overwrite=True, product=False)
             print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
 
         # GENERATE AN UPDATED DISPERSION MAP

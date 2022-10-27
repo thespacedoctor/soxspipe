@@ -12,7 +12,7 @@
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
 import random
-from scipy.ndimage.filters import median_filter
+from scipy.ndimage import median_filter
 from scipy.signal import medfilt2d
 from soxspipe.commonutils.toolkit import quicklook_image
 from scipy.interpolate import BSpline, splrep

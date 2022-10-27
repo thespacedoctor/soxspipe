@@ -66,7 +66,8 @@ class test_mbias(unittest.TestCase):
         this = soxs_mbias(
             log=log,
             settings=settings,
-            inputFrames=directory
+            inputFrames=directory,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -80,7 +81,8 @@ class test_mbias(unittest.TestCase):
         this = soxs_mbias(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -106,7 +108,8 @@ class test_mbias(unittest.TestCase):
         this = soxs_mbias(
             log=log,
             settings=settings,
-            inputFrames=fileList
+            inputFrames=fileList,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -130,7 +133,8 @@ class test_mbias(unittest.TestCase):
         this = soxs_mbias(
             log=log,
             settings=settings,
-            inputFrames=fileList
+            inputFrames=fileList,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -143,7 +147,8 @@ class test_mbias(unittest.TestCase):
             this = soxs_mbias(
                 log=log,
                 settings=settings,
-                inputFrames=directory
+                inputFrames=directory,
+                overwrite=True
             )
             this.get()
             assert False
@@ -159,7 +164,8 @@ class test_mbias(unittest.TestCase):
             this = soxs_mbias(
                 log=log,
                 settings=settings,
-                inputFrames=directory
+                inputFrames=directory,
+                overwrite=True
             )
             this.get()
             assert False
@@ -175,7 +181,9 @@ class test_mbias(unittest.TestCase):
             this = soxs_mbias(
                 log=log,
                 settings=settings,
-                inputFrames=directory
+                inputFrames=directory,
+                overwrite=True
+
             )
             this.get()
             assert False
@@ -190,7 +198,8 @@ class test_mbias(unittest.TestCase):
             this = soxs_mbias(
                 log=log,
                 settings=settings,
-                fakeKey="break the code"
+                fakeKey="break the code",
+                overwrite=True
             )
             this.get()
             assert False

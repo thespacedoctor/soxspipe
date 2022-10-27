@@ -64,7 +64,8 @@ class test_soxs_mdark(unittest.TestCase):
         this = soxs_mdark(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -74,7 +75,8 @@ class test_soxs_mdark(unittest.TestCase):
         this = soxs_mdark(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -84,7 +86,8 @@ class test_soxs_mdark(unittest.TestCase):
         this = soxs_mdark(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -96,7 +99,8 @@ class test_soxs_mdark(unittest.TestCase):
         this = soxs_mdark(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -106,7 +110,8 @@ class test_soxs_mdark(unittest.TestCase):
         this = soxs_mdark(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -117,7 +122,8 @@ class test_soxs_mdark(unittest.TestCase):
         this = soxs_mdark(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -127,7 +133,8 @@ class test_soxs_mdark(unittest.TestCase):
         this = soxs_mdark(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -141,7 +148,8 @@ class test_soxs_mdark(unittest.TestCase):
             log=log2,
             settings=settings2,
             inputFrames=sofPath,
-            verbose=True
+            verbose=True,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -155,7 +163,8 @@ class test_soxs_mdark(unittest.TestCase):
             log=log2,
             settings=settings2,
             inputFrames=sofPath,
-            verbose=True
+            verbose=True,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -166,7 +175,8 @@ class test_soxs_mdark(unittest.TestCase):
             log=log2,
             settings=settings2,
             inputFrames=sofPath,
-            verbose=True
+            verbose=True,
+            overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -191,7 +201,8 @@ class test_soxs_mdark(unittest.TestCase):
             this = soxs_mdark(
                 log=log,
                 settings=settings,
-                inputFrames=sofPath
+                inputFrames=sofPath,
+                overwrite=True
             )
             assert False
         except Exception as e:
