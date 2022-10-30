@@ -237,7 +237,8 @@ class soxs_order_centres(_base_recipe_):
             settings=self.settings,
             recipeName="soxs-order-centre",
             qcTable=self.qc,
-            productsTable=self.products
+            productsTable=self.products,
+            sofName=self.sofName
         )
         productPath, qcTable, productsTable = detector.get()
 

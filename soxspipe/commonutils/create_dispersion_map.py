@@ -58,6 +58,7 @@ class create_dispersion_map(object):
         - ``orderTable`` -- the order geometry table
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
+        - ``sofName`` -- name of the originating SOF file
 
     **Usage:**
 
@@ -80,7 +81,8 @@ class create_dispersion_map(object):
             firstGuessMap=False,
             orderTable=False,
             qcTable=False,
-            productsTable=False
+            productsTable=False,
+            sofName=False
     ):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
@@ -93,6 +95,7 @@ class create_dispersion_map(object):
         self.orderTable = orderTable
         self.qc = qcTable
         self.products = productsTable
+        self.sofName = sofName
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -468,11 +471,14 @@ class create_dispersion_map(object):
         if not os.path.exists(outDir):
             os.makedirs(outDir)
 
-        filename = filenamer(
-            log=self.log,
-            frame=self.pinholeFrame,
-            settings=self.settings
-        )
+        if not self.sofName:
+            filename = filenamer(
+                log=self.log,
+                frame=self.pinholeFrame,
+                settings=self.settings
+            )
+        else:
+            filename = self.sofName + ".fits"
 
         header = copy.deepcopy(self.pinholeFrame.header)
         header.pop(kw("DPR_TECH"))
@@ -489,10 +495,10 @@ class create_dispersion_map(object):
             header.pop(kw("RON"))
 
         if slitDeg == 0:
-            filename = filename.split("ARC")[0] + "DISP_MAP.fits"
+            # filename = filename.split("ARC")[0] + "DISP_MAP.fits"
             header[kw("PRO_TECH").upper()] = "ECHELLE,PINHOLE"
         else:
-            filename = filename.split("ARC")[0] + "2D_MAP.fits"
+            # filename = filename.split("ARC")[0] + "2D_MAP.fits"
             header[kw("PRO_TECH").upper()] = "ECHELLE,MULTI-PINHOLE"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
@@ -876,11 +882,14 @@ class create_dispersion_map(object):
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
         # GET FILENAME FOR THE RESIDUAL PLOT
-        filename = filenamer(
-            log=self.log,
-            frame=self.pinholeFrame,
-            settings=self.settings
-        )
+        if not self.sofName:
+            res_plots = filenamer(
+                log=self.log,
+                frame=self.pinholeFrame,
+                settings=self.settings
+            )
+        else:
+            res_plots = self.sofName + "_RESIDUALS.pdf"
         # plt.show()
 
         home = expanduser("~")
@@ -891,10 +900,8 @@ class create_dispersion_map(object):
             os.makedirs(outDir)
 
         if self.firstGuessMap:
-            res_plots = filename.split("ARC")[0] + "2D_MAP_RESIDUALS.pdf"
             filePath = f"{outDir}/{res_plots}"
         else:
-            res_plots = filename.split("ARC")[0] + "DISP_MAP_RESIDUALS.pdf"
             filePath = f"{outDir}/{res_plots}"
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,

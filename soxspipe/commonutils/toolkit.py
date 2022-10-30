@@ -363,13 +363,17 @@ def quicklook_image(
 def unpack_order_table(
         log,
         orderTablePath,
-        extend=0.):
+        extend=0.,
+        binx=1,
+        biny=1):
     """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
 
     **Key Arguments:**
 
     - ``orderTablePath`` -- path to the order table
     - ``extend`` -- fractional increase to the order area in the y-axis (needed for masking)
+    - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
+    - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
 
     **Usage:**
 
@@ -398,9 +402,13 @@ def unpack_order_table(
     if "degy_cent" in orderPolyTable.columns:
         axisA = "x"
         axisB = "y"
+        axisAbin = binx
+        axisBbin = biny
     else:
         axisA = "y"
         axisB = "x"
+        axisAbin = biny
+        axisBbin = binx
 
     # ADD AXIS B COORD LIST
     axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 3200 if (math.ceil(u) + int(r * extend)) > 3200 else (math.ceil(u) + int(r * extend)), 1) for l, u, r in zip(
@@ -433,6 +441,19 @@ def unpack_order_table(
         upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
         poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
         orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
+
+    if axisAbin > 1:
+        orderPixelTable[f"{axisA}coord_centre"] /= axisAbin
+        orderPixelTable[f"{axisA}coord_edgeup"] /= axisAbin
+        orderPixelTable[f"{axisA}coord_edgelow"] /= axisAbin
+    if axisBbin > 1:
+        orderMetaTable[f"{axisB}min"] /= axisBbin
+        orderMetaTable[f"{axisB}max"] /= axisBbin
+        orderPixelTable[f"{axisB}coord"] /= axisBbin
+        orderPixelTable["std"] /= axisBbin
+        mask = (orderPixelTable[f"{axisB}coord"].mod(1) > 0)
+        orderPixelTable = orderPixelTable.loc[~mask]
+        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].astype('int')
 
     log.debug('completed the ``functionName`` function')
     return orderPolyTable, orderPixelTable, orderMetaTable
@@ -575,6 +596,14 @@ def spectroscopic_image_quality_checks(
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
+    try:
+        binx = frame.header[kw("WIN_BINX")]
+        biny = frame.header[kw("WIN_BINY")]
+    except:
+        if arm.lower() == "nir":
+            binx = 1
+            biny = 1
+
     inst = frame.header[kw("INSTRUME")]
     if inst == "SOXS":
         axisA = "y"
@@ -585,7 +614,7 @@ def spectroscopic_image_quality_checks(
 
     # UNPACK THE ORDER TABLE
     orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
-        log=log, orderTablePath=orderTablePath)
+        log=log, orderTablePath=orderTablePath, binx=binx, biny=biny)
 
     mask = np.ones_like(frame.data)
 

@@ -19,9 +19,7 @@ from fundamentals.renderer import list_of_dictionaries
 import collections
 
 
-
 from random import random
-
 
 
 from soxspipe.commonutils.filenamer import filenamer
@@ -346,17 +344,24 @@ class _base_detect(object):
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
-        outDir = outDir.replace("//", "/")
+        if self.binx > 1 or self.biny > 1:
+            outDir = self.settings["intermediate-data-root"] + "/tmp"
+        else:
+            outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
+            outDir = outDir.replace("//", "/")
         # Recursively create missing directories
         if not os.path.exists(outDir):
             os.makedirs(outDir)
 
-        filename = filenamer(
-            log=self.log,
-            frame=frame,
-            settings=self.settings
-        )
+        if not self.sofName:
+            filename = filenamer(
+                log=self.log,
+                frame=frame,
+                settings=self.settings
+            )
+
+        else:
+            filename = self.sofName + ".fits"
         filename = filename.replace("MFLAT", "FLAT")
         filename = filename.split("FLAT")[0] + "ORDER_LOCATIONS.fits"
 
@@ -407,6 +412,7 @@ class detect_continuum(_base_detect):
         - ``recipeName`` -- the recipe name as given in the settings dictionary
         - ``qcTable`` -- the data frame to collect measured QC metrics 
         - ``productsTable`` -- the data frame to collect output products
+        - ``sofName`` ---- name of the originating SOF file
 
     **Usage:**
 
@@ -433,7 +439,8 @@ class detect_continuum(_base_detect):
             settings=False,
             recipeName=False,
             qcTable=False,
-            productsTable=False
+            productsTable=False,
+            sofName=False
     ):
         self.log = log
         log.debug("instansiating a new 'detect_continuum' object")
@@ -447,6 +454,7 @@ class detect_continuum(_base_detect):
         self.dispersion_map = dispersion_map
         self.qc = qcTable
         self.products = productsTable
+        self.sofName = sofName
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -972,16 +980,19 @@ class detect_continuum(_base_detect):
         fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
 
         # plt.show()
-        filename = filenamer(
-            log=self.log,
-            frame=self.pinholeFlat,
-            settings=self.settings
-        )
-        filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
+        if not self.sofName:
+            filename = filenamer(
+                log=self.log,
+                frame=self.pinholeFlat,
+                settings=self.settings
+            )
+            filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
+        else:
+            filename = self.sofName + "_residuals.pdf"
 
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
-        outDir = outDir.replace("//", "")
+        outDir = outDir.replace("//", "/")
         # Recursively create missing directories
         if not os.path.exists(outDir):
             os.makedirs(outDir)

@@ -1252,12 +1252,14 @@ class _base_recipe_(object):
         kw = self.kw
         dp = self.detectorParams
         imageType = self.imageType
+        if "FLAT" in imageType:
+            imageType = "FLAT"
 
         frame.header[kw("SEQ_ARM").upper()] = arm
         frame.header[kw("PRO_TYPE").upper()] = "REDUCED"
 
         # PROD CATG
-        if imageType in ["BIAS", "DARK"]:
+        if imageType in ["BIAS", "DARK", "FLAT"]:
             frame.header[
                 kw("PRO_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
 
