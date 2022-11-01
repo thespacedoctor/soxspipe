@@ -1225,7 +1225,7 @@ class subtract_sky(object):
                 orderInfo = (order, minWl, maxWl)
         (order, minWl, maxWl) = orderInfo
 
-        minWl = minWl + 20
+        minWl = minWl - 5
         maxWl = minWl + 5
 
         # DYANIMICALLY DETERMINE SIZE OF SUB-PIXELS

@@ -413,6 +413,8 @@ class detect_continuum(_base_detect):
         - ``qcTable`` -- the data frame to collect measured QC metrics 
         - ``productsTable`` -- the data frame to collect output products
         - ``sofName`` ---- name of the originating SOF file
+        - ``binx`` -- binning in x-axis
+        - ``biny`` -- binning in y-axis
 
     **Usage:**
 
@@ -440,7 +442,9 @@ class detect_continuum(_base_detect):
             recipeName=False,
             qcTable=False,
             productsTable=False,
-            sofName=False
+            sofName=False,
+            binx=1,
+            biny=1
     ):
         self.log = log
         log.debug("instansiating a new 'detect_continuum' object")
@@ -455,6 +459,8 @@ class detect_continuum(_base_detect):
         self.qc = qcTable
         self.products = productsTable
         self.sofName = sofName
+        self.binx = binx
+        self.biny = biny
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
