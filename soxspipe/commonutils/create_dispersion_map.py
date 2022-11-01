@@ -1086,7 +1086,7 @@ class create_dispersion_map(object):
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=False)
+                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=True)
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
@@ -1164,8 +1164,9 @@ class create_dispersion_map(object):
 
         # GENERATE INITIAL FULL-ORDER WAVELENGTH ARRAY FOR PARTICULAR ORDER
         # (ADD A LITTLE WRIGGLE ROOM AT EACH SIDE OF RANGE)
-        wlArray = np.arange(minWl - 20, maxWl + 20, self.recipeSettings[
+        wlArray = np.arange(minWl - 5, maxWl + 5, self.recipeSettings[
             "grid_res_wavelength"])
+
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
         bigSlitArray = np.concatenate(
             [np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
@@ -1185,8 +1186,119 @@ class create_dispersion_map(object):
             if not remainingCount:
                 continue
 
+            if iteration == 1:
+                import numpy as np
+                import scipy.interpolate
+
+                # FIRST GENERATE A WAVELENGTH SURFACE - FINE WL, CHUNKY SLIT-POSTION
+                grid_res_slit = 0.1
+                grid_res_wavelength = 0.1
+                slitLength = self.detectorParams["slit_length"]
+                halfGrid = (slitLength / 2) * 1.1
+                slitArray = np.arange(-halfGrid, halfGrid +
+                                      grid_res_slit, grid_res_slit)
+                wlArray = np.arange(minWl - 5, maxWl + 5, grid_res_wavelength)
+                # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
+                bigSlitArray = np.concatenate(
+                    [np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
+                # NOW THE BIG WAVELEGTH ARRAY
+                bigWlArray = np.tile(wlArray, np.shape(slitArray)[0])
+                orderPixelTableTmp, remainingCount = self.convert_and_fit(
+                    order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
+
+                train_wlx = orderPixelTableTmp["fit_x"].values
+                train_wly = orderPixelTableTmp["fit_y"].values
+                train_wl = orderPixelTableTmp["wavelength"].values
+
+                from astropy.stats import sigma_clip
+
+                ii = 0
+                while ii < 7:
+                    ii += 1
+                    interp_funcWL = scipy.interpolate.SmoothBivariateSpline(train_wlx, train_wly, train_wl, kx=5, ky=5, s=10000000)
+                    tmp = interp_funcWL(train_wlx, train_wly, grid=False)
+                    diff = train_wl - tmp
+                    print(f"MEAN WL diff: {diff.mean()}")
+                    # SIGMA-CLIP THE DATA
+                    masked_diff = sigma_clip(diff, sigma_lower=3, sigma_upper=3, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                    # REDUCE ARRAYS TO NON-MASKED VALUES
+                    print("len1wl", len(train_wlx))
+                    aa = [train_wlx, train_wly, train_wl]
+                    print("len1wl", len(train_wlx))
+                    train_wlx, train_wly, train_wl = [np.ma.compressed(np.ma.masked_array(i, masked_diff.mask)) for i in aa]
+
+                # NOW REGENERATE GRID FOR SPLIT-POSITION SURFACE - CHUNKY WL, FINE SLIT-POSTION
+                grid_res_slit = 0.1
+                grid_res_wavelength = 0.1
+                slitArray = np.arange(-halfGrid, halfGrid +
+                                      grid_res_slit, grid_res_slit)
+                wlArray = np.arange(minWl - 5, maxWl + 5, grid_res_wavelength)
+                # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
+                bigSlitArray = np.concatenate(
+                    [np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
+                # NOW THE BIG WAVELEGTH ARRAY
+                bigWlArray = np.tile(wlArray, np.shape(slitArray)[0])
+                orderPixelTableTmp, remainingCount = self.convert_and_fit(
+                    order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
+
+                train_spx = orderPixelTableTmp["fit_x"].values
+                train_spy = orderPixelTableTmp["fit_y"].values
+                train_sp = orderPixelTableTmp["slit_position"].values
+
+                ii = 0
+                while ii < 7:
+                    ii += 1
+                    interp_funcSP = scipy.interpolate.SmoothBivariateSpline(train_spx, train_spy, train_sp, kx=5, ky=5, s=10000000)
+                    tmp = interp_funcSP(train_spx, train_spy, grid=False)
+                    diff = train_sp - tmp
+                    print(f"MEAN SP diff: {diff.mean()}")
+                    # SIGMA-CLIP THE DATA
+                    masked_diff = sigma_clip(diff, sigma_lower=3, sigma_upper=3, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                    # REDUCE ARRAYS TO NON-MASKED VALUES
+                    aa = [train_spx, train_spy, train_sp]
+                    print("len1sp", len(train_spx))
+                    train_spx, train_spy, train_sp = [np.ma.compressed(np.ma.masked_array(i, masked_diff.mask)) for i in aa]
+                    print("len2sp", len(train_spx))
+
+                test_x = np.arange(int(train_wlx.min()), int(train_wlx.max()), 1.)
+                test_y = np.arange(int(train_wly.min()), int(train_wly.max()), 0.5)
+
+                interp_resultWL = interp_funcWL(test_x, test_y)
+                interp_resultSP = interp_funcSP(test_x, test_y)
+
+                if 1 == 1:
+                    import matplotlib.pyplot as plt
+                    interp_resultWL = np.rot90(interp_resultWL)
+                    interp_resultSP = np.rot90(interp_resultSP)
+                    fig, axes = plt.subplots(1, 2, figsize=(16, 7))
+                    extent = [test_x[0], test_x[-1], test_y[0], test_y[-1]]
+                    im = axes[0].imshow(interp_resultWL, aspect='auto', cmap='nipy_spectral', extent=extent)
+                    fig.colorbar(im, ax=axes[0])
+                    axes[0].plot(train_wlx, train_wly, 'k.', ms=.1, alpha=0.1)
+                    axes[0].set_title('Wavelength')
+
+                    im = axes[1].imshow(interp_resultSP, aspect='auto', cmap='nipy_spectral', extent=extent, vmin=-6, vmax=6)
+                    fig.colorbar(im, ax=axes[1])
+                    axes[1].plot(train_spx, train_spy, 'k.', ms=.1, alpha=0.1)
+                    axes[1].set_title('Slit Position')
+                    plt.show()
+
+                # HERE
+
+                g = orderPixelTable[['pixel_x', 'pixel_y', 'order']].drop_duplicates()
+                g['pixel_x'] += 0.5
+                g['pixel_y'] += 0.5
+                bigWlArray = interp_funcWL(g['pixel_x'].values, g['pixel_y'].values, grid=False)
+                bigSlitArray = interp_funcSP(g['pixel_x'].values, g['pixel_y'].values, grid=False)
+                remainingPixels = np.count_nonzero(np.isnan(wlMap.data))
+                print(g['pixel_x'].values[:10])
+                print(g['pixel_y'].values[:10])
+                print(bigWlArray[:10])
+                print(bigSlitArray[:10])
+                continue
+
             g = orderPixelTable.groupby(['pixel_x', 'pixel_y', 'order'])
-            g = g.agg(["first", np.sum, np.mean, np.std])
+            g = g.agg(["first"])
 
             estimatedValues = g.reset_index()
 
@@ -1304,6 +1416,9 @@ class create_dispersion_map(object):
             orderPixelTable=orderPixelTable
         )
 
+        print(len(bigWlArray))
+        print(len(bigSlitArray))
+
         # INTEGER PIXEL VALUES & FIT DISPLACEMENTS FROM PIXEL CENTRES
         orderPixelTable["pixel_x"] = np.floor(orderPixelTable["fit_x"].values)
         orderPixelTable["pixel_y"] = np.floor(orderPixelTable["fit_y"].values)
@@ -1313,6 +1428,14 @@ class create_dispersion_map(object):
             "fit_y"] - (orderPixelTable["pixel_y"] + 0.5)
         orderPixelTable["residual_xy"] = np.sqrt(np.square(
             orderPixelTable["residual_x"]) + np.square(orderPixelTable["residual_y"]))
+
+        print("residual_x,residual_y,residual_xy")
+        print(orderPixelTable["residual_x"].mean())
+        print(orderPixelTable["residual_y"].mean())
+        print(orderPixelTable["residual_xy"].mean())
+
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable[["wavelength", "slit_position", "fit_x", "fit_y", "pixel_x", "pixel_y", "residual_x", "residual_y", "residual_xy"]].head(100), headers='keys', tablefmt='psql'))
 
         # ADD A COUNT COLUMN FOR THE NUMBER OF SMALL SLIT/WL PIXELS FALLING IN
         # LARGE DETECTOR PIXELS
@@ -1324,8 +1447,8 @@ class create_dispersion_map(object):
             ['order', 'pixel_x', 'pixel_y', 'residual_xy'])
 
         # REMVOE LOW COUNT PIXELS AT EDGES OF ORDER
-        mask = (orderPixelTable['count'] > 2)
-        orderPixelTable = orderPixelTable.loc[mask]
+        # mask = (orderPixelTable['count'] > 2)
+        # orderPixelTable = orderPixelTable.loc[mask]
 
         if plots:
             # PLOT CENTRAL PIXEL
@@ -1364,7 +1487,7 @@ class create_dispersion_map(object):
                 centred = True
 
             from tabulate import tabulate
-            print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
+            # print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
             print(f"PIXEL LOCATION STDEV: {np.std(fit_x)}, {np.std(fit_y)}")
             print(f"OFFSET RATIOS: {offsetStdRatioX}, {offsetStdRatioY}")
             print(f"WAVELENGTH/SLIT STDEV: {filteredDf['wavelength'].std()}, {filteredDf['slit_position'].std()}")
@@ -1406,7 +1529,12 @@ class create_dispersion_map(object):
         remainingCount = orderPixelTable.drop_duplicates(
             subset=['pixel_x', 'pixel_y'], keep="first")
 
+        print("CAUGHT", len(newPixelValue.index))
+        print("NOTCAUGHT", len(remainingCount.index))
+
         # ADD FITTED PIXELS TO PLACE HOLDER IMAGES
+
+        print("\n\n")
         for xx, yy, wavelength, slit_position in zip(newPixelValue["pixel_x"].values.astype(int), newPixelValue["pixel_y"].values.astype(int), newPixelValue["wavelength"].values, newPixelValue["slit_position"].values):
             try:
                 wlMap.data[yy, xx] = np.where(
@@ -1426,7 +1554,7 @@ class create_dispersion_map(object):
             # PLOT CCDDATA OBJECT
             rotatedImg = slitMap.data
             if self.axisA == "x":
-                rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
+                rotatedImg = np.rot90(rotatedImg, 1)
                 rotatedImg = np.flipud(rotatedImg)
             std = np.nanstd(rotatedImg)
             mean = np.nanmean(rotatedImg)

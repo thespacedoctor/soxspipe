@@ -1,6 +1,7 @@
 
 # Release Notes
 
+Handling of binned images when generating flats and order-locations
 Where possible, product files are given the same name as the SOF file used to generate them (replacing `.sof` extension with `.fits`)
 SOF filenames reworked to contain the UTC observation date instead of MJD (more inline with ESO ecosystems)
 Pipeline exists gracefully if product already exists on file. Use can choose to overwrite the product file with the `-x` flag.
