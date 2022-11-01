@@ -96,6 +96,8 @@ class test_soxs_mflat(unittest.TestCase):
             inputFrames=sofPath,
             overwrite=True
         )
+        this.binx = 1
+        this.biny = 1
         mflat = this.mask_low_sens_and_inter_order_to_unity(
             orderTablePath=orderTable,
             frame=frame

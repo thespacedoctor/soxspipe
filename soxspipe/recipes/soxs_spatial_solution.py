@@ -184,13 +184,13 @@ class soxs_spatial_solution(_base_recipe_):
         multi_pinhole_image = False
         order_table = False
 
-        add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
+        add_filters = {kw("PRO_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # UVB/VIS DARK
-        add_filters = {kw("DPR_CATG"): 'MASTER_DARK_' + arm}
+        add_filters = {kw("PRO_CATG"): 'MASTER_DARK_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -203,7 +203,7 @@ class soxs_spatial_solution(_base_recipe_):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # UVB/VIS/NIR FLAT
-        add_filters = {kw("DPR_CATG"): 'MASTER_LAMP-FLAT_' + arm}
+        add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             master_flat = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -243,7 +243,8 @@ class soxs_spatial_solution(_base_recipe_):
             firstGuessMap=disp_map_table,
             orderTable=order_table,
             qcTable=self.qc,
-            productsTable=self.products
+            productsTable=self.products,
+            sofName=self.sofName
         ).get()
 
         from datetime import datetime

@@ -71,11 +71,8 @@ soxs-spatial-solution:
     slit-deg: 3
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
-    # INITIAL SEED GRID RESOLUTION 
-    grid_res_wavelength: 0.03 # in nm
-    grid_res_slit: 0.04 # in arcsec
-    map_to_image_displacement_threshold: 0.01 # in pixels
-    zoom_grid_size: 4
+
+
 
 soxs-mflat:
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
@@ -85,11 +82,11 @@ soxs-mflat:
     # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
     clipping-lower-sigma: 50
     # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-sigma: 50   
+    clipping-upper-sigma: 100   
     # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
     clipping-iteration-count: 0
     # width of the slice to cut along the centre of each order when determining mean exposure level
-    centre-order-window: 20
+    centre-order-window: 13
     # length of image slice to take across orders when detecting edges
     slice-length-for-edge-detection: 90
     # width of image slice to take across orders when detecting edges
@@ -99,11 +96,11 @@ soxs-mflat:
     # maximum value flux can claim to as percentage of central flux and be counted as an order edge
     max-percentage-threshold-for-edge-detection: 50
     # degree of dispersion axis component of polynomal fit to order edges
-    disp-axis-deg: 5
+    disp-axis-deg: 3
     # degree of order component of polynomal fit to order edges
-    order-deg: 5
+    order-deg: 3
     # number of σ deviations from the median fit residual beyond which individual data points are removed when iterating towards a fit of order edges
-    poly-fitting-residual-clipping-sigma: 5.0
+    poly-fitting-residual-clipping-sigma: 3.0
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the order edges
     poly-clipping-iteration-limit: 2
     # number of σ deviations below the median flux of a master-flat frame beyond which a pixel is added to the bad-pixel mask

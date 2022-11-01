@@ -200,16 +200,16 @@ class soxs_mflat(_base_recipe_):
         qcTable = self.qc
 
         for cf, fk, tag in zip(calibratedFlatSet, flatKeywords, lampTag):
+
             if len(cf) == 0:
                 self.orderTableSet.append(None)
                 normalisedFlatSet.append(None)
                 self.combinedNormalisedFlatSet.append(None)
                 self.masterFlatSet.append(None)
-                productTable = self.products.copy()
-                qcTable = self.qc.copy()
+                # productTable = self.products.copy()
+                # qcTable = self.qc.copy()
                 continue
 
-            # FIND THE ORDER TABLE
             filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}", kw("OBJECT"): fk}
             orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
             if len(orderTablePaths) == 1:
@@ -259,7 +259,10 @@ class soxs_mflat(_base_recipe_):
                 settings=self.settings,
                 qcTable=qcTable,
                 productsTable=productTable,
-                tag=tag
+                tag=tag,
+                sofName=self.sofName,
+                binx=self.binx,
+                biny=self.biny
             )
             productTable, qcTable, orderDetectionCounts = edges.get()
 
@@ -269,8 +272,6 @@ class soxs_mflat(_base_recipe_):
 
             self.detectionCountSet.append(orderDetectionCounts)
 
-            # FILTER DATA FRAME
-            # FIRST CREATE THE MASK
             mask = (productTable['product_label'] == f"ORDER_LOC{tag}")
             orderTablePath = productTable.loc[mask]["file_path"].values[0]
             self.orderTableSet.append(orderTablePath)
@@ -315,6 +316,10 @@ class soxs_mflat(_base_recipe_):
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home)
         # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
+
+        self.update_fits_keywords(
+            frame=mflat
+        )
 
         # WRITE MFLAT TO FILE
         productPath = self._write(
@@ -380,7 +385,7 @@ class soxs_mflat(_base_recipe_):
         dp = self.detectorParams
 
         # FIND THE BIAS FRAMES
-        filterDict = {kw("DPR_TYPE"): "BIAS"}
+        filterDict = {kw("PRO_CATG"): f"MASTER_BIAS_{self.arm.upper()}"}
         biasCollection = self.inputFrames.filter(**filterDict)
         # LIST OF CCDDATA OBJECTS
         biases = [c for c in biasCollection.ccds(ccd_kwargs={
@@ -393,7 +398,7 @@ class soxs_mflat(_base_recipe_):
             bias = biases[0]
 
         # FIND THE DARK FRAMES
-        filterDict = {kw("DPR_TYPE"): "DARK"}
+        filterDict = {kw("PRO_CATG"): f"MASTER_DARK_{self.arm.upper()}"}
         darkCollection = self.inputFrames.filter(**filterDict)
 
         if len(darkCollection.files) == 0:
@@ -496,17 +501,32 @@ class soxs_mflat(_base_recipe_):
         import numpy.ma as ma
         import numpy as np
         from astropy.stats import sigma_clip
+        kw = self.kw
 
         # DO WE HAVE SEPARATE EXPOSURE FRAMES?
         if not exposureFrames:
             exposureFrames = inputFlats
 
+        try:
+            self.binx = exposureFrames[0].header[kw("WIN_BINX")]
+            self.biny = exposureFrames[0].header[kw("WIN_BINY")]
+        except:
+            if self.arm.lower() == "nir":
+                self.binx = 1
+                self.biny = 1
+
         window = int(self.settings[
             "soxs-mflat"]["centre-order-window"] / 2)
+        if self.axisA == "x" and self.binx > 1:
+            window = int(window / self.binx)
+            self.recipeSettings["slice-length-for-edge-detection"] = int(self.recipeSettings["slice-length-for-edge-detection"] / self.binx)
+        elif self.axisA == "y" and self.biny > 1:
+            window = int(window / self.biny)
+            self.recipeSettings["slice-length-for-edge-detection"] = int(self.recipeSettings["slice-length-for-edge-detection"] / self.biny)
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=orderTablePath)
+            log=self.log, orderTablePath=orderTablePath, binx=self.binx, biny=self.biny)
 
         mask = np.ones_like(exposureFrames[0].data)
 
@@ -546,7 +566,7 @@ class soxs_mflat(_base_recipe_):
 
         # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
         quicklook_image(
-            log=self.log, CCDObject=normalisedFrames[0], show=False)
+            log=self.log, CCDObject=normalisedFrames[0], show=False, ext=None, surfacePlot=True, title="Single normalised flat frame")
 
         self.log.debug('completed the ``normalise_flats`` method')
         return normalisedFrames
@@ -579,7 +599,7 @@ class soxs_mflat(_base_recipe_):
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=orderTablePath)
+            log=self.log, orderTablePath=orderTablePath, binx=self.binx, biny=self.biny)
 
         # BAD PIXEL COUNT AT START
         originalBPM = np.copy(frame.mask)
@@ -709,7 +729,7 @@ class soxs_mflat(_base_recipe_):
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderTableSet[1], extend=3000)
+            log=self.log, orderTablePath=self.orderTableSet[1], extend=3000, binx=self.binx, biny=self.biny)
 
         # FIND THE LINE USED TO SLICE AND STITCH THE 2 FRAMES TOGETHER
         filteredDf = orderTablePixels.loc[(orderTablePixels["order"] == orderFlip)]
@@ -744,7 +764,10 @@ class soxs_mflat(_base_recipe_):
             settings=self.settings,
             qcTable=self.qc,
             productsTable=self.products,
-            tag=""
+            tag="",
+            sofName=self.sofName,
+            binx=self.binx,
+            biny=self.biny
         )
         self.products, self.qc, orderDetectionCounts = edges.get()
         # FILTER DATA FRAME

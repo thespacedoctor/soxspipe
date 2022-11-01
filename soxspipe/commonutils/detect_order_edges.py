@@ -49,6 +49,9 @@ class detect_order_edges(_base_detect):
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
         - ``tag`` -- e.g. '_DLAMP' to differentiate between UV-VIS lamps
+        - ``sofName`` -- name of the originating SOF file
+        - ``binx`` -- binning in x-axis
+        - ``biny`` -- binning in y-axis
 
     **Usage:**
 
@@ -84,7 +87,10 @@ class detect_order_edges(_base_detect):
             verbose=False,
             qcTable=False,
             productsTable=False,
-            tag=""
+            tag="",
+            sofName=False,
+            binx=1,
+            biny=1
     ):
         self.log = log
         log.debug("instansiating a new 'detect_order_edges' object")
@@ -101,6 +107,7 @@ class detect_order_edges(_base_detect):
         self.qc = qcTable
         self.products = productsTable
         self.tag = tag
+        self.sofName = sofName
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -111,6 +118,9 @@ class detect_order_edges(_base_detect):
         kw = self.kw
         self.arm = flatFrame.header[kw("SEQ_ARM")]
         self.dateObs = flatFrame.header[kw("DATE_OBS")]
+
+        self.binx = binx
+        self.biny = biny
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
@@ -126,9 +136,13 @@ class detect_order_edges(_base_detect):
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"
+            self.axisAbin = self.biny
+            self.axisBbin = self.binx
         elif self.inst == "XSHOOTER":
             self.axisA = "x"
             self.axisB = "y"
+            self.axisAbin = self.binx
+            self.axisBbin = self.biny
 
         return None
 
@@ -151,6 +165,7 @@ class detect_order_edges(_base_detect):
         # GET PARAMETERS FROM SETTINGS
         self.sliceLength = int(
             self.recipeSettings["slice-length-for-edge-detection"])
+
         self.sliceWidth = int(
             self.recipeSettings["slice-width-for-edge-detection"])
         self.minThresholdPercenage = int(
@@ -160,7 +175,7 @@ class detect_order_edges(_base_detect):
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderCentreTable)
+            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny)
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
         print("\tDETERMINING ORDER FLUX THRESHOLDS")
@@ -188,6 +203,10 @@ class detect_order_edges(_base_detect):
                                subset=[f"{self.axisA}coord_upper"], inplace=True)
         orderPixelTable.dropna(axis='index', how='any',
                                subset=[f"{self.axisA}coord_lower"], inplace=True)
+        if self.axisAbin > 1:
+            orderPixelTable[f"{self.axisA}coord_upper"] *= self.axisAbin
+        if self.axisBbin > 1:
+            orderPixelTable[f"{self.axisB}coord"] *= self.axisBbin
 
         # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
         uniqueOrders = orderPixelTable['order'].unique()
@@ -275,6 +294,7 @@ class detect_order_edges(_base_detect):
         )
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
+
         orderTablePath = self.write_order_table_to_file(
             frame=self.flatFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
         mean_res = np.mean(np.abs(allResiduals))
@@ -376,6 +396,11 @@ class detect_order_edges(_base_detect):
         allAxisBCoords = np.concatenate((
             orderPixelTable[f"{self.axisB}coord"], orderPixelTable[f"{self.axisB}coord"]))
 
+        if self.axisBbin > 1:
+            allAxisBCoords /= self.axisBbin
+        if self.axisAbin > 1:
+            allAxisACoords /= self.axisAbin
+
         arm = self.arm
 
         # a = plt.figure(figsize=(40, 15))
@@ -429,6 +454,11 @@ class detect_order_edges(_base_detect):
         else:
             axisALength = self.flatFrame.data.shape[0]
             axisBLength = self.flatFrame.data.shape[1]
+
+        if self.axisBbin > 1:
+            axisBLength *= self.axisBbin
+        if self.axisAbin > 1:
+            axisALength *= self.axisAbin
         axisBlinelist = np.arange(0, axisBLength, 3)
 
         poly = chebyshev_order_xy_polynomials(
@@ -459,10 +489,18 @@ class detect_order_edges(_base_detect):
                 *[(a, b) for a, b in zip(axisAfitup, axisBlinelist) if a > 0 and a < (axisALength) - 10 and b >= axisBmin and b <= axisBmax])
             axisAfitlow, axisBfitlow = zip(
                 *[(a, b) for a, b in zip(axisAfitlow, axisBlinelist) if a > 0 and a < (axisALength) - 10 and b >= axisBmin and b <= axisBmax])
+
+            if self.axisAbin > 1:
+                axisAfitup = np.array(axisAfitup) / self.axisAbin
+                axisAfitlow = np.array(axisAfitlow) / self.axisAbin
+            if self.axisBbin > 1:
+                axisBfitup = np.array(axisBfitup) / self.axisBbin
+                axisBfitlow = np.array(axisBfitlow) / self.axisBbin
+
             l = midrow.plot(axisBfitlow, axisAfitlow)
             u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color())
             midrow.fill_between(axisBfitlow, axisAfitlow, axisAfitup, alpha=0.4, fc=l[0].get_color())
-            midrow.text(axisBfitlow[10], axisAfitlow[10] + 5, int(o), fontsize=6, c='white', verticalalignment='bottom')
+            # midrow.text(axisBfitlow[10], axisAfitlow[10] + 5, int(o), fontsize=6, c='white', verticalalignment='bottom')
 
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit
@@ -503,7 +541,7 @@ class detect_order_edges(_base_detect):
         )
         filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
         filePath = f"{outDir}/{filename}"
         plt.tight_layout()
         plt.savefig(filePath, dpi=720)

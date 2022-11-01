@@ -228,6 +228,14 @@ class soxs_order_centres(_base_recipe_):
                 self.orderFrame, fileDir, filename=False, overwrite=True, product=False)
             print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
+        # FIND THE APPROPRIATE PREDICTED LINE-LIST
+        if arm != "NIR" and kw('WIN_BINX') in self.orderFrame.header:
+            binx = int(self.orderFrame.header[kw('WIN_BINX')])
+            biny = int(self.orderFrame.header[kw('WIN_BINY')])
+        else:
+            binx = 1
+            biny = 1
+
         # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
         print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
         detector = detect_continuum(
@@ -237,7 +245,10 @@ class soxs_order_centres(_base_recipe_):
             settings=self.settings,
             recipeName="soxs-order-centre",
             qcTable=self.qc,
-            productsTable=self.products
+            productsTable=self.products,
+            sofName=self.sofName,
+            binx=binx,
+            biny=biny
         )
         productPath, qcTable, productsTable = detector.get()
 

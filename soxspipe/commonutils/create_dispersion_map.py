@@ -12,34 +12,23 @@
 ################# GLOBAL IMPORTS ####################
 from fundamentals import fmultiprocess
 from tabulate import tabulate
-
-
 from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_format
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-
 import warnings
-
-
 import math
 from soxspipe.commonutils.toolkit import get_calibrations_path
-
-
 from os.path import expanduser
 from fundamentals.renderer import list_of_dictionaries
-
-
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from fundamentals import tools
 from builtins import object
 import sys
-
 import os
 from io import StringIO
 from contextlib import suppress
-
 import copy
 from datetime import datetime
 
@@ -58,6 +47,7 @@ class create_dispersion_map(object):
         - ``orderTable`` -- the order geometry table
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
+        - ``sofName`` -- name of the originating SOF file
 
     **Usage:**
 
@@ -80,7 +70,8 @@ class create_dispersion_map(object):
             firstGuessMap=False,
             orderTable=False,
             qcTable=False,
-            productsTable=False
+            productsTable=False,
+            sofName=False
     ):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
@@ -93,6 +84,7 @@ class create_dispersion_map(object):
         self.orderTable = orderTable
         self.qc = qcTable
         self.products = productsTable
+        self.sofName = sofName
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -468,11 +460,14 @@ class create_dispersion_map(object):
         if not os.path.exists(outDir):
             os.makedirs(outDir)
 
-        filename = filenamer(
-            log=self.log,
-            frame=self.pinholeFrame,
-            settings=self.settings
-        )
+        if not self.sofName:
+            filename = filenamer(
+                log=self.log,
+                frame=self.pinholeFrame,
+                settings=self.settings
+            )
+        else:
+            filename = self.sofName + ".fits"
 
         header = copy.deepcopy(self.pinholeFrame.header)
         header.pop(kw("DPR_TECH"))
@@ -489,10 +484,10 @@ class create_dispersion_map(object):
             header.pop(kw("RON"))
 
         if slitDeg == 0:
-            filename = filename.split("ARC")[0] + "DISP_MAP.fits"
+            # filename = filename.split("ARC")[0] + "DISP_MAP.fits"
             header[kw("PRO_TECH").upper()] = "ECHELLE,PINHOLE"
         else:
-            filename = filename.split("ARC")[0] + "2D_MAP.fits"
+            # filename = filename.split("ARC")[0] + "2D_MAP.fits"
             header[kw("PRO_TECH").upper()] = "ECHELLE,MULTI-PINHOLE"
         filePath = f"{outDir}/{filename}"
         dataSet = list_of_dictionaries(
@@ -876,11 +871,15 @@ class create_dispersion_map(object):
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
         # GET FILENAME FOR THE RESIDUAL PLOT
-        filename = filenamer(
-            log=self.log,
-            frame=self.pinholeFrame,
-            settings=self.settings
-        )
+        if not self.sofName:
+            res_plots = filenamer(
+                log=self.log,
+                frame=self.pinholeFrame,
+                settings=self.settings
+            )
+            res_plots = res_plots.replace(".fits", ".pdf")
+        else:
+            res_plots = self.sofName + "_RESIDUALS.pdf"
         # plt.show()
 
         home = expanduser("~")
@@ -891,10 +890,8 @@ class create_dispersion_map(object):
             os.makedirs(outDir)
 
         if self.firstGuessMap:
-            res_plots = filename.split("ARC")[0] + "2D_MAP_RESIDUALS.pdf"
             filePath = f"{outDir}/{res_plots}"
         else:
-            res_plots = filename.split("ARC")[0] + "DISP_MAP_RESIDUALS.pdf"
             filePath = f"{outDir}/{res_plots}"
         self.products = self.products.append({
             "soxspipe_recipe": self.recipeName,
@@ -1051,26 +1048,10 @@ class create_dispersion_map(object):
         dp = self.detectorParams
         arm = self.arm
 
-        self.map_to_image_displacement_threshold = self.recipeSettings[
-            "map_to_image_displacement_threshold"]
-
+        self.map_to_image_displacement_threshold = 0.0001
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
             log=self.log, settings=self.settings, arm=self.arm)
-
-        # GENERATE SLIT ARRAY VALUES - THIS GRID WILL BE THE SAME FOR ALL
-        # ORDERS
-        slitLength = dp["slit_length"]
-        grid_res_slit = self.recipeSettings["grid_res_slit"]
-        halfGrid = (slitLength / 2) * 1.1
-        self.slitArray = np.arange(-halfGrid, halfGrid +
-                                   grid_res_slit, grid_res_slit)
-
-        # CREATE GRIDS FOR ZOOM-IN STAMPS TO FIND CENTRE OF PIXELS
-        self.gridSize = self.recipeSettings["zoom_grid_size"]
-        grid = np.arange(self.gridSize)
-        self.gridSlit = np.tile(grid, (1, self.gridSize))[0]
-        self.gridWl = np.repeat(grid, self.gridSize)
 
         combinedSlitImage = False
         combinedWlImage = False
@@ -1146,27 +1127,29 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``order_to_image`` method')
 
         import numpy as np
-
-        slitArray = self.slitArray
-        gridSlit = self.gridSlit
-        gridWl = self.gridWl
+        from scipy.interpolate import griddata
 
         (order, minWl, maxWl) = orderInfo
-
         slitMap, wlMap, orderMap = self.create_placeholder_images(order=order)
 
-        # GENERATE INITIAL FULL-ORDER WAVELENGTH ARRAY FOR PARTICULAR ORDER
-        # (ADD A LITTLE WRIGGLE ROOM AT EACH SIDE OF RANGE)
-        wlArray = np.arange(minWl - 20, maxWl + 20, self.recipeSettings[
-            "grid_res_wavelength"])
+        # FIRST GENERATE A WAVELENGTH SURFACE - FINE WL, CHUNKY SLIT-POSTION
+        wlRange = maxWl - minWl
+        grid_res_wavelength = wlRange / 3000
+        slitLength = self.detectorParams["slit_length"]
+        grid_res_slit = slitLength / 70
+
+        halfGrid = (slitLength / 2) * 1.2
+        slitArray = np.arange(-halfGrid, halfGrid +
+                              grid_res_slit, grid_res_slit)
+        wlArray = np.arange(minWl - 20, maxWl + 20, grid_res_wavelength)
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
         bigSlitArray = np.concatenate(
             [np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
         # NOW THE BIG WAVELEGTH ARRAY
         bigWlArray = np.tile(wlArray, np.shape(slitArray)[0])
 
-        remainingPixels = 1
         iteration = 0
+        remainingPixels = 1
         iterationLimit = 20
         remainingCount = 1
         while remainingPixels and remainingCount and iteration < iterationLimit:
@@ -1175,73 +1158,19 @@ class create_dispersion_map(object):
             orderPixelTable, remainingCount = self.convert_and_fit(
                 order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
 
-            if not remainingCount:
-                continue
+            if remainingCount < 4:
+                break
 
-            g = orderPixelTable.groupby(['pixel_x', 'pixel_y', 'order'])
-            g = g.agg(["first", np.sum, np.mean, np.std])
+            train_wlx = orderPixelTable["fit_x"].values
+            train_wly = orderPixelTable["fit_y"].values
+            train_wl = orderPixelTable["wavelength"].values
+            train_sp = orderPixelTable["slit_position"].values
+            g = orderPixelTable[['pixel_x', 'pixel_y', 'order']].drop_duplicates()
+            g['pixel_x'] += 0.5
+            g['pixel_y'] += 0.5
 
-            estimatedValues = g.reset_index()
-
-            # SET LOWER LIMIT TO SLIT/WAVELENGTH STD
-            limit = self.map_to_image_displacement_threshold / 100
-            estimatedValues["wavelength_std"] = np.where(estimatedValues["wavelength"][
-                "std"] <= limit, limit, estimatedValues["wavelength"]["std"])
-            estimatedValues["slit_position_std"] = np.where(estimatedValues["slit_position"][
-                "std"] <= limit, limit, estimatedValues["slit_position"]["std"])
-
-            # SEED GRID ARRAYS ADDED FOR EACH PIXEL
-            estimatedValues["gridMeshSlit"] = list(
-                np.tile(gridSlit, (len(estimatedValues.index), 1)))
-            estimatedValues["gridMeshWl"] = list(
-                np.tile(gridWl, (len(estimatedValues.index), 1)))
-
-            # CALCULATE THE DIMENSIONS NEEDED FOR EACH REMAINING PIXEL GRIDS
-            estimatedValues["mean_offset_x"] = estimatedValues[
-                "fit_x"]["mean"] - (estimatedValues["pixel_x"] + 0.5)
-            estimatedValues["mean_offset_y"] = estimatedValues[
-                "fit_y"]["mean"] - (estimatedValues["pixel_y"] + 0.5)
-            estimatedValues["mean_offset_xy"] = np.sqrt(np.square(
-                estimatedValues["mean_offset_x"]) + np.square(estimatedValues["mean_offset_y"]))
-            estimatedValues['guess_wavelength'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues["residual_xy"]["first"], estimatedValues["wavelength"][
-                "mean"], estimatedValues["wavelength"][
-                "first"])
-            estimatedValues['guess_slit_position'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
-                "residual_xy"]["first"], estimatedValues["slit_position"]["mean"], estimatedValues["slit_position"]["first"])
-            estimatedValues['best_offset_x'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
-                "residual_xy"]["first"], abs(estimatedValues["mean_offset_x"]), abs(estimatedValues["residual_x"]["first"]))
-            estimatedValues['best_offset_y'] = np.where(estimatedValues["mean_offset_xy"] <= estimatedValues[
-                "residual_xy"]["first"], abs(estimatedValues["mean_offset_y"]), abs(estimatedValues["residual_y"]["first"]))
-            estimatedValues['offset_std_ratio_x'] = estimatedValues[
-                'best_offset_x'] * 2 / estimatedValues["fit_x"]["std"]
-            estimatedValues['offset_std_ratio_y'] = estimatedValues[
-                'best_offset_y'] * 2 / estimatedValues["fit_y"]["std"]
-
-            estimatedValues["wlArrayMin"] = estimatedValues[
-                'guess_wavelength'] - estimatedValues["wavelength_std"] * estimatedValues[f'offset_std_ratio_{self.axisB}']
-            estimatedValues["wlArrayMax"] = estimatedValues[
-                'guess_wavelength'] + estimatedValues["wavelength_std"] * estimatedValues[f'offset_std_ratio_{self.axisB}']
-            estimatedValues["slArrayMin"] = estimatedValues[
-                'guess_slit_position'] - estimatedValues["slit_position_std"] * estimatedValues[f'offset_std_ratio_{self.axisA}']
-            estimatedValues["slArrayMax"] = estimatedValues[
-                'guess_slit_position'] + estimatedValues["slit_position_std"] * estimatedValues[f'offset_std_ratio_{self.axisA}']
-            estimatedValues["wlArray"] = estimatedValues["wlArrayMin"] + estimatedValues[
-                "gridMeshWl"] * (estimatedValues["wavelength_std"] * (estimatedValues[f'offset_std_ratio_{self.axisB}'] * 2) / (self.gridSize - 1))
-            estimatedValues["slitArray"] = estimatedValues["slArrayMin"] + estimatedValues[
-                "gridMeshSlit"] * (estimatedValues["slit_position_std"] * (estimatedValues[f'offset_std_ratio_{self.axisA}'] * 2) / (self.gridSize - 1))
-
-            # import sqlite3 as sql
-            # # CONNECT TO THE DATABASE
-            # conn = sql.connect("/tmp/pandas_export.db")
-            # # SEND TO DATABASE
-            # estimatedValues.to_sql('my_export_table', con=conn,
-            #                        index=False, if_exists='replace')
-
-            # COMBINE ALL PIXEL ARRAYS INTO 2 BIG ARRAYS
-            bigWlArray = np.concatenate(estimatedValues["wlArray"].values)
-            bigSlitArray = np.concatenate(estimatedValues["slitArray"].values)
-
-            remainingPixels = np.count_nonzero(np.isnan(wlMap.data))
+            bigWlArray = griddata((train_wlx, train_wly), train_wl, (g['pixel_x'].values, g['pixel_y'].values), method="cubic")
+            bigSlitArray = griddata((train_wlx, train_wly), train_sp, (g['pixel_x'].values, g['pixel_y'].values), method="cubic")
 
         self.log.debug('completed the ``order_to_image`` method')
         return slitMap, wlMap
@@ -1317,8 +1246,8 @@ class create_dispersion_map(object):
             ['order', 'pixel_x', 'pixel_y', 'residual_xy'])
 
         # REMVOE LOW COUNT PIXELS AT EDGES OF ORDER
-        mask = (orderPixelTable['count'] > 2)
-        orderPixelTable = orderPixelTable.loc[mask]
+        # mask = (orderPixelTable['count'] > 2)
+        # orderPixelTable = orderPixelTable.loc[mask]
 
         if plots:
             # PLOT CENTRAL PIXEL
@@ -1357,7 +1286,7 @@ class create_dispersion_map(object):
                 centred = True
 
             from tabulate import tabulate
-            print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
+            # print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
             print(f"PIXEL LOCATION STDEV: {np.std(fit_x)}, {np.std(fit_y)}")
             print(f"OFFSET RATIOS: {offsetStdRatioX}, {offsetStdRatioY}")
             print(f"WAVELENGTH/SLIT STDEV: {filteredDf['wavelength'].std()}, {filteredDf['slit_position'].std()}")
@@ -1419,7 +1348,7 @@ class create_dispersion_map(object):
             # PLOT CCDDATA OBJECT
             rotatedImg = slitMap.data
             if self.axisA == "x":
-                rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
+                rotatedImg = np.rot90(rotatedImg, 1)
                 rotatedImg = np.flipud(rotatedImg)
             std = np.nanstd(rotatedImg)
             mean = np.nanmean(rotatedImg)
