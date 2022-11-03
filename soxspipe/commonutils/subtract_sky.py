@@ -44,6 +44,7 @@ class subtract_sky(object):
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
         - ``dispMap`` -- path to dispersion map. Default * False*
+        - ``sofName`` -- name of the originating SOF file
 
     **Usage:**
 
@@ -83,6 +84,7 @@ class subtract_sky(object):
             productsTable,
             dispMap=False,
             settings=False,
+            sofName=False
     ):
         self.log = log
         log.debug("instansiating a new 'subtract_sky' object")
@@ -92,6 +94,7 @@ class subtract_sky(object):
         self.dispMap = dispMap
         self.qc = qcTable
         self.products = productsTable
+        self.sofName = sofName
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -111,7 +114,7 @@ class subtract_sky(object):
         ).get(self.arm)
         dp = self.detectorParams
 
-        # INITIAL ACTIONS
+        # DATA FRAME CONTAINING ALL PIXELS - X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDERE
         self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame)
 
         if self.inst == "SOXS":
@@ -124,11 +127,14 @@ class subtract_sky(object):
         self.dateObs = objectFrame.header[kw("DATE_OBS")]
 
         # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
-        self.filenameTemplate = filenamer(
-            log=self.log,
-            frame=self.objectFrame,
-            settings=self.settings
-        )
+        if self.sofName:
+            self.filenameTemplate = self.sofName + ".fits"
+        else:
+            self.filenameTemplate = filenamer(
+                log=self.log,
+                frame=self.objectFrame,
+                settings=self.settings
+            )
 
         return None
 
@@ -148,7 +154,7 @@ class subtract_sky(object):
         import pandas as pd
         pd.options.mode.chained_assignment = None
 
-        print(f'\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME')
+        print(f'\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME\n')
 
         skymodelCCDData, skySubtractedCCDData = self.create_placeholder_images()
 
@@ -162,14 +168,14 @@ class subtract_sky(object):
         qcPlotOrder = int(np.median(uniqueOrders)) - 1
         allimageMapOrder = []
         allimageMapOrderWithObject = []
-        # REMOVE ME
         for o in uniqueOrders:
+            # SELECT ONLY ONE ORDER OF DATA
             imageMapOrder = self.mapDF[self.mapDF["order"] == o]
-            imageMapOrderWithObject, imageMapOrder = self.get_over_sampled_sky_from_order(imageMapOrder, o, ignoreBP=True)
+            imageMapOrderWithObject, imageMapOrder = self.get_over_sampled_sky_from_order(imageMapOrder, o, ignoreBP=True, clipSlitEdge=0.05)
             allimageMapOrder.append(imageMapOrder)
             allimageMapOrderWithObject.append(imageMapOrderWithObject)
 
-        allimageMapOrder = self.clip_object_slit_positions(allimageMapOrder)
+        allimageMapOrder = self.clip_object_slit_positions(allimageMapOrder, aggressive=self.settings["sky-subtraction"]["aggressive_object_masking"])
 
         for o, imageMapOrder, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
             if o != qcPlotOrder:
@@ -178,9 +184,9 @@ class subtract_sky(object):
             # REMOVE ME
             # self.rectify_order(order=o, imageMapOrder=imageMapOrder)
             # self.fit_surface_to_sky(imageMapOrder)
-            # imageMapOrder, tck = self.fit_bspline_surface_to_sky(imageMapOrder, o, bspline_order)
+            imageMapOrder, tck = self.fit_bspline_surface_to_sky(imageMapOrder, o, bspline_order)
             # tck = False
-            imageMapOrder, tck = self.fit_bspline_curve_to_sky(imageMapOrder, o, bspline_order)
+            # imageMapOrder, tck = self.fit_bspline_curve_to_sky(imageMapOrder, o, bspline_order)
 
             # residuals = imageMapOrder.loc[imageMapOrder["clipped"] == False]["sky_subtracted_flux"]
             # slit = imageMapOrder.loc[imageMapOrder["clipped"] == False]["slit_position"]
@@ -288,13 +294,15 @@ class subtract_sky(object):
             self,
             imageMapOrder,
             order,
-            ignoreBP=True):
+            ignoreBP=True,
+            clipSlitEdge=False):
         """*unpack the over sampled sky from an order*
 
         **Key Arguments:**
             - ``imageMapOrder`` -- single order dataframe from object image and 2D map
             - ``order`` -- the order number
             - ``ignoreBP`` -- ignore bad-pixels? Deafult *True*
+            - ``clipSlitEdge`` -- clip the slit edges. Percentage of slit width to clip
 
         **Return:**
             - None
@@ -331,9 +339,14 @@ class subtract_sky(object):
         # FINDING A DYNAMIC SIZE FOR PERCENTILE FILTERING WINDOW
         windowSize = int(len(imageMapOrder.loc[imageMapOrder["y"] == imageMapOrder["y"].median()].index))
 
-        imageMapOrder.sort_values("wavelength", inplace=True)
         imageMapOrder["clipped"] = False
         imageMapOrder["object"] = False
+
+        if clipSlitEdge:
+            slitRange = imageMapOrder["slit_position"].max() - imageMapOrder["slit_position"].min()
+            clipSlitEdge *= slitRange
+            mask = ((imageMapOrder['slit_position'] > imageMapOrder["slit_position"].max() - clipSlitEdge) | (imageMapOrder['slit_position'] < imageMapOrder["slit_position"].min() + clipSlitEdge))
+            imageMapOrder.loc[mask, "clipped"] = True
 
         if not ignoreBP:
             # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -460,15 +473,15 @@ class subtract_sky(object):
         onerow.set_ylim(imageMapOrderWithObjectDF["x"].min() - 10, imageMapOrderWithObjectDF["x"].max() + 10)
         onerow.set_xlim(ylimMinImage, ylimMaxImage)
         # REMOVE ME
-        onerow.set_xlim(1510, 1600)
-        onerow.set_ylim(570, 630)
+        # onerow.set_xlim(1510, 1600)
+        # onerow.set_ylim(570, 630)
         # onerow.text(5, 5, 'your legend', bbox={'facecolor': 'white', 'pad': 10})
         onerow.invert_xaxis()
 
         # ORIGINAL DATA AND PERCENTILE SMOOTHED WAVELENGTH VS FLUX
-        raw = tworow.plot(
-            imageMapOrderWithObjectDF["wavelength"].values,
-            imageMapOrderWithObjectDF["flux"].values, label='unprocessed (unp)', c=rawColor, zorder=0)
+        # raw = tworow.plot(
+        #     imageMapOrderWithObjectDF["wavelength"].values,
+        #     imageMapOrderWithObjectDF["flux"].values, label='unprocessed (unp)', c=rawColor, zorder=0)
         # RAW MARKERS
         tworow.scatter(
             imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
@@ -491,8 +504,8 @@ class subtract_sky(object):
         #     imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == False, "flux_smoothed"].values, label=label, c=medianColor, zorder=medianZ)
         # PERCENTILE LINE
         tworow.plot(
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_smoothed"].values, label='percentile-smoothed', c=percentileColor, zorder=percentileZ)
+            imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "wavelength"].values,
+            imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "flux_smoothed"].values, label='percentile-smoothed', c="#C21820", zorder=percentileZ)
 
         # SIGMA RESIDUAL
         weights = tworow.plot(
@@ -680,7 +693,7 @@ class subtract_sky(object):
         outDir = self.settings["intermediate-data-root"].replace("~", home)
         filePath = f"{outDir}/{filename}"
         # REMOVE ME
-        # plt.show()
+        plt.show()
         plt.savefig(filePath, dpi='figure')
 
         self.log.debug('completed the ``plot_sky_sampling`` method')
@@ -749,9 +762,9 @@ class subtract_sky(object):
             else:
                 newlyClipped = len(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True].index) - totalClipped
                 totalClipped = len(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True].index)
-            if i > 1:
-                # Cursor up one line and clear line
-                sys.stdout.write("\x1b[1A\x1b[2K")
+
+            # Cursor up one line and clear line
+            sys.stdout.write("\x1b[1A\x1b[2K")
             percent = (float(totalClipped) / float(allPixels)) * 100.
             print(f'\tITERATION {i}: {newlyClipped} deviant pixels have been newly clipped within a {windowSize} data-point rolling window ({totalClipped} pixels clipped in total = {percent:1.1f}%)')
             if newlyClipped == 0:
@@ -1498,7 +1511,8 @@ class subtract_sky(object):
 
     def clip_object_slit_positions(
             self,
-            order_dataframes):
+            order_dataframes,
+            aggressive=False):
         """*find object slit ranges*
 
         **Key Arguments:**
@@ -1506,22 +1520,15 @@ class subtract_sky(object):
 
         **Return:**
             - ``order_dataframes`` -- the order dataframes with the object(s) slit-ranges clipped
+            - ``aggressive`` -- mask entire slit range where an object is expected to lie. Default *False*
 
         **Usage:**
 
         ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        allimageMapOrder = self.clip_object_slit_positions(
+            allimageMapOrder, 
+            aggressive=True
+        )
         ```
         """
         self.log.debug('starting the ``clip_object_slit_positions`` method')
@@ -1555,14 +1562,14 @@ class subtract_sky(object):
                 if count > 0.05:
                     record_range = True
             else:
-                if postiveCount > 3 and record_range:
+                if postiveCount > 4 and record_range:
                     object_ranges.append([lower, upper])
                 postiveCount = 0
                 lower = wl
                 upper = False
                 record_range = False
-        # if postiveCount > 3:
-        #     object_ranges.append([lower, upper])
+        if postiveCount > 4:
+            object_ranges.append([lower, upper])
 
         if 1 == 0:
             import matplotlib.pyplot as plt
@@ -1572,17 +1579,15 @@ class subtract_sky(object):
             bins = bins[:-1]
             rects1 = ax.bar(bins - width / 2, result, width, label='count')
             fig.tight_layout()
+            plt.show()
 
         # NOW FOR EACH OBJECT SLIT-RANGE, FLAG AS CLIPPED IN ORIGINAL ORDER DATAFRAMES
         for df in order_dataframes:
             for object in object_ranges:
-                print(object)
-                from tabulate import tabulate
-
-                # xpd-update-filter-dataframe-column-values
-
-                print(tabulate(df[df['slit_position'].between(object[0], object[1])].head(100), headers='keys', tablefmt='psql'))
-                df.loc[(df['slit_position'].between(object[0], object[1])) & (df['object'] == True), "clipped"] = True
+                if aggressive:
+                    df.loc[(df['slit_position'].between(object[0], object[1])), "clipped"] = True
+                else:
+                    df.loc[(df['slit_position'].between(object[0], object[1])) & (df['object'] == True), "clipped"] = True
 
         self.log.debug('completed the ``clip_object_slit_positions`` method')
         return order_dataframes

@@ -63,7 +63,7 @@ soxs-mflat:
 
 # UTILS
 background-subtraction:
-    bsline-deg: 2
+    bspline-deg: 2
     median-filter-pixels: 9
 
 

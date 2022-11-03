@@ -924,6 +924,7 @@ class _base_recipe_(object):
         self.log.debug('starting the ``detrend`` method')
 
         import ccdproc
+        from astropy import units as u
 
         arm = self.arm
         kw = self.kw
@@ -939,8 +940,7 @@ class _base_recipe_(object):
             raise TypeError(
                 "detrend method needs at least a master-bias frame and/or a dark frame to subtract")
         if master_bias == False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
-            raise AttributeError(
-                "Dark and science/calibration frame have differing exposure-times. A master-bias frame needs to be supplied to scale the dark frame to same exposure time as input science/calibration frame")
+            self.log.warning("Dark and science/calibration frame have differing exposure-times.")
         if master_bias != False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             raise AttributeError(
                 "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME")
@@ -954,6 +954,8 @@ class _base_recipe_(object):
         tolerence = 0.5
         if dark != False and (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence):
             processedFrame = ccdproc.subtract_bias(processedFrame, dark)
+        else:
+            processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
 
         if master_flat != False:
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat)

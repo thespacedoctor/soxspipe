@@ -411,7 +411,7 @@ def unpack_order_table(
         axisBbin = binx
 
     # ADD AXIS B COORD LIST
-    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 3200 if (math.ceil(u) + int(r * extend)) > 3200 else (math.ceil(u) + int(r * extend)), 1) for l, u, r in zip(
+    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), 1) for l, u, r in zip(
         orderMetaTable[f"{axisB}min"].values, orderMetaTable[f"{axisB}max"].values, orderMetaTable[f"{axisB}max"].values - orderMetaTable[f"{axisB}min"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
@@ -813,29 +813,29 @@ def twoD_disp_map_image_to_dataframe(
             thisDict["mask"] = assosiatedFrame.mask.flatten()
             thisDict["error"] = assosiatedFrame.uncertainty.flatten()
 
-        mapDF = pd.DataFrame.from_dict(thisDict)
-        if removeMaskedPixels:
-            mask = (mapDF["mask"] == False)
-            mapDF = mapDF.loc[mask]
-
-        mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
     except:
         if assosiatedFrame:
             thisDict["flux"] = assosiatedFrame.data.flatten().byteswap().newbyteorder()
             thisDict["mask"] = assosiatedFrame.mask.flatten().byteswap().newbyteorder()
             thisDict["error"] = assosiatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
 
-        mapDF = pd.DataFrame.from_dict(thisDict)
-        if removeMaskedPixels:
-            mask = (mapDF["mask"] == False)
-            mapDF = mapDF.loc[mask]
+    mapDF = pd.DataFrame.from_dict(thisDict)
+    if removeMaskedPixels:
+        mask = (mapDF["mask"] == False)
+        mapDF = mapDF.loc[mask]
 
-        mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+    # REMOVE ZEROS
+    mask = (mapDF['wavelength'] == 0)
+    mapDF = mapDF.loc[~mask]
+
+    mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
     # REMOVE FILTERED ROWS FROM DATA FRAME
-    # slit_length = slit_length * 0.9
     mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
     mapDF.drop(index=mapDF[mask].index, inplace=True)
+
+    # SORT BY COLUMN NAME
+    mapDF.sort_values(['wavelength'], inplace=True)
 
     log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
     return mapDF

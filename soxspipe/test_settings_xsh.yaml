@@ -129,6 +129,7 @@ soxs-stare:
 #     # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
 #     percential_clipping_sigma: 2.
 #     percential_clipping_iterations: 3
+#     aggressive_object_masking: True
 #     percential_rolling_window_size: 15
 
 sky-subtraction:
@@ -141,6 +142,7 @@ sky-subtraction:
     percential_clipping_sigma: 2.9
     percential_clipping_iterations: 10
     percential_rolling_window_size: 15
+    aggressive_object_masking: True
     bspline_order: 3
         
 soxs-straighten:
@@ -148,7 +150,7 @@ soxs-straighten:
 
 # UTILS
 background-subtraction:
-    bsline-deg: 2
+    bspline-deg: 2
     median-filter-pixels: 9
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data/xsh

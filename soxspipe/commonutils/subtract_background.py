@@ -121,7 +121,7 @@ class subtract_background(object):
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderTable, extend=1.5)
+            log=self.log, orderTablePath=self.orderTable, extend=4)
 
         originalMask = np.copy(self.frame.mask)
 
@@ -132,7 +132,7 @@ class subtract_background(object):
             log=self.log, CCDObject=self.frame, show=False, ext=None, surfacePlot=True, title="Initial input frame with order pixels masked")
 
         backgroundFrame = self.create_background_image(
-            rowFitOrder=self.settings['background-subtraction']['bsline-deg'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
+            rowFitOrder=self.settings['background-subtraction']['bspline-deg'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
 
         # REPLACE MASK
         self.frame.mask = originalMask
@@ -141,7 +141,7 @@ class subtract_background(object):
         backgroundSubtractedFrame.header = self.frame.header
 
         quicklook_image(
-            log=self.log, CCDObject=backgroundSubtractedFrame, show=False, ext='data')
+            log=self.log, CCDObject=backgroundFrame, show=False, ext='data', stdWindow=3, surfacePlot=True, title="Scattered Light Image")
 
         self.log.debug('completed the ``subtract`` method')
         return backgroundFrame, backgroundSubtractedFrame

@@ -70,7 +70,7 @@ class soxs_stare(_base_recipe_):
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
-        from soxspipe.commonutils.set_of_files import set_of_filesw
+        from soxspipe.commonutils.set_of_files import set_of_files
         sof = set_of_files(
             log=self.log,
             settings=self.settings,
@@ -193,17 +193,28 @@ class soxs_stare(_base_recipe_):
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
 
+        if not len(allObjectFrames):
+            if not len(allObjectFrames):
+                add_filters = {kw("DPR_TYPE"): 'STD,FLUX',
+                               kw("DPR_TECH"): 'ECHELLE,SLIT,NODDING'}
+                allObjectFrames = []
+                for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                    singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                               hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+                    allObjectFrames.append(singleFrame)
+                self.log.warning("Processing a NODDING frame with the stare-mode recipe")
+
         combined_object = self.clip_and_stack(
             frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=False, post_stack_clipping=False)
         self.dateObs = combined_object.header[kw("DATE_OBS")]
 
-        add_filters = {kw("DPR_CATG"): 'MASTER_BIAS_' + arm}
+        add_filters = {kw("PRO_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # UVB/VIS DARK
-        add_filters = {kw("DPR_CATG"): 'MASTER_DARK_' + arm}
+        add_filters = {kw("PRO_CATG"): 'MASTER_DARK_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -216,7 +227,7 @@ class soxs_stare(_base_recipe_):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # UVB/VIS/NIR FLAT
-        add_filters = {kw("DPR_CATG"): 'MASTER_LAMP-FLAT_' + arm}
+        add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             master_flat = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -236,6 +247,10 @@ class soxs_stare(_base_recipe_):
         combined_object = self.detrend(
             inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
 
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=1, title=False, surfacePlot=True)
+
         skymodel = subtract_sky(
             log=self.log,
             settings=self.settings,
@@ -243,7 +258,8 @@ class soxs_stare(_base_recipe_):
             twoDMap=twoDMap,
             qcTable=self.qc,
             productsTable=self.products,
-            dispMap=dispMap
+            dispMap=dispMap,
+            sofName=self.sofName
         )
         skymodelCCDData, skySubtractedCCDData, self.qc, self.products = skymodel.subtract()
 

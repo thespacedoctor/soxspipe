@@ -1,20 +1,29 @@
 
 # Release Notes
 
-2D Map generatation now ~6-8 times faster (seeding solutions with nearest neighbour with cubic spline method)
-Handling of binned images when generating flats and order-locations
-Where possible, product files are given the same name as the SOF file used to generate them (replacing `.sof` extension with `.fits`)
-SOF filenames reworked to contain the UTC observation date instead of MJD (more inline with ESO ecosystems)
-Pipeline exists gracefully if product already exists on file. Use can choose to overwrite the product file with the `-x` flag.
-updated workflow for master bias combination
-updated workflow for master dark combination
-dispersion solution now working with simulated NIR SOXS data
-UV D-Lamp and QTH-Lamp master flats now being stitched together
-mflat docs brought up-to-date
-quicklook now renders dispersion solution grid
-added a `twoD_disp_map_image_to_dataframe` function to toolkit
-errors in error maps now being treated correctly and propagating to combined images
-\~40% speed gain in combining images.
+## v0.7.0 - November 2, 2022
+
+* **FEATURE:** UV D-Lamp and QTH-Lamp master flats now being stitched together
+* **FEATURE:** errors in error maps now being treated correctly and propagating to combined images
+* **FEATURE:** Pipeline can now 'remember' where it left off in the reduction cascade. If it has run a recipe before it will exit with a message to the user informing them how to force the recipe to rerun.
+* **FEATURE:** added a `twoD_disp_map_image_to_dataframe` function to toolkit
+* **ENHANCEMENT:** PRO CATG now written to product FITS header
+* **ENHANCEMENT:** Handling of binned images when generating flats and order-locations
+* **ENHANCEMENT:** Where possible, product files are given the same name as the SOF file used to generate them (replacing `.sof` extension with `.fits`)
+* **ENHANCEMENT:** SOF files can now contain a file 'tag' to allow users to read the SOF file contents and know exactly which files are being passed to the recipe (e.g. `MASTER_BIAS_UVB`, `LAMP,DORDERDEF_UVB` ... )
+* **ENHANCEMENT:** dispersion solution now working with simulated NIR SOXS data
+* **ENHANCEMENT:** quicklook now renders dispersion solution grid
+* **ENHANCEMENT:** \~40% speed gain in combining images.
+* **REFACTOR:** 2D Map generation now ~6-8 times faster (seeding solutions with nearest neighbour with cubic spline method)
+* **REFACTOR:** SOF filenames reworked to contain the UTC observation date instead of MJD (more in-line with ESO ecosystems)\
+* **REFACTOR:** updated workflow for master bias combination
+* **REFACTOR:** updated workflow for master dark combination
+* **REFACTOR:** QC PDF plots now added to their own directory separate from the products
+* **REFACTOR:** products now sub-divided into recipe directories (e.g. `./products/soxs-mbias/`)
+* **DOCS:** mflat docs brought up-to-date
+* **DOCS:** mflat docs brought up-to-date
+* **FIXED:** mflat recipe now exits if flat frames are not of a consistent exptime.
+
 
 ## v0.6.2 - April 13, 2022
 

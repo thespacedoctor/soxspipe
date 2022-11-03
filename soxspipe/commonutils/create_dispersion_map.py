@@ -57,7 +57,9 @@ class create_dispersion_map(object):
         log=log,
         settings=settings,
         pinholeFrame=frame,
-        firstGuessMap=False
+        firstGuessMap=False,
+        qcTable=self.qc,
+        productsTable=self.products
     ).get()
     ```
     """
@@ -1065,10 +1067,6 @@ class create_dispersion_map(object):
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
 
-        # NOTE TO SELF: if having issue with multiprocessing stalling, try and
-        # import required modules into the method/function running this
-        # fmultiprocess function instead of at the module level
-
         slitMap, wlMap, orderMap = self.create_placeholder_images(reverse=True)
 
         combinedSlitImage = Combiner(slitImages)
@@ -1081,12 +1079,13 @@ class create_dispersion_map(object):
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
+        outDir = outDir.replace("//", "/")
 
         # GET THE EXTENSION (WITH DOT PREFIX)
         extension = os.path.splitext(dispersionMapPath)[1]
         filename = os.path.basename(
-            dispersionMapPath).replace(f"_MAP{extension}", "_MAP_IMAGE.fits")
+            dispersionMapPath).replace(extension, "_IMAGE.fits")
 
         dispersion_image_filePath = f"{outDir}/{filename}"
         # WRITE CCDDATA OBJECT TO FILE
@@ -1134,14 +1133,17 @@ class create_dispersion_map(object):
 
         # FIRST GENERATE A WAVELENGTH SURFACE - FINE WL, CHUNKY SLIT-POSTION
         wlRange = maxWl - minWl
-        grid_res_wavelength = wlRange / 3000
+        if self.arm.lower == "nir":
+            grid_res_wavelength = wlRange / 3500
+        else:
+            grid_res_wavelength = wlRange / 6000
         slitLength = self.detectorParams["slit_length"]
-        grid_res_slit = slitLength / 70
+        grid_res_slit = slitLength / 100
 
         halfGrid = (slitLength / 2) * 1.2
         slitArray = np.arange(-halfGrid, halfGrid +
                               grid_res_slit, grid_res_slit)
-        wlArray = np.arange(minWl - 20, maxWl + 20, grid_res_wavelength)
+        wlArray = np.arange(minWl - int(wlRange / 10), maxWl + int(wlRange / 10), grid_res_wavelength)
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
         bigSlitArray = np.concatenate(
             [np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
@@ -1155,10 +1157,11 @@ class create_dispersion_map(object):
         while remainingPixels and remainingCount and iteration < iterationLimit:
             iteration += 1
 
+            # GENERATE THE ORDERPIXEL TABLE FROM WL AND SLIT-POSTION GRID .. IF WITHIN THRESHOLD OF CENTRE OF DETECTOR PIXEL THEN INJECT INTO MAPS
             orderPixelTable, remainingCount = self.convert_and_fit(
                 order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
 
-            if remainingCount < 4:
+            if remainingCount < 3:
                 break
 
             train_wlx = orderPixelTable["fit_x"].values
@@ -1169,6 +1172,7 @@ class create_dispersion_map(object):
             g['pixel_x'] += 0.5
             g['pixel_y'] += 0.5
 
+            # USE CUBIC SPLINE NEIGHEST NEIGHBOUR TO SEED RESULTS
             bigWlArray = griddata((train_wlx, train_wly), train_wl, (g['pixel_x'].values, g['pixel_y'].values), method="cubic")
             bigSlitArray = griddata((train_wlx, train_wly), train_sp, (g['pixel_x'].values, g['pixel_y'].values), method="cubic")
 
@@ -1245,77 +1249,6 @@ class create_dispersion_map(object):
         orderPixelTable = orderPixelTable.sort_values(
             ['order', 'pixel_x', 'pixel_y', 'residual_xy'])
 
-        # REMVOE LOW COUNT PIXELS AT EDGES OF ORDER
-        # mask = (orderPixelTable['count'] > 2)
-        # orderPixelTable = orderPixelTable.loc[mask]
-
-        if plots:
-            # PLOT CENTRAL PIXEL
-            medX = orderPixelTable.iloc[
-                int(len(orderPixelTable.index) / 2)]['pixel_x']
-            medY = orderPixelTable.iloc[
-                int(len(orderPixelTable.index) / 2)]['pixel_y']
-            mask = (orderPixelTable['pixel_x'] == medX) & (
-                orderPixelTable['pixel_y'] == medY)
-            filteredDf = orderPixelTable.loc[mask]
-            fit_x = filteredDf['fit_x'].values - medX - 0.5
-            fit_y = filteredDf['fit_y'].values - medY - 0.5
-
-            count = int(len(filteredDf.index))
-            windowSize = self.gridSize**2 / (2 * count)
-            mean_x = np.mean(filteredDf['fit_x'].values)
-            mean_y = np.mean(filteredDf['fit_y'].values)
-            mean_x_offset = abs(mean_x - (medX + 0.5))
-            mean_y_offset = abs(mean_y - (medY + 0.5))
-            mean_xy_offset = np.sqrt(np.square(
-                mean_x_offset) + np.square(mean_y_offset))
-
-            if mean_xy_offset < filteredDf['residual_xy'].values[0]:
-                best_offset_x = abs(mean_x_offset)
-                best_offset_y = abs(mean_y_offset)
-            else:
-                best_offset_x = abs(filteredDf['residual_x'].values[0])
-                best_offset_y = abs(filteredDf['residual_y'].values[0])
-
-            offsetStdRatioX = best_offset_x * 2. / np.std(fit_x)
-            offsetStdRatioY = best_offset_y * 2. / np.std(fit_y)
-
-            if filteredDf['residual_x'].min() > 0 or filteredDf['residual_x'].max() < 0 or filteredDf['residual_y'].min() > 0 or filteredDf['residual_y'].max() < 0:
-                centred = False
-            else:
-                centred = True
-
-            from tabulate import tabulate
-            # print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
-            print(f"PIXEL LOCATION STDEV: {np.std(fit_x)}, {np.std(fit_y)}")
-            print(f"OFFSET RATIOS: {offsetStdRatioX}, {offsetStdRatioY}")
-            print(f"WAVELENGTH/SLIT STDEV: {filteredDf['wavelength'].std()}, {filteredDf['slit_position'].std()}")
-            print(f"OFFSET RATIOS: {offsetStdRatioX}, {offsetStdRatioY}")
-
-            # print(filteredDf)
-            print(f"Pixel ({medX}, {medY})")
-            import matplotlib.pyplot as plt
-            from matplotlib.patches import Rectangle
-            plt.grid()
-            plt.xlim([-0.5, 0.5])
-            plt.ylim([-0.5, 0.5])
-            plt.plot(fit_x, fit_y, 'o', color='black', label=f"sample (count = {count})", ms=2)
-            plt.plot(np.mean(fit_x), np.mean(fit_y), 'x',
-                     color='cyan', label=f"mean (centred = {centred})", ms=3)
-            plt.plot(fit_x[0], fit_y[0], 'o', color='green', label=f"closest {filteredDf['residual_xy'].values[0]:0.3f}", ms=2)
-            plt.plot(0, 0, 'x', color='red', label="pixel centre", ms=2)
-            plt.legend(loc=2, prop={'size': 8})
-            if mean_xy_offset > filteredDf['residual_xy'].values[0]:
-                plt.gca().add_patch(Rectangle((fit_x[0] - np.std(fit_x) * offsetStdRatioX, fit_y[0] - np.std(fit_y) * offsetStdRatioY), np.std(fit_x) * offsetStdRatioX * 2, np.std(fit_y) * offsetStdRatioY * 2,
-                                              edgecolor='red',
-                                              facecolor='none',
-                                              lw=1))
-            else:
-                plt.gca().add_patch(Rectangle((np.mean(fit_x) - np.std(fit_x) * offsetStdRatioX, np.mean(fit_y) - np.std(fit_y) * offsetStdRatioY), np.std(fit_x) * offsetStdRatioX * 2, np.std(fit_y) * offsetStdRatioY * 2,
-                                              edgecolor='cyan',
-                                              facecolor='none',
-                                              lw=1))
-
         # FILTER TO WL/SLIT POSITION CLOSE ENOUGH TO CENTRE OF PIXEL
         mask = (orderPixelTable['residual_xy'] <
                 self.map_to_image_displacement_threshold)
@@ -1345,6 +1278,7 @@ class create_dispersion_map(object):
 
         if plots:
             from matplotlib import cm
+            import matplotlib.pyplot as plt
             # PLOT CCDDATA OBJECT
             rotatedImg = slitMap.data
             if self.axisA == "x":
