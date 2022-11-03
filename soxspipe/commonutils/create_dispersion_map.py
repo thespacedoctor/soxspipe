@@ -1085,6 +1085,8 @@ class create_dispersion_map(object):
         if not os.path.exists(outDir):
             os.makedirs(outDir)
 
+        #
+
         # GET THE EXTENSION (WITH DOT PREFIX)
         extension = os.path.splitext(dispersionMapPath)[1]
         filename = os.path.basename(
