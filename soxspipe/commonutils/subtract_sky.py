@@ -948,7 +948,7 @@ class subtract_sky(object):
         # SORT BY COLUMN NAME
         df = imageMapOrder.copy()
         df.sort_values(by=['wavelength'], inplace=True)
-        # df.drop_duplicates(subset=['wavelength'], inplace=True)
+        df.drop_duplicates(subset=['wavelength'], inplace=True)
 
         goodWl = df.loc[df["clipped"] == False]["wavelength"]
         goodFlux = df.loc[df["clipped"] == False]["flux"]

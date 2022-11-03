@@ -1081,6 +1081,9 @@ class create_dispersion_map(object):
         home = expanduser("~")
         outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
         outDir = outDir.replace("//", "/")
+        # Recursively create missing directories
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
 
         # GET THE EXTENSION (WITH DOT PREFIX)
         extension = os.path.splitext(dispersionMapPath)[1]
