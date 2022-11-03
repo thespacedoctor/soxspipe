@@ -954,7 +954,7 @@ class _base_recipe_(object):
         tolerence = 0.5
         if dark != False and (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence):
             processedFrame = ccdproc.subtract_bias(processedFrame, dark)
-        else:
+        elif dark != False:
             processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
 
         if master_flat != False:

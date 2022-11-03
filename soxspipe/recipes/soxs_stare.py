@@ -205,7 +205,7 @@ class soxs_stare(_base_recipe_):
                 self.log.warning("Processing a NODDING frame with the stare-mode recipe")
 
         combined_object = self.clip_and_stack(
-            frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=False, post_stack_clipping=False)
+            frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=True, post_stack_clipping=False)
         self.dateObs = combined_object.header[kw("DATE_OBS")]
 
         add_filters = {kw("PRO_CATG"): 'MASTER_BIAS_' + arm}
@@ -259,7 +259,8 @@ class soxs_stare(_base_recipe_):
             qcTable=self.qc,
             productsTable=self.products,
             dispMap=dispMap,
-            sofName=self.sofName
+            sofName=self.sofName,
+            recipeName=self.recipeName
         )
         skymodelCCDData, skySubtractedCCDData, self.qc, self.products = skymodel.subtract()
 
@@ -269,16 +270,6 @@ class soxs_stare(_base_recipe_):
         # filename = "/override/filename.fits"
         filepath = self._write(combined_object, fileDir, filename="combined_object_frame.fits", overwrite=True)
         # print(f"\nxxx frame saved to {filepath}\n")
-
-        # sys.exit(0)
-
-        # OBJECT
-        # add_filters = {kw("DPR_CATG"): 'OBJECT'}
-        # for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-        #     master_flat = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
-        #                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
-
-        # xsoxs-append-to-product-report-table
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(

@@ -12,17 +12,17 @@ instrument: xsh
 data-extension: 0
 
 soxs-mbias:
-    stacked-clipping-sigma: 3
+    stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-lower-sigma: 5
-    clipping-upper-sigma: 5   
+    clipping-lower-sigma: 3
+    clipping-upper-sigma: 3   
     clipping-iteration-count: 5
 
 soxs-mdark:
-    stacked-clipping-sigma: 3
+    stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-lower-sigma: 5
-    clipping-upper-sigma: 5   
+    clipping-lower-sigma: 3
+    clipping-upper-sigma: 3   
     clipping-iteration-count: 5
 
 soxs-disp-solution:
@@ -40,13 +40,13 @@ soxs-order-centre:
     # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
     peak-sigma-limit: 3
     # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-    disp-axis-deg: 5
+    disp-axis-deg: 3
     # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
     order-deg: 5
     # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-    poly-fitting-residual-clipping-sigma: 2.0
+    poly-fitting-residual-clipping-sigma: 3
     # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-    poly-clipping-iteration-limit: 10
+    poly-clipping-iteration-limit: 7
 
 soxs-spatial-solution:
     pixel-window-size: 10
@@ -55,6 +55,7 @@ soxs-spatial-solution:
     slit-deg: 3
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
+    map_to_image_displacement_threshold: 0.001 # in pixels
 
 
 soxs-mflat:
@@ -62,8 +63,8 @@ soxs-mflat:
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
     clipping-lower-sigma: 50
-    clipping-upper-sigma: 50   
-    clipping-iteration-count: 0
+    clipping-upper-sigma: 1000   
+    clipping-iteration-count: 1
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20
@@ -77,9 +78,9 @@ soxs-mflat:
 soxs-stare:
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-iteration-count: 0
-    clipping-lower-sigma: 10
-    clipping-upper-sigma: 10 
+    clipping-iteration-count: 1
+    clipping-lower-sigma: 50
+    clipping-upper-sigma: 1000 
 
 sky-subtraction:
     # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
@@ -88,15 +89,15 @@ sky-subtraction:
     # ROLLING WINDOW LENGTH IN DATA POINTS
     median_rolling_window_size: 31
     # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-    percential_clipping_sigma: 2.9
-    percential_clipping_iterations: 10
+    percential_clipping_sigma: 2
+    percential_clipping_iterations: 3
     percential_rolling_window_size: 15
     aggressive_object_masking: True
     bspline_order: 3
 
 # UTILS
 background-subtraction:
-    bspline-deg: 2
+    bspline-deg: 3
     median-filter-pixels: 9
 
 logging settings:
