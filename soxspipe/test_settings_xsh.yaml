@@ -183,12 +183,12 @@ logging settings:
             stream: ext://sys.stdout
         file:
             class: logging.handlers.GroupWriteRotatingFileHandler
-            level: WARNING
+            level: INFO
             formatter: file_style
             filename: ~/.config/soxspipe/soxspipe.log
             mode: w+
             maxBytes: 102400
             backupCount: 1
     root:
-        level: WARNING
+        level: INFO
         handlers: [file,console]
