@@ -65,7 +65,8 @@ class test_soxs_spatial_solution(unittest.TestCase):
             log=log2,
             settings=settings2,
             inputFrames=sofPath,
-            overwrite=True
+            overwrite=True,
+            create2DMap=False
         )
         this.produce_product()
 
@@ -76,7 +77,8 @@ class test_soxs_spatial_solution(unittest.TestCase):
             log=log,
             settings=settings,
             inputFrames=sofPath,
-            overwrite=True
+            overwrite=True,
+            create2DMap=False
         )
         this.produce_product()
 

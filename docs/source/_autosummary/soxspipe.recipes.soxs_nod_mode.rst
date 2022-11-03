@@ -51,6 +51,14 @@
        
    
         
+            ~soxs_nod_mode.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_nod_mode.update_fits_keywords
+       
+   
+        
             ~soxs_nod_mode.verify_input_frames
        
    
@@ -130,6 +138,10 @@
    ..     
    ..          ~soxs_nod_mode._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

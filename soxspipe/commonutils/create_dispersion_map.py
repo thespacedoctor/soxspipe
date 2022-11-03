@@ -48,6 +48,7 @@ class create_dispersion_map(object):
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
         - ``sofName`` -- name of the originating SOF file
+        - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
 
     **Usage:**
 
@@ -73,7 +74,8 @@ class create_dispersion_map(object):
             orderTable=False,
             qcTable=False,
             productsTable=False,
-            sofName=False
+            sofName=False,
+            create2DMap=True
     ):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
@@ -87,6 +89,7 @@ class create_dispersion_map(object):
         self.qc = qcTable
         self.products = productsTable
         self.sofName = sofName
+        self.create2DMap = create2DMap
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -205,7 +208,7 @@ class create_dispersion_map(object):
         mapPath = self.write_map_to_file(
             popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
 
-        if self.firstGuessMap and self.orderTable:
+        if self.firstGuessMap and self.orderTable and self.create2DMap:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
             return mapPath, mapImagePath, res_plots, self.qc, self.products
 

@@ -27,27 +27,7 @@ class ImageFileCollection(ImageFileCollection):
     def _dict_from_fits_header(self, file_name, input_summary=None,
                                missing_marker=None):
         """
-        Construct an ordered dictionary whose keys are the header keywords
-        and values are a list of the values from this file and the input
-        dictionary. If the input dictionary is ordered then that order is
-        preserved.
 
-        Parameters
-        ----------
-        file_name : str
-            Name of FITS file.
-
-        input_summary : dict or None, optional
-            Existing dictionary to which new values should be appended.
-            Default is ``None``.
-
-        missing_marker : any type, optional
-            Fill value for missing header-keywords.
-            Default is ``None``.
-
-        Returns
-        -------
-        file_table : `~astropy.table.Table`
         """
         from astropy.io import fits
 

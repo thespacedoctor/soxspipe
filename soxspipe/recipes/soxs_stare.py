@@ -29,7 +29,7 @@ class soxs_stare(_base_recipe_):
 
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
+        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
         - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
@@ -43,6 +43,7 @@ class soxs_stare(_base_recipe_):
         - create a sublime snippet for usage
         - create cl-util for this class
         - add a tutorial about ``soxs_stare`` to documentation
+
     ```
     """
     # Initialisation

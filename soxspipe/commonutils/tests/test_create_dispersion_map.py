@@ -85,7 +85,8 @@ class test_create_dispersion_map(unittest.TestCase):
             settings=settings,
             pinholeFrame=frame,
             qcTable=qc,
-            productsTable=products
+            productsTable=products,
+            create2DMap=False
         ).get()
         print(mapPath)
 
@@ -126,7 +127,8 @@ class test_create_dispersion_map(unittest.TestCase):
             pinholeFrame=frame,
             firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T172310_NIR_DISP_MAP.fits",
             qcTable=qc,
-            productsTable=products
+            productsTable=products,
+            create2DMap=False
         ).get()
         print(mapPath)
 

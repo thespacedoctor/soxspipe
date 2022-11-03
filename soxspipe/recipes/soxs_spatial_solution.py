@@ -30,6 +30,7 @@ class soxs_spatial_solution(_base_recipe_):
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths
         - ``verbose`` -- verbose. True or False. Default *False*
         - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+        - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
 
     See `produce_product` method for usage.
 
@@ -37,6 +38,7 @@ class soxs_spatial_solution(_base_recipe_):
     .. todo::
 
         - add a tutorial about ``soxs_spatial_solution`` to documentation
+
     ```
     """
     # Initialisation
@@ -47,7 +49,8 @@ class soxs_spatial_solution(_base_recipe_):
             settings=False,
             inputFrames=[],
             verbose=False,
-            overwrite=False
+            overwrite=False,
+            create2DMap=True
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
@@ -59,6 +62,8 @@ class soxs_spatial_solution(_base_recipe_):
         self.inputFrames = inputFrames
         self.verbose = verbose
         self.recipeSettings = settings[self.recipeName]
+        self.create2DMap = create2DMap
+
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
@@ -244,7 +249,8 @@ class soxs_spatial_solution(_base_recipe_):
             orderTable=order_table,
             qcTable=self.qc,
             productsTable=self.products,
-            sofName=self.sofName
+            sofName=self.sofName,
+            create2DMap=self.create2DMap
         ).get()
 
         from datetime import datetime
@@ -267,17 +273,18 @@ class soxs_spatial_solution(_base_recipe_):
             "file_path": productPath
         }, ignore_index=True)
 
-        filename = os.path.basename(mapImagePath)
-        self.products = self.products.append({
-            "soxspipe_recipe": self.recipeName,
-            "product_label": "2D_MAP",
-            "file_name": filename,
-            "file_type": "FITS",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"{self.arm} 2D detector map of wavelength, slit position and order",
-            "file_path": productPath
-        }, ignore_index=True)
+        if mapImagePath:
+            filename = os.path.basename(mapImagePath)
+            self.products = self.products.append({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": "2D_MAP",
+                "file_name": filename,
+                "file_type": "FITS",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"{self.arm} 2D detector map of wavelength, slit position and order",
+                "file_path": productPath
+            }, ignore_index=True)
 
         self.report_output()
 

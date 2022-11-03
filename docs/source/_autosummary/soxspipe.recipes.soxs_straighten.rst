@@ -51,6 +51,14 @@
        
    
         
+            ~soxs_straighten.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_straighten.update_fits_keywords
+       
+   
+        
             ~soxs_straighten.verify_input_frames
        
    
@@ -130,6 +138,10 @@
    ..     
    ..          ~soxs_straighten._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

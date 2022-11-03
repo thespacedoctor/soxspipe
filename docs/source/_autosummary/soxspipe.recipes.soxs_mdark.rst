@@ -51,6 +51,14 @@
        
    
         
+            ~soxs_mdark.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_mdark.update_fits_keywords
+       
+   
+        
             ~soxs_mdark.verify_input_frames
        
    
@@ -130,6 +138,10 @@
    ..     
    ..          ~soxs_mdark._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

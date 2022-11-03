@@ -59,7 +59,11 @@
        
    
         
-            ~soxs_mbias.subtact_mean_bias_level
+            ~soxs_mbias.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_mbias.update_fits_keywords
        
    
         
@@ -142,6 +146,8 @@
    ..     
    ..          ~soxs_mbias._write
    ..      
+   .. 
+   ..     
    .. 
    ..     
    .. 
