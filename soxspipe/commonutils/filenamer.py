@@ -101,7 +101,7 @@ def filenamer(
     obsmode = None
 
     # DETERMINE THE TYPE
-    if kw("PRO_TYPE") in frame.header:
+    if kw("DPR_TYPE") not in frame.header and kw("PRO_TYPE") in frame.header:
         return None
 
     if frame.header[kw("DPR_TYPE")].upper() == "BIAS":
