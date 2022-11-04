@@ -149,6 +149,8 @@ Run the pipeline in stare mode. This recipe is not yet complete but will model a
 
 
 ```bash
+soxspipe stare ./sof/2019.08.31T00.13.29.037_UVB_1X1_SLOW_STARE_SAX_J1808.43658.sof -o ./
+soxspipe stare ./sof/2019.08.31T00.13.29.026_VIS_1X1_SLOW_STARE_SAX_J1808.43658.sof -o ./
 soxspipe stare ./sof/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658.sof -o ./
 ```
 
