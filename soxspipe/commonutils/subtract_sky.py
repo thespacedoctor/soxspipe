@@ -185,6 +185,15 @@ class subtract_sky(object):
             #     continue
 
             imageMapOrder, tck = self.fit_csaps_curve(imageMapOrder, o, bspline_order)
+
+            # CLIP EXTREMES OF ORDERS
+            wlrange = imageMapOrder["wavelength"].max() - imageMapOrder["wavelength"].max()
+            # FILTER DATA FRAME
+            # FIRST CREATE THE MASK
+            mask = (imageMapOrder["wavelength"] < imageMapOrder["wavelength"].max() - wlrange * 0.05) & (imageMapOrder["wavelength"] < imageMapOrder["wavelength"].min() + wlrange * 0.05)
+            imageMapOrder.loc[mask, "sky_model"] = np.nan
+            imageMapOrder.loc[mask, "sky_subtracted_flux"] = np.nan
+
             # tck = False
             # imageMapOrder, tck = self.fit_bspline_curve_to_sky(imageMapOrder, o, bspline_order)
 
@@ -432,9 +441,9 @@ class subtract_sky(object):
         frame = self.objectFrame.copy()
 
         # SETUP THE PLOT SUB-PANELS
-        # fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=320)
+        fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=320)
         # REMOVE ME
-        fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=100)
+        # fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=100)
         gs = fig.add_gridspec(11, 4)
         # CREATE THE GID OF AXES
         onerow = fig.add_subplot(gs[1:2, :])
@@ -1660,8 +1669,9 @@ class subtract_sky(object):
         bins = np.linspace(minsp, maxsp, nbins)
         result = allimageMapOrder['slit_position'].value_counts(bins=bins, sort=False, normalize=True) * nbins
 
-        # REMOVE MEDIAN TWICE -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
+        # REMOVE MEDIAN x 3 -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
         result -= result.median()
+        result -= result.abs().median()
         result -= result.abs().median()
 
         # NEED 3 POSTIVE BINS IN A ROW TO BE SELECTED AS AN OBJECT
