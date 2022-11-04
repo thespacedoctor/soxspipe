@@ -25,6 +25,7 @@ install_requires = [
     'tabulate',
     'bottleneck',
     'multiprocess',
+    'csaps'
 ]
 
 # READ THE DOCS SERVERS
