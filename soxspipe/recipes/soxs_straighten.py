@@ -24,24 +24,7 @@ class soxs_straighten(_base_recipe_):
     """
     *The soxs_straighten recipe*
 
-    **Key Arguments**
 
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths. 
-        - ``verbose`` -- verbose. True or False. Default *False*  
-        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
-
-    See `produce_product` method for usage.
-
-    ```eval_rst
-    .. todo::
-
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``soxs_straighten`` to documentation
-    ```
     """
     # Initialisation
 

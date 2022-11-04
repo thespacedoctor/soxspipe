@@ -67,6 +67,14 @@
        
    
         
+            ~soxs_mflat.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_mflat.update_fits_keywords
+       
+   
+        
             ~soxs_mflat.verify_input_frames
        
    
@@ -146,6 +154,10 @@
    ..     
    ..          ~soxs_mflat._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

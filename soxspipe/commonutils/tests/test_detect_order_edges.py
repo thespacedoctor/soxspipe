@@ -49,26 +49,26 @@ if not os.path.exists(pathToOutputDir):
 
 class test_detect_order_edges(unittest.TestCase):
 
-    def test_detect_nir_order_edges_function(self):
+    # def test_detect_nir_order_edges_function(self):
 
-        flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/first_iteration_NIR_master_flat.fits"
-        orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/20170819T150225_NIR_ORDER_LOCATIONS.fits"
-        home = expanduser("~")
-        flatPath = flatPath.replace("~", home)
-        orderCentreTable = orderCentreTable.replace("~", home)
-        flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+    #     flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/first_iteration_NIR_master_flat.fits"
+    #     orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/20170819T150225_NIR_ORDER_LOCATIONS.fits"
+    #     home = expanduser("~")
+    #     flatPath = flatPath.replace("~", home)
+    #     orderCentreTable = orderCentreTable.replace("~", home)
+    #     flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+    #                              hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        from soxspipe.commonutils import detect_order_edges
-        edges = detect_order_edges(
-            log=log,
-            flatFrame=flatFrame,
-            orderCentreTable=orderCentreTable,
-            settings=settings,
-            qcTable=False,
-            productsTable=False
-        )
-        edges.get()
+    #     from soxspipe.commonutils import detect_order_edges
+    #     edges = detect_order_edges(
+    #         log=log,
+    #         flatFrame=flatFrame,
+    #         orderCentreTable=orderCentreTable,
+    #         settings=settings,
+    #         qcTable=False,
+    #         productsTable=False
+    #     )
+    #     edges.get()
 
     # def test_detect_vis_order_edges_function(self):
 

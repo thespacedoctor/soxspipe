@@ -51,6 +51,14 @@
        
    
         
+            ~soxs_order_centres.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_order_centres.update_fits_keywords
+       
+   
+        
             ~soxs_order_centres.verify_input_frames
        
    
@@ -130,6 +138,10 @@
    ..     
    ..          ~soxs_order_centres._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

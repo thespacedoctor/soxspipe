@@ -47,7 +47,7 @@ This adds a default soxspipe settings file and log file within `~/.config/soxspi
 
 ```eval_rst
 .. note::
-    Although demo data here is XShooter data, the pipeline can also run on simulated SOXS data (at least for dark frames)
+    Although demo data here is XShooter data, the pipeline can also run on simulated SOXS data.
 ```
 
 The demo XShooter data (stare-mode) is of the X-ray binary SAX J1808.4-3658 taken during a 2019 outburst. You can download and unpack the data with the following commands:
@@ -72,36 +72,32 @@ To help you get familiar with running the pipeline, one or two example commands 
 
 ## MBIAS
 
-Change into the `soxspipe-quickstart-demo` direwctory and create a master bias frames with a command like:
+Change into the `soxspipe-quickstart-demo` directory and create a master bias frames with a command like:
 
 ```bash
 cd soxspipe-quickstart-demo
-soxspipe  mbias sof/58725_VIS_BIAS_1x1_slow.sof -o ./
+soxspipe mbias ./sof/2019.08.30T11.23.13.764_UVB_1X1_SLOW_MBIAS.sof -o ./
 ```
 
 Upon completion, you should be presented with some quality control (QC) metrics for the data and a list of products produced by the recipe. QCs are also written to the FITS headers of the products.
 
 [![](https://live.staticflickr.com/65535/51999455194_dede3217a4_b.jpg)](https://live.staticflickr.com/65535/51999455194_dede3217a4_b.jpg)
 
-```eval_rst
-.. note::
-    QC checks have not been added to all recipes yet
-```
 
 ## MDARK
 
 Create the master dark frames with commands like:
 
 ```bash
-soxspipe  mdark sof/58724_NIR_DARK_300pt0.sof -o ./
+soxspipe mdark ./sof/2019.08.30T12.04.43.0992_NIR_MDARK_300PT0.sof -o ./
 ```
 
 ## DISP_SOL
 
-We will now create the first guess dispersion solution using the single pinhole frames. Here's an example command to create the initial dispersion solution:
+We will now create the first-guess dispersion solution using the single pinhole frames. Here's an example command to create the initial dispersion solution:
 
 ```bash
-soxspipe disp_sol ./sof/58725_NIR_LAMP,FMTCHK_10.sof -o ./
+soxspipe disp_sol ./sof/2019.08.30T18.33.47.7202_NIR_DISP_SOL_10PT0.sof -o ./
 ```
 
 Here, for the first time, you will find a PDF file included in the products table:
@@ -118,20 +114,15 @@ The PDF includes a visualisation of the dispersion map fit and its associated re
 To create an initial order table, fitting a global polynomial to the order centre traces from a single pinhole lamp-flat frame, run:
 
 ```bash
-soxspipe  order_centres ./sof/58725_NIR_LAMP,ORDERDEF_1.sof -o ./
+soxspipe order_centres ./sof/2019.08.30T18.41.41.7595_NIR_ORDER_LOCATIONS_1PT0.sof -o ./
 ```
 
 ## MFLAT
 
-```eval_rst
-.. note::
-    We still need to do a little work to stitch/combine the master flats generated from the 2 UVB flat-lamps.
-```
-
 Now create the master flats and order tables with order edges defined:
 
 ```bash
-soxspipe mflat ./sof/58725_NIR_LAMP,FLAT_8pt320.sof -o ./
+soxspipe mflat ./sof/2019.08.30T18.57.31.4401_NIR_MFLAT_5PT76.sof -o ./
 ```
 
 ## SPAT_SOL
@@ -147,9 +138,17 @@ We will now use the multi-pinhole frames to generate the full dispersion solutio
 Now run the `spat_sol` recipe like:
 
 ```bash
-soxspipe spat_sol sof/58725_NIR_LAMP,WAVE_0pt6651.sof -o ./
+soxspipe spat_sol ./sof/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.sof -o ./
 ```
 
+## STARE
 
-... more to come!
+Run the pipeline in stare mode. This recipe is not yet complete but will model and subtract the sky from the data.  
+
+**we are not content with the sky-subtraction so far --- a work in progress**
+
+
+```bash
+soxspipe stare ./sof/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658.sof -o ./
+```
 

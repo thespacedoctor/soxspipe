@@ -51,6 +51,14 @@
        
    
         
+            ~soxs_disp_solution.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_disp_solution.update_fits_keywords
+       
+   
+        
             ~soxs_disp_solution.verify_input_frames
        
    
@@ -130,6 +138,10 @@
    ..     
    ..          ~soxs_disp_solution._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

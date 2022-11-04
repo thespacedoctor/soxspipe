@@ -363,7 +363,9 @@ class _base_detect(object):
         else:
             filename = self.sofName + ".fits"
         filename = filename.replace("MFLAT", "FLAT")
-        filename = filename.split("FLAT")[0] + "ORDER_LOCATIONS.fits"
+
+        if "FLAT" in filename.upper():
+            filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
 
         order_table_path = f"{outDir}/{filename}"
 

@@ -25,7 +25,6 @@
           ~detect_order_edges
           ~detector_lookup
           ~keyword_lookup
-          ~set_of_files
           ~subtract_background
           ~subtract_sky
         

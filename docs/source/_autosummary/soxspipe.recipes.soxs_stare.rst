@@ -51,6 +51,14 @@
        
    
         
+            ~soxs_stare.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_stare.update_fits_keywords
+       
+   
+        
             ~soxs_stare.verify_input_frames
        
    
@@ -130,6 +138,10 @@
    ..     
    ..          ~soxs_stare._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

@@ -56,7 +56,7 @@ instrument: soxs
 
 # # UTILS
 # background-subtraction:
-#     bsline-deg: 3
+#     bspline-deg: 3
 #     median-filter-pixels: 11
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data

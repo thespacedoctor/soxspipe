@@ -51,6 +51,14 @@
        
    
         
+            ~soxs_spatial_solution.subtact_mean_flux_level
+       
+   
+        
+            ~soxs_spatial_solution.update_fits_keywords
+       
+   
+        
             ~soxs_spatial_solution.verify_input_frames
        
    
@@ -130,6 +138,10 @@
    ..     
    ..          ~soxs_spatial_solution._write
    ..      
+   .. 
+   ..     
+   .. 
+   ..     
    .. 
    ..     
    .. 

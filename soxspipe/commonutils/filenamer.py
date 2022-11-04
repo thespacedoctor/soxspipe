@@ -101,6 +101,9 @@ def filenamer(
     obsmode = None
 
     # DETERMINE THE TYPE
+    if kw("DPR_TYPE") not in frame.header and kw("PRO_TYPE") in frame.header:
+        return None
+
     if frame.header[kw("DPR_TYPE")].upper() == "BIAS":
         if "SXSPRE" in frame.header:
             ttype = "mbias"
@@ -120,9 +123,12 @@ def filenamer(
         ttype = "arc"
     elif "LAMP" in frame.header[kw("DPR_TYPE")].upper() and "ORDERDEF" in frame.header[kw("DPR_TYPE")].upper():
         ttype = "flat"
-    elif "OBJECT" in frame.header[kw("DPR_TYPE")].upper() and "STARE" in frame.header[kw("DPR_TECH")].upper():
+    elif "OBJECT" in frame.header[kw("DPR_TYPE")].upper() and ("STARE" in frame.header[kw("DPR_TECH")].upper() or "NODDING" in frame.header[kw("DPR_TECH")].upper()):
         object = frame.header[kw("OBJECT")].upper()
         ttype = f"object_stare_{object}".replace(" ", "_").replace("-", "_").replace("__", "_").replace("__", "_")
+    elif "STD,FLUX" in frame.header[kw("DPR_TYPE")].upper() and ("STARE" in frame.header[kw("DPR_TECH")].upper() or "NODDING" in frame.header[kw("DPR_TECH")].upper()):
+        object = frame.header[kw("OBJECT")].upper()
+        ttype = f"std_flux_stare_{object}".replace(" ", "_").replace("-", "_").replace("__", "_").replace("__", "_")
 
     if ",Q" in frame.header[kw("DPR_TYPE")].upper():
         lamp = "_QLAMP"
@@ -153,7 +159,7 @@ def filenamer(
 
     if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,SLIT" and ttype in ("mflat", "flat"):
         maskSlit = "slit"
-    if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,SLIT,STARE" and "object" in ttype:
+    if frame.header[kw("DPR_TECH")].upper() in ("ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING") and ("object" in ttype or 'std_flux' in ttype):
         maskSlit = "slit"
 
     # EXTRA PARAMETERS NEEDED FOR SPECTRUM

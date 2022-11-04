@@ -120,6 +120,10 @@ class soxs_mflat(_base_recipe_):
 
         kw = self.kw
 
+        import warnings
+        from astropy.utils.exceptions import AstropyWarning
+        warnings.simplefilter('ignore', AstropyWarning)
+
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
@@ -160,6 +164,19 @@ class soxs_mflat(_base_recipe_):
         if f"ORDER_TAB_{arm}" not in imageCat:
             raise TypeError(
                 "Need an order centre for %(arm)s - none found with the input files" % locals())
+
+        # CHECK EXPTIME
+        lamps = ["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT"]
+        for l in lamps:
+            filterDict = {kw("DPR_TYPE"): l,
+                          kw("DPR_TECH"): "ECHELLE,SLIT"}
+            flatCollection = self.inputFrames.filter(**filterDict)
+            if len(flatCollection.files):
+                exptime = flatCollection.values(
+                    keyword=kw("EXPTIME"), unique=True)
+                if len(exptime) > 1:
+                    raise TypeError(
+                        f"Input {l} frames for soxspipe mflat need to have a unique exptime" % locals())
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
@@ -360,6 +377,7 @@ class soxs_mflat(_base_recipe_):
             }, ignore_index=True)
 
         # ADD QUALITY CHECKS
+        print(orderTablePath)
         self.qc = generic_quality_checks(
             log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
         self.qc = spectroscopic_image_quality_checks(
