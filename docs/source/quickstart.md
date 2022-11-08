@@ -10,7 +10,7 @@
 The best way to install soxspipe is to use `conda` and install the package in its own isolated environment (using either [Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Minicoda](https://docs.conda.io/en/latest/miniconda.html)), as shown here:
 
 ``` bash
-conda create -n soxspipe python=3.8 soxspipe -c conda-forge
+conda create -n soxspipe python=3.8 soxspipe csaps -c conda-forge -c omfit
 conda activate soxspipe
 ```
 
@@ -53,8 +53,8 @@ This adds a default soxspipe settings file and log file within `~/.config/soxspi
 The demo XShooter data (stare-mode) is of the X-ray binary SAX J1808.4-3658 taken during a 2019 outburst. You can download and unpack the data with the following commands:
 
 ```bash
-curl -L "https://www.dropbox.com/sh/6zlxu80rfy5svjc/AAD0ze4r2pdtKTOWmmac6r_Ca?dl=1" > soxspipe-quickstart-demo.zip
-unzip soxspipe-quickstart-demo.zip -d soxspipe-quickstart-demo
+curl -L "https://www.dropbox.com/s/ov4pdfopdnczca2/soxspipe-quickstart-demo.tgz?dl=1" > soxspipe-quickstart-demo.tgz
+tar -xzvf soxspipe-quickstart-demo.tgz
 ```
 
 You may also retrieve the raw data directly from the [ESO archive](http://archive.eso.org/eso/eso_archive_main.html) with the following parameters:

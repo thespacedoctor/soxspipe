@@ -299,8 +299,13 @@ class soxs_mflat(_base_recipe_):
             orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
                 log=self.log, orderTablePath=orderTablePath)
 
+            if tag in ("_DLAMP", "_QLAMP"):
+                zero = True
+            else:
+                zero = False
+
             mflat, medianOrderFluxDF = self.mask_low_sens_and_inter_order_to_unity(
-                frame=combined_normalised_flat, orderTablePath=orderTablePath, returnMedianOrderFlux=True)
+                frame=combined_normalised_flat, orderTablePath=orderTablePath, returnMedianOrderFlux=True, zero=zero)
 
             self.masterFlatSet.append(mflat)
 
@@ -593,13 +598,15 @@ class soxs_mflat(_base_recipe_):
             self,
             frame,
             orderTablePath,
-            returnMedianOrderFlux=False):
+            returnMedianOrderFlux=False,
+            zero=False):
         """*set inter-order pixels to unity and and low-sensitivity pixels to bad-pixel mask*
 
         **Key Arguments:**
             - ``frame`` -- the frame to work on
             - ``orderTablePath`` -- path to the order table
             - ``returnMedianOrderFlux`` -- return a table of the median order fluxes. Default *False*.
+            - ``zero`` -- set inter-order pixels to zero instead of one
 
         **Return:**
             - ``frame`` -- with inter-order pixels set to 1 and BPM updated with low-sensitivity pixels
@@ -622,7 +629,10 @@ class soxs_mflat(_base_recipe_):
         # BAD PIXEL COUNT AT START
         originalBPM = np.copy(frame.mask)
 
-        interOrderMask = np.ones_like(frame.data)
+        if zero:
+            interOrderMask = np.zeros_like(frame.data)
+        else:
+            interOrderMask = np.ones_like(frame.data)
         orders = orderTablePixels["order"].values
         axisAcoords_up = orderTablePixels[f"{self.axisA}coord_edgeup"].values
         axisAcoords_low = orderTablePixels[f"{self.axisA}coord_edgelow"].values
@@ -745,6 +755,10 @@ class soxs_mflat(_base_recipe_):
         # SCALE D FRAME TO QTH FRAME
         dmflatScaled = self.masterFlatSet[1].divide(DQscale)
 
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=dmflatScaled, show=True, ext=False, stdWindow=3, surfacePlot=True, title="D Flat scaled to Q-Flat")
+
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTableSet[1], extend=3000, binx=self.binx, biny=self.biny)
@@ -754,7 +768,6 @@ class soxs_mflat(_base_recipe_):
         axisAStitchCoords = filteredDf[f"{self.axisA}coord_edgeup"].values.astype(int) + 4
         axisBStitchCoords = filteredDf[f"{self.axisB}coord"].values
         stitchedFlat = self.masterFlatSet[2].copy()
-        stitchedCombinedNormalised = self.combinedNormalisedFlatSet[2].copy()
 
         # STITCH FLAT FRAMES AND COMBINED NORMALISED FRAMES (NEEDED FOR BEST ORDER EDGE DETECTION) TOGETHER
         if self.axisA == "x":
@@ -763,21 +776,22 @@ class soxs_mflat(_base_recipe_):
                     stitchedFlat.data[y, :x] = dmflatScaled.data[y, :x]
                     stitchedFlat.mask[y, :x] = dmflatScaled.mask[y, :x]
                     stitchedFlat.uncertainty.array[y, :x] = dmflatScaled.uncertainty.array[y, :x]
-                    stitchedCombinedNormalised.data[y, :x] = self.combinedNormalisedFlatSet[1].data[y, :x]
         else:
             for y, x in zip(axisAStitchCoords, axisBStitchCoords):
                 stitchedFlat.data[y, x:] = dmflatScaled.data[y, x:]
                 stitchedFlat.mask[y, x:] = dmflatScaled.mask[y, x:]
                 stitchedFlat.uncertainty.array[y, x:] = dmflatScaled.uncertainty.array[y, x:]
-                stitchedCombinedNormalised.data[y, :x] = self.combinedNormalisedFlatSet[1].data[y, :x]
 
-        stitchedCombinedNormalised.header[kw("DPR_TYPE")] = stitchedCombinedNormalised.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
         stitchedFlat.header[kw("DPR_TYPE")] = stitchedFlat.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=stitchedFlat, show=True, ext=False, stdWindow=3, title=False, surfacePlot=True)
 
         # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
         edges = detect_order_edges(
             log=self.log,
-            flatFrame=stitchedCombinedNormalised,
+            flatFrame=stitchedFlat,
             orderCentreTable=self.orderTableSet[2],
             settings=self.settings,
             qcTable=self.qc,
@@ -795,6 +809,10 @@ class soxs_mflat(_base_recipe_):
 
         stitchedFlat = self.mask_low_sens_and_inter_order_to_unity(
             frame=stitchedFlat, orderTablePath=orderTablePath)
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=stitchedFlat, show=True, ext=False, stdWindow=3, title=False, surfacePlot=True)
 
         self.log.debug('completed the ``stitch_uv_mflats`` method')
         return stitchedFlat
