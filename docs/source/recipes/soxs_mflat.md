@@ -32,7 +32,7 @@ Sources of this non-uniformity include varying pixel sensitivities, obstructions
 | order-deg | degree of order component of polynomal fit to order edges | int | settings file | [`detect_order_edges`](../utils/detect_order_edges.md) |
 | poly-fitting-residual-clipping-sigma | number of σ deviations from the median fit residual beyond which individual data points are removed when iterating towards a fit of order edges | int | settings file | [`detect_order_edges`](../utils/detect_order_edges.md) |
 | poly-clipping-iteration-limit | number of sigma-clipping iterations to perform before settings on a polynomial fit for the order edges | int | settings file | [`detect_order_edges`](../utils/detect_order_edges.md) |
-| low-sensitivity-clipping-simga | number of σ deviations below the median flux of a master-flat frame beyond which a pixel is added to the bad-pixel mask | int | settings file | - |
+| low-sensitivity-clipping-sigma | number of σ deviations below the median flux of a master-flat frame beyond which a pixel is added to the bad-pixel mask | int | settings file | - |
 
 
 ### Method

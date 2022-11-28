@@ -144,6 +144,7 @@ class create_dispersion_map(object):
 
         # READ PREDICTED LINE POSITIONS FROM FILE - RETURNED AS DATAFRAME
         orderPixelTable = self.get_predicted_line_list()
+        totalLines = len(orderPixelTable.index)
 
         # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME
         windowSize = self.recipeSettings["pixel-window-size"]
@@ -153,8 +154,6 @@ class create_dispersion_map(object):
         # ADD OBSERVED LINES TO DATAFRAME
         orderPixelTable = orderPixelTable.apply(
             self.detect_pinhole_arc_line, axis=1)
-
-        totalLines = len(orderPixelTable.index)
 
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
@@ -167,7 +166,7 @@ class create_dispersion_map(object):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        if "DISP" in self.recipeName:
+        if "DISP" in self.recipeName.upper():
             tag = "single"
         else:
             tag = "multi"
@@ -364,13 +363,13 @@ class create_dispersion_map(object):
         except:
             sources = None
 
-        import random
-        ran = random.randint(1, 300)
-
-        if 1 == 0 and ran == 200:
-            import matplotlib.pyplot as plt
-            plt.clf()
-            plt.imshow(stamp)
+        if 1 == 0:
+            import random
+            ran = random.randint(1, 300)
+            if ran == 200:
+                import matplotlib.pyplot as plt
+                plt.clf()
+                plt.imshow(stamp)
         old_resid = windowHalf * 4
         if sources:
             # FIND SOURCE CLOSEST TO CENTRE

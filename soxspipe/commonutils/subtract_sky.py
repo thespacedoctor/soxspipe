@@ -20,9 +20,7 @@ import sys
 import os
 from copy import copy
 from datetime import datetime
-
 from soxspipe.commonutils import keyword_lookup
-
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.toolkit import quicklook_image
 from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
@@ -110,14 +108,13 @@ class subtract_sky(object):
         self.inst = objectFrame.header[kw("INSTRUME")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
-
         self.detectorParams = detector_lookup(
             log=log,
             settings=settings
         ).get(self.arm)
         dp = self.detectorParams
 
-        # DATA FRAME CONTAINING ALL PIXELS - X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDERE
+        # DATA FRAME CONTAINING ALL PIXELS - X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDER
         self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame)
 
         if self.inst == "SOXS":
@@ -158,7 +155,6 @@ class subtract_sky(object):
         pd.options.mode.chained_assignment = None
 
         print(f'\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME\n')
-
         skymodelCCDData, skySubtractedCCDData = self.create_placeholder_images()
 
         uniqueOrders = self.mapDF['order'].unique()
@@ -171,59 +167,48 @@ class subtract_sky(object):
         qcPlotOrder = int(np.median(uniqueOrders)) - 1
         allimageMapOrder = []
         allimageMapOrderWithObject = []
+
+        # GET OVER SAMPLED SKY & SKY+OBJECT AS LISTS OF DATAFRAMES
         for o in uniqueOrders:
             # SELECT ONLY ONE ORDER OF DATA
             imageMapOrder = self.mapDF[self.mapDF["order"] == o]
-            imageMapOrderWithObject, imageMapOrder = self.get_over_sampled_sky_from_order(imageMapOrder, o, ignoreBP=False, clipSlitEdge=0.05)
-            allimageMapOrder.append(imageMapOrder)
+            imageMapOrderWithObject, imageMapOrderSkyOnly = self.get_over_sampled_sky_from_order(imageMapOrder, o, ignoreBP=False, clipSlitEdge=0.05)
+            allimageMapOrder.append(imageMapOrderSkyOnly)
             allimageMapOrderWithObject.append(imageMapOrderWithObject)
 
+        # MASK OUT OBJECT PIXELS
         allimageMapOrder = self.clip_object_slit_positions(allimageMapOrder, aggressive=self.settings["sky-subtraction"]["aggressive_object_masking"])
 
-        for o, imageMapOrder, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
-            # if o != qcPlotOrder:
-            #     continue
+        # FIRST PASS AT FITTING THE SKY
+        for o, imageMapOrderSkyOnly, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
+            imageMapOrderSkyOnly, tck = self.fit_csaps_curve(imageMapOrderSkyOnly, o, bspline_order)
 
-            imageMapOrder, tck = self.fit_csaps_curve(imageMapOrder, o, bspline_order)
+        if False:
+            shiftCoeff, poly = self.adjust_dispersion_solution(allimageMapOrder)
 
-            # CLIP EXTREMES OF ORDERS
-            wlrange = imageMapOrder["wavelength"].max() - imageMapOrder["wavelength"].max()
-            # FILTER DATA FRAME
-            # FIRST CREATE THE MASK
-            mask = (imageMapOrder["wavelength"] < imageMapOrder["wavelength"].max() - wlrange * 0.05) & (imageMapOrder["wavelength"] < imageMapOrder["wavelength"].min() + wlrange * 0.05)
-            imageMapOrder.loc[mask, "sky_model"] = np.nan
-            imageMapOrder.loc[mask, "sky_subtracted_flux"] = np.nan
+            for o, imageMapOrderSkyOnly, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
+                # ADD EXPONENTS TO ORDERTABLE UP-FRONT
+                orderDeg = 3
+                wavelengthDeg = 3
+                slitDeg = 3
+                for i in range(0, orderDeg + 1):
+                    imageMapOrderSkyOnly[f"order_pow_{i}"] = imageMapOrderSkyOnly["order"].pow(i)
+                for j in range(0, wavelengthDeg + 1):
+                    imageMapOrderSkyOnly[f"wavelength_pow_{j}"] = imageMapOrderSkyOnly["wavelength"].pow(j)
+                for k in range(0, slitDeg + 1):
+                    imageMapOrderSkyOnly[f"slit_position_pow_{k}"] = imageMapOrderSkyOnly["slit_position"].pow(k)
 
-            # tck = False
-            # imageMapOrder, tck = self.fit_bspline_curve_to_sky(imageMapOrder, o, bspline_order)
+                imageMapOrderSkyOnly["shift"] = poly(imageMapOrderSkyOnly, *shiftCoeff)
+                imageMapOrderSkyOnly["wavelength"] += imageMapOrderSkyOnly["shift"] / 2
 
-            # residuals = imageMapOrder.loc[imageMapOrder["clipped"] == False]["sky_subtracted_flux"]
-            # slit = imageMapOrder.loc[imageMapOrder["clipped"] == False]["slit_position"]
+                imageMapOrderSkyOnly, tck = self.fit_csaps_curve(imageMapOrderSkyOnly, o, bspline_order)
 
-            # import matplotlib.pyplot as plt
-            # plt.scatter(residuals, slit, s=0.5, alpha=0.1)
-            # plt.xlim([-1000, 1000])
-            # plt.show()
+        for o, imageMapOrderSkyOnly, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
 
-            # print(o)
-            # imageMapOrder = self.fit_surface_to_sky_residuals(imageMapOrder)
-
-            if isinstance(imageMapOrder, pd.core.frame.DataFrame):
-                # REMOVE FILTERED ROWS FROM DATA FRAME
-                # residuals = imageMapOrder.loc[imageMapOrder["clipped"] == False]["fit_sky_subtracted_flux"]
-                # slit = imageMapOrder.loc[imageMapOrder["clipped"] == False]["slit_position"]
-
-                # import matplotlib.pyplot as plt
-                # plt.scatter(residuals, slit, s=0.5, alpha=0.1)
-                # plt.xlim([-1000, 1000])
-                # plt.show()
-
-                # skyPixelsDF.append(imageMapOrder)
-
-                # imageMapOrder = self.fit_surface_to_sky(imageMapOrder, o, bspline_order)
-                skymodelCCDData, skySubtractedCCDData = self.add_data_to_placeholder_images(imageMapOrder, skymodelCCDData, skySubtractedCCDData)
+            if isinstance(imageMapOrderSkyOnly, pd.core.frame.DataFrame):
+                skymodelCCDData, skySubtractedCCDData = self.add_data_to_placeholder_images(imageMapOrderSkyOnly, skymodelCCDData, skySubtractedCCDData)
                 if o == qcPlotOrder:
-                    qc_plot_path = self.plot_sky_sampling(order=o, imageMapOrderWithObjectDF=imageMapOrderWithObject, imageMapOrderDF=imageMapOrder, tck=tck)
+                    qc_plot_path = self.plot_sky_sampling(order=o, imageMapOrderWithObjectDF=imageMapOrderWithObject, imageMapOrderDF=imageMapOrderSkyOnly, tck=tck)
                     basename = os.path.basename(qc_plot_path)
                     self.products = self.products.append({
                         "soxspipe_recipe": "soxs-stare",
@@ -916,7 +901,7 @@ class subtract_sky(object):
             self,
             imageMapOrder,
             order,
-            bspline_order):
+            bspline_order=False):
         """*fit a bspline to the unclipped sky pixels (wavelength vs flux)*
 
         **Key Arguments:**
@@ -970,7 +955,7 @@ class subtract_sky(object):
         fittingDF = df.copy()
         mask = (df["clipped"] == False)
         fittingDF = df.loc[mask]
-        smooth = 0.99999999999
+        smooth = 0.9999999
 
         iteration = 0
         while iteration < 3:
@@ -999,6 +984,18 @@ class subtract_sky(object):
 
         imageMapOrder["sky_model"] = sky_model
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
+
+        # CLIP EXTREMES OF ORDERS
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (imageMapOrder["sky_model"] < 2 * np.abs(np.median(imageMapOrder["sky_model"]))) & (imageMapOrder["sky_model"] > -2 * np.abs(np.median(imageMapOrder["sky_model"])))
+        tmpDf = imageMapOrder.loc[mask]
+        wavemax = tmpDf['wavelength'].max()
+        wavemin = tmpDf['wavelength'].min()
+
+        mask = ((imageMapOrder["wavelength"] > wavemax) | (imageMapOrder["wavelength"] < wavemin))
+        imageMapOrder.loc[mask, "sky_model"] = np.nan
+        imageMapOrder.loc[mask, "sky_subtracted_flux"] = np.nan
 
         self.log.debug('completed the ``fit_bspline_curve_to_sky`` method')
         return imageMapOrder, False
@@ -1634,7 +1631,7 @@ class subtract_sky(object):
             self,
             order_dataframes,
             aggressive=False):
-        """*find object slit ranges*
+        """*clip out pixels flagged as an object*
 
         **Key Arguments:**
             - ``order_dataframes`` -- a list of order data-frames with pixels potentially containing the object flagged.
@@ -1647,7 +1644,7 @@ class subtract_sky(object):
 
         ```python
         allimageMapOrder = self.clip_object_slit_positions(
-            allimageMapOrder, 
+            allimageMapOrder,
             aggressive=True
         )
         ```
@@ -1713,6 +1710,249 @@ class subtract_sky(object):
 
         self.log.debug('completed the ``clip_object_slit_positions`` method')
         return order_dataframes
+
+    def adjust_dispersion_solution(
+            self,
+            allimageMapOrder):
+        """*use measurements of sky-lines to adjust and update the frame's dispersion solution to give a more accurate model of the sky*
+
+        **Key Arguments:**
+            - ``allimageMapOrder`` -- list of dataframes (one per order) containing perliminary fits to the sky
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``adjust_dispersion_solution`` method')
+
+        import numpy as np
+        import pandas as pd
+        from scipy.optimize import curve_fit
+        from astropy.stats import sigma_clip
+        allPeaks = []
+
+        for df in allimageMapOrder:
+            order = int(df['order'].min())
+            master_peaks = self.find_peaks(df, plot=False)
+            matchDP = 1
+            master_peaks['wavelength_match'] = np.round(master_peaks.wavelength / 5, decimals=matchDP)
+
+            # GENERATE A RANGE OF SLIT-POSITIONS TO MEASURE THE SKY IN
+            slitmax = df["slit_position"].max()
+            slitmin = df["slit_position"].min()
+            slitrange = slitmax - slitmin
+            slitmax -= slitrange / 100
+            slitmin += slitrange / 100
+            start = 0 - int(slitrange) / 2
+            end = 0 + int(slitrange) / 2
+            slitranges = np.arange(start, end + 1, 1)
+            slitranges[0] = slitmin
+            slitranges[-1] = slitmax
+
+            for i, start in enumerate(slitranges[:-1]):
+                end = slitranges[i + 1]
+                # FILTER DATA FRAME
+                # FIRST CREATE THE MASK
+                mask = (df['slit_position'] > start) & (
+                    df['slit_position'] <= end)
+                filteredDf = df.loc[mask]
+
+                meanSP = filteredDf['slit_position'].mean()
+
+                if len(filteredDf.loc[filteredDf["clipped"] == False].index):
+                    filteredDf, tmp = self.fit_csaps_curve(filteredDf, filteredDf['order'].min())
+                    peaks = self.find_peaks(filteredDf, plot=False)
+                    peaks['wavelength_match'] = np.round(peaks.wavelength / 5, decimals=matchDP)
+                    peaks = peaks.merge(master_peaks, left_on=['wavelength_match', 'wavelength_match'], right_on=['wavelength_match', 'wavelength_match'])
+                    peaks["wavelength_shift"] = peaks["wavelength_y"] - peaks["wavelength_x"]
+                    peaks["slit_position"] = meanSP
+                    peaks["order"] = order
+                    allPeaks.append(peaks)
+                else:
+                    pass
+
+        allPeaks = pd.concat(allPeaks)
+
+        iteration = 0
+        while iteration < 3:
+            iteration += 1
+            shiftCoeff, poly = self.fit_wavelength_shifts(allPeaks)
+
+            # CALCULATE RESIDUALS BETWEEN MEASURED SHIFT AND POLY
+            # FITTED SHIFT
+            allPeaks["fit_shift"] = poly(allPeaks, *shiftCoeff)
+            allPeaks["residual_shift"] = np.abs(allPeaks["wavelength_shift"] - allPeaks["fit_shift"])
+
+            # CALCULATE COMBINED RESIDUALS AND STATS
+            res_mean = np.mean(allPeaks["residual_shift"])
+            res_std = np.std(allPeaks["residual_shift"])
+            res_median = np.median(allPeaks["residual_shift"])
+
+            print(res_mean, res_std, res_median)
+            print()
+
+            # SIGMA-CLIP THE DATA
+            masked_residuals = sigma_clip(
+                allPeaks["residual_shift"].values, sigma_lower=5, sigma_upper=5, maxiters=1, cenfunc='median', stdfunc='mad_std')
+            allPeaks["residuals_masked"] = masked_residuals.mask
+            # RETURN BREAKDOWN OF COLUMN VALUE COUNT
+            valCounts = allPeaks[
+                'residuals_masked'].value_counts(normalize=False)
+            if True in valCounts:
+                clippedCount = valCounts[True]
+            else:
+                clippedCount = 0
+
+            if iteration > 1:
+                # Cursor up one line and clear line
+                # sys.stdout.write("\x1b[1A\x1b[2K")
+                pass
+
+            print(f'ITERATION {iteration:02d}: {clippedCount} peaks clipped in this iteration of fitting the shift in wavelength from skylines')
+
+            # REMOVE FILTERED ROWS FROM DATA FRAME
+            mask = (allPeaks['residuals_masked'] == True)
+            allPeaks = allPeaks.loc[~mask]
+
+        # PASTE INTO DEBUGGER FOR MULTILINE STATEMENTS
+        # !import code; code.interact(local=vars())
+
+        self.log.debug('completed the ``adjust_dispersion_solution`` method')
+        return shiftCoeff, poly
+
+    def find_peaks(
+            self,
+            skyDataFrame,
+            plot=False):
+        """*find peaks of sky-lines from the sky-model*
+
+        **Key Arguments:**
+            - ``skyDataFrame`` -- dataframe containing sky-model
+            - ``plot`` -- plot data with peaks
+
+        **Return:**
+            - ``peaks`` -- a dataframe containing the wavelength locations and flux of peaks found in sky-model
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``find_peaks`` method')
+
+        from scipy.signal import find_peaks
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import pandas as pd
+
+        wl = skyDataFrame["wavelength"].values
+        sky = skyDataFrame["sky_model"].values
+        std = np.nanstd(skyDataFrame["sky_model"].values)
+        mean = np.nanmean(skyDataFrame["sky_model"].values)
+        peaks, _ = find_peaks(sky, height=0.6 * std, distance=100)
+
+        if plot:
+            plt.plot(wl, sky)
+            plt.plot(wl[peaks], sky[peaks], "x")
+            plt.plot(wl, np.ones_like(sky) * 0.6 * std, "--", color="gray")
+            plt.show()
+
+        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+        myDict = {
+            "wavelength": wl[peaks],
+            "flux": sky[peaks]
+        }
+        peaks = pd.DataFrame(myDict)
+
+        self.log.debug('completed the ``find_peaks`` method')
+        return peaks
+
+    # use the tab-trigger below for new method
+    def fit_wavelength_shifts(
+            self,
+            allPeaks):
+        """*fit the shift in the wavelengths as measured from the sky-lines as polynomial fit to wavelength, slit-position and order*
+
+        **Key Arguments:**
+            - ``allPeaks`` -- a pandas dataframe containing all sky-line wavelegnth measurements and wavelength shifts from the full-slit sky-model
+
+        **Return:**
+            - ``shiftCoeff`` -- the coefficients to the polynomial fit to the wavelength shifts
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``fit_wavelength_shifts`` method')
+
+        from scipy.optimize import curve_fit
+        import numpy as np
+
+        # ADD EXPONENTS TO ORDERTABLE UP-FRONT
+        orderDeg = 3
+        wavelengthDeg = 3
+        slitDeg = 3
+        allPeaks["wavelength"] = allPeaks["wavelength_x"]
+        for i in range(0, orderDeg + 1):
+            allPeaks[f"order_pow_{i}"] = allPeaks["order"].pow(i)
+        for j in range(0, wavelengthDeg + 1):
+            allPeaks[f"wavelength_pow_{j}"] = allPeaks["wavelength"].pow(j)
+        for k in range(0, slitDeg + 1):
+            allPeaks[f"slit_position_pow_{k}"] = allPeaks["slit_position"].pow(k)
+
+        poly = chebyshev_order_wavelength_polynomials(
+            log=self.log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True).poly
+
+        coeff = np.ones((orderDeg + 1) *
+                        (wavelengthDeg + 1) * (slitDeg + 1))
+        shifts = allPeaks["wavelength_shift"].values
+
+        shiftCoeff, pcov_shift = curve_fit(
+            poly, xdata=allPeaks, ydata=shifts, p0=coeff)
+
+        self.log.debug('completed the ``fit_wavelength_shifts`` method')
+        return shiftCoeff, poly
 
     # use the tab-trigger below for new method
     # xt-class-method

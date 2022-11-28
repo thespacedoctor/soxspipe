@@ -55,7 +55,7 @@ soxs-mflat:
     order-deg: 5
     poly-fitting-residual-clipping-sigma: 3.0
     poly-clipping-iteration-limit: 2
-    low-sensitivity-clipping-simga: 2
+    low-sensitivity-clipping-sigma: 2
     
 
 # soxs-straighten:

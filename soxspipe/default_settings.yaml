@@ -70,10 +70,10 @@ soxs-mflat:
     min-percentage-threshold-for-edge-detection: 20
     max-percentage-threshold-for-edge-detection: 50
     disp-axis-deg: 5
-    order-deg: 5
-    poly-fitting-residual-clipping-sigma: 3
-    poly-clipping-iteration-limit: 5
-    low-sensitivity-clipping-simga: 2
+    order-deg: 3
+    poly-fitting-residual-clipping-sigma: 5
+    poly-clipping-iteration-limit: 3
+    low-sensitivity-clipping-sigma: 2
     
 soxs-stare:
     stacked-clipping-sigma: 5

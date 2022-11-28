@@ -232,3 +232,7 @@ def main(arguments=None):
              (endTime, runningTime, ))
 
     return
+
+
+if __name__ == '__main__':
+    main()
