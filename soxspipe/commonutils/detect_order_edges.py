@@ -225,7 +225,7 @@ class detect_order_edges(_base_detect):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        upperCoeff, orderPixelTable, allClipped = self.fit_global_polynomial(
+        upperCoeff, orderPixelTable, clippedUpper = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisBCol=f"{self.axisB}coord",
             axisACol=f"{self.axisA}coord_upper",
@@ -236,10 +236,12 @@ class detect_order_edges(_base_detect):
         # RENAME SOME INDIVIDUALLY
         orderPixelTable.rename(columns={
             f"{self.axisA}_fit": f"{self.axisA}coord_upper_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_upper_fit_res"}, inplace=True)
+        clippedUpper.rename(columns={
+            f"{self.axisA}_fit": f"{self.axisA}coord_upper_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_upper_fit_res"}, inplace=True)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
-        lowerCoeff, orderPixelTable, allClipped = self.fit_global_polynomial(
+        lowerCoeff, orderPixelTable, clippedLower = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisBCol=f"{self.axisB}coord",
             axisACol=f"{self.axisA}coord_lower",
@@ -249,6 +251,8 @@ class detect_order_edges(_base_detect):
 
         # RENAME SOME INDIVIDUALLY
         orderPixelTable.rename(columns={
+            f"{self.axisA}_fit": f"{self.axisA}coord_lower_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_lower_fit_res"}, inplace=True)
+        clippedLower.rename(columns={
             f"{self.axisA}_fit": f"{self.axisA}coord_lower_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_lower_fit_res"}, inplace=True)
 
         # orderLocations[o] = coeff
@@ -290,7 +294,9 @@ class detect_order_edges(_base_detect):
         plotPath = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
-            orderMetaTable=orderMetaTable
+            orderMetaTable=orderMetaTable,
+            clippedDataUpper=clippedUpper,
+            clippedDataLower=clippedLower
         )
 
         # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
@@ -372,13 +378,17 @@ class detect_order_edges(_base_detect):
             self,
             orderPixelTable,
             orderPolyTable,
-            orderMetaTable):
+            orderMetaTable,
+            clippedDataUpper,
+            clippedDataLower):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
             - ``orderPixelTable`` -- the pixel table with residuals of fits
             - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
             - ``orderMetaTable`` -- data-frame containing the limits of the fit
+            - ``clippedDataUpper`` -- the sigma-clipped data from upper edge
+            - ``clippedDataLower`` -- the sigma-clipped data from lower edge
 
         **Return:**
             - ``filePath`` -- path to the plot pdf
@@ -395,6 +405,10 @@ class detect_order_edges(_base_detect):
             orderPixelTable[f"{self.axisA}coord_lower"], orderPixelTable[f"{self.axisA}coord_upper"]))
         allAxisBCoords = np.concatenate((
             orderPixelTable[f"{self.axisB}coord"], orderPixelTable[f"{self.axisB}coord"]))
+        allAxisACoordsClipped = np.concatenate((
+            clippedDataLower[f"{self.axisA}coord_lower"], clippedDataUpper[f"{self.axisA}coord_upper"]))
+        allAxisBCoordsClipped = np.concatenate((
+            clippedDataLower[f"{self.axisB}coord"], clippedDataUpper[f"{self.axisB}coord"]))
 
         if self.axisBbin > 1:
             allAxisBCoords /= self.axisBbin
@@ -436,7 +450,8 @@ class detect_order_edges(_base_detect):
             toprow.invert_yaxis()
         toprow.set_title(
             "upper and lower order edge detections", fontsize=10)
-        toprow.scatter(allAxisBCoords, allAxisACoords, marker='x', c='red', s=0.2)
+        toprow.scatter(allAxisBCoordsClipped, allAxisACoordsClipped, marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
+        toprow.scatter(allAxisBCoords, allAxisACoords, marker='o', c='yellow', s=0.3, alpha=0.6)
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
@@ -474,21 +489,35 @@ class detect_order_edges(_base_detect):
         myDict = {f"{self.axisB}": axisBlinelist}
         df = pd.DataFrame(myDict)
 
+        colors = []
         for o in uniqueOrders:
             o = int(o)
             axisBmin = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"].values[0]
             axisBmax = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"].values[0]
 
             df["order"] = o
-            axisAfitup = poly(df, *coeffupper)
-            axisAfitlow = poly(df, *coefflower)
+            axisAfitupStart = poly(df, *coeffupper)
+            axisAfitlowStart = poly(df, *coefflower)
 
             # xfit = np.ones(len(xfit)) * \
             #     self.flatFrame.data.shape[1] - xfit
             axisAfitup, axisBfitup = zip(
-                *[(a, b) for a, b in zip(axisAfitup, axisBlinelist) if a > 0 and a < (axisALength) - 10 and b >= axisBmin and b <= axisBmax])
+                *[(a, b) for a, b in zip(axisAfitupStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
             axisAfitlow, axisBfitlow = zip(
-                *[(a, b) for a, b in zip(axisAfitlow, axisBlinelist) if a > 0 and a < (axisALength) - 10 and b >= axisBmin and b <= axisBmax])
+                *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
+            if len(axisBfitlow) < len(axisBfitup):
+                half = int(len(axisAfitlowStart) / 2)
+                axisAfitlowExtra, axisBfitlowExtra = zip(
+                    *[(0, b) for a, b in zip(axisAfitlowStart[:half], axisBlinelist[:half]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
+                axisAfitlow = axisAfitlowExtra + axisAfitlow
+                axisBfitlow = axisBfitlowExtra + axisBfitlow
+                try:
+                    axisAfitlowExtra, axisBfitlowExtra = zip(
+                        *[(0, b) for a, b in zip(axisAfitlowStart[half:], axisBlinelist[half:]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
+                    axisAfitlow += axisAfitlowExtra
+                    axisBfitlow += axisBfitlowExtra
+                except:
+                    pass
 
             if self.axisAbin > 1:
                 axisAfitup = np.array(axisAfitup) / self.axisAbin
@@ -498,9 +527,13 @@ class detect_order_edges(_base_detect):
                 axisBfitlow = np.array(axisBfitlow) / self.axisBbin
 
             l = midrow.plot(axisBfitlow, axisAfitlow)
+            colors.append(l[0].get_color())
             u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color())
-            midrow.fill_between(axisBfitlow, axisAfitlow, axisAfitup, alpha=0.4, fc=l[0].get_color())
-            # midrow.text(axisBfitlow[10], axisAfitlow[10] + 5, int(o), fontsize=6, c='white', verticalalignment='bottom')
+            try:
+                midrow.fill_between(axisBfitlow, axisAfitlow, axisAfitup, alpha=0.4, fc=l[0].get_color())
+            except:
+                pass
+            midrow.text(axisBfitlow[10], axisAfitlow[10] + 5, int(o), fontsize=6, c="white", verticalalignment='bottom')
 
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit
@@ -513,14 +546,22 @@ class detect_order_edges(_base_detect):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomleft.scatter(allAxisACoords, allResiduals, alpha=0.2, s=0.05)
+        for o, c in zip(uniqueOrders, colors):
+            mask = (orderPixelTable['order'] == o)
+            orderAxisACoords = np.concatenate((orderPixelTable.loc[mask][f"{self.axisA}coord_lower"], orderPixelTable.loc[mask][f"{self.axisA}coord_upper"]))
+            orderAxisBCoords = np.concatenate((orderPixelTable.loc[mask][f"{self.axisB}coord"], orderPixelTable.loc[mask][f"{self.axisB}coord"]))
+            orderResiduals = np.concatenate((orderPixelTable.loc[mask][
+                f"{self.axisA}coord_lower_fit_res"], orderPixelTable.loc[mask][f"{self.axisA}coord_upper_fit_res"]))
+            bottomleft.scatter(orderAxisACoords, orderResiduals, alpha=0.2, s=0.05, c=c)
+            bottomleft.text(orderAxisACoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
+            bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.2, s=0.2, c=c)
+            bottomright.text(orderAxisBCoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
         bottomleft.set_xlabel(f'{self.axisA} pixel position')
         bottomleft.set_ylabel(f'{self.axisA} residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomright.scatter(allAxisBCoords, allResiduals, alpha=0.2, s=0.2)
         bottomright.set_xlabel(f'{self.axisB} pixel position')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         # bottomright.set_ylabel(f'{self.axisA} residual')
@@ -544,6 +585,7 @@ class detect_order_edges(_base_detect):
         outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
         filePath = f"{outDir}/{filename}"
         plt.tight_layout()
+        plt.show()
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``plot_results`` method')
@@ -601,10 +643,8 @@ class detect_order_edges(_base_detect):
             medSlide[int(len(medSlide) / 2 - 8):int(len(medSlide) / 2 + 8)])
         minvalue = np.min(medSlide)
 
-        orderData["minThreshold"] = minvalue + \
-            (maxvalue - minvalue) * minThresholdPercenage
-        orderData["maxThreshold"] = minvalue + \
-            (maxvalue - minvalue) * maxThresholdPercenage
+        orderData["minThreshold"] = minvalue + (maxvalue - minvalue) * minThresholdPercenage
+        orderData["maxThreshold"] = minvalue + (maxvalue - minvalue) * maxThresholdPercenage
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if 1 == 0:

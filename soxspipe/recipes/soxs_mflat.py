@@ -382,7 +382,6 @@ class soxs_mflat(_base_recipe_):
             }, ignore_index=True)
 
         # ADD QUALITY CHECKS
-        print(orderTablePath)
         self.qc = generic_quality_checks(
             log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
         self.qc = spectroscopic_image_quality_checks(
