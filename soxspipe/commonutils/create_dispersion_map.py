@@ -150,7 +150,7 @@ class create_dispersion_map(object):
         windowSize = self.recipeSettings["pixel-window-size"]
         self.windowHalf = int(windowSize / 2)
 
-        # DETECT THE LINES ON THE PINHILE FRAME AND
+        # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
         orderPixelTable = orderPixelTable.apply(
             self.detect_pinhole_arc_line, axis=1)
@@ -701,6 +701,7 @@ class create_dispersion_map(object):
         import numpy as np
         from astropy.stats import sigma_clip
         from scipy.optimize import curve_fit
+        import pandas as pd
 
         arm = self.arm
 
@@ -739,6 +740,8 @@ class create_dispersion_map(object):
         print("\n# FINDING DISPERSION SOLUTION\n")
 
         iteration = 0
+
+        allClippedLines = []
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
             observed_x = orderPixelTable["observed_x"].to_numpy()
@@ -789,8 +792,11 @@ class create_dispersion_map(object):
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
             mask = (orderPixelTable['residuals_masked'] == True)
+            allClippedLines.append(orderPixelTable.loc[mask])
             orderPixelTable.drop(index=orderPixelTable[
                                  mask].index, inplace=True)
+
+        allClippedLines = pd.concat(allClippedLines, ignore_index=True)
 
         mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
             orderPixelTable=orderPixelTable,
@@ -829,7 +835,8 @@ class create_dispersion_map(object):
         toprow.set_title(
             "observed arc-line positions (post-clipping)", fontsize=10)
 
-        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='red', s=0.3, alpha=0.6)
+        toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
+        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='yellow', s=0.3, alpha=0.6)
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
 
