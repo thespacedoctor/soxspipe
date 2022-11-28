@@ -225,7 +225,7 @@ class detect_order_edges(_base_detect):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        upperCoeff, orderPixelTable = self.fit_global_polynomial(
+        upperCoeff, orderPixelTable, allClipped = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisBCol=f"{self.axisB}coord",
             axisACol=f"{self.axisA}coord_upper",
@@ -239,7 +239,7 @@ class detect_order_edges(_base_detect):
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
-        lowerCoeff, orderPixelTable = self.fit_global_polynomial(
+        lowerCoeff, orderPixelTable, allClipped = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisBCol=f"{self.axisB}coord",
             axisACol=f"{self.axisA}coord_lower",
