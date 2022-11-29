@@ -364,6 +364,7 @@ def unpack_order_table(
         log,
         orderTablePath,
         extend=0.,
+        pixelDelta=1,
         binx=1,
         biny=1):
     """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
@@ -372,6 +373,7 @@ def unpack_order_table(
 
     - ``orderTablePath`` -- path to the order table
     - ``extend`` -- fractional increase to the order area in the y-axis (needed for masking)
+    - ``pixelDelta`` -- space between returned data points. Default *1* (sampled at every pixel)
     - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
 
@@ -411,7 +413,7 @@ def unpack_order_table(
         axisBbin = binx
 
     # ADD AXIS B COORD LIST
-    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), 1) for l, u, r in zip(
+    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(
         orderMetaTable[f"{axisB}min"].values, orderMetaTable[f"{axisB}max"].values, orderMetaTable[f"{axisB}max"].values - orderMetaTable[f"{axisB}min"].values)]
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]

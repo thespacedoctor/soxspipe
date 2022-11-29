@@ -175,7 +175,7 @@ class detect_order_edges(_base_detect):
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny)
+            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=9)
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
         print("\tDETERMINING ORDER FLUX THRESHOLDS")
@@ -450,7 +450,7 @@ class detect_order_edges(_base_detect):
             toprow.invert_yaxis()
         toprow.set_title(
             "upper and lower order edge detections", fontsize=10)
-        toprow.scatter(allAxisBCoordsClipped, allAxisACoordsClipped, marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
+        toprow.scatter(allAxisBCoordsClipped, allAxisACoordsClipped, marker='x', c='red', s=4, alpha=0.6, linewidths=0.5)
         toprow.scatter(allAxisBCoords, allAxisACoords, marker='o', c='yellow', s=0.3, alpha=0.6)
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -507,10 +507,13 @@ class detect_order_edges(_base_detect):
                 *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
             if len(axisBfitlow) < len(axisBfitup):
                 half = int(len(axisAfitlowStart) / 2)
-                axisAfitlowExtra, axisBfitlowExtra = zip(
-                    *[(0, b) for a, b in zip(axisAfitlowStart[:half], axisBlinelist[:half]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
-                axisAfitlow = axisAfitlowExtra + axisAfitlow
-                axisBfitlow = axisBfitlowExtra + axisBfitlow
+                try:
+                    axisAfitlowExtra, axisBfitlowExtra = zip(
+                        *[(0, b) for a, b in zip(axisAfitlowStart[:half], axisBlinelist[:half]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
+                    axisAfitlow = axisAfitlowExtra + axisAfitlow
+                    axisBfitlow = axisBfitlowExtra + axisBfitlow
+                except:
+                    pass
                 try:
                     axisAfitlowExtra, axisBfitlowExtra = zip(
                         *[(0, b) for a, b in zip(axisAfitlowStart[half:], axisBlinelist[half:]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
@@ -552,9 +555,9 @@ class detect_order_edges(_base_detect):
             orderAxisBCoords = np.concatenate((orderPixelTable.loc[mask][f"{self.axisB}coord"], orderPixelTable.loc[mask][f"{self.axisB}coord"]))
             orderResiduals = np.concatenate((orderPixelTable.loc[mask][
                 f"{self.axisA}coord_lower_fit_res"], orderPixelTable.loc[mask][f"{self.axisA}coord_upper_fit_res"]))
-            bottomleft.scatter(orderAxisACoords, orderResiduals, alpha=0.2, s=0.05, c=c)
+            bottomleft.scatter(orderAxisACoords, orderResiduals, alpha=0.6, s=0.2, c=c)
             bottomleft.text(orderAxisACoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
-            bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.2, s=0.2, c=c)
+            bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
             bottomright.text(orderAxisBCoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
         bottomleft.set_xlabel(f'{self.axisA} pixel position')
         bottomleft.set_ylabel(f'{self.axisA} residual')
@@ -573,8 +576,6 @@ class detect_order_edges(_base_detect):
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"detection of order-edge locations - flat-frame\n{subtitle}", fontsize=12)
 
-        # plt.show()
-
         filename = filenamer(
             log=self.log,
             frame=self.flatFrame,
@@ -585,7 +586,7 @@ class detect_order_edges(_base_detect):
         outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
         filePath = f"{outDir}/{filename}"
         plt.tight_layout()
-        plt.show()
+        # plt.show()
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``plot_results`` method')
