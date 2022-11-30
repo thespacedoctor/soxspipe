@@ -428,7 +428,7 @@ class subtract_sky(object):
         # SETUP THE PLOT SUB-PANELS
         fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=320)
         # REMOVE ME
-        # fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=100)
+        fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=100)
         gs = fig.add_gridspec(11, 4)
         # CREATE THE GID OF AXES
         onerow = fig.add_subplot(gs[1:2, :])
@@ -697,7 +697,7 @@ class subtract_sky(object):
         outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
         filePath = f"{outDir}/{filename}"
         # REMOVE ME
-        # plt.show()
+        plt.show()
         plt.savefig(filePath, dpi='figure')
 
         self.log.debug('completed the ``plot_sky_sampling`` method')
@@ -939,50 +939,49 @@ class subtract_sky(object):
         from csaps import csaps
         from astropy.stats import sigma_clip
 
-        # SORT BY COLUMN NAME
-        df = imageMapOrder.copy()
-        df.sort_values(by=['wavelength'], inplace=True)
-        df.drop_duplicates(subset=['wavelength'], inplace=True)
+        # SORT BY WAVELENGTH AND DROP DUPLCAITE COLUMNS
+        fittingDF = imageMapOrder.copy()
+        fittingDF.sort_values(by=['wavelength'], inplace=True)
+        fittingDF.drop_duplicates(subset=['wavelength'], inplace=True)
+        mask = (fittingDF["clipped"] == False)
+        fittingDF = fittingDF.loc[mask]
 
-        goodWl = df.loc[df["clipped"] == False]["wavelength"]
-        goodFlux = df.loc[df["clipped"] == False]["flux"]
-        goodSlit = df.loc[df["clipped"] == False]["slit_position"]
-        df["weights"] = 1 / df["error"]
-        df["weights"] = df["weights"].replace(np.nan, 0.00000001)
-        goodWeights = df.loc[df["clipped"] == False, "weights"]
+        # ADD WEIGHTS
+        fittingDF["weights"] = 1 / fittingDF["error"]
+        fittingDF["weights"] = fittingDF["weights"].replace(np.nan, 0.00000001)
         median_rolling_window_size = int(self.settings["sky-subtraction"]["median_rolling_window_size"])
 
-        fittingDF = df.copy()
-        mask = (df["clipped"] == False)
-        fittingDF = df.loc[mask]
         smooth = 0.9999999
 
         iteration = 0
-        while iteration < 3:
+        print(f"ORDER {order}")
+        print(f"=========")
+        while iteration < 1:
             iteration += 1
-            fittingDF["residuals"] = csaps(fittingDF["wavelength"].values, fittingDF["flux"].values, fittingDF["wavelength"].values, weights=fittingDF["weights"].values, smooth=smooth)
-            fittingDF["residuals"] = fittingDF["residuals"].abs()
+            fittingDF["residuals"] = csaps(fittingDF["wavelength"].values, fittingDF["flux"].values, fittingDF["wavelength"].values, weights=fittingDF["weights"].values, smooth=smooth) - fittingDF["flux"].values
 
-            # print(len(fittingDF.index))
-            # print(fittingDF["residuals"].max())
-            # print(fittingDF["residuals"].mean())
-            # print(fittingDF["residuals"].min())
+            plt.scatter(fittingDF["residuals"], fittingDF["slit_position"], s=1, alpha=0.5)
+            plt.title(f"RAW Order {order} iteration {iteration}. Mean Res {fittingDF['residuals'].mean():0.2f}. Std Res {fittingDF['residuals'].std():0.2f}")
+            plt.show()
+
             # print()
             # SIGMA-CLIP THE DATA
             fittingDF["residuals_smoothed"] = fittingDF["residuals"].rolling(window=median_rolling_window_size, center=True).median()
             fittingDF["residuals_minus_smoothed_residual"] = fittingDF["residuals"] - fittingDF["residuals_smoothed"]
-            std = fittingDF["residuals_minus_smoothed_residual"].std()
-            fittingDF["residual_sigma"] = fittingDF["residuals_minus_smoothed_residual"] / std
-            # FILTER DATA FRAME
-            # FIRST CREATE THE MASK
-            mask = (fittingDF["residual_sigma"] < 5.0)
+
+            plt.scatter(fittingDF["residuals_minus_smoothed_residual"], fittingDF["slit_position"], s=1, alpha=0.5)
+            plt.title(f"SMOOTHED Order {order} iteration {iteration}. Mean Res {fittingDF['residuals_minus_smoothed_residual'].mean():0.2f}. Std Res {fittingDF['residuals_minus_smoothed_residual'].std():0.2f}")
+            plt.show()
+
+            from astropy.stats import sigma_clip, mad_std
+            # SIGMA-CLIP THE DATA
+            masked_residuals = sigma_clip(
+                fittingDF["residuals_minus_smoothed_residual"].values, sigma_lower=3, sigma_upper=3, maxiters=3, cenfunc='median', stdfunc='mad_std')
+            fittingDF["clipped"] = masked_residuals.mask
+            mask = (fittingDF["clipped"] == False)
             fittingDF = fittingDF.loc[mask]
 
-        fittingDF["residuals"] = csaps(fittingDF["wavelength"].values, fittingDF["flux"].values, fittingDF["wavelength"].values, weights=fittingDF["weights"].values, smooth=smooth)
-
-        sky_model = csaps(fittingDF["wavelength"].values, fittingDF["flux"].values, imageMapOrder["wavelength"].values, weights=fittingDF["weights"].values, smooth=smooth)
-
-        imageMapOrder["sky_model"] = sky_model
+        imageMapOrder["sky_model"] = csaps(fittingDF["wavelength"].values, fittingDF["flux"].values, imageMapOrder["wavelength"].values, weights=fittingDF["weights"].values, smooth=smooth)
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
 
         # CLIP EXTREMES OF ORDERS
@@ -1518,6 +1517,8 @@ class subtract_sky(object):
         iteration = 0
         clippedCount = 1
         from scipy.optimize import curve_fit
+        fluxcoeff = np.ones((orderDeg + 1) *
+                            (wavelengthDeg + 1) * (slitDeg + 1))
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
             sky_subtracted_flux = skyPixelsDFCopy["sky_subtracted_flux"].to_numpy()
@@ -1525,12 +1526,11 @@ class subtract_sky(object):
                 return None
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
             # FIRST X
-            coeff = np.ones((orderDeg + 1) *
-                            (wavelengthDeg + 1) * (slitDeg + 1))
+            c
             self.log.info("""curvefit x""" % locals())
 
             fluxcoeff, pcov_x = curve_fit(
-                poly, xdata=skyPixelsDFCopy, ydata=sky_subtracted_flux, p0=coeff)
+                poly, xdata=skyPixelsDFCopy, ydata=sky_subtracted_flux, p0=fluxcoeff)
 
             self.log.info("""calculate_residuals""" % locals())
             mean_res, std_res, median_res, skyPixelsDFCopy = self.calculate_residuals(

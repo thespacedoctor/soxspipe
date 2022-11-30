@@ -87,13 +87,13 @@ class _base_detect(object):
         mask = (pixelList['order'] == order)
         pixelListFiltered = pixelList.loc[mask]
 
+        coeff = np.ones((self.axisBDeg + 1))
         while clippedCount > 0 and iteration < clippingIterationLimit:
             pixelListFiltered = pixelList.loc[mask]
 
             startCount = len(pixelListFiltered.index)
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((self.axisBDeg + 1))
             # NOTE X AND Y COLUMN ARE CORRECLY IN xdata AND ydata - WANT TO
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
             try:
@@ -173,11 +173,12 @@ class _base_detect(object):
         iteration = 0
 
         allClipped = []
+        coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
         while clippedCount > 0 and iteration < clippingIterationLimit:
             startCount = len(pixelList.index)
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
+
             try:
                 coeff, pcov_x = curve_fit(
                     poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff)
@@ -820,7 +821,12 @@ class detect_continuum(_base_detect):
         fit_g = fitting.LevMarLSQFitter()
 
         # NOW FIT
-        g = fit_g(g_init, np.arange(0, len(slice)), slice)
+        try:
+            g = fit_g(g_init, np.arange(0, len(slice)), slice)
+        except:
+            pixelPostion[f"cont_{self.axisA}"] = np.nan
+            pixelPostion[f"cont_{self.axisB}"] = np.nan
+            return pixelPostion
         pixelPostion[f"cont_{sliceAxis}"] = g.mean.value + \
             max(0, slice_length_offset)
         pixelPostion[f"cont_{sliceAntiAxis}"] = slice_width_centre
