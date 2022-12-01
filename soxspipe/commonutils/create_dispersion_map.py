@@ -155,6 +155,20 @@ class create_dispersion_map(object):
         orderPixelTable = orderPixelTable.apply(
             self.detect_pinhole_arc_line, axis=1)
 
+        from tabulate import tabulate
+        orderPixelTable['x_diff'] = orderPixelTable['detector_x'] - orderPixelTable['observed_x']
+        orderPixelTable['y_diff'] = orderPixelTable['detector_y'] - orderPixelTable['observed_y']
+
+        print(f"Mean X Y difference: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
+
+        print(tabulate(orderPixelTable, headers='keys', tablefmt='psql'))
+
+        sys.exit(0)
+
+        # SHIFT EVERYTHING FROM PHOTUTILS TO PYTHON INDEXING
+        for col in ['detector_x', 'detector_y', 'observed_x', 'observed_y']:
+            orderPixelTable[col] += 0.5
+
         # COLLECT MISSING LINES
         mask = (orderPixelTable['observed_x'].isnull())
         missingLines = orderPixelTable.loc[mask]
@@ -162,6 +176,9 @@ class create_dispersion_map(object):
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
             'observed_x'], inplace=True)
+
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable.head(100), headers='keys', tablefmt='psql'))
 
         detectedLines = len(orderPixelTable.index)
         percentageDetectedLines = (float(detectedLines) / float(totalLines))
@@ -261,6 +278,12 @@ class create_dispersion_map(object):
         # LINE LIST TO PANDAS DATAFRAME
         dat = Table.read(predictedLinesFile, format='fits')
         orderPixelTable = dat.to_pandas()
+
+        # FITS TO PYTHON INDEXING
+        # PHOTUTILS CENTRE OF BOTTOM LEFT PIXEL IS (0,0) BUT FOR WCS IT IS (1,1)
+        # AND FOR PYTHON IT IS (0.5,0.5)
+        orderPixelTable["detector_x"] -= 1.0
+        orderPixelTable["detector_y"] -= 1.0
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -569,14 +592,31 @@ class create_dispersion_map(object):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        # POLY FUNCTION NEEDS A DATAFRAME AS INPUT
-        poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True).poly
+        # ADD EXPONENTS TO ORDERTABLE UP-FRONT
+        if isinstance(orderDeg, list):
+            orderDegx = orderDeg[0]
+            orderDegy = orderDeg[1]
+            wavelengthDegx = wavelengthDeg[0]
+            wavelengthDegy = wavelengthDeg[1]
+            slitDegx = slitDeg[0]
+            slitDegy = slitDeg[1]
+        else:
+            orderDegx = orderDeg
+            orderDegy = orderDeg
+            wavelengthDegx = wavelengthDeg
+            wavelengthDegy = wavelengthDeg
+            slitDegx = slitDeg
+            slitDegy = slitDeg
+
+        polyx = chebyshev_order_wavelength_polynomials(
+            log=self.log, orderDeg=orderDegx, wavelengthDeg=wavelengthDegx, slitDeg=slitDegx, exponentsIncluded=True, axis="x").poly
+        polyy = chebyshev_order_wavelength_polynomials(
+            log=self.log, orderDeg=orderDegy, wavelengthDeg=wavelengthDegy, slitDeg=slitDegy, exponentsIncluded=True, axis="y").poly
 
         # CALCULATE X & Y RESIDUALS BETWEEN OBSERVED LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        orderPixelTable["fit_x"] = poly(orderPixelTable, *xcoeff)
-        orderPixelTable["fit_y"] = poly(orderPixelTable, *ycoeff)
+        orderPixelTable["fit_x"] = polyx(orderPixelTable, *xcoeff)
+        orderPixelTable["fit_y"] = polyy(orderPixelTable, *ycoeff)
         orderPixelTable["residuals_x"] = orderPixelTable[
             "fit_x"] - orderPixelTable["observed_x"]
         orderPixelTable["residuals_y"] = orderPixelTable[
@@ -734,15 +774,38 @@ class create_dispersion_map(object):
         clippedCount = 1
 
         # ADD EXPONENTS TO ORDERTABLE UP-FRONT
-        for i in range(0, orderDeg + 1):
-            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
-        for j in range(0, wavelengthDeg + 1):
-            orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
-        for k in range(0, slitDeg + 1):
-            orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
+        if isinstance(orderDeg, list):
+            orderDegx = orderDeg[0]
+            orderDegy = orderDeg[1]
+            wavelengthDegx = wavelengthDeg[0]
+            wavelengthDegy = wavelengthDeg[1]
+            slitDegx = slitDeg[0]
+            slitDegy = slitDeg[1]
+        else:
+            orderDegx = orderDeg
+            orderDegy = orderDeg
+            wavelengthDegx = wavelengthDeg
+            wavelengthDegy = wavelengthDeg
+            slitDegx = slitDeg
+            slitDegy = slitDeg
 
-        poly = chebyshev_order_wavelength_polynomials(
-            log=self.log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True).poly
+        for i in range(0, orderDegx + 1):
+            orderPixelTable[f"order_pow_x_{i}"] = orderPixelTable["order"].pow(i)
+        for j in range(0, wavelengthDegx + 1):
+            orderPixelTable[f"wavelength_pow_x_{j}"] = orderPixelTable["wavelength"].pow(j)
+        for k in range(0, slitDegx + 1):
+            orderPixelTable[f"slit_position_pow_x_{k}"] = orderPixelTable["slit_position"].pow(k)
+        for i in range(0, orderDegy + 1):
+            orderPixelTable[f"order_pow_y_{i}"] = orderPixelTable["order"].pow(i)
+        for j in range(0, wavelengthDegy + 1):
+            orderPixelTable[f"wavelength_pow_y_{j}"] = orderPixelTable["wavelength"].pow(j)
+        for k in range(0, slitDegy + 1):
+            orderPixelTable[f"slit_position_pow_y_{k}"] = orderPixelTable["slit_position"].pow(k)
+
+        polyx = chebyshev_order_wavelength_polynomials(
+            log=self.log, orderDeg=orderDegx, wavelengthDeg=wavelengthDegx, slitDeg=slitDegx, exponentsIncluded=True, axis="x").poly
+        polyy = chebyshev_order_wavelength_polynomials(
+            log=self.log, orderDeg=orderDegy, wavelengthDeg=wavelengthDegy, slitDeg=slitDegy, exponentsIncluded=True, axis="y").poly
 
         clippingSigma = self.settings[
             recipe]["poly-fitting-residual-clipping-sigma"]
@@ -754,10 +817,10 @@ class create_dispersion_map(object):
         iteration = 0
 
         allClippedLines = []
-        xcoeff = np.ones((orderDeg + 1) *
-                         (wavelengthDeg + 1) * (slitDeg + 1))
-        ycoeff = np.ones((orderDeg + 1) *
-                         (wavelengthDeg + 1) * (slitDeg + 1))
+        xcoeff = np.ones((orderDegx + 1) *
+                         (wavelengthDegx + 1) * (slitDegx + 1))
+        ycoeff = np.ones((orderDegy + 1) *
+                         (wavelengthDegy + 1) * (slitDegy + 1))
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
             observed_x = orderPixelTable["observed_x"].to_numpy()
@@ -767,13 +830,13 @@ class create_dispersion_map(object):
             self.log.info("""curvefit x""" % locals())
 
             xcoeff, pcov_x = curve_fit(
-                poly, xdata=orderPixelTable, ydata=observed_x, p0=xcoeff)
+                polyx, xdata=orderPixelTable, ydata=observed_x, p0=xcoeff)
 
             # NOW Y
             self.log.info("""curvefit y""" % locals())
 
             ycoeff, pcov_y = curve_fit(
-                poly, xdata=orderPixelTable, ydata=observed_y, p0=ycoeff)
+                polyy, xdata=orderPixelTable, ydata=observed_y, p0=ycoeff)
 
             self.log.info("""calculate_residuals""" % locals())
             mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
@@ -856,7 +919,7 @@ class create_dispersion_map(object):
         if isinstance(missingLines, pd.core.frame.DataFrame):
             toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.2, linewidths=0.5)
         toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
-        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='yellow', s=1, alpha=0.6)
+        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.6)
         # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
         mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))
         toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.6, linewidths=0.5)
@@ -965,7 +1028,7 @@ class create_dispersion_map(object):
         **Usage:**
 
         ```python
-        slitMap, wlMap = self._create_placeholder_images(order=order)
+        slitMap, wlMap, orderMap = self._create_placeholder_images(order=order)
         ```
         """
         self.log.debug('starting the ``create_placeholder_images`` method')

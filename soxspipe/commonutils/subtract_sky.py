@@ -117,6 +117,12 @@ class subtract_sky(object):
         # DATA FRAME CONTAINING ALL PIXELS - X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDER
         self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame)
 
+        orderPixelTable = dispersion_map_to_pixel_arrays(
+            log=self.log,
+            dispersionMapPath=dispMap,
+            orderPixelTable=self.mapDF
+        )
+
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"
@@ -951,7 +957,7 @@ class subtract_sky(object):
         fittingDF["weights"] = fittingDF["weights"].replace(np.nan, 0.00000001)
         median_rolling_window_size = int(self.settings["sky-subtraction"]["median_rolling_window_size"])
 
-        smooth = 0.9999999
+        smooth = 0.99999999999
 
         iteration = 0
         print(f"ORDER {order}")
@@ -960,18 +966,18 @@ class subtract_sky(object):
             iteration += 1
             fittingDF["residuals"] = csaps(fittingDF["wavelength"].values, fittingDF["flux"].values, fittingDF["wavelength"].values, weights=fittingDF["weights"].values, smooth=smooth) - fittingDF["flux"].values
 
-            plt.scatter(fittingDF["residuals"], fittingDF["slit_position"], s=1, alpha=0.5)
-            plt.title(f"RAW Order {order} iteration {iteration}. Mean Res {fittingDF['residuals'].mean():0.2f}. Std Res {fittingDF['residuals'].std():0.2f}")
-            plt.show()
+            # plt.scatter(fittingDF["residuals"], fittingDF["slit_position"], s=1, alpha=0.5)
+            # plt.title(f"RAW Order {order} iteration {iteration}. Mean Res {fittingDF['residuals'].mean():0.2f}. Std Res {fittingDF['residuals'].std():0.2f}")
+            # plt.show()
 
             # print()
             # SIGMA-CLIP THE DATA
             fittingDF["residuals_smoothed"] = fittingDF["residuals"].rolling(window=median_rolling_window_size, center=True).median()
             fittingDF["residuals_minus_smoothed_residual"] = fittingDF["residuals"] - fittingDF["residuals_smoothed"]
 
-            plt.scatter(fittingDF["residuals_minus_smoothed_residual"], fittingDF["slit_position"], s=1, alpha=0.5)
-            plt.title(f"SMOOTHED Order {order} iteration {iteration}. Mean Res {fittingDF['residuals_minus_smoothed_residual'].mean():0.2f}. Std Res {fittingDF['residuals_minus_smoothed_residual'].std():0.2f}")
-            plt.show()
+            # plt.scatter(fittingDF["residuals_minus_smoothed_residual"], fittingDF["slit_position"], s=1, alpha=0.5)
+            # plt.title(f"SMOOTHED Order {order} iteration {iteration}. Mean Res {fittingDF['residuals_minus_smoothed_residual'].mean():0.2f}. Std Res {fittingDF['residuals_minus_smoothed_residual'].std():0.2f}")
+            # plt.show()
 
             from astropy.stats import sigma_clip, mad_std
             # SIGMA-CLIP THE DATA
@@ -979,7 +985,7 @@ class subtract_sky(object):
                 fittingDF["residuals_minus_smoothed_residual"].values, sigma_lower=3, sigma_upper=3, maxiters=3, cenfunc='median', stdfunc='mad_std')
             fittingDF["clipped"] = masked_residuals.mask
             mask = (fittingDF["clipped"] == False)
-            fittingDF = fittingDF.loc[mask]
+            # fittingDF = fittingDF.loc[mask]
 
         imageMapOrder["sky_model"] = csaps(fittingDF["wavelength"].values, fittingDF["flux"].values, imageMapOrder["wavelength"].values, weights=fittingDF["weights"].values, smooth=smooth)
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]

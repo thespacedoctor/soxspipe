@@ -29,6 +29,7 @@ class chebyshev_order_wavelength_polynomials():
         - ``wavelengthDeg`` -- degree of wavelength polynomial components
         - ``slitDeg`` -- degree of the slit polynomial components
         - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+        - ``axis`` -- x, y or False. Default *False*.
 
     **Usage:**
 
@@ -45,13 +46,19 @@ class chebyshev_order_wavelength_polynomials():
             orderDeg,
             wavelengthDeg,
             slitDeg,
-            exponentsIncluded=False
+            exponentsIncluded=False,
+            axis=False
     ):
         self.log = log
         self.orderDeg = orderDeg
         self.wavelengthDeg = wavelengthDeg
         self.slitDeg = slitDeg
         self.exponentsIncluded = exponentsIncluded
+
+        if axis:
+            self.axis = f"{axis.lower()}_"
+        else:
+            self.axis = ""
 
         return None
 
@@ -95,7 +102,7 @@ class chebyshev_order_wavelength_polynomials():
             for i in range(0, orderDeg + 1):
                 for j in range(0, wavelengthDeg + 1):
                     for k in range(0, slitDeg + 1):
-                        lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{i}"].values * orderPixelTable[f"wavelength_pow_{j}"].values * orderPixelTable[f"slit_position_pow_{k}"].values
+                        lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{self.axis}{i}"].values * orderPixelTable[f"wavelength_pow_{self.axis}{j}"].values * orderPixelTable[f"slit_position_pow_{self.axis}{k}"].values
                         n_coeff += 1
 
         self.log.debug('completed the ``poly`` method')
