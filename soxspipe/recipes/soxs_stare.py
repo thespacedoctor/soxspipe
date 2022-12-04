@@ -254,7 +254,7 @@ class soxs_stare(_base_recipe_):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=1, title=False, surfacePlot=True)
+            log=self.log, CCDObject=combined_object, show=True, ext=False, stdWindow=1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
 
         skymodel = subtract_sky(
             log=self.log,
