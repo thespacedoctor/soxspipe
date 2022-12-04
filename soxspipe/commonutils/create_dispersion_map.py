@@ -152,22 +152,25 @@ class create_dispersion_map(object):
 
         # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
-        orderPixelTable = orderPixelTable.apply(
-            self.detect_pinhole_arc_line, axis=1)
+        iteration = 1
+        print(f"FINDING PINHOLE ARC-LINES ON IMAGE")
+        while iteration <= 2:
+            iteration += 1
+            orderPixelTable = orderPixelTable.apply(
+                self.detect_pinhole_arc_line, axis=1)
 
-        from tabulate import tabulate
-        orderPixelTable['x_diff'] = orderPixelTable['detector_x'] - orderPixelTable['observed_x']
-        orderPixelTable['y_diff'] = orderPixelTable['detector_y'] - orderPixelTable['observed_y']
+            if 'detector_x_shifted' in orderPixelTable.columns:
+                orderPixelTable['x_diff'] = orderPixelTable['detector_x_shifted'] - orderPixelTable['observed_x']
+                orderPixelTable['y_diff'] = orderPixelTable['detector_y_shifted'] - orderPixelTable['observed_y']
+                orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x_shifted'] - orderPixelTable['x_diff'].mean()
+                orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y_shifted'] - orderPixelTable['y_diff'].mean()
+            else:
+                orderPixelTable['x_diff'] = orderPixelTable['detector_x'] - orderPixelTable['observed_x']
+                orderPixelTable['y_diff'] = orderPixelTable['detector_y'] - orderPixelTable['observed_y']
+                orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x'] - orderPixelTable['x_diff'].mean()
+                orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y'] - orderPixelTable['y_diff'].mean()
 
-        print(f"Mean X Y difference: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
-
-        print(tabulate(orderPixelTable, headers='keys', tablefmt='psql'))
-
-        sys.exit(0)
-
-        # SHIFT EVERYTHING FROM PHOTUTILS TO PYTHON INDEXING
-        for col in ['detector_x', 'detector_y', 'observed_x', 'observed_y']:
-            orderPixelTable[col] += 0.5
+            print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
 
         # COLLECT MISSING LINES
         mask = (orderPixelTable['observed_x'].isnull())
@@ -176,9 +179,6 @@ class create_dispersion_map(object):
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
             'observed_x'], inplace=True)
-
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable.head(100), headers='keys', tablefmt='psql'))
 
         detectedLines = len(orderPixelTable.index)
         percentageDetectedLines = (float(detectedLines) / float(totalLines))
@@ -281,7 +281,7 @@ class create_dispersion_map(object):
 
         # FITS TO PYTHON INDEXING
         # PHOTUTILS CENTRE OF BOTTOM LEFT PIXEL IS (0,0) BUT FOR WCS IT IS (1,1)
-        # AND FOR PYTHON IT IS (0.5,0.5)
+        # AND FOR PYTHON IT IS ALSO (0,0)
         orderPixelTable["detector_x"] -= 1.0
         orderPixelTable["detector_y"] -= 1.0
 
@@ -364,8 +364,12 @@ class create_dispersion_map(object):
 
         pinholeFrame = self.pinholeFrame
         windowHalf = self.windowHalf
-        x = predictedLine['detector_x']
-        y = predictedLine['detector_y']
+        if 'detector_x_shifted' in predictedLine:
+            x = predictedLine['detector_x_shifted']
+            y = predictedLine['detector_y_shifted']
+        else:
+            x = predictedLine['detector_x']
+            y = predictedLine['detector_y']
 
         # CLIP A STAMP FROM IMAGE AROUNDS PREDICTED POSITION
         xlow = int(np.max([x - windowHalf, 0]))
@@ -373,35 +377,30 @@ class create_dispersion_map(object):
         ylow = int(np.max([y - windowHalf, 0]))
         yup = int(np.min([y + windowHalf, pinholeFrame.shape[0]]))
         stamp = pinholeFrame[ylow:yup, xlow:xup]
-        # CONVERT TO MASKED ARRAY
-        stamp = np.asanyarray(stamp)
 
+        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+        stamp = np.ma.array(stamp.data, mask=stamp.mask)
         # USE DAOStarFinder TO FIND LINES WITH 2D GUASSIAN FITTING
         mean, median, std = sigma_clipped_stats(stamp, sigma=3.0)
 
-        if 1 == 0:
-            import matplotlib.pyplot as plt
-            pclf()
-            plt.imshow(stamp)
-
         try:
             daofind = DAOStarFinder(
-                fwhm=1.5, threshold=2.5 * std, roundlo=-3.0, roundhi=3.0, sharplo=-3.0, sharphi=3.0)
+                fwhm=2.5, threshold=3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
             sources = daofind(stamp - median)
             # print("WTF")
         except Exception as e:
             sources = None
 
-        if 1 == 0 and not sources and x > 700 and x < 800 and y > 600 and y < 800:
+        if 1 == 0:
             import random
             ran = random.randint(1, 300)
             # if ran == 200:
             if ran:
                 import matplotlib.pyplot as plt
                 plt.clf()
-                plt.imshow(stamp)
-                plt.text(windowHalf - 2, windowHalf - 2, f"{int(x)},{int(y)}", fontsize=16, c="black", verticalalignment='bottom')
-                plt.show()
+                plt.imshow(stamp, vmin=mean - std, vmax=mean + std)
+
+                # plt.show()
         old_resid = windowHalf * 4
         if sources:
             # FIND SOURCE CLOSEST TO CENTRE
@@ -418,9 +417,11 @@ class create_dispersion_map(object):
             else:
                 observed_x = sources[0]['xcentroid'] + xlow
                 observed_y = sources[0]['ycentroid'] + ylow
-            if 1 == 0 and ran == 200:
+            if 1 == 0 and ran:
+                plt.scatter(0, 0, marker='x', s=30)
                 plt.scatter(observed_x - xlow, observed_y -
                             ylow, marker='x', s=30)
+                plt.text(windowHalf - 2, windowHalf - 2, f"{observed_x-xlow:0.2f},{observed_y -ylow:0.2f}", fontsize=16, c="black", verticalalignment='bottom')
                 plt.show()
         else:
             observed_x = np.nan
@@ -1271,8 +1272,6 @@ class create_dispersion_map(object):
             train_wl = orderPixelTable["wavelength"].values
             train_sp = orderPixelTable["slit_position"].values
             g = orderPixelTable[['pixel_x', 'pixel_y', 'order']].drop_duplicates()
-            g['pixel_x'] += 0.5
-            g['pixel_y'] += 0.5
 
             # USE CUBIC SPLINE NEIGHEST NEIGHBOUR TO SEED RESULTS
             bigWlArray = griddata((train_wlx, train_wly), train_wl, (g['pixel_x'].values, g['pixel_y'].values), method="cubic")
@@ -1333,12 +1332,12 @@ class create_dispersion_map(object):
         )
 
         # INTEGER PIXEL VALUES & FIT DISPLACEMENTS FROM PIXEL CENTRES
-        orderPixelTable["pixel_x"] = np.floor(orderPixelTable["fit_x"].values)
-        orderPixelTable["pixel_y"] = np.floor(orderPixelTable["fit_y"].values)
+        orderPixelTable["pixel_x"] = np.round(orderPixelTable["fit_x"].values)
+        orderPixelTable["pixel_y"] = np.round(orderPixelTable["fit_y"].values)
         orderPixelTable["residual_x"] = orderPixelTable[
-            "fit_x"] - (orderPixelTable["pixel_x"] + 0.5)
+            "fit_x"] - orderPixelTable["pixel_x"]
         orderPixelTable["residual_y"] = orderPixelTable[
-            "fit_y"] - (orderPixelTable["pixel_y"] + 0.5)
+            "fit_y"] - orderPixelTable["pixel_y"]
         orderPixelTable["residual_xy"] = np.sqrt(np.square(
             orderPixelTable["residual_x"]) + np.square(orderPixelTable["residual_y"]))
 
