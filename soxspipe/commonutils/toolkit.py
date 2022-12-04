@@ -17,16 +17,11 @@ from copy import copy
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
 import math
-
-
 import random
-
-
 import unicodecsv as csv
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
 from builtins import object
-
 import sys
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import os
@@ -145,8 +140,10 @@ def quicklook_image(
         title=False,
         surfacePlot=False,
         dispMap=False,
-        dispMapDF=False,
-        inst=False):
+        dispMapImage=False,
+        inst=False,
+        settings=False,
+        skylines=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
@@ -158,8 +155,9 @@ def quicklook_image(
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
     - ``dispMap`` -- path to dispersion map. Default *False*
-    - ``dispMapDF`` -- pandas dataframe of dispersion map wavelength, order and slit-postion
+    - ``dispMapImage`` -- the 2D dispersion map image
     - ``inst`` -- provide instrument name if no header exists
+    - ``skylines`` -- mark skylines on image
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
@@ -172,6 +170,32 @@ def quicklook_image(
     import pandas as pd
     import matplotlib as mpl
     import numpy as np
+    from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+    from soxspipe.commonutils import keyword_lookup
+    from soxspipe.commonutils import detector_lookup
+
+    if settings:
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=log,
+            settings=settings
+        ).get
+        arm = CCDObject.header[kw("SEQ_ARM")]
+        dateObs = CCDObject.header[kw("DATE_OBS")]
+
+        # DETECTOR PARAMETERS LOOKUP OBJECT
+        detectorParams = detector_lookup(
+            log=log,
+            settings=settings
+        ).get(arm)
+
+        # USE THIS ELSEWHERE IN THE OBJECT METHODS
+        dp = detectorParams
+        science_pixels = dp["science-pixels"]
+
+    if dispMapImage:
+        dispMapDF = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, assosiatedFrame=CCDObject)
 
     originalRC = dict(mpl.rcParams)
 
@@ -205,10 +229,11 @@ def quicklook_image(
 
     std = np.nanstd(frame)
     mean = np.nanmean(frame)
+    median = np.nanmean(frame)
     palette = copy(plt.cm.viridis)
     palette.set_bad("#dc322f", 1.0)
-    vmax = mean + stdWindow * 1 * std
-    vmin = mean - stdWindow * 0.1 * std
+    vmax = median + stdWindow * 0.5 * std
+    vmin = median - stdWindow * 0.5 * std
 
     if surfacePlot:
 
@@ -278,6 +303,14 @@ def quicklook_image(
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
 
+    if skylines:
+        calibrationRootPath = get_calibrations_path(log=log, settings=settings)
+        skylines = calibrationRootPath + "/" + dp["skylines"]
+        # SPEC FORMAT TO PANDAS DATAFRAME
+        from astropy.table import Table
+        dat = Table.read(skylines, format='fits')
+        skylinesDF = dat.to_pandas()
+
     if dispMap and not isinstance(dispMapDF, bool):
         uniqueOrders = dispMapDF['order'].unique()
         wlLims = []
@@ -288,39 +321,51 @@ def quicklook_image(
             wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
             spLims.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
 
+        lineNumber = 0
         for o, wlLim, spLim in zip(uniqueOrders, wlLims, spLims):
             wlRange = np.arange(wlLim[0], wlLim[1], 1)
             wlRange = np.append(wlRange, [wlLim[1]])
             for e in spLim:
                 myDict = {
+                    "line": np.full_like(wlRange, lineNumber),
                     "order": np.full_like(wlRange, o),
                     "wavelength": wlRange,
                     "slit_position": np.full_like(wlRange, e)
                 }
-                orderPixelTable = pd.DataFrame(myDict)
-                orderPixelTable = dispersion_map_to_pixel_arrays(
-                    log=log,
-                    dispersionMapPath=dispMap,
-                    orderPixelTable=orderPixelTable
-                )
-                ax2.plot(orderPixelTable["fit_y"], orderPixelTable["fit_x"], "w:", alpha=0.5)
+                if lineNumber == 0:
+                    orderPixelTable = pd.DataFrame(myDict)
+                else:
+                    orderPixelTableNew = pd.DataFrame(myDict)
+                    orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
+                lineNumber += 1
+
             spRange = np.arange(spLim[0], spLim[1], 1)
             spRange = np.append(spRange, [spLim[1]])
-            wlRange = np.arange(wlLim[0], wlLim[1], 15)
+            if skylines:
+                mask = skylinesDF['WAVELENGTH'].between(wlLim[0], wlLim[1])
+                wlRange = skylinesDF.loc[mask]['WAVELENGTH'].values
+            else:
+                wlRange = np.arange(wlLim[0], wlLim[1], 15)
             wlRange = np.append(wlRange, [wlLim[1]])
             for l in wlRange:
                 myDict = {
+                    "line": np.full_like(spRange, lineNumber),
                     "order": np.full_like(spRange, o),
                     "wavelength": np.full_like(spRange, l),
                     "slit_position": spRange
                 }
-                orderPixelTable = pd.DataFrame(myDict)
-                orderPixelTable = dispersion_map_to_pixel_arrays(
-                    log=log,
-                    dispersionMapPath=dispMap,
-                    orderPixelTable=orderPixelTable
-                )
-                ax2.plot(orderPixelTable["fit_y"], orderPixelTable["fit_x"], "w:", alpha=0.5)
+                orderPixelTableNew = pd.DataFrame(myDict)
+                orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
+                lineNumber += 1
+
+        orderPixelTable = dispersion_map_to_pixel_arrays(
+            log=log,
+            dispersionMapPath=dispMap,
+            orderPixelTable=orderPixelTable
+        )
+        for l in range(lineNumber):
+            mask = (orderPixelTable['line'] == l)
+            ax2.plot(orderPixelTable.loc[mask]["fit_y"], orderPixelTable.loc[mask]["fit_x"], "w:", alpha=0.5)
 
     ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
