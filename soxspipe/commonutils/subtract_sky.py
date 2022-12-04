@@ -117,6 +117,10 @@ class subtract_sky(object):
         # DATA FRAME CONTAINING ALL PIXELS - X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDER
         self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame)
 
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=self.objectFrame, show=True, ext=False, stdWindow=1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
+
         orderPixelTable = dispersion_map_to_pixel_arrays(
             log=self.log,
             dispersionMapPath=dispMap,
@@ -957,7 +961,7 @@ class subtract_sky(object):
         fittingDF["weights"] = fittingDF["weights"].replace(np.nan, 0.00000001)
         median_rolling_window_size = int(self.settings["sky-subtraction"]["median_rolling_window_size"])
 
-        smooth = 0.99999999999
+        smooth = 0.999999999999
 
         iteration = 0
         print(f"ORDER {order}")
