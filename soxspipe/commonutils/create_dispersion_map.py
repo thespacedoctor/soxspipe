@@ -1004,7 +1004,7 @@ class create_dispersion_map(object):
         }, ignore_index=True)
 
         plt.tight_layout()
-        plt.show()
+        # plt.show()
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``fit_polynomials`` method')
