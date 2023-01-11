@@ -415,6 +415,7 @@ class _base_recipe_(object):
             inst.remove(None)
         self.inst = inst[0]
 
+        # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"

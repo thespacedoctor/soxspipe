@@ -118,6 +118,7 @@ class create_dispersion_map(object):
 
         warnings.simplefilter('ignore', NoDetectionsWarning)
 
+        # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"

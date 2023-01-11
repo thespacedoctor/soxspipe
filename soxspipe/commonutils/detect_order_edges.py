@@ -133,6 +133,7 @@ class detect_order_edges(_base_detect):
         self.orderDeg = self.recipeSettings["order-deg"]
 
         self.inst = flatFrame.header[kw("INSTRUME")]
+                # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"
