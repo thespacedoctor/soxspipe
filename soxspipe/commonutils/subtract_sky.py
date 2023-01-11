@@ -172,6 +172,7 @@ class subtract_sky(object):
 
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         qcPlotOrder = int(np.median(uniqueOrders)) - 1
+        uniqueOrders = [qcPlotOrder]
 
         allimageMapOrder = []
         allimageMapOrderWithObject = []
@@ -194,9 +195,10 @@ class subtract_sky(object):
 
         # FIRST PASS AT FITTING THE SKY
         for o, imageMapOrderSkyOnly, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
-            imageMapOrderSkyOnly, tck = self.fit_bspline_curve_to_sky(imageMapOrderSkyOnly, o, bspline_order)
+            imageMapOrderSkyOnly, tck, newKnots = self.fit_bspline_curve_to_sky(imageMapOrderSkyOnly, o, bspline_order)
             if o == qcPlotOrder:
                 qctck = tck
+                qcnewKnots = newKnots
 
         for o, imageMapOrderSkyOnly, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
 
@@ -204,7 +206,7 @@ class subtract_sky(object):
                 # INJECT THE PIXEL VALUES BACK INTO THE PLACEHOLDER IMAGES
                 skymodelCCDData, skySubtractedCCDData = self.add_data_to_placeholder_images(imageMapOrderSkyOnly, skymodelCCDData, skySubtractedCCDData)
                 if o == qcPlotOrder:
-                    qc_plot_path = self.plot_sky_sampling(order=o, imageMapOrderWithObjectDF=imageMapOrderWithObject, imageMapOrderDF=imageMapOrderSkyOnly, tck=qctck)
+                    qc_plot_path = self.plot_sky_sampling(order=o, imageMapOrderWithObjectDF=imageMapOrderWithObject, imageMapOrderDF=imageMapOrderSkyOnly, tck=qctck, newKnots=qcnewKnots)
                     basename = os.path.basename(qc_plot_path)
                     self.products = self.products.append({
                         "soxspipe_recipe": "soxs-stare",
@@ -360,7 +362,8 @@ class subtract_sky(object):
             order,
             imageMapOrderWithObjectDF,
             imageMapOrderDF,
-            tck=False):
+            tck=False,
+            newKnots=False):
         """*generate a plot of sky sampling*
 
         **Key Arguments:**
@@ -575,12 +578,20 @@ class subtract_sky(object):
 
         # PLOT WAVELENGTH VS FLUX SKY MODEL
         sixrow.set_title("STEP 2. Fit a univariate bspline to sky-flux as a function of wavelength")
+        # sixrow.scatter(
+        #     imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
+        #     imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].values, label='unclipped', s=medianMS, c="blue", alpha=0.5, zorder=10)
+
         sixrow.scatter(
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].values, label='unclipped', s=medianMS, c="blue", alpha=0.5, zorder=10)
+            imageMapOrderDF.loc[((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0)), "wavelength"].values,
+            imageMapOrderDF.loc[((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0)), "flux"].values, label='s>0', s=medianMS, c="red", alpha=1, zorder=10)
         sixrow.scatter(
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_normalised"].values, label='normalised', s=medianMS, c=medianColor, alpha=0.5, zorder=unclippedZ)
+            imageMapOrderDF.loc[((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0)), "wavelength"].values,
+            imageMapOrderDF.loc[((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0)), "flux"].values, label='s<0', s=medianMS, c="blue", alpha=1, zorder=10)
+
+        # sixrow.scatter(
+        #     imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
+        #     imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_normalised"].values, label='normalised', s=medianMS, c=medianColor, alpha=0.5, zorder=unclippedZ)
 
         if tck:
             wl = np.linspace(imageMapOrderDF["wavelength"].min(), imageMapOrderDF["wavelength"].max(), 1000000)
@@ -659,7 +670,10 @@ class subtract_sky(object):
         eightrow.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
         # SUBTRACTED SKY RESIDUAL PANEL
-        # ninerow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"].values, s=rawMS, alpha=1., c=rawColor, zorder=unclippedZ)
+        ninerow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"].values, s=rawMS, alpha=.1, c=rawColor, zorder=unclippedZ)
+        ninerow.scatter(tck[0], np.zeros_like(tck[0]), s=7, alpha=0.1, c="purple", zorder=percentileZ)
+        # ninerow.scatter(imageMapOrderDF["wavelength"].values, imageMapOrderDF["sky_subtracted_flux_rolling_median"].values, s=7, alpha=0.2, c="purple", zorder=percentileZ)
+        # ninerow.scatter(newKnots[0], newKnots[1], marker='x', s=7, alpha=1, c="green", zorder=percentileZ)
         # ninerow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "sky_subtracted_flux"].values, s=medianMS, marker="x", c=medianColor, zorder=medianZ, alpha=.5)
         ninerow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "sky_subtracted_flux"].values, s=3, alpha=1., c="red", zorder=unclippedZ)
         ninerow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "sky_subtracted_flux"].values, s=3, alpha=1., c="blue", zorder=unclippedZ)
@@ -829,34 +843,81 @@ class subtract_sky(object):
         # CAN'T HAVE MORE KNOTS THAN DATA POINTS
 
         # NUMBER OF 'DEFAULT' KNOTS
-        n_interior_knots = int(goodWl.values.shape[0] / 2)
-
+        defaultPointsPerKnot = 25
+        n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
         # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONGS WAVELENGTH RANGE
         qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
-        knots = np.quantile(goodWl, qs)
+        allKnots = np.quantile(goodWl, qs)
+        print(f"\n\n")
+        iterationCount = 0
 
-        print("WAVELENGTH:", goodWl.min(), goodWl.max(), goodWl.mean(), goodWl.shape[0])
-        print("QS:", qs.min(), qs.max(), qs.mean(), qs.shape[0])
-        print("KNOTS:", knots.min(), knots.max(), knots.mean(), knots.shape[0])
+        residualFloor = False
 
-        # fp - The weighted sum of squared residuals of the spline approximation
-        # ier - An integer flag about splrep success. Success is indicated if ier<=0. If ier in [1,2,3] an error occurred but was not raised. Otherwise an error is raised.
-        # msg - A message corresponding to the integer flag, ier.
-        # TODO: USE FP AS THE METRIC OF GOODNESS OF FIT ... RE ADD KNOTS WHERE NEEDED AND REPEAT
-        tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=knots, k=bspline_order, w=goodWeights, full_output=True)
-        t, c, k = tck
+        while iterationCount < 1:
+            iterationCount += 1
+
+            print(f"Order: {order}, Iteration {iterationCount}")
+
+            print("WAVELENGTH:", goodWl.min(), goodWl.max(), goodWl.mean(), goodWl.shape[0])
+            print("QS:", qs.min(), qs.max(), qs.mean(), qs.shape[0])
+            print("KNOTS:", allKnots.min(), allKnots.max(), allKnots.mean(), allKnots.shape[0])
+
+            # fp - The weighted sum of squared residuals of the spline approximation
+            # ier - An integer flag about splrep success. Success is indicated if ier<=0. If ier in [1,2,3] an error occurred but was not raised. Otherwise an error is raised.
+            # msg - A message corresponding to the integer flag, ier.
+            # TODO: USE FP AS THE METRIC OF GOODNESS OF FIT ... RE ADD KNOTS WHERE NEEDED AND REPEAT
+            tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=allKnots, k=bspline_order, w=goodWeights, full_output=True)
+            t, c, k = tck
+
+            if not residualFloor:
+                allResiduals = np.absolute(np.array(goodFlux - ip.splev(goodWl, tck)))
+                medianResidual = np.median(allResiduals)
+                from scipy.stats import median_abs_deviation
+                mad = median_abs_deviation(allResiduals)
+                residualFloor = medianResidual + mad
+                print(f"FLOOR {iterationCount}")
+                print(iterationCount)
+                print(residualFloor)
+
+            sky_model = ip.splev(df["wavelength"].values, tck)
+
+            # TODO: FITS A ROLLING WINDOW SCATTER TO THESE RESIDUALS TO FIND WHERE TO PLACE NEW KNOTS
+            residuals = goodFlux - ip.splev(goodWl, tck)
+            print("RES", residuals.mean(), "STD", residuals.std(), np.median(residuals))
+            print(fp, ier, msg)
+
+            df["sky_model"] = sky_model
+            df["sky_subtracted_flux"] = df["flux"] - df["sky_model"]
+
+            potentialNewKnots = (allKnots[1:] + allKnots[:-1]) / 2
+            meanResiduals = []
+            for i, wlMin in enumerate(allKnots):
+                if i != len(allKnots) - 1:
+                    wlMax = allKnots[i + 1]
+                    subset = df.loc[((df['clipped'] == False) & (df['wavelength'].between(wlMin, wlMax))), "sky_subtracted_flux"]
+                    if len(subset.index) < bspline_order + 1:
+                        meanResiduals.append(residualFloor - 1)
+                    else:
+                        meanResiduals.append(subset.abs().mean())
+
+            meanResiduals = np.array(meanResiduals)
+            potentialNewKnots = np.array(potentialNewKnots)
+            mask = np.ma.masked_where(meanResiduals < residualFloor, meanResiduals).mask
+            extraKnots = np.ma.compressed(np.ma.masked_array(potentialNewKnots, mask))
+            meanResiduals = np.ma.compressed(np.ma.masked_array(meanResiduals, mask))
+            allKnots = np.sort(np.concatenate((extraKnots, allKnots)))
+
+            print("HERE")
+            print(np.mean(meanResiduals), np.std(meanResiduals))
+            print(allKnots)
 
         sky_model = ip.splev(imageMapOrder["wavelength"].values, tck)
-
-        # TODO: FITS A ROLLING WINDOW SCATTER TO THESE RESIDUALS TO FIND WHERE TO PLACE NEW KNOTS
-        residuals = goodFlux - ip.splev(goodWl, tck)
-        print("RES", residuals.mean(), "STD", residuals.std())
-
         imageMapOrder["sky_model"] = sky_model
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
+        imageMapOrder["sky_subtracted_flux_rolling_median"] = imageMapOrder["sky_subtracted_flux"].abs().rolling(defaultPointsPerKnot).median()
 
         self.log.debug('completed the ``fit_bspline_curve_to_sky`` method')
-        return imageMapOrder, tck
+        return imageMapOrder, tck, (extraKnots, meanResiduals)
 
     def create_placeholder_images(
             self):
@@ -1327,7 +1388,7 @@ class subtract_sky(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
@@ -1384,7 +1445,7 @@ class subtract_sky(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
