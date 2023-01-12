@@ -194,13 +194,17 @@ class subtract_sky(object):
         allimageMapOrder = self.cross_dispersion_flux_normaliser(allimageMapOrder)
 
         # FIRST PASS AT FITTING THE SKY
+        newAllimageMapOrder = []
         for o, imageMapOrderSkyOnly, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
             imageMapOrderSkyOnly, tck, newKnots = self.fit_bspline_curve_to_sky(imageMapOrderSkyOnly, o, bspline_order)
+            newAllimageMapOrder.append(imageMapOrderSkyOnly)
             if o == qcPlotOrder:
                 qctck = tck
                 qcnewKnots = newKnots
+        allimageMapOrder = newAllimageMapOrder
 
         for o, imageMapOrderSkyOnly, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
+            print(imageMapOrderSkyOnly.columns)
 
             if isinstance(imageMapOrderSkyOnly, pd.core.frame.DataFrame):
                 # INJECT THE PIXEL VALUES BACK INTO THE PLACEHOLDER IMAGES
@@ -813,6 +817,7 @@ class subtract_sky(object):
 
         import numpy as np
         import scipy.interpolate as ip
+        import pandas as pd
 
         # VARIABLES TO PLAY WITH
         # 1. WEIGHTS ... IF USING WEIGHTS YOU NEED s=0. If the errors in the y values have standard-deviation given by the vector d, then w should be 1/d. Default is ones(len(x)). Note weights are relative to one another (don't have to by between 0-1)
@@ -828,16 +833,17 @@ class subtract_sky(object):
         # SORT BY COLUMN NAME - RUN ON A COPY SO NOT TO CONFUSE THE REST OF CODE
         df = imageMapOrder.copy()
         df.sort_values(by=['wavelength'], inplace=True)
+        df = df.loc[df["clipped"] == False]
 
         # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
-        goodWl = df.loc[df["clipped"] == False]["wavelength"]
-        goodFlux = df.loc[df["clipped"] == False]["flux"]
+        goodWl = df["wavelength"]
+        goodFlux = df["flux"]
 
         # TODO: WHICH WEIGHTS SHOULD WE USE? 'error' IS FROM THE CALIBRATED SCIENCE IMAGE. 'residual_windowed_std' MIGHT BE BETTER (see panel two of plot)
         # THIS IS CLOSER TO WHAT KELSON SUGGESTS
         df["weights"] = 1 / df["error"]
         df["weights"] = df["weights"].replace(np.nan, 0.0000000000001)
-        goodWeights = df.loc[df["clipped"] == False, "weights"]
+        goodWeights = df["weights"]
 
         # FOR WEIGHTED BSPLINES WE ONLY NEED *INTERIOR* KNOTS (DON'T GO BEYOND RANGE OF DATA)
         # CAN'T HAVE MORE KNOTS THAN DATA POINTS
@@ -846,14 +852,14 @@ class subtract_sky(object):
         defaultPointsPerKnot = 25
         n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
         # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONGS WAVELENGTH RANGE
-        qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
+        qs = np.linspace(0, 1, n_interior_knots + 2)[1: -1]
         allKnots = np.quantile(goodWl, qs)
         print(f"\n\n")
         iterationCount = 0
 
         residualFloor = False
 
-        while iterationCount < 1:
+        while iterationCount < 6:
             iterationCount += 1
 
             print(f"Order: {order}, Iteration {iterationCount}")
@@ -869,8 +875,19 @@ class subtract_sky(object):
             tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=allKnots, k=bspline_order, w=goodWeights, full_output=True)
             t, c, k = tck
 
+            df["sky_model"] = ip.splev(df["wavelength"].values, tck)
+
+            # PASTE INTO DEBUGGER FOR MULTILINE STATEMENTS
+            # !import code; code.interact(local=vars())
+            print(df.columns)
+            df = self.resample_sky(df, 3)
+            print(df.columns)
+
+            breakpoint()
+            df["sky_subtracted_flux"] = df["flux"] - df["sky_model"]
+
             if not residualFloor:
-                allResiduals = np.absolute(np.array(goodFlux - ip.splev(goodWl, tck)))
+                allResiduals = np.absolute(df["sky_subtracted_flux"])
                 medianResidual = np.median(allResiduals)
                 from scipy.stats import median_abs_deviation
                 mad = median_abs_deviation(allResiduals)
@@ -879,22 +896,16 @@ class subtract_sky(object):
                 print(iterationCount)
                 print(residualFloor)
 
-            sky_model = ip.splev(df["wavelength"].values, tck)
-
             # TODO: FITS A ROLLING WINDOW SCATTER TO THESE RESIDUALS TO FIND WHERE TO PLACE NEW KNOTS
-            residuals = goodFlux - ip.splev(goodWl, tck)
-            print("RES", residuals.mean(), "STD", residuals.std(), np.median(residuals))
+            print("RES", df["sky_subtracted_flux"].mean(), "STD", df["sky_subtracted_flux"].std(), np.median(df["sky_subtracted_flux"]))
             print(fp, ier, msg)
 
-            df["sky_model"] = sky_model
-            df["sky_subtracted_flux"] = df["flux"] - df["sky_model"]
-
-            potentialNewKnots = (allKnots[1:] + allKnots[:-1]) / 2
+            potentialNewKnots = (allKnots[1:] + allKnots[: -1]) / 2
             meanResiduals = []
             for i, wlMin in enumerate(allKnots):
                 if i != len(allKnots) - 1:
                     wlMax = allKnots[i + 1]
-                    subset = df.loc[((df['clipped'] == False) & (df['wavelength'].between(wlMin, wlMax))), "sky_subtracted_flux"]
+                    subset = df.loc[(df['wavelength'].between(wlMin, wlMax)), "sky_subtracted_flux"]
                     if len(subset.index) < bspline_order + 1:
                         meanResiduals.append(residualFloor - 1)
                     else:
@@ -911,8 +922,9 @@ class subtract_sky(object):
             print(np.mean(meanResiduals), np.std(meanResiduals))
             print(allKnots)
 
-        sky_model = ip.splev(imageMapOrder["wavelength"].values, tck)
-        imageMapOrder["sky_model"] = sky_model
+        imageMapOrder["sky_model"] = ip.splev(imageMapOrder["wavelength"].values, tck)
+        imageMapOrder = self.resample_sky(imageMapOrder, scale=3)
+
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
         imageMapOrder["sky_subtracted_flux_rolling_median"] = imageMapOrder["sky_subtracted_flux"].abs().rolling(defaultPointsPerKnot).median()
 
@@ -1478,6 +1490,79 @@ class subtract_sky(object):
 
         self.log.debug('completed the ``slit-profile-flux-normaliser`` method')
         return allimageMapOrder
+
+    def resample_sky(
+            self,
+            df,
+            scale=3):
+        """*upsample the sky-model image and then rebin to get a better representation of the full-pixel sky-flux*
+
+        **Key Arguments:**
+            - ``df`` -- the dataframe to resample.
+            - ``scale`` -- the resampling scale. Subpixel side = 1/scale. Default *3*
+
+        **Return:**
+            - ``resampledDf`` -- the dataframe with the new resampled sky flux
+
+        **Usage:**
+
+        ```python
+        usage code
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``resample_sky`` method')
+
+        # REBIN THE SKY-IMAGE
+        from scipy.interpolate import griddata
+        import numpy as np
+        import pandas as pd
+
+        originalColumns = df.columns
+        df = df.rename(columns={'sky_model': "sky_model_centre"})
+
+        pixelCentreX = df["x"]
+        pixelCentreY = df["y"]
+        pixelCentreSky = df["sky_model_centre"]
+
+        # upsamplingScale NEEDS TO BE ODD
+        upsamplingScale = scale
+        subPixelSize = 1 / upsamplingScale
+        subPixelShifts = []
+        subPixelShifts[:] = [(i - ((upsamplingScale - 1) / 2)) * subPixelSize for i in range(upsamplingScale)]
+
+        allDataframes = []
+        for x in subPixelShifts:
+            for y in subPixelShifts:
+                newDf = df.copy()
+                newDf["x_upsample"] = newDf["x"] + x
+                newDf["y_upsample"] = newDf["y"] + y
+                allDataframes.append(newDf)
+        allDataframes = pd.concat(allDataframes)
+
+        subPixelX = allDataframes["x_upsample"]
+        subPixelY = allDataframes["y_upsample"]
+
+        bigSkyArray = griddata((pixelCentreX, pixelCentreY), pixelCentreSky, (subPixelX, subPixelY), method="cubic")
+
+        print(pixelCentreSky)
+
+        allDataframes["sky_model"] = bigSkyArray
+        allDataframes["diff"] = allDataframes["sky_model"] - allDataframes["sky_model_centre"]
+        allDataframes = allDataframes.groupby(['x', 'y']).mean().reset_index()
+
+        self.log.debug('completed the ``resample_sky`` method')
+        return allDataframes[originalColumns]
 
     # use the tab-trigger below for new method
     # xt-class-method
