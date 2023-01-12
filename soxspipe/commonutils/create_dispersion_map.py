@@ -145,11 +145,18 @@ class create_dispersion_map(object):
 
         # READ PREDICTED LINE POSITIONS FROM FILE - RETURNED AS DATAFRAME
         orderPixelTable = self.get_predicted_line_list()
+
+        import pickle
+        orderPixelTable = pickle.load(open("/Users/Dave/Desktop/orderPixelTable.p", 'rb'))
+
         totalLines = len(orderPixelTable.index)
 
         # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME
         windowSize = self.recipeSettings["pixel-window-size"]
         self.windowHalf = int(windowSize / 2)
+
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable.head(10), headers='keys', tablefmt='psql'))
 
         # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
@@ -172,6 +179,29 @@ class create_dispersion_map(object):
                 orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y'] - orderPixelTable['y_diff'].mean()
 
             print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
+
+        orderPixelTable["delta_x"] = orderPixelTable["observed_x_old"] - orderPixelTable["observed_x"]
+        orderPixelTable["delta_y"] = orderPixelTable["observed_y_old"] - orderPixelTable["observed_y"]
+
+        # GROUP RESULTS
+        slitMean = orderPixelTable.groupby(['slit_position']).mean().reset_index()
+        from tabulate import tabulate
+        print(tabulate(slitMean, headers='keys', tablefmt='psql'))
+
+        import matplotlib.pyplot as plt
+        plt.scatter(orderPixelTable["delta_x"], orderPixelTable["slit_position"], s=0.5, alpha=0.5)
+        plt.scatter(orderPixelTable["delta_y"], orderPixelTable["slit_position"], s=0.5, alpha=0.5)
+        plt.scatter(slitMean["delta_y"], slitMean["slit_position"], s=30, alpha=1, marker="*", color="black")
+        plt.show()
+
+        # orderPixelTable.drop(["x_diff", "y_diff", "detector_x_shifted", "detector_y_shifted"], axis=1, inplace=True)
+        # orderPixelTable.rename({"observed_x": "observed_x_old", "observed_y": "observed_y_old"}, axis=1, inplace=True)
+
+        # import pickle
+        # pathToPickleFile = "/Users/Dave/Desktop/orderPixelTable.p"
+        # pickle.dump(orderPixelTable, open(pathToPickleFile, "wb"))
+
+        breakpoint()
 
         # COLLECT MISSING LINES
         mask = (orderPixelTable['observed_x'].isnull())
@@ -362,9 +392,11 @@ class create_dispersion_map(object):
         import numpy as np
         from photutils import DAOStarFinder
         from astropy.stats import sigma_clipped_stats
+        from astropy.stats import sigma_clip
 
         pinholeFrame = self.pinholeFrame
         windowHalf = self.windowHalf
+
         if 'detector_x_shifted' in predictedLine:
             x = predictedLine['detector_x_shifted']
             y = predictedLine['detector_y_shifted']
@@ -384,6 +416,16 @@ class create_dispersion_map(object):
         # USE DAOStarFinder TO FIND LINES WITH 2D GUASSIAN FITTING
         mean, median, std = sigma_clipped_stats(stamp, sigma=3.0)
 
+        from photutils.centroids import (centroid_1dg, centroid_2dg,
+                                         centroid_com, centroid_quadratic)
+
+        # maskedStamp = sigma_clip(stamp, sigma=4.5, cenfunc='median', stdfunc='mad_std')
+        # stamp = stamp * maskedStamp.mask
+        # xycen1 = centroid_com(stamp)
+        # xycen2 = centroid_quadratic(stamp)
+        # xycen3 = centroid_1dg(stamp)
+        # xycen4 = centroid_2dg(stamp)
+
         try:
             daofind = DAOStarFinder(
                 fwhm=2.5, threshold=3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
@@ -392,16 +434,7 @@ class create_dispersion_map(object):
         except Exception as e:
             sources = None
 
-        if 1 == 0:
-            import random
-            ran = random.randint(1, 300)
-            # if ran == 200:
-            if ran:
-                import matplotlib.pyplot as plt
-                plt.clf()
-                plt.imshow(stamp, vmin=mean - std, vmax=mean + std)
-
-                # plt.show()
+            # plt.show()
         old_resid = windowHalf * 4
         if sources:
             # FIND SOURCE CLOSEST TO CENTRE
@@ -418,19 +451,73 @@ class create_dispersion_map(object):
             else:
                 observed_x = sources[0]['xcentroid'] + xlow
                 observed_y = sources[0]['ycentroid'] + ylow
+
+            def sector_mask(shape, centre, radius, angle_range):
+                """
+                Return a boolean mask for a circular sector. The start/stop angles in
+                `angle_range` should be given in clockwise order.
+                """
+                x, y = np.ogrid[:shape[0], :shape[1]]
+                cx, cy = centre
+                tmin, tmax = np.deg2rad(angle_range)
+                # ensure stop angle > start angle
+                if tmax < tmin:
+                    tmax += 2 * np.pi
+                # convert cartesian --> polar coordinates
+                r2 = (x - cx) * (x - cx) + (y - cy) * (y - cy)
+                theta = np.arctan2(x - cx, y - cy) - tmin
+                # wrap angles between 0 and 2*pi
+                theta %= (2 * np.pi)
+                # circular mask
+                circmask = r2 <= radius * radius
+                # angular mask
+                anglemask = theta <= (tmax - tmin)
+                return circmask * anglemask
+
+            tmp_x = observed_x - xlow
+            tmp_y = observed_y - ylow
+            mask = sector_mask(np.shape(stamp), (tmp_x, tmp_y), 3, (0, 360))
+            stamp = stamp * mask
+            xycen1 = centroid_com(stamp)
+
+            if 1 == 0:
+                import random
+                ran = random.randint(1, 300)
+                # if ran == 200:
+                if ran:
+                    import matplotlib.pyplot as plt
+                    plt.clf()
+                    plt.imshow(stamp)
+
             if 1 == 0 and ran:
+                tmp_x = observed_x - xlow
+                tmp_y = observed_y - ylow
+                print(xycen1)
+                colors = ('red', 'black', 'red', 'blue', 'green')
+                # xycens = [xycen1, xycen2, xycen3, xycen4, (tmp_x, tmp_y)]
+                xycens = [xycen1, (tmp_x, tmp_y)]
                 plt.scatter(0, 0, marker='x', s=30)
-                plt.scatter(observed_x - xlow, observed_y -
-                            ylow, marker='x', s=30)
+                for xycen, color in zip(xycens, colors):
+                    plt.scatter(xycen[0], xycen[1], marker="+", s=30, color=color)
                 plt.text(windowHalf - 2, windowHalf - 2, f"{observed_x-xlow:0.2f},{observed_y -ylow:0.2f}", fontsize=16, c="black", verticalalignment='bottom')
                 plt.show()
+
+            xycen1[0] = xycen1[0] + xlow
+            xycen1[1] = xycen1[1] + ylow
+
+            print(xycen1)
+
         else:
             observed_x = np.nan
             observed_y = np.nan
+            xycen1 = [np.nan, np.nan]
         # plt.show()
 
-        predictedLine['observed_x'] = observed_x
-        predictedLine['observed_y'] = observed_y
+        # predictedLine['observed_x'] = observed_x
+        # predictedLine['observed_y'] = observed_y
+
+        predictedLine['observed_x'] = xycen1[0]
+        predictedLine['observed_y'] = xycen1[1]
 
         self.log.debug('completed the ``detect_pinhole_arc_line`` method')
         return predictedLine
