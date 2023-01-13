@@ -20,7 +20,6 @@ import warnings
 import math
 from soxspipe.commonutils.toolkit import get_calibrations_path
 from os.path import expanduser
-from fundamentals.renderer import list_of_dictionaries
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from fundamentals import tools
@@ -153,9 +152,9 @@ class create_dispersion_map(object):
 
         # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
-        iteration = 1
+        iteration = 0
         print(f"FINDING PINHOLE ARC-LINES ON IMAGE")
-        while iteration <= 2:
+        while iteration < 2:
             iteration += 1
             orderPixelTable = orderPixelTable.apply(
                 self.detect_pinhole_arc_line, axis=1)
@@ -399,7 +398,7 @@ class create_dispersion_map(object):
             if ran:
                 import matplotlib.pyplot as plt
                 plt.clf()
-                plt.imshow(stamp, vmin=mean - std, vmax=mean + std)
+                plt.imshow(stamp)
 
                 # plt.show()
         old_resid = windowHalf * 4
@@ -418,12 +417,14 @@ class create_dispersion_map(object):
             else:
                 observed_x = sources[0]['xcentroid'] + xlow
                 observed_y = sources[0]['ycentroid'] + ylow
+
             if 1 == 0 and ran:
                 plt.scatter(0, 0, marker='x', s=30)
                 plt.scatter(observed_x - xlow, observed_y -
-                            ylow, marker='x', s=30)
+                            ylow, s=30)
                 plt.text(windowHalf - 2, windowHalf - 2, f"{observed_x-xlow:0.2f},{observed_y -ylow:0.2f}", fontsize=16, c="black", verticalalignment='bottom')
                 plt.show()
+
         else:
             observed_x = np.nan
             observed_y = np.nan
@@ -528,15 +529,8 @@ class create_dispersion_map(object):
             # filename = filename.split("ARC")[0] + "2D_MAP.fits"
             header[kw("PRO_TECH").upper()] = "ECHELLE,MULTI-PINHOLE"
         filePath = f"{outDir}/{filename}"
-        dataSet = list_of_dictionaries(
-            log=self.log,
-            listOfDictionaries=[coeff_dict_x, coeff_dict_y]
-        )
 
-        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
-        fakeFile = StringIO(dataSet.csv())
-        df = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
-        fakeFile.close()
+        df = pd.DataFrame([coeff_dict_x, coeff_dict_y])
         t = Table.from_pandas(df)
         BinTableHDU = fits.table_to_hdu(t)
 

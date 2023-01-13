@@ -12,7 +12,6 @@
 from datetime import datetime, date, time
 
 from soxspipe.commonutils.filenamer import filenamer
-from fundamentals.renderer import list_of_dictionaries
 import unicodecsv as csv
 import collections
 from soxspipe.commonutils.toolkit import unpack_order_table
@@ -133,7 +132,7 @@ class detect_order_edges(_base_detect):
         self.orderDeg = self.recipeSettings["order-deg"]
 
         self.inst = flatFrame.header[kw("INSTRUME")]
-                # SET IMAGE ORIENTATION
+        # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"
@@ -270,18 +269,11 @@ class detect_order_edges(_base_detect):
                 coeff_dict[f'edgelow_c{i}{j}'] = lowerCoeff[n_coeff]
                 n_coeff += 1
         coeffColumns = coeff_dict.keys()
-        dataSet = list_of_dictionaries(
-            log=self.log,
-            listOfDictionaries=[coeff_dict]
-        )
 
         # RETURN BREAKDOWN OF ORDER EDGE DETECTION POSITION COUNTS (NEEDED TO COMPARE D and Q LAMPS)
         orderDetectionCounts = orderPixelTable['order'].value_counts(normalize=False).sort_index().to_frame()
 
-        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
-        fakeFile = StringIO(dataSet.csv())
-        orderEdgePolyTable = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
-        fakeFile.close()
+        orderEdgePolyTable = pd.DataFrame([coeff_dict])
 
         # MERGE DATAFRAMES
         cols_to_use = orderEdgePolyTable.columns.difference(orderPolyTable.columns)
