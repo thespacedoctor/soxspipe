@@ -15,7 +15,6 @@
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
-from fundamentals.renderer import list_of_dictionaries
 import collections
 
 
@@ -600,15 +599,8 @@ class detect_continuum(_base_detect):
                 coeff_dict[f'std_{i}{j}'] = coeff[n_coeff]
                 n_coeff += 1
         coeffColumns = coeff_dict.keys()
-        dataSet = list_of_dictionaries(
-            log=self.log,
-            listOfDictionaries=[coeff_dict]
-        )
 
-        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
-        fakeFile = StringIO(dataSet.csv())
-        orderPolyTable = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
-        fakeFile.close()
+        orderPolyTable = pd.DataFrame([coeff_dict])
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
         orderPixelTable.drop(columns=['mask'], inplace=True)
