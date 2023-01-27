@@ -43,3 +43,4 @@ blog-post.rst
 .cache
 .cache/*
 /prof
+*.rst
