@@ -693,8 +693,8 @@ def spectroscopic_image_quality_checks(
         "soxspipe_recipe": recipeName,
         "qc_name": "INNER ORDER PIX MEAN",
         "qc_value": mean,
-        "qc_comment": "Mean inner-order pixel value",
-        "qc_unit": "",
+        "qc_comment": "[e-] Mean inner-order pixel value",
+        "qc_unit": "electrons",
         "obs_date_utc": dateObs,
         "reduction_date_utc": utcnow,
         "to_header": True
@@ -704,8 +704,8 @@ def spectroscopic_image_quality_checks(
         "soxspipe_recipe": recipeName,
         "qc_name": "INNER ORDER PIX SUM",
         "qc_value": flux,
-        "qc_comment": "Sum of all inner-order pixel values",
-        "qc_unit": "",
+        "qc_comment": "[e-] Sum of all inner-order pixel values",
+        "qc_unit": "electrons",
         "obs_date_utc": dateObs,
         "reduction_date_utc": utcnow,
         "to_header": True
