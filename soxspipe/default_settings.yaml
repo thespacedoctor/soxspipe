@@ -50,13 +50,12 @@ soxs-order-centre:
 
 soxs-spatial-solution:
     pixel-window-size: 10
-    order-deg: 3
-    wavelength-deg: 3
-    slit-deg: 3
+    order-deg: 5
+    wavelength-deg: 4
+    slit-deg: 2
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
     map_to_image_displacement_threshold: 0.001 # in pixels
-
 
 soxs-mflat:
     centre-order-window: 20

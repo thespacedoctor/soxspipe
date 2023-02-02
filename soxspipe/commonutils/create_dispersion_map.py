@@ -176,6 +176,22 @@ class create_dispersion_map(object):
         mask = (orderPixelTable['observed_x'].isnull())
         missingLines = orderPixelTable.loc[mask]
 
+        # GROUP RESULTS BY WAVELENGTH
+        lineGroups = missingLines.groupby(['wavelength'])
+        lineGroups = lineGroups.size().to_frame(name='count').reset_index()
+
+        # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE SET WAVELENGTHS TO DROP
+        missingLineThreshold = 2
+        mask = (lineGroups['count'] > missingLineThreshold)
+        orderPixelTable["dropped"] = False
+        lineGroups = lineGroups.loc[mask]
+        setsToDrop = lineGroups['wavelength']
+
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (orderPixelTable['wavelength'].isin(setsToDrop))
+        orderPixelTable.loc[mask, "dropped"] = True
+
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
             'observed_x'], inplace=True)
@@ -385,9 +401,10 @@ class create_dispersion_map(object):
 
         try:
             daofind = DAOStarFinder(
-                fwhm=2.5, threshold=3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
-            sources = daofind(stamp - median)
-            # print("WTF")
+                fwhm=2.5, threshold=1.3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
+            # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
+            # sources = daofind(stamp - median)
+            sources = daofind(stamp)
         except Exception as e:
             sources = None
 
@@ -745,6 +762,13 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``fit_polynomials`` method')
 
+        # FIRST REMOVE DROPPED LINES FILTERED ROWS FROM DATA FRAME
+        allClippedLines = []
+        mask = (orderPixelTable['dropped'] == True)
+        allClippedLines.append(orderPixelTable.loc[mask])
+        orderPixelTable.drop(index=orderPixelTable[
+                             mask].index, inplace=True)
+
         import numpy as np
         from astropy.stats import sigma_clip
         from scipy.optimize import curve_fit
@@ -812,7 +836,6 @@ class create_dispersion_map(object):
 
         iteration = 0
 
-        allClippedLines = []
         xcoeff = np.ones((orderDegx + 1) *
                          (wavelengthDegx + 1) * (slitDegx + 1))
         ycoeff = np.ones((orderDegy + 1) *
@@ -870,7 +893,8 @@ class create_dispersion_map(object):
             orderPixelTable.drop(index=orderPixelTable[
                                  mask].index, inplace=True)
 
-        allClippedLines = pd.concat(allClippedLines, ignore_index=True)
+        if len(allClippedLines):
+            allClippedLines = pd.concat(allClippedLines, ignore_index=True)
 
         mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
             orderPixelTable=orderPixelTable,
@@ -914,7 +938,8 @@ class create_dispersion_map(object):
 
         if isinstance(missingLines, pd.core.frame.DataFrame):
             toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.2, linewidths=0.5)
-        toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
+        if len(allClippedLines):
+            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
         toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.6)
         # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
         mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))

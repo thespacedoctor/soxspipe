@@ -856,7 +856,7 @@ class subtract_sky(object):
 
         residualFloor = False
 
-        while iterationCount < 6:
+        while iterationCount < 4:
             iterationCount += 1
 
             print(f"Order: {order}, Iteration {iterationCount}")
