@@ -356,6 +356,8 @@ class subtract_sky(object):
         imageMapOrder["residual_global_sigma_old"] = imageMapOrder["residual_global_sigma"]
         imageMapOrder = self.rolling_window_clipping(imageMapOrderDF=imageMapOrder, windowSize=int(percential_rolling_window_size), sigma_clip_limit=percential_clipping_sigma, max_iterations=percential_clipping_iterations)
 
+        # sys.exit(0)
+
         self.log.debug('completed the ``get_over_sampled_sky_from_order`` method')
         return imageMapOrderWithObject, imageMapOrder
 
@@ -758,16 +760,15 @@ class subtract_sky(object):
         allPixels = len(imageMapOrderDF.index)
 
         while i <= max_iterations:
-
             # CALCULATE PERCENTILE SMOOTH DATA & RESIDUALS
             if median_centre_func:
                 imageMapOrderDF["flux_smoothed"] = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].rolling(window=windowSize, center=True).median()
-            elif i == 1:
+            else:
                 imageMapOrderDF["flux_smoothed"] = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].rolling(window=windowSize, center=True).quantile(.30)
 
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_minus_smoothed_residual"] = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"] - imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_smoothed"]
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"] = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_minus_smoothed_residual"].rolling(windowSize).std()
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_sigma"] = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_minus_smoothed_residual"] / imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"]
+            imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "flux_minus_smoothed_residual"] = imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "flux"] - imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "flux_smoothed"]
+            imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "residual_windowed_std"] = imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "flux_minus_smoothed_residual"].rolling(windowSize).std()
+            imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "residual_windowed_sigma"] = imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "flux_minus_smoothed_residual"] / imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "residual_windowed_std"]
 
             if median_centre_func:
                 # CLIP ABOVE AND BELOW
@@ -778,11 +779,11 @@ class subtract_sky(object):
                 imageMapOrderDF.loc[((imageMapOrderDF["residual_windowed_sigma"] > sigma_clip_limit) & (imageMapOrderDF["residual_global_sigma_old"] > -10.0)), "object"] = True
 
             if newlyClipped == -1:
-                totalClipped = len(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True].index)
+                totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == True) | (imageMapOrderDF["object"] == True)].index)
                 newlyClipped = totalClipped
             else:
-                newlyClipped = len(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True].index) - totalClipped
-                totalClipped = len(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True].index)
+                newlyClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == True) | (imageMapOrderDF["object"] == True)].index) - totalClipped
+                totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == True) | (imageMapOrderDF["object"] == True)].index)
 
             # Cursor up one line and clear line
             sys.stdout.write("\x1b[1A\x1b[2K")
@@ -1351,7 +1352,7 @@ class subtract_sky(object):
         # REMOVE MEDIAN x 3 -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
         result -= result.median()
         result -= result.abs().median()
-        result -= result.abs().median()
+        # result -= result.abs().median()
 
         # NEED 3 POSTIVE BINS IN A ROW TO BE SELECTED AS AN OBJECT
         object_ranges = []
