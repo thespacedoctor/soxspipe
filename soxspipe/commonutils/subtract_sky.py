@@ -436,6 +436,7 @@ class subtract_sky(object):
         sevenrow = fig.add_subplot(gs[7:8:, :])
         eightrow = fig.add_subplot(gs[8:9:, :])
         ninerow = fig.add_subplot(gs[9:10:, :])
+        tenrow = fig.add_subplot(gs[10:11:, :])
 
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(frame.data)
@@ -669,7 +670,7 @@ class subtract_sky(object):
         eightrow.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
         # SUBTRACTED SKY RESIDUAL PANEL
-        ninerow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"].values, s=rawMS, alpha=.1, c=rawColor, zorder=unclippedZ)
+        # ninerow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"].values, s=rawMS, alpha=.1, c=rawColor, zorder=unclippedZ)
         ninerow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=15, alpha=0.5, c=red, zorder=percentileZ)
         # ninerow.scatter(imageMapOrderDF["wavelength"].values, imageMapOrderDF["sky_subtracted_flux_rolling_median"].values, s=7, alpha=0.2, c="purple", zorder=percentileZ)
         # ninerow.scatter(newKnots[0], newKnots[1], marker='x', s=7, alpha=1, c="green", zorder=percentileZ)
@@ -688,6 +689,23 @@ class subtract_sky(object):
         # REMOVE ME
         # ninerow.set_xlim(1504, 1507)
         ninerow.set_ylabel("residual", fontsize=10)
+
+        # SUBTRACTED SKY RESIDUAL/ERROR PANEL
+        tenrow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=15, alpha=0.5, c=red, zorder=percentileZ)
+        tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=1., c="orange", zorder=unclippedZ)
+        tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=1., c=blue, zorder=unclippedZ)
+        # tenrow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "residual_global_sigma_old"].values, s=percentileMS, marker="x", c=percentileColor, zorder=percentileZ, alpha=1.)
+        # std = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"].std()
+
+        mean = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_error_ratio"]).mean()
+        std = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_error_ratio"]).std()
+
+        tenrow.set_ylim(-30, 30)
+        tenrow.set_xlabel(
+            "wavelength (nm)", fontsize=10)
+        # REMOVE ME
+        # tenrow.set_xlim(1504, 1507)
+        tenrow.set_ylabel("residual/noise", fontsize=10)
 
         fig.suptitle(f"{self.arm} sky model: order {order}", fontsize=12, y=0.97)
 
@@ -901,6 +919,7 @@ class subtract_sky(object):
             # df = self.resample_sky(df, 3)
 
             df["sky_subtracted_flux"] = df["flux_normalised"] - df["sky_model"]
+            df["sky_subtracted_flux_error_ratio"] = df["sky_subtracted_flux"] / df["error"]
 
             if not residualFloor:
                 allResiduals = np.absolute(df["sky_subtracted_flux"])
@@ -917,6 +936,7 @@ class subtract_sky(object):
         # imageMapOrder = self.resample_sky(imageMapOrder, scale=3)
 
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux_normalised"] - imageMapOrder["sky_model"]
+        imageMapOrder["sky_subtracted_flux_error_ratio"] = imageMapOrder["sky_subtracted_flux"] / imageMapOrder["error"]
         imageMapOrder["sky_subtracted_flux_rolling_median"] = imageMapOrder["sky_subtracted_flux"].abs().rolling(defaultPointsPerKnot).median()
 
         self.log.debug('completed the ``fit_bspline_curve_to_sky`` method')
