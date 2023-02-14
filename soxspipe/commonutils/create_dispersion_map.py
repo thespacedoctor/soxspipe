@@ -177,20 +177,19 @@ class create_dispersion_map(object):
         missingLines = orderPixelTable.loc[mask]
 
         # GROUP RESULTS BY WAVELENGTH
-        lineGroups = missingLines.groupby(['wavelength'])
+        lineGroups = missingLines.groupby(['wavelength', 'order'])
         lineGroups = lineGroups.size().to_frame(name='count').reset_index()
 
-        # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE SET WAVELENGTHS TO DROP
-        missingLineThreshold = 2
+        # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
+        missingLineThreshold = 5
         mask = (lineGroups['count'] > missingLineThreshold)
         orderPixelTable["dropped"] = False
         lineGroups = lineGroups.loc[mask]
-        setsToDrop = lineGroups['wavelength']
-
-        # FILTER DATA FRAME
-        # FIRST CREATE THE MASK
-        mask = (orderPixelTable['wavelength'].isin(setsToDrop))
-        orderPixelTable.loc[mask, "dropped"] = True
+        setsToDrop = lineGroups[['wavelength', 'order']]
+        s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
+        s["dropped"] = False
+        s.loc[(s["_merge"] == "both"), "dropped"] = True
+        orderPixelTable["dropped"] = s["dropped"].values
 
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
@@ -873,6 +872,35 @@ class create_dispersion_map(object):
             masked_residuals = sigma_clip(
                 orderPixelTable["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
             orderPixelTable["residuals_masked"] = masked_residuals.mask
+
+            # COUNT THE CLIPPED LINES
+            mask = (orderPixelTable['residuals_masked'] == True)
+            allClippedLines.append(orderPixelTable.loc[mask])
+            totalAllClippedLines = pd.concat(allClippedLines, ignore_index=True)
+
+            # GROUP MASKED RESIDUALS BY WAVELENGTH
+            lineGroups = totalAllClippedLines.groupby(['wavelength', 'order'])
+            lineGroups = lineGroups.size().to_frame(name='count').reset_index()
+            # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
+            missingLineThreshold = 5
+            mask = (lineGroups['count'] > missingLineThreshold)
+            orderPixelTable["dropped"] = False
+            lineGroups = lineGroups.loc[mask]
+            setsToDrop = lineGroups[['wavelength', 'order']]
+            s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
+            s["dropped"] = False
+            s.loc[(s["_merge"] == "both"), "dropped"] = True
+            orderPixelTable["dropped"] = s["dropped"].values
+
+            from tabulate import tabulate
+            print(tabulate(s, headers='keys', tablefmt='psql'))
+
+            # ADD NEWLY CLIPPED LINES FROM SETS THEN FLAG AS MASKED
+            mask = ((orderPixelTable['dropped'] == True) & (orderPixelTable['residuals_masked'] == False))
+            allClippedLines.append(orderPixelTable.loc[mask])
+
+            orderPixelTable.loc[(orderPixelTable['dropped'] == True), 'residuals_masked'] = True
+
             # RETURN BREAKDOWN OF COLUMN VALUE COUNT
             valCounts = orderPixelTable[
                 'residuals_masked'].value_counts(normalize=False)
@@ -887,9 +915,7 @@ class create_dispersion_map(object):
 
             print(f'ITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
 
-            # REMOVE FILTERED ROWS FROM DATA FRAME
             mask = (orderPixelTable['residuals_masked'] == True)
-            allClippedLines.append(orderPixelTable.loc[mask])
             orderPixelTable.drop(index=orderPixelTable[
                                  mask].index, inplace=True)
 

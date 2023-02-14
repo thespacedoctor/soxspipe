@@ -696,8 +696,8 @@ class subtract_sky(object):
 
         # SUBTRACTED SKY RESIDUAL/ERROR PANEL
         tenrow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=15, alpha=0.5, c=red, zorder=percentileZ)
-        tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=1., c="orange", zorder=unclippedZ)
-        tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=1., c=blue, zorder=unclippedZ)
+        tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=0.5, c="orange", zorder=unclippedZ)
+        tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=0.5, c=blue, zorder=unclippedZ)
         # tenrow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "residual_global_sigma_old"].values, s=percentileMS, marker="x", c=percentileColor, zorder=percentileZ, alpha=1.)
         # std = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"].std()
 
