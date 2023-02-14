@@ -182,7 +182,7 @@ class subtract_sky(object):
             # SELECT ONLY A DATAFRAME CONTAINING ONLY A SINGLE ORDER
             imageMapOrder = self.mapDF[self.mapDF["order"] == o]
             # MASK OUTLYING PIXELS (imageMapOrderWithObject) AND ALSO THEN THE OBJECT PIXELS (imageMapOrderSkyOnly)
-            imageMapOrderWithObject, imageMapOrderSkyOnly = self.get_over_sampled_sky_from_order(imageMapOrder, o, clipBPs=False, clipSlitEdge=0.00)
+            imageMapOrderWithObject, imageMapOrderSkyOnly = self.get_over_sampled_sky_from_order(imageMapOrder, o, clipBPs=False, clipSlitEdge=self.settings["sky-subtraction"]["clip-slit-edge-fraction"])
             allimageMapOrder.append(imageMapOrderSkyOnly)
             allimageMapOrderWithObject.append(imageMapOrderWithObject)
 
@@ -320,6 +320,8 @@ class subtract_sky(object):
         ```
         """
         self.log.debug('starting the ``get_over_sampled_sky_from_order`` method')
+
+        from astropy.stats import sigma_clip, mad_std
 
         # COLLECT SETTINGS
         median_clipping_sigma = self.settings["sky-subtraction"]["median_clipping_sigma"]
@@ -699,10 +701,10 @@ class subtract_sky(object):
         # tenrow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "residual_global_sigma_old"].values, s=percentileMS, marker="x", c=percentileColor, zorder=percentileZ, alpha=1.)
         # std = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"].std()
 
-        mean = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_error_ratio"]).mean()
-        std = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_error_ratio"]).std()
+        mean = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_error_ratio"])[100:-100].mean()
+        std = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_error_ratio"])[100:-100].std()
 
-        tenrow.set_ylim(-30, 30)
+        tenrow.set_ylim(mean - 10 * std, mean + 10 * std)
         tenrow.set_xlabel(
             "wavelength (nm)", fontsize=10)
         # REMOVE ME
@@ -939,6 +941,11 @@ class subtract_sky(object):
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux_normalised"] - imageMapOrder["sky_model"]
         imageMapOrder["sky_subtracted_flux_error_ratio"] = imageMapOrder["sky_subtracted_flux"] / imageMapOrder["error"]
         imageMapOrder["sky_subtracted_flux_rolling_median"] = imageMapOrder["sky_subtracted_flux"].abs().rolling(defaultPointsPerKnot).median()
+
+        print("Final residual/error stats:")
+        flux_error_ratio = df["sky_subtracted_flux_error_ratio"].values
+        flux_error_ratio = flux_error_ratio[100:-100]
+        print(f'RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
 
         self.log.debug('completed the ``fit_bspline_curve_to_sky`` method')
         return imageMapOrder, tck, allKnots

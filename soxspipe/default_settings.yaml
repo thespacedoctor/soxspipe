@@ -91,6 +91,8 @@ sky-subtraction:
     percential_clipping_sigma: 2
     percential_clipping_iterations: 1
     percential_rolling_window_size: 15
+    # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+    clip-slit-edge-fraction: 0.05
     aggressive_object_masking: True
     bspline_order: 3
 
