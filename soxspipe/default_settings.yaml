@@ -53,7 +53,8 @@ soxs-spatial-solution:
     order-deg: 5
     wavelength-deg: 4
     slit-deg: 2
-    poly-clipping-iteration-limit: 10
+    # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
+    poly-clipping-iteration-limit: 5
     poly-fitting-residual-clipping-sigma: 5
     map_to_image_displacement_threshold: 0.001 # in pixels
 

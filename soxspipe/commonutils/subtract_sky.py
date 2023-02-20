@@ -936,7 +936,6 @@ class subtract_sky(object):
             print(fp, ier, msg)
 
         imageMapOrder["sky_model"] = ip.splev(imageMapOrder["wavelength"].values, tck)
-        # imageMapOrder = self.resample_sky(imageMapOrder, scale=3)
 
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux_normalised"] - imageMapOrder["sky_model"]
         imageMapOrder["sky_subtracted_flux_error_ratio"] = imageMapOrder["sky_subtracted_flux"] / imageMapOrder["error"]
@@ -1509,77 +1508,6 @@ class subtract_sky(object):
 
         self.log.debug('completed the ``slit-profile-flux-normaliser`` method')
         return allimageMapOrder
-
-    def resample_sky(
-            self,
-            df,
-            scale=3):
-        """*upsample the sky-model image and then rebin to get a better representation of the full-pixel sky-flux*
-
-        **Key Arguments:**
-            - ``df`` -- the dataframe to resample.
-            - ``scale`` -- the resampling scale. Subpixel side = 1/scale. Default *3*
-
-        **Return:**
-            - ``resampledDf`` -- the dataframe with the new resampled sky flux
-
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
-        """
-        self.log.debug('starting the ``resample_sky`` method')
-
-        # REBIN THE SKY-IMAGE
-        from scipy.interpolate import griddata
-        import numpy as np
-        import pandas as pd
-
-        originalColumns = df.columns
-        df = df.rename(columns={'sky_model': "sky_model_centre"})
-
-        pixelCentreX = df["x"]
-        pixelCentreY = df["y"]
-        pixelCentreSky = df["sky_model_centre"]
-
-        # upsamplingScale NEEDS TO BE ODD
-        upsamplingScale = scale
-        subPixelSize = 1 / upsamplingScale
-        subPixelShifts = []
-        subPixelShifts[:] = [(i - ((upsamplingScale - 1) / 2)) * subPixelSize for i in range(upsamplingScale)]
-
-        allDataframes = []
-        for x in subPixelShifts:
-            for y in subPixelShifts:
-                newDf = df.copy()
-                newDf["x_upsample"] = newDf["x"] + x
-                newDf["y_upsample"] = newDf["y"] + y
-                allDataframes.append(newDf)
-        allDataframes = pd.concat(allDataframes)
-
-        subPixelX = allDataframes["x_upsample"]
-        subPixelY = allDataframes["y_upsample"]
-
-        bigSkyArray = griddata((pixelCentreX, pixelCentreY), pixelCentreSky, (subPixelX, subPixelY), method="linear")
-
-        allDataframes["sky_model"] = bigSkyArray
-        allDataframes["diff"] = allDataframes["sky_model"] - allDataframes["sky_model_centre"]
-        allDataframes = allDataframes.groupby(['x', 'y']).mean().reset_index()
-
-        self.log.debug('completed the ``resample_sky`` method')
-        return allDataframes[originalColumns]
 
     # use the tab-trigger below for new method
     # xt-class-method
