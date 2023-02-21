@@ -592,10 +592,7 @@ class subtract_sky(object):
 
         sixrow.scatter(
             imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_normalised"].values, label='normalised', s=medianMS, c=black, alpha=0.5, zorder=unclippedZ)
-        sixrow.scatter(
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].values, label='unnormalised', s=medianMS, c="#D2D1D1", alpha=0.5, zorder=unclippedZ)
+            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].values, s=medianMS, c=black, alpha=0.5, zorder=unclippedZ)
 
         if tck:
             wl = np.linspace(imageMapOrderDF["wavelength"].min(), imageMapOrderDF["wavelength"].max(), 1000000)
@@ -603,7 +600,7 @@ class subtract_sky(object):
             knotSky = ip.splev(knotLocations, tck)
             skymodel = sixrow.plot(
                 wl, sky, label='sky model', c=blue, zorder=skyZ)
-            sixrow.scatter(knotLocations, knotSky, marker=7, s=15, alpha=0.5, c=red, zorder=percentileZ, label='knots')
+            sixrow.scatter(knotLocations, knotSky, marker=7, s=30, alpha=1, c=red, zorder=percentileZ, label='knots')
         else:
             skymodel = sixrow.plot(
                 imageMapOrderDF["wavelength"].values,
@@ -675,7 +672,7 @@ class subtract_sky(object):
 
         # SUBTRACTED SKY RESIDUAL PANEL
         # ninerow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"].values, s=rawMS, alpha=.1, c=rawColor, zorder=unclippedZ)
-        ninerow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=15, alpha=0.5, c=red, zorder=percentileZ)
+        ninerow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=30, alpha=1, c=red, zorder=percentileZ)
         # ninerow.scatter(imageMapOrderDF["wavelength"].values, imageMapOrderDF["sky_subtracted_flux_rolling_median"].values, s=7, alpha=0.2, c="purple", zorder=percentileZ)
         # ninerow.scatter(newKnots[0], newKnots[1], marker='x', s=7, alpha=1, c="green", zorder=percentileZ)
         # ninerow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "sky_subtracted_flux"].values, s=medianMS, marker="x", c=medianColor, zorder=medianZ, alpha=.5)
@@ -695,7 +692,7 @@ class subtract_sky(object):
         ninerow.set_ylabel("residual", fontsize=10)
 
         # SUBTRACTED SKY RESIDUAL/ERROR PANEL
-        tenrow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=15, alpha=0.5, c=red, zorder=percentileZ)
+        tenrow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=30, alpha=1, c=red, zorder=percentileZ)
         tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=0.5, c="orange", zorder=unclippedZ)
         tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=0.5, c=blue, zorder=unclippedZ)
         # tenrow.scatter(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "wavelength"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "residual_global_sigma_old"].values, s=percentileMS, marker="x", c=percentileColor, zorder=percentileZ, alpha=1.)
@@ -853,7 +850,7 @@ class subtract_sky(object):
 
         # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
         goodWl = df["wavelength"]
-        goodFlux = df["flux_normalised"]
+        goodFlux = df["flux"]
 
         # TODO: WHICH WEIGHTS SHOULD WE USE? 'error' IS FROM THE CALIBRATED SCIENCE IMAGE. 'residual_windowed_std' MIGHT BE BETTER (see panel two of plot)
         # THIS IS CLOSER TO WHAT KELSON SUGGESTS
@@ -877,7 +874,7 @@ class subtract_sky(object):
 
         residualFloor = False
 
-        while iterationCount < 4:
+        while iterationCount < 10:
             iterationCount += 1
 
             print(f"Order: {order}, Iteration {iterationCount}")
@@ -890,8 +887,8 @@ class subtract_sky(object):
                     if i != len(allKnots) - 1:
                         wlMax = allKnots[i + 1]
                         # FIND MEAN SKY-SUBTRACTED FLUX BETWEEN OLD KNOTS (i.e LOCATION OF POTENTIAL NEW KNOTS)
-                        subset = df.loc[(df['wavelength'].between(wlMin, wlMax)), "sky_subtracted_flux"]
-                        if len(subset.index) < bspline_order + 3:
+                        subset = df.loc[(df['wavelength'].between(wlMin, wlMax)), "sky_subtracted_flux_error_ratio"]
+                        if len(subset.index) < bspline_order + 2:
                             # NOT ENOUGH DATA FOR NEW KNOT - FORCE A SKIP
                             meanResiduals.append(residualFloor - 1)
                         else:
@@ -921,29 +918,32 @@ class subtract_sky(object):
 
             # df = self.resample_sky(df, 3)
 
-            df["sky_subtracted_flux"] = df["flux_normalised"] - df["sky_model"]
+            df["sky_subtracted_flux"] = df["flux"] - df["sky_model"] * df['flux_normaliser']
             df["sky_subtracted_flux_error_ratio"] = df["sky_subtracted_flux"] / df["error"]
 
-            if not residualFloor:
-                allResiduals = np.absolute(df["sky_subtracted_flux"])
-                medianResidual = np.median(allResiduals)
-                from scipy.stats import median_abs_deviation
-                mad = median_abs_deviation(allResiduals)
-                residualFloor = medianResidual + mad
+            # CALCUALTE A NOISE FLOOR TO AIM FOR
+            allResiduals = np.absolute(df["sky_subtracted_flux_error_ratio"])
+            meanResidual = np.mean(allResiduals[1000:-1000])
+            std = np.mean(allResiduals[1000:-1000])
+            residualFloor = meanResidual
+
+            flux_error_ratio = df["sky_subtracted_flux_error_ratio"].values
+            flux_error_ratio = flux_error_ratio[1000:-1000]
+            print(f'RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
 
             # TODO: FITS A ROLLING WINDOW SCATTER TO THESE RESIDUALS TO FIND WHERE TO PLACE NEW KNOTS
-            print("RES", df["sky_subtracted_flux"].mean(), "STD", df["sky_subtracted_flux"].std(), "MEDIAN", np.median(df["sky_subtracted_flux"]))
+            print("RES", df["sky_subtracted_flux_error_ratio"].mean(), "STD", df["sky_subtracted_flux_error_ratio"].std(), "MEDIAN", np.median(df["sky_subtracted_flux_error_ratio"]))
             print(fp, ier, msg)
 
         imageMapOrder["sky_model"] = ip.splev(imageMapOrder["wavelength"].values, tck)
 
-        imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux_normalised"] - imageMapOrder["sky_model"]
+        imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
         imageMapOrder["sky_subtracted_flux_error_ratio"] = imageMapOrder["sky_subtracted_flux"] / imageMapOrder["error"]
         imageMapOrder["sky_subtracted_flux_rolling_median"] = imageMapOrder["sky_subtracted_flux"].abs().rolling(defaultPointsPerKnot).median()
 
         print("Final residual/error stats:")
         flux_error_ratio = df["sky_subtracted_flux_error_ratio"].values
-        flux_error_ratio = flux_error_ratio[100:-100]
+        flux_error_ratio = flux_error_ratio[1000:-1000]
         print(f'RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
 
         self.log.debug('completed the ``fit_bspline_curve_to_sky`` method')
@@ -1491,7 +1491,7 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``slit-profile-flux-normaliser`` method')
 
-        if 1 == 0:
+        if 1 == 1:
             import pickle
             with open('/Users/Dave/Desktop/all_orders.pickle', 'wb') as f:
                 pickle.dump(allimageMapOrder, f)
@@ -1504,7 +1504,7 @@ class subtract_sky(object):
 
         else:
             for i in allimageMapOrder:
-                i['flux_normalised'] = i['flux']
+                i['flux_normaliser'] = 1
 
         self.log.debug('completed the ``slit-profile-flux-normaliser`` method')
         return allimageMapOrder
