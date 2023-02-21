@@ -921,12 +921,12 @@ class subtract_sky(object):
             df["sky_subtracted_flux"] = df["flux"] - df["sky_model"] * df['flux_normaliser']
             df["sky_subtracted_flux_error_ratio"] = df["sky_subtracted_flux"] / df["error"]
 
-            if not residualFloor:
-                allResiduals = np.absolute(df["sky_subtracted_flux_error_ratio"])
-                medianResidual = np.median(allResiduals[1000:-1000])
-                from scipy.stats import median_abs_deviation
-                mad = median_abs_deviation(allResiduals)
-                residualFloor = medianResidual + 0.5 * mad
+            allResiduals = np.absolute(df["sky_subtracted_flux_error_ratio"])
+            meanResidual = np.mean(allResiduals[1000:-1000])
+            from scipy.stats import median_abs_deviation
+            std = np.mean(allResiduals[1000:-1000])
+            residualFloor = meanResidual
+            print(residualFloor)
 
             flux_error_ratio = df["sky_subtracted_flux_error_ratio"].values
             flux_error_ratio = flux_error_ratio[1000:-1000]
