@@ -189,10 +189,6 @@ class subtract_sky(object):
         # MASK OUT OBJECT PIXELS
         allimageMapOrder = self.clip_object_slit_positions(allimageMapOrder, aggressive=self.settings["sky-subtraction"]["aggressive_object_masking"])
 
-        # FIT SLIT-POSTION FLUX
-        # ADD NEW CODE HERE! -- CURRENTLY JUMPS OUT TO JHUB VIA READING AND WRITING PICKLE FILES
-        allimageMapOrder = self.cross_dispersion_flux_normaliser(allimageMapOrder)
-
         # FIRST PASS AT FITTING THE SKY
         newAllimageMapOrder = []
         for o, imageMapOrderSkyOnly, imageMapOrderWithObject in zip(uniqueOrders, allimageMapOrder, allimageMapOrderWithObject):
@@ -310,14 +306,6 @@ class subtract_sky(object):
         ```python
         imageMapOrderWithObject, imageMapOrderSkyOnly = skymodel.get_over_sampled_sky_from_order(imageMapOrder, o, ignoreBP=False, clipSlitEdge=0.00)
         ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - update package tutorial with command-line tool info if needed
-        ```
         """
         self.log.debug('starting the ``get_over_sampled_sky_from_order`` method')
 
@@ -354,11 +342,8 @@ class subtract_sky(object):
         imageMapOrderWithObject = imageMapOrder.copy()
 
         # NOW SOME MORE ROBUST CLIPPING WITHIN A WAVELENGTH ROLLING WINDOW TO ALSO REMOVE OBJECT(S)
-        # print(f'# Robustly clipping deviant pixels via a rolling wavelength window (now including object(s))')
         imageMapOrder["residual_global_sigma_old"] = imageMapOrder["residual_global_sigma"]
         imageMapOrder = self.rolling_window_clipping(imageMapOrderDF=imageMapOrder, windowSize=int(percential_rolling_window_size), sigma_clip_limit=percential_clipping_sigma, max_iterations=percential_clipping_iterations)
-
-        # sys.exit(0)
 
         self.log.debug('completed the ``get_over_sampled_sky_from_order`` method')
         return imageMapOrderWithObject, imageMapOrder
@@ -832,17 +817,6 @@ class subtract_sky(object):
         import scipy.interpolate as ip
         import pandas as pd
 
-        # VARIABLES TO PLAY WITH
-        # 1. WEIGHTS ... IF USING WEIGHTS YOU NEED s=0. If the errors in the y values have standard-deviation given by the vector d, then w should be 1/d. Default is ones(len(x)). Note weights are relative to one another (don't have to by between 0-1)
-        # 2. KNOT PLACEMENT. The knots needed for task=-1. If given then task is automatically set to -1.
-        # 3. DEGREE OF FIT. It is recommended to use cubic splines. Even values of k should be avoided especially with small s values. 1 <= k <= 5
-        # 4. TASK: If task==0 find t and c for a given smoothing factor, s. If task=-1 find the weighted least square spline for a given set of knots, t. These should be interior knots as knots on the ends will be added automatically.
-        # 5. Smoothing.  If the weights represent the inverse of the standard-deviation of y, then a good s value should be found in the range (m-sqrt(2*m),m+sqrt(2*m)) where m is the number of datapoints in x, y, and w. default : s=m-sqrt(2*m) if weights are supplied. s = 0.0 (interpolating) if no weights are supplied.
-
-        # RETURNS
-        # tck: A tuple (t,c,k) containing the vector of knots, the B-spline coefficients, and the degree of the spline.
-        # fp: The weighted sum of squared residuals of the spline approximation.
-
         # SORT BY COLUMN NAME - RUN ON A COPY SO NOT TO CONFUSE THE REST OF CODE
         df = imageMapOrder.copy()
         df.sort_values(by=['wavelength'], inplace=True)
@@ -851,17 +825,16 @@ class subtract_sky(object):
         # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
         goodWl = df["wavelength"]
         goodFlux = df["flux"]
-
-        # TODO: WHICH WEIGHTS SHOULD WE USE? 'error' IS FROM THE CALIBRATED SCIENCE IMAGE. 'residual_windowed_std' MIGHT BE BETTER (see panel two of plot)
-        # THIS IS CLOSER TO WHAT KELSON SUGGESTS
         df["weights"] = 1 / df["error"]
         df["weights"] = 1 / df["residual_windowed_std"]
         df["weights"] = df["weights"].replace(np.nan, 0.0000000000001)
         goodWeights = df["weights"]
 
+        # WE WILL UPDATE THIS VALUE LATER IN WORKFLOW WITH SLIT-ILLUMINATION CORRECTION
+        df["flux_normaliser"] = 1
+
         # FOR WEIGHTED BSPLINES WE ONLY NEED *INTERIOR* KNOTS (DON'T GO BEYOND RANGE OF DATA)
         # CAN'T HAVE MORE KNOTS THAN DATA POINTS
-
         # NUMBER OF 'DEFAULT' KNOTS
         defaultPointsPerKnot = 25
         n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
@@ -869,15 +842,16 @@ class subtract_sky(object):
         qs = np.linspace(0, 1, n_interior_knots + 2)[1: -1]
         allKnots = np.quantile(goodWl, qs)
         extraKnots = np.array([])
-        print(f"\n\n")
         iterationCount = 0
-
         residualFloor = False
+        iterationCountLimit = 10
 
-        while iterationCount < 10:
+        while iterationCount < iterationCountLimit:
             iterationCount += 1
 
-            print(f"Order: {order}, Iteration {iterationCount}")
+            if iterationCount == 3:
+                # FIT SLIT-ILUMINATION PROFILE
+                df = self.cross_dispersion_flux_normaliser(df)
 
             if iterationCount > 1:
                 # POTENTIAL NEW KNOTS PLACED HALF WAY BETWEEN ADJACENT CURRENT KNOTS
@@ -903,41 +877,28 @@ class subtract_sky(object):
                 meanResiduals = np.ma.compressed(np.ma.masked_array(meanResiduals, mask))
                 allKnots = np.sort(np.concatenate((extraKnots, allKnots)))
 
-            # print("WAVELENGTH:", goodWl.min(), goodWl.max(), goodWl.mean(), goodWl.shape[0])
-            # print("QS:", qs.min(), qs.max(), qs.mean(), qs.shape[0])
-            # print("KNOTS:", allKnots.min(), allKnots.max(), allKnots.mean(), allKnots.shape[0])
-
-            # fp - The weighted sum of squared residuals of the spline approximation
-            # ier - An integer flag about splrep success. Success is indicated if ier<=0. If ier in [1,2,3] an error occurred but was not raised. Otherwise an error is raised.
-            # msg - A message corresponding to the integer flag, ier.
-            # TODO: USE FP AS THE METRIC OF GOODNESS OF FIT ... RE ADD KNOTS WHERE NEEDED AND REPEAT
             tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=allKnots, k=bspline_order, w=goodWeights, full_output=True)
             t, c, k = tck
 
+            # GENERATE SKY-MODEL FROM BSPLINE
             df["sky_model"] = ip.splev(df["wavelength"].values, tck)
-
-            # df = self.resample_sky(df, 3)
-
             df["sky_subtracted_flux"] = df["flux"] - df["sky_model"] * df['flux_normaliser']
             df["sky_subtracted_flux_error_ratio"] = df["sky_subtracted_flux"] / df["error"]
 
-            allResiduals = np.absolute(df["sky_subtracted_flux_error_ratio"])
-            meanResidual = np.mean(allResiduals[1000:-1000])
-            from scipy.stats import median_abs_deviation
-            std = np.mean(allResiduals[1000:-1000])
-            residualFloor = meanResidual
-            print(residualFloor)
+            if iterationCount <= 3:
+                # RECALUATE THE RESIDUAL FLOOR WE ARE CONVERGING TO
+                allResiduals = np.absolute(df["sky_subtracted_flux_error_ratio"])
+                meanResidual = np.mean(allResiduals[1000:-1000])
+                std = np.mean(allResiduals[1000:-1000])
+                residualFloor = meanResidual
 
             flux_error_ratio = df["sky_subtracted_flux_error_ratio"].values
             flux_error_ratio = flux_error_ratio[1000:-1000]
-            print(f'RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
 
-            # TODO: FITS A ROLLING WINDOW SCATTER TO THESE RESIDUALS TO FIND WHERE TO PLACE NEW KNOTS
-            print("RES", df["sky_subtracted_flux_error_ratio"].mean(), "STD", df["sky_subtracted_flux_error_ratio"].std(), "MEDIAN", np.median(df["sky_subtracted_flux_error_ratio"]))
-            print(fp, ier, msg)
+            print(f'Order: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
+            # print(fp, ier, msg)
 
         imageMapOrder["sky_model"] = ip.splev(imageMapOrder["wavelength"].values, tck)
-
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
         imageMapOrder["sky_subtracted_flux_error_ratio"] = imageMapOrder["sky_subtracted_flux"] / imageMapOrder["error"]
         imageMapOrder["sky_subtracted_flux_rolling_median"] = imageMapOrder["sky_subtracted_flux"].abs().rolling(defaultPointsPerKnot).median()
@@ -1403,112 +1364,110 @@ class subtract_sky(object):
         self.log.debug('completed the ``clip_object_slit_positions`` method')
         return order_dataframes
 
-    def find_peaks(
-            self,
-            skyDataFrame,
-            plot=False):
-        """*find peaks of sky-lines from the sky-model*
-
-        **Key Arguments:**
-            - ``skyDataFrame`` -- dataframe containing sky-model
-            - ``plot`` -- plot data with peaks
-
-        **Return:**
-            - ``peaks`` -- a dataframe containing the wavelength locations and flux of peaks found in sky-model
-
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
-        """
-        self.log.debug('starting the ``find_peaks`` method')
-
-        from scipy.signal import find_peaks
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import pandas as pd
-
-        wl = skyDataFrame["wavelength"].values
-        sky = skyDataFrame["sky_model"].values
-        std = np.nanstd(skyDataFrame["sky_model"].values)
-        mean = np.nanmean(skyDataFrame["sky_model"].values)
-        peaks, _ = find_peaks(sky, height=0.6 * std, distance=100)
-
-        if plot:
-            plt.plot(wl, sky)
-            plt.plot(wl[peaks], sky[peaks], "x")
-            plt.plot(wl, np.ones_like(sky) * 0.6 * std, "--", color="gray")
-            plt.show()
-
-        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-        myDict = {
-            "wavelength": wl[peaks],
-            "flux": sky[peaks]
-        }
-        peaks = pd.DataFrame(myDict)
-
-        self.log.debug('completed the ``find_peaks`` method')
-        return peaks
-
     def cross_dispersion_flux_normaliser(
             self,
-            allimageMapOrder):
+            orderDF):
         """*measure and normalise the flux in the cross-dispersion direction*
 
         **Key Arguments:**
-            # -
+            - ``orderDF`` -- a single order dataframe containing sky-subtraction flux residuals used to determine and remove a slit-illumination correction
 
         **Return:**
-            - None
+            - `correctedOrderDF` -- dataframe with slit-illumination correction factor added (flux-normaliser)
 
         **Usage:**
 
         ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        correctedOrderDF = self.cross_dispersion_flux_normaliser(orderDF)
         ```
         """
         self.log.debug('starting the ``slit-profile-flux-normaliser`` method')
 
-        if 1 == 1:
-            import pickle
-            with open('/Users/Dave/Desktop/all_orders.pickle', 'wb') as f:
-                pickle.dump(allimageMapOrder, f)
-            # mv ~/Desktop/all_orders.pickle ~/Dropbox/server-sync/soxs-eso-data/shared-notebooks/dry/sky-slit-fitting/
+        import scipy.interpolate
+        import numpy as np
+        from astropy.stats import sigma_clip
+        import matplotlib.pyplot as plt
 
-            import pickle
-            with open('/Users/Dave/Desktop/all_orders_normalised.pickle', 'rb') as f:
-                allimageMapOrder = pickle.load(f)
-            # cp ~/Dropbox/server-sync/soxs-eso-data/shared-notebooks/dry/sky-slit-fitting/all_orders_normalised.pickle ~/Desktop/
+        # 3 IMAGE DIMENSIONS - WAVELENGTH, SLIT-POSTIION AND FLUX
+        mask = ((orderDF["clipped"] == False) & (orderDF["object"] == False))
+        thisOrder = orderDF.loc[mask]
+        wl = thisOrder['wavelength'].values
+        sp = thisOrder['slit_position'].values
+        fx = thisOrder['sky_subtracted_flux'].values
 
-        else:
-            for i in allimageMapOrder:
-                i['flux_normaliser'] = 1
+        # SOME LIGHT CLIPPING
+        masked_residuals = sigma_clip(fx, sigma_lower=5, sigma_upper=5, maxiters=3, cenfunc='mean', stdfunc='std')
+        a = [wl, sp, fx]
+        wl, sp, fx = [np.ma.compressed(np.ma.masked_array(
+            i, masked_residuals.mask)) for i in a]
+
+        # NORMALISE FLUX TO ZERO
+        fx = fx - fx.mean()
+
+        # ITERATIVELY FIT SLIT-ILLUMINATION
+        iteration = 1
+        while iteration < 10:
+            iteration += 1
+            coeff = np.polyfit(sp, fx, deg=1)
+            residuals = fx - np.polyval(coeff, sp)
+            masked_residuals = sigma_clip(residuals, sigma_lower=3, sigma_upper=3, maxiters=1, cenfunc='mean', stdfunc='std')
+            # REDUCE ARRAYS TO NON-MASKED VALUES
+            a = [sp, fx]
+            sp, fx = [np.ma.compressed(np.ma.masked_array(
+                i, masked_residuals.mask)) for i in a]
+
+        if 1 == 0:
+            fig = plt.figure(figsize=(15, 4))
+            plt.title("Slit Illumination Profile")
+            plt.plot(sp, fx, '.', ms=0.3, color="blue")
+            plt.xlabel('slit-position', fontsize=8)
+            plt.ylabel('sky_subtracted_flux', fontsize=8)
+            xp = np.linspace(sp.min(), sp.max(), 100)
+            fitFx = np.polyval(coeff, xp)
+            plt.plot(xp, fitFx, color="red")
+            plt.show()
+
+        # USE THE SLIT-ILLUMINATION FUNCTION TO CREATE A FLUX-NORMALISATION
+        thisOrder['flux_normaliser'] = 1.
+        thisOrder['flux_normaliser'] = 1 + np.polyval(coeff, thisOrder['slit_position'].values) / thisOrder['sky_model']
+        orderDF['flux_normaliser'] = 1 + np.polyval(coeff, orderDF['slit_position'].values) / orderDF['sky_model']
+
+        if 1 == 0:
+            # CHECKING RESULTS - SHOULD NOW HAVE A STRAIGHT LINE PROFILE
+            thisOrder['sky_subtracted_flux'] = thisOrder['flux'] - thisOrder['sky_model'] * thisOrder['flux_normaliser']
+            sp = thisOrder['slit_position'].values
+            fx = thisOrder['sky_subtracted_flux'].values
+            fxn = thisOrder['flux_normaliser'].values
+
+            iteration = 1
+            while iteration < 10:
+                iteration += 1
+                coeff = np.polyfit(sp, fx, deg=1)
+                residuals = fx - np.polyval(coeff, sp)
+                masked_residuals = sigma_clip(residuals, sigma_lower=3, sigma_upper=3, maxiters=1, cenfunc='mean', stdfunc='std')
+                # REDUCE ARRAYS TO NON-MASKED VALUES
+                a = [sp, fx, fxn]
+                sp, fx, fxn = [np.ma.compressed(np.ma.masked_array(
+                    i, masked_residuals.mask)) for i in a]
+
+            fig = plt.figure(figsize=(15, 4))
+            plt.title("Flux Normalisation Function")
+            plt.plot(sp, fxn, '.', ms=0.3, color="blue")
+            plt.xlabel('slit_position', fontsize=8)
+            plt.ylabel('flux_normaliser', fontsize=8)
+            plt.show()
+
+            fig = plt.figure(figsize=(15, 4))
+            plt.title("Original Sky Model Corrected for Slit Illumination")
+            plt.plot(sp, fx, '.', ms=0.3, color="blue")
+            plt.xlabel('slit-position', fontsize=8)
+            plt.ylabel('sky_subtracted_flux (corrected)', fontsize=8)
+            fitFx = np.polyval(coeff, xp)
+            plt.plot(xp, fitFx, color="red")
+            plt.show()
 
         self.log.debug('completed the ``slit-profile-flux-normaliser`` method')
-        return allimageMapOrder
+        return orderDF
 
     # use the tab-trigger below for new method
     # xt-class-method
