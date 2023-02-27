@@ -794,7 +794,7 @@ class subtract_sky(object):
         # FOR WEIGHTED BSPLINES WE ONLY NEED *INTERIOR* KNOTS (DON'T GO BEYOND RANGE OF DATA)
         # CAN'T HAVE MORE KNOTS THAN DATA POINTS
         # NUMBER OF 'DEFAULT' KNOTS
-        defaultPointsPerKnot = 11
+        defaultPointsPerKnot = 25
         n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
         # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONGS WAVELENGTH RANGE
         qs = np.linspace(0, 1, n_interior_knots + 2)[1: -1]
@@ -824,7 +824,7 @@ class subtract_sky(object):
                 meanResiduals = group["sky_subtracted_flux_error_ratio_abs"].mean()
                 counts = group.size()
                 potentialNewKnots = group["wavelength"].mean()
-                mask = counts < bspline_order + 1
+                mask = counts < bspline_order
                 meanResiduals[mask] = residualFloor - 1
 
                 meanResiduals = np.array(meanResiduals)
