@@ -181,7 +181,7 @@ class create_dispersion_map(object):
         lineGroups = lineGroups.size().to_frame(name='count').reset_index()
 
         # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
-        missingLineThreshold = 4
+        missingLineThreshold = 1
         mask = (lineGroups['count'] > missingLineThreshold)
         orderPixelTable["dropped"] = False
         lineGroups = lineGroups.loc[mask]
@@ -882,7 +882,7 @@ class create_dispersion_map(object):
             lineGroups = totalAllClippedLines.groupby(['wavelength', 'order'])
             lineGroups = lineGroups.size().to_frame(name='count').reset_index()
             # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
-            missingLineThreshold = 4
+            missingLineThreshold = 3
             mask = (lineGroups['count'] > missingLineThreshold)
             orderPixelTable["dropped"] = False
             lineGroups = lineGroups.loc[mask]
