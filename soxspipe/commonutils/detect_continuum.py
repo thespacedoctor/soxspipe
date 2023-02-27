@@ -591,7 +591,7 @@ class detect_continuum(_base_detect):
             exponentsIncluded=True
         )
         # orderLocations[o] = coeff
-        coeff_dict["degorder_std"] = self.orderDeg,
+        coeff_dict["degorder_std"] = self.orderDeg
         coeff_dict[f"deg{self.axisB}_std"] = self.axisBDeg
         n_coeff = 0
         for i in range(0, self.orderDeg + 1):

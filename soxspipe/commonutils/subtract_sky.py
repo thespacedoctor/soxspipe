@@ -664,7 +664,7 @@ class subtract_sky(object):
         outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
         filePath = f"{outDir}/{filename}"
 
-        plt.show()
+        # plt.show()
         plt.savefig(filePath, dpi='figure')
 
         self.log.debug('completed the ``plot_sky_sampling`` method')

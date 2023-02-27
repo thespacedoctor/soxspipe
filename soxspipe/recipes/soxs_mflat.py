@@ -756,7 +756,7 @@ class soxs_mflat(_base_recipe_):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=dmflatScaled, show=True, ext=False, stdWindow=3, surfacePlot=True, title="D Flat scaled to Q-Flat")
+            log=self.log, CCDObject=dmflatScaled, show=False, ext=False, stdWindow=3, surfacePlot=True, title="D Flat scaled to Q-Flat")
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
@@ -785,7 +785,7 @@ class soxs_mflat(_base_recipe_):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=stitchedFlat, show=True, ext=False, stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=stitchedFlat, show=False, ext=False, stdWindow=3, title=False, surfacePlot=True)
 
         # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
         edges = detect_order_edges(
@@ -811,7 +811,7 @@ class soxs_mflat(_base_recipe_):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=stitchedFlat, show=True, ext=False, stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=stitchedFlat, show=False, ext=False, stdWindow=3, title=False, surfacePlot=True)
 
         self.log.debug('completed the ``stitch_uv_mflats`` method')
         return stitchedFlat
