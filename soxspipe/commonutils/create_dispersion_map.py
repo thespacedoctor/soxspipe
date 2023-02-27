@@ -892,9 +892,6 @@ class create_dispersion_map(object):
             s.loc[(s["_merge"] == "both"), "dropped"] = True
             orderPixelTable["dropped"] = s["dropped"].values
 
-            from tabulate import tabulate
-            print(tabulate(s, headers='keys', tablefmt='psql'))
-
             # ADD NEWLY CLIPPED LINES FROM SETS THEN FLAG AS MASKED
             mask = ((orderPixelTable['dropped'] == True) & (orderPixelTable['residuals_masked'] == False))
             allClippedLines.append(orderPixelTable.loc[mask])
