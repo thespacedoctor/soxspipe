@@ -245,12 +245,16 @@ class soxs_stare(_base_recipe_):
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
-        combined_object = self.detrend(
-            inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
+        if False:
+            combined_object = self.detrend(
+                inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
+        else:
+            combined_object = self.detrend(
+                inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat)
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=1, title=False, surfacePlot=True)
+            log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
 
         skymodel = subtract_sky(
             log=self.log,

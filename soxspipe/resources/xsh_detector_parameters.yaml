@@ -32,6 +32,7 @@ UVB:
   mid_slit_index: 4
   spectral format table: SPECTRAL_FORMAT_TAB_UVB.fits
   slit_length: 11 #arcsec
+  skylines: SKYLINES.fits
             
 VIS:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -67,6 +68,7 @@ VIS:
   mid_slit_index: 4
   spectral format table: SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 11 #arcsec
+  skylines: SKYLINES.fits
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -96,4 +98,5 @@ NIR:
   mid_slit_index: 4
   spectral format table: SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 11 #arcsec
+  skylines: SKYLINES.fits
 

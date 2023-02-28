@@ -415,6 +415,7 @@ class _base_recipe_(object):
             inst.remove(None)
         self.inst = inst[0]
 
+        # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"
@@ -758,7 +759,7 @@ class _base_recipe_(object):
         import numpy as np
 
         if len(frames) == 1:
-            self.log.warning("Only 1 frame was sent to the clip and stack method. Returning the frame was no further processing.")
+            self.log.warning("Only 1 frame was sent to the clip and stack method. Returning the frame with no further processing.")
             return frames[0]
 
         arm = self.arm
@@ -1087,7 +1088,7 @@ class _base_recipe_(object):
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "RON DETECTOR",
                 "qc_value": rawRon,
-                "qc_comment": f"RON in single {singleFrameType} (electrons)",
+                "qc_comment": f"[e-] RON in single {singleFrameType}",
                 "qc_unit": "electrons",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -1110,7 +1111,7 @@ class _base_recipe_(object):
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "RON MASTER",
                 "qc_value": masterRon,
-                "qc_comment": f"Combined RON in {frameType} (electrons)",
+                "qc_comment": f"[e-] Combined RON in {frameType}",
                 "qc_unit": "electrons",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -1165,7 +1166,7 @@ class _base_recipe_(object):
             "soxspipe_recipe": self.recipeName,
             "qc_name": f"{frameType} MEDIAN".upper(),
             "qc_value": medianFlux,
-            "qc_comment": f"Median flux level of {frameName}",
+            "qc_comment": f"[e-] Median flux level of {frameName}",
             "qc_unit": "electrons",
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,

@@ -89,6 +89,7 @@ class subtract_background(object):
 
         self.inst = frame.header[kw("INSTRUME")]
 
+        # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"

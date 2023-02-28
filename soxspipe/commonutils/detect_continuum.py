@@ -15,7 +15,6 @@
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
-from fundamentals.renderer import list_of_dictionaries
 import collections
 
 
@@ -87,13 +86,13 @@ class _base_detect(object):
         mask = (pixelList['order'] == order)
         pixelListFiltered = pixelList.loc[mask]
 
+        coeff = np.ones((self.axisBDeg + 1))
         while clippedCount > 0 and iteration < clippingIterationLimit:
             pixelListFiltered = pixelList.loc[mask]
 
             startCount = len(pixelListFiltered.index)
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((self.axisBDeg + 1))
             # NOTE X AND Y COLUMN ARE CORRECLY IN xdata AND ydata - WANT TO
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
             try:
@@ -150,12 +149,14 @@ class _base_detect(object):
         **Return:**
             - ``coeffs`` -- the coefficients of the polynomial fit
             - ``pixelList`` -- the pixel list but now with fits and residuals included
+            - ``allClipped`` -- data that was sigma-clipped
         """
         self.log.debug('starting the ``fit_global_polynomial`` method')
 
         import numpy as np
         from astropy.stats import sigma_clip
         from scipy.optimize import curve_fit
+        import pandas as pd
 
         arm = self.arm
 
@@ -170,11 +171,13 @@ class _base_detect(object):
 
         iteration = 0
 
+        allClipped = []
+        coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
         while clippedCount > 0 and iteration < clippingIterationLimit:
             startCount = len(pixelList.index)
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
-            coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
+
             try:
                 coeff, pcov_x = curve_fit(
                     poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff)
@@ -202,12 +205,15 @@ class _base_detect(object):
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
             removeMask = (pixelList["mask"] == True)
+            allClipped.append(pixelList.loc[removeMask])
             pixelList.drop(index=pixelList[removeMask].index, inplace=True)
             clippedCount = startCount - len(pixelList.index)
 
             if iteration > 1:
                 sys.stdout.write("\x1b[1A\x1b[2K")
             print(f'\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+
+        allClipped = pd.concat(allClipped, ignore_index=True)
 
         res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
             orderPixelTable=pixelList,
@@ -218,7 +224,7 @@ class _base_detect(object):
             writeQCs=writeQCs)
 
         self.log.debug('completed the ``fit_global_polynomial`` method')
-        return coeff, pixelList
+        return coeff, pixelList, allClipped
 
     def calculate_residuals(
             self,
@@ -280,7 +286,7 @@ class _base_detect(object):
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMIN",
                 "qc_value": res.min(),
-                "qc_comment": f"Minimum residual in {tag} fit along x-axis",
+                "qc_comment": f"[px] Minimum residual in {tag} fit along x-axis",
                 "qc_unit": "pixels",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -290,7 +296,7 @@ class _base_detect(object):
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMAX",
                 "qc_value": res.max(),
-                "qc_comment": f"Maximum residual in {tag} fit along x-axis",
+                "qc_comment": f"[px] Maximum residual in {tag} fit along x-axis",
                 "qc_unit": "pixels",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -300,7 +306,7 @@ class _base_detect(object):
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESRMS",
                 "qc_value": res_std,
-                "qc_comment": f"Std-dev of residual {tag} fit along x-axis",
+                "qc_comment": f"[px] Std-dev of residual {tag} fit along x-axis",
                 "qc_unit": "pixels",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -514,6 +520,7 @@ class detect_continuum(_base_detect):
         self.sliceLength = self.recipeSettings["slice-length"]
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
 
+        # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
             self.axisA = "y"
             self.axisB = "x"
@@ -562,7 +569,7 @@ class detect_continuum(_base_detect):
         print("\n# FINDING GLOBAL POLYNOMIAL SOLUTION FOR ORDER CENTRE TRACES\n")
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        coeff, orderPixelTable = self.fit_global_polynomial(
+        coeff, orderPixelTable, clippedData = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisACol=f"cont_{self.axisA}",
             axisBCol=f"cont_{self.axisB}",
@@ -577,14 +584,14 @@ class detect_continuum(_base_detect):
                 n_coeff += 1
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        coeff, orderPixelTable = self.fit_global_polynomial(
+        coeff, orderPixelTable, clippedData = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisACol="stddev",
             axisBCol=f"cont_{self.axisB}",
             exponentsIncluded=True
         )
         # orderLocations[o] = coeff
-        coeff_dict["degorder_std"] = self.orderDeg,
+        coeff_dict["degorder_std"] = self.orderDeg
         coeff_dict[f"deg{self.axisB}_std"] = self.axisBDeg
         n_coeff = 0
         for i in range(0, self.orderDeg + 1):
@@ -592,22 +599,16 @@ class detect_continuum(_base_detect):
                 coeff_dict[f'std_{i}{j}'] = coeff[n_coeff]
                 n_coeff += 1
         coeffColumns = coeff_dict.keys()
-        dataSet = list_of_dictionaries(
-            log=self.log,
-            listOfDictionaries=[coeff_dict]
-        )
 
-        # WRITE CSV DATA TO PANDAS DATAFRAME TO ASTROPY TABLE TO FITS
-        fakeFile = StringIO(dataSet.csv())
-        orderPolyTable = pd.read_csv(fakeFile, index_col=False, na_values=['NA', 'MISSING'])
-        fakeFile.close()
+        orderPolyTable = pd.DataFrame([coeff_dict])
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
         orderPixelTable.drop(columns=['mask'], inplace=True)
 
         plotPath, orderMetaTable = self.plot_results(
             orderPixelTable=orderPixelTable,
-            orderPolyTable=orderPolyTable
+            orderPolyTable=orderPolyTable,
+            clippedData=clippedData
         )
 
         from datetime import datetime
@@ -709,10 +710,13 @@ class detect_continuum(_base_detect):
             "wavelength": np.asarray([]),
             "slit_position": np.asarray([])
         }
+        expandRatio = 1.5
         for o, wmin, wmax, pixelRange in zip(orderNums, waveLengthMin, waveLengthMax, orderPixelRanges):
             orderSampleCount = int(pixelRange / samplePixelSep)
+            wrange = wmax - wmin
+            expand = wrange * expandRatio / 2
             wlArray = np.arange(
-                wmin, wmax, (wmax - wmin) / orderSampleCount)
+                wmin - expand, wmax + expand, (wmax - wmin + expand * 2) / orderSampleCount)
             myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
             myDict["order"] = np.append(
                 myDict["order"], np.ones(len(wlArray)) * o)
@@ -810,7 +814,12 @@ class detect_continuum(_base_detect):
         fit_g = fitting.LevMarLSQFitter()
 
         # NOW FIT
-        g = fit_g(g_init, np.arange(0, len(slice)), slice)
+        try:
+            g = fit_g(g_init, np.arange(0, len(slice)), slice)
+        except:
+            pixelPostion[f"cont_{self.axisA}"] = np.nan
+            pixelPostion[f"cont_{self.axisB}"] = np.nan
+            return pixelPostion
         pixelPostion[f"cont_{sliceAxis}"] = g.mean.value + \
             max(0, slice_length_offset)
         pixelPostion[f"cont_{sliceAntiAxis}"] = slice_width_centre
@@ -835,12 +844,14 @@ class detect_continuum(_base_detect):
     def plot_results(
             self,
             orderPixelTable,
-            orderPolyTable):
+            orderPolyTable,
+            clippedData):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
             - ``orderPixelTable`` -- the pixel table with residuals of fits
             - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+            - ``clippedData`` -- the sigma-clipped data
 
         **Return:**
             - ``filePath`` -- path to the plot pdf
@@ -882,8 +893,8 @@ class detect_continuum(_base_detect):
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
-        toprow.scatter(orderPixelTable[
-                       f'cont_{self.axisB}'].values, orderPixelTable[f'cont_{self.axisA}'].values, marker='o', c='red', s=1, alpha=0.6)
+        toprow.scatter(clippedData[f"cont_{self.axisB}"], clippedData[f"cont_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
+        toprow.scatter(orderPixelTable[f"cont_{self.axisB}"], orderPixelTable[f"cont_{self.axisA}"], marker='o', c='yellow', s=0.3, alpha=0.6)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -918,6 +929,7 @@ class detect_continuum(_base_detect):
         ymax = []
         xmin = []
         xmax = []
+        colors = []
         for o in uniqueOrders:
             df["order"] = o
             xfit = poly(df, *cent_coeff)
@@ -928,7 +940,7 @@ class detect_continuum(_base_detect):
             # upper = xfit + 3 * stdfit
             c = midrow.plot(yfit, xfit, linewidth=0.7)
             midrow.fill_between(yfit, lower, upper, color=c[0].get_color(), alpha=0.3)
-
+            colors.append(c[0].get_color())
             ymin.append(min(yfit))
             ymax.append(max(yfit))
             xmin.append(axisALength - max(xfit))
@@ -960,23 +972,35 @@ class detect_continuum(_base_detect):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomleft.scatter(orderPixelTable[f'cont_{self.axisA}'].values, orderPixelTable[
-                           f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1)
+        for o, c in zip(uniqueOrders, colors):
+            mask = (orderPixelTable['order'] == o)
+            bottomleft.scatter(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values, orderPixelTable.loc[mask][
+                f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1, c=c)
+            bottomleft.text(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values[10], orderPixelTable.loc[mask][
+                f'cont_{self.axisA}_fit_res'].values[10], int(o), fontsize=8, c=c, verticalalignment='bottom')
         bottomleft.set_xlabel(f'{self.axisA} pixel position', fontsize=10)
         bottomleft.set_ylabel(f'{self.axisA} residual', fontsize=10)
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        bottomright.scatter(orderPixelTable[f'cont_{self.axisB}'].values, orderPixelTable[
-                            f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1)
+        for o, c in zip(uniqueOrders, colors):
+            mask = (orderPixelTable['order'] == o)
+            bottomright.scatter(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values, orderPixelTable.loc[mask][
+                f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1, c=c)
+            bottomright.text(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values[10], orderPixelTable.loc[mask][
+                f'cont_{self.axisA}_fit_res'].values[10], int(o), fontsize=8, c=c, verticalalignment='bottom')
+
         bottomright.set_xlabel(f'{self.axisB} pixel position', fontsize=10)
         bottomright.tick_params(axis='both', which='major', labelsize=9)
         # bottomright.set_ylabel('x residual')
         bottomright.set_yticklabels([])
 
         stdToFwhm = 2 * (2 * math.log(2))**0.5
-        fwhmaxis.scatter(orderPixelTable['wavelength'].values, orderPixelTable['stddev_fit'].values * stdToFwhm, alpha=0.2, s=1)
+        for o, c in zip(uniqueOrders, colors):
+            mask = (orderPixelTable['order'] == o)
+            fwhmaxis.scatter(orderPixelTable.loc[mask]['wavelength'].values, orderPixelTable.loc[mask]['stddev_fit'].values * stdToFwhm, alpha=0.2, s=1, c=c)
+            fwhmaxis.text(orderPixelTable.loc[mask]['wavelength'].values[10], orderPixelTable.loc[mask]['stddev_fit'].values[10] * stdToFwhm, int(o), fontsize=8, c=c, verticalalignment='bottom')
         fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
         fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
         fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)

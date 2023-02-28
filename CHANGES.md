@@ -1,7 +1,12 @@
 
 # Release Notes  
 
-## v0.7.0 - November 4, 2022  
+
+* **REFACTOR:** UV order-edge detection more robust
+* **REFACTOR:** changed quickstart guide compress to gzipped tar
+* **REFACTOR:** updated default settings to be more robust
+
+## v0.7.1 - November 4, 2022  
 
 * **FEATURE:** UV D-Lamp and QTH-Lamp master flats now being stitched together  
 * **FEATURE:** errors in error maps now being treated correctly and propagating to combined images  

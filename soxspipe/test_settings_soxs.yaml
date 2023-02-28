@@ -48,7 +48,7 @@ instrument: soxs
 #     poly-deg: 4
 #     poly-fitting-residual-clipping-sigma: 5
 #     poly-clipping-iteration-limit: 10
-#     low-sensitivity-clipping-simga: 2
+#     low-sensitivity-clipping-sigma: 2
     
 
 # soxs-straighten:

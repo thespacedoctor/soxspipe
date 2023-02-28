@@ -43,3 +43,8 @@ blog-post.rst
 .cache
 .cache/*
 /prof
+*.rst
+*.*.rst
+/docs/source/autosummary_include.rst
+/docs/source/_autosummary
+/docs/source/autosummary.rst
