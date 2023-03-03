@@ -1,10 +1,12 @@
 
 # Release Notes  
 
+## v0.7.2 - March 3, 2023
 
-* **REFACTOR:** UV order-edge detection more robust
-* **REFACTOR:** changed quickstart guide compress to gzipped tar
-* **REFACTOR:** updated default settings to be more robust
+* **REFACTOR:** Big improvements on sky-subtraction  
+* **REFACTOR:** UV order-edge detection more robust  
+* **REFACTOR:** changed quickstart guide compress to gzipped tar  
+* **REFACTOR:** updated default settings to be more robust  
 
 ## v0.7.1 - November 4, 2022  
 
