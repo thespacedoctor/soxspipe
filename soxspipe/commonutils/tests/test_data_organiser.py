@@ -30,16 +30,16 @@ moduleDirectory = os.path.dirname(__file__)
 pathToInputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/data-organiser/"
 pathToOutputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/data-organiser-output/"
 
-try:
-    shutil.rmtree(pathToOutputDir)
-except:
-    pass
-# COPY INPUT TO OUTPUT DIR
-shutil.copytree(pathToInputDir, pathToOutputDir)
+# try:
+#     shutil.rmtree(pathToOutputDir)
+# except:
+#     pass
+# # COPY INPUT TO OUTPUT DIR
+# shutil.copytree(pathToInputDir, pathToOutputDir)
 
-# Recursively create missing directories
-if not os.path.exists(pathToOutputDir):
-    os.makedirs(pathToOutputDir)
+# # Recursively create missing directories
+# if not os.path.exists(pathToOutputDir):
+#     os.makedirs(pathToOutputDir)
 
 
 # xt-setup-unit-testing-files-and-folders
