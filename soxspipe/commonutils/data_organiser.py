@@ -62,11 +62,17 @@ class data_organiser(object):
     ):
 
         import shutil
+        import sqlite3 as sql
 
         self.log = log
         log.debug("instansiating a new 'data_organiser' object")
         self.settings = settings
         self.rootDir = rootDir
+        self.rawDir = rootDir + "/raw_frames"
+
+        # MK RAW FRAME DIRECTORY
+        if not os.path.exists(self.rawDir):
+            os.makedirs(self.rawDir)
 
         # xt-self-arg-tmpx
 
@@ -81,6 +87,16 @@ class data_organiser(object):
             emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
             shutil.copyfile(emptyDb, self.dbPath)
             print("soxspipe.db does not yet exist, this is a fresh reduction")
+
+        def dict_factory(cursor, row):
+            d = {}
+            for idx, col in enumerate(cursor.description):
+                d[col[0]] = row[idx]
+            return d
+
+        self.conn = sql.connect(
+            self.dbPath, isolation_level=None)
+        self.conn.row_factory = dict_factory
 
         # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
         self.keywords = [
@@ -147,43 +163,13 @@ class data_organiser(object):
 
         return None
 
-    # 4. @flagged: what actions does each object have to be able to perform? Add them here
-    # Method Attributes
-    def get(self):
-        """
-        *get the data_organiser object*
-
-        **Return:**
-            - ``data_organiser``
-
-        **Usage:**
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - create cl-util for this method
-            - update the package tutorial if needed
-        ```
-
-        ```python
-        usage code 
-        ```
-        """
-        self.log.debug('starting the ``get`` method')
-
-        data_organiser = None
-
-        self.log.debug('completed the ``get`` method')
-        return data_organiser
-
     def sync_raw_frames(
-            self):
+            self,
+            skipSqlSync=False):
         """*sync the raw frames between the project folder and the database *
 
         **Key Arguments:**
-            # -
+            - ``skipSqlSync`` -- skip the SQL db sync (used only in secondary clean-up scan)
 
         **Return:**
             - None
@@ -191,76 +177,38 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            settings=settings,
+            rootDir="/path/to/root/folder/"
+        )
+        do.sync_raw_frames()
         ```
         """
         self.log.debug('starting the ``sync_raw_frames`` method')
 
-        from astropy.table import Table, unique
-        import numpy as np
-        import pandas as pd
-        from tabulate import tabulate
         import sqlite3 as sql
+        import shutil
 
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
         filteredFrames, fitsPaths, fitsNames = self.create_directory_table(pathToDirectory=self.rootDir, keys=self.keywords, filterKeys=self.filterKeywords)
-        filteredFrames = filteredFrames.to_pandas(index=False)
 
-        # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
-        proKeywords = ['eso pro type', 'eso pro tech', 'eso pro catg']
-        keywordsTerseRaw = self.keywordsTerse[:]
-        keywordsTerseReduced = self.keywordsTerse[:]
-        filterKeywordsRaw = self.filterKeywords[:]
-        filterKeywordsReduced = self.filterKeywords[:]
+        if filteredFrames:
+            filteredFrames = filteredFrames.to_pandas(index=False)
+            # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
+            rawFrames, reducedFramesPixels, reducedFramesTables = self.categorise_frames(filteredFrames)
 
-        mask = []
-        for i in proKeywords:
-            keywordsTerseRaw.remove(i)
-            filterKeywordsRaw.remove(i)
-            if not len(mask):
-                mask = (filteredFrames[i] == "--")
-            else:
-                mask = np.logical_and(mask, (filteredFrames[i] == "--"))
+            if len(rawFrames.index):
+                rawFrames["filepath"] = self.rawDir + "/" + rawFrames['file']
+                rawFrames.to_sql('raw_frames', con=self.conn,
+                                 index=False, if_exists='append')
+                filepaths = rawFrames['file'].values
+                for f in filepaths:
+                    shutil.move(self.rootDir + "/" + f, self.rawDir)
 
-        rawFrames = filteredFrames.loc[mask]
-        pd.options.display.float_format = '{:,.4f}'.format
-
-        rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name='counts')
-        rawGroups.style.hide_index()
-        pd.options.mode.chained_assignment = None
-        if len(rawGroups.index):
-            print("\n## RAW FRAME-SET SUMMARY\n")
-            print(tabulate(rawGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
-
-        dprKeywords = ['eso dpr type', 'eso dpr tech', 'eso dpr catg']
-        for i in dprKeywords:
-            keywordsTerseReduced.remove(i)
-            filterKeywordsReduced.remove(i)
-        filterKeywordsReducedTable = filterKeywordsReduced[:]
-        filterKeywordsReducedTable.remove("binning")
-        keywordsTerseReducedTable = keywordsTerseReduced[:]
-        keywordsTerseReducedTable.remove("binning")
-
-        print("\n# CONTENT FILE INDEX\n")
-        if len(rawGroups.index):
-            print("\n## ALL RAW FRAMES\n")
-            print(tabulate(rawFrames[keywordsTerseRaw], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
-            # CONNECT TO THE DATABASE
-            conn = sql.connect(self.dbPath)
-            # SEND TO DATABASE
-            rawFrames[keywordsTerseRaw].replace(['--'], None).to_sql('raw_frames', con=conn,
-                                                                     index=False, if_exists='append')
+        if not skipSqlSync:
+            self.sync_sql_table_to_directory(self.rawDir, 'raw_frames', recursive=False)
 
         self.log.debug('completed the ``sync_raw_frames`` method')
         return None
@@ -302,6 +250,7 @@ class data_organiser(object):
         from ccdproc import ImageFileCollection
         from astropy.time import Time, TimeDelta
         import numpy as np
+        from fundamentals.files import recursive_directory_listing
 
         # GENERATE A LIST OF FITS FILE PATHS
         fitsPaths = []
@@ -313,18 +262,18 @@ class data_organiser(object):
                 fitsNames.append(d)
 
         recursive = False
-        for d in os.listdir(pathToDirectory):
-            if os.path.isdir(os.path.join(pathToDirectory, d)) and d in ('raw_frames', 'product'):
-                recursive = True
-                theseFiles = recursive_directory_listing(
-                    log=log,
-                    baseFolderPath=os.path.join(pathToDirectory, d),
-                    whatToList="files"  # all | files | dirs
-                )
-                newFitsPaths = [n for n in theseFiles if ".fits" in n]
-                newFitsNames = [os.path.basename(n) for n in theseFiles if ".fits" in n]
-                fitsPaths += newFitsPaths
-                fitsNames += newFitsNames
+        # for d in os.listdir(pathToDirectory):
+        #     if os.path.isdir(os.path.join(pathToDirectory, d)) and d in ('raw_frames', 'product'):
+        #         recursive = True
+        #         theseFiles = recursive_directory_listing(
+        #             log=self.log,
+        #             baseFolderPath=os.path.join(pathToDirectory, d),
+        #             whatToList="files"  # all | files | dirs
+        #         )
+        #         newFitsPaths = [n for n in theseFiles if ".fits" in n]
+        #         newFitsNames = [os.path.basename(n) for n in theseFiles if ".fits" in n]
+        #         fitsPaths += newFitsPaths
+        #         fitsNames += newFitsNames
 
         if len(fitsPaths) == 0:
             print(f"No fits files found in directory `{pathToDirectory}`")
@@ -375,8 +324,13 @@ class data_organiser(object):
 
         if "eso det read speed" in masterTable.colnames:
             masterTable["rospeed"] = np.copy(masterTable["eso det read speed"])
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == -99.99] = '--'
+            try:
+                masterTable["rospeed"][masterTable[
+                    "rospeed"] == -99.99] = '--'
+            except:
+                masterTable["rospeed"] = masterTable["rospeed"].astype(str)
+                masterTable["rospeed"][masterTable[
+                    "rospeed"] == -99.99] = '--'
             masterTable["rospeed"][masterTable[
                 "rospeed"] == '1pt/400k/lg'] = 'fast'
             masterTable["rospeed"][masterTable[
@@ -405,8 +359,6 @@ class data_organiser(object):
                 "binning"] == '1x-99'] = '--'
             masterTable.add_index("binning")
 
-            # myArray[myArray < 10.] = -99
-
         # ADD INDEXES ON ALL KEYS
         for k in keys:
             try:
@@ -419,6 +371,172 @@ class data_organiser(object):
 
         self.log.debug('completed the ``create_directory_table`` function')
         return masterTable, fitsPaths, fitsNames
+
+    def sync_sql_table_to_directory(
+            self,
+            directory,
+            tableName,
+            recursive=False):
+        """*sync sql table content to files in a directory (add and delete from table as appropriate)*
+
+        **Key Arguments:**
+            - ``directory`` -- the directory of fits file to inspect.
+            - ``tableName`` -- the sqlite table to sync.
+            - ``recursive`` -- recursively dig into the directory to find FITS files? Default *False*.
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        do.sync_sql_table_to_directory('/raw/directory/', 'raw_frames', recursive=False)
+        ```
+        """
+        self.log.debug('starting the ``sync_sql_table_to_directory`` method')
+
+        import sqlite3 as sql
+        import shutil
+        import time
+
+        # GENERATE A LIST OF FITS FILE PATHS IN RAW DIR
+        fitsPaths = []
+        fitsNames = []
+        for d in os.listdir(directory):
+            filepath = os.path.join(directory, d)
+            if os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.Z" in filepath):
+                fitsPaths.append(filepath)
+                fitsNames.append(d)
+
+        c = self.conn.cursor()
+
+        sqlQuery = f"select filepath from {tableName};"
+        c.execute(sqlQuery)
+        dbFiles = [r["filepath"] for r in c.fetchall()]
+
+        # DELETED FILES
+        filesNotInDB = set(fitsPaths) - set(dbFiles)
+        filesNotInFS = set(dbFiles) - set(fitsPaths)
+        if len(filesNotInFS):
+            filesNotInFS = (",'").join(filesNotInFS)
+            sqlQuery = f"delete from {tableName} where filepath in ('{filesNotInFS}');"
+            c.execute(sqlQuery)
+
+        if len(filesNotInDB):
+            for f in filesNotInDB:
+                shutil.move(f, self.rootDir)
+            self.sync_raw_frames(skipSqlSync=True)
+
+        c.close()
+
+        self.log.debug('completed the ``sync_sql_table_to_directory`` method')
+        return None
+
+    def categorise_frames(
+            self,
+            filteredFrames,
+            verbose=False):
+        """*given a dataframe of frame, categorise frames into raw, reduced pixels, reduced tables*
+
+        **Key Arguments:**
+            - ``filteredFrames`` -- the dataframe from which to split frames into categorise.
+            - ``verbose`` -- print restuls to stdout.
+
+        **Return:**
+            - ``rawFrames`` -- dataframe of raw frames only
+            - ``reducedFramesPixels`` -- dataframe of reduced images only
+            - ``reducedFramesTables`` -- dataframe of reduced tables only
+
+        **Usage:**
+
+        ```python
+        rawFrames, reducedFramesPixels, reducedFramesTables = self.categorise_frames(filteredFrames)
+        ```
+        """
+        self.log.debug('starting the ``catagorise_frames`` method')
+
+        from astropy.table import Table, unique
+        import numpy as np
+        import pandas as pd
+        from tabulate import tabulate
+
+        # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
+        proKeywords = ['eso pro type', 'eso pro tech', 'eso pro catg']
+        keywordsTerseRaw = self.keywordsTerse[:]
+        keywordsTerseReduced = self.keywordsTerse[:]
+        filterKeywordsRaw = self.filterKeywords[:]
+        filterKeywordsReduced = self.filterKeywords[:]
+
+        mask = []
+        for i in proKeywords:
+            keywordsTerseRaw.remove(i)
+            filterKeywordsRaw.remove(i)
+            if not len(mask):
+                mask = (filteredFrames[i] == "--")
+            else:
+                mask = np.logical_and(mask, (filteredFrames[i] == "--"))
+
+        rawFrames = filteredFrames.loc[mask]
+
+        reducedFrames = filteredFrames.loc[~mask]
+        pd.options.display.float_format = '{:,.4f}'.format
+
+        mask = (reducedFrames["naxis"] == 0)
+        reducedFramesTables = reducedFrames.loc[mask]
+        reducedFramesPixels = reducedFrames.loc[~mask]
+
+        rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name='counts')
+        rawGroups.style.hide_index()
+        pd.options.mode.chained_assignment = None
+
+        dprKeywords = ['eso dpr type', 'eso dpr tech', 'eso dpr catg']
+        for i in dprKeywords:
+            keywordsTerseReduced.remove(i)
+            filterKeywordsReduced.remove(i)
+        filterKeywordsReducedTable = filterKeywordsReduced[:]
+        filterKeywordsReducedTable.remove("binning")
+        keywordsTerseReducedTable = keywordsTerseReduced[:]
+        keywordsTerseReducedTable.remove("binning")
+
+        if verbose:
+            print("\n# CONTENT SETS INDEX\n")
+        reducedPixelsGroups = reducedFramesPixels.groupby(filterKeywordsReduced).size().reset_index(name='counts')
+        reducedPixelsGroups.style.hide_index()
+        # SORT BY COLUMN NAME
+        reducedPixelsGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
+        if verbose and len(reducedPixelsGroups.index):
+            print("\n## REDUCED PIXEL-FRAME-SET SUMMARY\n")
+            print(tabulate(reducedPixelsGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
+
+        reducedTablesGroups = reducedFramesTables.groupby(filterKeywordsReducedTable).size().reset_index(name='counts')
+        reducedTablesGroups.style.hide_index()
+        reducedTablesGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
+        if verbose and len(reducedTablesGroups.index):
+            print("\n## REDUCED TABLES-SET SUMMARY\n")
+            print(tabulate(reducedTablesGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
+
+        if verbose:
+            print("\n# CONTENT FILE INDEX\n")
+        if verbose and len(rawGroups.index):
+            print("\n## ALL RAW FRAMES\n")
+            print(tabulate(rawFrames[keywordsTerseRaw], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+            import sqlite3 as sql
+            # CONNECT TO THE DATABASE
+            conn = sql.connect("pandas_export.db")
+            # SEND TO DATABASE
+            rawFramesrawFrames[keywordsTerseRaw].replace(['--'], None).to_sql('raw_frames', con=conn,
+                                                                              index=False, if_exists='append')
+
+        if verbose and len(reducedPixelsGroups.index):
+            print("\n## ALL REDUCED PIXEL-FRAMES\n")
+            print(tabulate(reducedFramesPixels[keywordsTerseReduced], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+
+        if verbose and len(reducedTablesGroups.index):
+            print("\n## ALL REDUCED TABLES\n")
+            print(tabulate(reducedFramesTables[keywordsTerseReducedTable], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+
+        self.log.debug('completed the ``catagorise_frames`` method')
+        return rawFrames[keywordsTerseRaw].replace(['--'], None), reducedFramesPixels[keywordsTerseReduced], reducedFramesTables[keywordsTerseReducedTable]
 
     # use the tab-trigger below for new method
     # xt-class-method
