@@ -102,7 +102,7 @@ class data_organiser(object):
         self.keywords = [
             'file',
             'mjd-obs',
-            'date-obs',
+            'date obs',
             'eso seq arm',
             'eso dpr catg',
             'eso dpr tech',
@@ -137,8 +137,8 @@ class data_organiser(object):
             'exptime',
             'binning',
             'rospeed',
-            'night-start-date',
-            'night-start-mjd',
+            'night start date',
+            'night start mjd',
             'mjd-obs',
             'object'
         ]
@@ -156,10 +156,12 @@ class data_organiser(object):
             "std,flux": "stare"
         }
 
+        self.proKeywords = ['eso pro type', 'eso pro tech', 'eso pro catg']
+
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'binning', 'night-start-mjd']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'binning', 'night start mjd']
 
         return None
 
@@ -198,6 +200,9 @@ class data_organiser(object):
             filteredFrames = filteredFrames.to_pandas(index=False)
             # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
             rawFrames, reducedFramesPixels, reducedFramesTables = self.categorise_frames(filteredFrames)
+
+            from tabulate import tabulate
+            print(tabulate(rawFrames, headers='keys', tablefmt='psql'))
 
             if len(rawFrames.index):
                 rawFrames["filepath"] = self.rawDir + "/" + rawFrames['file']
@@ -317,10 +322,10 @@ class data_organiser(object):
                                   format='mjd', scale='utc') - night_start_offset
             # masterTable["utc-4hrs"] = (masterTable["mjd-obs"] - 2 / 3).astype(int)
             masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
-            masterTable["night-start-date"] = startNightDate.strftime("%Y-%m-%d")
-            masterTable["night-start-mjd"] = startNightDate.mjd.astype(int)
-            masterTable.add_index("night-start-date")
-            masterTable.add_index("night-start-mjd")
+            masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
+            masterTable["night start mjd"] = startNightDate.mjd.astype(int)
+            masterTable.add_index("night start date")
+            masterTable.add_index("night start mjd")
 
         if "eso det read speed" in masterTable.colnames:
             masterTable["rospeed"] = np.copy(masterTable["eso det read speed"])
@@ -461,14 +466,13 @@ class data_organiser(object):
         from tabulate import tabulate
 
         # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
-        proKeywords = ['eso pro type', 'eso pro tech', 'eso pro catg']
         keywordsTerseRaw = self.keywordsTerse[:]
         keywordsTerseReduced = self.keywordsTerse[:]
         filterKeywordsRaw = self.filterKeywords[:]
         filterKeywordsReduced = self.filterKeywords[:]
 
         mask = []
-        for i in proKeywords:
+        for i in self.proKeywords:
             keywordsTerseRaw.remove(i)
             filterKeywordsRaw.remove(i)
             if not len(mask):
@@ -486,7 +490,7 @@ class data_organiser(object):
         reducedFramesPixels = reducedFrames.loc[~mask]
 
         rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name='counts')
-        rawGroups.style.hide_index()
+        rawGroups.style.hide(axis='index')
         pd.options.mode.chained_assignment = None
 
         dprKeywords = ['eso dpr type', 'eso dpr tech', 'eso dpr catg']
@@ -501,7 +505,7 @@ class data_organiser(object):
         if verbose:
             print("\n# CONTENT SETS INDEX\n")
         reducedPixelsGroups = reducedFramesPixels.groupby(filterKeywordsReduced).size().reset_index(name='counts')
-        reducedPixelsGroups.style.hide_index()
+        reducedPixelsGroups.style.hide(axis='index')
         # SORT BY COLUMN NAME
         reducedPixelsGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
         if verbose and len(reducedPixelsGroups.index):
@@ -509,7 +513,7 @@ class data_organiser(object):
             print(tabulate(reducedPixelsGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
 
         reducedTablesGroups = reducedFramesTables.groupby(filterKeywordsReducedTable).size().reset_index(name='counts')
-        reducedTablesGroups.style.hide_index()
+        reducedTablesGroups.style.hide(axis='index')
         reducedTablesGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
         if verbose and len(reducedTablesGroups.index):
             print("\n## REDUCED TABLES-SET SUMMARY\n")
@@ -537,6 +541,56 @@ class data_organiser(object):
 
         self.log.debug('completed the ``catagorise_frames`` method')
         return rawFrames[keywordsTerseRaw].replace(['--'], None), reducedFramesPixels[keywordsTerseReduced], reducedFramesTables[keywordsTerseReducedTable]
+
+    def populate_product_frames_db_table(
+            self):
+        """*scan the raw frame table to generate the listing of products that are expected to be created*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``populate_product_frames_db_table`` method')
+
+        import pandas as pd
+        import sqlite3 as sql
+
+        rawFrames = pd.read_sql(
+            'SELECT * FROM raw_frames', con=self.conn)
+
+        rawFrames.fillna("--", inplace=True)
+        filterKeywordsRaw = self.filterKeywords[:]
+
+        for i in self.proKeywords:
+            filterKeywordsRaw.remove(i)
+
+        rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name='counts')
+
+        # SEND TO DATABASE
+        rawGroups.replace(['--'], None).to_sql('product_frames', con=self.conn,
+                                               index=False, if_exists='replace')
+
+        self.log.debug('completed the ``populate_product_frames_db_table`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method

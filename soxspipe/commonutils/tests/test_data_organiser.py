@@ -56,6 +56,7 @@ class test_data_organiser(unittest.TestCase):
             rootDir=pathToOutputDir + "01_EG274"
         )
         do.sync_raw_frames()
+        do.populate_product_frames_db_table()
 
     def test_data_organiser_function_exception(self):
 
