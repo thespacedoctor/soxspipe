@@ -31,7 +31,7 @@ class data_organiser(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
 
     To initiate a data_organiser object, use the following:
 
@@ -46,7 +46,7 @@ class data_organiser(object):
     ```
 
     ```python
-    usage code 
+    usage code
     ```
 
     """
@@ -102,7 +102,7 @@ class data_organiser(object):
         self.keywords = [
             'file',
             'mjd-obs',
-            'date obs',
+            'date-obs',
             'eso seq arm',
             'eso dpr catg',
             'eso dpr tech',
@@ -140,6 +140,7 @@ class data_organiser(object):
             'night start date',
             'night start mjd',
             'mjd-obs',
+            'date-obs',
             'object'
         ]
 
@@ -152,8 +153,8 @@ class data_organiser(object):
             "lamp,qorderdef": "order_centres",
             "lamp,flat": "mflat",
             "lamp,wave": "spat_sol",
-            "object": "stare",
-            "std,flux": "stare"
+            # "object": "stare",
+            # "std,flux": "stare"
         }
 
         self.proKeywords = ['eso pro type', 'eso pro tech', 'eso pro catg']
@@ -555,7 +556,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
@@ -583,14 +584,233 @@ class data_organiser(object):
         for i in self.proKeywords:
             filterKeywordsRaw.remove(i)
 
+        # rawFrames.replace("LAMP,DFLAT", "LAMP,FLAT", inplace=True)
+        # rawFrames.replace("LAMP,QFLAT", "LAMP,FLAT", inplace=True)
         rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name='counts')
+        rawGroups['product'] = None
+        rawGroups['recipe'] = None
+        rawGroups['command'] = None
+        rawGroups['sof'] = None
+
+        # generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
+        reductionOrder = ["BIAS"]
+        for o in reductionOrder:
+            rawGroups = rawGroups.apply(self.generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames)
+            rawGroups = rawGroups.apply(self.populate_products_table, axis=1, reductionOrder=o)
 
         # SEND TO DATABASE
-        rawGroups.replace(['--'], None).to_sql('product_frames', con=self.conn,
+        rawGroups.replace(['--'], None).to_sql('raw_frame_sets', con=self.conn,
                                                index=False, if_exists='replace')
 
         self.log.debug('completed the ``populate_product_frames_db_table`` method')
         return None
+
+    def generate_sof_and_product_names(
+            self,
+            series,
+            reductionOrder,
+            rawFrames):
+        """*add a recipe name and SOF filename to all rows in the raw_frame_sets DB table*
+
+        **Key Arguments:**
+
+        - ``series`` -- the dataframe row/series to apply work on
+
+        **Usage:**
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+        ```
+
+        ```python
+        usage code
+        ```
+        """
+
+        import pandas as pd
+
+        sofName = []
+        matchDict = {}
+        sofName.append(series['eso seq arm'].upper())
+        matchDict['eso seq arm'] = series['eso seq arm'].upper()
+        filteredFrames = rawFrames.copy()
+
+        if series["eso dpr type"].lower() != reductionOrder.lower():
+            return series
+
+        # GENEREATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
+        if series["binning"] != "--":
+            matchDict['binning'] = series["binning"]
+            sofName.append(series['binning'].upper())
+        if series["rospeed"] != "--":
+            matchDict['rospeed'] = series["rospeed"]
+            sofName.append(series["rospeed"])
+        if series["eso dpr type"].lower() in self.recipeMap and series["eso dpr type"]:
+            matchDict['eso dpr type'] = series["eso dpr type"]
+            sofName.append(self.recipeMap[series["eso dpr type"].lower()].replace("_centres", "_locations"))
+            if "DORDER" in series["eso dpr type"].upper():
+                sofName.append("dlamp")
+            if "QORDER" in series["eso dpr type"].upper():
+                sofName.append("qlamp")
+        if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and "FLAT" in series["eso dpr type"].upper())):
+            matchDict['exptime'] = float(series["exptime"])
+            sofName.append(str(series["exptime"]).replace(".", "pt"))
+
+        for k, v in matchDict.items():
+            if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
+                mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT"]))
+            else:
+                mask = (filteredFrames[k].isin([v]))
+            filteredFrames = filteredFrames.loc[mask]
+
+        # NIGHT START
+        # YYYY.MM.DDThh.mm.xxx
+        if series["night start mjd"]:
+            mask = (filteredFrames['night start mjd'] == int(series["night start mjd"]))
+            filteredFrames = filteredFrames.loc[mask]
+            frameMjd = filteredFrames["mjd-obs"].values[0]
+            # calibrationFrames["obs-delta"] = calibrationFrames['mjd-obs'] - frameMjd
+            # calibrationTables["obs-delta"] = calibrationTables['mjd-obs'] - frameMjd
+            # dispImages["obs-delta"] = dispImages['mjd-obs'] - frameMjd
+            # calibrationFrames["obs-delta"] = calibrationFrames["obs-delta"].abs()
+            # calibrationTables["obs-delta"] = calibrationTables["obs-delta"].abs()
+            # dispImages["obs-delta"] = dispImages["obs-delta"].abs()
+            # if isinstance(filteredFrames, astropy.table.row.Row):
+            #     filteredFrames = Table(filteredFrames)
+
+            # SELECT FIRST DATE
+            # SORT BY COLUMN NAME
+            filteredFrames.sort_values(['date-obs'], inplace=True)
+            firstDate = filteredFrames['date-obs'].values[0].replace("-", ".").replace(":", ".")
+            sofName.insert(0, firstDate)
+
+        # ADDING TAG FOR SOF FILES
+        filteredFrames["tag"] = filteredFrames["eso dpr type"].replace(",", "_") + "_" + filteredFrames["eso seq arm"]
+
+        # NEED SOME FINAL FILTERING ON UVB FLATS
+        if "lamp" in series["eso dpr type"].lower() and "flat" in series["eso dpr type"].lower() and "uvb" in series["eso seq arm"].lower():
+            mask = (filteredFrames['eso dpr type'].isin(["LAMP,DFLAT"]))
+            dFrames = filteredFrames.loc[mask]
+            dexptime = dFrames["exptime"].max()
+            mask = (filteredFrames['eso dpr type'].isin(["LAMP,QFLAT"]))
+            qFrames = filteredFrames.loc[mask]
+            qexptime = qFrames["exptime"].max()
+            mask = ((filteredFrames['eso dpr type'] == "LAMP,DFLAT") & (filteredFrames['exptime'] == dexptime)) | ((filteredFrames['eso dpr type'] == "LAMP,QFLAT") & (filteredFrames['exptime'] == qexptime))
+            filteredFrames = filteredFrames.loc[mask]
+
+        # SORT BY COLUMN NAME
+        filteredFrames.sort_values(['tag', 'filepath', 'file'],
+                                   ascending=[True, True, True], inplace=True)
+
+        files = filteredFrames["file"].values
+        filepaths = filteredFrames["filepath"].values
+        tags = filteredFrames["tag"].values
+
+        if series["eso seq arm"].lower() in ("uvb", "vis") and self.recipeMap[series["eso dpr type"].lower()] in ["disp_sol", "order_centres", "spat_sol", "stare"]:
+            if series['eso dpr type'].lower() == "std,flux":
+                files = [files[0]]
+                tags = [tags[0]]
+                filepaths = [filepaths[0]]
+
+        if series["eso seq arm"].lower() == "nir" and self.recipeMap[series["eso dpr type"].lower()] in ["disp_sol", "order_centres", "spat_sol", "stare"]:
+            if series["eso seq arm"].lower() == "std,flux":
+                files = [files[0]]
+                tags = [tags[0]]
+                filepaths = [filepaths[0]]
+            else:
+                files = files[:2]
+                tags = tags[:2]
+                filepaths = [filepaths[:2]]
+
+        if self.recipeMap[series["eso dpr type"].lower()] == "stare":
+            object = filteredFrames['object'].values[0].replace(" ", "_")
+            sofName.append(object)
+
+        series['sof'] = ("_").join(sofName).replace("-", "").replace(",", "_").upper() + ".sof"
+
+        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+        myDict = {
+            "file": files,
+            "filepath": filepaths,
+            "tag": tags,
+            "sof": [series['sof']] * len(tags)
+        }
+
+        sofMap = pd.DataFrame(myDict)
+
+        sofMap.to_sql('sof_map', con=self.conn,
+                      index=False, if_exists='append')
+
+        if series["eso dpr type"].lower() in self.recipeMap:
+            series["recipe"] = self.recipeMap[series["eso dpr type"].lower()]
+
+        if series["eso seq arm"].lower() != "nir":
+            if "FLAT" in series["eso dpr type"].upper() and series["eso seq arm"].lower() == "vis":
+                series["command"] = "soxspipe-prep.py " + series["eso seq arm"] + " " + series["eso dpr type"] + " " + series["binning"] + " " + series["rospeed"] + " " + str(series["night start mjd"]) + " " + self.rootDir + " " + str(series["exptime"]) + " " + "--o=./sof"
+            else:
+                series["command"] = "soxspipe-prep.py " + series["eso seq arm"] + " " + series["eso dpr type"] + " " + series["binning"] + " " + series["rospeed"] + " " + str(series["night start mjd"]) + " " + self.rootDir + " " + "--o=./sof"
+            series["command"] = series["command"].replace("DFLAT", "FLAT").replace("QFLAT", "FLAT")
+            print(series["command"])
+
+        elif series["eso seq arm"].lower() == "nir":
+            if series["eso dpr type"].lower() in self.recipeMap and self.recipeMap[series["eso dpr type"].lower()] in ["disp_sol", "order_centres", "mflat"] and series["eso dpr tech"] == "IMAGE":
+                series["command"] = "soxspipe-prep.py " + series["eso seq arm"] + " " + series["eso dpr type"] + " " + str(series["exptime"]) + " " + str(series["night start mjd"]) + " " + self.rootDir + " " + "--o=./sof"
+                print(series["command"])
+
+        else:
+            print("\n## RAW FRAME-SET SUMMARY\n")
+            print(tabulate(series, headers='keys', tablefmt='github', showindex=False, stralign="right"))
+
+        return series
+
+    def populate_products_table(
+            self,
+            series,
+            reductionOrder):
+        """*determine what the products should be for a given recipe and SOF file and ppulate the products table*
+
+        **Key Arguments:**
+            - ``recipeName`` -- the name of the recipe.
+            - ``sofName`` -- the name of the sof file.
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``populate_products_table`` method')
+
+        import pandas as pd
+
+        if series["eso dpr type"].lower() != reductionOrder.lower():
+            return series
+
+        if series["recipe"] == "mbias":
+            myDict = {k: [v] for k, v in series.items()}
+
+            products = pd.DataFrame(myDict)
+            products.to_sql('product_frames', con=self.conn,
+                            index=False, if_exists='replace')
+
+        self.log.debug('completed the ``populate_products_table`` method')
+        return series
 
     # use the tab-trigger below for new method
     # xt-class-method
