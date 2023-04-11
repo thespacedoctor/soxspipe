@@ -16,3 +16,4 @@ from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from .subtract_background import subtract_background
 from .subtract_sky import subtract_sky
 from .data_organiser import data_organiser
+from .uncompress import uncompress

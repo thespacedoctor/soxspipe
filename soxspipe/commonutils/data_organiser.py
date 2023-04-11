@@ -13,6 +13,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from soxspipe.commonutils import uncompress
 from soxspipe.commonutils.toolkit import get_calibrations_path
 os.environ['TERM'] = 'vt100'
 
@@ -47,9 +48,6 @@ class data_organiser(object):
     ```
 
     """
-    # Initialisation
-    # 1. @flagged: what are the unique attrributes for each object? Add them
-    # to __init__
 
     def __init__(
             self,
@@ -178,6 +176,13 @@ class data_organiser(object):
                                'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'binning', 'night start mjd', 'night start date']
 
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF"]
+
+        # DECOMPRESS .Z FILES
+        from soxspipe.commonutils import uncompress
+        uncompress(
+            log=self.log,
+            directory=self.rootDir
+        )
 
         return None
 
