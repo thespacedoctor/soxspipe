@@ -1,6 +1,8 @@
 
 # Release Notes  
 
+* **ENHANCEMENT:** uncompression of fits.Z files (if any) occurs before data-organising
+
 ## v0.7.2 - March 3, 2023
 
 * **REFACTOR:** Big improvements on sky-subtraction  
