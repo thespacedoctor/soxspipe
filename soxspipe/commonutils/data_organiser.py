@@ -64,6 +64,7 @@ class data_organiser(object):
         self.settings = settings
         self.rootDir = rootDir
         self.rawDir = rootDir + "/raw_frames"
+        self.miscDir = rootDir + "/misc"
 
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
@@ -849,6 +850,44 @@ class data_organiser(object):
 
         self.log.debug('completed the ``populate_products_table`` method')
         return series
+
+    def move_misc_files(
+            self):
+        """*move extra/miscellaneous files to a misc directory*
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``move_misc_files`` method')
+
+        import shutil
+        # GENERATE A LIST OF FILE PATHS
+        pathToDirectory = self.rootDir
+        check = True
+        for d in os.listdir(pathToDirectory):
+            filepath = os.path.join(pathToDirectory, d)
+            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme" not in d.lower():
+                if check and not os.path.exists(self.miscDir):
+                    os.makedirs(self.miscDir)
+                    check = False
+                shutil.move(filepath, self.miscDir + "/" + d)
+
+        self.log.debug('completed the ``move_misc_files`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method
