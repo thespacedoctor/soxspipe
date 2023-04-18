@@ -228,7 +228,7 @@ class data_organiser(object):
             print(tabulate(rawFrames, headers='keys', tablefmt='psql'))
 
             if len(rawFrames.index):
-                rawFrames["filepath"] = self.rawDir + "/" + rawFrames['file']
+                rawFrames["filepath"] = "./raw_frames/" + rawFrames['file']
                 rawFrames.to_sql('raw_frames', con=self.conn,
                                  index=False, if_exists='append')
                 filepaths = rawFrames['file'].values
@@ -430,9 +430,12 @@ class data_organiser(object):
         # GENERATE A LIST OF FITS FILE PATHS IN RAW DIR
         fitsPaths = []
         fitsNames = []
+
+        folderName = os.path.basename(directory)
         for d in os.listdir(directory):
-            filepath = os.path.join(directory, d)
-            if os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.Z" in filepath):
+            absfilepath = os.path.join(directory, d)
+            filepath = f"./{folderName}/{d}"
+            if os.path.isfile(absfilepath) and (os.path.splitext(absfilepath)[1] == ".fits" or ".fits.Z" in absfilepath):
                 fitsPaths.append(filepath)
                 fitsNames.append(d)
 
@@ -446,7 +449,7 @@ class data_organiser(object):
         filesNotInDB = set(fitsPaths) - set(dbFiles)
         filesNotInFS = set(dbFiles) - set(fitsPaths)
         if len(filesNotInFS):
-            filesNotInFS = (",'").join(filesNotInFS)
+            filesNotInFS = ("','").join(filesNotInFS)
             sqlQuery = f"delete from {tableName} where filepath in ('{filesNotInFS}');"
             c.execute(sqlQuery)
 
@@ -913,7 +916,6 @@ class data_organiser(object):
 
         # GROUP RESULTS
         dfGroups = df.groupby(['sof'])
-        thisGroup = dfGroups.get_group("2010.09.11T17.24.04.494_UVB_1X1_FAST_MBIAS.sof")
 
         for name, group in dfGroups:
             myFile = open(self.sofDir + "/" + name, 'w')
