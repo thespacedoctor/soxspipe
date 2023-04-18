@@ -33,16 +33,16 @@ pathToOutputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/data-organis
 pathToInputDir = home + "/Desktop/data_organiser_cl_test/input"
 pathToOutputDir = home + "/Desktop/data_organiser_cl_test/output"
 
-try:
-    shutil.rmtree(pathToOutputDir)
-except:
-    pass
-# COPY INPUT TO OUTPUT DIR
-shutil.copytree(pathToInputDir, pathToOutputDir)
+# try:
+#     shutil.rmtree(pathToOutputDir)
+# except:
+#     pass
+# # COPY INPUT TO OUTPUT DIR
+# shutil.copytree(pathToInputDir, pathToOutputDir)
 
-# Recursively create missing directories
-if not os.path.exists(pathToOutputDir):
-    os.makedirs(pathToOutputDir)
+# # Recursively create missing directories
+# if not os.path.exists(pathToOutputDir):
+#     os.makedirs(pathToOutputDir)
 
 
 # xt-setup-unit-testing-files-and-folders
@@ -61,6 +61,7 @@ class test_data_organiser(unittest.TestCase):
         do.sync_raw_frames()
         do.move_misc_files()
         do.populate_product_frames_db_table()
+        do.write_sof_files()
 
     def test_desktop_data_organiser_function(self):
 
@@ -73,6 +74,7 @@ class test_data_organiser(unittest.TestCase):
         do.sync_raw_frames()
         do.move_misc_files()
         do.populate_product_frames_db_table()
+        do.write_sof_files()
 
     def test_data_organiser_function_exception(self):
 

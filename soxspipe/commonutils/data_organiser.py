@@ -65,6 +65,7 @@ class data_organiser(object):
         self.rootDir = rootDir
         self.rawDir = rootDir + "/raw_frames"
         self.miscDir = rootDir + "/misc"
+        self.sofDir = rootDir + "/sof"
 
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
@@ -854,6 +855,33 @@ class data_organiser(object):
     def move_misc_files(
             self):
         """*move extra/miscellaneous files to a misc directory*
+        """
+        self.log.debug('starting the ``move_misc_files`` method')
+
+        import shutil
+        # GENERATE A LIST OF FILE PATHS
+        pathToDirectory = self.rootDir
+        check = True
+        for d in os.listdir(pathToDirectory):
+            filepath = os.path.join(pathToDirectory, d)
+            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme" not in d.lower():
+                if check and not os.path.exists(self.miscDir):
+                    os.makedirs(self.miscDir)
+                    check = False
+                shutil.move(filepath, self.miscDir + "/" + d)
+
+        self.log.debug('completed the ``move_misc_files`` method')
+        return None
+
+    def write_sof_files(
+            self):
+        """*Write out all possible SOF files from the sof_map database table*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - None
 
         **Usage:**
 
@@ -872,21 +900,31 @@ class data_organiser(object):
             - update package tutorial with command-line tool info if needed
         ```
         """
-        self.log.debug('starting the ``move_misc_files`` method')
+        self.log.debug('starting the ``write_sof_files`` method')
 
-        import shutil
-        # GENERATE A LIST OF FILE PATHS
-        pathToDirectory = self.rootDir
-        check = True
-        for d in os.listdir(pathToDirectory):
-            filepath = os.path.join(pathToDirectory, d)
-            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme" not in d.lower():
-                if check and not os.path.exists(self.miscDir):
-                    os.makedirs(self.miscDir)
-                    check = False
-                shutil.move(filepath, self.miscDir + "/" + d)
+        import pandas as pd
+        from tabulate import tabulate
 
-        self.log.debug('completed the ``move_misc_files`` method')
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.sofDir):
+            os.makedirs(self.sofDir)
+
+        df = pd.read_sql_query("select * from sof_map;", self.conn)
+
+        # GROUP RESULTS
+        dfGroups = df.groupby(['sof'])
+        thisGroup = dfGroups.get_group("2010.09.11T17.24.04.494_UVB_1X1_FAST_MBIAS.sof")
+
+        for name, group in dfGroups:
+            myFile = open(self.sofDir + "/" + name, 'w')
+            content = tabulate(group[["filepath", "tag"]], tablefmt='plain', showindex=False)
+            myFile.write(content)
+            myFile.close()
+
+        # print(tabulate(thisGroup, headers='keys', tablefmt='psql'))
+        # print(tabulate(group, headers='keys', tablefmt='psql'))
+
+        self.log.debug('completed the ``write_sof_files`` method')
         return None
 
     # use the tab-trigger below for new method
