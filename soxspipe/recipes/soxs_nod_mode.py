@@ -118,32 +118,36 @@ class soxs_nod_mode(_base_recipe_):
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
             # MIXED INPUT IMAGE TYPES ARE BAD
-            if len(imageTypes) > 1:
-                imageTypes = " and ".join(imageTypes)
-                print(self.inputFrames.summary)
-                raise TypeError(
-                    "Input frames are a mix of %(imageTypes)s" % locals())
+            if not error:
+                if len(imageTypes) > 1:
+                    imageTypes = " and ".join(imageTypes)
+                    error = "Input frames are a mix of %(imageTypes)s" % locals()
 
-            if imageTypes[0] != "LAMP,FMTCHK":
-                raise TypeError(
-                    "Input frames for soxspipe nod_mode need to be ********* lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                if imageTypes[0] != "LAMP,FMTCHK":
+                    error = "Input frames for soxspipe nod_mode need to be ********* lamp on and lamp off frames for NIR" % locals()
 
-            for i in imageTech:
-                if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
-                    raise TypeError(
-                        "Input frames for soxspipe nod_mode need to be ********* lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                for i in imageTech:
+                    if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
+                        error = "Input frames for soxspipe nod_mode need to be ********* lamp on and lamp off frames for NIR" % locals()
 
         else:
-            for i in imageTypes:
-                if i not in ["LAMP,FMTCHK", "BIAS", "DARK"]:
-                    raise TypeError(
-                        "Input frames for soxspipe nod_mode need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals())
+            if not error:
+                for i in imageTypes:
+                    if i not in ["LAMP,FMTCHK"]:
+                        error = "Input frames for soxspipe nod_mode need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals()
+
+            if not error:
+                for i in [f"MASTER_BIAS_{self.arm}"]:
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe nod_mode need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals()
 
         # LOOK FOR ****
-        arm = self.arm
-        if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
-            raise TypeError(
-                "Need a **** for %(arm)s - none found with the input files" % locals())
+        if not error:
+            arm = self.arm
+            if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
+                error = "Need a **** for %(arm)s - none found with the input files" % locals()
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")

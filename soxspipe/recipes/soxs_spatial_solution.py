@@ -113,43 +113,43 @@ class soxs_spatial_solution(_base_recipe_):
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
+        print(imageTypes, imageTech, imageCat)
+
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
-            for i in imageTypes:
-                if i not in ["LAMP,WAVE", "LAMP,FLAT"]:
-                    raise TypeError(
-                        f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR.")
+            if not error:
+                for i in imageTypes:
+                    if i not in ["LAMP,WAVE", "LAMP,FLAT"]:
+                        error = f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR."
 
-            for i in imageTech:
-                if i not in ['ECHELLE,MULTI-PINHOLE', 'IMAGE', 'ECHELLE,SLIT', 'ECHELLE,PINHOLE']:
-                    raise TypeError(
-                        f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR.")
+            if not error:
+                for i in imageTech:
+                    if i not in ['ECHELLE,MULTI-PINHOLE', 'IMAGE', 'ECHELLE,SLIT', 'ECHELLE,PINHOLE']:
+                        error = f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
 
-            if "LAMP,WAVE" not in imageTypes:
-                raise TypeError(
-                    "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                if "LAMP,WAVE" not in imageTypes:
+                    error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
 
-            if "ECHELLE,MULTI-PINHOLE" not in imageTech:
-                raise TypeError(
-                    "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                if "ECHELLE,MULTI-PINHOLE" not in imageTech:
+                    error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
+
+            if not error:
+                for i in [f"ORDER_TAB_{self.arm}", f"DISP_TAB_{self.arm}"]:
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
 
         else:
-            for i in imageTypes:
-                if i not in ["LAMP,WAVE", "BIAS", "DARK", "LAMP,FLAT"]:
-                    raise TypeError(
-                        f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias. Can optionally supply a master-flat and/or master-dark for UVB/VIS.")
+            if not error:
+                for i in imageTypes:
+                    if i not in ["LAMP,WAVE", "LAMP,FLAT"]:
+                        error = f"Found a {i} frame. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
 
-        # LOOK FOR DISP MAP
-        arm = self.arm
-        if f"DISP_TAB_{arm}" not in imageCat:
-            raise TypeError(
-                "Need a first guess dispersion map for %(arm)s - none found with the input files" % locals())
-
-        # LOOK FOR ORDER TABLE
-        arm = self.arm
-        if f"ORDER_TAB_{arm}" not in imageCat:
-            raise TypeError(
-                "Need an order centre for %(arm)s - none found with the input files" % locals())
+            if not error:
+                for i in [f"MASTER_BIAS_{self.arm}", f"ORDER_TAB_{self.arm}", f"DISP_TAB_{self.arm}"]:
+                    if i not in imageCat:
+                        error = f"Input frames for soxspipe spatial_solution need to be LAMP,WAVE, a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")

@@ -118,22 +118,26 @@ class soxs_stare(_base_recipe_):
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
         if self.arm == "NIR":
+            if not error:
+                for i in imageTypes:
+                    if i not in ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX"]:
+                        error = "Found a {i} file. Input frames for soxspipe stare need to be OBJECT, ***. Can optionally supply a master-flat for NIR."
 
-            for i in imageTypes:
-                if i not in ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX"]:
-                    raise TypeError(
-                        f"Found a {i} file. Input frames for soxspipe stare need to be OBJECT, ***. Can optionally supply a master-flat for NIR.")
-
-            for i in imageTech:
-                if i not in ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
-                    raise TypeError(
-                        "Input frames for soxspipe stare need to be ********* lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                for i in imageTech:
+                    if i not in ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
+                        error = "Input frames for soxspipe stare need to be ********* lamp on and lamp off frames for NIR" % locals()
 
         else:
-            for i in imageTypes:
-                if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK"]:
-                    raise TypeError(
-                        "Input frames for soxspipe stare need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals())
+            if not error:
+                for i in imageTypes:
+                    if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK"]:
+                        error = "Input frames for soxspipe stare need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals()
+
+            if not error:
+                for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe stare need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals()
 
         # LOOK FOR ****
         arm = self.arm

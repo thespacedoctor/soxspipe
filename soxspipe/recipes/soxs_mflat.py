@@ -154,16 +154,15 @@ class soxs_mflat(_base_recipe_):
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT", "BIAS", "DARK"]:
-                        print("ONE")
+                    if i not in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT"]:
                         error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
 
             if not error:
-                # FIX THIS WHEN I HIT UV-VIS FLATS
                 for i in [f"MASTER_BIAS_{self.arm}", f"ORDER_TAB_{self.arm}"]:
-                    if i not in imageCat:
-                        error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
+                if i not in imageCat:
+                    error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
 
+            if not error:
                 found = False
                 for i in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT"]:
                     if i in imageTypes:

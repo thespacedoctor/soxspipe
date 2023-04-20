@@ -127,32 +127,35 @@ class soxs_order_centres(_base_recipe_):
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
             # MIXED INPUT IMAGE TYPES ARE BAD
-            if len(imageTypes) > 1:
-                imageTypes = " and ".join(imageTypes)
-                print(self.inputFrames.summary)
-                raise TypeError(
-                    "Input frames are a mix of %(imageTypes)s" % locals())
+            if not error:
+                if len(imageTypes) > 1:
+                    imageTypes = " and ".join(imageTypes)
+                    erorr = "Input frames are a mix of %(imageTypes)s" % locals()
 
-            if imageTypes[0] != "LAMP,ORDERDEF":
-                raise TypeError(
-                    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                if imageTypes[0] != "LAMP,ORDERDEF":
+                    error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames and a first-guess dispersion solution table for NIR" % locals()
 
-            for i in imageTech:
-                if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
-                    raise TypeError(
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                for i in imageTech:
+                    if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
+                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR" % locals()
+
+            if not error:
+                for i in [f"DISP_TAB_{self.arm}"]:
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR" % locals()
 
         else:
-            for i in imageTypes:
-                if i not in ["LAMP,ORDERDEF", "BIAS", "DARK", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']:
-                    raise TypeError(
-                        f"Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and a master-bias and possibly a master dark for UVB/VIS. Found {i}" % locals())
+            if not error:
+                for i in imageTypes:
+                    if i not in ["LAMP,ORDERDEF", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']:
+                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found {i}" % locals()
 
-        # LOOK FOR DISP MAP
-        arm = self.arm
-        if f"DISP_TAB_{arm}" not in imageCat:
-            raise TypeError(
-                "Need a first guess dispersion map for %(arm)s - none found with the input files" % locals())
+            if not error:
+                for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS." % locals()
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")

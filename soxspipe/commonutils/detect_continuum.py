@@ -976,8 +976,12 @@ class detect_continuum(_base_detect):
             mask = (orderPixelTable['order'] == o)
             bottomleft.scatter(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values, orderPixelTable.loc[mask][
                 f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1, c=c)
-            bottomleft.text(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values[10], orderPixelTable.loc[mask][
-                f'cont_{self.axisA}_fit_res'].values[10], int(o), fontsize=8, c=c, verticalalignment='bottom')
+            if len(orderPixelTable.loc[mask].index) > 10:
+                labelIndex = 10
+            else:
+                labelIndex = 1
+            bottomleft.text(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values[labelIndex], orderPixelTable.loc[mask][
+                f'cont_{self.axisA}_fit_res'].values[labelIndex], int(o), fontsize=8, c=c, verticalalignment='bottom')
         bottomleft.set_xlabel(f'{self.axisA} pixel position', fontsize=10)
         bottomleft.set_ylabel(f'{self.axisA} residual', fontsize=10)
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
@@ -988,8 +992,12 @@ class detect_continuum(_base_detect):
             mask = (orderPixelTable['order'] == o)
             bottomright.scatter(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values, orderPixelTable.loc[mask][
                 f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1, c=c)
-            bottomright.text(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values[10], orderPixelTable.loc[mask][
-                f'cont_{self.axisA}_fit_res'].values[10], int(o), fontsize=8, c=c, verticalalignment='bottom')
+            if len(orderPixelTable.loc[mask].index) > 10:
+                labelIndex = 10
+            else:
+                labelIndex = 1
+            bottomright.text(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values[labelIndex], orderPixelTable.loc[mask][
+                f'cont_{self.axisA}_fit_res'].values[labelIndex], int(o), fontsize=8, c=c, verticalalignment='bottom')
 
         bottomright.set_xlabel(f'{self.axisB} pixel position', fontsize=10)
         bottomright.tick_params(axis='both', which='major', labelsize=9)
@@ -1000,7 +1008,11 @@ class detect_continuum(_base_detect):
         for o, c in zip(uniqueOrders, colors):
             mask = (orderPixelTable['order'] == o)
             fwhmaxis.scatter(orderPixelTable.loc[mask]['wavelength'].values, orderPixelTable.loc[mask]['stddev_fit'].values * stdToFwhm, alpha=0.2, s=1, c=c)
-            fwhmaxis.text(orderPixelTable.loc[mask]['wavelength'].values[10], orderPixelTable.loc[mask]['stddev_fit'].values[10] * stdToFwhm, int(o), fontsize=8, c=c, verticalalignment='bottom')
+            if len(orderPixelTable.loc[mask].index) > 10:
+                labelIndex = 10
+            else:
+                labelIndex = 1
+            fwhmaxis.text(orderPixelTable.loc[mask]['wavelength'].values[labelIndex], orderPixelTable.loc[mask]['stddev_fit'].values[labelIndex] * stdToFwhm, int(o), fontsize=8, c=c, verticalalignment='bottom')
         fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
         fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
         fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)
