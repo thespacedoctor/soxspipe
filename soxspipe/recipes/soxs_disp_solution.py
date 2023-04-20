@@ -118,30 +118,48 @@ class soxs_disp_solution(_base_recipe_):
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
+        error = False
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
             # MIXED INPUT IMAGE TYPES ARE BAD
-            if len(imageTypes) > 1:
-                imageTypes = " and ".join(imageTypes)
-                print(self.inputFrames.summary)
-                raise TypeError(
-                    "Input frames are a mix of %(imageTypes)s" % locals())
+            if not error:
+                if len(imageTypes) > 1:
+                    imageTypes = " and ".join(imageTypes)
+                    imageTypes = " and ".join(imageTypes)
+                    error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
-            if imageTypes[0] != "LAMP,FMTCHK":
-                raise TypeError(
-                    "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                if imageTypes[0] != "LAMP,FMTCHK":
+                    error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
-            for i in imageTech:
-                if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
-                    raise TypeError(
-                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                for i in imageTech:
+                    if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
+                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
+
+            if not error:
+                for i in ['ECHELLE,PINHOLE', 'IMAGE']:
+                    if i not in imageTech:
+                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
         else:
-            for i in imageTypes:
-                if i not in ["LAMP,FMTCHK", "BIAS", "DARK"]:
-                    raise TypeError(
-                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals())
+            if not error:
+                for i in ["LAMP,FMTCHK", "BIAS"]:
+                    if i not in imageTech:
+                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals()
+
+            if not error:
+                for i in imageTypes:
+                    if i not in ["LAMP,FMTCHK", "BIAS", "DARK"]:
+                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals()
+
+        if error:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            print(self.inputFrames.summary)
+            print()
+            raise TypeError(error)
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
@@ -201,7 +219,7 @@ class soxs_disp_solution(_base_recipe_):
             inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
 
         if self.settings["save-intermediate-products"]:
-            outDir = self.intermediateRootPath
+            outDir = self.workspaceRootPath
             filePath = self._write(
                 frame=self.pinholeFrame,
                 filedir=outDir,

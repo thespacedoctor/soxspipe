@@ -60,7 +60,7 @@ instrument: soxs
 #     median-filter-pixels: 11
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data
-intermediate-data-root: ~/soxspipe-unittests/intermediate/soxs
+workspace-root-dir: ~/soxspipe-unittests/intermediate/soxs
 reduced-data-root: ~/soxspipe-unittests/reduced/soxs
 
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED

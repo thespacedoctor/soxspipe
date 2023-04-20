@@ -49,7 +49,7 @@ class test__base_recipe_(unittest.TestCase):
 
         framePath = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
-        interMediatePath = settings["intermediate-data-root"]
+        interMediatePath = settings["workspace-root-dir"]
         from soxspipe.recipes import _base_recipe_
         recipe = _base_recipe_(
             log=log,

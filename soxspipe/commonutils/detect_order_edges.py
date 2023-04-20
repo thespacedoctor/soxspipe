@@ -576,7 +576,7 @@ class detect_order_edges(_base_detect):
         )
         filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
         filePath = f"{outDir}/{filename}"
         plt.tight_layout()
         # plt.show()

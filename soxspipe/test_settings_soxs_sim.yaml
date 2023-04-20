@@ -70,7 +70,7 @@ background-subtraction:
 data-extension: 1
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data
-intermediate-data-root: ~/soxspipe-unittests/intermediate/soxs_sim
+workspace-root-dir: ~/soxspipe-unittests/intermediate/soxs_sim
 reduced-data-root: ~/soxspipe-unittests/reduced/soxs_sim
 
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED

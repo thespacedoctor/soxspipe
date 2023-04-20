@@ -1,8 +1,7 @@
 version: 1
 
 
-intermediate-data-root: ~/Desktop/soxspipe/intermediate
-reduced-data-root: ~/Desktop/soxspipe/reduced
+
 
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
 save-intermediate-products: False
@@ -102,6 +101,9 @@ sky-subtraction:
 background-subtraction:
     bspline-deg: 3
     median-filter-pixels: 9
+
+# FOR TEST ONLY - PLEASE IGNORE
+# workspace-root-dir: ~/Desktop/soxspipe/intermediate
 
 logging settings:
     formatters:

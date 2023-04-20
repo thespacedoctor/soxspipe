@@ -228,7 +228,7 @@ class subtract_sky(object):
 
         filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         outDir = outDir.replace("//", "/")
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):
@@ -255,7 +255,7 @@ class subtract_sky(object):
 
         filename = self.filenameTemplate.replace(".fits", "_SKYSUB.fits")
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
         self.products = self.products.append({
             "soxspipe_recipe": "soxs-stare",
@@ -661,7 +661,7 @@ class subtract_sky(object):
 
         filename = self.filenameTemplate.replace(".fits", f"_SKYMODEL_QC_PLOTS_ORDER_{int(order)}.pdf")
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
         filePath = f"{outDir}/{filename}"
 
         # plt.show()
@@ -1026,7 +1026,7 @@ class subtract_sky(object):
         filename = self.filenameTemplate.replace(".fits", "_skysub_quicklook.pdf")
 
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
         filePath = f"{outDir}/{filename}"
         plt.savefig(filePath, dpi=720)
 

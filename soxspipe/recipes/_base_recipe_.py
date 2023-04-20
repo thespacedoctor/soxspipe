@@ -66,15 +66,13 @@ class _base_recipe_(object):
         log.debug("instansiating a new '__init__' object")
         self.recipeName = recipeName
         self.settings = settings
-        self.intermediateRootPath = self._absolute_path(
-            settings["intermediate-data-root"])
-        self.reducedRootPath = self._absolute_path(
-            settings["reduced-data-root"])
+        self.workspaceRootPath = self._absolute_path(
+            settings["workspace-root-dir"])
 
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
-            productPath = self.intermediateRootPath + "/product/" + self.recipeName + "/" + self.sofName + ".fits"
+            productPath = self.workspaceRootPath + "/product/" + self.recipeName + "/" + self.sofName + ".fits"
             self.productPath = productPath.replace("//", "/")
             if os.path.exists(self.productPath) and not overwrite:
                 print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
@@ -273,9 +271,9 @@ class _base_recipe_(object):
         frame.mask = boolMask
 
         if save:
-            outDir = self.intermediateRootPath
+            outDir = self.workspaceRootPath
         else:
-            outDir = self.intermediateRootPath + "/tmp"
+            outDir = self.workspaceRootPath + "/tmp"
 
         # INJECT THE PRE KEYWORD
         utcnow = datetime.utcnow()
@@ -404,6 +402,8 @@ class _base_recipe_(object):
 
         # CHECK WE ACTUALLY HAVE IMAGES
         if not len(self.inputFrames.files_filtered(include_path=True)):
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             raise FileNotFoundError(
                 "No image frames where passed to the recipe")
 
@@ -426,6 +426,8 @@ class _base_recipe_(object):
         # MIXED INPUT ARMS ARE BAD
         if len(arm) > 1:
             arms = " and ".join(arm)
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of %(imageTypes)s" % locals())
@@ -456,6 +458,8 @@ class _base_recipe_(object):
                 pass
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             raise TypeError(
                 "Input frames are a mix of binnings" % locals())
 
@@ -470,6 +474,8 @@ class _base_recipe_(object):
             readSpeed.remove(None)
 
         if len(readSpeed) > 1:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             print(self.inputFrames.summary)
             raise TypeError(
                 f"Input frames are a mix of readout speeds. {readSpeed}" % locals())
@@ -488,6 +494,8 @@ class _base_recipe_(object):
             gain.remove(None)
 
         if len(gain) > 1:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of gain" % locals())
@@ -507,6 +515,8 @@ class _base_recipe_(object):
 
         # MIXED NOISE
         if len(ron) > 1:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             print(self.inputFrames.summary)
             raise TypeError(f"Input frames are a mix of readnoise. {ron}" % locals())
         if len(ron) and ron[0]:
@@ -559,7 +569,7 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``clean_up`` method')
 
-        outDir = self.intermediateRootPath + "/tmp"
+        outDir = self.workspaceRootPath + "/tmp"
 
         try:
             shutil.rmtree(outDir)

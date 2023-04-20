@@ -112,6 +112,8 @@ class soxs_stare(_base_recipe_):
 
         kw = self.kw
 
+        error = False
+
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
@@ -138,6 +140,13 @@ class soxs_stare(_base_recipe_):
         # if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
         #     raise TypeError(
         #         "Need a **** for %(arm)s - none found with the input files" % locals())
+
+        if error:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            print(self.inputFrames.summary)
+            print()
+            raise TypeError(error)
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
@@ -271,7 +280,7 @@ class soxs_stare(_base_recipe_):
 
         from os.path import expanduser
         home = expanduser("~")
-        fileDir = self.settings["intermediate-data-root"].replace("~", home)
+        fileDir = self.settings["workspace-root-dir"].replace("~", home)
         # filename = "/override/filename.fits"
         filepath = self._write(combined_object, fileDir, filename="combined_object_frame.fits", overwrite=True)
         # print(f"\nxxx frame saved to {filepath}\n")

@@ -2,6 +2,8 @@
 # Release Notes  
 
 * **ENHANCEMENT:** uncompression of fits.Z files (if any) occurs before data-organising
+* **REFACTOR:** removed the `intermediate-data-root` setting renamed to a more accurate `workspace-root-dir`
+* **REFACTOR:** removed the `reduced-data-root` setting.
 
 ## v0.7.2 - March 3, 2023
 

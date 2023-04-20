@@ -127,7 +127,7 @@ def main(arguments=None):
 
     # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
     if a['outputDirectory']:
-        settings["intermediate-data-root"] = a['outputDirectory']
+        settings["workspace-root-dir"] = a['outputDirectory']
 
     if a["init"]:
         from os.path import expanduser

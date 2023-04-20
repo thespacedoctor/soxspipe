@@ -351,9 +351,9 @@ class _base_detect(object):
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
         if self.binx > 1 or self.biny > 1:
-            outDir = self.settings["intermediate-data-root"] + "/tmp"
+            outDir = self.settings["workspace-root-dir"] + "/tmp"
         else:
-            outDir = self.settings["intermediate-data-root"].replace("~", home) + f"/product/{self.recipeName}"
+            outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
             outDir = outDir.replace("//", "/")
         # Recursively create missing directories
         if not os.path.exists(outDir):
@@ -1023,7 +1023,7 @@ class detect_continuum(_base_detect):
             filename = self.sofName + "_residuals.pdf"
 
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home) + "/qc/pdf"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
         outDir = outDir.replace("//", "/")
         # Recursively create missing directories
         if not os.path.exists(outDir):

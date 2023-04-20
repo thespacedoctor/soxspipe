@@ -120,27 +120,32 @@ class soxs_mdark(_base_recipe_):
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
-        # MIXED INPUT IMAGE TYPES ARE BAD
-        if len(imageTypes) > 1:
-            imageTypes = " and ".join(imageTypes)
-            print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames are a mix of %(imageTypes)s" % locals())
-        # NON-BIAS INPUT IMAGE TYPES ARE BAD
-        elif imageTypes[0] != 'DARK':
-            print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames not DARK frames" % locals())
+        error = False
 
-        exptimes = self.inputFrames.values(
-            keyword=kw("EXPTIME"), unique=True)
         # MIXED INPUT IMAGE TYPES ARE BAD
-        if len(exptimes) > 1:
-            exptimes = [str(e) for e in exptimes]
-            exptimes = " and ".join(exptimes)
+        if not error:
+            if len(imageTypes) > 1:
+                imageTypes = " and ".join(imageTypes)
+                error = "Input frames are a mix of %(imageTypes)s" % locals()
+            # NON-BIAS INPUT IMAGE TYPES ARE BAD
+            elif imageTypes[0] != 'DARK':
+                error = "Input frames not DARK frames" % locals()
+
+        if not error:
+            exptimes = self.inputFrames.values(
+                keyword=kw("EXPTIME"), unique=True)
+            # MIXED INPUT IMAGE TYPES ARE BAD
+            if len(exptimes) > 1:
+                exptimes = [str(e) for e in exptimes]
+                exptimes = " and ".join(exptimes)
+                error = "Input frames have differing exposure-times %(exptimes)s" % locals()
+
+        if error:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames have differing exposure-times %(exptimes)s" % locals())
+            print()
+            raise TypeError(error)
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
@@ -203,7 +208,7 @@ class soxs_mdark(_base_recipe_):
         # WRITE TO DISK
         productPath = self._write(
             frame=combined_dark_mean,
-            filedir=self.intermediateRootPath,
+            filedir=self.workspaceRootPath,
             filename=False,
             overwrite=True
         )

@@ -108,6 +108,8 @@ class soxs_spatial_solution(_base_recipe_):
 
         kw = self.kw
 
+        error = False
+
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
@@ -148,6 +150,13 @@ class soxs_spatial_solution(_base_recipe_):
         if f"ORDER_TAB_{arm}" not in imageCat:
             raise TypeError(
                 "Need an order centre for %(arm)s - none found with the input files" % locals())
+
+        if error:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            print(self.inputFrames.summary)
+            print()
+            raise TypeError(error)
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
@@ -234,7 +243,7 @@ class soxs_spatial_solution(_base_recipe_):
             inputFrame=multi_pinhole_image, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=order_table)
 
         if self.settings["save-intermediate-products"]:
-            fileDir = self.intermediateRootPath
+            fileDir = self.workspaceRootPath
             filepath = self._write(
                 self.multiPinholeFrame, fileDir, filename=False, overwrite=True, product=False)
             print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")

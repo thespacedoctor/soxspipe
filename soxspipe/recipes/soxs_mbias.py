@@ -119,17 +119,21 @@ class soxs_mbias(_base_recipe_):
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
+        error = False
+
         # MIXED INPUT IMAGE TYPES ARE BAD
         if len(imageTypes) > 1:
-            imageTypes = " and ".join(imageTypes)
-            print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames are a mix of %(imageTypes)s" % locals())
+            error = "Input frames are a mix of %(imageTypes)s" % locals()
         # NON-BIAS INPUT IMAGE TYPES ARE BAD
         elif imageTypes[0] != 'BIAS':
+            error = "Input frames not BIAS frames" % locals()
+
+        if error:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             print(self.inputFrames.summary)
-            raise TypeError(
-                "Input frames not BIAS frames" % locals())
+            print()
+            raise TypeError(error)
 
         self.imageType = imageTypes[0]
 
@@ -206,7 +210,7 @@ class soxs_mbias(_base_recipe_):
         # WRITE TO DISK
         productPath = self._write(
             frame=combined_bias_mean,
-            filedir=self.intermediateRootPath,
+            filedir=self.workspaceRootPath,
             filename=False,
             overwrite=True
         )

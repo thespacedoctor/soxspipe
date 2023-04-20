@@ -87,6 +87,21 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
+    def test_mbias_from_vis_sof_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mbias/sof/bias_vis_1x1.sof"
+
+        # utKit.refresh_database() # reset database to database found in
+        # soxspipe.recipes/test/input
+        from soxspipe.recipes import soxs_mbias
+        this = soxs_mbias(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath,
+            overwrite=True
+        )
+        productPath = this.produce_product()
+        print(f"Here is the final product `{productPath}`")
+
     def test_mbias_from_list_of_fits_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/1x1/slow_read"

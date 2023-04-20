@@ -120,6 +120,8 @@ class soxs_mflat(_base_recipe_):
 
         kw = self.kw
 
+        error = False
+
         import warnings
         from astropy.utils.exceptions import AstropyWarning
         warnings.simplefilter('ignore', AstropyWarning)
@@ -130,53 +132,80 @@ class soxs_mflat(_base_recipe_):
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
             # MIXED INPUT IMAGE TYPES ARE BAD
-            if len(imageTypes) > 1:
-                imageTypes = " and ".join(imageTypes)
-                raise TypeError(
-                    "Input frames are a mix of %(imageTypes)s" % locals())
+            if not error:
+                if len(imageTypes) > 1:
+                    imageTypes = " and ".join(imageTypes)
+                    error = "Input frames are a mix of %(imageTypes)s" % locals()
 
-            if imageTypes[0] != "LAMP,FLAT":
-                raise TypeError(
-                    "Input frames for soxspipe mflat need to be slit flat lamp on and lamp off frames for NIR" % locals())
+            if not error:
+                if imageTypes[0] != "LAMP,FLAT":
+                    error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR" % locals()
 
-            for i in imageTech:
-                if i not in ['ECHELLE,SLIT', 'IMAGE']:
-                    raise TypeError(
-                        f"Input frames for soxspipe mflat need to be slit flat lamp on and lamp off frames for NIR. You have provided {imageTech}" % locals())
+            if not error:
+                for i in imageTech:
+                    if i not in ['ECHELLE,SLIT', 'IMAGE']:
+                        error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. You have provided {imageTech}" % locals()
+
+            if not error:
+                for i in ['ECHELLE,SLIT', 'IMAGE']:
+                    if i not in imageTech:
+                        error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. You have provided {imageTech}" % locals()
 
         else:
-            for i in imageTypes:
-                if i not in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT", "BIAS", "DARK"]:
-                    raise TypeError(
-                        "Input frames for soxspipe mflat need to be slit flat lamp frames and a master-bias and possibly a master dark for UVB/VIS" % locals())
+            if not error:
+                for i in imageTypes:
+                    if i not in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT", "BIAS", "DARK"]:
+                        print("ONE")
+                        error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
+
+            if not error:
+                # FIX THIS WHEN I HIT UV-VIS FLATS
+                for i in [f"MASTER_BIAS_{self.arm}", f"ORDER_TAB_{self.arm}"]:
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
+
+                found = False
+                for i in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT"]:
+                    if i in imageTypes:
+                        found = True
+                if not found:
+                    error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
 
         # UV-VIS NEEDS BOTH D AND Q-LAMPS
-        if "LAMP,QFLAT" in imageTypes or "LAMP,DFLAT" in imageTypes:
-            if "LAMP,QFLAT" in imageTypes and "LAMP,DFLAT" in imageTypes:
-                pass
-            else:
-                for i in imageTypes:
-                    if "LAMP" in i:
-                        self.log.warning(f'Only "{i}" image types found. Please include both D2 and QTH lamp flats')
+        if not error:
+            if "LAMP,QFLAT" in imageTypes or "LAMP,DFLAT" in imageTypes:
+                if "LAMP,QFLAT" in imageTypes and "LAMP,DFLAT" in imageTypes:
+                    pass
+                else:
+                    for i in imageTypes:
+                        if "LAMP" in i:
+                            error = f'Only "{i}" image types found. Please include both D2 and QTH lamp flats'
 
         # LOOK FOR ORDER TABLE
-        arm = self.arm
-        if f"ORDER_TAB_{arm}" not in imageCat:
-            raise TypeError(
-                "Need an order centre for %(arm)s - none found with the input files" % locals())
+        if not error:
+            arm = self.arm
+            if f"ORDER_TAB_{arm}" not in imageCat:
+                error = f"Need an order centre for {arm} - none found with the input files"
 
         # CHECK EXPTIME
-        lamps = ["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT"]
-        for l in lamps:
-            filterDict = {kw("DPR_TYPE"): l,
-                          kw("DPR_TECH"): "ECHELLE,SLIT"}
-            flatCollection = self.inputFrames.filter(**filterDict)
-            if len(flatCollection.files):
-                exptime = flatCollection.values(
-                    keyword=kw("EXPTIME"), unique=True)
-                if len(exptime) > 1:
-                    raise TypeError(
-                        f"Input {l} frames for soxspipe mflat need to have a unique exptime" % locals())
+        if not error:
+            lamps = ["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT"]
+            for l in lamps:
+                filterDict = {kw("DPR_TYPE"): l,
+                              kw("DPR_TECH"): "ECHELLE,SLIT"}
+                flatCollection = self.inputFrames.filter(**filterDict)
+                if len(flatCollection.files):
+                    exptime = flatCollection.values(
+                        keyword=kw("EXPTIME"), unique=True)
+                    if len(exptime) > 1:
+                        error = f"Input {l} frames for soxspipe mflat need to have a unique exptime"
+
+        if error:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            print(self.inputFrames.summary)
+            print()
+            raise TypeError(error)
 
         self.imageType = imageTypes[0]
         self.log.debug('completed the ``verify_input_frames`` method')
@@ -336,7 +365,7 @@ class soxs_mflat(_base_recipe_):
         quicklook_image(log=self.log, CCDObject=mflat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
 
         home = expanduser("~")
-        outDir = self.settings["intermediate-data-root"].replace("~", home)
+        outDir = self.settings["workspace-root-dir"].replace("~", home)
         # filePath = f"{outDir}/first_iteration_{arm}_master_flat.fits"
 
         self.update_fits_keywords(
@@ -492,7 +521,7 @@ class soxs_mflat(_base_recipe_):
         if 1 == 0:
             from os.path import expanduser
             home = expanduser("~")
-            outDir = self.settings["intermediate-data-root"].replace("~", home)
+            outDir = self.settings["workspace-root-dir"].replace("~", home)
             index = 1
             for frame in calibratedFlats:
                 filePath = f"{outDir}/{index:02}_flat_{arm}_calibrated.fits"
