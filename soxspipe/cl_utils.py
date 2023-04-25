@@ -52,6 +52,16 @@ def main(arguments=None):
     """
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
     """
+    # QUICKLY SKIP IF PRODUCT EXIST
+    if len(sys.argv[1:]) == 2:
+        if sys.argv[2].split(".")[-1].lower() == "sof":
+            sofName = os.path.basename(sys.argv[2]).replace(".sof", "")
+            productPath = "./product/soxs-" + sys.argv[1] + "/" + sofName + ".fits"
+            productPath = productPath.replace("//", "/").replace("_sol", "-solution")
+            if os.path.exists(productPath):
+                print(f"The product of this recipe already exists at '{productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                sys.exit(0)
+
     # setup the command-line util settings
     su = tools(
         arguments=arguments,
@@ -235,4 +245,5 @@ def main(arguments=None):
 
 
 if __name__ == '__main__':
+
     main()

@@ -953,6 +953,51 @@ class data_organiser(object):
         return None
 
     # use the tab-trigger below for new method
+    def write_reduction_shell_scripts(
+            self):
+        """*write the reduction shell scripts*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``write_reduction_shell_scripts`` method')
+
+        import pandas as pd
+
+        rawGroups = pd.read_sql(
+            'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=self.conn)
+
+        rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
+
+        # WRITE FULL REDUCTION SCRIPT
+        myFile = open(self.rootDir + "/_reduce_all.sh", 'w')
+        myFile.write(("\n").join(rawGroups["command"].values))
+        myFile.close()
+
+        self.log.debug('completed the ``write_reduction_shell_scripts`` method')
+        return None
+
+    # use the tab-trigger below for new method
     # xt-class-method
 
     # 5. @flagged: what actions of the base class(es) need ammending? ammend them here

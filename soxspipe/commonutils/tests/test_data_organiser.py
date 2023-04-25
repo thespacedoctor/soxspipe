@@ -75,6 +75,7 @@ class test_data_organiser(unittest.TestCase):
         do.move_misc_files()
         do.populate_product_frames_db_table()
         do.write_sof_files()
+        do.write_reduction_shell_scripts()
 
     def test_data_organiser_function_exception(self):
 
