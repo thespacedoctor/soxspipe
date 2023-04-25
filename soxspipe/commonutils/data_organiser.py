@@ -178,6 +178,7 @@ class data_organiser(object):
                                'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'binning', 'night start mjd', 'night start date']
 
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF"]
+        self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare"]
 
         # DECOMPRESS .Z FILES
         from soxspipe.commonutils import uncompress
@@ -769,6 +770,7 @@ class data_organiser(object):
 
         if series["eso dpr type"].lower() in self.recipeMap:
             series["recipe"] = self.recipeMap[series["eso dpr type"].lower()]
+            series["recipe_order"] = self.recipeOrder.index(self.recipeMap[series["eso dpr type"].lower()]) + 1
 
         # if series["eso seq arm"].lower() != "nir":
         #     if "FLAT" in series["eso dpr type"].upper() and series["eso seq arm"].lower() == "vis":
@@ -808,9 +810,6 @@ class data_organiser(object):
         }
 
         sofMap = pd.DataFrame(myDict)
-        from tabulate import tabulate
-        print(tabulate(sofMap, headers='keys', tablefmt='psql'))
-
         sofMap.to_sql('sof_map', con=self.conn,
                       index=False, if_exists='append')
 
@@ -832,7 +831,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
@@ -913,7 +912,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
