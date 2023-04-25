@@ -159,8 +159,8 @@ class soxs_mflat(_base_recipe_):
 
             if not error:
                 for i in [f"MASTER_BIAS_{self.arm}", f"ORDER_TAB_{self.arm}"]:
-                if i not in imageCat:
-                    error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
 
             if not error:
                 found = False

@@ -145,14 +145,19 @@ class soxs_disp_solution(_base_recipe_):
 
         else:
             if not error:
-                for i in ["LAMP,FMTCHK", "BIAS"]:
-                    if i not in imageTech:
+                for i in imageTypes:
+                    if i not in ["LAMP,FMTCHK"]:
                         error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals()
 
             if not error:
-                for i in imageTypes:
-                    if i not in ["LAMP,FMTCHK", "BIAS", "DARK"]:
-                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals()
+                for i in ['ECHELLE,PINHOLE']:
+                    if i not in imageTech:
+                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS"
+
+            if not error:
+                for i in [f"MASTER_BIAS_{self.arm}"]:
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS"
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")

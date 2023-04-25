@@ -224,9 +224,6 @@ class data_organiser(object):
             # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
             rawFrames, reducedFramesPixels, reducedFramesTables = self.categorise_frames(filteredFrames)
 
-            from tabulate import tabulate
-            print(tabulate(rawFrames, headers='keys', tablefmt='psql'))
-
             if len(rawFrames.index):
                 rawFrames["filepath"] = "./raw_frames/" + rawFrames['file']
                 rawFrames.to_sql('raw_frames', con=self.conn,
@@ -455,7 +452,7 @@ class data_organiser(object):
 
         if len(filesNotInDB):
             for f in filesNotInDB:
-                shutil.move(f, self.rootDir)
+                shutil.move(self.rootDir + "/" + f, self.rootDir)
             self.sync_raw_frames(skipSqlSync=True)
 
         c.close()
@@ -611,13 +608,23 @@ class data_organiser(object):
 
         # rawFrames.replace("LAMP,DFLAT", "LAMP,FLAT", inplace=True)
         # rawFrames.replace("LAMP,QFLAT", "LAMP,FLAT", inplace=True)
-        rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name='counts')
+        rawGroups = rawFrames.groupby(filterKeywordsRaw)
+        mjds = rawGroups.mean()["mjd-obs"].values
+
+        rawGroups = rawGroups.size().reset_index(name='counts')
+        rawGroups['mjd-obs'] = mjds
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
+        calibrationFrames = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%"', con=self.conn)
+        calibrationFrames.fillna("--", inplace=True)
+
+        calibrationTables = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%"', con=self.conn)
+        calibrationTables.fillna("--", inplace=True)
+
         # generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
         for o in self.reductionOrder:
-            rawGroups = rawGroups.apply(self.generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames)
+            rawGroups = rawGroups.apply(self.generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
             rawGroups = rawGroups.apply(self.populate_products_table, axis=1, reductionOrder=o)
 
         # SEND TO DATABASE
@@ -635,7 +642,9 @@ class data_organiser(object):
             self,
             series,
             reductionOrder,
-            rawFrames):
+            rawFrames,
+            calibrationFrames,
+            calibrationTables):
         """*add a recipe name and SOF filename to all rows in the raw_frame_sets DB table*
 
         **Key Arguments:**
@@ -656,6 +665,8 @@ class data_organiser(object):
         """
 
         import pandas as pd
+        import astropy
+        import numpy as np
 
         sofName = []
         matchDict = {}
@@ -697,14 +708,14 @@ class data_organiser(object):
             mask = (filteredFrames['night start mjd'] == int(series["night start mjd"]))
             filteredFrames = filteredFrames.loc[mask]
             frameMjd = filteredFrames["mjd-obs"].values[0]
-            # calibrationFrames["obs-delta"] = calibrationFrames['mjd-obs'] - frameMjd
-            # calibrationTables["obs-delta"] = calibrationTables['mjd-obs'] - frameMjd
+            calibrationFrames["obs-delta"] = calibrationFrames['mjd-obs'] - frameMjd
+            calibrationTables["obs-delta"] = calibrationTables['mjd-obs'] - frameMjd
             # dispImages["obs-delta"] = dispImages['mjd-obs'] - frameMjd
-            # calibrationFrames["obs-delta"] = calibrationFrames["obs-delta"].abs()
-            # calibrationTables["obs-delta"] = calibrationTables["obs-delta"].abs()
+            calibrationFrames["obs-delta"] = calibrationFrames["obs-delta"].abs()
+            calibrationTables["obs-delta"] = calibrationTables["obs-delta"].abs()
             # dispImages["obs-delta"] = dispImages["obs-delta"].abs()
-            # if isinstance(filteredFrames, astropy.table.row.Row):
-            #     filteredFrames = Table(filteredFrames)
+            if isinstance(filteredFrames, astropy.table.row.Row):
+                filteredFrames = Table(filteredFrames)
 
             # SELECT FIRST DATE
             # SORT BY COLUMN NAME
@@ -714,7 +725,6 @@ class data_organiser(object):
 
         # ADDING TAG FOR SOF FILES
         filteredFrames["tag"] = filteredFrames["eso dpr type"].replace(",", "_") + "_" + filteredFrames["eso seq arm"]
-        print(filteredFrames["tag"])
 
         # NEED SOME FINAL FILTERING ON UVB FLATS
         if "lamp" in series["eso dpr type"].lower() and "flat" in series["eso dpr type"].lower() and "uvb" in series["eso seq arm"].lower():
@@ -757,19 +767,6 @@ class data_organiser(object):
 
         series['sof'] = ("_").join(sofName).replace("-", "").replace(",", "_").upper() + ".sof"
 
-        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-        myDict = {
-            "file": files,
-            "filepath": filepaths,
-            "tag": tags,
-            "sof": [series['sof']] * len(tags)
-        }
-
-        sofMap = pd.DataFrame(myDict)
-
-        sofMap.to_sql('sof_map', con=self.conn,
-                      index=False, if_exists='append')
-
         if series["eso dpr type"].lower() in self.recipeMap:
             series["recipe"] = self.recipeMap[series["eso dpr type"].lower()]
 
@@ -789,6 +786,33 @@ class data_organiser(object):
         else:
             print("\n## RAW FRAME-SET SUMMARY\n")
             print(tabulate(series, headers='keys', tablefmt='github', showindex=False, stralign="right"))
+            return series
+
+        # CALIBRATIONS NEEDED?
+        # BIAS FRAMES
+        if series["recipe"] in ["disp_sol", "order_centres", "mflat", "spat_sol", "stare"]:
+            mask = calibrationFrames['eso pro catg'].isin([f"MASTER_BIAS_{series['eso seq arm'].upper()}"])
+            df = calibrationFrames.loc[mask]
+            if len(df.index):
+                df.sort_values(by=['obs-delta'], inplace=True)
+                files = np.append(files, df["file"].values[0])
+                tags = np.append(tags, df["eso pro catg"].values[0])
+                filepaths = np.append(filepaths, df["filepath"].values[0])
+
+        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
+        myDict = {
+            "file": files,
+            "filepath": filepaths,
+            "tag": tags,
+            "sof": [series['sof']] * len(tags)
+        }
+
+        sofMap = pd.DataFrame(myDict)
+        from tabulate import tabulate
+        print(tabulate(sofMap, headers='keys', tablefmt='psql'))
+
+        sofMap.to_sql('sof_map', con=self.conn,
+                      index=False, if_exists='append')
 
         return series
 
@@ -846,7 +870,7 @@ class data_organiser(object):
                 products["eso pro tech"] = i[1]
                 products["eso pro catg"] = i[2] + f"_{products['eso seq arm'].upper()}"
                 products["file"] = products["sof"].replace(".sof", ".fits")
-                products["filepath"] = self.rootDir + "/products/" + i[6] + "/" + products["file"]
+                products["filepath"] = "./product/" + i[6] + "/" + products["file"]
                 myDict = {k: [v] for k, v in products.items()}
                 products = pd.DataFrame(myDict)
                 products.to_sql('product_frames', con=self.conn,
