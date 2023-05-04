@@ -312,6 +312,8 @@ class soxs_mflat(_base_recipe_):
             productTable, qcTable, orderDetectionCounts = edges.get()
 
             if tag:
+                # NEED TO TRY AND RENAME BOTH ORDER AND COUNT COLUMNS FOR PANDAS 1.X and 2.X
+                orderDetectionCounts.rename(columns={"order": tag}, inplace=True)
                 orderDetectionCounts.rename(columns={"count": tag}, inplace=True)
                 orderDetectionCounts.index.names = ['order']
 
@@ -773,6 +775,7 @@ class soxs_mflat(_base_recipe_):
         detectionCount = pd.merge(self.detectionCountSet[0], self.detectionCountSet[1], left_index=True, right_index=True)
 
         detectionCount["best_frame"] = detectionCount.idxmax(axis=1)
+
         mask = (detectionCount['best_frame'] == "_QLAMP")
         orderFlip = detectionCount.loc[mask]
         # THIS IS THE ORDER THAT WE USE TO RESCALE ONE FLAT TO ANOTHER

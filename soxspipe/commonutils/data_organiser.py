@@ -246,12 +246,22 @@ class data_organiser(object):
         """
         self.log.debug('starting the ``prepare`` method')
 
+        basename = os.path.basename(self.rootDir)
+        print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
         self._sync_raw_frames()
         self._move_misc_files()
         self._populate_product_frames_db_table()
         self._populate_product_frames_db_table()
         self._write_sof_files()
         self._write_reduction_shell_scripts()
+
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        print(f"THE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
+        print(f"Here's a breakdown of what can be found in the workspace:")
+        print(f"   - `raw_frames/`: all raw-frames to be reduced")
+        print(f"   - `misc/`: an archive of other files that may have been found at the root of the workspace")
+        print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
+        print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace\n")
 
         self.log.debug('completed the ``prepare`` method')
         return None
@@ -369,7 +379,7 @@ class data_organiser(object):
         #         fitsNames += newFitsNames
 
         if len(fitsPaths) == 0:
-            print(f"No fits files found in directory `{pathToDirectory}`")
+            # print(f"No fits files found in directory `{pathToDirectory}`")
             return None, None, None
 
         # TOP-LEVEL COLLECTION
