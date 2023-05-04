@@ -179,6 +179,7 @@ class soxs_order_centres(_base_recipe_):
 
         from astropy.nddata import CCDData
         from astropy import units as u
+        import pandas as pd
 
         arm = self.arm
         kw = self.kw
@@ -264,8 +265,8 @@ class soxs_order_centres(_base_recipe_):
         )
         productPath, qcTable, productsTable = detector.get()
 
-        self.products = self.products.append(productsTable)
-        self.qc = self.qc.append(qcTable)
+        self.products = pd.concat([self.products, productsTable])
+        self.qc = pd.concat([self.qc, qcTable])
 
         filename = os.path.basename(productPath)
 
@@ -273,7 +274,7 @@ class soxs_order_centres(_base_recipe_):
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
         self.dateObs = self.orderFrame.header[kw("DATE_OBS")]
 
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "ORDER_CENTRES",
             "file_name": filename,
@@ -282,7 +283,7 @@ class soxs_order_centres(_base_recipe_):
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} order centre traces",
             "file_path": productPath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.report_output()
         self.clean_up()

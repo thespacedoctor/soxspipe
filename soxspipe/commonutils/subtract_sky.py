@@ -215,7 +215,7 @@ class subtract_sky(object):
                 if o == qcPlotOrder:
                     qc_plot_path = self.plot_sky_sampling(order=o, imageMapOrderWithObjectDF=imageMapOrderWithObject, imageMapOrderDF=imageMapOrderSkyOnly, tck=qctck, knotLocations=qcknots)
                     basename = os.path.basename(qc_plot_path)
-                    self.products = self.products.append({
+                    self.products = pd.concat([self.products, pd.Series({
                         "soxspipe_recipe": "soxs-stare",
                         "product_label": "SKY_MODEL_QC_PLOTS",
                         "file_name": basename,
@@ -224,7 +224,7 @@ class subtract_sky(object):
                         "reduction_date_utc": utcnow,
                         "product_desc": f"QC plots for the sky-background modelling",
                         "file_path": qc_plot_path
-                    }, ignore_index=True)
+                    }).to_frame().T], ignore_index=True)
 
         filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
         home = expanduser("~")
@@ -235,7 +235,7 @@ class subtract_sky(object):
             os.makedirs(outDir)
 
         filePath = f"{outDir}/{filename}"
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": "soxs-stare",
             "product_label": "SKY_MODEL",
             "file_name": filename,
@@ -244,7 +244,7 @@ class subtract_sky(object):
             "reduction_date_utc": utcnow,
             "product_desc": f"The sky background model",
             "file_path": filePath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         # WRITE CCDDATA OBJECT TO FILE
         HDUList = skymodelCCDData.to_hdu(
@@ -257,7 +257,7 @@ class subtract_sky(object):
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": "soxs-stare",
             "product_label": "SKY_SUBTRACTED_OBJECT",
             "file_name": filename,
@@ -266,7 +266,7 @@ class subtract_sky(object):
             "reduction_date_utc": utcnow,
             "product_desc": f"The sky-subtracted object",
             "file_path": filePath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         # WRITE CCDDATA OBJECT TO FILE
         HDUList = skySubtractedCCDData.to_hdu(
@@ -278,7 +278,7 @@ class subtract_sky(object):
         comparisonPdf = self.plot_image_comparison(self.objectFrame, skymodelCCDData, skySubtractedCCDData)
 
         filename = os.path.basename(comparisonPdf)
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": "soxs-stare",
             "product_label": "SKY SUBTRACTION QUICKLOOK",
             "file_name": filename,
@@ -287,7 +287,7 @@ class subtract_sky(object):
             "reduction_date_utc": utcnow,
             "product_desc": f"Sky-subtraction quicklook",
             "file_path": comparisonPdf
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``get`` method')
         return skymodelCCDData, skySubtractedCCDData, self.qc, self.products

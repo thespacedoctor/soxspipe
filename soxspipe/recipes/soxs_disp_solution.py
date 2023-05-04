@@ -181,6 +181,7 @@ class soxs_disp_solution(_base_recipe_):
 
         from astropy.nddata import CCDData
         from astropy import units as u
+        import pandas as pd
 
         arm = self.arm
         kw = self.kw
@@ -248,12 +249,12 @@ class soxs_disp_solution(_base_recipe_):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.products = self.products.append(productsTable)
-        self.qc = self.qc.append(qcTable)
+        self.products = pd.concat([self.products, productsTable])
+        self.qc = pd.concat([self.qc, qcTable])
 
         self.dateObs = self.pinholeFrame.header[kw("DATE_OBS")]
 
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "DISP_MAP",
             "file_name": filename,
@@ -262,7 +263,7 @@ class soxs_disp_solution(_base_recipe_):
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} first pass dispersion solution",
             "file_path": productPath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.report_output()
         self.clean_up()

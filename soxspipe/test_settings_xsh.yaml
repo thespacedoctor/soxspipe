@@ -82,11 +82,11 @@ soxs-mflat:
     # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
     clipping-lower-sigma: 50
     # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-sigma: 100   
+    clipping-upper-sigma: 1000   
     # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-iteration-count: 0
+    clipping-iteration-count: 1
     # width of the slice to cut along the centre of each order when determining mean exposure level
-    centre-order-window: 13
+    centre-order-window: 20
     # length of image slice to take across orders when detecting edges
     slice-length-for-edge-detection: 90
     # width of image slice to take across orders when detecting edges
@@ -96,15 +96,16 @@ soxs-mflat:
     # maximum value flux can claim to as percentage of central flux and be counted as an order edge
     max-percentage-threshold-for-edge-detection: 50
     # degree of dispersion axis component of polynomal fit to order edges
-    disp-axis-deg: 3
+    disp-axis-deg: 5
     # degree of order component of polynomal fit to order edges
     order-deg: 3
     # number of σ deviations from the median fit residual beyond which individual data points are removed when iterating towards a fit of order edges
-    poly-fitting-residual-clipping-sigma: 3.0
+    poly-fitting-residual-clipping-sigma: 5
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the order edges
-    poly-clipping-iteration-limit: 2
+    poly-clipping-iteration-limit: 3
     # number of σ deviations below the median flux of a master-flat frame beyond which a pixel is added to the bad-pixel mask
     low-sensitivity-clipping-sigma: 2
+
     
 soxs-stare:
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack

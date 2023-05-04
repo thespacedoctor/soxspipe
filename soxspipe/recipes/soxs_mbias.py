@@ -150,6 +150,7 @@ class soxs_mbias(_base_recipe_):
         self.log.debug('starting the ``produce_product`` method')
 
         import numpy as np
+        import pandas as pd
 
         arm = self.arm
         kw = self.kw
@@ -221,7 +222,7 @@ class soxs_mbias(_base_recipe_):
 
         self.dateObs = combined_bias_mean.header[self.kw("DATE_OBS")]
 
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "MBIAS",
             "file_name": filename,
@@ -230,7 +231,7 @@ class soxs_mbias(_base_recipe_):
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} Master bias frame",
             "file_path": productPath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.report_output()
         self.clean_up()
@@ -259,6 +260,7 @@ class soxs_mbias(_base_recipe_):
         self.log.debug('starting the ``qc_bias_structure`` method')
 
         import numpy as np
+        import pandas as pd
         plot = False
 
         collaps_ax1 = np.nansum(combined_bias_mean, axis=0)
@@ -288,7 +290,7 @@ class soxs_mbias(_base_recipe_):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.qc = self.qc.append({
+        self.qc = pd.concat([self.qc, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "qc_name": "STRUCTX",
             "qc_value": coeff_ax1[0],
@@ -297,9 +299,9 @@ class soxs_mbias(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "to_header": True
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
-        self.qc = self.qc.append({
+        self.qc = pd.concat([self.qc, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "qc_name": "STRUCTY",
             "qc_value": coeff_ax2[0],
@@ -308,7 +310,7 @@ class soxs_mbias(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "to_header": True
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``qc_bias_structure`` method')
         return coeff_ax1[0], coeff_ax2[0]
@@ -337,6 +339,7 @@ class soxs_mbias(_base_recipe_):
         from scipy.stats import median_abs_deviation
         from astropy.stats import sigma_clip
         import numpy as np
+        import pandas as pd
 
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
@@ -370,7 +373,7 @@ class soxs_mbias(_base_recipe_):
 
         ppnmax = max(ratios)
 
-        self.qc = self.qc.append({
+        self.qc = pd.concat([self.qc, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "qc_name": "PPNMAX",
             "qc_value": ppnmax,
@@ -379,7 +382,7 @@ class soxs_mbias(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "to_header": True
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``qc_periodic_pattern_noise`` method')
         return ppnmax

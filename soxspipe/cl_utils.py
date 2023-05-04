@@ -6,6 +6,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe init
+    soxspipe prep <workspaceDirectory>
     soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -16,6 +17,7 @@ Usage:
 
 Options:
     init                                   setup the soxspipe settings file for the first time
+    prep                                   prepare a folder of raw data (workspace) for data reduction
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
     mflat                                  the master flat recipe
@@ -56,8 +58,9 @@ def main(arguments=None):
     if len(sys.argv[1:]) == 2:
         if sys.argv[2].split(".")[-1].lower() == "sof":
             sofName = os.path.basename(sys.argv[2]).replace(".sof", "")
-            productPath = "./product/soxs-" + sys.argv[1] + "/" + sofName + ".fits"
-            productPath = productPath.replace("//", "/").replace("_sol", "-solution")
+            productPath = "./product/soxs-" + sys.argv[1].replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+
+            productPath = productPath.replace("//", "/")
             if os.path.exists(productPath):
                 print(f"The product of this recipe already exists at '{productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
@@ -229,6 +232,15 @@ def main(arguments=None):
         )
 
         reducedStare = recipe.produce_product()
+
+    if a['prep']:
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            settings=settings,
+            rootDir=a["workspaceDirectory"]
+        )
+        do.prepare()
 
     # CALL FUNCTIONS/OBJECTS
 

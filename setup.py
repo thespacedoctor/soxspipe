@@ -25,8 +25,6 @@ install_requires = [
     'tabulate',
     'bottleneck',
     'multiprocess',
-    'csaps',
-    'jinja2'
 ]
 
 # READ THE DOCS SERVERS

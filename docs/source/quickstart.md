@@ -10,7 +10,7 @@
 The best way to install soxspipe is to use `conda` and install the package in its own isolated environment (using either [Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Minicoda](https://docs.conda.io/en/latest/miniconda.html)), as shown here:
 
 ``` bash
-conda create -n soxspipe python=3.8 soxspipe csaps -c conda-forge -c omfit
+conda create -n soxspipe python=3.11 soxspipe -c conda-forge
 conda activate soxspipe
 ```
 

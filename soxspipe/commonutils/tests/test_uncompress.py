@@ -57,7 +57,7 @@ class test_uncompress(unittest.TestCase):
 
     def test_uncompress_function_exception(self):
 
-        from soxspipe import uncompress
+        from soxspipe.commonutils import uncompress
         try:
             this = uncompress(
                 log=log,

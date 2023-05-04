@@ -161,6 +161,7 @@ class soxs_mdark(_base_recipe_):
         self.log.debug('starting the ``produce_product`` method')
 
         import numpy as np
+        import pandas as pd
 
         arm = self.arm
         kw = self.kw
@@ -219,7 +220,7 @@ class soxs_mdark(_base_recipe_):
 
         self.dateObs = combined_dark_mean.header[kw("DATE_OBS")]
 
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "MDARK",
             "file_name": filename,
@@ -228,7 +229,7 @@ class soxs_mdark(_base_recipe_):
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} Master dark frame",
             "file_path": productPath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.report_output()
         self.clean_up()

@@ -1061,6 +1061,7 @@ class _base_recipe_(object):
 
         from astropy.stats import sigma_clip
         import numpy as np
+        import pandas as pd
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -1094,7 +1095,7 @@ class _base_recipe_(object):
             if frameType[0] == "M":
                 singleFrameType = frameType[1:]
 
-            self.qc = self.qc.append({
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "RON DETECTOR",
                 "qc_value": rawRon,
@@ -1103,7 +1104,7 @@ class _base_recipe_(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
+            }).to_frame().T], ignore_index=True)
 
         if masterFrame and not masterRon:
 
@@ -1117,7 +1118,7 @@ class _base_recipe_(object):
             masterRon = dstd
 
         elif masterRon:
-            self.qc = self.qc.append({
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "RON MASTER",
                 "qc_value": masterRon,
@@ -1126,7 +1127,7 @@ class _base_recipe_(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
+            }).to_frame().T], ignore_index=True)
         else:
             masterRon = None
 
@@ -1162,6 +1163,7 @@ class _base_recipe_(object):
         self.log.debug('starting the ``qc_median_flux_level`` method')
 
         import numpy as np
+        import pandas as pd
 
         if not medianFlux:
             # DETERMINE MEDIAN BIAS LEVEL
@@ -1172,7 +1174,7 @@ class _base_recipe_(object):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.qc = self.qc.append({
+        self.qc = pd.concat([self.qc, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "qc_name": f"{frameType} MEDIAN".upper(),
             "qc_value": medianFlux,
@@ -1181,7 +1183,7 @@ class _base_recipe_(object):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "to_header": True
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``qc_median_flux_level`` method')
         return medianFlux

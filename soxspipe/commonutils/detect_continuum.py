@@ -254,6 +254,7 @@ class _base_detect(object):
         self.log.debug('starting the ``calculate_residuals`` method')
 
         import numpy as np
+        import pandas as pd
 
         arm = self.arm
 
@@ -282,7 +283,7 @@ class _base_detect(object):
             if "order-centre" in self.recipeName.lower():
                 tag = "order centre"
 
-            self.qc = self.qc.append({
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMIN",
                 "qc_value": res.min(),
@@ -291,8 +292,8 @@ class _base_detect(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMAX",
                 "qc_value": res.max(),
@@ -301,8 +302,8 @@ class _base_detect(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESRMS",
                 "qc_value": res_std,
@@ -311,8 +312,8 @@ class _base_detect(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "NORDERS",
                 "qc_value": uniqueorders,
@@ -321,7 +322,7 @@ class _base_detect(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``calculate_residuals`` method')
         return res, res_mean, res_std, res_median, xfit
@@ -617,7 +618,7 @@ class detect_continuum(_base_detect):
 
         basename = os.path.basename(plotPath)
 
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "ORDER_CENTRES_RES",
             "file_name": basename,
@@ -626,7 +627,7 @@ class detect_continuum(_base_detect):
             "reduction_date_utc": utcnow,
             "product_desc": f"Residuals of the order centre polynomial fit",
             "file_path": plotPath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
