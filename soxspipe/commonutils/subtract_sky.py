@@ -189,7 +189,7 @@ class subtract_sky(object):
             # SELECT ONLY A DATAFRAME CONTAINING ONLY A SINGLE ORDER
             imageMapOrder = self.mapDF[self.mapDF["order"] == o]
             # MASK OUTLYING PIXELS (imageMapOrderWithObject) AND ALSO THEN THE OBJECT PIXELS (imageMapOrderSkyOnly)
-            imageMapOrderWithObject, imageMapOrderSkyOnly = self.get_over_sampled_sky_from_order(imageMapOrder, clipBPs=False, clipSlitEdge=self.settings["sky-subtraction"]["clip-slit-edge-fraction"])
+            imageMapOrderWithObject, imageMapOrderSkyOnly = self.get_over_sampled_sky_from_order(imageMapOrder, clipBPs=True, clipSlitEdge=self.settings["sky-subtraction"]["clip-slit-edge-fraction"])
             allimageMapOrder.append(imageMapOrderSkyOnly)
             allimageMapOrderWithObject.append(imageMapOrderWithObject)
 
@@ -455,7 +455,7 @@ class subtract_sky(object):
         color = im.cmap(im.norm(medianValue))
         patches = [mpatches.Patch(color=color, label="unprocessed frame")]
 
-        onerow.set_title("Object & Sky Frame")
+        onerow.set_title("Object & Sky Frame", fontsize=10)
         onerow.set_xlabel(
             "y-axis", fontsize=10)
         onerow.set_ylabel(
@@ -470,7 +470,7 @@ class subtract_sky(object):
         tworow.plot(
             imageMapOrderWithObjectDF["wavelength"].values,
             imageMapOrderWithObjectDF["flux"].values, label='unprocessed', alpha=0.2, c=grey, zorder=0)
-        tworow.set_title("STEP 1. Identify and clip outlying pixels (CRHs etc) and pixels containing object flux.")
+        tworow.set_title("STEP 1. Identify and clip outlying pixels (CRHs etc) and pixels containing object flux.", fontsize=10)
         # RAW MARKERS
         tworow.scatter(
             imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
@@ -559,7 +559,7 @@ class subtract_sky(object):
         fiverow.invert_xaxis()
 
         # PLOT WAVELENGTH VS FLUX SKY MODEL
-        sixrow.set_title("STEP 2. Fit a univariate bspline to sky-flux as a function of wavelength")
+        sixrow.set_title("STEP 2. Fit a univariate bspline to sky-flux as a function of wavelength", fontsize=10)
         sixrow.scatter(
             imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
             imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].values, s=medianMS, c=black, alpha=0.5, zorder=unclippedZ)
@@ -617,7 +617,7 @@ class subtract_sky(object):
         vmax = mean + 0.2 * std
         vmin = mean - 0.2 * std
         im = eightrow.imshow(np.flipud(np.rot90(skySubImage, 1)), vmin=0, vmax=50, cmap=cmap, alpha=1.)
-        eightrow.set_title("STEP 3. Subtract the sky-model from the original data.")
+        eightrow.set_title("STEP 3. Subtract the sky-model from the original data.", fontsize=10)
         eightrow.set_xlabel(
             "y-axis", fontsize=10)
         eightrow.set_ylabel(
@@ -846,6 +846,13 @@ class subtract_sky(object):
 
             tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=allKnots, k=bspline_order, w=goodWeights, full_output=True)
             t, c, k = tck
+
+            if ier == 10:
+                print(f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n")
+                tck = tck_previous
+                break
+            else:
+                tck_previous = tck
 
             # GENERATE SKY-MODEL FROM BSPLINE
             imageMapOrder["sky_model"] = ip.splev(imageMapOrder["wavelength"].values, tck)

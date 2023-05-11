@@ -58,6 +58,8 @@ def main(arguments=None):
     if len(sys.argv[1:]) == 2:
         if sys.argv[2].split(".")[-1].lower() == "sof":
             sofName = os.path.basename(sys.argv[2]).replace(".sof", "")
+            if "_STARE_" in sofName:
+                sofName += "_SKYSUB"
             productPath = "./product/soxs-" + sys.argv[1].replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
 
             productPath = productPath.replace("//", "/")

@@ -104,7 +104,7 @@ class data_organiser(object):
 
         # CREATE THE DATABASE CONNECTION
         self.conn = sql.connect(
-            self.dbPath, isolation_level=None)
+            self.dbPath)
         self.conn.row_factory = dict_factory
 
         # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
@@ -165,9 +165,9 @@ class data_organiser(object):
             "lamp,dflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
             "lamp,qflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
             "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}],
-            "object": [{"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "stare"}],
-            "std,flux": [{"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "stare"}],
-            "std,telluric": [{"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "stare"}],
+            "object": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
+            "std,flux": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
+            "std,telluric": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
         }
 
         # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULTS FROM REDUCING EACH SOFs
@@ -191,7 +191,7 @@ class data_organiser(object):
             ],
             "spat_sol": [
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_TAB", "TABLE", None, None, "soxs-spatial-solution"],
-                ["REDUCED", "ECHELLE,PINHOLE", "DISP_IMAGE", "PIXELS", "_SOL", "_SOL_IMAGE", "soxs-spatial-solution"]
+                ["REDUCED", "ECHELLE,PINHOLE", "DISP_IMAGE", "PIXELS", ".fits", "_IMAGE.fits", "soxs-spatial-solution"]
             ],
         }
 
@@ -230,7 +230,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
@@ -257,10 +257,11 @@ class data_organiser(object):
 
         sys.stdout.write("\x1b[1A\x1b[2K")
         print(f"THE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
-        print(f"Here's a breakdown of what can be found in the workspace:")
+        print(f"In this workspace you will find:\n")
         print(f"   - `raw_frames/`: all raw-frames to be reduced")
-        print(f"   - `misc/`: an archive of other files that may have been found at the root of the workspace")
+        print(f"   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the prep command")
         print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
+        print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
         print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace\n")
 
         self.log.debug('completed the ``prepare`` method')
@@ -694,8 +695,10 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
 
-        rawFrames = pd.read_sql(
-            'SELECT * FROM raw_frames', con=self.conn)
+        conn = sql.connect(
+            self.dbPath)
+
+        rawFrames = pd.read_sql('SELECT * FROM raw_frames', con=conn)
 
         rawFrames.fillna("--", inplace=True)
         filterKeywordsRaw = self.filterKeywords[:]
@@ -706,17 +709,32 @@ class data_organiser(object):
         # rawFrames.replace("LAMP,DFLAT", "LAMP,FLAT", inplace=True)
         # rawFrames.replace("LAMP,QFLAT", "LAMP,FLAT", inplace=True)
         rawGroups = rawFrames.groupby(filterKeywordsRaw)
-        mjds = rawGroups.mean()["mjd-obs"].values
+
+        mjds = rawGroups.mean(numeric_only=True)["mjd-obs"].values
 
         rawGroups = rawGroups.size().reset_index(name='counts')
         rawGroups['mjd-obs'] = mjds
+
+        # REMOVE GROUPED STARE AND NODDING - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
+        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]))
+        rawGroups = rawGroups.loc[~mask]
+        # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
+        rawScienceFrames = pd.read_sql(
+            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE","ECHELLE,SLIT,NODDING")', con=conn)
+
+        rawScienceFrames.fillna("--", inplace=True)
+        rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
+        rawScienceFrames = rawScienceFrames.size().reset_index(name='counts')
+
+        # MERGE DATAFRAMES
+        rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
-        calibrationFrames = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%"', con=self.conn)
+        calibrationFrames = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%"', con=conn)
         calibrationFrames.fillna("--", inplace=True)
 
-        calibrationTables = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%"', con=self.conn)
+        calibrationTables = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%"', con=conn)
         calibrationTables.fillna("--", inplace=True)
 
         # generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
@@ -828,6 +846,8 @@ class data_organiser(object):
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_")) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE"))
+                elif "rospeed" in k.lower():
+                    mask = (calibrationFrames[k].isin([v]) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
                 else:
                     mask = (calibrationFrames[k].isin([v]))
                 calibrationFrames = calibrationFrames.loc[mask]
@@ -837,7 +857,7 @@ class data_organiser(object):
                 if k in ["binning", "rospeed", "exptime"]:
                     continue
                 if "type" in k.lower():
-                    mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_"))
+                    mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_") | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
                 else:
                     mask = (calibrationFrames[k].isin([v]))
                 calibrationFrames = calibrationFrames.loc[mask]
@@ -859,9 +879,16 @@ class data_organiser(object):
         # NIGHT START
         # YYYY.MM.DDThh.mm.xxx
         if series["night start mjd"]:
-            mask = (filteredFrames['night start mjd'] == int(series["night start mjd"]))
-            filteredFrames = filteredFrames.loc[mask]
-            frameMjd = filteredFrames["mjd-obs"].values[0]
+            if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]:
+                mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
+                filteredFrames = filteredFrames.loc[mask]
+            else:
+                mask = (filteredFrames['night start mjd'] == int(series["night start mjd"]))
+                filteredFrames = filteredFrames.loc[mask]
+            try:
+                frameMjd = filteredFrames["mjd-obs"].values[0]
+            except:
+                print(series)
             calibrationFrames["obs-delta"] = calibrationFrames['mjd-obs'] - frameMjd
             calibrationTables["obs-delta"] = calibrationTables['mjd-obs'] - frameMjd
             # dispImages["obs-delta"] = dispImages['mjd-obs'] - frameMjd
@@ -961,6 +988,16 @@ class data_organiser(object):
                         files = np.append(files, df.loc[mask, "file"].values[0])
                         tags = np.append(tags, df.loc[mask, "eso pro catg"].values[0])
                         filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
+
+        # DISP SOLS IMAGE
+        if series["recipe"] in ["stare"]:
+            mask = calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")
+            df = calibrationFrames.loc[mask]
+            if len(df.index):
+                df.sort_values(by=['obs-delta'], inplace=True)
+                files = np.append(files, df["file"].values[0])
+                tags = np.append(tags, df["eso pro catg"].values[0])
+                filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # ORDER TAB
         if series["recipe"] in ["mflat", "spat_sol", "stare"]:
@@ -1080,6 +1117,7 @@ class data_organiser(object):
                 products["file"] = products["sof"].replace(".sof", ".fits")
                 if i[4] and i[5]:
                     products["file"] = products["file"].split(i[4])[0] + i[5] + ".fits"
+                    products["file"] = products["file"].replace(".fits.fits", ".fits")
                 products["filepath"] = "./product/" + i[6] + "/" + products["file"]
                 myDict = {k: [v] for k, v in products.items()}
                 products = pd.DataFrame(myDict)
@@ -1144,17 +1182,19 @@ class data_organiser(object):
 
         import pandas as pd
         from tabulate import tabulate
+        import sqlite3 as sql
+
+        conn = sql.connect(
+            self.dbPath)
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(self.sofDir):
             os.makedirs(self.sofDir)
 
-        df = pd.read_sql_query("select * from sof_map;", self.conn)
+        df = pd.read_sql_query("select * from sof_map;", conn)
 
         # GROUP RESULTS
-        dfGroups = df.groupby(['sof'])
-
-        for name, group in dfGroups:
+        for name, group in df.groupby('sof'):
             myFile = open(self.sofDir + "/" + name, 'w')
             content = tabulate(group[["filepath", "tag"]], tablefmt='plain', showindex=False)
             myFile.write(content)
@@ -1194,9 +1234,13 @@ class data_organiser(object):
         self.log.debug('starting the ``_write_reduction_shell_scripts`` method')
 
         import pandas as pd
+        import sqlite3 as sql
+
+        conn = sql.connect(
+            self.dbPath)
 
         rawGroups = pd.read_sql(
-            'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=self.conn)
+            'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=conn)
 
         rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
 
