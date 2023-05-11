@@ -11,7 +11,6 @@
 """
 ################# GLOBAL IMPORTS ####################
 import warnings
-from tabulate import tabulate
 import shutil
 import logging
 from soxspipe.commonutils import filenamer
@@ -998,6 +997,8 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``report_output`` method')
+
+        from tabulate import tabulate
 
         if not self.verbose:
             # REMOVE COLUMN FROM DATA FRAME
