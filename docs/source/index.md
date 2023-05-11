@@ -11,6 +11,7 @@
    install
    initialisation
    quickstart
+   primer_on_soxs_obs_modes
    recipes/index
    utils/index
    files/index
