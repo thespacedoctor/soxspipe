@@ -11,7 +11,6 @@
 """
 ################# GLOBAL IMPORTS ####################
 from fundamentals import fmultiprocess
-from tabulate import tabulate
 from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_format
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from soxspipe.commonutils.filenamer import filenamer
