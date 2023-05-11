@@ -1,13 +1,15 @@
 
 # Release Notes  
 
+## v0.8.0 - March 3, 2023
+
 * **FEATURE:** we now have a data-organiser to sort data, prepare the required SOF files and generate reduction scripts.
 * **ENHANCEMENT:** '.db', '.yaml', '.sh' and '.log' extensions skipped when moving items to the misc folder
 * **ENHANCEMENT:** move information printed to STDOUT when preparing a workspace to inform the user of how the data is organised
-* **REFACTOR:** speed & robustness improvements to dispersion solution to 2D image map conversion.
-* **REFACTOR:** much fast check for product existence so recipes are quickly skipped if they have already run.
 * **ENHANCEMENT:** code can automatically adjust polynomial fitting parameters to find a dispersion solution if those provided in the settings file fail.
 * **ENHANCEMENT:** uncompression of fits.Z files (if any) occurs before data-organising
+* **REFACTOR:** speed & robustness improvements to dispersion solution to 2D image map conversion.
+* **REFACTOR:** much fast check for product existence so recipes are quickly skipped if they have already run.
 * **REFACTOR:** removed the `intermediate-data-root` setting renamed to a more accurate `workspace-root-dir`
 * **REFACTOR:** removed the `reduced-data-root` setting.
 * **REFACTOR:** updating all depreciated pandas commands so pipeline is now compatible with 1.X and 2.X versions of pandas 
