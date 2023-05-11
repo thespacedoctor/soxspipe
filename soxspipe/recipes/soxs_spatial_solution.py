@@ -113,8 +113,6 @@ class soxs_spatial_solution(_base_recipe_):
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
-        print(imageTypes, imageTech, imageCat)
-
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
             if not error:
@@ -185,6 +183,7 @@ class soxs_spatial_solution(_base_recipe_):
 
         from astropy.nddata import CCDData
         from astropy import units as u
+        import pandas as pd
 
         arm = self.arm
         kw = self.kw
@@ -268,10 +267,10 @@ class soxs_spatial_solution(_base_recipe_):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.products = self.products.append(productsTable)
-        self.qc = self.qc.append(qcTable)
+        self.products = pd.concat([self.products, productsTable])
+        self.qc = pd.concat([self.qc, qcTable])
 
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "SPAT_SOL",
             "file_name": filename,
@@ -280,11 +279,11 @@ class soxs_spatial_solution(_base_recipe_):
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} full dispersion-spatial solution",
             "file_path": productPath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         if mapImagePath:
             filename = os.path.basename(mapImagePath)
-            self.products = self.products.append({
+            self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "product_label": "2D_MAP",
                 "file_name": filename,
@@ -293,7 +292,7 @@ class soxs_spatial_solution(_base_recipe_):
                 "reduction_date_utc": utcnow,
                 "product_desc": f"{self.arm} 2D detector map of wavelength, slit position and order",
                 "file_path": productPath
-            }, ignore_index=True)
+            }).to_frame().T], ignore_index=True)
 
         self.report_output()
 

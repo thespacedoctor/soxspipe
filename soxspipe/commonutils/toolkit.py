@@ -538,6 +538,7 @@ def generic_quality_checks(
     log.debug('starting the ``functionName`` function')
 
     import numpy as np
+    import pandas as pd
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -554,7 +555,7 @@ def generic_quality_checks(
     utcnow = datetime.utcnow()
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-    qcTable = qcTable.append({
+    qcTable = pd.concat([qcTable, pd.Series({
         "soxspipe_recipe": recipeName,
         "qc_name": "N NAN PIXELS",
         "qc_value": nanCount,
@@ -563,7 +564,7 @@ def generic_quality_checks(
         "obs_date_utc": dateObs,
         "reduction_date_utc": utcnow,
         "to_header": False
-    }, ignore_index=True)
+    }).to_frame().T], ignore_index=True)
 
     # COUNT BAD-PIXELS
     badCount = frame.mask.sum()
@@ -571,7 +572,7 @@ def generic_quality_checks(
     percent = (float(badCount) / float(totalPixels))
     percent = float("{:.6f}".format(percent))
 
-    qcTable = qcTable.append({
+    qcTable = pd.concat([qcTable, pd.Series({
         "soxspipe_recipe": recipeName,
         "qc_name": "N BAD PIXELS",
         "qc_value": int(badCount),
@@ -580,9 +581,9 @@ def generic_quality_checks(
         "obs_date_utc": dateObs,
         "reduction_date_utc": utcnow,
         "to_header": True
-    }, ignore_index=True)
+    }).to_frame().T], ignore_index=True)
 
-    qcTable = qcTable.append({
+    qcTable = pd.concat([qcTable, pd.Series({
         "soxspipe_recipe": recipeName,
         "qc_name": "FRAC BAD PIXELS",
         "qc_value": percent,
@@ -591,7 +592,7 @@ def generic_quality_checks(
         "obs_date_utc": dateObs,
         "reduction_date_utc": utcnow,
         "to_header": True
-    }, ignore_index=True)
+    }).to_frame().T], ignore_index=True)
 
     log.debug('completed the ``functionName`` function')
     return qcTable
@@ -632,6 +633,7 @@ def spectroscopic_image_quality_checks(
 
     import numpy.ma as ma
     import numpy as np
+    import pandas as pd
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -689,7 +691,7 @@ def spectroscopic_image_quality_checks(
     utcnow = datetime.utcnow()
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-    qcTable = qcTable.append({
+    qcTable = pd.concat([qcTable, pd.Series({
         "soxspipe_recipe": recipeName,
         "qc_name": "INNER ORDER PIX MEAN",
         "qc_value": mean,
@@ -698,9 +700,9 @@ def spectroscopic_image_quality_checks(
         "obs_date_utc": dateObs,
         "reduction_date_utc": utcnow,
         "to_header": True
-    }, ignore_index=True)
+    }).to_frame().T], ignore_index=True)
 
-    qcTable = qcTable.append({
+    qcTable = pd.concat([qcTable, pd.Series({
         "soxspipe_recipe": recipeName,
         "qc_name": "INNER ORDER PIX SUM",
         "qc_value": flux,
@@ -709,7 +711,7 @@ def spectroscopic_image_quality_checks(
         "obs_date_utc": dateObs,
         "reduction_date_utc": utcnow,
         "to_header": True
-    }, ignore_index=True)
+    }).to_frame().T], ignore_index=True)
 
     log.debug('completed the ``functionName`` function')
     return qcTable

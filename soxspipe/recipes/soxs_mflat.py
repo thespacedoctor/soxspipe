@@ -159,8 +159,8 @@ class soxs_mflat(_base_recipe_):
 
             if not error:
                 for i in [f"MASTER_BIAS_{self.arm}", f"ORDER_TAB_{self.arm}"]:
-                if i not in imageCat:
-                    error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
 
             if not error:
                 found = False
@@ -312,7 +312,9 @@ class soxs_mflat(_base_recipe_):
             productTable, qcTable, orderDetectionCounts = edges.get()
 
             if tag:
+                # NEED TO TRY AND RENAME BOTH ORDER AND COUNT COLUMNS FOR PANDAS 1.X and 2.X
                 orderDetectionCounts.rename(columns={"order": tag}, inplace=True)
+                orderDetectionCounts.rename(columns={"count": tag}, inplace=True)
                 orderDetectionCounts.index.names = ['order']
 
             self.detectionCountSet.append(orderDetectionCounts)
@@ -377,7 +379,7 @@ class soxs_mflat(_base_recipe_):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
         basename = os.path.basename(productPath)
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": f"MFLAT",
             "file_name": basename,
@@ -386,7 +388,7 @@ class soxs_mflat(_base_recipe_):
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} master spectroscopic flat frame",
             "file_path": productPath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         if 1 == 0:
             filename = filenamer(
@@ -398,7 +400,7 @@ class soxs_mflat(_base_recipe_):
             filepath = self._write(
                 backgroundFrame, outDir, filename=filename, overwrite=True)
             filepath = os.path.abspath(filepath)
-            self.products = self.products.append({
+            self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "product_label": "",
                 "file_name": filename,
@@ -407,7 +409,7 @@ class soxs_mflat(_base_recipe_):
                 "reduction_date_utc": utcnow,
                 "product_desc": f"modelled scatter background light image (removed from master flat)",
                 "file_path": backgroundFrame
-            }, ignore_index=True)
+            }).to_frame().T], ignore_index=True)
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
@@ -714,7 +716,7 @@ class soxs_mflat(_base_recipe_):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.qc = self.qc.append({
+        self.qc = pd.concat([self.qc, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "qc_name": "NLOWSENS",
             "qc_value": lowSensPixelCount,
@@ -722,7 +724,7 @@ class soxs_mflat(_base_recipe_):
             "qc_unit": "pixels",
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
         print(f"        {lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
 
         frame.mask = (lowSensitivityPixelMask == 1) | (originalBPM == 1)
@@ -771,7 +773,9 @@ class soxs_mflat(_base_recipe_):
 
         # MERGE DETECTION DATAFRAMES - LISTING ALL ORDER EGDE LOCATIONS FOUND FOR EACH ORDER IN D AND QTH LAMP FRAMES
         detectionCount = pd.merge(self.detectionCountSet[0], self.detectionCountSet[1], left_index=True, right_index=True)
+
         detectionCount["best_frame"] = detectionCount.idxmax(axis=1)
+
         mask = (detectionCount['best_frame'] == "_QLAMP")
         orderFlip = detectionCount.loc[mask]
         # THIS IS THE ORDER THAT WE USE TO RESCALE ONE FLAT TO ANOTHER

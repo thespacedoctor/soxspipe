@@ -21,7 +21,4 @@
 Documentation for soxspipe is hosted by [Read the Docs](https://soxspipe.readthedocs.io/en/master/) ([development version](https://soxspipe.readthedocs.io/en/develop/) and [master version](https://soxspipe.readthedocs.io/en/master/)). The code lives on [github](https://github.com/thespacedoctor/soxspipe). Please report any issues you find [here](https://github.com/thespacedoctor/soxspipe/issues).
 
 
-## Features
-
-* 
 

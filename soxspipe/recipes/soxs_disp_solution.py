@@ -145,14 +145,19 @@ class soxs_disp_solution(_base_recipe_):
 
         else:
             if not error:
-                for i in ["LAMP,FMTCHK", "BIAS"]:
-                    if i not in imageTech:
+                for i in imageTypes:
+                    if i not in ["LAMP,FMTCHK"]:
                         error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals()
 
             if not error:
-                for i in imageTypes:
-                    if i not in ["LAMP,FMTCHK", "BIAS", "DARK"]:
-                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals()
+                for i in ['ECHELLE,PINHOLE']:
+                    if i not in imageTech:
+                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS"
+
+            if not error:
+                for i in [f"MASTER_BIAS_{self.arm}"]:
+                    if i not in imageCat:
+                        error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS"
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")
@@ -176,6 +181,7 @@ class soxs_disp_solution(_base_recipe_):
 
         from astropy.nddata import CCDData
         from astropy import units as u
+        import pandas as pd
 
         arm = self.arm
         kw = self.kw
@@ -243,12 +249,12 @@ class soxs_disp_solution(_base_recipe_):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.products = self.products.append(productsTable)
-        self.qc = self.qc.append(qcTable)
+        self.products = pd.concat([self.products, productsTable])
+        self.qc = pd.concat([self.qc, qcTable])
 
         self.dateObs = self.pinholeFrame.header[kw("DATE_OBS")]
 
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "DISP_MAP",
             "file_name": filename,
@@ -257,7 +263,7 @@ class soxs_disp_solution(_base_recipe_):
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} first pass dispersion solution",
             "file_path": productPath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         self.report_output()
         self.clean_up()

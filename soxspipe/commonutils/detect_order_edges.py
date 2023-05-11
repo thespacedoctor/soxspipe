@@ -311,7 +311,7 @@ class detect_order_edges(_base_detect):
 
         # RECORD PRODUCTS AND QCs
         if not isinstance(self.products, bool):
-            self.products = self.products.append({
+            self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "product_label": f"ORDER_LOC{self.tag}",
                 "product_desc": "table of coefficients from polynomial fits to order locations",
@@ -320,8 +320,8 @@ class detect_order_edges(_base_detect):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "file_path": orderTablePath
-            }, ignore_index=True)
-            self.products = self.products.append({
+            }).to_frame().T], ignore_index=True)
+            self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "product_label": f"ORDER_LOC_RES{self.tag}",
                 "product_desc": "visualisation of goodness of order edge fitting",
@@ -330,9 +330,9 @@ class detect_order_edges(_base_detect):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "file_path": plotPath
-            }, ignore_index=True)
+            }).to_frame().T], ignore_index=True)
         if not isinstance(self.qc, bool):
-            self.qc = self.qc.append({
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMIN",
                 "qc_value": min_res,
@@ -341,8 +341,8 @@ class detect_order_edges(_base_detect):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMAX",
                 "qc_value": max_res,
@@ -351,8 +351,8 @@ class detect_order_edges(_base_detect):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESRMS",
                 "qc_value": std_res,
@@ -361,7 +361,7 @@ class detect_order_edges(_base_detect):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``get`` method')
 

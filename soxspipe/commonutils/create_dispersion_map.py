@@ -136,6 +136,8 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``get`` method')
 
+        import pandas as pd
+
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
             slitDeg = self.recipeSettings["slit-deg"]
@@ -207,7 +209,7 @@ class create_dispersion_map(object):
         else:
             tag = "multi"
 
-        self.qc = self.qc.append({
+        self.qc = pd.concat([self.qc, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "qc_name": "NLINE",
             "qc_value": detectedLines,
@@ -216,8 +218,9 @@ class create_dispersion_map(object):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "to_header": True
-        }, ignore_index=True)
-        self.qc = self.qc.append({
+        }).to_frame().T], ignore_index=True)
+
+        self.qc = pd.concat([self.qc, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "qc_name": "PLINE",
             "qc_value": percentageDetectedLines,
@@ -226,19 +229,33 @@ class create_dispersion_map(object):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "to_header": True
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         orderDeg = self.recipeSettings["order-deg"]
         wavelengthDeg = self.recipeSettings["wavelength-deg"]
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        popt_x, popt_y, res_plots = self.fit_polynomials(
-            orderPixelTable=orderPixelTable,
-            wavelengthDeg=wavelengthDeg,
-            orderDeg=orderDeg,
-            slitDeg=slitDeg,
-            missingLines=missingLines
-        )
+        fitFound = False
+        tryCount = 0
+        while not fitFound and tryCount < 5:
+            try:
+                popt_x, popt_y, res_plots = self.fit_polynomials(
+                    orderPixelTable=orderPixelTable,
+                    wavelengthDeg=wavelengthDeg,
+                    orderDeg=orderDeg,
+                    slitDeg=slitDeg,
+                    missingLines=missingLines
+                )
+                fitFound = True
+            except Exception as e:
+                degList = [wavelengthDeg, orderDeg, slitDeg]
+                degList[degList.index(max(degList))] -= 1
+                wavelengthDeg, orderDeg, slitDeg = degList
+                print(f"Wavelength, Order and Slit fitting orders reduced to {wavelengthDeg}, {orderDeg}, {slitDeg} to try and achieve a dispersion solution.")
+                tryCount += 1
+                if tryCount == 5:
+                    print(f"Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
+                    raise e
 
         # WRITE THE MAP TO FILE
         mapPath = self.write_map_to_file(
@@ -598,6 +615,7 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``calculate_residuals`` method')
 
         import numpy as np
+        import pandas as pd
 
         arm = self.arm
 
@@ -644,7 +662,7 @@ class create_dispersion_map(object):
         if writeQCs:
             absx = abs(orderPixelTable["residuals_x"])
             absy = abs(orderPixelTable["residuals_y"])
-            self.qc = self.qc.append({
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMIN",
                 "qc_value": absx.min(),
@@ -653,8 +671,8 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMAX",
                 "qc_value": absx.max(),
@@ -663,8 +681,8 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESRMS",
                 "qc_value": absx.std(),
@@ -673,8 +691,8 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "YRESMIN",
                 "qc_value": absy.min(),
@@ -683,8 +701,8 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "YRESMAX",
                 "qc_value": absy.max(),
@@ -693,8 +711,8 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "YRESRMS",
                 "qc_value": absy.std(),
@@ -703,8 +721,8 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XYRESMIN",
                 "qc_value": orderPixelTable["residuals_xy"].min(),
@@ -713,8 +731,8 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XYRESMAX",
                 "qc_value": orderPixelTable["residuals_xy"].max(),
@@ -723,8 +741,8 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
-            self.qc = self.qc.append({
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XYRESRMS",
                 "qc_value": orderPixelTable["residuals_xy"].std(),
@@ -733,7 +751,7 @@ class create_dispersion_map(object):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
-            }, ignore_index=True)
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``calculate_residuals`` method')
         return combined_res_mean, combined_res_std, combined_res_median, orderPixelTable
@@ -1035,7 +1053,7 @@ class create_dispersion_map(object):
             filePath = f"{outDir}/{res_plots}"
         else:
             filePath = f"{outDir}/{res_plots}"
-        self.products = self.products.append({
+        self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "DISP_MAP_RES",
             "file_name": res_plots,
@@ -1044,7 +1062,7 @@ class create_dispersion_map(object):
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} dispersion solution QC plots",
             "file_path": filePath
-        }, ignore_index=True)
+        }).to_frame().T], ignore_index=True)
 
         plt.tight_layout()
         # plt.show()
@@ -1202,8 +1220,17 @@ class create_dispersion_map(object):
         # DEFINE AN INPUT ARRAY
         inputArray = [(order, minWl, maxWl) for order, minWl,
                       maxWl in zip(orderNums, waveLengthMin, waveLengthMax)]
+
+        # NUMPY CAN BE TRICKY WITH MP
+        numThreads = '1'
+        os.environ['OPENBLAS_NUM_THREADS'] = numThreads
+        os.environ['OMP_NUM_THREADS'] = numThreads
+        os.environ['BLAS_NUM_THREADS'] = numThreads
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=False, timeout=3600, turnOffMP=False)
+                                inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=False)
+        del os.environ['OPENBLAS_NUM_THREADS']
+        del os.environ['OMP_NUM_THREADS']
+        del os.environ['BLAS_NUM_THREADS']
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
@@ -1310,15 +1337,15 @@ class create_dispersion_map(object):
             if remainingCount < 3:
                 break
 
+            orderPixelTable = orderPixelTable.drop_duplicates(subset=['pixel_x', 'pixel_y', 'order'])
             train_wlx = orderPixelTable["fit_x"].values
             train_wly = orderPixelTable["fit_y"].values
             train_wl = orderPixelTable["wavelength"].values
             train_sp = orderPixelTable["slit_position"].values
-            g = orderPixelTable[['pixel_x', 'pixel_y', 'order']].drop_duplicates()
 
             # USE CUBIC SPLINE NEIGHEST NEIGHBOUR TO SEED RESULTS
-            bigWlArray = griddata((train_wlx, train_wly), train_wl, (g['pixel_x'].values, g['pixel_y'].values), method="cubic")
-            bigSlitArray = griddata((train_wlx, train_wly), train_sp, (g['pixel_x'].values, g['pixel_y'].values), method="cubic")
+            bigWlArray = griddata((train_wlx, train_wly), train_wl, (orderPixelTable['pixel_x'].values, orderPixelTable['pixel_y'].values), method="cubic")
+            bigSlitArray = griddata((train_wlx, train_wly), train_sp, (orderPixelTable['pixel_x'].values, orderPixelTable['pixel_y'].values), method="cubic")
 
         self.log.debug('completed the ``order_to_image`` method')
         return slitMap, wlMap
@@ -1401,7 +1428,8 @@ class create_dispersion_map(object):
             subset=['pixel_x', 'pixel_y'], keep="first")
         # REMOVE PIXELS FOUND IN newPixelValue FROM orderPixelTable
         orderPixelTable = newPixelValue[['pixel_x', 'pixel_y']].merge(orderPixelTable, on=[
-            'pixel_x', 'pixel_y'], how='right', indicator=True).query('_merge == "right_only"').drop('_merge', 1)
+            'pixel_x', 'pixel_y'], how='right', indicator=True).query('_merge == "right_only"').drop(columns=['_merge'])
+
         remainingCount = orderPixelTable.drop_duplicates(
             subset=['pixel_x', 'pixel_y'], keep="first")
 
@@ -1418,7 +1446,8 @@ class create_dispersion_map(object):
 
         sys.stdout.write("\x1b[1A\x1b[2K")
         percentageFound = (1 - (np.count_nonzero(np.isnan(wlMap.data)) / np.count_nonzero(wlMap.data))) * 100
-        print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
+        print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted.")
+        # print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
 
         if plots:
             from matplotlib import cm

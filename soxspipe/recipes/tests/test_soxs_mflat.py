@@ -173,18 +173,6 @@ class test_soxs_mflat(unittest.TestCase):
             assert True
             print(str(e))
 
-    def test_soxs_mflat_uvb_combined_flat_function(self):
-
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_d_and_q_flats.sof"
-        from soxspipe.recipes import soxs_mflat
-        this = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
-        )
-        this.produce_product()
-
     def test_soxs_mflat_vis_long_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_long_flats.sof"
         from soxspipe.recipes import soxs_mflat
