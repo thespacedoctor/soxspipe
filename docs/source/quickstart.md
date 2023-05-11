@@ -2,27 +2,27 @@
 
 ```eval_rst
 .. warning::
-    This quickstart guide is subject to (much) change during development of the pipeline. New features and ways of operating the pipeline are still being added.
+    This quickstart guide is subject to (much) change during the development of the pipeline. New features and ways of operating the pipeline are still being added. Current data taken in stare mode can be reduced to the point of sky subtraction. 
 ```
 
-## INSTALL
+## Install
 
 The best way to install soxspipe is to use `conda` and install the package in its own isolated environment (using either [Anaconda](https://docs.anaconda.com/anaconda/install/index.html) or [Minicoda](https://docs.conda.io/en/latest/miniconda.html)), as shown here:
 
 ``` bash
-conda create -n soxspipe python=3.11 soxspipe -c conda-forge
+conda create -n soxspipe python=3.9 soxspipe -c conda-forge
 conda activate soxspipe
 ```
 
-To check installation was successful run `soxspipe -v`. This should return the version number of the install.
+To check installation was successful run `soxspipe -v`. This should return the version number of the installation.
 
 To upgrade to the latest version of soxspipe use the command:
 
 ``` bash
-conda upgrade soxspipe
+conda upgrade soxspipe -c conda-forge
 ```
 
-## Initialising SOXSPIPE for the first time
+## Initialising SOXSPIPE for the first time (or after an upgrade)
 
 If this is the first time you have installed soxspipe on the machine you are using, you must first initialise it by running:
 
@@ -37,23 +37,20 @@ This adds a default soxspipe settings file and log file within `~/.config/soxspi
     It is also possible to copy this settings file, tailor it to your needs and use the amended settings file with the `--settings` option. Run `soxspipe -h` to see how.
 ```
 
+If you have just upgraded SOXSPIPE to a more recent release, we advise you to back up your current setting file and re-initialise SOXSPIPE with the latest default settings. 
+
+```bash
+stamp=`date +\%Y\%m\%dt\%H\%M`
+mv ~/.config/soxspipe/soxspipe.yaml ~/.config/soxspipe/soxspipe_${stamp}.yaml 
+soxspipe init
+```
+
 ## Demo Data
-
-```eval_rst
-.. note::
-    All of the Set-of-Files (`sof`) files have been pre-generated for this demo and in a future release of the pipeline these files will probably be completely obfuscated from the typical user. Instead, a built-in data organiser will intelligently select the correct files to process.
-```
-
-
-```eval_rst
-.. note::
-    Although demo data here is XShooter data, the pipeline can also run on simulated SOXS data.
-```
 
 The demo XShooter data (stare-mode) is of the X-ray binary SAX J1808.4-3658 taken during a 2019 outburst. You can download and unpack the data with the following commands:
 
 ```bash
-curl -L "https://www.dropbox.com/s/ov4pdfopdnczca2/soxspipe-quickstart-demo.tgz?dl=1" > soxspipe-quickstart-demo.tgz
+curl -L "https://www.dropbox.com/s/x5e6xs9a5lxq6u7/soxspipe-quickstart-demo-lite.tgz?dl=1" > soxspipe-quickstart-demo.tgz
 tar -xzvf soxspipe-quickstart-demo.tgz
 ```
 
@@ -67,90 +64,27 @@ Spectroscopy = XSHOOTER/VLT
 Science
 ```
 
-To help you get familiar with running the pipeline, one or two example commands will be shown for each pipeline recipe. Within the demo-data package, there is also a `run_pipeline.sh` script that can be used to a) view all the commands needed to reduce these data and b) to reduce the in one go by running `sh run_pipeline.sh` within your conda environment.
+## Preparing the Data-Reduction Workspace
 
-
-## MBIAS
-
-Change into the `soxspipe-quickstart-demo` directory and create a master bias frames with a command like:
+Now you have a sample data set to work with, it is time to prepare the `soxspipe-quickstart-demo` workspace. Change into the `soxspipe-quickstart-demo` directory and run the `soxspipe prep` command:
 
 ```bash
 cd soxspipe-quickstart-demo
-soxspipe mbias ./sof/2019.08.30T11.23.13.764_UVB_1X1_SLOW_MBIAS.sof -o ./
+soxspipe prep .
 ```
 
-Upon completion, you should be presented with some quality control (QC) metrics for the data and a list of products produced by the recipe. QCs are also written to the FITS headers of the products.
+Once the workspace has been prepared, you should find it contains the following files and folders:
 
-[![](https://live.staticflickr.com/65535/51999455194_dede3217a4_b.jpg)](https://live.staticflickr.com/65535/51999455194_dede3217a4_b.jpg)
+   - `raw_frames/`: all raw-frames to be reduced
+   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the `prep` command
+   - `sof/`: the set-of-files (sof) files required for each reduction step
+   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete
+   - `_reduce_all.sh`: a single script to reduce all the data in the workspace
 
+## Reduce the Data
 
-## MDARK
-
-Create the master dark frames with commands like:
+All of the `soxspipe` recipe commands needed to reduce workspace data can be found in the `_reduce_all.sh` script. To reduce the data, simple execute that script:
 
 ```bash
-soxspipe mdark ./sof/2019.08.30T12.04.43.0992_NIR_MDARK_300PT0.sof -o ./
+sh _reduce_all.sh
 ```
-
-## DISP_SOL
-
-We will now create the first-guess dispersion solution using the single pinhole frames. Here's an example command to create the initial dispersion solution:
-
-```bash
-soxspipe disp_sol ./sof/2019.08.30T18.33.47.7202_NIR_DISP_SOL_10PT0.sof -o ./
-```
-
-Here, for the first time, you will find a PDF file included in the products table:
-
-[![](https://live.staticflickr.com/65535/51999630094_f97cb55f7f_b.jpg)](https://live.staticflickr.com/65535/51999630094_f97cb55f7f_b.jpg)
-
-The PDF includes a visualisation of the dispersion map fit and its associated residuals.
-
-[![](https://live.staticflickr.com/65535/51999627639_9b1c73e26a_z.png)](https://live.staticflickr.com/65535/51999627639_9b1c73e26a_o.png)
-
-
-## ORDER_CENTRES
-
-To create an initial order table, fitting a global polynomial to the order centre traces from a single pinhole lamp-flat frame, run:
-
-```bash
-soxspipe order_centres ./sof/2019.08.30T18.41.41.7595_NIR_ORDER_LOCATIONS_1PT0.sof -o ./
-```
-
-## MFLAT
-
-Now create the master flats and order tables with order edges defined:
-
-```bash
-soxspipe mflat ./sof/2019.08.30T18.57.31.4401_NIR_MFLAT_5PT76.sof -o ./
-```
-
-## SPAT_SOL
-
-```eval_rst
-.. note::
-    This recipe takes some time to run as it generates the 2D wavelength/slit/order map image required in later recipes.
-```
-
-We will now use the multi-pinhole frames to generate the full dispersion solution.
-
-
-Now run the `spat_sol` recipe like:
-
-```bash
-soxspipe spat_sol ./sof/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.sof -o ./
-```
-
-## STARE
-
-Run the pipeline in stare mode. This recipe is not yet complete but will model and subtract the sky from the data.  
-
-**we are not content with the sky-subtraction so far --- a work in progress**
-
-
-```bash
-soxspipe stare ./sof/2019.08.31T00.13.29.037_UVB_1X1_SLOW_STARE_SAX_J1808.43658.sof -o ./
-soxspipe stare ./sof/2019.08.31T00.13.29.026_VIS_1X1_SLOW_STARE_SAX_J1808.43658.sof -o ./
-soxspipe stare ./sof/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658.sof -o ./
-```
-

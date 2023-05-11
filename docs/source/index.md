@@ -5,21 +5,18 @@
 
 ```eval_rst
 .. toctree::
-   :maxdepth: 3
-   :caption: Table of Contents
+   :hidden:
+   :maxdepth: 4
 
-   install
-   initialisation
+   Install <index>
    quickstart
    primer_on_soxs_obs_modes
    recipes/index
    utils/index
    files/index
-   todolist
    changes_link
 ```
 
-## API Reference
 
 ```eval_rst
 .. toctree::
@@ -38,12 +35,6 @@
 ```
 
 
-```eval_rst
-.. include:: /autosummary_include.rst
-```
-
 ## Acknowledgements
 
 * SOXSPIPE makes use of [`ccdproc`](https://ccdproc.readthedocs.io/en/latest/index.html), an Astropy package for image reduction ([Craig et al. 2021](https://zenodo.org/record/4606771)).
-
-{{../../CHANGES.md}}
