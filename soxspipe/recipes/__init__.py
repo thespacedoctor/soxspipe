@@ -9,6 +9,4 @@ from .soxs_order_centres import soxs_order_centres
 from .soxs_mflat import soxs_mflat
 from .soxs_spatial_solution import soxs_spatial_solution
 from .soxs_straighten import soxs_straighten
-from .soxs_nod_mode import soxs_nod_mode
 from .soxs_stare import soxs_stare
-from .soxs_offset_mode import soxs_offset_mode
