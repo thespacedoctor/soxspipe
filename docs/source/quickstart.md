@@ -16,7 +16,7 @@ conda activate soxspipe
 
 To check installation was successful run `soxspipe -v`. This should return the version number of the installation.
 
-To upgrade to the latest version of soxspipe use the command:
+With each new release of soxspipe, you can upgrade to the latest version using the command:
 
 ``` bash
 conda upgrade soxspipe -c conda-forge
@@ -30,14 +30,14 @@ If this is the first time you have installed soxspipe on the machine you are usi
 soxspipe init
 ```
 
-This adds a default soxspipe settings file and log file within `~/.config/soxspipe/`. The default parameters that are set within this settings file are good for typical reductions, but as a user, you can adjust these settings to your needs. 
+This adds a default soxspipe settings file to `~/.config/soxspipe/soxspipe.yaml`. The default parameters set within this settings file are good for typical reductions, but as a user, you can adjust these settings to your needs. 
 
 ```eval_rst
 .. note::
-    It is also possible to copy this settings file, tailor it to your needs and use the amended settings file with the `--settings` option. Run `soxspipe -h` to see how.
+    It is also possible to run soxspipe with alternative settings files using the `--settings` option. Run `soxspipe -h` to see how.
 ```
 
-If you have just upgraded SOXSPIPE to a more recent release, we advise you to back up your current setting file and re-initialise SOXSPIPE with the latest default settings. 
+If you have just upgraded SOXSPIPE to a more recent release, we advise you back up your current setting file and re-initialise soxspipe to get the latest default settings:
 
 ```bash
 stamp=`date +\%Y\%m\%dt\%H\%M`
@@ -50,7 +50,7 @@ soxspipe init
 The demo XShooter data (stare-mode) is of the X-ray binary SAX J1808.4-3658 taken during a 2019 outburst. You can download and unpack the data with the following commands:
 
 ```bash
-curl -L "https://www.dropbox.com/s/x5e6xs9a5lxq6u7/soxspipe-quickstart-demo-lite.tgz?dl=1" > soxspipe-quickstart-demo.tgz
+curl -L "https://www.dropbox.com/s/t3adwc86bcwonkj/soxspipe-quickstart-demo-lite.tgz?dl=1" > soxspipe-quickstart-demo.tgz
 tar -xzvf soxspipe-quickstart-demo.tgz
 ```
 

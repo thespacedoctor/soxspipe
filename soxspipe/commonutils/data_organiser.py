@@ -361,7 +361,7 @@ class data_organiser(object):
         fitsNames = []
         for d in os.listdir(pathToDirectory):
             filepath = os.path.join(pathToDirectory, d)
-            if os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.Z" in filepath):
+            if d[0] != "." and os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.Z" in filepath):
                 fitsPaths.append(filepath)
                 fitsNames.append(d)
 
