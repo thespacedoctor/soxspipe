@@ -7,7 +7,7 @@ save-intermediate-products: False
 instrument: xsh
 data-extension: 0
 
-#Paramaters for master bias recipe.
+# Paramaters for master bias recipe.
 soxs-mbias:
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
