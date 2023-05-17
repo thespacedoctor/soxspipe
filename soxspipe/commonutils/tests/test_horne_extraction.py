@@ -52,7 +52,7 @@ class test_horne_extraction(unittest.TestCase):
         skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
         skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYSUB.fits"
         twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
-        dispMap = "~/xshooter-pipeline-dTata/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.fits"
+        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.fits"
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         import pandas as pd
@@ -85,9 +85,10 @@ class test_horne_extraction(unittest.TestCase):
             settings=settings,
             recipeName="soxs-order-stare",
             qcTable=qc,
-            productsTable=products
+            productsTable=products,
+            dispersionMap=dispMap
         )
-        optimalExtractor.extract()
+        optimalExtractor.extract(25)
 
     def test_horne_extraction_function_exception(self):
 

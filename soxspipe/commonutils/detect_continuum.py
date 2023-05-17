@@ -488,6 +488,7 @@ class detect_continuum(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
+        print(self.recipeSettings)
         self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 
@@ -771,7 +772,7 @@ class detect_continuum(_base_detect):
             return pixelPostion
 
         # CHECK THE SLICE POINTS IF NEEDED
-        if 1 == 0:
+        if 1 == 1:
             import matplotlib.pyplot as plt
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
