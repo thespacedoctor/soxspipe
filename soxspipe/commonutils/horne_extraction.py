@@ -74,6 +74,7 @@ class horne_extraction(object):
     ):
         import numpy as np
         import pandas as pd
+        from astropy.io import fits
 
         self.log = log
         log.debug("instansiating a new 'horne_extraction' object")
@@ -81,33 +82,35 @@ class horne_extraction(object):
         self.settings = settings
         # xt-self-arg-tmpx
 
-        self.skySubractedFrame = CCDData.read(skySubtractedFrame, hdu=0, unit=u.electron,
-                                hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
-                                key_uncertainty_type='UTYPE')
-        from astropy.io import fits
+        # OPEN THE SKY-SUBTRACTED FRAME
+        self.skySubtractedFrame = CCDData.read(skySubtractedFrame, hdu=0, unit=u.electron,
+                                               hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
+                                               key_uncertainty_type='UTYPE')
+
+        # OPEN THE SKY-MODEL FRAME
+        self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
+                                          hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
+                                          key_uncertainty_type='UTYPE')
+
+        # OPEN AND UNPACK THE 2D IMAGE MAP
         hdul = fits.open(twoDMapPath)
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
         xdim = hdul[0].data.shape[1]
         ydim = hdul[0].data.shape[0]
-
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
-
         self.imageMap = pd.DataFrame.from_dict({
             "x": xarray,
             "y": yarray,
             "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
             "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
             "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
-            "flux": self.skySubractedFrame.data.flatten().byteswap().newbyteorder()
+            "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
         })
-
         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
-
-
-    def extract(self,order):
+    def extract(self, order):
         """
         *get the horne_extraction object*
 
@@ -135,7 +138,6 @@ class horne_extraction(object):
         import yaml
         import pandas as pd
 
-
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         qc = pd.DataFrame({
             "soxspipe_recipe": [],
@@ -158,8 +160,8 @@ class horne_extraction(object):
         })
 
         # HACK TO GET DETECT CONTINUUM TO RUN
-        self.skySubractedFrame.header["ESO DPR TYPE"] = "LAMP,FLAT"
-        self.skySubractedFrame.header["ESO DPR TECH"] = "IMAGE"
+        self.skySubtractedFrame.header["ESO DPR TYPE"] = "LAMP,FLAT"
+        self.skySubtractedFrame.header["ESO DPR TECH"] = "IMAGE"
         self.settings["intermediate-data-root"] = "./"
 
         dct = yaml.safe_load('''
@@ -167,7 +169,7 @@ class horne_extraction(object):
             order-sample-count: 1000
             slice-length: 10
             peak-sigma-limit: 3
-            disp-axis-deg: 5
+            disp-axis-deg: 4
             order-deg: 4
             poly-fitting-residual-clipping-sigma: 5.0
             poly-clipping-iteration-limit: 5
@@ -176,26 +178,25 @@ class horne_extraction(object):
         # MERGE DICTIONARIES (SECOND OVERRIDES FIRST)
         self.settings = {**self.settings, **dct}
 
-        ## NOTE TO MARCO - I HAVE TRICKED THE CODE INTO THINKING THIS IS A LAMP-FLAT PINHOLE FRAME
-        ## SO detect_continuum OUTPUTS 20190831T001327_NIR_MORDER_CENTRES_residuals.pdf AND 20190831T001327_NIR_ORDER_LOCATIONS.fits
-        ## BUT THESE ARE REALLY THE OBJECT CONTINUUM NOT ORDER CENTRE TRACES
+        # NOTE TO MARCO - I HAVE TRICKED THE CODE INTO THINKING THIS IS A LAMP-FLAT PINHOLE FRAME
+        # SO detect_continuum OUTPUTS 20190831T001327_NIR_MORDER_CENTRES_residuals.pdf AND 20190831T001327_NIR_ORDER_LOCATIONS.fits
+        # BUT THESE ARE REALLY THE OBJECT CONTINUUM NOT ORDER CENTRE TRACES
 
         detector = detect_continuum(
             log=self.log,
-            pinholeFlat=self.skySubractedFrame,
+            pinholeFlat=self.skySubtractedFrame,
             dispersion_map=self.dispersionMap,
             settings=self.settings,
             recipeName="soxs-order-centre",
             qcTable=qc,
             productsTable=products
         )
-
-
         productPath, qcTable, productsTable = detector.get()
+
         from soxspipe.commonutils.toolkit import unpack_order_table
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=log, orderTablePath=productPath)
+            log=self.log, orderTablePath=productPath)
 
         self.log.debug('completed the ``extract`` method')
         return None

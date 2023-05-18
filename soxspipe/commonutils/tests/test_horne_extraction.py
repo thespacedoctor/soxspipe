@@ -56,6 +56,7 @@ class test_horne_extraction(unittest.TestCase):
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         import pandas as pd
+
         qc = pd.DataFrame({
             "soxspipe_recipe": [],
             "qc_name": [],
@@ -75,6 +76,13 @@ class test_horne_extraction(unittest.TestCase):
             "reduction_date_utc": [],
             "file_path": []
         })
+
+        from os.path import expanduser
+        home = expanduser("~")
+        twoDMap = twoDMap.replace("~", home)
+        skyModelFrame = skyModelFrame.replace("~", home)
+        skySubtractedFrame = skySubtractedFrame.replace("~", home)
+        dispMap = dispMap.replace("~", home)
 
         from soxspipe.commonutils import horne_extraction
         optimalExtractor = horne_extraction(

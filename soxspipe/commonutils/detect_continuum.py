@@ -772,7 +772,7 @@ class detect_continuum(_base_detect):
             return pixelPostion
 
         # CHECK THE SLICE POINTS IF NEEDED
-        if 1 == 1:
+        if 1 == 0:
             import matplotlib.pyplot as plt
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
@@ -783,8 +783,11 @@ class detect_continuum(_base_detect):
 
         # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
         # CONTAINING JUST NOISE
-        median_r = np.ma.median(slice)
-        std_r = mad_std(slice)
+        try:
+            median_r = np.ma.median(slice)
+            std_r = mad_std(slice)
+        except:
+            median_r = None
 
         if not median_r:
             pixelPostion[f"cont_{self.axisA}"] = np.nan
