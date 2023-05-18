@@ -56,6 +56,8 @@ class test_horne_extraction(unittest.TestCase):
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         import pandas as pd
+        import matplotlib.pyplot as plt
+        from matplotlib.pyplot import figure
 
         qc = pd.DataFrame({
             "soxspipe_recipe": [],
@@ -96,7 +98,30 @@ class test_horne_extraction(unittest.TestCase):
             productsTable=products,
             dispersionMap=dispMap
         )
-        optimalExtractor.extract(25)
+        #(w, f) = optimalExtractor.extract(15,3, 10, 2.0)
+
+        #figure(figsize=(13, 6))
+
+        #plt.ylim(-100, 300)
+        #plt.plot(w, f)
+
+        #plt.show()
+        e_w_l =[]
+        e_s = []
+
+        for order in range(11, 25):
+            extracted_wave_spectrum, extracted_spectrum = optimalExtractor.extract(order,3, 10, 2.0)
+            e_w_l.append(extracted_wave_spectrum)
+            e_s.append(extracted_spectrum)
+            #plt.plot(extracted_wave_spectrum, extracted_spectrum)
+
+        plt.clf()
+        figure(figsize=(13, 6))
+
+        for (w, s) in zip(e_w_l,e_s):
+            plt.plot(w, s)
+        plt.ylim([0, 900])
+        plt.show()
 
     def test_horne_extraction_function_exception(self):
 
