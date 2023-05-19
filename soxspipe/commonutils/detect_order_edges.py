@@ -292,7 +292,7 @@ class detect_order_edges(_base_detect):
             clippedDataLower=clippedLower
         )
 
-        # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
+        # WRITE OUT THE FITS TO THE ORDER LOCATION TABLE
 
         orderTablePath = self.write_order_table_to_file(
             frame=self.flatFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
@@ -549,9 +549,16 @@ class detect_order_edges(_base_detect):
             orderResiduals = np.concatenate((orderPixelTable.loc[mask][
                 f"{self.axisA}coord_lower_fit_res"], orderPixelTable.loc[mask][f"{self.axisA}coord_upper_fit_res"]))
             bottomleft.scatter(orderAxisACoords, orderResiduals, alpha=0.6, s=0.2, c=c)
-            bottomleft.text(orderAxisACoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
+            try:
+                bottomleft.text(orderAxisACoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
+            except:
+                pass
             bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
-            bottomright.text(orderAxisBCoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
+            try:
+                bottomright.text(orderAxisBCoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
+            except:
+                pass
+
         bottomleft.set_xlabel(f'{self.axisA} pixel position')
         bottomleft.set_ylabel(f'{self.axisA} residual')
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
