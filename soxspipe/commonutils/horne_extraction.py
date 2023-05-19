@@ -79,8 +79,11 @@ class horne_extraction(object):
         self.log = log
         log.debug("instansiating a new 'horne_extraction' object")
         self.dispersionMap = dispersionMap
+        self.twoDMapPath = twoDMapPath
         self.settings = settings
-        # xt-self-arg-tmpx
+        self.productsTable = productsTable
+        self.qcTable = qcTable
+        self.recipeName = recipeName
 
         # OPEN THE SKY-SUBTRACTED FRAME
         self.skySubtractedFrame = CCDData.read(skySubtractedFrame, hdu=0, unit=u.electron,
@@ -94,7 +97,6 @@ class horne_extraction(object):
 
         # OPEN AND UNPACK THE 2D IMAGE MAP
         hdul = fits.open(twoDMapPath)
-
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
         xdim = hdul[0].data.shape[1]
         ydim = hdul[0].data.shape[0]
@@ -110,14 +112,18 @@ class horne_extraction(object):
         })
         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
-
-    # TODO - RON shall be read from the fits headers of the frame.
-    def extract(self, order, sl_size, maxIteration, clippingSigmaFitting, RON=3.0,sigma_clip_weights=25):
+    # TODO: - RON shall be read from the fits headers of the frame.
+    # TODO: - move settings to settings file
+    # sl_size - half length of slice
+    # clippingSigmaFitting - clipping for each low-order dispersion-direction profile (is sl_size = 3 there will be 6 profiles)
+    # sigma_clip_weights - sigma-clip ALL extracted pixels to find CRH etc
+    def extract(self, order, sl_size, maxIteration, clippingSigmaFitting, RON=3.0, sigma_clip_weights=25):
         """
         *get the horne_extraction object*
 
         **Return:**
-            - ``horne_extraction``
+            - ``extracted_wave_spectrum`` -- pixel wavelength array
+            - ``extracted_spectrum`` -- pixel flux values
 
         **Usage:**
 
@@ -142,6 +148,10 @@ class horne_extraction(object):
         import numpy as np
         from astropy.stats import sigma_clip
         import matplotlib.pyplot as plt
+
+        # FIX BELOW
+        # TODO: fix the detect_continuum function to work directly on the object frame WIHTOUT having to adjust header keywords
+        # TODO: continum fitting need to be done in __init__ (or another method)
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         qc = pd.DataFrame({
@@ -172,7 +182,7 @@ class horne_extraction(object):
         dct = yaml.safe_load('''
         soxs-order-centre:
             order-sample-count: 1000
-            slice-length: 10
+            slice-length: 25
             peak-sigma-limit: 3
             disp-axis-deg: 4
             order-deg: 4
@@ -197,30 +207,29 @@ class horne_extraction(object):
             productsTable=products
         )
         productPath, qcTable, productsTable = detector.get()
-
         from soxspipe.commonutils.toolkit import unpack_order_table
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=productPath)
 
-
+        # FIX ABOVE ^
 
         # EXTRACTION STARTING
         i = 0
         extracted_spectrum = []
+        # NON-OPTIMAL EXTRACTED SPECTRUM
         extracted_spectrum_nonopt = []
         extracted_wave_spectrum = []
         total_weights = []
+
+        # TODO: FIX NAN = 0.0 ... COULD BE AFFECTING SLICE PIXEL-FLUX FRACTIONS
         ourFrame_nonan = np.nan_to_num(self.skySubtractedFrame.data, nan=0.0, copy=True)
         skyModelFrame_nonan = np.nan_to_num(self.skyModelFrame.data, nan=0.0, copy=True)
 
-        wave_px = []
-
         poly_coeffs = []
-        fractions = []
 
         # 1) SELECTING THE ORDER FROM THE 2DMAP TABLE
-
+        # THIS IS THE CONTINUUM OF THE OBJECT
         selection = orderPixelTable.loc[orderPixelTable['order'] == order]
 
         # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
@@ -235,23 +244,28 @@ class horne_extraction(object):
                 xcoord_centre = row['xcoord_centre']
                 y = row['ycoord']
                 std = np.abs(row['std'])
-                v0 = 3  # RON of the detector (placeholder)
+
+                # TODO: could move this outside the for loop and store slices in a lookup
                 slice_data = ourFrame_nonan[int(y), int(xcoord_centre) - sl_size:int(xcoord_centre) + sl_size]
                 # for j in range(0, len(slice_data)):
 
                 try:
+
+                    # TODO: inverstigate if average pass ... might retrun inf not nan
                     if np.isnan(slice_data[sl_px]) or np.isnan(slice_data[sl_px] / (np.sum(slice_data))):
                         pass
                     else:
+                        # QC PLOTS
                         if False and i > 490 and i < 500:
                             x_axis = np.arange(int(xcoord_centre) - sl_size, int(xcoord_centre) + sl_size)
                             plt.plot(x_axis, slice_data)
                             # plt.plot(x_axis, py)
                             plt.show()
                         # RATIO OF PIXEL FLUX TO SUM IN SLICE
+                        # TODO: FIX NAN = 0.0 ... COULD BE AFFECTING SLICE PIXEL-FLUX FRACTIONS (see above)
                         fractions.append(slice_data[sl_px] / (np.sum(slice_data)))
                         wave_px.append(y)
-                        # COULD USE ERROR MAP AND NOT RON? Current NOT using these weights
+                        # TODO: COULD USE ERROR MAP AND NOT RON? Current NOT using these weights
                         w = RON + np.abs(slice_data[sl_px]) / (np.sum(slice_data) * np.sum(slice_data))
                         weigths.append(w)
                 except Exception as e:
@@ -266,8 +280,9 @@ class horne_extraction(object):
             weigths = np.array(weigths)
             coeffs = []
 
-
             while (iteration < maxIteration) and (clipped_count > 0):
+
+                # TODO: add this deg to settings file?
                 coeffs = np.polyfit(wave_px, fractions, deg=2)
 
                 # CALCULATE RESIDUALS
@@ -275,6 +290,7 @@ class horne_extraction(object):
 
                 # CLIP
 
+                # TODO: use MAD instread of STD?
                 masked_residuals = sigma_clip(
                     res, sigma=clippingSigmaFitting, maxiters=1)
 
@@ -295,15 +311,15 @@ class horne_extraction(object):
             #plt.scatter(wave_px, fractions, alpha=0.2)
             #plt.plot(wave_px, np.polyval(coeffs, wave_px), color='red')
             #plt.ylim([-1, 1])
-            #plt.show()
+            # plt.show()
 
         # 3) OPTIMAL EXTRACTION HERE
-
         for index, row in selection.iterrows():
+
+            # TODO: this is done above and can be move outside
             xcoord_centre = row['xcoord_centre']
             y = row['ycoord']
             std = np.abs(row['std'])
-            v0 = 3  # RON of the detector
             slice_data = ourFrame_nonan[int(y), int(xcoord_centre) - sl_size:int(xcoord_centre) + sl_size]
             slice_data_sky = skyModelFrame_nonan[int(y), int(xcoord_centre) - sl_size:int(xcoord_centre) + sl_size]
             extracted_val = 0.0
@@ -319,38 +335,64 @@ class horne_extraction(object):
             for js in range(0, sl_size * 2):
                 coeffs = poly_coeffs[js]
                 # norm_factor will be almost 1 but not quite (polynomial fitting introduce fluxuation)
+                # y == wave_pix in the code above
                 norm_factor += np.max([0, np.polyval(coeffs, y)])
 
             for js in range(0, sl_size * 2):
                 coeffs = poly_coeffs[js]
                 # ALL Pxl need to sum to 1 ... hence norm_factor
+                # RENORMALISING ENFORCES +VE FLUX AND FLUX-CONSERVATION
                 Pxl = np.max([0, np.polyval(coeffs, y)]) / norm_factor
                 # Vxl is the variance estimate for each pixel
-                Vxl = 3.0 + np.abs(np.sum(slice_data) * Pxl + slice_data_sky[js]) / 1.0
-                weigths += Pxl
 
-                denominator_val += Pxl ** 2 / Vxl
+                # TODO: this slice_data will be affected by the same NAN=0.0 issue reported above
+                # TODO: pass gain from the detection ...  hardwired to 1.0 here
+                gain = 1.0
+                # FLUX VALUE = RON + OBJECT (PIXEL FRACTION OF THE DATA SLICE) + SKY
+                Vxl = RON + np.abs(np.sum(slice_data) * Pxl + slice_data_sky[js]) / gain
 
                 # REJECTING COSMIC / OUTLIERS pixel from the summation along the XD
                 if (slice_data[js] - np.sum(slice_data) * Pxl) ** 2 / Vxl < sigma_clip_weights:
                     extracted_val += slice_data[js] * Pxl / Vxl
+                    denominator_val += Pxl ** 2 / Vxl
+                    weigths += Pxl ** 2 / Vxl
 
+            # TODO: THIS IS A FUDGE FOR WHEN ALL PIXELS IN A SLICE ARE CLIPPED ... NEED TO RETHINK
+            if extracted_val == 0.0:
+                for js in range(0, sl_size * 2):
+                    coeffs = poly_coeffs[js]
+                    # ALL Pxl need to sum to 1 ... hence norm_factor
+                    # RENORMALISING ENFORCES +VE FLUX AND FLUX-CONSERVATION
+                    Pxl = np.max([0, np.polyval(coeffs, y)]) / norm_factor
+                    # Vxl is the variance estimate for each pixel
+
+                    # TODO: this slice_data will be affected by the same NAN=0.0 issue reported above
+                    # TODO: pass gain from the detection ...  hardwired to 1.0 here
+                    gain = 1.0
+                    # FLUX VALUE = RON + OBJECT (PIXEL FRACTION OF THE DATA SLICE) + SKY
+                    Vxl = RON + np.abs(np.sum(slice_data) * Pxl + slice_data_sky[js]) / gain
+
+                    extracted_val += slice_data[js] * Pxl / Vxl
+                    denominator_val += Pxl ** 2 / Vxl
+                    weigths += Pxl ** 2 / Vxl
+
+            # TODO: use this to generate the variance spectrum (see Horne page 612 equ 9)
             total_weights.append(weigths)
 
             # NOW ASSIGN THE WAVELENGHT AT THE X_COORD CENTRE POSITION WITH A FIT
 
+            # TODO: wave is the approximate wavelegth of 6 pixel in slice - CAN MOVE THIS OUTSIDE FOR LOOP AND POSSIBLY TAKE THE MEAN OF THE SLICE
             wave = self.imageMap[(self.imageMap['order'] == float(order)) & (self.imageMap['y'] == np.round(y)) & (
-                        self.imageMap['x'] > xcoord_centre - sl_size) & (self.imageMap['x'] < xcoord_centre + sl_size)]
+                self.imageMap['x'] > xcoord_centre - sl_size) & (self.imageMap['x'] < xcoord_centre + sl_size)]
             if wave.size != 0:
+                # EQU 8 of Horne
                 extracted_spectrum.append(extracted_val / denominator_val)
+                # BOXCAR
                 extracted_spectrum_nonopt.append(np.sum(slice_data))
                 coeff_wl = np.polyfit(wave['x'], wave['wavelength'], deg=1)
                 extracted_wave_spectrum.append(np.polyval(coeff_wl, xcoord_centre))
 
         self.log.debug('completed the ``extract`` method')
-
-
-
 
         return (extracted_wave_spectrum, extracted_spectrum)
 

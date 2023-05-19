@@ -49,10 +49,17 @@ class test_horne_extraction(unittest.TestCase):
 
     def test_horne_extraction_function(self):
 
+        # XRAY BINARY (FAINT)
         skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
         skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYSUB.fits"
         twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
         dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.fits"
+
+        # STANDARD STAR (BRIGHT)
+        skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYMODEL.fits"
+        skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYSUB.fits"
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T15.54.49.8571_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
+        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T15.54.49.8571_NIR_SPAT_SOL_0PT6651.fits"
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         import pandas as pd
@@ -105,12 +112,12 @@ class test_horne_extraction(unittest.TestCase):
         #plt.ylim(-100, 300)
         #plt.plot(w, f)
 
-        #plt.show()
-        e_w_l =[]
+        # plt.show()
+        e_w_l = []
         e_s = []
 
-        for order in range(11, 25):
-            extracted_wave_spectrum, extracted_spectrum = optimalExtractor.extract(order,3, 10, 2.0)
+        for order in range(13, 25):
+            extracted_wave_spectrum, extracted_spectrum = optimalExtractor.extract(order, 10, 10, 3.0)
             e_w_l.append(extracted_wave_spectrum)
             e_s.append(extracted_spectrum)
             #plt.plot(extracted_wave_spectrum, extracted_spectrum)
@@ -118,9 +125,8 @@ class test_horne_extraction(unittest.TestCase):
         plt.clf()
         figure(figsize=(13, 6))
 
-        for (w, s) in zip(e_w_l,e_s):
+        for (w, s) in zip(e_w_l, e_s):
             plt.plot(w, s)
-        plt.ylim([0, 900])
         plt.show()
 
     def test_horne_extraction_function_exception(self):
