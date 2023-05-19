@@ -985,8 +985,11 @@ class detect_continuum(_base_detect):
                 labelIndex = 10
             else:
                 labelIndex = 1
-            bottomleft.text(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values[labelIndex], orderPixelTable.loc[mask][
-                f'cont_{self.axisA}_fit_res'].values[labelIndex], int(o), fontsize=8, c=c, verticalalignment='bottom')
+            try:
+                bottomleft.text(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values[labelIndex], orderPixelTable.loc[mask][f'cont_{self.axisA}_fit_res'].values[labelIndex], int(o), fontsize=8, c=c, verticalalignment='bottom')
+            except:
+                pass
+
         bottomleft.set_xlabel(f'{self.axisA} pixel position', fontsize=10)
         bottomleft.set_ylabel(f'{self.axisA} residual', fontsize=10)
         bottomleft.tick_params(axis='both', which='major', labelsize=9)
@@ -1001,8 +1004,11 @@ class detect_continuum(_base_detect):
                 labelIndex = 10
             else:
                 labelIndex = 1
-            bottomright.text(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values[labelIndex], orderPixelTable.loc[mask][
-                f'cont_{self.axisA}_fit_res'].values[labelIndex], int(o), fontsize=8, c=c, verticalalignment='bottom')
+            try:
+                bottomright.text(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values[labelIndex], orderPixelTable.loc[mask][
+                    f'cont_{self.axisA}_fit_res'].values[labelIndex], int(o), fontsize=8, c=c, verticalalignment='bottom')
+            except:
+                pass
 
         bottomright.set_xlabel(f'{self.axisB} pixel position', fontsize=10)
         bottomright.tick_params(axis='both', which='major', labelsize=9)
@@ -1017,7 +1023,10 @@ class detect_continuum(_base_detect):
                 labelIndex = 10
             else:
                 labelIndex = 1
-            fwhmaxis.text(orderPixelTable.loc[mask]['wavelength'].values[labelIndex], orderPixelTable.loc[mask]['stddev_fit'].values[labelIndex] * stdToFwhm, int(o), fontsize=8, c=c, verticalalignment='bottom')
+            try:
+                fwhmaxis.text(orderPixelTable.loc[mask]['wavelength'].values[labelIndex], orderPixelTable.loc[mask]['stddev_fit'].values[labelIndex] * stdToFwhm, int(o), fontsize=8, c=c, verticalalignment='bottom')
+            except:
+                pass
         fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
         fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
         fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)
