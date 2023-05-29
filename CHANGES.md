@@ -1,7 +1,7 @@
 
 # Release Notes  
 
-## v0.8.0 - March 3, 2023
+## v0.8.0 - May 18, 2023
 
 * **FEATURE:** we now have a data-organiser to sort data, prepare the required SOF files and generate reduction scripts.
 * **ENHANCEMENT:** '.db', '.yaml', '.sh' and '.log' extensions skipped when moving items to the misc folder
