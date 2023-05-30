@@ -115,17 +115,19 @@ class test_horne_extraction(unittest.TestCase):
         # plt.show()
         e_w_l = []
         e_s = []
+        en_s = []
 
-        for order in range(13, 25):
-            extracted_wave_spectrum, extracted_spectrum = optimalExtractor.extract(order, 10, 10, 3.0)
+        for order in range(18, 19):
+            extracted_wave_spectrum, extracted_spectrum, nonopt = optimalExtractor.extract(order, 10, 10, 3.0)
             e_w_l.append(extracted_wave_spectrum)
             e_s.append(extracted_spectrum)
+            en_s.append(nonopt)
             #plt.plot(extracted_wave_spectrum, extracted_spectrum)
 
         plt.clf()
         figure(figsize=(13, 6))
 
-        for (w, s) in zip(e_w_l, e_s):
+        for (w, s) in zip(e_w_l, en_s):
             plt.plot(w, s)
         plt.show()
 

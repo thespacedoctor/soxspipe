@@ -39,7 +39,7 @@ class horne_extraction(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
 
     To initiate a horne_extraction object, use the following:
 
@@ -54,7 +54,7 @@ class horne_extraction(object):
     ```
 
     ```python
-    usage code 
+    usage code
     ```
 
     """
@@ -137,7 +137,7 @@ class horne_extraction(object):
         ```
 
         ```python
-        usage code 
+        usage code
         ```
         """
         self.log.debug('starting the ``extract`` method')
@@ -253,10 +253,11 @@ class horne_extraction(object):
 
                     # TODO: inverstigate if average pass ... might retrun inf not nan
                     if np.isnan(slice_data[sl_px]) or np.isnan(slice_data[sl_px] / (np.sum(slice_data))):
+                        # print('Here')
                         pass
                     else:
                         # QC PLOTS
-                        if False and i > 490 and i < 500:
+                        if False and i > 490 and i < 520:
                             x_axis = np.arange(int(xcoord_centre) - sl_size, int(xcoord_centre) + sl_size)
                             plt.plot(x_axis, slice_data)
                             # plt.plot(x_axis, py)
@@ -394,6 +395,6 @@ class horne_extraction(object):
 
         self.log.debug('completed the ``extract`` method')
 
-        return (extracted_wave_spectrum, extracted_spectrum)
+        return (extracted_wave_spectrum, extracted_spectrum, extracted_spectrum_nonopt)
 
     # xt-class-method
