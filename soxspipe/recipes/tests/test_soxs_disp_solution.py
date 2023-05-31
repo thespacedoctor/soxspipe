@@ -60,6 +60,8 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_disp_solution(unittest.TestCase):
 
+    import pytest
+
     def test_soxs_sim_disp_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/disp-solution/sof/NIR_DISP_SOLUTION.sof"
         from soxspipe.recipes import soxs_disp_solution
@@ -112,6 +114,7 @@ class test_soxs_disp_solution(unittest.TestCase):
     #     )
     #     this.get()
 
+    @pytest.mark.full
     def test_soxs_disp_solution_function_exception(self):
 
         from soxspipe.recipes import soxs_disp_solution

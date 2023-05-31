@@ -47,6 +47,9 @@ if not os.path.exists(pathToOutputDir):
 
 class test_horne_extraction(unittest.TestCase):
 
+    import pytest
+
+    @pytest.mark.full
     def test_horne_extraction_function(self):
 
         skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
@@ -89,6 +92,7 @@ class test_horne_extraction(unittest.TestCase):
         )
         optimalExtractor.extract()
 
+    @pytest.mark.full
     def test_horne_extraction_function_exception(self):
 
         from soxspipe.commonutils import horne_extraction

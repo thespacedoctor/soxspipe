@@ -412,7 +412,7 @@ class detect_order_edges(_base_detect):
 
         # a = plt.figure(figsize=(40, 15))
         if arm == "UVB" or self.inst == "SOXS":
-            fig = plt.figure(figsize=(5, 13.5), constrained_layout=True)
+            fig = plt.figure(figsize=(5, 13.5))
             # CREATE THE GID OF AXES
             gs = fig.add_gridspec(6, 4)
             toprow = fig.add_subplot(gs[0:2, :])
@@ -420,7 +420,7 @@ class detect_order_edges(_base_detect):
             bottomleft = fig.add_subplot(gs[4:, 0:2])
             bottomright = fig.add_subplot(gs[4:, 2:])
         else:
-            fig = plt.figure(figsize=(6, 11), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 11))
             # CREATE THE GID OF AXES
             gs = fig.add_gridspec(6, 4)
             toprow = fig.add_subplot(gs[0:2, :])
@@ -623,8 +623,6 @@ class detect_order_edges(_base_detect):
         axisAcoords = orderPixelTable.loc[mask, f"{self.axisA}coord_centre"].values
         axisBcoords = orderPixelTable.loc[mask, f"{self.axisB}coord"].values
 
-        # xpd-update-filter-dataframe-column-values
-
         # DETERMINE THE FLUX THRESHOLD FROM THE CENTRAL COLUMN
         # CUT A MEDIAN COLLAPSED SLICE
         index = int(len(axisAcoords) / 2)
@@ -734,10 +732,18 @@ class detect_order_edges(_base_detect):
         if hit == False:
             return orderData
 
+        # IF THE WIDTH BETWEEN MIN AND MAX IS TOO SMALL THEN REJECT
+        if (medSlide[axisAminguess + 1] - medSlide[axisAminguess] == 0) or (medSlide[axisAmaxguess - 1] - medSlide[axisAmaxguess] == 0):
+            return orderData
+
         # REPORT THE EXACT PIXEL POSTION AT THE FLUX THRESHOLD
         axisAmax = axisAmaxguess - \
             (threshold - medSlide[axisAmaxguess]) / \
             (medSlide[axisAmaxguess - 1] - medSlide[axisAmaxguess]) - 2
+
+        axisAmin = axisAminguess + \
+            (threshold - medSlide[axisAminguess]) / \
+            (medSlide[axisAminguess + 1] - medSlide[axisAminguess]) + 2
 
         axisAmin = axisAminguess + \
             (threshold - medSlide[axisAminguess]) / \
