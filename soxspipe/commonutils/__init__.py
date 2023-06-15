@@ -17,3 +17,4 @@ from .subtract_background import subtract_background
 from .subtract_sky import subtract_sky
 from .data_organiser import data_organiser
 from .uncompress import uncompress
+from .horne_extraction import horne_extraction
