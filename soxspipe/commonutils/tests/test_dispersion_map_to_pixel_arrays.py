@@ -47,6 +47,9 @@ if not os.path.exists(pathToOutputDir):
 
 class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
 
+    import pytest
+
+    @pytest.mark.full
     def test_dispersion_map_to_pixel_arrays_function(self):
 
         dispersionMapPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
@@ -65,6 +68,9 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
             orderPixelTable=orderPixelTable
         )
 
+    import pytest
+
+    @pytest.mark.full
     def test_dispersion_map_to_pixel_arrays_function_exception(self):
 
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays

@@ -45,6 +45,9 @@ if not os.path.exists(pathToOutputDir):
 
 class test__base_recipe_(unittest.TestCase):
 
+    import pytest
+
+    @pytest.mark.full
     def test__base_recipe__function(self):
 
         framePath = settings["test-data-root"] + \
@@ -74,6 +77,7 @@ class test__base_recipe_(unittest.TestCase):
         # NOW CLEAN UP
         recipe.clean_up()
 
+    @pytest.mark.full
     def test__base_recipe__function_exception(self):
 
         from soxspipe.recipes import _base_recipe_

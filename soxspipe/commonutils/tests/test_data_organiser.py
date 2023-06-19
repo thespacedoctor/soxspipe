@@ -45,10 +45,9 @@ if not os.path.exists(pathToOutputDir):
     os.makedirs(pathToOutputDir)
 
 
-# xt-setup-unit-testing-files-and-folders
-# xt-utkit-refresh-database
-
 class test_data_organiser(unittest.TestCase):
+
+    import pytest
 
     def test_data_organiser_function(self):
 
@@ -60,36 +59,7 @@ class test_data_organiser(unittest.TestCase):
         )
         do.prepare()
 
-    # def test_data_organiser_function(self):
-
-    #     from soxspipe.commonutils import data_organiser
-    #     do = data_organiser(
-    #         log=log,
-    #         settings=settings,
-    #         rootDir=pathToOutputDir + "01_EG274"
-    #     )
-    #     do.sync_raw_frames()
-    #     do.move_misc_files()
-    #     do.populate_product_frames_db_table()
-    #     do.populate_product_frames_db_table()
-    #     do.write_sof_files()
-
-    # def test_desktop_data_organiser_function(self):
-
-    #     from soxspipe.commonutils import data_organiser
-    #     do = data_organiser(
-    #         log=log,
-    #         settings=settings,
-    #         rootDir=pathToOutputDir
-    #     )
-    #     do.sync_raw_frames()
-    #     do.move_misc_files()
-    #     do.populate_product_frames_db_table()
-    #     do.populate_product_frames_db_table()
-
-    #     do.write_sof_files()
-    #     do.write_reduction_shell_scripts()
-
+    @pytest.mark.full
     def test_data_organiser_function_exception(self):
 
         from soxspipe.commonutils import data_organiser

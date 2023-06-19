@@ -45,6 +45,8 @@ if not os.path.exists(pathToOutputDir):
 
 class test_01_cl_utils(unittest.TestCase):
 
+    import pytest
+
     def test_init(self):
         # TEST CL-OPTIONS
 

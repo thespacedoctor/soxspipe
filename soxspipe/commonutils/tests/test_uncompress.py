@@ -45,7 +45,9 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 # xt-utkit-refresh-database
 
+
 class test_uncompress(unittest.TestCase):
+    import pytest
 
     def test_uncompress_function(self):
 
@@ -55,6 +57,7 @@ class test_uncompress(unittest.TestCase):
             directory=pathToOutputDir
         )
 
+    @pytest.mark.full
     def test_uncompress_function_exception(self):
 
         from soxspipe.commonutils import uncompress

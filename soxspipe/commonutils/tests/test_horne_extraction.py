@@ -47,6 +47,9 @@ if not os.path.exists(pathToOutputDir):
 
 class test_horne_extraction(unittest.TestCase):
 
+    import pytest
+
+    @pytest.mark.full
     def test_horne_extraction_function(self):
 
         # XRAY BINARY (FAINT)
@@ -131,6 +134,7 @@ class test_horne_extraction(unittest.TestCase):
             plt.plot(w, s)
         plt.show()
 
+    @pytest.mark.full
     def test_horne_extraction_function_exception(self):
 
         from soxspipe.commonutils import horne_extraction

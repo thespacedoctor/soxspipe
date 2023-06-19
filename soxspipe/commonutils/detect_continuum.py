@@ -390,7 +390,7 @@ class _base_detect(object):
         with suppress(KeyError):
             header.pop(kw("RON"))
 
-        header[kw("PRO_TECH")] = "ECHELLE,SLIT"
+        header["HIERARCH " + kw("PRO_TECH")] = "ECHELLE,SLIT"
 
         orderPolyTable = Table.from_pandas(orderPolyTable)
         BinTableHDU = fits.table_to_hdu(orderPolyTable)
@@ -398,8 +398,8 @@ class _base_detect(object):
         BinTableHDU2 = fits.table_to_hdu(orderMetaTable)
 
         header[kw("SEQ_ARM")] = arm
-        header[kw("PRO_TYPE")] = "REDUCED"
-        header[kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
+        header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
+        header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
         priHDU = fits.PrimaryHDU(header=header)
 
         hduList = fits.HDUList([priHDU, BinTableHDU, BinTableHDU2])

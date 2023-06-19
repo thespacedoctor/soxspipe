@@ -63,6 +63,9 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_mflat(unittest.TestCase):
 
+    import pytest
+
+    @pytest.mark.full
     def test_unpack_order_table_function(self):
         orderTablePath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/20170818T173106_NIR_ORDER_LOCATIONS.fits"
         # UNPACK THE ORDER TABLE
@@ -74,6 +77,7 @@ class test_soxs_mflat(unittest.TestCase):
         print(tabulate(orderPolyTable, headers='keys', tablefmt='psql'))
         print(tabulate(orderPixelTable.head(100), headers='keys', tablefmt='psql'))
 
+    @pytest.mark.full
     def test_soxs_mflat_nir_inter_order_to_unity_func(self):
         orderTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/inter_order_low_sens_to_bpm/20170819T150225_NIR_ORDER_LOCATIONS.fits"
         flat = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/inter_order_low_sens_to_bpm/lamp_flat_nir.fits"
@@ -128,6 +132,7 @@ class test_soxs_mflat(unittest.TestCase):
         mflat = this.produce_product()
         print(f"The master flat file has been saved to '{mflat}'")
 
+    @pytest.mark.full
     def test_soxs_mflat_nir_short_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_short_flats.sof"
         from soxspipe.recipes import soxs_mflat
@@ -156,6 +161,7 @@ class test_soxs_mflat(unittest.TestCase):
             assert True
             print(str(e))
 
+    @pytest.mark.full
     def test_soxs_mflat_uvb_qflat_function(self):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_qflats.sof"

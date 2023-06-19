@@ -48,6 +48,9 @@ if not os.path.exists(pathToOutputDir):
 
 class test_subtract_background(unittest.TestCase):
 
+    import pytest
+
+    @pytest.mark.full
     def test_subtract_background_function(self):
 
         flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-background/first_iteration_NIR_master_flat.fits"
@@ -67,6 +70,7 @@ class test_subtract_background(unittest.TestCase):
         )
         backgroundSubtractedFrame = background.subtract()
 
+    @pytest.mark.full
     def test_subtract_background_function_exception(self):
 
         from soxspipe.commonutils.subtract_background import subtract_background
