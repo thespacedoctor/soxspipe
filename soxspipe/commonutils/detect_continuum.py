@@ -488,7 +488,6 @@ class detect_continuum(_base_detect):
         ).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
-        print(self.recipeSettings)
         self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 

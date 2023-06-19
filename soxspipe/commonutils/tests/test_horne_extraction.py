@@ -121,7 +121,7 @@ class test_horne_extraction(unittest.TestCase):
         en_s = []
 
         for order in range(18, 19):
-            extracted_wave_spectrum, extracted_spectrum, nonopt = optimalExtractor.extract(order, 10, 10, 3.0)
+            extracted_wave_spectrum, extracted_spectrum, nonopt = optimalExtractor.extract(order)
             e_w_l.append(extracted_wave_spectrum)
             e_s.append(extracted_spectrum)
             en_s.append(nonopt)
