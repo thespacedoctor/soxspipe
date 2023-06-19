@@ -1,5 +1,11 @@
 # soxspipe
 
+
+
+[![](https://zenodo.org/badge/186854638.svg)](https://zenodo.org/badge/latestdoi/186854638) 
+
+
+
 <!-- INFO BADGES -->  
 
 [![](https://img.shields.io/pypi/pyversions/soxspipe)](https://pypi.org/project/soxspipe/)
@@ -49,3 +55,18 @@ The file is initially populated with soxspipe's default settings which can be ad
 
 If at any point the user settings file becomes corrupted or you just want to start afresh, simply trash the `soxspipe.yaml` file and rerun `soxspipe init`.
 
+
+## How to cite soxspipe
+
+If you use `soxspipe` in your work, please cite using the following BibTeX entry: 
+
+```bibtex
+@software{Young_soxspipe,
+    author = {Young, David R., Landoni, Marco},
+    doi = {10.5281/zenodo.8038265},
+    license = {GPL-3.0-only},
+    title = {{soxspipe}},
+    url = {https://github.com/thespacedoctor/soxspipe}
+}
+```
+ 
