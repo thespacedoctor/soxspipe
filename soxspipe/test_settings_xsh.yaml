@@ -53,16 +53,21 @@ soxs-disp-solution:
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
-    order-sample-count: 200
-    slice-length: 10
-    peak-sigma-limit: 3
-    # degree of dispersion axis component of polynomal fit to order-centre traces
-    disp-axis-deg: 5
-    # degree of order component of polynomal fit to order-centre traces
-    order-deg: 5
-    # number of sigma-clipping iterations to perform before settings on a polynomial fit for the order-centre traces
-    poly-fitting-residual-clipping-sigma: 4.0
-    poly-clipping-iteration-limit: 1
+     detect-continuum:
+        # NUMBER OF CROSS-ORDER SLICES PER ORDER
+        order-sample-count: 200
+        # LENGTH OF EACH SLICE (PIXELS)
+        slice-length: 10
+        # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+        peak-sigma-limit: 3
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+        disp-axis-deg: 3
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+        order-deg: 5
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+        poly-fitting-residual-clipping-sigma: 3
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+        poly-clipping-iteration-limit: 1
 
 soxs-spatial-solution:
     pixel-window-size: 10
@@ -71,8 +76,6 @@ soxs-spatial-solution:
     slit-deg: 3
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
-
-
 
 soxs-mflat:
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
@@ -128,6 +131,21 @@ soxs-stare:
     horne-extraction-profile-clipping-sigma: 3.0
     # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
     horne-extraction-profile-clipping-iteration-count: 10
+    detect-continuum:
+        # NUMBER OF CROSS-ORDER SLICES PER ORDER
+        order-sample-count: 1000
+        # LENGTH OF EACH SLICE (PIXELS)
+        slice-length: 25
+        # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+        peak-sigma-limit: 3
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        order-deg: 4
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-fitting-residual-clipping-sigma: 5.0
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-clipping-iteration-limit: 5
     
 
 # sky-subtraction:

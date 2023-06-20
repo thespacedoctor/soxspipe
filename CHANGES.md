@@ -1,6 +1,8 @@
 
 # Release Notes  
 
+* **ENHANCEMENT:** object trace FITS binary table added to stare-mode products (alongside complimentary QC plot)
+
 ## v0.8.0 - May 18, 2023
 
 * **FEATURE:** we now have a data-organiser to sort data, prepare the required SOF files and generate reduction scripts.

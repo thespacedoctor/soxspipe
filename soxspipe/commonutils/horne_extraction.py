@@ -69,7 +69,8 @@ class horne_extraction(object):
             recipeName=False,
             qcTable=False,
             productsTable=False,
-            dispersionMap=False
+            dispersionMap=False,
+            sofName=False
 
     ):
         import numpy as np
@@ -84,10 +85,12 @@ class horne_extraction(object):
         self.productsTable = productsTable
         self.qcTable = qcTable
         self.recipeName = recipeName
+        self.sofName = sofName
 
         self.slitLength = int(self.settings["soxs-stare"]["horne-extraction-slit-length"] / 2)
         self.clippingSigma = self.settings["soxs-stare"]["horne-extraction-profile-clipping-sigma"]
         self.clippingIterationLimit = self.settings["soxs-stare"]["horne-extraction-profile-clipping-iteration-count"]
+        self.globalClippingSigma = self.settings["soxs-stare"]["horne-extraction-profile-global-clipping-sigma"]
 
         # TODO: replace this value with true value from FITS header
         self.ron = 3.0
@@ -155,45 +158,17 @@ class horne_extraction(object):
         # TODO: fix the detect_continuum function to work directly on the object frame WIHTOUT having to adjust header keywords
         # TODO: continum fitting need to be done in __init__ (or another method)
 
-        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
-        qc = pd.DataFrame({
-            "soxspipe_recipe": [],
-            "qc_name": [],
-            "qc_value": [],
-            "qc_unit": [],
-            "qc_comment": [],
-            "obs_date_utc": [],
-            "reduction_date_utc": [],
-            "to_header": []
-        })
-        products = pd.DataFrame({
-            "soxspipe_recipe": [],
-            "product_label": [],
-            "file_name": [],
-            "file_type": [],
-            "obs_date_utc": [],
-            "reduction_date_utc": [],
-            "file_path": []
-        })
+        # TODO: PRODUCT: /Users/Dave/soxspipe-unittests/intermediate/xsh/product/soxs-stare/2019.08.22T23.12.18.5011_NIR_OBJECT_STARE_EG_274_SLIT.fits --> /Users/Dave/soxspipe-unittests/intermediate/xsh/product/soxs-stare/2019.08.22T23.12.18.5011_NIR_OBJECT_STARE_EG_274_OBJECT_TRACE.fits
+        # TODO: Number of order centre traces found > Number of <orders an object> traces found
+        # TODO: ORDER_CENTRES_RES > OBJECT_TRACE_RES
+        # TODO: 2019.08.22T23.12.18.5011_NIR_OBJECT_STARE_EG_274_SLIT.fitsORDER_CENTRES_residuals.pdf > 2019.08.22T23.12.18.5011_NIR_OBJECT_STARE_EG_274_OBJECT_TRACE_residuals.pdf
+        # TODO: FIX PLOT TITLES
+        # TODO: FIX TABLE FITS HEADERS
 
         # HACK TO GET DETECT CONTINUUM TO RUN
-        self.skySubtractedFrame.header["ESO DPR TYPE"] = "LAMP,FLAT"
-        self.skySubtractedFrame.header["ESO DPR TECH"] = "IMAGE"
-        self.settings["intermediate-data-root"] = "./"
-
-        dct = yaml.safe_load('''
-        soxs-order-centre:
-            order-sample-count: 1000
-            slice-length: 25
-            peak-sigma-limit: 3
-            disp-axis-deg: 4
-            order-deg: 4
-            poly-fitting-residual-clipping-sigma: 5.0
-            poly-clipping-iteration-limit: 5
-        ''')
-
-        # MERGE DICTIONARIES (SECOND OVERRIDES FIRST)
-        self.settings = {**self.settings, **dct}
+        # self.skySubtractedFrame.header["ESO DPR TYPE"] = "LAMP,FLAT"
+        # self.skySubtractedFrame.header["ESO DPR TECH"] = "IMAGE"
+        # self.settings["intermediate-data-root"] = "./"
 
         # NOTE TO MARCO - I HAVE TRICKED THE CODE INTO THINKING THIS IS A LAMP-FLAT PINHOLE FRAME
         # SO detect_continuum OUTPUTS 20190831T001327_NIR_MORDER_CENTRES_residuals.pdf AND 20190831T001327_NIR_ORDER_LOCATIONS.fits
@@ -204,11 +179,19 @@ class horne_extraction(object):
             pinholeFlat=self.skySubtractedFrame,
             dispersion_map=self.dispersionMap,
             settings=self.settings,
-            recipeName="soxs-order-centre",
-            qcTable=qc,
-            productsTable=products
+            sofName=self.sofName,
+            recipeName=self.recipeName,
+            qcTable=self.qcTable,
+            productsTable=self.productsTable
         )
-        productPath, qcTable, productsTable = detector.get()
+        productPath, self.qcTable, self.productsTable = detector.get()
+
+        print(productPath)
+
+        from tabulate import tabulate
+        print(tabulate(self.qcTable, headers='keys', tablefmt='psql'))
+        print(tabulate(self.productsTable, headers='keys', tablefmt='psql'))
+
         from soxspipe.commonutils.toolkit import unpack_order_table
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
@@ -355,7 +338,7 @@ class horne_extraction(object):
                 Vxl = self.ron + np.abs(np.sum(slice_data) * Pxl + slice_data_sky[js]) / gain
 
                 # REJECTING COSMIC / OUTLIERS pixel from the summation along the XD
-                if (slice_data[js] - np.sum(slice_data) * Pxl) ** 2 / Vxl < sigma_clip_weights:
+                if (slice_data[js] - np.sum(slice_data) * Pxl) ** 2 / Vxl < self.globalClippingSigma:
                     extracted_val += slice_data[js] * Pxl / Vxl
                     denominator_val += Pxl ** 2 / Vxl
                     weigths += Pxl ** 2 / Vxl

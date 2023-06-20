@@ -313,11 +313,17 @@ class _base_detect(object):
                 "reduction_date_utc": utcnow,
                 "to_header": True
             }).to_frame().T], ignore_index=True)
+
+            if "order" in self.recipeName.lower():
+                c = f"Number of order centre traces found"
+            else:
+                c = f"Number of orders containing an object trace"
+
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "NORDERS",
                 "qc_value": uniqueorders,
-                "qc_comment": f"Number of order centre traces found",
+                "qc_comment": c,
                 "qc_unit": None,
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -371,8 +377,10 @@ class _base_detect(object):
             filename = self.sofName + ".fits"
         filename = filename.replace("MFLAT", "FLAT")
 
-        if "FLAT" in filename.upper():
+        if "order" in self.recipeName.lower():
             filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
+        elif "stare" in self.recipeName.lower():
+            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
 
         order_table_path = f"{outDir}/{filename}"
 
@@ -399,7 +407,10 @@ class _base_detect(object):
 
         header[kw("SEQ_ARM")] = arm
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
-        header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
+        if "order" in self.recipeName.lower():
+            header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
+        else:
+            header["HIERARCH " + kw("PRO_CATG")] = f"OBJECT_TAB_{arm}".upper()
         priHDU = fits.PrimaryHDU(header=header)
 
         hduList = fits.HDUList([priHDU, BinTableHDU, BinTableHDU2])
@@ -459,7 +470,7 @@ class detect_continuum(_base_detect):
         log.debug("instansiating a new 'detect_continuum' object")
         self.settings = settings
         if recipeName:
-            self.recipeSettings = settings[recipeName]
+            self.recipeSettings = settings[recipeName]["detect-continuum"]
         else:
             self.recipeSettings = False
         self.recipeName = recipeName
@@ -618,14 +629,21 @@ class detect_continuum(_base_detect):
 
         basename = os.path.basename(plotPath)
 
+        if "order" in self.recipeName.lower():
+            label = "ORDER_CENTRES_RES"
+            product_desc = f"Residuals of the order centre polynomial fit"
+        else:
+            label = "OBJECT_TRACE_RES"
+            product_desc = f"Residuals of the object trace polynomial fit",
+
         self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
-            "product_label": "ORDER_CENTRES_RES",
+            "product_label": label,
             "file_name": basename,
             "file_type": "PDF",
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
-            "product_desc": f"Residuals of the order centre polynomial fit",
+            "product_desc": product_desc,
             "file_path": plotPath
         }).to_frame().T], ignore_index=True)
 
@@ -660,8 +678,7 @@ class detect_continuum(_base_detect):
         import pandas as pd
 
         # READ ORDER SAMPLING RESOLUTION FROM SETTINGS
-        sampleCount = self.settings[
-            "soxs-order-centre"]["order-sample-count"]
+        sampleCount = self.recipeSettings["order-sample-count"]
 
         # FIND THE PIXEL RANGES FOR ALL ORDERS
         myDict = {
@@ -910,8 +927,12 @@ class detect_continuum(_base_detect):
             toprow.invert_yaxis()
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
-        midrow.set_title(
-            "order-location fit solutions", fontsize=10)
+        if "order" in self.recipeName.lower():
+            midrow.set_title(
+                "order-location fit solutions", fontsize=10)
+        else:
+            midrow.set_title(
+                "order trace fit solutions", fontsize=10)
         if self.axisB == "y":
             axisALength = self.pinholeFlat.data.shape[1]
             axisBLength = self.pinholeFlat.data.shape[0]
@@ -1028,13 +1049,17 @@ class detect_continuum(_base_detect):
                 pass
         fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
         fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
-        fwhmaxis.set_ylim(0, orderPixelTable['stddev_fit'].max() * stdToFwhm)
+
+        fwhmaxis.set_ylim(orderPixelTable['stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['stddev_fit'].max() * stdToFwhm * 1.2)
 
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
+        if "order" in self.recipeName.lower():
+            fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
+        else:
+            fig.suptitle(f"object trace locations\n{subtitle}", fontsize=12)
 
         # plt.show()
         if not self.sofName:
@@ -1044,8 +1069,10 @@ class detect_continuum(_base_detect):
                 settings=self.settings
             )
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
-        else:
+        elif "order" in self.recipeName.lower():
             filename = self.sofName + "_residuals.pdf"
+        else:
+            filename = self.sofName + "_OBJECT_TRACE_residuals.pdf"
 
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"

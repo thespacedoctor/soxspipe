@@ -30,20 +30,21 @@ soxs-disp-solution:
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
-    # NUMBER OF CROSS-ORDER SLICES PER ORDER
-    order-sample-count: 200
-    # LENGTH OF EACH SLICE (PIXELS)
-    slice-length: 10
-    # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-    peak-sigma-limit: 3
-    # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-    disp-axis-deg: 3
-    # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-    order-deg: 5
-    # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-    poly-fitting-residual-clipping-sigma: 3
-    # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-    poly-clipping-iteration-limit: 7
+    detect-continuum:
+        # NUMBER OF CROSS-ORDER SLICES PER ORDER
+        order-sample-count: 200
+        # LENGTH OF EACH SLICE (PIXELS)
+        slice-length: 10
+        # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+        peak-sigma-limit: 3
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+        disp-axis-deg: 3
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+        order-deg: 5
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+        poly-fitting-residual-clipping-sigma: 3
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+        poly-clipping-iteration-limit: 7
 
 soxs-mflat:
     centre-order-window: 20
@@ -108,6 +109,21 @@ soxs-stare:
     horne-extraction-profile-clipping-sigma: 3.0
     # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
     horne-extraction-profile-clipping-iteration-count: 10
+    detect-continuum:
+        # NUMBER OF CROSS-ORDER SLICES PER ORDER
+        order-sample-count: 200
+        # LENGTH OF EACH SLICE (PIXELS)
+        slice-length: 10
+        # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+        peak-sigma-limit: 3
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+        disp-axis-deg: 3
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+        order-deg: 5
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+        poly-fitting-residual-clipping-sigma: 3
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+        poly-clipping-iteration-limit: 7
 
 # UTILS
 background-subtraction:

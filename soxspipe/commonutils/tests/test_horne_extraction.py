@@ -103,10 +103,11 @@ class test_horne_extraction(unittest.TestCase):
             skySubtractedFrame=skySubtractedFrame,
             twoDMapPath=twoDMap,
             settings=settings,
-            recipeName="soxs-order-stare",
+            recipeName="soxs-stare",
             qcTable=qc,
             productsTable=products,
-            dispersionMap=dispMap
+            dispersionMap=dispMap,
+            sofName="2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274"
         )
         #(w, f) = optimalExtractor.extract(15,3, 10, 2.0)
 
