@@ -133,7 +133,7 @@ soxs-stare:
     horne-extraction-profile-clipping-iteration-count: 10
     detect-continuum:
         # NUMBER OF CROSS-ORDER SLICES PER ORDER
-        order-sample-count: 1000
+        order-sample-count: 200
         # LENGTH OF EACH SLICE (PIXELS)
         slice-length: 25
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -145,7 +145,7 @@ soxs-stare:
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
         poly-fitting-residual-clipping-sigma: 5.0
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-        poly-clipping-iteration-limit: 5
+        poly-clipping-iteration-limit: 1
     
 
 # sky-subtraction:

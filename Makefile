@@ -8,7 +8,7 @@ litetest:
 
 singletest:
 	cd ~/git_repos/_packages_/python/soxspipe
-	time pytest -k "test_horne_extraction_function" -v -s --profile-svg --profile
+	time pytest -k "test_horne_extraction_function" --pdb -v -s --profile-svg --profile
 	for i in prof/*.prof; do gprof2dot -f pstats $$i | dot -Tsvg -o $$i.svg; done
 
 
