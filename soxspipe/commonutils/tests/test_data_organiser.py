@@ -35,7 +35,8 @@ pathToOutputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/data-organis
 
 try:
     shutil.rmtree(pathToOutputDir)
-except:
+except Exception as e:
+    print(e)
     pass
 # COPY INPUT TO OUTPUT DIR
 shutil.copytree(pathToInputDir, pathToOutputDir)
