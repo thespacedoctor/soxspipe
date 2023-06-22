@@ -98,6 +98,9 @@ class test_detector_lookup(unittest.TestCase):
             assert True
             print(str(e))
 
+    import pytest
+
+    @pytest.mark.full
     def test_detector_lookup_function_exception(self):
 
         from soxspipe.commonutils import detector_lookup

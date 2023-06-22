@@ -49,6 +49,9 @@ if not os.path.exists(pathToOutputDir):
 
 class test_detect_continuum(unittest.TestCase):
 
+    import pytest
+
+    @pytest.mark.full
     def test_detect_continuum_function(self):
         pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
         dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
@@ -92,6 +95,7 @@ class test_detect_continuum(unittest.TestCase):
         )
         this.get()
 
+    @pytest.mark.full
     def test_detect_continuum_function_exception(self):
 
         from soxspipe.commonutils import detect_continuum

@@ -45,6 +45,7 @@ if not os.path.exists(pathToOutputDir):
 
 
 class test_keyword_lookup(unittest.TestCase):
+    import pytest
 
     def test_keyword_dictionary_selection_function(self):
 
@@ -74,6 +75,7 @@ class test_keyword_lookup(unittest.TestCase):
         if settings["instrument"] == "xsh":
             assert kw(["PROV", "DET_NDITSKIP"])[1] == 'ESO DET NDITSKIP'
 
+    @pytest.mark.full
     def test_keyword_lookup_function_exception(self):
 
         from soxspipe.commonutils import keyword_lookup

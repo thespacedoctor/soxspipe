@@ -58,6 +58,8 @@ if not os.path.exists(pathToOutputDir):
 
 class test_mbias(unittest.TestCase):
 
+    import pytest
+
     def test_mbias_from_directory_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/1x1/fast_read"
@@ -87,6 +89,7 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
+    @pytest.mark.full
     def test_mbias_from_vis_sof_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mbias/sof/bias_vis_1x1.sof"
 
@@ -102,6 +105,7 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
+    @pytest.mark.full
     def test_mbias_from_list_of_fits_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/1x1/slow_read"
@@ -129,6 +133,7 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
+    @pytest.mark.full
     def test_produce_product_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/1x1/fast_read"
@@ -206,6 +211,7 @@ class test_mbias(unittest.TestCase):
             assert True
             print(str(e))
 
+    @pytest.mark.full
     def test_mbias_function_exception(self):
 
         from soxspipe.recipes import soxs_mbias
