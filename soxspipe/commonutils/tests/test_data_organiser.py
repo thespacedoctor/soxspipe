@@ -35,6 +35,11 @@ pathToOutputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/data-organis
 
 try:
     shutil.rmtree(pathToOutputDir)
+<<<<<<< Updated upstream
+=======
+    import time
+    time.sleep(10)
+>>>>>>> Stashed changes
 except Exception as e:
     print(e)
     pass
