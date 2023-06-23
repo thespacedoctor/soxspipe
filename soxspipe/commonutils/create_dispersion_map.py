@@ -1042,9 +1042,9 @@ class create_dispersion_map(object):
         # plt.show()
 
         home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf/"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
         outDir = outDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIes
+        # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):
             os.makedirs(outDir)
 

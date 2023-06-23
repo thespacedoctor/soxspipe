@@ -661,7 +661,10 @@ class subtract_sky(object):
 
         filename = self.filenameTemplate.replace(".fits", f"_SKYMODEL_QC_PLOTS_ORDER_{int(order)}.pdf")
         home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
         filePath = f"{outDir}/{filename}"
 
         # plt.show()
@@ -1033,7 +1036,10 @@ class subtract_sky(object):
         filename = self.filenameTemplate.replace(".fits", "_skysub_quicklook.pdf")
 
         home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(outDir):
+            os.makedirs(outDir)
         filePath = f"{outDir}/{filename}"
         plt.savefig(filePath, dpi=720)
 

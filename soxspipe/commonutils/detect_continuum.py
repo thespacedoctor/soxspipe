@@ -1045,9 +1045,9 @@ class detect_continuum(_base_detect):
             filename = self.sofName + "_residuals.pdf"
 
         home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
         outDir = outDir.replace("//", "/")
-        # Recursively create missing directories
+        # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):
             os.makedirs(outDir)
 
