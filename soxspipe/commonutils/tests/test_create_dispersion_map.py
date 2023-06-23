@@ -78,7 +78,8 @@ class test_create_dispersion_map(unittest.TestCase):
             "file_type": [],
             "obs_date_utc": [],
             "reduction_date_utc": [],
-            "file_path": []
+            "file_path": [],
+            "label": []
         })
 
         from soxspipe.commonutils import create_dispersion_map
@@ -120,7 +121,8 @@ class test_create_dispersion_map(unittest.TestCase):
             "file_type": [],
             "obs_date_utc": [],
             "reduction_date_utc": [],
-            "file_path": []
+            "file_path": [],
+            "label": []
         })
 
         from soxspipe.commonutils import create_dispersion_map

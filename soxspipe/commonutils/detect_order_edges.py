@@ -326,7 +326,8 @@ class detect_order_edges(_base_detect):
                 "file_type": "FITS",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "file_path": orderTablePath
+                "file_path": orderTablePath,
+                "label": "PROD"
             }).to_frame().T], ignore_index=True)
             self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
@@ -336,7 +337,8 @@ class detect_order_edges(_base_detect):
                 "file_type": "PDF",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "file_path": plotPath
+                "file_path": plotPath,
+                "label": "QC"
             }).to_frame().T], ignore_index=True)
         if not isinstance(self.qc, bool):
             self.qc = pd.concat([self.qc, pd.Series({

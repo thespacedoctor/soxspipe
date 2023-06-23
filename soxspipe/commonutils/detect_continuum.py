@@ -633,7 +633,8 @@ class detect_continuum(_base_detect):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"Residuals of the order centre polynomial fit",
-            "file_path": plotPath
+            "file_path": plotPath,
+            "label": "QC"
         }).to_frame().T], ignore_index=True)
 
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))

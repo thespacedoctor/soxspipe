@@ -278,7 +278,8 @@ class soxs_spatial_solution(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} full dispersion-spatial solution",
-            "file_path": productPath
+            "file_path": productPath,
+            "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         if mapImagePath:
@@ -291,7 +292,8 @@ class soxs_spatial_solution(_base_recipe_):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "product_desc": f"{self.arm} 2D detector map of wavelength, slit position and order",
-                "file_path": productPath
+                "file_path": productPath,
+                "label": "PROD"
             }).to_frame().T], ignore_index=True)
 
         self.report_output()

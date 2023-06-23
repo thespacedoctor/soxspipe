@@ -282,7 +282,8 @@ class soxs_order_centres(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} order centre traces",
-            "file_path": productPath
+            "file_path": productPath,
+            "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         self.report_output()

@@ -290,7 +290,8 @@ class create_dispersion_map(object):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} dispersion solution fitted lines",
-            "file_path": filePath
+            "file_path": filePath,
+            "label": "QC"
         }).to_frame().T], ignore_index=True)
 
         # WRITE THE MAP TO FILE
@@ -1091,7 +1092,8 @@ class create_dispersion_map(object):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} dispersion solution QC plots",
-            "file_path": filePath
+            "file_path": filePath,
+            "label": "QC"
         }).to_frame().T], ignore_index=True)
 
         plt.tight_layout()

@@ -1,6 +1,10 @@
 
 # Release Notes  
 
+* **REFACTOR:** soxspipe now has a 'full' and a 'lite' test-suite. Using the lite suite will speed up deploying of new releases.
+* **ENHANCEMENT:** fitted lines from the dispersion solution are written out to file as a QC product
+* **ENHANCEMENT:** products and QC outputs are differentiated in the table reported upon recipe completion (see label column).
+
 ## v0.8.0 - March 3, 2023
 
 * **FEATURE:** we now have a data-organiser to sort data, prepare the required SOF files and generate reduction scripts.
