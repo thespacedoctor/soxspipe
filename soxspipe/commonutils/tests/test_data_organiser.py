@@ -35,8 +35,6 @@ pathToOutputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/data-organis
 
 try:
     shutil.rmtree(pathToOutputDir)
-    import time
-    time.sleep(10)
 except Exception as e:
     print(e)
     pass
@@ -52,6 +50,7 @@ class test_data_organiser(unittest.TestCase):
 
     import pytest
 
+    @pytest.mark.full
     def test_data_organiser_function(self):
 
         from soxspipe.commonutils import data_organiser
