@@ -124,6 +124,13 @@ class create_dispersion_map(object):
             self.axisA = "x"
             self.axisB = "y"
 
+        home = expanduser("~")
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.qcDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.qcDir):
+            os.makedirs(self.qcDir)
+
         return None
 
     def get(self):
@@ -136,6 +143,7 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``get`` method')
 
         import pandas as pd
+        from astropy.table import Table
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -174,6 +182,7 @@ class create_dispersion_map(object):
             print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
 
         # COLLECT MISSING LINES
+
         mask = (orderPixelTable['observed_x'].isnull())
         missingLines = orderPixelTable.loc[mask]
 
@@ -191,6 +200,9 @@ class create_dispersion_map(object):
         s["dropped"] = False
         s.loc[(s["_merge"] == "both"), "dropped"] = True
         orderPixelTable["dropped"] = s["dropped"].values
+
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable, headers='keys', tablefmt='psql'))
 
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
@@ -238,7 +250,7 @@ class create_dispersion_map(object):
         tryCount = 0
         while not fitFound and tryCount < 5:
             try:
-                popt_x, popt_y, res_plots = self.fit_polynomials(
+                popt_x, popt_y, res_plots, goodLinesTable = self.fit_polynomials(
                     orderPixelTable=orderPixelTable,
                     wavelengthDeg=wavelengthDeg,
                     orderDeg=orderDeg,
@@ -255,6 +267,31 @@ class create_dispersion_map(object):
                 if tryCount == 5:
                     print(f"Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
+
+        # GET FILENAME FOR THE LINE LISTS
+        if not self.sofName:
+            goodLines = filenamer(
+                log=self.log,
+                frame=self.pinholeFrame,
+                settings=self.settings
+            )
+            goodLines = goodLines.replace(".fits", "_FITTED_LINES.fits")
+        else:
+            goodLines = self.sofName + "_FITTED_LINES.fits"
+        # WRITE GOOD LINE LIST TO FILE
+        t = Table.from_pandas(goodLinesTable)
+        filePath = f"{self.qcDir}/{goodLines}"
+        t.write(filePath, overwrite=True)
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "DISP_MAP_LINES",
+            "file_name": goodLines,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} dispersion solution fitted lines",
+            "file_path": filePath
+        }).to_frame().T], ignore_index=True)
 
         # WRITE THE MAP TO FILE
         mapPath = self.write_map_to_file(
@@ -775,6 +812,7 @@ class create_dispersion_map(object):
             - ``xcoeff`` -- the x-coefficients post clipping
             - ``ycoeff`` -- the y-coefficients post clipping
             - ``res_plots`` -- plot of fit residuals
+            - ``goodLinesTable`` -- the fitted line-list with metrics
         """
         self.log.debug('starting the ``fit_polynomials`` method')
 
@@ -1041,17 +1079,10 @@ class create_dispersion_map(object):
             res_plots = self.sofName + "_RESIDUALS.pdf"
         # plt.show()
 
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
-        outDir = outDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-
         if self.firstGuessMap:
-            filePath = f"{outDir}/{res_plots}"
+            filePath = f"{self.qcDir}/{res_plots}"
         else:
-            filePath = f"{outDir}/{res_plots}"
+            filePath = f"{self.qcDir}/{res_plots}"
         self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "DISP_MAP_RES",
@@ -1068,7 +1099,7 @@ class create_dispersion_map(object):
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``fit_polynomials`` method')
-        return xcoeff, ycoeff, res_plots
+        return xcoeff, ycoeff, res_plots, orderPixelTable
 
     def create_placeholder_images(
             self,
@@ -1248,11 +1279,9 @@ class create_dispersion_map(object):
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         outDir = outDir.replace("//", "/")
-        # Recursively create missing directories
+        # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):
             os.makedirs(outDir)
-
-        #
 
         # GET THE EXTENSION (WITH DOT PREFIX)
         extension = os.path.splitext(dispersionMapPath)[1]

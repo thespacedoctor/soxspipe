@@ -144,6 +144,13 @@ class detect_order_edges(_base_detect):
             self.axisAbin = self.binx
             self.axisBbin = self.biny
 
+        home = expanduser("~")
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.qcDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.qcDir):
+            os.makedirs(self.qcDir)
+
         return None
 
     def get(self):
@@ -582,12 +589,8 @@ class detect_order_edges(_base_detect):
             settings=self.settings
         )
         filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-        filePath = f"{outDir}/{filename}"
+
+        filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
         # plt.show()
         plt.savefig(filePath, dpi=720)

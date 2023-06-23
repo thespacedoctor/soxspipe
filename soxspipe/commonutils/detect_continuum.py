@@ -491,6 +491,13 @@ class detect_continuum(_base_detect):
         self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 
+        home = expanduser("~")
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.qcDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.qcDir):
+            os.makedirs(self.qcDir)
+
         return None
 
     def get(self):
@@ -1044,14 +1051,7 @@ class detect_continuum(_base_detect):
         else:
             filename = self.sofName + "_residuals.pdf"
 
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
-        outDir = outDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
         plt.savefig(filePath, dpi=720)
 

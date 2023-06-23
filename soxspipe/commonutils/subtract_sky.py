@@ -140,6 +140,13 @@ class subtract_sky(object):
                 settings=self.settings
             )
 
+        home = expanduser("~")
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.qcDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.qcDir):
+            os.makedirs(self.qcDir)
+
         return
 
     def subtract(self):
@@ -660,12 +667,8 @@ class subtract_sky(object):
         fig.suptitle(f"{self.arm} sky model: order {order}", fontsize=12, y=0.97)
 
         filename = self.filenameTemplate.replace(".fits", f"_SKYMODEL_QC_PLOTS_ORDER_{int(order)}.pdf")
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-        filePath = f"{outDir}/{filename}"
+
+        filePath = f"{self.qcDir}/{filename}"
 
         # plt.show()
         plt.savefig(filePath, dpi='figure')
@@ -1035,12 +1038,7 @@ class subtract_sky(object):
         # plt.show()
         filename = self.filenameTemplate.replace(".fits", "_skysub_quicklook.pdf")
 
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.qcDir}/{filename}"
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``plot_results`` method')
