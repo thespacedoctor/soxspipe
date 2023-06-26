@@ -278,9 +278,9 @@ class create_dispersion_map(object):
             missingLinesFN = self.sofName + "_MISSED_LINES.fits"
 
         # WRITE CLIPPED LINE LIST TO FILE
-        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped']
+        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped','fwhm_px']
         clippedLinesTable['sigma_clipped'] = True
-        goodLinesTable = pd.concat([clippedLinesTable[keepColumns], goodLinesTable[keepColumns]], ignore_index=True)
+        goodLinesTable = pd.concat([clippedLinesTable[keepColumns], goodLinesTable[keepColumns]],  ignore_index=True)
         # SORT BY COLUMN NAME
         goodLinesTable.sort_values(['order', 'wavelength', 'slit_index'], inplace=True)
 
@@ -508,10 +508,30 @@ class create_dispersion_map(object):
                     if new_resid < old_resid:
                         observed_x = tmp_x + xlow
                         observed_y = tmp_y + ylow
+                        stamp_x = tmp_x
+                        stamp_y = tmp_y
                         old_resid = new_resid
             else:
                 observed_x = sources[0]['xcentroid'] + xlow
                 observed_y = sources[0]['ycentroid'] + ylow
+                stamp_x = sources[0]['xcentroid']
+                stamp_y = sources[0]['ycentroid']
+
+            try:
+                #Rerun detection with IRAFStarFinder
+                iraf_find = IRAFStarFinder(
+                    fwhm=2.5, threshold=1.3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True, xycoords=[(stamp_x, stamp_y)])
+                iraf_sources = iraf_find(stamp)
+                fwhm = iraf_sources['fwhm'][0]
+            except Exception as e:
+                fwhm = np.nan
+                #print(np.shape(stamp))
+                #print(stamp_x,stamp_y)
+                #print(e)
+                pass
+
+
+
 
             if 1 == 0 and ran:
                 plt.scatter(0, 0, marker='x', s=30)
@@ -523,10 +543,13 @@ class create_dispersion_map(object):
         else:
             observed_x = np.nan
             observed_y = np.nan
+            fwhm = np.nan
         # plt.show()
 
         predictedLine['observed_x'] = observed_x
         predictedLine['observed_y'] = observed_y
+        predictedLine['fwhm_px'] =  fwhm
+
 
         self.log.debug('completed the ``detect_pinhole_arc_line`` method')
         return predictedLine
@@ -713,6 +736,9 @@ class create_dispersion_map(object):
             "fit_x"] - orderPixelTable["observed_x"]
         orderPixelTable["residuals_y"] = orderPixelTable[
             "fit_y"] - orderPixelTable["observed_y"]
+
+
+
 
         # CALCULATE COMBINED RESIDUALS AND STATS
         orderPixelTable["residuals_xy"] = np.sqrt(np.square(
