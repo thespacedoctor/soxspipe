@@ -301,7 +301,10 @@ class create_dispersion_map(object):
         }).to_frame().T], ignore_index=True)
 
         # WRITE MISSING LINE LIST TO FILE
-        t = Table.from_pandas(missingLines)
+        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y']
+        # SORT BY COLUMN NAME
+        missingLines.sort_values(['order', 'wavelength', 'slit_index'], inplace=True)
+        t = Table.from_pandas(missingLines[keepColumns])
         filePath = f"{self.qcDir}/{missingLinesFN}"
         t.write(filePath, overwrite=True)
         self.products = pd.concat([self.products, pd.Series({
