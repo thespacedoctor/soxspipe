@@ -491,6 +491,13 @@ class detect_continuum(_base_detect):
         self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 
+        home = expanduser("~")
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.qcDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.qcDir):
+            os.makedirs(self.qcDir)
+
         return None
 
     def get(self):
@@ -626,7 +633,8 @@ class detect_continuum(_base_detect):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"Residuals of the order centre polynomial fit",
-            "file_path": plotPath
+            "file_path": plotPath,
+            "label": "QC"
         }).to_frame().T], ignore_index=True)
 
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
@@ -1044,14 +1052,7 @@ class detect_continuum(_base_detect):
         else:
             filename = self.sofName + "_residuals.pdf"
 
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
-        outDir = outDir.replace("//", "/")
-        # Recursively create missing directories
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
         plt.savefig(filePath, dpi=720)
 

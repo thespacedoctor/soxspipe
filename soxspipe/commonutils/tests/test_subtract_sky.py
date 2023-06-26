@@ -119,7 +119,8 @@ class test_subtract_sky(unittest.TestCase):
             "file_type": [],
             "obs_date_utc": [],
             "reduction_date_utc": [],
-            "file_path": []
+            "file_path": [],
+            "label": []
         })
 
         from soxspipe.commonutils import subtract_sky

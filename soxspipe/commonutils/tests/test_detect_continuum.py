@@ -80,7 +80,8 @@ class test_detect_continuum(unittest.TestCase):
             "file_type": [],
             "obs_date_utc": [],
             "reduction_date_utc": [],
-            "file_path": []
+            "file_path": [],
+            "label": []
         })
 
         from soxspipe.commonutils import detect_continuum
