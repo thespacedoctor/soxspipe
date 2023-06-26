@@ -453,7 +453,7 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``detect_pinhole_arc_line`` method')
 
         import numpy as np
-        from photutils import DAOStarFinder
+        from photutils import DAOStarFinder, IRAFStarFinder
         from astropy.stats import sigma_clipped_stats
 
         pinholeFrame = self.pinholeFrame
