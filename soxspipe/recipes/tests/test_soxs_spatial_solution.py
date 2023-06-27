@@ -60,6 +60,18 @@ class test_soxs_spatial_solution(unittest.TestCase):
 
     import pytest
 
+    def test_soxs_real_spatial_solution_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs/spat-solution/sof/SOXS_REAL_MPH_ARC.sof"
+        from soxspipe.recipes import soxs_spatial_solution
+        this = soxs_spatial_solution(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath,
+            overwrite=True,
+            create2DMap=False
+        )
+        this.produce_product()
+
     @pytest.mark.full
     def test_soxs_spatial_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/MPH_ARC/sof/SOXSIM_MPH_ARC.sof"

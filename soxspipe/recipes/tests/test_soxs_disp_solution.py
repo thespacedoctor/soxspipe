@@ -1,4 +1,5 @@
 from __future__ import print_function
+import pytest
 from builtins import str
 import os
 import unittest
@@ -60,7 +61,15 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_disp_solution(unittest.TestCase):
 
-    import pytest
+    def test_soxs_real_disp_solution_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs/disp-solution/sof/NIR_DISP_SOLUTION.sof"
+        from soxspipe.recipes import soxs_disp_solution
+        disp_map_path = soxs_disp_solution(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath
+        ).produce_product()
+        print(f"Here is the final product `{disp_map_path}`")
 
     def test_soxs_sim_disp_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/disp-solution/sof/NIR_DISP_SOLUTION.sof"
