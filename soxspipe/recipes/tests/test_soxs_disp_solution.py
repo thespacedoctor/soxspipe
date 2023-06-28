@@ -72,17 +72,6 @@ class test_soxs_disp_solution(unittest.TestCase):
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
-    def test_soxs_sim_disp_solution_nir_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/disp-solution/sof/NIR_DISP_SOLUTION.sof"
-        from soxspipe.recipes import soxs_disp_solution
-        disp_map_path = soxs_disp_solution(
-            log=log2,
-            settings=settings2,
-            inputFrames=sofPath,
-            overwrite=True
-        ).produce_product()
-        print(f"Here is the final product `{disp_map_path}`")
-
     def test_soxs_disp_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-disp-solution/sof/20170818_NIR_DISP_SOLUTION.sof"
         from soxspipe.recipes import soxs_disp_solution
@@ -116,17 +105,6 @@ class test_soxs_disp_solution(unittest.TestCase):
             overwrite=True
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
-
-    # def test_soxs_disp_solution_function(self):
-
-    #     # utKit.refresh_database() # reset database to database found in
-    #     # soxspipe/test/input
-    #     from soxspipe.recipes import soxs_disp_solution
-    #     this = soxs_disp_solution(
-    #         log=log,
-    #         settings=settings
-    #     )
-    #     this.get()
 
     @pytest.mark.full
     def test_soxs_disp_solution_function_exception(self):

@@ -1,6 +1,8 @@
 
 # Release Notes  
 
+* **FEATURE:** Real SOXS data is now included in the unit-test suite (starting to replace simulated data unit-tests). `soxs-disp-solu` recipe so far.
+* **FEATURE:** SOXS NIR Xe line-lists added to static-calibration suite (single and multi pinhole).
 * **REFACTOR:** soxspipe now has a 'full' and a 'lite' test-suite. Using the lite suite will speed up deploying of new releases.
 * **ENHANCEMENT:** fitted lines from the dispersion solution are written out to file as a QC product
 * **ENHANCEMENT:** products and QC outputs are differentiated in the table reported upon recipe completion (see label column).
