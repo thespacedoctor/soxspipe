@@ -88,9 +88,9 @@ NIR:
     1x1: BP_MAP_RP_NIR.fits
   predicted pinhole lines:
     single:
-      1x1: SOXS_PINHOLE_TAB_NIR.fits
+      1x1: SOXS_SPH_TAB_NIR_Xe.fits
     multi:
-      1x1: SOXS_PINHOLE_TAB_NIR.fits
+      1x1: SOXS_MPH_TAB_NIR_Xe.fits
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 11 #arcsec

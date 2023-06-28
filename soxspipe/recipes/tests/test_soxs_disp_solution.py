@@ -67,7 +67,8 @@ class test_soxs_disp_solution(unittest.TestCase):
         disp_map_path = soxs_disp_solution(
             log=log2,
             settings=settings2,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
@@ -77,7 +78,8 @@ class test_soxs_disp_solution(unittest.TestCase):
         disp_map_path = soxs_disp_solution(
             log=log2,
             settings=settings2,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
@@ -87,7 +89,8 @@ class test_soxs_disp_solution(unittest.TestCase):
         disp_map_path = soxs_disp_solution(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
@@ -98,7 +101,8 @@ class test_soxs_disp_solution(unittest.TestCase):
         disp_map_path = soxs_disp_solution(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
@@ -108,7 +112,8 @@ class test_soxs_disp_solution(unittest.TestCase):
         disp_map_path = soxs_disp_solution(
             log=log,
             settings=settings,
-            inputFrames=sofPath
+            inputFrames=sofPath,
+            overwrite=True
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
@@ -133,7 +138,8 @@ class test_soxs_disp_solution(unittest.TestCase):
             this = soxs_disp_solution(
                 log=log,
                 settings=settings,
-                inputFrames=sofPath
+                inputFrames=sofPath,
+                overwrite=True
             )
             assert False
         except Exception as e:
