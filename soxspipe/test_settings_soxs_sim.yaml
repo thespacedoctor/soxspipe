@@ -49,20 +49,20 @@ soxs-spatial-solution:
 
 
 soxs-mflat:
-    centre-order-window: 13
+    centre-order-window: 20
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
     clipping-lower-sigma: 50
-    clipping-upper-sigma: 50   
-    clipping-iteration-count: 0
+    clipping-upper-sigma: 1000   
+    clipping-iteration-count: 1
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20
     max-percentage-threshold-for-edge-detection: 50
-    disp-axis-deg: 5
+    disp-axis-deg: 2
     order-deg: 5
-    poly-fitting-residual-clipping-sigma: 3.0
-    poly-clipping-iteration-limit: 2
+    poly-fitting-residual-clipping-sigma: 5
+    poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
     
 
