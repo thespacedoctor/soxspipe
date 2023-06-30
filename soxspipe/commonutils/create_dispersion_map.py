@@ -373,9 +373,6 @@ class create_dispersion_map(object):
         dat = Table.read(predictedLinesFile, format='fits')
         orderPixelTable = dat.to_pandas()
 
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable, headers='keys', tablefmt='psql'))
-
         # FITS TO PYTHON INDEXING
         # PHOTUTILS CENTRE OF BOTTOM LEFT PIXEL IS (0,0) BUT FOR WCS IT IS (1,1)
         # AND FOR PYTHON IT IS ALSO (0,0)
