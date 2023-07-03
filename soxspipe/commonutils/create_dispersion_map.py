@@ -144,6 +144,7 @@ class create_dispersion_map(object):
 
         import pandas as pd
         from astropy.table import Table
+        import numpy as np
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -278,8 +279,10 @@ class create_dispersion_map(object):
             missingLinesFN = self.sofName + "_MISSED_LINES.fits"
 
         # WRITE CLIPPED LINE LIST TO FILE
-        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', 'fwhm_px']
+        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', 'fwhm_px', 'R']
         clippedLinesTable['sigma_clipped'] = True
+        clippedLinesTable['R'] = np.nan
+
         goodLinesTable = pd.concat([clippedLinesTable[keepColumns], goodLinesTable[keepColumns]], ignore_index=True)
         # SORT BY COLUMN NAME
         goodLinesTable.sort_values(['order', 'wavelength', 'slit_index'], inplace=True)
@@ -674,7 +677,8 @@ class create_dispersion_map(object):
             orderDeg,
             wavelengthDeg,
             slitDeg,
-            writeQCs=False):
+            writeQCs=False,
+            pixelRange=False):
         """*calculate residuals of the polynomial fits against the observed line positions*
 
         **Key Arguments:**
@@ -686,6 +690,7 @@ class create_dispersion_map(object):
             - ``wavelengthDeg`` -- degree of wavelength fitting
             - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
             - ``writeQCs`` -- write the QCs to dataframe? Default *False*
+            - ``pixelRange`` -- return centre pixel *and* +- 2nm from the centre pixel (to measure the pixel scale)
 
         **Return:**
             - ``residuals`` -- combined x-y residuals
@@ -728,6 +733,36 @@ class create_dispersion_map(object):
         # FITTED POSITIONS
         orderPixelTable["fit_x"] = polyx(orderPixelTable, *xcoeff)
         orderPixelTable["fit_y"] = polyy(orderPixelTable, *ycoeff)
+
+        if pixelRange == True:
+            polyx = chebyshev_order_wavelength_polynomials(
+                log=self.log, orderDeg=orderDegx, wavelengthDeg=wavelengthDegx, slitDeg=slitDegx, exponentsIncluded=False, axis="x").poly
+            polyy = chebyshev_order_wavelength_polynomials(
+                log=self.log, orderDeg=orderDegy, wavelengthDeg=wavelengthDegy, slitDeg=slitDegy, exponentsIncluded=False, axis="y").poly
+            # GET THE PIXEL SCALE
+            orderPixelTableHigh = orderPixelTable.copy()
+            nmRange = 4.
+            orderPixelTableHigh["wavelength"] = orderPixelTableHigh["wavelength"] + nmRange / 2.
+            orderPixelTableHigh["fit_x"] = polyx(orderPixelTableHigh, *xcoeff)
+            orderPixelTableHigh["fit_y"] = polyy(orderPixelTableHigh, *ycoeff)
+
+            orderPixelTableLow = orderPixelTable.copy()
+            orderPixelTableLow["wavelength"] = orderPixelTableLow["wavelength"] - nmRange / 2.
+            orderPixelTableLow["fit_x"] = polyx(orderPixelTableLow, *xcoeff)
+            orderPixelTableLow["fit_y"] = polyy(orderPixelTableLow, *ycoeff)
+
+            orderPixelTable["fit_x_high"] = orderPixelTableHigh["fit_x"]
+            orderPixelTable["fit_y_high"] = orderPixelTableHigh["fit_y"]
+            orderPixelTable["fit_x_low"] = orderPixelTableLow["fit_x"]
+            orderPixelTable["fit_y_low"] = orderPixelTableLow["fit_y"]
+
+            orderPixelTable["pixelScale"] = nmRange / np.power(np.power(orderPixelTable["fit_x_high"] - orderPixelTable["fit_x_low"], 2) + np.power(orderPixelTable["fit_y_high"] - orderPixelTable["fit_y_low"], 2), 0.5)
+            orderPixelTable["delta_wavelength"] = orderPixelTable["pixelScale"] * orderPixelTable["fwhm_px"]
+            orderPixelTable["R"] = orderPixelTable["wavelength"] / orderPixelTable["delta_wavelength"]
+
+            # REMOVE COLUMN FROM DATA FRAME
+            orderPixelTable.drop(columns=['fit_x_high', 'fit_y_high', 'fit_x_low', 'fit_y_low'], inplace=True)
+
         orderPixelTable["residuals_x"] = orderPixelTable[
             "fit_x"] - orderPixelTable["observed_x"]
         orderPixelTable["residuals_y"] = orderPixelTable[
@@ -1027,7 +1062,8 @@ class create_dispersion_map(object):
             orderDeg=orderDeg,
             wavelengthDeg=wavelengthDeg,
             slitDeg=slitDeg,
-            writeQCs=True)
+            writeQCs=True,
+            pixelRange=True)
 
         mean_x_res = abs(orderPixelTable["residuals_x"]).mean()
         mean_y_res = abs(orderPixelTable["residuals_y"]).mean()

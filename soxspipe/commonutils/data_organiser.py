@@ -1134,18 +1134,17 @@ class data_organiser(object):
         self.log.debug('starting the ``_move_misc_files`` method')
 
         import shutil
+        if check and not os.path.exists(self.miscDir):
+            os.makedirs(self.miscDir)
+
         # GENERATE A LIST OF FILE PATHS
         pathToDirectory = self.rootDir
-        check = True
         allowlistExtensions = [".db", ".yaml", ".log", ".sh"]
         for d in os.listdir(pathToDirectory):
             filepath = os.path.join(pathToDirectory, d)
             if os.path.splitext(filepath)[1] in allowlistExtensions:
                 continue
             if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme" not in d.lower():
-                if check and not os.path.exists(self.miscDir):
-                    os.makedirs(self.miscDir)
-                    check = False
                 shutil.move(filepath, self.miscDir + "/" + d)
 
         self.log.debug('completed the ``_move_misc_files`` method')
