@@ -102,9 +102,9 @@ class test_soxs_stare(unittest.TestCase):
     #     )
     #     this.get()
 
+    @pytest.mark.full
     def test_soxs_stare_function_soxsreal(self):
 
-        @pytest.mark.full
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/sky_subtraction/sof/soxsreal_pseudo_objects.sof"
         from soxspipe.recipes import soxs_stare
         recipe = soxs_stare(
