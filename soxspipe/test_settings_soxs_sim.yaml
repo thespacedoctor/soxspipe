@@ -17,11 +17,11 @@ soxs-mdark:
 
 soxs-disp-solution:
     pixel-window-size: 10
-    order-deg: 3
-    wavelength-deg: 3
+    order-deg: 4
+    wavelength-deg: 5
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
     poly-clipping-iteration-limit: 10
-    poly-fitting-residual-clipping-sigma: 5
+    poly-fitting-residual-clipping-sigma: 7
 
 soxs-order-centre:
     # NUMBER OF CROSS-ORDER SLICES PER ORDER
@@ -41,9 +41,9 @@ soxs-order-centre:
 
 soxs-spatial-solution:
     pixel-window-size: 10
-    order-deg: 3
-    wavelength-deg: 3
-    slit-deg: 3
+    order-deg: 4
+    wavelength-deg: 5
+    slit-deg: 2
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
 
@@ -65,6 +65,29 @@ soxs-mflat:
     poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
     
+soxs-stare:
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
+    clipping-iteration-count: 1
+    clipping-lower-sigma: 50
+    clipping-upper-sigma: 1000 
+
+
+sky-subtraction:
+    # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+    median_clipping_sigma: 3
+    median_clipping_iterations: 5
+    # ROLLING WINDOW LENGTH IN DATA POINTS
+    median_rolling_window_size: 31
+    # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+    percential_clipping_sigma: 2
+    percential_clipping_iterations: 1
+    percential_rolling_window_size: 15
+    # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+    clip-slit-edge-fraction: 0.05
+    aggressive_object_masking: True
+    bspline_order: 3
+    slit_illumination_order: 3
 
 # soxs-straighten:
 #     asdasd: 1

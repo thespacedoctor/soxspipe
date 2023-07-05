@@ -295,7 +295,7 @@ class soxs_mflat(_base_recipe_):
             combined_normalised_flat = self.clip_and_stack(
                 frames=normalisedFlats, recipe="soxs_mflat", ignore_input_masks=False, post_stack_clipping=True)
 
-            quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=True, ext=None, surfacePlot=True, title="Recombined normalised flat frames")
+            quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Recombined normalised flat frames")
 
             self.combinedNormalisedFlatSet.append(combined_normalised_flat.copy())
 

@@ -7,6 +7,7 @@
 * **ENHANCEMENT:** fitted lines from the dispersion solution are written out to file as a QC product
 * **ENHANCEMENT:** FWHM and pixel-scale added to fitted lines from the dispersion solution
 * **ENHANCEMENT:** products and QC outputs are differentiated in the table reported upon recipe completion (see label column).
+* **ENHANCEMENT:** legends added to many of the QC plots
 * **DOCS:** updated docs with a more robust SOXSPIPE upgrade path (users having issue with `conda update ...`)
 * **REFACTOR:** `misc/` directory created by data-organiser even if empty
 

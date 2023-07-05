@@ -478,11 +478,11 @@ class create_dispersion_map(object):
         # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
         stamp = np.ma.array(stamp.data, mask=stamp.mask)
         # USE DAOStarFinder TO FIND LINES WITH 2D GUASSIAN FITTING
-        mean, median, std = sigma_clipped_stats(stamp, sigma=3.0)
+        mean, median, std = sigma_clipped_stats(stamp, sigma=3.0, stdfunc="mad_std", cenfunc="median")
 
         try:
             daofind = DAOStarFinder(
-                fwhm=2.5, threshold=1.3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
+                fwhm=2.5, threshold=3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
             sources = daofind(stamp)
@@ -1071,7 +1071,7 @@ class create_dispersion_map(object):
         # a = plt.figure(figsize=(40, 15))
         import matplotlib.pyplot as plt
         if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
-            fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 16.5), constrained_layout=True)
             # CREATE THE GRID OF AXES
             gs = fig.add_gridspec(5, 4)
             toprow = fig.add_subplot(gs[0:2, :])
@@ -1092,40 +1092,51 @@ class create_dispersion_map(object):
         if self.axisA == "x":
             rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
             rotatedImg = np.flipud(rotatedImg)
-        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
+
+        std = np.nanstd(rotatedImg)
+        mean = np.nanmean(rotatedImg)
+        vmax = mean + 2 * std
+        vmin = mean - 0.5 * std
+        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.5)
         toprow.set_title(
             "observed arc-line positions (post-clipping)", fontsize=10)
 
         if isinstance(missingLines, pd.core.frame.DataFrame):
-            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.2, linewidths=0.5)
+            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.1, linewidths=0.5, label="undetected line location")
         if len(allClippedLines):
-            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
-        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.6)
+            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.2, linewidths=0.5, label="line clipped during dispersion solution fitting")
+        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.1, label="detected line location")
         # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
         mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))
-        toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.6, linewidths=0.5)
+        toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
 
         toprow.tick_params(axis='both', which='major', labelsize=9)
 
+        toprow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
+                      fontsize=6)
+
         if self.axisA == "x":
             toprow.invert_yaxis()
 
-        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
+        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.5)
         midrow.set_title(
             "global dispersion solution", fontsize=10)
 
         xfit = orderPixelTable[f"fit_{self.axisA}"]
-        midrow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='red', s=1, alpha=0.9)
+        # midrow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='red', s=1, alpha=0.9)
         midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
-                       orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.6)
+                       orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1, label="fitted line (size proportion to line-fit residual)")
 
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
         if self.axisA == "x":
             midrow.invert_yaxis()
+
+        midrow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
+                      fontsize=6)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
@@ -1415,6 +1426,9 @@ class create_dispersion_map(object):
         (order, minWl, maxWl) = orderInfo
         slitMap, wlMap, orderMap = self.create_placeholder_images(order=order)
 
+        if np.count_nonzero(wlMap.data) == 0:
+            return slitMap, wlMap
+
         # FIRST GENERATE A WAVELENGTH SURFACE - FINE WL, CHUNKY SLIT-POSTION
         wlRange = maxWl - minWl
         if self.arm.lower == "nir":
@@ -1428,6 +1442,7 @@ class create_dispersion_map(object):
         slitArray = np.arange(-halfGrid, halfGrid +
                               grid_res_slit, grid_res_slit)
         wlArray = np.arange(minWl - int(wlRange / 10), maxWl + int(wlRange / 10), grid_res_wavelength)
+
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
         bigSlitArray = np.concatenate(
             [np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])

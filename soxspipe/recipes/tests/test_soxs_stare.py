@@ -58,6 +58,8 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_stare(unittest.TestCase):
 
+    import pytest
+
     # def test_soxs_stare_nir_function(self):
     #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_6s_darks.sof"
     #     from soxspipe.recipes import soxs_stare
@@ -99,6 +101,19 @@ class test_soxs_stare(unittest.TestCase):
     #         settings=settings
     #     )
     #     this.get()
+
+    def test_soxs_stare_function_soxsreal(self):
+
+        @pytest.mark.full
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/sky_subtraction/sof/soxsreal_pseudo_objects.sof"
+        from soxspipe.recipes import soxs_stare
+        recipe = soxs_stare(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath,
+            overwrite=True
+        )
+        reducedStare = recipe.produce_product()
 
     def test_soxs_stare_function_exception(self):
 
