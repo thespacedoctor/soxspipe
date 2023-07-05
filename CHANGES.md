@@ -1,10 +1,15 @@
 
 # Release Notes  
 
+* **FEATURE:** Real SOXS data is now included in the unit-test suite (starting to replace simulated data unit-tests). `soxs-disp-solu` recipe so far.
+* **FEATURE:** SOXS NIR Xe line-lists added to static-calibration suite (single and multi pinhole).
 * **REFACTOR:** soxspipe now has a 'full' and a 'lite' test-suite. Using the lite suite will speed up deploying of new releases.
 * **ENHANCEMENT:** fitted lines from the dispersion solution are written out to file as a QC product
+* **ENHANCEMENT:** FWHM and pixel-scale added to fitted lines from the dispersion solution
 * **ENHANCEMENT:** products and QC outputs are differentiated in the table reported upon recipe completion (see label column).
+* **ENHANCEMENT:** legends added to many of the QC plots
 * **DOCS:** updated docs with a more robust SOXSPIPE upgrade path (users having issue with `conda update ...`)
+* **REFACTOR:** `misc/` directory created by data-organiser even if empty
 
 ## v0.8.0 - March 3, 2023
 

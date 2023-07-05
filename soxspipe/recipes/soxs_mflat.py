@@ -255,7 +255,10 @@ class soxs_mflat(_base_recipe_):
                 # qcTable = self.qc.copy()
                 continue
 
-            filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}", kw("OBJECT"): fk}
+            if tag:
+                filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}", kw("OBJECT"): fk}
+            else:
+                filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
             orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
             if len(orderTablePaths) == 1:
                 orderTablePath = orderTablePaths[0]

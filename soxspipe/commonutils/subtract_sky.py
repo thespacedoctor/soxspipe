@@ -338,7 +338,7 @@ class subtract_sky(object):
         percential_rolling_window_size = self.settings["sky-subtraction"]["percential_rolling_window_size"]
 
         # FINDING A DYNAMIC SIZE FOR PERCENTILE FILTERING WINDOW
-        windowSize = int(len(imageMapOrder.loc[imageMapOrder["y"] == imageMapOrder["y"].median()].index))
+        windowSize = int(len(imageMapOrder.loc[imageMapOrder[self.axisB] == imageMapOrder[self.axisB].median()].index))
 
         imageMapOrder["clipped"] = False
         imageMapOrder["object"] = False
@@ -443,7 +443,7 @@ class subtract_sky(object):
 
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(frame.data)
-        for x, y in zip(imageMapOrderWithObjectDF["x"], imageMapOrderWithObjectDF["y"]):
+        for x, y in zip(imageMapOrderWithObjectDF[self.axisA], imageMapOrderWithObjectDF[self.axisB]):
             nonOrderMask[y][x] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
@@ -471,9 +471,9 @@ class subtract_sky(object):
             "y-axis", fontsize=10)
         onerow.set_ylabel(
             "x-axis", fontsize=10)
-        ylimMinImage = imageMapOrderWithObjectDF["y"].min() - 10
-        ylimMaxImage = imageMapOrderWithObjectDF["y"].max() + 10
-        onerow.set_ylim(imageMapOrderWithObjectDF["x"].min() - 10, imageMapOrderWithObjectDF["x"].max() + 10)
+        ylimMinImage = imageMapOrderWithObjectDF[self.axisB].min() - 10
+        ylimMaxImage = imageMapOrderWithObjectDF[self.axisB].max() + 10
+        onerow.set_ylim(imageMapOrderWithObjectDF[self.axisA].min() - 10, imageMapOrderWithObjectDF[self.axisA].max() + 10)
         onerow.set_xlim(ylimMinImage, ylimMaxImage)
         onerow.invert_xaxis()
 
@@ -534,7 +534,7 @@ class subtract_sky(object):
 
         percentileClipMask = nonOrderMask
         percentileClipMask = np.zeros_like(frame.data)
-        for x, y in zip(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "x"].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "y"].values):
+        for x, y in zip(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, self.axisA].values, imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, self.axisB].values):
             percentileClipMask[y][x] = 1
         percentileClipMask = ma.make_mask(percentileClipMask)
         imageMask = np.ma.array(np.ones_like(frame.data), mask=~percentileClipMask)
@@ -545,7 +545,7 @@ class subtract_sky(object):
         cmap.set_bad(red, 0.)
         fiverow.imshow(np.flipud(np.rot90(imageMask, 1)), cmap=cmap, norm=norm, alpha=1., interpolation='nearest')
         medianClipMask = np.zeros_like(frame.data)
-        for x, y in zip(imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == True, "x"].values, imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == True, "y"].values):
+        for x, y in zip(imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == True, self.axisA].values, imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == True, self.axisB].values):
             medianClipMask[y][x] = 1
         medianClipMask = ma.make_mask(medianClipMask)
         imageMask = np.ma.array(np.ones_like(frame.data), mask=~medianClipMask)
@@ -565,7 +565,7 @@ class subtract_sky(object):
             "y-axis", fontsize=10)
         fiverow.set_ylabel(
             "x-axis", fontsize=10)
-        fiverow.set_ylim(imageMapOrderWithObjectDF["x"].min() - 10, imageMapOrderWithObjectDF["x"].max() + 10)
+        fiverow.set_ylim(imageMapOrderWithObjectDF[self.axisA].min() - 10, imageMapOrderWithObjectDF[self.axisA].max() + 10)
         fiverow.set_xlim(ylimMinImage, ylimMaxImage)
         fiverow.invert_xaxis()
 
@@ -595,7 +595,7 @@ class subtract_sky(object):
 
         # BUILD IMAGE OF SKY MODEL
         skyModelImage = np.zeros_like(frame.data)
-        for x, y, skypixel in zip(imageMapOrderDF["x"], imageMapOrderDF["y"], imageMapOrderDF["sky_model"]):
+        for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_model"]):
             skyModelImage[y][x] = skypixel
         nonOrderMask = (nonOrderMask == 0)
         skyModelImage = np.ma.array(skyModelImage, mask=nonOrderMask)
@@ -607,7 +607,7 @@ class subtract_sky(object):
         im = sevenrow.imshow(np.flipud(np.rot90(skyModelImage, 1)), vmin=0, vmax=100, cmap=cmap, alpha=1.)
         sevenrow.set_ylabel(
             "x-axis", fontsize=10)
-        sevenrow.set_ylim(imageMapOrderWithObjectDF["x"].min() - 10, imageMapOrderWithObjectDF["x"].max() + 10)
+        sevenrow.set_ylim(imageMapOrderWithObjectDF[self.axisA].min() - 10, imageMapOrderWithObjectDF[self.axisA].max() + 10)
         sevenrow.set_xlim(ylimMinImage, ylimMaxImage)
         sevenrow.invert_xaxis()
         medianValue = np.median(skyModelImage.ravel())
@@ -618,7 +618,7 @@ class subtract_sky(object):
 
         # BUILD SKY-SUBTRACTED IMAGE
         skySubImage = np.zeros_like(frame.data)
-        for x, y, skypixel in zip(imageMapOrderDF["x"], imageMapOrderDF["y"], imageMapOrderDF["sky_subtracted_flux"]):
+        for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_subtracted_flux"]):
             skySubImage[y][x] = skypixel
         skySubMask = (nonOrderMask == 1) | (medianClipMask == 1)
         skySubImage = np.ma.array(skySubImage, mask=skySubMask)
@@ -633,7 +633,7 @@ class subtract_sky(object):
             "y-axis", fontsize=10)
         eightrow.set_ylabel(
             "x-axis", fontsize=10)
-        eightrow.set_ylim(imageMapOrderWithObjectDF["x"].min() - 10, imageMapOrderWithObjectDF["x"].max() + 10)
+        eightrow.set_ylim(imageMapOrderWithObjectDF[self.axisA].min() - 10, imageMapOrderWithObjectDF[self.axisA].max() + 10)
         eightrow.set_xlim(ylimMinImage, ylimMaxImage)
         eightrow.invert_xaxis()
         medianValue = np.median(skySubImage.data.ravel())
@@ -674,7 +674,7 @@ class subtract_sky(object):
 
         filePath = f"{self.qcDir}/{filename}"
 
-        # plt.show()
+        plt.show()
         plt.savefig(filePath, dpi='figure')
 
         self.log.debug('completed the ``plot_sky_sampling`` method')
@@ -945,9 +945,9 @@ class subtract_sky(object):
         """
         self.log.debug('starting the ``add_data_to_placeholder_images`` method')
 
-        for x, y, skypixel in zip(imageMapOrderDF["x"], imageMapOrderDF["y"], imageMapOrderDF["sky_model"]):
+        for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_model"]):
             skymodelCCDData.data[y][x] = skypixel
-        for x, y, skypixel in zip(imageMapOrderDF["x"], imageMapOrderDF["y"], imageMapOrderDF["sky_subtracted_flux"]):
+        for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_subtracted_flux"]):
             skySubtractedCCDData.data[y][x] = skypixel
 
         self.log.debug('completed the ``add_data_to_placeholder_images`` method')
@@ -990,7 +990,7 @@ class subtract_sky(object):
 
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(objectFrame.data)
-        for x, y in zip(self.mapDF["x"], self.mapDF["y"]):
+        for x, y in zip(self.mapDF[self.axisA], self.mapDF[self.axisB]):
             nonOrderMask[y][x] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
