@@ -246,10 +246,12 @@ class horne_extraction(object):
 
             # poly_coeffs = collection of multiple polynominals of fractional fluxes along trace
             poly_coeffs.append(coeff)
-            plt.scatter(wave_px, fractions, alpha=0.2)
-            plt.plot(wave_px, np.polyval(coeff, wave_px), color='red')
-            plt.ylim([-1, 1])
-            plt.show()
+
+            if False:
+                plt.scatter(wave_px, fractions, alpha=0.2)
+                plt.plot(wave_px, np.polyval(coeff, wave_px), color='red')
+                plt.ylim([-1, 1])
+                plt.show()
 
         # 3) OPTIMAL EXTRACTION HERE
         for index, row in selection.iterrows():

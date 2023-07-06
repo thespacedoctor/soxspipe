@@ -676,6 +676,7 @@ class subtract_sky(object):
 
         plt.show()
         plt.savefig(filePath, dpi='figure')
+        plt.close()
 
         self.log.debug('completed the ``plot_sky_sampling`` method')
         return filePath
@@ -1044,6 +1045,7 @@ class subtract_sky(object):
 
         filePath = f"{self.qcDir}/{filename}"
         plt.savefig(filePath, dpi=720)
+        plt.close()
 
         self.log.debug('completed the ``plot_results`` method')
         return filePath

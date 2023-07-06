@@ -1102,6 +1102,7 @@ class detect_continuum(_base_detect):
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
         plt.savefig(filePath, dpi=720)
+        plt.close()
 
         self.log.debug('completed the ``plot_results`` method')
         return filePath, orderMetaTable

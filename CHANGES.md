@@ -11,6 +11,7 @@
 * **ENHANCEMENT:** legends added to many of the QC plots
 * **DOCS:** updated docs with a more robust SOXSPIPE upgrade path (users having issue with `conda update ...`)
 * **REFACTOR:** `misc/` directory created by data-organiser even if empty
+* **REFACTOR:** close matplotlib plot after writting plots to file
 
 ## v0.8.0 - May 18, 2023
 
