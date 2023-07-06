@@ -140,6 +140,13 @@ class subtract_sky(object):
                 settings=self.settings
             )
 
+        home = expanduser("~")
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.qcDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.qcDir):
+            os.makedirs(self.qcDir)
+
         return
 
     def subtract(self):
@@ -223,7 +230,8 @@ class subtract_sky(object):
                         "obs_date_utc": self.dateObs,
                         "reduction_date_utc": utcnow,
                         "product_desc": f"QC plots for the sky-background modelling",
-                        "file_path": qc_plot_path
+                        "file_path": qc_plot_path,
+                        "label": "QC"
                     }).to_frame().T], ignore_index=True)
 
         filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
@@ -243,7 +251,8 @@ class subtract_sky(object):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"The sky background model",
-            "file_path": filePath
+            "file_path": filePath,
+            "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         # WRITE CCDDATA OBJECT TO FILE
@@ -265,7 +274,8 @@ class subtract_sky(object):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"The sky-subtracted object",
-            "file_path": filePath
+            "file_path": filePath,
+            "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         # WRITE CCDDATA OBJECT TO FILE
@@ -286,7 +296,8 @@ class subtract_sky(object):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"Sky-subtraction quicklook",
-            "file_path": comparisonPdf
+            "file_path": comparisonPdf,
+            "label": "QC"
         }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``get`` method')
@@ -660,9 +671,8 @@ class subtract_sky(object):
         fig.suptitle(f"{self.arm} sky model: order {order}", fontsize=12, y=0.97)
 
         filename = self.filenameTemplate.replace(".fits", f"_SKYMODEL_QC_PLOTS_ORDER_{int(order)}.pdf")
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
-        filePath = f"{outDir}/{filename}"
+
+        filePath = f"{self.qcDir}/{filename}"
 
         # plt.show()
         plt.savefig(filePath, dpi='figure')
@@ -1032,9 +1042,7 @@ class subtract_sky(object):
         # plt.show()
         filename = self.filenameTemplate.replace(".fits", "_skysub_quicklook.pdf")
 
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.qcDir}/{filename}"
         plt.savefig(filePath, dpi=720)
 
         self.log.debug('completed the ``plot_results`` method')

@@ -387,7 +387,8 @@ class soxs_mflat(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} master spectroscopic flat frame",
-            "file_path": productPath
+            "file_path": productPath,
+            "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         if 1 == 0:
@@ -408,7 +409,8 @@ class soxs_mflat(_base_recipe_):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "product_desc": f"modelled scatter background light image (removed from master flat)",
-                "file_path": backgroundFrame
+                "file_path": backgroundFrame,
+                "label": "PROD"
             }).to_frame().T], ignore_index=True)
 
         # ADD QUALITY CHECKS

@@ -1,7 +1,11 @@
 
 # Release Notes  
 
+* **REFACTOR:** soxspipe now has a 'full' and a 'lite' test-suite. Using the lite suite will speed up deploying of new releases.
 * **ENHANCEMENT:** object trace FITS binary table added to stare-mode products (alongside complimentary QC plot)
+* **ENHANCEMENT:** fitted lines from the dispersion solution are written out to file as a QC product
+* **ENHANCEMENT:** products and QC outputs are differentiated in the table reported upon recipe completion (see label column).
+* **DOCS:** updated docs with a more robust SOXSPIPE upgrade path (users having issue with `conda update ...`)
 
 ## v0.8.0 - May 18, 2023
 

@@ -128,7 +128,8 @@ class _base_recipe_(object):
             "file_type": [],
             "obs_date_utc": [],
             "reduction_date_utc": [],
-            "file_path": []
+            "file_path": [],
+            "label": []
         })
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -1010,6 +1011,10 @@ class _base_recipe_(object):
         columns.remove("reduction_date_utc")
         columns.remove("soxspipe_recipe")
 
+        # SORT BY COLUMN NAME
+        self.products.sort_values(['label'],
+                                  ascending=[True], inplace=True)
+
         columns2 = list(self.products.columns)
         columns2.remove("reduction_date_utc")
         columns2.remove("soxspipe_recipe")
@@ -1020,9 +1025,9 @@ class _base_recipe_(object):
             soxspipe_recipe = self.recipeName.upper()
 
         if rformat == "stdout":
-            print(f"\n# {soxspipe_recipe} QCs")
+            print(f"\n# {soxspipe_recipe} QC METRICS")
             print(tabulate(self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
-            print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS")
+            print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
             print(tabulate(self.products[columns2], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
 
         self.log.debug('completed the ``report_output`` method')

@@ -144,6 +144,13 @@ class detect_order_edges(_base_detect):
             self.axisAbin = self.binx
             self.axisBbin = self.biny
 
+        home = expanduser("~")
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.qcDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.qcDir):
+            os.makedirs(self.qcDir)
+
         return None
 
     def get(self):
@@ -319,7 +326,8 @@ class detect_order_edges(_base_detect):
                 "file_type": "FITS",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "file_path": orderTablePath
+                "file_path": orderTablePath,
+                "label": "PROD"
             }).to_frame().T], ignore_index=True)
             self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
@@ -329,7 +337,8 @@ class detect_order_edges(_base_detect):
                 "file_type": "PDF",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "file_path": plotPath
+                "file_path": plotPath,
+                "label": "QC"
             }).to_frame().T], ignore_index=True)
         if not isinstance(self.qc, bool):
             self.qc = pd.concat([self.qc, pd.Series({
@@ -582,9 +591,8 @@ class detect_order_edges(_base_detect):
             settings=self.settings
         )
         filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + "/qc/pdf"
-        filePath = f"{outDir}/{filename}"
+
+        filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
         # plt.show()
         plt.savefig(filePath, dpi=720)
