@@ -535,6 +535,7 @@ class detect_continuum(_base_detect):
             orderNums,
             waveLengthMin,
             waveLengthMax)
+
         # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
         self.sliceLength = self.recipeSettings["slice-length"]
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
@@ -561,6 +562,7 @@ class detect_continuum(_base_detect):
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
             log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
         allLines = len(orderPixelTable.index)
@@ -924,8 +926,11 @@ class detect_continuum(_base_detect):
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
-        toprow.scatter(clippedData[f"cont_{self.axisB}"], clippedData[f"cont_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5)
-        toprow.scatter(orderPixelTable[f"cont_{self.axisB}"], orderPixelTable[f"cont_{self.axisA}"], marker='o', c='yellow', s=0.3, alpha=0.6)
+        toprow.scatter(orderPixelTable[f"cont_{self.axisB}"], orderPixelTable[f"cont_{self.axisA}"], marker='o', c='green', s=0.3, alpha=0.6, label="cross-dispersion 1D gaussian peak-position")
+        toprow.scatter(clippedData[f"cont_{self.axisB}"], clippedData[f"cont_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5, label="peaks clipped during continuum fitting")
+        # Put a legend below current axis
+        toprow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
+                      fontsize=6)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -942,7 +947,7 @@ class detect_continuum(_base_detect):
                 "order-location fit solutions", fontsize=10)
         else:
             midrow.set_title(
-                "order trace fit solutions", fontsize=10)
+            "global polynomal fit of order-centres", fontsize=10)
         if self.axisB == "y":
             axisALength = self.pinholeFlat.data.shape[1]
             axisBLength = self.pinholeFlat.data.shape[0]
@@ -965,6 +970,7 @@ class detect_continuum(_base_detect):
         xmin = []
         xmax = []
         colors = []
+        labelAdded = None
         for o in uniqueOrders:
             df["order"] = o
             xfit = poly(df, *cent_coeff)
@@ -973,14 +979,22 @@ class detect_continuum(_base_detect):
                 *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
             # lower = xfit - 3 * stdfit
             # upper = xfit + 3 * stdfit
-            c = midrow.plot(yfit, xfit, linewidth=0.7)
-            midrow.fill_between(yfit, lower, upper, color=c[0].get_color(), alpha=0.3)
+            if labelAdded == None:
+                label1 = "$3\sigma$ deviation"
+                label2 = "polynomial fit"
+                labelAdded = True
+            else:
+                label1 = None
+                label2 = None
+            c = midrow.plot(yfit, xfit, linewidth=0.7, label=label2)
+
+            midrow.fill_between(yfit, lower, upper, color=c[0].get_color(), alpha=0.3, label=label1)
             colors.append(c[0].get_color())
             ymin.append(min(yfit))
             ymax.append(max(yfit))
             xmin.append(axisALength - max(xfit))
             xmax.append(axisALength - min(xfit))
-            midrow.text(yfit[10], xfit[10] + 10, int(o), fontsize=6, c="white", verticalalignment='bottom')
+            midrow.text(yfit[10], xfit[10] + 10, int(o), fontsize=6, c=c[0].get_color(), verticalalignment='bottom')
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         orderMetaTable = {
@@ -1004,6 +1018,9 @@ class detect_continuum(_base_detect):
         if self.axisA == "x":
             midrow.invert_yaxis()
             midrow.set_ylim(0, axisALength)
+
+        midrow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
+                      fontsize=6)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
@@ -1058,7 +1075,7 @@ class detect_continuum(_base_detect):
             except:
                 pass
         fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
-        fwhmaxis.set_ylabel('FWHM (pixels)', fontsize=10)
+        fwhmaxis.set_ylabel('Cross-dispersion FWHM (pixels)', fontsize=10)
 
         fwhmaxis.set_ylim(orderPixelTable['stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['stddev_fit'].max() * stdToFwhm * 1.2)
 

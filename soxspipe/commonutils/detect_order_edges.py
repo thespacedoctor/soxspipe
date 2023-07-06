@@ -452,13 +452,15 @@ class detect_order_edges(_base_detect):
             toprow.invert_yaxis()
         toprow.set_title(
             "upper and lower order edge detections", fontsize=10)
-        toprow.scatter(allAxisBCoordsClipped, allAxisACoordsClipped, marker='x', c='red', s=4, alpha=0.6, linewidths=0.5)
-        toprow.scatter(allAxisBCoords, allAxisACoords, marker='o', c='yellow', s=0.3, alpha=0.6)
+        toprow.scatter(allAxisBCoords, allAxisACoords, marker='o', c='green', s=0.3, alpha=0.6, label="detected order edge location")
+        toprow.scatter(allAxisBCoordsClipped, allAxisACoordsClipped, marker='x', c='red', s=4, alpha=0.6, linewidths=0.5, label="locations clipped during edge fitting")
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
+        toprow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
+                      fontsize=6)
 
         midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.9)
         if self.axisA == "x":
@@ -492,6 +494,7 @@ class detect_order_edges(_base_detect):
         df = pd.DataFrame(myDict)
 
         colors = []
+        labelAdded = None
         for o in uniqueOrders:
             o = int(o)
             axisBmin = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"].values[0]
@@ -533,9 +536,18 @@ class detect_order_edges(_base_detect):
 
             l = midrow.plot(axisBfitlow, axisAfitlow)
             colors.append(l[0].get_color())
-            u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color())
+
+            if labelAdded == None:
+                label1 = "order edge"
+                label2 = "order region"
+                labelAdded = True
+            else:
+                label1 = None
+                label2 = None
+
+            u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color(), label=label1)
             try:
-                midrow.fill_between(axisBfitlow, axisAfitlow, axisAfitup, alpha=0.4, fc=l[0].get_color())
+                midrow.fill_between(axisBfitlow, axisAfitlow, axisAfitup, alpha=0.4, fc=l[0].get_color(), label=label2)
             except:
                 pass
             midrow.text(axisBfitlow[10], axisAfitlow[10] + 5, int(o), fontsize=6, c="white", verticalalignment='bottom')
@@ -548,6 +560,9 @@ class detect_order_edges(_base_detect):
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
+
+        midrow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
+                      fontsize=6)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
