@@ -653,8 +653,6 @@ class detect_continuum(_base_detect):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": product_desc,
-            "file_path": plotPath
-            "product_desc": f"Residuals of the order centre polynomial fit",
             "file_path": plotPath,
             "label": "QC"
         }).to_frame().T], ignore_index=True)
@@ -947,7 +945,7 @@ class detect_continuum(_base_detect):
                 "order-location fit solutions", fontsize=10)
         else:
             midrow.set_title(
-            "global polynomal fit of order-centres", fontsize=10)
+                "global polynomal fit of order-centres", fontsize=10)
         if self.axisB == "y":
             axisALength = self.pinholeFlat.data.shape[1]
             axisBLength = self.pinholeFlat.data.shape[0]
