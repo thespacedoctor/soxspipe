@@ -587,7 +587,7 @@ class detect_continuum(_base_detect):
         for i in range(0, self.orderDeg + 1):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
-        print("\n# FINDING GLOBAL POLYNOMIAL SOLUTION FOR ORDER CENTRE TRACES\n")
+        print("\n# FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         coeff, orderPixelTable, clippedData = self.fit_global_polynomial(
