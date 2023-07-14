@@ -17,7 +17,7 @@ os.environ['TERM'] = 'vt100'
 
 # TODO: pass in error frame and use instead of recalculating errors later on
 # TODO: replace RON value with true value from FITS header
-# TODO: move extract code to extract_order and have extract be a loop over all orders
+# TODO: move extract code to extract_single_order and have extract be a loop over all orders
 # TODO: remove sliceFluxNormalisedSum -- this was a debug variable
 # TODO: include the BPM in create_cross_dispersion_slice (at least)
 
@@ -145,14 +145,68 @@ class horne_extraction(object):
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=productPath)
 
-    def extract(self, order):
-        """
-        *extract the object spectrum*
+    def extract(
+            self):
+        """*extract the full spectrum*
 
         **Return:**
-            - ``extracted_wave_spectrum`` -- pixel wavelength array
-            - ``extracted_spectrum`` -- pixel flux values
-            - ``extracted_spectrum_nonopt`` -- the ~boxcar extraction (follows order curvature). Pixel flux values.
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``extract`` method')
+
+        import matplotlib.pyplot as plt
+
+        # GET UNIQUE VALUES IN COLUMN
+        uniqueOrders = self.orderPixelTable['order'].unique()
+
+        extractions = []
+
+        for order in uniqueOrders[0:1]:
+            crossDispersionSlices = self.extract_single_order(order)
+            extractions.append(crossDispersionSlices)
+
+        plt.figure(figsize=(13, 6))
+
+        for df, o in zip(extractions, uniqueOrders[0:1]):
+            extracted_wave_spectrum = df["wavelengthMedian"]
+            extracted_spectrum = df["extractedFluxOptimal"]
+            extracted_spectrum_nonopt = df["extractedFluxBoxcar"]
+
+            try:
+                plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.5, zorder=1)
+                # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
+                plt.plot(extracted_wave_spectrum, extracted_spectrum, zorder=2)
+            except:
+                self.log.warning(f"Order skipped: {o}")
+
+        plt.show()
+
+        self.log.debug('completed the ``extract`` method')
+        return None
+
+    def extract_single_order(self, order):
+        """
+        *extract the object spectrum for a single order*
+
+        **Return:**
+            - ``crossDispersionSlices`` -- dataframe containing metadata for each cross-dispersion slice (single data-points in extracted spectrum)
 
         **Usage:**
 
@@ -169,7 +223,7 @@ class horne_extraction(object):
         usage code
         ```
         """
-        self.log.debug('starting the ``extract`` method')
+        self.log.debug('starting the ``extract_single_order`` method')
 
         import yaml
         import pandas as pd
@@ -177,24 +231,15 @@ class horne_extraction(object):
         from astropy.stats import sigma_clip
         import matplotlib.pyplot as plt
 
-        # TODO: these can likely be removed once dataframes added
-        extracted_spectrum = []
-        extracted_spectrum_nonopt = []
-        extracted_wave_spectrum = []
-        total_weights = []
-
         # WE ARE BUILDING A SET OF CROSS-SLIT OBJECT PROFILES
         # ALONG THE DISPERSION AXIS
         crossSlitProfiles = []
-
-        # GET UNIQUE VALUES IN COLUMN
-        uniquecolNames = self.orderPixelTable['order'].unique()
 
         # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
         crossDispersionSlices = self.orderPixelTable.loc[self.orderPixelTable['order'] == order]
 
         # CREATE THE SLICES AND DROP SLICES WITH ALL NANs (TYPICALLY PIXELS WITH NANs IN 2D IMAGE MAP)
-        print(f"\n# SLICING ORDER INTO CROSS-DISPERSION SLICES")
+        print(f"\n# SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
         crossDispersionSlices = crossDispersionSlices.apply(lambda x: self.create_cross_dispersion_slice(x), axis=1)
         crossDispersionSlices.dropna(axis='index', how='any', subset=["sliceRawFlux"], inplace=True)
 
@@ -206,7 +251,7 @@ class horne_extraction(object):
 
         # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
         # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
-        print(f"\n# FITTING CROSS-SLIT FLUX NORMALISED PROFILES")
+        print(f"\n# FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
         for slitPixelIndex in range(0, self.slitHalfLength * 2):
 
             iteration = 1
@@ -236,10 +281,10 @@ class horne_extraction(object):
                     i, masked_residuals.mask)) for i in a]
                 clipped_count = startCount - len(fractions)
                 percent = (float(clipped_count) / float(startCount)) * 100.
-                print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{self.slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%).")
+                print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{self.slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
                 iteration = iteration + 1
-                if iteration > 1:
-                    sys.stdout.write("\x1b[1A\x1b[2K")
+                # if iteration > 1:
+                #     sys.stdout.write("\x1b[1A\x1b[2K")
 
             # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
             profile = np.polyval(coeff, crossDispersionSlices["ycoord"])
@@ -258,7 +303,7 @@ class horne_extraction(object):
         transposedProfiles = crossSlitProfiles.T.tolist()
         crossDispersionSlices["sliceFittedProfile"] = transposedProfiles
 
-        print(f"\n# EXTRACTING THE SPECTRUM")
+        print(f"\n# EXTRACTING THE SPECTRUM - ORDER {order}")
         crossDispersionSlices = crossDispersionSlices.apply(lambda x: self.extract_spectrum(x), axis=1)
 
         if True:
@@ -276,49 +321,12 @@ class horne_extraction(object):
 
             conn = sql.connect("/Users/Dave/Desktop/pandas_export.db")
             # SEND TO DATABASE
-            crossDispersionSlices.to_sql('my_export_table', con=conn,
+            crossDispersionSlices.to_sql(f'order_{order}', con=conn,
                                          index=False, if_exists='replace')
 
-        extracted_wave_spectrum = crossDispersionSlices["wavelengthMedian"]
-        extracted_spectrum = crossDispersionSlices["extractedFluxOptimal"]
-        extracted_spectrum_nonopt = crossDispersionSlices["extractedFluxBoxcar"]
+        self.log.debug('completed the ``extract_single_order`` method')
 
-        self.log.debug('completed the ``extract`` method')
-
-        return (extracted_wave_spectrum, extracted_spectrum, extracted_spectrum_nonopt)
-
-    def extract_order(
-            self,
-            order):
-        """*extract object spectrum from a single order*
-
-        **Key Arguments:**
-            # -
-
-        **Return:**
-            - ``order`` -- 
-
-        **Usage:**
-
-        ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
-        """
-        self.log.debug('starting the ``extract_order`` method')
-
-        self.log.debug('completed the ``extract_order`` method')
-        return order
+        return crossDispersionSlices['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'fudged', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'sliceRawFluxMaskedSum', 'sliceFluxNormalisedSum']
 
     def create_cross_dispersion_slice(
             self,

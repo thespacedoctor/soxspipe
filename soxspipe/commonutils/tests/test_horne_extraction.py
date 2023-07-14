@@ -61,8 +61,8 @@ class test_horne_extraction(unittest.TestCase):
         # STANDARD STAR (BRIGHT)
         skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYMODEL.fits"
         skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYSUB.fits"
-        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T15.54.49.8571_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
-        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T15.54.49.8571_NIR_SPAT_SOL_0PT6651.fits"
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
+        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651.fits"
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         import pandas as pd
@@ -117,32 +117,7 @@ class test_horne_extraction(unittest.TestCase):
         #plt.ylim(-100, 300)
         #plt.plot(w, f)
 
-        # plt.show()
-        e_w_l = []
-        e_s = []
-        en_s = []
-        eorders = []
-
-        for order in range(12, 14):
-            extracted_wave_spectrum, extracted_spectrum, nonopt = optimalExtractor.extract(order)
-            if len(extracted_wave_spectrum):
-                e_w_l.append(extracted_wave_spectrum)
-                e_s.append(extracted_spectrum)
-                en_s.append(nonopt)
-                eorders.append(order)
-                #plt.plot(extracted_wave_spectrum, extracted_spectrum)
-
-        plt.clf()
-        figure(figsize=(13, 6))
-
-        for (w, s, o) in zip(e_w_l, e_s, eorders):
-            if len(w) and len(s):
-                try:
-                    plt.plot(w, s)
-                except:
-                    log.warning(f"Order skipped: {o}")
-
-        plt.show()
+        this = optimalExtractor.extract()
 
     @pytest.mark.full
     def test_horne_extraction_function_exception(self):
