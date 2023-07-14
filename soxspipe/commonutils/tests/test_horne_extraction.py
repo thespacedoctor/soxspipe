@@ -121,26 +121,27 @@ class test_horne_extraction(unittest.TestCase):
         e_w_l = []
         e_s = []
         en_s = []
+        eorders = []
 
-        for order in range(11, 12):
+        for order in range(12, 14):
             extracted_wave_spectrum, extracted_spectrum, nonopt = optimalExtractor.extract(order)
             if len(extracted_wave_spectrum):
                 e_w_l.append(extracted_wave_spectrum)
                 e_s.append(extracted_spectrum)
                 en_s.append(nonopt)
+                eorders.append(order)
                 #plt.plot(extracted_wave_spectrum, extracted_spectrum)
 
         plt.clf()
         figure(figsize=(13, 6))
 
-        breakpoint()
-
-        for (w, s) in zip(e_w_l, e_s):
+        for (w, s, o) in zip(e_w_l, e_s, eorders):
             if len(w) and len(s):
                 try:
                     plt.plot(w, s)
                 except:
-                    breakpoint()
+                    log.warning(f"Order skipped: {o}")
+
         plt.show()
 
     @pytest.mark.full

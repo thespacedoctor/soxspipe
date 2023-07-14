@@ -30,7 +30,7 @@ class horne_extraction(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``skyModelFrame`` -- sky model frame
-        - ``skySubFrame`` -- sky subtracted frame
+        - ``skySubtractedFrame`` -- sky subtracted frame
         - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
         - ``twoDMapPath`` -- 2D dispersion map image path
         - ``qcTable`` -- the data frame to collect measured QC metrics
@@ -183,11 +183,6 @@ class horne_extraction(object):
         extracted_wave_spectrum = []
         total_weights = []
 
-        # SETUP DATA FOR PROCESSING
-        skySubFrame = self.skySubtractedFrame.data
-        skyModFrame = self.skyModelFrame.data
-        errorFrame = self.skySubtractedFrame.uncertainty
-
         # WE ARE BUILDING A SET OF CROSS-SLIT OBJECT PROFILES
         # ALONG THE DISPERSION AXIS
         crossSlitProfiles = []
@@ -198,39 +193,9 @@ class horne_extraction(object):
         # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
         crossDispersionSlices = self.orderPixelTable.loc[self.orderPixelTable['order'] == order]
 
-        def create_cross_dispersion_slice(
-                series):
-            """This function is used to create a single, 1-pixel wide cross-dispersion slice of object data. When applied to the dataframe, a single slice is created for each discrete pixel position in the dispersion direction
-            """
-            x = series['xcoord_centre']
-            y = series['ycoord']
-            series["wavelength"] = self.twoDMap["WAVELENGTH"].data[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
-            series["sliceRawFlux"] = skySubFrame[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
-            series["sliceSky"] = skyModFrame[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
-            series["sliceError"] = errorFrame[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
-
-            # SET SLICES WITH ALL NAN FLUX TO A SINGLE NAN - WILL BE REMOVED FROM THE DATAFRAME LATER
-            if np.isnan(series["sliceRawFlux"]).all():
-                series["sliceRawFlux"] = np.nan
-                return series
-
-            # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
-            sliceMasked = sigma_clip(
-                series["sliceRawFlux"], sigma_lower=7, sigma_upper=7, maxiters=1, cenfunc='median', stdfunc="mad_std")
-            series["sliceMask"] = sliceMasked.mask
-            series["sliceRawFluxMaskedSum"] = sliceMasked.sum()
-
-            # WEIGHTS ARE NOT YET USED
-            series["sliceWeights"] = self.ron + np.abs(series["sliceRawFlux"]) / (sliceMasked.sum() * sliceMasked.sum())
-
-            # NORMALISE THE FLUX
-            series["sliceFluxNormalised"] = series["sliceRawFlux"] / sliceMasked.sum()
-            series["sliceFluxNormalisedSum"] = series["sliceFluxNormalised"].sum().item()
-            return series
-
         # CREATE THE SLICES AND DROP SLICES WITH ALL NANs (TYPICALLY PIXELS WITH NANs IN 2D IMAGE MAP)
         print(f"\n# SLICING ORDER INTO CROSS-DISPERSION SLICES")
-        crossDispersionSlices = crossDispersionSlices.apply(create_cross_dispersion_slice, axis=1)
+        crossDispersionSlices = crossDispersionSlices.apply(lambda x: self.create_cross_dispersion_slice(x), axis=1)
         crossDispersionSlices.dropna(axis='index', how='any', subset=["sliceRawFlux"], inplace=True)
 
         # VERTICALLY STACK THE SLICES INTO PSEDUO-RECTIFIED IMAGE
@@ -358,4 +323,73 @@ class horne_extraction(object):
 
         return (extracted_wave_spectrum, extracted_spectrum, extracted_spectrum_nonopt)
 
+    def extract_order(
+            self,
+            order):
+        """*extract object spectrum from a single order*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - ``order`` -- 
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``extract_order`` method')
+
+        self.log.debug('completed the ``extract_order`` method')
+        return order
+
+    def create_cross_dispersion_slice(
+            self,
+            series):
+        """This function is used to create a single, 1-pixel wide cross-dispersion slice of object data. When applied to the dataframe, a single slice is created for each discrete pixel position in the dispersion direction
+        """
+
+        import numpy as np
+        from astropy.stats import sigma_clip
+
+        x = series['xcoord_centre']
+        y = series['ycoord']
+        series["wavelength"] = self.twoDMap["WAVELENGTH"].data[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
+        series["sliceRawFlux"] = self.skySubtractedFrame.data[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
+        series["sliceSky"] = self.skyModelFrame.data[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
+        series["sliceError"] = self.skySubtractedFrame.uncertainty[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
+
+        # SET SLICES WITH ALL NAN FLUX TO A SINGLE NAN - WILL BE REMOVED FROM THE DATAFRAME LATER
+        if np.isnan(series["sliceRawFlux"]).all():
+            series["sliceRawFlux"] = np.nan
+            return series
+
+        # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
+        sliceMasked = sigma_clip(
+            series["sliceRawFlux"], sigma_lower=7, sigma_upper=7, maxiters=1, cenfunc='median', stdfunc="mad_std")
+        series["sliceMask"] = sliceMasked.mask
+        series["sliceRawFluxMaskedSum"] = sliceMasked.sum()
+
+        # WEIGHTS ARE NOT YET USED
+        series["sliceWeights"] = self.ron + np.abs(series["sliceRawFlux"]) / (sliceMasked.sum() * sliceMasked.sum())
+
+        # NORMALISE THE FLUX
+        series["sliceFluxNormalised"] = series["sliceRawFlux"] / sliceMasked.sum()
+        series["sliceFluxNormalisedSum"] = series["sliceFluxNormalised"].sum().item()
+        return series
+
+    # use the tab-trigger below for new method
     # xt-class-method
