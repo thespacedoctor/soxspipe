@@ -51,7 +51,6 @@ The file is initially populated with soxspipe's default settings which can be ad
 
 If at any point the user settings file becomes corrupted or you just want to start afresh, simply trash the `soxspipe.yaml` file and rerun `soxspipe init`.
 
-
 ## How to cite soxspipe
 
 If you use `soxspipe` in your work, please cite using the following BibTeX entry: 
