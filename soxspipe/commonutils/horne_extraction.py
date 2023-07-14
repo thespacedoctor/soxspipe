@@ -258,44 +258,8 @@ class horne_extraction(object):
         transposedProfiles = crossSlitProfiles.T.tolist()
         crossDispersionSlices["sliceFittedProfile"] = transposedProfiles
 
-        def extract_spectrum(
-                series):
-            """This function is used to optimal extract the spectrum of the object at each slice location (via Horne method)
-            """
-            gain = 1.0
-
-            series["sliceFittedProfileNormalised"] = np.array(series["sliceFittedProfile"]) / np.array(series["sliceFittedProfile"]).sum()
-            series["sliceVariance"] = self.ron + np.abs(series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] + series["sliceSky"]) / gain
-            sliceRejection = np.power((series["sliceRawFlux"] - series["sliceRawFluxMaskedSum"] * series["sliceFittedProfileNormalised"]), 2) / series["sliceVariance"]
-            series["sliceVarianceRejectNumber"] = np.power((series["sliceRawFlux"] - series["sliceRawFluxMaskedSum"] * series["sliceFittedProfileNormalised"]), 2) / series["sliceVariance"]
-            series["sliceVarianceRejectLimit"] = self.globalClippingSigma
-            mask = np.zeros_like(sliceRejection)
-            mask[sliceRejection > self.globalClippingSigma] = 1
-            series["sliceFittedProfileNormalisedGood"] = np.ma.masked_array(series["sliceFittedProfileNormalised"], mask)
-            series["sliceRawFluxGood"] = np.ma.masked_array(series["sliceRawFlux"], mask)
-            series["sliceVarianceGood"] = np.ma.masked_array(series["sliceVariance"], mask)
-            series["horneNumerator"] = series["sliceRawFluxGood"] * series["sliceFittedProfileNormalisedGood"] / series["sliceVarianceGood"]
-            series["horneNumeratorSum"] = series["horneNumerator"].sum()
-            series["horneDenominator"] = np.power(series["sliceFittedProfileNormalisedGood"], 2) / series["sliceVarianceGood"]
-            series["horneDenominatorSum"] = series["horneDenominator"].sum()
-            series["wavelengthMedian"] = np.median(series["wavelength"])
-            series["fudged"] = False
-
-            # TODO: if all above sliceVarianceRejectLimit  ... what?
-            if series["horneDenominatorSum"] == 0:
-                series["horneNumerator"] = series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] / series["sliceVariance"]
-                series["horneNumeratorSum"] = series["horneNumerator"].sum()
-                series["horneDenominator"] = np.power(series["sliceFittedProfileNormalised"], 2) / series["sliceVariance"]
-                series["horneDenominatorSum"] = series["horneDenominator"].sum()
-                series["fudged"] = True
-
-            series["extractedFluxOptimal"] = series["horneNumeratorSum"] / series["horneDenominatorSum"]
-            series["extractedFluxBoxcar"] = series["sliceRawFlux"].sum()
-
-            return series
-
         print(f"\n# EXTRACTING THE SPECTRUM")
-        crossDispersionSlices = crossDispersionSlices.apply(extract_spectrum, axis=1)
+        crossDispersionSlices = crossDispersionSlices.apply(lambda x: self.extract_spectrum(x), axis=1)
 
         if True:
             import sqlite3 as sql
@@ -389,6 +353,46 @@ class horne_extraction(object):
         # NORMALISE THE FLUX
         series["sliceFluxNormalised"] = series["sliceRawFlux"] / sliceMasked.sum()
         series["sliceFluxNormalisedSum"] = series["sliceFluxNormalised"].sum().item()
+        return series
+
+    def extract_spectrum(
+            self,
+            series):
+        """This function is used to optimal extract the spectrum of the object at each slice location (via Horne method)
+        """
+
+        import numpy as np
+
+        gain = 1.0
+
+        series["sliceFittedProfileNormalised"] = np.array(series["sliceFittedProfile"]) / np.array(series["sliceFittedProfile"]).sum()
+        series["sliceVariance"] = self.ron + np.abs(series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] + series["sliceSky"]) / gain
+        sliceRejection = np.power((series["sliceRawFlux"] - series["sliceRawFluxMaskedSum"] * series["sliceFittedProfileNormalised"]), 2) / series["sliceVariance"]
+        series["sliceVarianceRejectNumber"] = np.power((series["sliceRawFlux"] - series["sliceRawFluxMaskedSum"] * series["sliceFittedProfileNormalised"]), 2) / series["sliceVariance"]
+        series["sliceVarianceRejectLimit"] = self.globalClippingSigma
+        mask = np.zeros_like(sliceRejection)
+        mask[sliceRejection > self.globalClippingSigma] = 1
+        series["sliceFittedProfileNormalisedGood"] = np.ma.masked_array(series["sliceFittedProfileNormalised"], mask)
+        series["sliceRawFluxGood"] = np.ma.masked_array(series["sliceRawFlux"], mask)
+        series["sliceVarianceGood"] = np.ma.masked_array(series["sliceVariance"], mask)
+        series["horneNumerator"] = series["sliceRawFluxGood"] * series["sliceFittedProfileNormalisedGood"] / series["sliceVarianceGood"]
+        series["horneNumeratorSum"] = series["horneNumerator"].sum()
+        series["horneDenominator"] = np.power(series["sliceFittedProfileNormalisedGood"], 2) / series["sliceVarianceGood"]
+        series["horneDenominatorSum"] = series["horneDenominator"].sum()
+        series["wavelengthMedian"] = np.median(series["wavelength"])
+        series["fudged"] = False
+
+        # TODO: if all above sliceVarianceRejectLimit  ... what?
+        if series["horneDenominatorSum"] == 0:
+            series["horneNumerator"] = series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] / series["sliceVariance"]
+            series["horneNumeratorSum"] = series["horneNumerator"].sum()
+            series["horneDenominator"] = np.power(series["sliceFittedProfileNormalised"], 2) / series["sliceVariance"]
+            series["horneDenominatorSum"] = series["horneDenominator"].sum()
+            series["fudged"] = True
+
+        series["extractedFluxOptimal"] = series["horneNumeratorSum"] / series["horneDenominatorSum"]
+        series["extractedFluxBoxcar"] = series["sliceRawFlux"].sum()
+
         return series
 
     # use the tab-trigger below for new method
