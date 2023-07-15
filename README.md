@@ -58,7 +58,6 @@ If at any point the user settings file becomes corrupted or you just want to sta
 
 ## How to cite soxspipe
 
-
 If you use `soxspipe` in your work, please cite using the following BibTeX entry: 
 
 ```bibtex
