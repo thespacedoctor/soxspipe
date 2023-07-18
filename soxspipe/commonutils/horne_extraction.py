@@ -19,6 +19,8 @@ os.environ['TERM'] = 'vt100'
 # TODO: replace RON value with true value from FITS header
 # TODO: include the BPM in create_cross_dispersion_slice (at least)
 # TODO: find a more robust solution for when horneDenominatorSum == 0 (all pixels in a slice do not pass variance cuts). See where fudged == true
+# TODO: delete weight collection
+# TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
 
 
 class horne_extraction(object):
@@ -200,9 +202,8 @@ class horne_extraction(object):
 
         for order in uniqueOrders:
             crossDispersionSlices = self.extract_single_order(order)
-            from tabulate import tabulate
-            print(tabulate(crossDispersionSlices.tail(10), headers='keys', tablefmt='psql'))
-
+            # from tabulate import tabulate
+            # print(tabulate(crossDispersionSlices.tail(10), headers='keys', tablefmt='psql'))
             extractions.append(crossDispersionSlices)
 
         fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
@@ -219,11 +220,11 @@ class horne_extraction(object):
                     label = "Robust Boxcar Extraction"
                 else:
                     label = None
-                toprow.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.8, zorder=1, label=label)
+                toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], color="gray", alpha=0.8, zorder=1, label=label)
                 # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
-                line = toprow.plot(extracted_wave_spectrum, extracted_spectrum, zorder=2)
+                line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum[10:-10], zorder=2)
 
-                toprow.text(extracted_wave_spectrum.mean(), extracted_spectrum.mean() + 5 * extracted_spectrum.std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
+                toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum[10:-10].mean() + 5 * extracted_spectrum[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
                 addedLegend = False
             except:
                 self.log.warning(f"Order skipped: {o}")
@@ -467,6 +468,7 @@ class horne_extraction(object):
         mask = np.zeros_like(sliceRejection)
         mask[sliceRejection > self.globalClippingSigma] = 1
         series["sliceFittedProfileNormalisedGood"] = np.ma.masked_array(series["sliceFittedProfileNormalised"], mask)
+        series["sliceFittedProfileNormalisedGoodSum"] = series["sliceFittedProfileNormalisedGood"].sum()
         series["sliceRawFluxGood"] = np.ma.masked_array(series["sliceRawFlux"], mask)
         series["sliceVarianceGood"] = np.ma.masked_array(series["sliceVariance"], mask)
         series["horneNumerator"] = series["sliceRawFluxGood"] * series["sliceFittedProfileNormalisedGood"] / series["sliceVarianceGood"]
@@ -477,7 +479,7 @@ class horne_extraction(object):
         series["fudged"] = False
 
         # TODO: if all above sliceVarianceRejectLimit  ... what?
-        if series["horneDenominatorSum"] == 0 or not isinstance(series["horneDenominatorSum"], float):
+        if series["horneDenominatorSum"] == 0 or not isinstance(series["horneDenominatorSum"], float) or series["sliceFittedProfileNormalisedGoodSum"] < 0.05:
             series["horneNumerator"] = series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] / series["sliceVariance"]
             series["horneNumeratorSum"] = series["horneNumerator"].sum()
             series["horneDenominator"] = np.power(series["sliceFittedProfileNormalised"], 2) / series["sliceVariance"]
