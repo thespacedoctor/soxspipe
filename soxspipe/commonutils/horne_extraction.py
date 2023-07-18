@@ -15,11 +15,10 @@ import sys
 import os
 os.environ['TERM'] = 'vt100'
 
-# TODO: pass in error frame and use instead of recalculating errors later on
+# TODO: pass in error frame and use instead of recalculating errors later on?
 # TODO: replace RON value with true value from FITS header
-# TODO: move extract code to extract_single_order and have extract be a loop over all orders
-# TODO: remove sliceFluxNormalisedSum -- this was a debug variable
 # TODO: include the BPM in create_cross_dispersion_slice (at least)
+# TODO: find a more robust solution for when horneDenominatorSum == 0 (all pixels in a slice do not pass variance cuts). See where fudged == true
 
 
 class horne_extraction(object):
@@ -79,6 +78,7 @@ class horne_extraction(object):
         from astropy.io import fits
         from astropy.nddata import CCDData
         from astropy import units as u
+        from os.path import expanduser
 
         self.log = log
         log.debug("instansiating a new 'horne_extraction' object")
@@ -108,6 +108,34 @@ class horne_extraction(object):
         self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
                                           hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
                                           key_uncertainty_type='UTYPE')
+
+        from soxspipe.commonutils import keyword_lookup
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        self.kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+        kw = self.kw
+        self.arm = self.skySubtractedFrame.header[kw("SEQ_ARM")]
+        self.dateObs = self.skySubtractedFrame.header[kw("DATE_OBS")]
+
+        # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
+        if self.sofName:
+            self.filenameTemplate = self.sofName + ".fits"
+        else:
+            self.filenameTemplate = filenamer(
+                log=self.log,
+                frame=self.skySubtractedFrame,
+                settings=self.settings
+            )
+
+        home = expanduser("~")
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.qcDir.replace("//", "/")
+        # RECURSIVELY CREATE MISSING DIRECTORIES
+        if not os.path.exists(self.qcDir):
+            os.makedirs(self.qcDir)
 
         # OPEN AND UNPACK THE 2D IMAGE MAP
         self.twoDMap = fits.open(twoDMapPath)
@@ -147,56 +175,111 @@ class horne_extraction(object):
 
     def extract(
             self):
-        """*extract the full spectrum*
+        """*extract the full spectrum order-by-order and return FITS Binary table containing order-merged spectrum*
 
         **Return:**
             - None
-
-        **Usage:**
-
-        ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
         """
         self.log.debug('starting the ``extract`` method')
 
         import matplotlib.pyplot as plt
+        import pandas as pd
+        from astropy.table import Table
+        import copy
+        from contextlib import suppress
+        from astropy.io import fits
+        # MAKE RELATIVE HOME PATH ABSOLUTE
+        from os.path import expanduser
+
+        kw = self.kw
+        arm = self.arm
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = self.orderPixelTable['order'].unique()
-
         extractions = []
 
-        for order in uniqueOrders[0:1]:
+        for order in uniqueOrders:
             crossDispersionSlices = self.extract_single_order(order)
+            from tabulate import tabulate
+            print(tabulate(crossDispersionSlices.tail(10), headers='keys', tablefmt='psql'))
+
             extractions.append(crossDispersionSlices)
 
-        plt.figure(figsize=(13, 6))
-
-        for df, o in zip(extractions, uniqueOrders[0:1]):
+        fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
+        gs = fig.add_gridspec(1, 1)
+        toprow = fig.add_subplot(gs[0:1, :])
+        addedLegend = True
+        for df, o in zip(extractions, uniqueOrders):
             extracted_wave_spectrum = df["wavelengthMedian"]
             extracted_spectrum = df["extractedFluxOptimal"]
-            extracted_spectrum_nonopt = df["extractedFluxBoxcar"]
+            extracted_spectrum_nonopt = df["extractedFluxBoxcarRobust"]
 
             try:
-                plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.5, zorder=1)
+                if addedLegend:
+                    label = "Robust Boxcar Extraction"
+                else:
+                    label = None
+                toprow.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.8, zorder=1, label=label)
                 # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
-                plt.plot(extracted_wave_spectrum, extracted_spectrum, zorder=2)
+                line = toprow.plot(extracted_wave_spectrum, extracted_spectrum, zorder=2)
+
+                toprow.text(extracted_wave_spectrum.mean(), extracted_spectrum.mean() + 5 * extracted_spectrum.std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
+                addedLegend = False
             except:
                 self.log.warning(f"Order skipped: {o}")
 
+        toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
+                      fontsize=8)
+        toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
+        toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
+        toprow.set_title(
+            f"Optimally Extracted Object Spectrum ({arm.upper()})", fontsize=11)
+
+        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT.pdf")
+        filePath = f"{self.qcDir}/{filename}"
+        # plt.tight_layout()
+        # plt.show()
+        plt.savefig(filePath, dpi='figure')
+        plt.close()
         plt.show()
+
+        print(filePath)
+
+        # MERGE THE ORDER SPECTRA
+        extractedOrdersDF = pd.concat(extractions, ignore_index=True)
+        mergedSpectum = self.merge_extracted_orders(extractedOrdersDF)
+
+        # CONVERT TO FITS BINARY TABLE
+        header = copy.deepcopy(self.skySubtractedFrame.header)
+        header.pop(kw("DPR_CATG"))
+        header.pop(kw("DPR_TYPE"))
+        with suppress(KeyError):
+            header.pop(kw("DET_READ_SPEED"))
+        with suppress(KeyError):
+            header.pop(kw("CONAD"))
+        with suppress(KeyError):
+            header.pop(kw("GAIN"))
+        with suppress(KeyError):
+            header.pop(kw("RON"))
+
+        header["HIERARCH " + kw("PRO_TECH")] = header.pop(kw("DPR_TECH"))
+        extractedOrdersTable = Table.from_pandas(extractedOrdersDF)
+        BinTableHDU = fits.table_to_hdu(extractedOrdersTable)
+
+        header[kw("SEQ_ARM")] = arm
+        header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
+        header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{arm}".upper()
+        priHDU = fits.PrimaryHDU(header=header)
+
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+
+        home = expanduser("~")
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+
+        filePath = f"{outDir}/{self.filenameTemplate}".replace(".fits", "_EXTRACTED_ORDERS.fits")
+        hduList.writeto(filePath, checksum=True, overwrite=True)
+
+        print(filePath)
 
         self.log.debug('completed the ``extract`` method')
         return None
@@ -207,21 +290,6 @@ class horne_extraction(object):
 
         **Return:**
             - ``crossDispersionSlices`` -- dataframe containing metadata for each cross-dispersion slice (single data-points in extracted spectrum)
-
-        **Usage:**
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - create cl-util for this method
-            - update the package tutorial if needed
-        ```
-
-        ```python
-        usage code
-        ```
         """
         self.log.debug('starting the ``extract_single_order`` method')
 
@@ -326,7 +394,26 @@ class horne_extraction(object):
 
         self.log.debug('completed the ``extract_single_order`` method')
 
-        return crossDispersionSlices['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'fudged', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'sliceRawFluxMaskedSum', 'sliceFluxNormalisedSum']
+        return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
+
+    def merge_extracted_orders(
+            self,
+            extractedOrdersDF):
+        """*merge the extracted order spectra in one continuous spectrum*
+
+        **Key Arguments:**
+            - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+
+        **Return:**
+            - None
+        """
+        self.log.debug('starting the ``merge_extracted_orders`` method')
+
+        from tabulate import tabulate
+        print(tabulate(extractedOrdersDF.head(10), headers='keys', tablefmt='psql'))
+
+        self.log.debug('completed the ``merge_extracted_orders`` method')
+        return None
 
     def create_cross_dispersion_slice(
             self,
@@ -368,7 +455,6 @@ class horne_extraction(object):
             series):
         """This function is used to optimal extract the spectrum of the object at each slice location (via Horne method)
         """
-
         import numpy as np
 
         gain = 1.0
@@ -391,7 +477,7 @@ class horne_extraction(object):
         series["fudged"] = False
 
         # TODO: if all above sliceVarianceRejectLimit  ... what?
-        if series["horneDenominatorSum"] == 0:
+        if series["horneDenominatorSum"] == 0 or not isinstance(series["horneDenominatorSum"], float):
             series["horneNumerator"] = series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] / series["sliceVariance"]
             series["horneNumeratorSum"] = series["horneNumerator"].sum()
             series["horneDenominator"] = np.power(series["sliceFittedProfileNormalised"], 2) / series["sliceVariance"]
@@ -400,6 +486,7 @@ class horne_extraction(object):
 
         series["extractedFluxOptimal"] = series["horneNumeratorSum"] / series["horneDenominatorSum"]
         series["extractedFluxBoxcar"] = series["sliceRawFlux"].sum()
+        series["extractedFluxBoxcarRobust"] = series["sliceRawFluxMaskedSum"]
 
         return series
 
