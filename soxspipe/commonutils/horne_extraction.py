@@ -479,7 +479,7 @@ class horne_extraction(object):
         series["fudged"] = False
 
         # TODO: if all above sliceVarianceRejectLimit  ... what?
-        if series["horneDenominatorSum"] == 0 or not isinstance(series["horneDenominatorSum"], float) or series["sliceFittedProfileNormalisedGoodSum"] < 0.05:
+        if series["horneDenominatorSum"] == 0 or not isinstance(series["horneDenominatorSum"], float):
             series["horneNumerator"] = series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] / series["sliceVariance"]
             series["horneNumeratorSum"] = series["horneNumerator"].sum()
             series["horneDenominator"] = np.power(series["sliceFittedProfileNormalised"], 2) / series["sliceVariance"]
