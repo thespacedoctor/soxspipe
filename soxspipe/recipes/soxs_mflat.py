@@ -265,6 +265,8 @@ class soxs_mflat(_base_recipe_):
             else:
                 self.orderTableSet.append(None)
 
+            print("HERE2", orderTablePath)
+
             # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
             # FLUX TO THAT LEVEL
             normalisedFlats = self.normalise_flats(
@@ -324,6 +326,7 @@ class soxs_mflat(_base_recipe_):
 
             mask = (productTable['product_label'] == f"ORDER_LOC{tag}")
             orderTablePath = productTable.loc[mask]["file_path"].values[0]
+
             self.orderTableSet.append(orderTablePath)
 
             self.dateObs = combined_normalised_flat.header[self.kw("DATE_OBS")]
@@ -379,6 +382,7 @@ class soxs_mflat(_base_recipe_):
         # WRITE MFLAT TO FILE
         productPath = self._write(
             mflat, outDir, overwrite=True)
+
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
         basename = os.path.basename(productPath)

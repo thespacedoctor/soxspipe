@@ -1191,6 +1191,7 @@ class create_dispersion_map(object):
         plt.tight_layout()
         # plt.show()
         plt.savefig(filePath, dpi=720)
+        plt.close()
 
         self.log.debug('completed the ``fit_polynomials`` method')
         return xcoeff, ycoeff, res_plots, orderPixelTable, allClippedLines

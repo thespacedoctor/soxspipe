@@ -193,6 +193,9 @@ class data_organiser(object):
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_TAB", "TABLE", None, None, "soxs-spatial-solution"],
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_IMAGE", "PIXELS", ".fits", "_IMAGE.fits", "soxs-spatial-solution"]
             ],
+            "stare": [
+                ["REDUCED", "ECHELLE,SLIT", "OBJECT_TAB", "TABLE", None, None, "soxs-stare"]
+            ],
         }
 
         self.proKeywords = ['eso pro type', 'eso pro tech', 'eso pro catg']
