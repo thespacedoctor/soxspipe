@@ -408,12 +408,43 @@ class horne_extraction(object):
         **Return:**
             - None
         """
+
+        # PARAMETERS FROM INPUT FILE
+        stepWavelengthOrderMerge = 0.01
+
+        import numpy as np
         self.log.debug('starting the ``merge_extracted_orders`` method')
 
         from tabulate import tabulate
         print(tabulate(extractedOrdersDF.head(10), headers='keys', tablefmt='psql'))
 
         self.log.debug('completed the ``merge_extracted_orders`` method')
+
+        minWave = np.min(extractedOrdersDF['wavelengthMedian'])
+        maxWave = np.max(extractedOrdersDF['wavelengthMedian'])
+
+        globalWave = np.arange(minWave, maxWave, step=stepWavelengthOrderMerge)
+
+        print(minWave)
+        print(maxWave)
+
+        for order in np.array(extractedOrdersDF['order'],dtype=int):
+            #Now merging order and order+1
+            order_a = extractedOrdersDF.iloc['order' == order]
+            order_b = extractedOrdersDF.iloc['order' == order + 1]
+
+            #Put the order_a and order_b on the same wavelength scale as globalWave and refit the flux
+
+            #Measure the SNR in a and SNR in b Fitting the measured snr on the wavelength
+            snr_a = this.measure_snr(order_a)
+            snr_b = this.measure_snr(order_b)
+
+            #Looping on order_a. If no correspondance in order_b, append to the common spectra. Otherwise
+            #do (order_a.flux*snr_a + order_.flux*snr_b)/(snr_a + snr_b) or select the flux with the maximum snr
+
+
+
+
         return None
 
     def create_cross_dispersion_slice(
