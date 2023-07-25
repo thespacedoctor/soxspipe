@@ -393,9 +393,21 @@ class horne_extraction(object):
             crossDispersionSlices.to_sql(f'order_{order}', con=conn,
                                          index=False, if_exists='replace')
 
+        # SORT BY COLUMN NAME
+        crossDispersionSlices.sort_values(['wavelengthMedian'],
+                                          ascending=[True], inplace=True)
+
+        this = (crossDispersionSlices['wavelengthMedian'].values[2:] - crossDispersionSlices['wavelengthMedian'].values[:-2]) / 2
+
+        this = np.insert(this, 0, np.nan)
+        this = np.append(this, np.nan)
+        crossDispersionSlices['pixelScaleNm'] = this
+
+        crossDispersionSlices.dropna(how="any", subset=["pixelScaleNm", "wavelengthMedian"], inplace=True)
+
         self.log.debug('completed the ``extract_single_order`` method')
 
-        return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
+        return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'pixelScaleNm', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
     def merge_extracted_orders(
             self,
@@ -510,7 +522,7 @@ class horne_extraction(object):
         series["fudged"] = False
 
         # TODO: if all above sliceVarianceRejectLimit  ... what?
-        if series["horneDenominatorSum"] == 0 or not isinstance(series["horneDenominatorSum"], float) or series["sliceFittedProfileNormalisedGoodSum"] < 0.05:
+        if series["horneDenominatorSum"] == 0 or not isinstance(series["horneDenominatorSum"], float):
             series["horneNumerator"] = series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] / series["sliceVariance"]
             series["horneNumeratorSum"] = series["horneNumerator"].sum()
             series["horneDenominator"] = np.power(series["sliceFittedProfileNormalised"], 2) / series["sliceVariance"]
