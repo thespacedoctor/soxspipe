@@ -397,8 +397,8 @@ class horne_extraction(object):
         crossDispersionSlices.sort_values(['wavelengthMedian'],
                                           ascending=[True], inplace=True)
 
+        # DETERMINE THE PIXEL SCALE FOR EACH PIXEL - NEEDED FOR ORDER MERGING
         this = (crossDispersionSlices['wavelengthMedian'].values[2:] - crossDispersionSlices['wavelengthMedian'].values[:-2]) / 2
-
         this = np.insert(this, 0, np.nan)
         this = np.append(this, np.nan)
         crossDispersionSlices['pixelScaleNm'] = this
