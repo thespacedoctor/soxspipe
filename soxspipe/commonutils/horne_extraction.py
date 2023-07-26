@@ -308,6 +308,7 @@ class horne_extraction(object):
         # ALONG THE DISPERSION AXIS
         crossSlitProfiles = []
 
+
         # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
         crossDispersionSlices = self.orderPixelTable.loc[self.orderPixelTable['order'] == order]
 
