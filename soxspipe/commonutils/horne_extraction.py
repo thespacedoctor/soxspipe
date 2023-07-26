@@ -9,10 +9,14 @@
 :Date Created:
     May 17, 2023
 """
+import pandas as pd
 from fundamentals import tools
 from builtins import object
 import sys
 import os
+
+from specutils.manipulation import LinearInterpolatedResampler
+
 os.environ['TERM'] = 'vt100'
 
 # TODO: pass in error frame and use instead of recalculating errors later on?
@@ -411,6 +415,10 @@ class horne_extraction(object):
 
         return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
+    def weighted_average(self, group):
+        group['wf'] = (group['flux_resampled'] * group['snr']).sum() / group['snr'].sum()
+        return group['wf']
+
     def merge_extracted_orders(
             self,
             extractedOrdersDF):
@@ -422,12 +430,74 @@ class horne_extraction(object):
         **Return:**
             - None
         """
+
+        # PARAMETERS FROM INPUT FILE
+        stepWavelengthOrderMerge = 0.03
+
+        import numpy as np
+
+        from specutils.manipulation import FluxConservingResampler
+        from specutils import Spectrum1D
+        import astropy.units as u
+        import pandas as pd
+
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('macosx')
         self.log.debug('starting the ``merge_extracted_orders`` method')
 
-        from tabulate import tabulate
-        print(tabulate(extractedOrdersDF.head(10), headers='keys', tablefmt='psql'))
+        minWave = np.min(extractedOrdersDF['wavelengthMedian'])
+        maxWave = np.max(extractedOrdersDF['wavelengthMedian'])
 
+        extractedOrdersDF['fluxDensity'] = extractedOrdersDF['extractedFluxOptimal']/extractedOrdersDF['pixelScaleNm']
+
+        extractedOrdersDF['fluxDensity'] = extractedOrdersDF['extractedFluxOptimal']
+        order_list = []
+
+        for order in extractedOrdersDF['order'].unique():
+
+            order_a = extractedOrdersDF.loc[extractedOrdersDF['order']== order]
+            wave_a = np.arange(float(format(np.min(order_a['wavelengthMedian']),'.2f')), float(format(np.max(order_a['wavelengthMedian']),'.2f')),step=stepWavelengthOrderMerge)
+
+            wave_a = wave_a*u.nm
+
+
+            flux_a = order_a['fluxDensity'].values*u.electron
+
+            flux_a_spectra = Spectrum1D(flux=flux_a, spectral_axis=order_a['wavelengthMedian'].values*u.nm)
+
+            resampler = FluxConservingResampler()
+            flux_a_resampled = resampler(flux_a_spectra, wave_a)
+            current_order = pd.DataFrame()
+            current_order['flux_resampled'] = flux_a_resampled.flux
+            current_order['wavelength'] = wave_a
+            current_order['order'] = order
+
+            # RESAMPLING THE SNR
+            snr_spec = Spectrum1D(flux=order_a['snr'].values*u.dimensionless_unscaled, spectral_axis=order_a['wavelengthMedian'].values*u.nm)
+            resampler_snr = LinearInterpolatedResampler()
+            resampled_snr = resampler_snr(snr_spec, wave_a)
+            current_order['snr'] = resampled_snr.flux
+            order_list.append(current_order)
+
+        orders = pd.concat(order_list, ignore_index=True)
+
+        #orders['wavelength'] = orders['wavelength'].astype(str)
+        #merged_orders  = orders.groupby('wavelength').apply(self.weighted_average).reset_index()
+        gb = orders.groupby('wavelength').size().to_frame(name='count').reset_index()
+        print(gb[gb['count']> 1])
+        #from tabulate import tabulate
+        #print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
+
+        #plt.plot(merged_orders['wavelength'],merged_orders['wf'])
+        #
+
+        #for o in order_list:
+        #    plt.plot(o['wavelength'], o['flux_resampled'])
+
+        #plt.show()
         self.log.debug('completed the ``merge_extracted_orders`` method')
+
         return None
 
     def create_cross_dispersion_slice(
