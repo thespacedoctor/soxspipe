@@ -414,9 +414,28 @@ class horne_extraction(object):
         return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'pixelScaleNm', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
     def weighted_average(self, group):
-        group['wf'] = (group['flux_resampled'] * group['snr']).sum() / group['snr'].sum()
-        return group['wf']
+        import numpy as np
+        group['wf'] = (group['flux_resampled'] * np.abs(group['snr'])).sum() / np.abs(group['snr']).sum()
+        #group['wf'] = group['flux_resampled'].mean()
 
+        return group['wf']
+    def residual_merge(self, group):
+        import numpy as np
+        # residual = np.abs(group[0]['flux_resampled']) -  np.abs(group[1]['flux_resampled'])
+        # if residual <= 0:
+        #     group['wf'] = group[0]['flux_resampled']
+        # else:
+        #     group['wf'] = group[1]['flux_resampled']
+        if len(group) > 1:
+
+            if np.abs(group.iloc[0]['flux_resampled']) >= np.abs(group.iloc[1]['flux_resampled']):
+                group['wf'] = group.iloc[1]['flux_resampled']
+            else:
+                group['wf'] = group.iloc[0]['flux_resampled']
+        else:
+            group['wf'] = group.iloc[0]['flux_resampled']
+
+        return group['wf']
     def merge_extracted_orders(
             self,
             extractedOrdersDF):
@@ -430,7 +449,7 @@ class horne_extraction(object):
         """
 
         # PARAMETERS FROM INPUT FILE
-        stepWavelengthOrderMerge = 0.03
+        stepWavelengthOrderMerge = 0.01
 
         import numpy as np
 
@@ -479,21 +498,21 @@ class horne_extraction(object):
             order_list.append(current_order)
 
         orders = pd.concat(order_list, ignore_index=True)
-
+        orders['wavelength'] = orders['wavelength'].apply(lambda x: round(x.value,2))
         #orders['wavelength'] = orders['wavelength'].astype(str)
-        #merged_orders  = orders.groupby('wavelength').apply(self.weighted_average).reset_index()
+        merged_orders  = orders.groupby('wavelength').apply(self.residual_merge).reset_index()
         gb = orders.groupby('wavelength').size().to_frame(name='count').reset_index()
-        print(gb[gb['count']> 1])
+        #print(gb[gb['count']> 1])
         #from tabulate import tabulate
         #print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
 
-        #plt.plot(merged_orders['wavelength'],merged_orders['wf'])
+        plt.plot(merged_orders['wavelength'],merged_orders['wf'])
         #
 
-        #for o in order_list:
-        #    plt.plot(o['wavelength'], o['flux_resampled'])
+        # for o in order_list:
+        #     plt.plot(o['wavelength'], o['flux_resampled'])
 
-        #plt.show()
+        plt.show()
         self.log.debug('completed the ``merge_extracted_orders`` method')
 
         return None
