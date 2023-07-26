@@ -214,6 +214,8 @@ class horne_extraction(object):
             extracted_wave_spectrum = df["wavelengthMedian"]
             extracted_spectrum = df["extractedFluxOptimal"]
             extracted_spectrum_nonopt = df["extractedFluxBoxcarRobust"]
+            extracted_variance_spectrum = df["varianceSpectrum"]
+            extracted_snr = df["snr"]
 
             try:
                 if addedLegend:
@@ -242,7 +244,7 @@ class horne_extraction(object):
         # plt.show()
         plt.savefig(filePath, dpi='figure')
         plt.close()
-        plt.show()
+        # plt.show()
 
         print(filePath)
 
@@ -407,7 +409,7 @@ class horne_extraction(object):
 
         self.log.debug('completed the ``extract_single_order`` method')
 
-        return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'pixelScaleNm', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
+        return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
     def merge_extracted_orders(
             self,
@@ -498,9 +500,13 @@ class horne_extraction(object):
             series["horneDenominatorSum"] = series["horneDenominator"].sum()
             series["fudged"] = True
 
+        series["varianceSpectrum"] = 1 / series["horneDenominatorSum"]
+
         series["extractedFluxOptimal"] = series["horneNumeratorSum"] / series["horneDenominatorSum"]
         series["extractedFluxBoxcar"] = series["sliceRawFlux"].sum()
         series["extractedFluxBoxcarRobust"] = series["sliceRawFluxMaskedSum"]
+
+        series["snr"] = series["extractedFluxOptimal"] / np.power(series["varianceSpectrum"], 0.5)
 
         return series
 
