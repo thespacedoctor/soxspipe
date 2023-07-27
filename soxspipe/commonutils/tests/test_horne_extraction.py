@@ -127,11 +127,11 @@ class test_horne_extraction(unittest.TestCase):
         twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
         dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.fits"
 
-        # # STANDARD STAR (BRIGHT)
-        # skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYMODEL.fits"
-        # skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYSUB.fits"
-        # twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
-        # dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651.fits"
+        # STANDARD STAR (BRIGHT)
+        skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYMODEL.fits"
+        skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYSUB.fits"
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
+        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651.fits"
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         import pandas as pd
