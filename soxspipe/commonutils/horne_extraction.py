@@ -310,7 +310,6 @@ class horne_extraction(object):
         # ALONG THE DISPERSION AXIS
         crossSlitProfiles = []
 
-
         # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
         crossDispersionSlices = self.orderPixelTable.loc[self.orderPixelTable['order'] == order]
 
@@ -422,6 +421,7 @@ class horne_extraction(object):
         #group['wf'] = group['flux_resampled'].mean()
 
         return group['wf']
+
     def residual_merge(self, group):
         import numpy as np
         # residual = np.abs(group[0]['flux_resampled']) -  np.abs(group[1]['flux_resampled'])
@@ -430,7 +430,6 @@ class horne_extraction(object):
         # else:
         #     group['wf'] = group[1]['flux_resampled']
         if len(group) > 1:
-
             if np.abs(group.iloc[0]['flux_resampled']) >= np.abs(group.iloc[1]['flux_resampled']):
                 group['wf'] = group.iloc[1]['flux_resampled']
             else:
@@ -439,6 +438,7 @@ class horne_extraction(object):
             group['wf'] = group.iloc[0]['flux_resampled']
 
         return group['wf']
+
     def merge_extracted_orders(
             self,
             extractedOrdersDF):
@@ -453,7 +453,7 @@ class horne_extraction(object):
 
         # PARAMETERS FROM INPUT FILE
         stepWavelengthOrderMerge = 0.06
-        ratio = 1/stepWavelengthOrderMerge
+        ratio = 1 / stepWavelengthOrderMerge
 
         import numpy as np
         from astropy.table import Table
@@ -472,21 +472,20 @@ class horne_extraction(object):
         minWave = np.min(extractedOrdersDF['wavelengthMedian'])
         maxWave = np.max(extractedOrdersDF['wavelengthMedian'])
 
-        extractedOrdersDF['fluxDensity'] = extractedOrdersDF['extractedFluxOptimal']/extractedOrdersDF['pixelScaleNm']
+        extractedOrdersDF['fluxDensity'] = extractedOrdersDF['extractedFluxOptimal'] / extractedOrdersDF['pixelScaleNm']
 
         extractedOrdersDF['fluxDensity'] = extractedOrdersDF['extractedFluxOptimal']
         order_list = []
 
         for order in extractedOrdersDF['order'].unique():
 
-            order_a = extractedOrdersDF.loc[extractedOrdersDF['order']== order]
-            wave_a = np.arange(float(format(np.min(order_a['wavelengthMedian'])*ratio,'.0f'))/ratio, float(format(np.max(order_a['wavelengthMedian'])*ratio,'.0f'))/ratio,step=stepWavelengthOrderMerge)
-            wave_a = wave_a*u.nm
+            order_a = extractedOrdersDF.loc[extractedOrdersDF['order'] == order]
+            wave_a = np.arange(float(format(np.min(order_a['wavelengthMedian']) * ratio, '.0f')) / ratio, float(format(np.max(order_a['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
+            wave_a = wave_a * u.nm
 
+            flux_a = order_a['fluxDensity'].values * u.electron
 
-            flux_a = order_a['fluxDensity'].values*u.electron
-
-            flux_a_spectra = Spectrum1D(flux=flux_a, spectral_axis=order_a['wavelengthMedian'].values*u.nm)
+            flux_a_spectra = Spectrum1D(flux=flux_a, spectral_axis=order_a['wavelengthMedian'].values * u.nm)
 
             resampler = FluxConservingResampler()
             flux_a_resampled = resampler(flux_a_spectra, wave_a)
@@ -496,29 +495,28 @@ class horne_extraction(object):
             current_order['order'] = order
 
             # RESAMPLING THE SNR
-            snr_spec = Spectrum1D(flux=order_a['snr'].values*u.dimensionless_unscaled, spectral_axis=order_a['wavelengthMedian'].values*u.nm)
+            snr_spec = Spectrum1D(flux=order_a['snr'].values * u.dimensionless_unscaled, spectral_axis=order_a['wavelengthMedian'].values * u.nm)
             resampler_snr = LinearInterpolatedResampler()
             resampled_snr = resampler_snr(snr_spec, wave_a)
             current_order['snr'] = resampled_snr.flux
             order_list.append(current_order)
 
         orders = pd.concat(order_list, ignore_index=True)
-        orders['wavelength'] = orders['wavelength'].apply(lambda x: round(x.value,2))
+        orders['wavelength'] = orders['wavelength'].apply(lambda x: round(x.value, 2))
         #orders['wavelength'] = orders['wavelength'].astype(str)
 
-
         # Duplicated rows containes duplicated values for wave and flux. No matter which row is considered to be dropped!
-        merged_orders  = orders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
+        merged_orders = orders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
         # gb = orders.groupby('wavelength').size().to_frame(name='count').reset_index()
 
         merged = Table.from_pandas(merged_orders)
 
-        merged.write('/Users/mlandoni/Desktop/xsh.fits', overwrite=True)
+        merged.write('/Users/Dave/Desktop/xsh.fits', overwrite=True)
         #print(gb[gb['count']> 1])
         #from tabulate import tabulate
         #print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
 
-        plt.plot(merged_orders['wavelength'],merged_orders['wf'])
+        plt.plot(merged_orders['wavelength'], merged_orders['wf'])
         # #
         #
         # for o in order_list:

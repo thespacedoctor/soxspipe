@@ -25,7 +25,8 @@ install_requires = [
     'tabulate',
     'bottleneck',
     'multiprocess',
-    'jinja2'
+    'jinja2',
+    'specutils'
 ]
 
 # READ THE DOCS SERVERS
