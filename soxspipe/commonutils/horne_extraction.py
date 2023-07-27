@@ -310,6 +310,7 @@ class horne_extraction(object):
         # ALONG THE DISPERSION AXIS
         crossSlitProfiles = []
 
+
         # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
         crossDispersionSlices = self.orderPixelTable.loc[self.orderPixelTable['order'] == order]
 
@@ -416,9 +417,28 @@ class horne_extraction(object):
         return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
     def weighted_average(self, group):
-        group['wf'] = (group['flux_resampled'] * group['snr']).sum() / group['snr'].sum()
-        return group['wf']
+        import numpy as np
+        group['wf'] = (group['flux_resampled'] * np.abs(group['snr'])).sum() / np.abs(group['snr']).sum()
+        #group['wf'] = group['flux_resampled'].mean()
 
+        return group['wf']
+    def residual_merge(self, group):
+        import numpy as np
+        # residual = np.abs(group[0]['flux_resampled']) -  np.abs(group[1]['flux_resampled'])
+        # if residual <= 0:
+        #     group['wf'] = group[0]['flux_resampled']
+        # else:
+        #     group['wf'] = group[1]['flux_resampled']
+        if len(group) > 1:
+
+            if np.abs(group.iloc[0]['flux_resampled']) >= np.abs(group.iloc[1]['flux_resampled']):
+                group['wf'] = group.iloc[1]['flux_resampled']
+            else:
+                group['wf'] = group.iloc[0]['flux_resampled']
+        else:
+            group['wf'] = group.iloc[0]['flux_resampled']
+
+        return group['wf']
     def merge_extracted_orders(
             self,
             extractedOrdersDF):
@@ -432,14 +452,17 @@ class horne_extraction(object):
         """
 
         # PARAMETERS FROM INPUT FILE
-        stepWavelengthOrderMerge = 0.03
+        stepWavelengthOrderMerge = 0.06
+        ratio = 1/stepWavelengthOrderMerge
 
         import numpy as np
+        from astropy.table import Table
 
         from specutils.manipulation import FluxConservingResampler
         from specutils import Spectrum1D
         import astropy.units as u
         import pandas as pd
+        from astropy.io import fits
 
         import matplotlib.pyplot as plt
         import matplotlib
@@ -457,8 +480,7 @@ class horne_extraction(object):
         for order in extractedOrdersDF['order'].unique():
 
             order_a = extractedOrdersDF.loc[extractedOrdersDF['order']== order]
-            wave_a = np.arange(float(format(np.min(order_a['wavelengthMedian']),'.2f')), float(format(np.max(order_a['wavelengthMedian']),'.2f')),step=stepWavelengthOrderMerge)
-
+            wave_a = np.arange(float(format(np.min(order_a['wavelengthMedian'])*ratio,'.0f'))/ratio, float(format(np.max(order_a['wavelengthMedian'])*ratio,'.0f'))/ratio,step=stepWavelengthOrderMerge)
             wave_a = wave_a*u.nm
 
 
@@ -481,22 +503,29 @@ class horne_extraction(object):
             order_list.append(current_order)
 
         orders = pd.concat(order_list, ignore_index=True)
-
+        orders['wavelength'] = orders['wavelength'].apply(lambda x: round(x.value,2))
         #orders['wavelength'] = orders['wavelength'].astype(str)
-        #merged_orders  = orders.groupby('wavelength').apply(self.weighted_average).reset_index()
-        gb = orders.groupby('wavelength').size().to_frame(name='count').reset_index()
-        print(gb[gb['count']> 1])
+
+
+        # Duplicated rows containes duplicated values for wave and flux. No matter which row is considered to be dropped!
+        merged_orders  = orders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
+        # gb = orders.groupby('wavelength').size().to_frame(name='count').reset_index()
+
+        merged = Table.from_pandas(merged_orders)
+
+        merged.write('/Users/mlandoni/Desktop/xsh.fits', overwrite=True)
+        #print(gb[gb['count']> 1])
         #from tabulate import tabulate
         #print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
 
-        #plt.plot(merged_orders['wavelength'],merged_orders['wf'])
+        plt.plot(merged_orders['wavelength'],merged_orders['wf'])
+        # #
         #
-
-        #for o in order_list:
-        #    plt.plot(o['wavelength'], o['flux_resampled'])
-
-        #plt.show()
-        self.log.debug('completed the ``merge_extracted_orders`` method')
+        # for o in order_list:
+        #     plt.plot(o['wavelength'], o['flux_resampled'])
+        #
+        plt.show()
+        # self.log.debug('completed the ``merge_extracted_orders`` method')
 
         return None
 
