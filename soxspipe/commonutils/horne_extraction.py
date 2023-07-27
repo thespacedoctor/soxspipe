@@ -504,6 +504,7 @@ class horne_extraction(object):
         orders['wavelength'] = orders['wavelength'].apply(lambda x: round(x.value,2))
         #orders['wavelength'] = orders['wavelength'].astype(str)
 
+
         # Duplicated rows containes duplicated values for wave and flux. No matter which row is considered to be dropped!
         merged_orders  = orders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
         # gb = orders.groupby('wavelength').size().to_frame(name='count').reset_index()
