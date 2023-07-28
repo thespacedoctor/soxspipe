@@ -512,6 +512,12 @@ class horne_extraction(object):
         merged_orders = orders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
         # gb = orders.groupby('wavelength').size().to_frame(name='count').reset_index()
 
+        # RENAME SOME INDIVIDUALLY
+        merged_orders.rename(columns={"wf": "FLUX_COUNTS"}, inplace=True)
+        merged_orders.rename(columns={"wavelength": "WAVE"}, inplace=True)
+        # REMOVE COLUMN FROM DATA FRAME
+        merged_orders.drop(columns=['level_1'], inplace=True)
+
         merged = Table.from_pandas(merged_orders)
 
         from os.path import expanduser
@@ -521,13 +527,13 @@ class horne_extraction(object):
         #from tabulate import tabulate
         #print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
 
-        plt.plot(merged_orders['wavelength'], merged_orders['wf'])
+        # plt.plot(merged_orders['wavelength'], merged_orders['wf'])
         # #
         #
         # for o in order_list:
         #     plt.plot(o['wavelength'], o['flux_resampled'])
         #
-        plt.show()
+        # plt.show()
         # self.log.debug('completed the ``merge_extracted_orders`` method')
 
         return None
