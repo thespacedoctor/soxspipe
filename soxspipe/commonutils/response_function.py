@@ -60,8 +60,7 @@ class response_function(object):
         log.debug("instansiating a new 'response_function' object")
         self.settings = settings
         self.stdExtractionPath = stdExtractionPath
-
-        # xt-self-arg-tmpx
+        from astropy.table import Table
 
         # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
         # Variable Data Atrributes
@@ -70,6 +69,13 @@ class response_function(object):
         # Override Variable Data Atrributes
 
         # Initial Actions
+        # OPEN EXTRACTED SPECTRUM
+        # SPEC FORMAT TO PANDAS DATAFRAME
+        stdExtractionDF = Table.read(self.stdExtractionPath, format='fits')
+        stdExtractionDF = stdExtractionDF.to_pandas()
+
+        from tabulate import tabulate
+        print(tabulate(stdExtractionDF.head(100), headers='keys', tablefmt='psql'))
 
         return None
 
