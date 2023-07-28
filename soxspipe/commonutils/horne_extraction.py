@@ -394,7 +394,10 @@ class horne_extraction(object):
             sql.register_adapter(np.float64, lambda this: this.item())
             sql.register_adapter(np.ma.core.MaskedArray, lambda arr: str(arr.tolist()))
 
-            conn = sql.connect("/Users/Dave/Desktop/pandas_export.db")
+            # MAKE RELATIVE HOME PATH ABSOLUTE
+            from os.path import expanduser
+            home = expanduser("~")
+            conn = sql.connect(f"{home}/Desktop/pandas_export.db")
             # SEND TO DATABASE
             crossDispersionSlices.to_sql(f'order_{order}', con=conn,
                                          index=False, if_exists='replace')
@@ -511,7 +514,9 @@ class horne_extraction(object):
 
         merged = Table.from_pandas(merged_orders)
 
-        merged.write('/Users/Dave/Desktop/xsh.fits', overwrite=True)
+        from os.path import expanduser
+        home = expanduser("~")
+        merged.write(f'{home}/Desktop/soxspipe.fits', overwrite=True)
         #print(gb[gb['count']> 1])
         #from tabulate import tabulate
         #print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))

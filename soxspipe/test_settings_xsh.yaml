@@ -124,7 +124,7 @@ soxs-stare:
     clipping-lower-sigma: 10
     clipping-upper-sigma: 10 
     # the length of the 'slit' used to collect object flux (in pixels)
-    horne-extraction-slit-length: 10
+    horne-extraction-slit-length: 20
     # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
     horne-extraction-profile-global-clipping-sigma: 25
     # the number of σ deviations that residuals from the fitted, dispersion-direction profile need to be beyond for a pixel to be clipped
