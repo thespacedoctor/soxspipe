@@ -25,7 +25,7 @@ os.environ['TERM'] = 'vt100'
 # TODO: find a more robust solution for when horneDenominatorSum == 0 (all pixels in a slice do not pass variance cuts). See where fudged == true
 # TODO: delete weight collection
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
-
+# TODO: replace 'gain' with true gain from fits headers
 
 class horne_extraction(object):
     """
@@ -202,6 +202,7 @@ class horne_extraction(object):
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = self.orderPixelTable['order'].unique()
+        # uniqueOrders = uniqueOrders[3:5]
         extractions = []
 
         for order in uniqueOrders:
@@ -252,7 +253,7 @@ class horne_extraction(object):
 
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
-        mergedSpectum = self.merge_extracted_orders(extractedOrdersDF)
+        # mergedSpectum = self.merge_extracted_orders(extractedOrdersDF)
 
         # CONVERT TO FITS BINARY TABLE
         header = copy.deepcopy(self.skySubtractedFrame.header)
@@ -283,8 +284,6 @@ class horne_extraction(object):
 
         filePath = f"{outDir}/{self.filenameTemplate}".replace(".fits", "_EXTRACTED_ORDERS.fits")
         hduList.writeto(filePath, checksum=True, overwrite=True)
-
-        self.merge_extracted_orders(extractedOrdersDF)
 
         self.log.debug('completed the ``extract`` method')
         return None
@@ -367,8 +366,8 @@ class horne_extraction(object):
                 percent = (float(clipped_count) / float(startCount)) * 100.
                 print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{self.slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
                 iteration = iteration + 1
-                # if iteration > 1:
-                #     sys.stdout.write("\x1b[1A\x1b[2K")
+                if iteration > 1:
+                    sys.stdout.write("\x1b[1A\x1b[2K")
 
             # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
             profile = np.polyval(coeff, crossDispersionSlices["ycoord"])
@@ -385,10 +384,59 @@ class horne_extraction(object):
         # ADD THE NORMALISED PROFILES TO DATAFRAME
         crossSlitProfiles = np.array(crossSlitProfiles)
         transposedProfiles = crossSlitProfiles.T.tolist()
-        crossDispersionSlices["sliceFittedProfile"] = transposedProfiles
+        crossDispersionSlices["sliceFittedProfile"] = [np.array(t) for t in transposedProfiles]
 
         print(f"\n# EXTRACTING THE SPECTRUM - ORDER {order}")
-        crossDispersionSlices = crossDispersionSlices.apply(lambda x: self.extract_spectrum(x), axis=1)
+
+        # NORMALISE THE FLUX IN EACH SLICE
+        sliceFittedProfileSums = [x.sum() for x in crossDispersionSlices["sliceFittedProfile"]]
+        crossDispersionSlices["sliceFittedProfileNormalised"] = crossDispersionSlices["sliceFittedProfile"] / sliceFittedProfileSums
+
+        # TODO: USE DETECTOR GAIN
+        gain = 1.0
+
+        # VARIANCE FROM HORNE 86 PAPER
+        crossDispersionSlices["sliceVariance"] = self.ron + np.abs(crossDispersionSlices["sliceRawFlux"] * crossDispersionSlices["sliceFittedProfileNormalised"] + crossDispersionSlices["sliceSky"]) / gain
+        # VARIANCE REJECTION NUMBER FROM HORNE 86 PAPER
+        sliceRejection = np.power((crossDispersionSlices["sliceRawFlux"] - crossDispersionSlices["sliceRawFluxMaskedSum"] * crossDispersionSlices["sliceFittedProfileNormalised"]), 2) / crossDispersionSlices["sliceVariance"]
+        # CREATE A MASK FOR PIXELS WHERE VARIANCE IS TOO HIGH
+        mask = np.zeros_like(np.stack(sliceRejection, axis=0))
+        mask[np.stack(sliceRejection, axis=0) > self.globalClippingSigma] = 1
+        flipMask = 1 - mask
+        goodRowCounts = flipMask.sum(axis=1).astype(int)
+
+        # 1D ARRAY OF GOOD VALUES RETURNED - RESHAPE INTO SAME LENGTH AS DATAFRAME - FOR MULTIPLE CALCUATIONS
+        oneDGood = np.ma.masked_array(np.stack(crossDispersionSlices["sliceFittedProfileNormalised"], axis=0), mask).compressed()
+        crossDispersionSlices["sliceFittedProfileNormalisedGood"] = np.split(oneDGood, np.cumsum(goodRowCounts)[:-1])
+        oneDGood = np.ma.masked_array(np.stack(crossDispersionSlices["sliceRawFlux"], axis=0), mask).compressed()
+        crossDispersionSlices["sliceRawFluxGood"] = np.split(oneDGood, np.cumsum(goodRowCounts)[:-1])
+        oneDGood = np.ma.masked_array(np.stack(crossDispersionSlices["sliceVariance"], axis=0), mask).compressed()
+        crossDispersionSlices["sliceVarianceGood"] = np.split(oneDGood, np.cumsum(goodRowCounts)[:-1])
+        oneDGood = np.ma.masked_array(np.stack(crossDispersionSlices["wavelength"], axis=0), mask).compressed()
+        crossDispersionSlices["wavelengthGood"] = np.split(oneDGood, np.cumsum(goodRowCounts)[:-1])
+
+        # CALCULATE HORNE 86 NUMERATOR AND DENOMINATOR (EQU ?)
+        crossDispersionSlices['horneNumerator'] = crossDispersionSlices["sliceRawFluxGood"] * crossDispersionSlices["sliceFittedProfileNormalisedGood"] / crossDispersionSlices["sliceVarianceGood"]
+        crossDispersionSlices['horneNumeratorSum'] = [x.sum() for x in crossDispersionSlices["horneNumerator"]]
+        crossDispersionSlices["horneDenominator"] = np.power(crossDispersionSlices["sliceFittedProfileNormalisedGood"], 2) / crossDispersionSlices["sliceVarianceGood"]
+        crossDispersionSlices['horneDenominatorSum'] = [x.sum() for x in crossDispersionSlices["horneDenominator"]]
+        crossDispersionSlices["wavelengthMedian"] = [np.median(x) for x in crossDispersionSlices["wavelengthGood"]]
+        crossDispersionSlices["fudged"] = False
+
+        # TODO: IF ALL ABOVE sliceVarianceRejectLimit  ... what?
+        mask = (crossDispersionSlices["horneDenominatorSum"] == 0)
+        crossDispersionSlices.loc[mask, "horneNumerator"] = crossDispersionSlices.loc[mask, "sliceRawFlux"] * crossDispersionSlices.loc[mask, "sliceFittedProfileNormalised"] / crossDispersionSlices.loc[mask, "sliceVariance"]
+        crossDispersionSlices.loc[mask, 'horneNumeratorSum'] = [x.sum() for x in crossDispersionSlices.loc[mask, "horneNumerator"]]
+        crossDispersionSlices.loc[mask, "horneDenominator"] = np.power(crossDispersionSlices.loc[mask, "sliceFittedProfileNormalised"], 2) / crossDispersionSlices.loc[mask, "sliceVariance"]
+        crossDispersionSlices.loc[mask, 'horneDenominatorSum'] = [x.sum() for x in crossDispersionSlices.loc[mask, "horneDenominator"]]
+        crossDispersionSlices.loc[mask, "fudged"] = True
+
+        # CALULCATE THE FINAL EXTRACTED SPECTRA
+        crossDispersionSlices["varianceSpectrum"] = 1 / crossDispersionSlices["horneDenominatorSum"]
+        crossDispersionSlices["extractedFluxOptimal"] = crossDispersionSlices["horneNumeratorSum"] / crossDispersionSlices["horneDenominatorSum"]
+        crossDispersionSlices["extractedFluxBoxcar"] = [x.sum() for x in crossDispersionSlices["sliceRawFlux"]]
+        crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices["sliceRawFluxMaskedSum"]
+        crossDispersionSlices["snr"] = crossDispersionSlices["extractedFluxOptimal"] / np.power(crossDispersionSlices["varianceSpectrum"], 0.5)
 
         if True:
             import sqlite3 as sql
@@ -430,7 +478,7 @@ class horne_extraction(object):
     def weighted_average(self, group):
         import numpy as np
         group['wf'] = (group['flux_resampled'] * np.abs(group['snr'])).sum() / np.abs(group['snr']).sum()
-        #group['wf'] = group['flux_resampled'].mean()
+        # group['wf'] = group['flux_resampled'].mean()
 
         return group['wf']
 
@@ -515,7 +563,7 @@ class horne_extraction(object):
 
         orders = pd.concat(order_list, ignore_index=True)
         orders['wavelength'] = orders['wavelength'].apply(lambda x: round(x.value, 2))
-        #orders['wavelength'] = orders['wavelength'].astype(str)
+        # orders['wavelength'] = orders['wavelength'].astype(str)
 
         # Duplicated rows containes duplicated values for wave and flux. No matter which row is considered to be dropped!
         merged_orders = orders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
@@ -532,17 +580,17 @@ class horne_extraction(object):
         from os.path import expanduser
         home = expanduser("~")
         merged.write(f'{home}/Desktop/soxspipe.fits', overwrite=True)
-        #print(gb[gb['count']> 1])
-        #from tabulate import tabulate
-        #print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
+        # print(gb[gb['count']> 1])
+        # from tabulate import tabulate
+        # print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
 
-        # plt.plot(merged_orders['wavelength'], merged_orders['wf'])
-        # #
+        plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'])
         #
-        # for o in order_list:
-        #     plt.plot(o['wavelength'], o['flux_resampled'])
-        #
-        # plt.show()
+
+        for o in order_list:
+            plt.plot(o['wavelength'], o['flux_resampled'])
+
+        plt.show()
         # self.log.debug('completed the ``merge_extracted_orders`` method')
 
         return None
@@ -573,51 +621,6 @@ class horne_extraction(object):
         # NORMALISE THE FLUX
         series["sliceFluxNormalised"] = series["sliceRawFlux"] / sliceMasked.sum()
         series["sliceFluxNormalisedSum"] = series["sliceFluxNormalised"].sum().item()
-        return series
-
-    def extract_spectrum(
-            self,
-            series):
-        """This function is used to optimal extract the spectrum of the object at each slice location (via Horne method)
-        """
-        import numpy as np
-
-        gain = 1.0
-
-        series["sliceFittedProfileNormalised"] = np.array(series["sliceFittedProfile"]) / np.array(series["sliceFittedProfile"]).sum()
-        series["sliceVariance"] = self.ron + np.abs(series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] + series["sliceSky"]) / gain
-        sliceRejection = np.power((series["sliceRawFlux"] - series["sliceRawFluxMaskedSum"] * series["sliceFittedProfileNormalised"]), 2) / series["sliceVariance"]
-        series["sliceVarianceRejectNumber"] = np.power((series["sliceRawFlux"] - series["sliceRawFluxMaskedSum"] * series["sliceFittedProfileNormalised"]), 2) / series["sliceVariance"]
-        series["sliceVarianceRejectLimit"] = self.globalClippingSigma
-        mask = np.zeros_like(sliceRejection)
-        mask[sliceRejection > self.globalClippingSigma] = 1
-        series["sliceFittedProfileNormalisedGood"] = np.ma.masked_array(series["sliceFittedProfileNormalised"], mask)
-        series["sliceFittedProfileNormalisedGoodSum"] = series["sliceFittedProfileNormalisedGood"].sum()
-        series["sliceRawFluxGood"] = np.ma.masked_array(series["sliceRawFlux"], mask)
-        series["sliceVarianceGood"] = np.ma.masked_array(series["sliceVariance"], mask)
-        series["horneNumerator"] = series["sliceRawFluxGood"] * series["sliceFittedProfileNormalisedGood"] / series["sliceVarianceGood"]
-        series["horneNumeratorSum"] = series["horneNumerator"].sum()
-        series["horneDenominator"] = np.power(series["sliceFittedProfileNormalisedGood"], 2) / series["sliceVarianceGood"]
-        series["horneDenominatorSum"] = series["horneDenominator"].sum()
-        series["wavelengthMedian"] = np.median(series["wavelength"])
-        series["fudged"] = False
-
-        # TODO: if all above sliceVarianceRejectLimit  ... what?
-        if series["horneDenominatorSum"] == 0 or not isinstance(series["horneDenominatorSum"], float):
-            series["horneNumerator"] = series["sliceRawFlux"] * series["sliceFittedProfileNormalised"] / series["sliceVariance"]
-            series["horneNumeratorSum"] = series["horneNumerator"].sum()
-            series["horneDenominator"] = np.power(series["sliceFittedProfileNormalised"], 2) / series["sliceVariance"]
-            series["horneDenominatorSum"] = series["horneDenominator"].sum()
-            series["fudged"] = True
-
-        series["varianceSpectrum"] = 1 / series["horneDenominatorSum"]
-
-        series["extractedFluxOptimal"] = series["horneNumeratorSum"] / series["horneDenominatorSum"]
-        series["extractedFluxBoxcar"] = series["sliceRawFlux"].sum()
-        series["extractedFluxBoxcarRobust"] = series["sliceRawFluxMaskedSum"]
-
-        series["snr"] = series["extractedFluxOptimal"] / np.power(series["varianceSpectrum"], 0.5)
-
         return series
 
     # use the tab-trigger below for new method

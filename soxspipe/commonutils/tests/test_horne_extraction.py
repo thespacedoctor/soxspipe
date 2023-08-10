@@ -51,7 +51,6 @@ class test_horne_extraction(unittest.TestCase):
 
     def test_horne_extraction_merge_function(self):
 
-
         # XRAY BINARY (FAINT)
         # skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
         # skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYSUB.fits"
