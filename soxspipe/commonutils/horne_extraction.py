@@ -19,7 +19,7 @@ from specutils.manipulation import LinearInterpolatedResampler
 
 os.environ['TERM'] = 'vt100'
 
-# TODO: pass in error frame and use instead of recalculating errors later on?
+
 # TODO: replace RON value with true value from FITS header
 # TODO: include the BPM in create_cross_dispersion_slice (at least)
 # TODO: find a more robust solution for when horneDenominatorSum == 0 (all pixels in a slice do not pass variance cuts). See where fudged == true
@@ -82,6 +82,7 @@ class horne_extraction(object):
         import numpy as np
         import pandas as pd
         from astropy.io import fits
+        from soxspipe.commonutils import keyword_lookup
         from astropy.nddata import CCDData
         from astropy import units as u
         from os.path import expanduser
@@ -115,7 +116,6 @@ class horne_extraction(object):
                                           hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
                                           key_uncertainty_type='UTYPE')
 
-        from soxspipe.commonutils import keyword_lookup
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
         self.kw = keyword_lookup(
@@ -250,8 +250,6 @@ class horne_extraction(object):
         plt.close()
         # plt.show()
 
-        print(filePath)
-
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
         mergedSpectum = self.merge_extracted_orders(extractedOrdersDF)
@@ -286,7 +284,7 @@ class horne_extraction(object):
         filePath = f"{outDir}/{self.filenameTemplate}".replace(".fits", "_EXTRACTED_ORDERS.fits")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
-        print(filePath)
+        self.merge_extracted_orders(extractedOrdersDF)
 
         self.log.debug('completed the ``extract`` method')
         return None
@@ -312,6 +310,17 @@ class horne_extraction(object):
 
         # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
         crossDispersionSlices = self.orderPixelTable.loc[self.orderPixelTable['order'] == order]
+
+        # ADD SOME DATA TO THE SLICES
+        xstart = crossDispersionSlices["xcoord_centre"].astype(int) - self.slitHalfLength
+        xstop = crossDispersionSlices["xcoord_centre"].astype(int) + self.slitHalfLength
+        ycoord = crossDispersionSlices["ycoord"].astype(int)
+        xcoords = list(map(lambda x: list(range(x[0], x[1])), zip(xstart, xstop)))
+        ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
+        crossDispersionSlices["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
+        crossDispersionSlices["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
+        crossDispersionSlices["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords])
+        crossDispersionSlices["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
 
         # CREATE THE SLICES AND DROP SLICES WITH ALL NANs (TYPICALLY PIXELS WITH NANs IN 2D IMAGE MAP)
         print(f"\n# SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
@@ -546,13 +555,6 @@ class horne_extraction(object):
 
         import numpy as np
         from astropy.stats import sigma_clip
-
-        x = series['xcoord_centre']
-        y = series['ycoord']
-        series["wavelength"] = self.twoDMap["WAVELENGTH"].data[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
-        series["sliceRawFlux"] = self.skySubtractedFrame.data[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
-        series["sliceSky"] = self.skyModelFrame.data[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
-        series["sliceError"] = self.skySubtractedFrame.uncertainty[int(y), int(x) - self.slitHalfLength:int(x) + self.slitHalfLength]
 
         # SET SLICES WITH ALL NAN FLUX TO A SINGLE NAN - WILL BE REMOVED FROM THE DATAFRAME LATER
         if np.isnan(series["sliceRawFlux"]).all():
