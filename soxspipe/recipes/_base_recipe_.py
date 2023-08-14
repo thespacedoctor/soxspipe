@@ -769,7 +769,7 @@ class _base_recipe_(object):
         import numpy as np
 
         if len(frames) == 1:
-            self.log.warning("Only 1 frame was sent to the clip and stack method. Returning the frame with no further processing.")
+            self.log.info("Only 1 frame was sent to the clip and stack method. Returning the frame with no further processing.")
             return frames[0]
 
         arm = self.arm
