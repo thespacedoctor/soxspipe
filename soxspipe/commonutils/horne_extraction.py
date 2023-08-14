@@ -353,7 +353,6 @@ class horne_extraction(object):
 
         import matplotlib.pyplot as plt
         import matplotlib
-        matplotlib.use('macosx')
         self.log.debug('starting the ``merge_extracted_orders`` method')
 
         minWave = np.min(extractedOrdersDF['wavelengthMedian'])
