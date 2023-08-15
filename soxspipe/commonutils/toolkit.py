@@ -881,7 +881,7 @@ def twoD_disp_map_image_to_dataframe(
 
     # REMOVE FILTERED ROWS FROM DATA FRAME
     mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
-    mapDF.drop(index=mapDF[mask].index, inplace=True)
+    mapDF = mapDF.loc[~mask]
 
     # SORT BY COLUMN NAME
     mapDF.sort_values(['wavelength'], inplace=True)

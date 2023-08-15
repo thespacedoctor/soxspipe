@@ -391,8 +391,8 @@ class create_dispersion_map(object):
         if not self.firstGuessMap:
             slitIndex = int(dp["mid_slit_index"])
             # REMOVE FILTERED ROWS FROM DATA FRAME
-            mask = (orderPixelTable['slit_index'] != slitIndex)
-            orderPixelTable.drop(index=orderPixelTable[mask].index, inplace=True)
+            mask = (orderPixelTable['slit_index'] == slitIndex)
+            orderPixelTable = orderPixelTable.loc[mask]
 
         # WANT TO DETERMINE SYSTEMATIC SHIFT IF FIRST GUESS SOLUTION PRESENT
         if self.firstGuessMap:
@@ -901,8 +901,7 @@ class create_dispersion_map(object):
         allClippedLines = []
         mask = (orderPixelTable['dropped'] == True)
         allClippedLines.append(orderPixelTable.loc[mask])
-        orderPixelTable.drop(index=orderPixelTable[
-                             mask].index, inplace=True)
+        orderPixelTable = orderPixelTable.loc[~mask]
 
         import numpy as np
         from astropy.stats import sigma_clip
@@ -1049,8 +1048,7 @@ class create_dispersion_map(object):
             print(f'ITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
 
             mask = (orderPixelTable['sigma_clipped'] == True)
-            orderPixelTable.drop(index=orderPixelTable[
-                                 mask].index, inplace=True)
+            orderPixelTable = orderPixelTable.loc[~mask]
 
         if len(allClippedLines):
             allClippedLines = pd.concat(allClippedLines, ignore_index=True)

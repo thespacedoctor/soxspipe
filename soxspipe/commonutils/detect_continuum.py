@@ -100,7 +100,7 @@ class _base_detect(object):
                     poly, xdata=pixelListFiltered, ydata=pixelListFiltered[axisACol].values, p0=coeff)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
-                pixelList.drop(index=pixelList[mask].index, inplace=True)
+                pixelList = pixelList.loc[~mask]
                 coeff = None
                 return coeff, pixelList
             except Exception as e:
@@ -122,7 +122,7 @@ class _base_detect(object):
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
             removeMask = (pixelList["mask"] == True)
-            pixelList.drop(index=pixelList[removeMask].index, inplace=True)
+            pixelList = pixelList.loc[~removeMask]
             pixelListFiltered = pixelList.loc[mask]
             clippedCount = startCount - len(pixelListFiltered.index)
 
@@ -206,7 +206,7 @@ class _base_detect(object):
             # REMOVE FILTERED ROWS FROM DATA FRAME
             removeMask = (pixelList["mask"] == True)
             allClipped.append(pixelList.loc[removeMask])
-            pixelList.drop(index=pixelList[removeMask].index, inplace=True)
+            pixelList = pixelList.loc[~removeMask]
             clippedCount = startCount - len(pixelList.index)
 
             if iteration > 1:
