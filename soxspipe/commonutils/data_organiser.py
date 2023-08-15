@@ -1137,7 +1137,7 @@ class data_organiser(object):
         self.log.debug('starting the ``_move_misc_files`` method')
 
         import shutil
-        if check and not os.path.exists(self.miscDir):
+        if not os.path.exists(self.miscDir):
             os.makedirs(self.miscDir)
 
         # GENERATE A LIST OF FILE PATHS

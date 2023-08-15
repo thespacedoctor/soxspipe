@@ -674,7 +674,7 @@ class subtract_sky(object):
 
         filePath = f"{self.qcDir}/{filename}"
 
-        plt.show()
+        # plt.show()
         plt.savefig(filePath, dpi='figure')
         plt.close()
 

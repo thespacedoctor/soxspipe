@@ -416,7 +416,7 @@ class horne_extraction(object):
         for o in order_list:
             plt.plot(o['wavelength'], o['flux_resampled'])
 
-        plt.show()
+        # plt.show()
         # self.log.debug('completed the ``merge_extracted_orders`` method')
 
         return None

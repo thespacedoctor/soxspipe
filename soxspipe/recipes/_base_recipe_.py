@@ -507,6 +507,33 @@ class _base_recipe_(object):
             self.detectorParams["gain"] = self.detectorParams[
                 "gain"] * u.electron / u.adu
 
+        # CONVERT TO DATAFRAME AND FILTER TO CHECK SLIT WIDTHS
+        filteredDf = self.inputFrames.summary.to_pandas()
+        matchList = ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT", "OBJECT", "STD,FLUX", f"MASTER_FLAT_{self.arm}"]
+        mask = (filteredDf[kw("DPR_TYPE")].isin(matchList)) | (filteredDf[kw("PRO_CATG")].isin(matchList))
+        filteredDf = filteredDf.loc[mask]
+
+        # MIXED SLIT-WIDTH IS BAD
+        slitWidth = list(filteredDf[kw(f"SLIT_{self.arm}")].unique())
+        with suppress(ValueError):
+            slitWidth.remove(None)
+
+        # ITEMS TO REMOVE
+        removeItems = ["pin", "blind"]
+        for i in slitWidth:
+            for j in removeItems:
+                if j in str(i).lower():
+                    slitWidth.remove(i)
+        slitWidth = [s.replace("JH", "") for s in slitWidth]
+        slitWidth = list(set(slitWidth))
+
+        if len(slitWidth) > 1:
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            print(self.inputFrames.summary)
+            raise TypeError(
+                f"Input frames are a mix of slit-width ({slitWidth})" % locals())
+
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
         ron = self.inputFrames.values(
             keyword=kw("RON"), unique=True)
@@ -1075,7 +1102,7 @@ class _base_recipe_(object):
         if not rawRon:
             # LIST OF RAW CCDDATA OBJECTS
             ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
-                                                     "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+                "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
             # SINGLE FRAME RON
             raw_one = ccds[0]
@@ -1253,7 +1280,7 @@ class _base_recipe_(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
