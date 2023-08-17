@@ -1,6 +1,7 @@
 
 # Release Notes  
 
+* **FIXED**: sky-subtraction code and data-organiser fixed to work with binned data
 * **REFACTOR:** command-line startup speeds improved
 * **FEATURE:** Merging of individual order extracted spectra from object frame into a single spectrum for each arm
 * **FEATURE:** Object spectra are now extracted from the sky-subtracted frames using the Horne 86 method
