@@ -19,7 +19,6 @@ from builtins import object
 from datetime import datetime
 from soxspipe.commonutils.toolkit import generic_quality_checks
 import sys
-import math
 import os
 os.environ['TERM'] = 'vt100'
 

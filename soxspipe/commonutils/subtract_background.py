@@ -11,15 +11,11 @@
 """
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
-import random
 from soxspipe.commonutils.toolkit import quicklook_image
-
 from soxspipe.commonutils.toolkit import unpack_order_table
 from fundamentals import tools
 from builtins import object
 import sys
-import math
-
 import os
 os.environ['TERM'] = 'vt100'
 
@@ -204,6 +200,8 @@ class subtract_background(object):
         from scipy.signal import medfilt2d
         from scipy.interpolate import BSpline, splrep
         import numpy.ma as ma
+        import math
+        import random
 
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA

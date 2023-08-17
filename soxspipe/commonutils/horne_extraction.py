@@ -9,13 +9,12 @@
 :Date Created:
     May 17, 2023
 """
-import pandas as pd
+
 from fundamentals import tools
 from builtins import object
 import sys
 import os
 
-from specutils.manipulation import LinearInterpolatedResampler
 
 os.environ['TERM'] = 'vt100'
 
@@ -345,7 +344,7 @@ class horne_extraction(object):
         import numpy as np
         from astropy.table import Table
 
-        from specutils.manipulation import FluxConservingResampler
+        from specutils.manipulation import FluxConservingResampler, LinearInterpolatedResampler
         from specutils import Spectrum1D
         import astropy.units as u
         import pandas as pd

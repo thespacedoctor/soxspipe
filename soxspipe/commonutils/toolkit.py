@@ -13,12 +13,8 @@
 
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
-from copy import copy
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-import math
-import random
-import unicodecsv as csv
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
 from builtins import object
@@ -68,6 +64,7 @@ def cut_image_slice(
 
     import numpy.ma as ma
     import numpy as np
+    import random
 
     halfSlice = length / 2
     # NEED AN EVEN PIXEL SIZE
@@ -170,6 +167,7 @@ def quicklook_image(
     import pandas as pd
     import matplotlib as mpl
     import numpy as np
+    from copy import copy
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
     from soxspipe.commonutils import keyword_lookup
     from soxspipe.commonutils import detector_lookup
@@ -195,7 +193,7 @@ def quicklook_image(
         science_pixels = dp["science-pixels"]
 
     if dispMapImage:
-        dispMapDF = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, assosiatedFrame=CCDObject)
+        dispMapDF = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, assosiatedFrame=CCDObject, kw=kw)
 
     originalRC = dict(mpl.rcParams)
 
@@ -435,6 +433,7 @@ def unpack_order_table(
     from astropy.table import Table
     import pandas as pd
     import numpy as np
+    import math
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
     home = expanduser("~")
@@ -809,6 +808,7 @@ def twoD_disp_map_image_to_dataframe(
         log,
         slit_length,
         twoDMapPath,
+        kw=False,
         assosiatedFrame=False,
         removeMaskedPixels=False):
     """*convert the 2D dispersion image map to a pandas dataframe*
@@ -817,6 +817,7 @@ def twoD_disp_map_image_to_dataframe(
 
     - `log` -- logger
     - `twoDMapPath` -- 2D dispersion map image path
+    - `kw` -- fits keyword lookup dictionary
     - `assosiatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
     - `removeMaskedPixels` -- remove the masked pixels from the assosicated image? Default *False*
 
@@ -824,7 +825,7 @@ def twoD_disp_map_image_to_dataframe(
 
     ```python
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-    mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, assosiatedFrame=objectFrame)
+    mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, assosiatedFrame=objectFrame, kw=kw)
     ```           
     """
     log.debug('starting the ``twoD_disp_map_image_to_dataframe`` function')
@@ -839,12 +840,27 @@ def twoD_disp_map_image_to_dataframe(
     if twoDMapPath[0] == "~":
         twoDMapPath = twoDMapPath.replace("~", home)
 
+    binx = 1
+    biny = 1
+
+    # FIND THE APPROPRIATE PREDICTED LINE-LIST
+    if assosiatedFrame:
+        arm = assosiatedFrame.header[kw("SEQ_ARM")]
+        if arm != "NIR" and kw('WIN_BINX') in assosiatedFrame.header:
+            binx = int(assosiatedFrame.header[kw('WIN_BINX')])
+            biny = int(assosiatedFrame.header[kw('WIN_BINY')])
+
     hdul = fits.open(twoDMapPath)
+
+    if binx > 1 or biny > 1:
+        from astropy.nddata import block_reduce
+        hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
+        hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
+        hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
 
     # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
     xdim = hdul[0].data.shape[1]
     ydim = hdul[0].data.shape[0]
-
     xarray = np.tile(np.arange(0, xdim), ydim)
     yarray = np.repeat(np.arange(0, ydim), xdim)
 

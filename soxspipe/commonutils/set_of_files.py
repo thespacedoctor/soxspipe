@@ -9,18 +9,13 @@
 :Date Created:
     January 22, 2020
 """
+from os import listdir, path
+from ccdproc import ImageFileCollection
 import os
 import sys
 from builtins import object
 from fundamentals import tools
-
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
-import codecs
-from ccdproc import ImageFileCollection
-
-
-from collections import OrderedDict
-from os import listdir, path
 
 
 class ImageFileCollection(ImageFileCollection):
@@ -30,6 +25,7 @@ class ImageFileCollection(ImageFileCollection):
 
         """
         from astropy.io import fits
+        from collections import OrderedDict
 
         def _add_val_to_dict(key, value, tbl_dict, n_previous, missing_marker):
             try:
@@ -304,7 +300,7 @@ class set_of_files(object):
         self.log.debug('starting the ``get`` method')
 
         from astropy.table import join
-
+        import codecs
         from os.path import expanduser
         home = expanduser("~")
 

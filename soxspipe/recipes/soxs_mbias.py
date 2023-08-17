@@ -14,7 +14,6 @@
 from soxspipe.commonutils.toolkit import generic_quality_checks
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-import math
 from ._base_recipe_ import _base_recipe_
 from fundamentals import tools
 from builtins import object

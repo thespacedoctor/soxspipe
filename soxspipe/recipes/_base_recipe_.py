@@ -10,23 +10,15 @@
     January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
-import warnings
-import shutil
-import logging
+
 from soxspipe.commonutils import filenamer
 from datetime import datetime
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
-from contextlib import suppress
 from soxspipe.commonutils import subtract_background
-
-
 from fundamentals import tools
 from builtins import object
 import sys
-import math
-import inspect
-import yaml
 import os
 
 os.environ['TERM'] = 'vt100'
@@ -59,7 +51,7 @@ class _base_recipe_(object):
             recipeName=False
     ):
         self.log = log
-
+        import yaml
         import pandas as pd
 
         log.debug("instansiating a new '__init__' object")
@@ -165,6 +157,8 @@ class _base_recipe_(object):
         import ccdproc
         from astropy import units as u
         import numpy as np
+        import logging
+        import warnings
 
         warnings.filterwarnings(
             action='ignore'
@@ -397,6 +391,7 @@ class _base_recipe_(object):
         self.log.debug('starting the ``_verify_input_frames_basics`` method')
 
         from astropy import units as u
+        from contextlib import suppress
 
         kw = self.kw
 
@@ -595,6 +590,8 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``clean_up`` method')
+
+        import shutil
 
         outDir = self.workspaceRootPath + "/tmp"
 
@@ -1095,6 +1092,7 @@ class _base_recipe_(object):
         from astropy.stats import sigma_clip
         import numpy as np
         import pandas as pd
+        import math
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")

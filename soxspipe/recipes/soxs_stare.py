@@ -116,31 +116,30 @@ class soxs_stare(_base_recipe_):
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
+        arm = self.arm
 
         if self.arm == "NIR":
             if not error:
                 for i in imageTypes:
                     if i not in ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX"]:
-                        error = "Found a {i} file. Input frames for soxspipe stare need to be OBJECT, ***. Can optionally supply a master-flat for NIR."
+                        error = f"Found a {i} file. Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR."
 
             if not error:
                 for i in imageTech:
                     if i not in ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
-                        error = "Input frames for soxspipe stare need to be ********* lamp on and lamp off frames for NIR" % locals()
+                        error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR. The sof file is missing a {i} frame."
 
         else:
             if not error:
                 for i in imageTypes:
                     if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK"]:
-                        error = "Input frames for soxspipe stare need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals()
+                        error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
 
             if not error:
                 for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
                     if i not in imageCat:
-                        error = "Input frames for soxspipe stare need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals()
+                        error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
 
-        # LOOK FOR ****
-        arm = self.arm
         # if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
         #     raise TypeError(
         #         "Need a **** for %(arm)s - none found with the input files" % locals())

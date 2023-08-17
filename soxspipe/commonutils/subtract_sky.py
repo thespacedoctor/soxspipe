@@ -18,7 +18,6 @@ from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import sys
 import os
-from copy import copy
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.filenamer import filenamer
@@ -115,7 +114,7 @@ class subtract_sky(object):
 
         # UNPACK THE 2D DISP IMAGE MAP AND THE OBJECT IMAGE TO GIVE A
         # DATA FRAME CONTAINING ONE ROW FOR EACH PIXEL WITH COLUMNS X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDER
-        self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame)
+        self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame, kw=kw)
 
         quicklook_image(
             log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
@@ -404,6 +403,7 @@ class subtract_sky(object):
         import numpy.ma as ma
         from matplotlib import cm
         from matplotlib import colors
+        from copy import copy
 
         # SET COLOURS FOR VARIOUS STAGES
         red = "#dc322f"
@@ -886,7 +886,9 @@ class subtract_sky(object):
                 imageMapOrder.loc[imageMapOrder["clipped"] == False, "clipped"] = masked_residuals.mask
 
             flux_error_ratio = imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_subtracted_flux_error_ratio"].values
-            flux_error_ratio = flux_error_ratio[1000:-1000]
+
+            if flux_error_ratio[1000:-1000].shape[0]:
+                flux_error_ratio = flux_error_ratio[1000:-1000]
 
             sys.stdout.write("\x1b[1A\x1b[2K")
             print(f'\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')

@@ -35,18 +35,17 @@ Options:
     -x, --overwrite                        more verbose output
 """
 ################# GLOBAL IMPORTS ####################
-from subprocess import Popen, PIPE, STDOUT
-from fundamentals import tools, times
-from docopt import docopt
-import glob
-import readline
-import sys
 import os
+import sys
+import readline
+import glob
+from docopt import docopt
+from fundamentals import tools, times
+from subprocess import Popen, PIPE, STDOUT
 os.environ['TERM'] = 'vt100'
 
 
 def tab_complete(text, state):
-
     return (glob.glob(text + '*') + [None])[state]
 
 
@@ -140,109 +139,113 @@ def main(arguments=None):
 
     verbose = a['verboseFlag']
 
-    # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
-    if a['outputDirectory']:
-        settings["workspace-root-dir"] = a['outputDirectory']
+    try:
 
-    if a["init"]:
-        from os.path import expanduser
-        home = expanduser("~")
-        filepath = home + "/.config/soxspipe/soxspipe.yaml"
-        try:
-            cmd = """open %(filepath)s""" % locals()
-            p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
-        except:
-            pass
-        try:
-            cmd = """start %(filepath)s""" % locals()
-            p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
-        except:
-            pass
-        return
+        # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
+        if a['outputDirectory']:
+            settings["workspace-root-dir"] = a['outputDirectory']
 
-    if a["mbias"]:
-        from soxspipe.recipes import soxs_mbias
-        recipe = soxs_mbias(
-            log=log,
-            settings=settings,
-            inputFrames=a["inputFrames"],
-            verbose=verbose,
-            overwrite=a["overwriteFlag"]
-        )
-        mbiasFrame = recipe.produce_product()
+        if a["init"]:
+            from os.path import expanduser
+            home = expanduser("~")
+            filepath = home + "/.config/soxspipe/soxspipe.yaml"
+            try:
+                cmd = """open %(filepath)s""" % locals()
+                p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
+            except:
+                pass
+            try:
+                cmd = """start %(filepath)s""" % locals()
+                p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
+            except:
+                pass
+            return
 
-    if a["mdark"]:
-        from soxspipe.recipes import soxs_mdark
-        recipe = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=a["inputFrames"],
-            verbose=verbose,
-            overwrite=a["overwriteFlag"]
-        )
-        mdarkFrame = recipe.produce_product()
+        if a["mbias"]:
+            from soxspipe.recipes import soxs_mbias
+            recipe = soxs_mbias(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            )
+            mbiasFrame = recipe.produce_product()
 
-    if a["disp_sol"]:
-        from soxspipe.recipes import soxs_disp_solution
-        disp_map = soxs_disp_solution(
-            log=log,
-            settings=settings,
-            inputFrames=a["inputFrames"],
-            verbose=verbose,
-            overwrite=a["overwriteFlag"]
-        ).produce_product()
+        if a["mdark"]:
+            from soxspipe.recipes import soxs_mdark
+            recipe = soxs_mdark(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            )
+            mdarkFrame = recipe.produce_product()
 
-    if a["order_centres"]:
-        from soxspipe.recipes import soxs_order_centres
-        order_table = soxs_order_centres(
-            log=log,
-            settings=settings,
-            inputFrames=a["inputFrames"],
-            verbose=verbose,
-            overwrite=a["overwriteFlag"]
-        ).produce_product()
+        if a["disp_sol"]:
+            from soxspipe.recipes import soxs_disp_solution
+            disp_map = soxs_disp_solution(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            ).produce_product()
 
-    if a["spat_sol"]:
-        from soxspipe.recipes import soxs_spatial_solution
-        disp_map, mapImage2D, res_plots = soxs_spatial_solution(
-            log=log,
-            settings=settings,
-            inputFrames=a["inputFrames"],
-            verbose=verbose,
-            overwrite=a["overwriteFlag"]
-        ).produce_product()
+        if a["order_centres"]:
+            from soxspipe.recipes import soxs_order_centres
+            order_table = soxs_order_centres(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            ).produce_product()
 
-    if a["mflat"]:
-        from soxspipe.recipes import soxs_mflat
-        recipe = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=a["inputFrames"],
-            verbose=verbose,
-            overwrite=a["overwriteFlag"]
-        )
-        mflatFrame = recipe.produce_product()
+        if a["spat_sol"]:
+            from soxspipe.recipes import soxs_spatial_solution
+            disp_map, mapImage2D, res_plots = soxs_spatial_solution(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            ).produce_product()
 
-    if a["stare"]:
-        from soxspipe.recipes import soxs_stare
-        recipe = soxs_stare(
-            log=log,
-            settings=settings,
-            inputFrames=a["inputFrames"],
-            verbose=verbose,
-            overwrite=a["overwriteFlag"]
-        )
+        if a["mflat"]:
+            from soxspipe.recipes import soxs_mflat
+            recipe = soxs_mflat(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            )
+            mflatFrame = recipe.produce_product()
 
-        reducedStare = recipe.produce_product()
+        if a["stare"]:
+            from soxspipe.recipes import soxs_stare
+            recipe = soxs_stare(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            )
 
-    if a['prep']:
-        from soxspipe.commonutils import data_organiser
-        do = data_organiser(
-            log=log,
-            settings=settings,
-            rootDir=a["workspaceDirectory"]
-        )
-        do.prepare()
+            reducedStare = recipe.produce_product()
+
+        if a['prep']:
+            from soxspipe.commonutils import data_organiser
+            do = data_organiser(
+                log=log,
+                settings=settings,
+                rootDir=a["workspaceDirectory"]
+            )
+            do.prepare()
+    except Exception as e:
+        log.error(f'{e}', exc_info=True)
 
     # CALL FUNCTIONS/OBJECTS
 
@@ -256,8 +259,3 @@ def main(arguments=None):
              (endTime, runningTime, ))
 
     return
-
-
-if __name__ == '__main__':
-
-    main()

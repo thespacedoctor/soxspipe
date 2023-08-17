@@ -10,27 +10,19 @@
     September 18, 2020
 """
 from datetime import datetime, date, time
-
 from soxspipe.commonutils.filenamer import filenamer
-import unicodecsv as csv
-import collections
 from soxspipe.commonutils.toolkit import unpack_order_table
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
 from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
-import random
-
 from soxspipe.commonutils import _base_detect
 from soxspipe.commonutils.toolkit import cut_image_slice
-
-
 from fundamentals import tools
 from builtins import object
-import random
 import sys
 import os
-from io import StringIO
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -707,7 +699,7 @@ class detect_order_edges(_base_detect):
 
         import numpy as np
         from scipy.signal import medfilt
-
+        import random
         sliceWidth = self.sliceWidth
         sliceLength = self.sliceLength
         halfSlice = sliceLength / 2

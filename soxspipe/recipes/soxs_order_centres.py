@@ -14,8 +14,6 @@ from soxspipe.commonutils import detect_continuum
 from soxspipe.commonutils import keyword_lookup
 from ._base_recipe_ import _base_recipe_
 from fundamentals import tools
-from builtins import object
-from datetime import datetime
 import sys
 import os
 os.environ['TERM'] = 'vt100'
@@ -180,6 +178,7 @@ class soxs_order_centres(_base_recipe_):
         from astropy.nddata import CCDData
         from astropy import units as u
         import pandas as pd
+        from datetime import datetime
 
         arm = self.arm
         kw = self.kw

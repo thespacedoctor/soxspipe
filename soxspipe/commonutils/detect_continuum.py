@@ -357,7 +357,7 @@ class _base_detect(object):
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
-        if self.binx > 1 or self.biny > 1:
+        if False and (self.binx > 1 or self.biny > 1):
             outDir = self.settings["workspace-root-dir"] + "/tmp"
         else:
             outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
@@ -377,7 +377,7 @@ class _base_detect(object):
             filename = self.sofName + ".fits"
         filename = filename.replace("MFLAT", "FLAT")
 
-        if "order" in self.recipeName.lower() or "mflat" in self.recipeName.lower():
+        if "mflat" in self.recipeName.lower():
             filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
         elif "stare" in self.recipeName.lower():
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
@@ -407,7 +407,7 @@ class _base_detect(object):
 
         header[kw("SEQ_ARM")] = arm
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
-        if "order" in self.recipeName.lower():
+        if "stare" not in self.recipeName.lower() and "nod" not in self.recipeName.lower() and "offset" not in self.recipeName.lower():
             header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
         else:
             header["HIERARCH " + kw("PRO_CATG")] = f"OBJECT_TAB_{arm}".upper()

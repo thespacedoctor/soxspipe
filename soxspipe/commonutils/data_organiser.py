@@ -849,7 +849,7 @@ class data_organiser(object):
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_")) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE"))
-                elif "rospeed" in k.lower():
+                elif "rospeed" in k.lower() or "binning" in k.lower():
                     mask = (calibrationFrames[k].isin([v]) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
                 else:
                     mask = (calibrationFrames[k].isin([v]))
@@ -867,9 +867,13 @@ class data_organiser(object):
 
         # EXTRA CALIBRATION TABLES
         for k, v in matchDict.items():
-            if k in ["binning", "rospeed", "exptime"]:
+            if k in ["rospeed", "exptime"]:
                 continue
-            if "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
+            if k in ["binning"] and seriesRecipe in ["mflat"]:
+                continue
+            if k in ["binning"]:
+                mask = (calibrationTables[k].isin([v]) | calibrationTables['eso pro catg'].str.contains("DISP_TAB_"))
+            elif "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
                 mask = (calibrationTables['eso pro catg'].str.contains("_TAB_"))
             else:
                 try:
@@ -1113,6 +1117,8 @@ class data_organiser(object):
             template["eso pro type"] = template.pop("eso dpr type")
 
             for i in self.productMap[template["recipe"].lower()]:
+                # if template["recipe"].lower() == "mflat" and template["binning"] in ["1x2", "2x2"] and i[2] == "ORDER_TAB":
+                #     continue
                 products = template.copy()
                 products["eso pro type"] = i[0]
                 products["eso pro tech"] = i[1]

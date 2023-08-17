@@ -10,7 +10,6 @@
     August 25, 2020
 """
 ################# GLOBAL IMPORTS ####################
-import unicodecsv as csv
 from soxspipe.commonutils import keyword_lookup
 from ._base_recipe_ import _base_recipe_
 

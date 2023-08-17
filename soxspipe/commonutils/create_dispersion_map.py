@@ -15,8 +15,7 @@ from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_forma
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-import warnings
-import math
+
 from soxspipe.commonutils.toolkit import get_calibrations_path
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
@@ -25,9 +24,6 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-from io import StringIO
-from contextlib import suppress
-import copy
 from datetime import datetime
 
 os.environ['TERM'] = 'vt100'
@@ -79,6 +75,7 @@ class create_dispersion_map(object):
         log.debug("instantiating a new 'create_dispersion_map' object")
 
         from photutils.utils import NoDetectionsWarning
+        import warnings
 
         self.settings = settings
         self.pinholeFrame = pinholeFrame
@@ -577,7 +574,8 @@ class create_dispersion_map(object):
         import pandas as pd
         from astropy.table import Table
         from astropy.io import fits
-
+        from contextlib import suppress
+        import copy
         arm = self.arm
         kw = self.kw
 
@@ -1324,6 +1322,7 @@ class create_dispersion_map(object):
         from soxspipe.commonutils.combiner import Combiner
         import numpy as np
         from astropy.io import fits
+        import copy
 
         print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 

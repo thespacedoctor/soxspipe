@@ -265,8 +265,6 @@ class soxs_mflat(_base_recipe_):
             else:
                 self.orderTableSet.append(None)
 
-            print("HERE2", orderTablePath)
-
             # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
             # FLUX TO THAT LEVEL
             normalisedFlats = self.normalise_flats(

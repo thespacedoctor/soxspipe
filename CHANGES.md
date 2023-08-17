@@ -1,6 +1,7 @@
 
 # Release Notes  
 
+* **REFACTOR:** command-line startup speeds improved
 * **FEATURE:** Merging of individual order extracted spectra from object frame into a single spectrum for each arm
 * **FEATURE:** Object spectra are now extracted from the sky-subtracted frames using the Horne 86 method
 * **FEATURE:** Real SOXS data is now included in the unit-test suite (starting to replace simulated data unit-tests). `soxs-disp-solu` recipe so far.
