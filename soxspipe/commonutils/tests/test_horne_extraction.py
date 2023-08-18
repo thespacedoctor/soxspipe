@@ -49,7 +49,7 @@ class test_horne_extraction(unittest.TestCase):
 
     import pytest
 
-    def test_horne_extraction_merge_function(self):
+    def test_xsh_horne_extraction_merge_function(self):
 
         # XRAY BINARY (FAINT)
         # skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
@@ -118,7 +118,7 @@ class test_horne_extraction(unittest.TestCase):
         optimalExtractor.merge_extracted_orders(extractedOrdersDF)
 
     @pytest.mark.full
-    def test_horne_extraction_function(self):
+    def test_xsh_horne_extraction_function(self):
 
         # XRAY BINARY (FAINT)
         skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
@@ -188,7 +188,7 @@ class test_horne_extraction(unittest.TestCase):
         this = optimalExtractor.extract()
 
     @pytest.mark.full
-    def test_horne_extraction_function_exception(self):
+    def test_soxs_horne_extraction_function_exception(self):
 
         from soxspipe.commonutils import horne_extraction
         try:

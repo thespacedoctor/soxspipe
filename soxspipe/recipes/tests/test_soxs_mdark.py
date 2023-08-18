@@ -60,7 +60,7 @@ class test_soxs_mdark(unittest.TestCase):
 
     import pytest
 
-    def test_soxs_mdark_nir_function(self):
+    def test_xsh_mdark_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_6s_darks.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(
@@ -73,7 +73,7 @@ class test_soxs_mdark(unittest.TestCase):
         print(f"Here is the final product `{productPath}`")
 
     @pytest.mark.full
-    def test_soxs_mdark_nir_function2(self):
+    def test_xsh_mdark_nir_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_240s_darks.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(
@@ -86,7 +86,7 @@ class test_soxs_mdark(unittest.TestCase):
         print(f"Here is the final product `{productPath}`")
 
     @pytest.mark.full
-    def test_soxs_mdark_nir_function3(self):
+    def test_xsh_mdark_nir_function3(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_125s_darks.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(
@@ -98,7 +98,7 @@ class test_soxs_mdark(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    def test_soxs_mdark_uvb_function(self):
+    def test_xsh_mdark_uvb_function(self):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/uvb_1x1_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
@@ -112,7 +112,7 @@ class test_soxs_mdark(unittest.TestCase):
         print(f"Here is the final product `{productPath}`")
 
     @pytest.mark.full
-    def test_soxs_mdark_uvb_function2(self):
+    def test_xsh_mdark_uvb_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/uvb_2x2_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(
@@ -124,7 +124,7 @@ class test_soxs_mdark(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    def test_soxs_mdark_vis_function(self):
+    def test_xsh_mdark_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/vis_1x1_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(
@@ -137,7 +137,7 @@ class test_soxs_mdark(unittest.TestCase):
         print(f"Here is the final product `{productPath}`")
 
     @pytest.mark.full
-    def test_soxs_mdark_vis_function2(self):
+    def test_xsh_mdark_vis_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/vis_2x2_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
         this = soxs_mdark(

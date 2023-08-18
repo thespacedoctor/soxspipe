@@ -50,7 +50,7 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
     import pytest
 
     @pytest.mark.full
-    def test_dispersion_map_to_pixel_arrays_function(self):
+    def test_xsh_dispersion_map_to_pixel_arrays_function(self):
 
         dispersionMapPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
@@ -71,7 +71,7 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
     import pytest
 
     @pytest.mark.full
-    def test_dispersion_map_to_pixel_arrays_function_exception(self):
+    def test_soxs_dispersion_map_to_pixel_arrays_function_exception(self):
 
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
         try:

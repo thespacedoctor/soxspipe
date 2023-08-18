@@ -53,7 +53,7 @@ class test_subtract_sky(unittest.TestCase):
     import pytest
 
     @pytest.mark.full
-    def test_2D_image_to_DF_function(self):
+    def test_xsh_2D_image_to_DF_function(self):
 
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_single.fits"
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
@@ -80,7 +80,7 @@ class test_subtract_sky(unittest.TestCase):
         print(tabulate(mapDF.head(100), headers='keys', tablefmt='psql'))
 
     @pytest.mark.full
-    def test_subtract_sky_function(self):
+    def test_xsh_subtract_sky_function(self):
 
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_single.fits"
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
@@ -139,7 +139,7 @@ class test_subtract_sky(unittest.TestCase):
         print(tabulate(productsTable, headers='keys', tablefmt='psql'))
 
     @pytest.mark.full
-    def test_subtract_sky_function_exception(self):
+    def test_soxs_subtract_sky_function_exception(self):
 
         from soxspipe.commonutils import subtract_sky
         try:

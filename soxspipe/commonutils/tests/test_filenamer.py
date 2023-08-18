@@ -53,7 +53,7 @@ class test_filenamer(unittest.TestCase):
     import pytest
 
     @pytest.mark.full
-    def test_filenamer_function(self):
+    def test_soxs_filenamer_function(self):
         from soxspipe.commonutils import filenamer
         utDir = settings["test-data-root"]
         subDirs = [
@@ -94,7 +94,7 @@ class test_filenamer(unittest.TestCase):
             print(filename)
 
     @pytest.mark.full
-    def test_filenamer_function_exception(self):
+    def test_soxs_filenamer_function_exception(self):
 
         from soxspipe.commonutils import filenamer
         try:
