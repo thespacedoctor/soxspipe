@@ -276,7 +276,7 @@ class create_dispersion_map(object):
             missingLinesFN = self.sofName + "_MISSED_LINES.fits"
 
         # WRITE CLIPPED LINE LIST TO FILE
-        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', 'fwhm_px', 'R']
+        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_px', 'R']
         clippedLinesTable['sigma_clipped'] = True
         clippedLinesTable['R'] = np.nan
 
@@ -511,11 +511,13 @@ class create_dispersion_map(object):
                         stamp_x = tmp_x
                         stamp_y = tmp_y
                         old_resid = new_resid
+                        selectedSource = source
             else:
                 observed_x = sources[0]['xcentroid'] + xlow
                 observed_y = sources[0]['ycentroid'] + ylow
                 stamp_x = sources[0]['xcentroid']
                 stamp_y = sources[0]['ycentroid']
+                selectedSource = sources[0]
 
             try:
                 # Rerun detection with IRAFStarFinder
@@ -541,7 +543,16 @@ class create_dispersion_map(object):
             observed_x = np.nan
             observed_y = np.nan
             fwhm = np.nan
+            selectedSource = None
         # plt.show()
+
+        keepValues = ["sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux"]
+        if not selectedSource:
+            for k in keepValues:
+                predictedLine[k] = np.nan
+        else:
+            for k in keepValues:
+                predictedLine[k] = selectedSource[k]
 
         predictedLine['observed_x'] = observed_x
         predictedLine['observed_y'] = observed_y
