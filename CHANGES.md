@@ -1,6 +1,7 @@
 
 # Release Notes  
 
+* **ENHANCEMENT:** flux (and other daostarfinder metrics) are now recorded in the detected line-list QC file. This will help measure degradation of arc-lamps over time.
 * **FIXED**: sky-subtraction code and data-organiser fixed to work with binned data
 * **REFACTOR:** command-line startup speeds improved
 * **FEATURE:** Merging of individual order extracted spectra from object frame into a single spectrum for each arm
