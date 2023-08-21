@@ -590,7 +590,7 @@ class detect_continuum(_base_detect):
         print("\n# FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        coeff, orderPixelTable, clippedData = self.fit_global_polynomial(
+        coeff, orderPixelTable, clippedDataCentre = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisACol=f"cont_{self.axisA}",
             axisBCol=f"cont_{self.axisB}",
@@ -629,7 +629,7 @@ class detect_continuum(_base_detect):
         plotPath, orderMetaTable = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
-            clippedData=clippedData
+            clippedData=clippedDataCentre
         )
 
         from datetime import datetime
@@ -927,8 +927,9 @@ class detect_continuum(_base_detect):
         toprow.scatter(orderPixelTable[f"cont_{self.axisB}"], orderPixelTable[f"cont_{self.axisA}"], marker='o', c='green', s=0.3, alpha=0.6, label="cross-dispersion 1D gaussian peak-position")
         toprow.scatter(clippedData[f"cont_{self.axisB}"], clippedData[f"cont_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5, label="peaks clipped during continuum fitting")
         # Put a legend below current axis
-        toprow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
-                      fontsize=6)
+
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05),
+                      fontsize=4)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -936,8 +937,10 @@ class detect_continuum(_base_detect):
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
+        toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
             toprow.invert_yaxis()
+        toprow.set_ylim([0, rotatedImg.shape[0]])
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         if "order" in self.recipeName.lower():
@@ -1017,8 +1020,8 @@ class detect_continuum(_base_detect):
             midrow.invert_yaxis()
             midrow.set_ylim(0, axisALength)
 
-        midrow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
-                      fontsize=6)
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05),
+                      fontsize=4)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
@@ -1073,7 +1076,7 @@ class detect_continuum(_base_detect):
             except:
                 pass
         fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
-        fwhmaxis.set_ylabel('Cross-dispersion FWHM (pixels)', fontsize=10)
+        fwhmaxis.set_ylabel('Cross-dispersion\nFWHM (pixels)', fontsize=10)
 
         fwhmaxis.set_ylim(orderPixelTable['stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['stddev_fit'].max() * stdToFwhm * 1.2)
 

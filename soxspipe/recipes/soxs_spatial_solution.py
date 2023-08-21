@@ -184,6 +184,7 @@ class soxs_spatial_solution(_base_recipe_):
         from astropy.nddata import CCDData
         from astropy import units as u
         import pandas as pd
+        from soxspipe.commonutils.toolkit import quicklook_image
 
         arm = self.arm
         kw = self.kw
@@ -295,6 +296,10 @@ class soxs_spatial_solution(_base_recipe_):
                 "file_path": productPath,
                 "label": "PROD"
             }).to_frame().T], ignore_index=True)
+
+        # INSPECT THE MAP AGAINST THE MULTIPINHOLE FRAME
+        quicklook_image(
+            log=self.log, CCDObject=self.multiPinholeFrame, show=True, ext=False, stdWindow=1, title="Multi-pinhole Frame Overlaid with Dispersion Solution", surfacePlot=True, dispMap=mapPath, dispMapImage=mapImagePath, settings=self.settings, skylines=False)
 
         self.report_output()
 

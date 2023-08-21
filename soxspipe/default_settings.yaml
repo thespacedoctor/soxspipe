@@ -36,13 +36,13 @@ soxs-order-centre:
         # LENGTH OF EACH SLICE (PIXELS)
         slice-length: 10
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-        peak-sigma-limit: 3
+        peak-sigma-limit: 1
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        disp-axis-deg: 3
+        disp-axis-deg: 5
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        order-deg: 5
+        order-deg: 6
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-fitting-residual-clipping-sigma: 3
+        poly-fitting-residual-clipping-sigma: 5
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
         poly-clipping-iteration-limit: 7
 

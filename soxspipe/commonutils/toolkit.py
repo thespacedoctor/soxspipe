@@ -316,7 +316,7 @@ def quicklook_image(
 
         for o in uniqueOrders:
             filDF = dispMapDF.loc[dispMapDF["order"] == o]
-            wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
+            wlLims.append((filDF['wavelength'].min() - 200, filDF['wavelength'].max() + 200))
             spLims.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
 
         lineNumber = 0
@@ -343,7 +343,8 @@ def quicklook_image(
                 mask = skylinesDF['WAVELENGTH'].between(wlLim[0], wlLim[1])
                 wlRange = skylinesDF.loc[mask]['WAVELENGTH'].values
             else:
-                wlRange = np.arange(wlLim[0], wlLim[1], 15)
+                step = int(wlLim[1] - wlLim[0]) / 400
+                wlRange = np.arange(wlLim[0], wlLim[1], step)
             wlRange = np.append(wlRange, [wlLim[1]])
             for l in wlRange:
                 myDict = {
@@ -363,7 +364,7 @@ def quicklook_image(
         )
         for l in range(lineNumber):
             mask = (orderPixelTable['line'] == l)
-            ax2.plot(orderPixelTable.loc[mask]["fit_y"], orderPixelTable.loc[mask]["fit_x"], "w:", alpha=0.5)
+            ax2.plot(orderPixelTable.loc[mask]["fit_y"], orderPixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
 
     ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,

@@ -117,7 +117,7 @@ class subtract_sky(object):
         self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame, kw=kw)
 
         quicklook_image(
-            log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
+            log=self.log, CCDObject=self.objectFrame, show=True, ext=False, stdWindow=0.1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
 
         # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
@@ -986,7 +986,7 @@ class subtract_sky(object):
             fig = plt.figure(figsize=(6, 11), constrained_layout=True)
         gs = fig.add_gridspec(6, 4)
 
-        # CREATE THE GID OF AXES
+        # CREATE THE GRID OF AXES
         toprow = fig.add_subplot(gs[0:2, :])
         midrow = fig.add_subplot(gs[2:4, :])
         bottomrow = fig.add_subplot(gs[4:6, :])
@@ -1039,8 +1039,6 @@ class subtract_sky(object):
         bottomrow.set_ylabel("x-axis", fontsize=8)
         bottomrow.set_xlabel("y-axis", fontsize=8)
         bottomrow.tick_params(axis='both', which='major', labelsize=9)
-        # subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        # fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
 
         # plt.show()
         filename = self.filenameTemplate.replace(".fits", "_skysub_quicklook.pdf")
