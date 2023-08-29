@@ -410,7 +410,8 @@ def unpack_order_table(
         extend=0.,
         pixelDelta=1,
         binx=1,
-        biny=1):
+        biny=1,
+        prebinned=False):
     """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
 
     **Key Arguments:**
@@ -420,6 +421,7 @@ def unpack_order_table(
     - ``pixelDelta`` -- space between returned data points. Default *1* (sampled at every pixel)
     - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
+    - ``prebinned`` -- was the order-table measured on a pre-binned frame (typically only for mflats). Default *False*
 
     **Usage:**
 
@@ -458,8 +460,12 @@ def unpack_order_table(
         axisBbin = binx
 
     # ADD AXIS B COORD LIST
+    if prebinned:
+        ratio = axisBbin
+    else:
+        ratio = 1
     axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(
-        orderMetaTable[f"{axisB}min"].values, orderMetaTable[f"{axisB}max"].values, orderMetaTable[f"{axisB}max"].values - orderMetaTable[f"{axisB}min"].values)]
+        orderMetaTable[f"{axisB}min"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio)]
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
 
@@ -489,18 +495,18 @@ def unpack_order_table(
         poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
         orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
 
-    if axisAbin > 1:
+    if axisAbin != 1:
         orderPixelTable[f"{axisA}coord_centre"] /= axisAbin
         orderPixelTable[f"{axisA}coord_edgeup"] /= axisAbin
         orderPixelTable[f"{axisA}coord_edgelow"] /= axisAbin
-    if axisBbin > 1:
+    if axisBbin != 1:
         orderMetaTable[f"{axisB}min"] /= axisBbin
         orderMetaTable[f"{axisB}max"] /= axisBbin
         orderPixelTable[f"{axisB}coord"] /= axisBbin
         orderPixelTable["std"] /= axisBbin
         mask = (orderPixelTable[f"{axisB}coord"].mod(1) > 0)
         orderPixelTable = orderPixelTable.loc[~mask]
-        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].astype('int')
+        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].round().astype('int')
 
     log.debug('completed the ``functionName`` function')
     return orderPolyTable, orderPixelTable, orderMetaTable
@@ -767,8 +773,8 @@ def read_spectral_format(
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
-    waveLengthMin = specFormatTable["WLMINFUL"].values
-    waveLengthMax = specFormatTable["WLMAXFUL"].values
+    waveLengthMin = specFormatTable["WLMINFUL"].values - 10
+    waveLengthMax = specFormatTable["WLMAXFUL"].values + 10
 
     log.debug('completed the ``read_spectral_format`` function')
     return orderNums, waveLengthMin, waveLengthMax

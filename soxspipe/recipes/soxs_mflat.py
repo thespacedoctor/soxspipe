@@ -367,7 +367,7 @@ class soxs_mflat(_base_recipe_):
             self.products = productTable
             self.qc = qcTable
 
-        quicklook_image(log=self.log, CCDObject=mflat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
+        quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
 
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home)
@@ -660,23 +660,24 @@ class soxs_mflat(_base_recipe_):
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=orderTablePath, binx=self.binx, biny=self.biny)
+            log=self.log, orderTablePath=orderTablePath, binx=self.binx, biny=self.biny, prebinned=True)
 
         # BAD PIXEL COUNT AT START
         originalBPM = np.copy(frame.mask)
 
+        # SET MASK TO ZEROS OR ONES
         if zero:
             interOrderMask = np.zeros_like(frame.data)
         else:
             interOrderMask = np.ones_like(frame.data)
+
         orders = orderTablePixels["order"].values
-        axisAcoords_up = orderTablePixels[f"{self.axisA}coord_edgeup"].values
-        axisAcoords_low = orderTablePixels[f"{self.axisA}coord_edgelow"].values
+        axisAcoords_up = orderTablePixels[f"{self.axisA}coord_edgeup"].values.round().astype(int)
+        axisAcoords_low = orderTablePixels[f"{self.axisA}coord_edgelow"].values.round().astype(int)
         axisBcoords = orderTablePixels[f"{self.axisB}coord"].values
-        axisAcoords_up = axisAcoords_up.astype(int)
-        axisAcoords_low = axisAcoords_low.astype(int)
         uniqueOrders = orderTablePixels['order'].unique()
 
+        # CALCULATE AND RETURN MEDIAN FLUXES FOR ORDERS
         if returnMedianOrderFlux:
             orderFluxes = {}
             bAxisMiddles = {}
@@ -687,8 +688,12 @@ class soxs_mflat(_base_recipe_):
                 bAxisMiddles[o] = int(filteredDf[f"{self.axisB}coord"].mean())
             medianFlux = []
 
-        # UPDATE THE MASK TO INCLUDE INTER-ORDER BACKGROUND
+        # UPDATE THE MASK TO ALLOW INTER-ORDER PIXELS
         for u, l, b, o in zip(axisAcoords_up, axisAcoords_low, axisBcoords, orders):
+            if l < 0:
+                l = 0
+            if u < 0:
+                u = 0
             if self.axisA == "x":
                 interOrderMask[b, l:u] = 0
                 if returnMedianOrderFlux and b > bAxisMiddles[o] - 3 and b < bAxisMiddles[o] + 3:

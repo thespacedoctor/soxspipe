@@ -581,36 +581,56 @@ class detect_continuum(_base_detect):
         orderPixelTable[f'cont_{self.axisA}_fit'] = np.nan
         orderPixelTable[f'cont_{self.axisA}_fit_res'] = np.nan
 
-        # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
-        for i in range(0, self.axisBDeg + 1):
-            orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"cont_{self.axisB}"].pow(i)
-        for i in range(0, self.orderDeg + 1):
-            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
-
         print("\n# FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        coeff, orderPixelTable, clippedDataCentre = self.fit_global_polynomial(
-            pixelList=orderPixelTable,
-            axisACol=f"cont_{self.axisA}",
-            axisBCol=f"cont_{self.axisB}",
-            exponentsIncluded=True,
-            writeQCs=True
-        )
+        fitFound = False
+        tryCount = 0
+        while not fitFound and tryCount < 5:
+            # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
+            for i in range(0, self.axisBDeg + 1):
+                orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"cont_{self.axisB}"].pow(i)
+            for i in range(0, self.orderDeg + 1):
+                orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+            try:
+                coeff, orderPixelTable, clippedDataCentre = self.fit_global_polynomial(
+                    pixelList=orderPixelTable,
+                    axisACol=f"cont_{self.axisA}",
+                    axisBCol=f"cont_{self.axisB}",
+                    exponentsIncluded=True,
+                    writeQCs=True
+                )
+                mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+                if mean_res > 1:
+                    # BAD FIT ... FORCE A FAIL
+                    raise e
 
-        n_coeff = 0
-        for i in range(0, self.orderDeg + 1):
-            for j in range(0, self.axisBDeg + 1):
-                coeff_dict[f'cent_{i}{j}'] = coeff[n_coeff]
-                n_coeff += 1
+                n_coeff = 0
+                for i in range(0, self.orderDeg + 1):
+                    for j in range(0, self.axisBDeg + 1):
+                        coeff_dict[f'cent_{i}{j}'] = coeff[n_coeff]
+                        n_coeff += 1
 
-        # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        coeff, orderPixelTable, clippedData = self.fit_global_polynomial(
-            pixelList=orderPixelTable,
-            axisACol="stddev",
-            axisBCol=f"cont_{self.axisB}",
-            exponentsIncluded=True
-        )
+                # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
+                coeff, orderPixelTable, clippedData = self.fit_global_polynomial(
+                    pixelList=orderPixelTable,
+                    axisACol="stddev",
+                    axisBCol=f"cont_{self.axisB}",
+                    exponentsIncluded=True
+                )
+                fitFound = True
+            except Exception as e:
+                degList = [self.axisBDeg, self.orderDeg]
+                degList[degList.index(max(degList))] -= 1
+                self.axisBDeg, self.orderDeg = degList
+                coeff_dict["degorder_cent"] = self.orderDeg
+                coeff_dict[f"deg{self.axisB}_cent"] = self.axisBDeg
+                print(f"{self.axisB} and Order fitting orders reduced to {self.axisBDeg}, {self.orderDeg} to try and successfully fit the continuum.")
+                tryCount += 1
+                if tryCount == 5:
+                    print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
+                    raise e
+
         # orderLocations[o] = coeff
         coeff_dict["degorder_std"] = self.orderDeg
         coeff_dict[f"deg{self.axisB}_std"] = self.axisBDeg
@@ -738,7 +758,7 @@ class detect_continuum(_base_detect):
             "wavelength": np.asarray([]),
             "slit_position": np.asarray([])
         }
-        expandRatio = 1.5
+        expandRatio = 1.1
         for o, wmin, wmax, pixelRange in zip(orderNums, waveLengthMin, waveLengthMax, orderPixelRanges):
             orderSampleCount = int(pixelRange / samplePixelSep)
             wrange = wmax - wmin
@@ -970,6 +990,7 @@ class detect_continuum(_base_detect):
         ymax = []
         xmin = []
         xmax = []
+        foundOrders = []
         colors = []
         labelAdded = None
         for o in uniqueOrders:
@@ -978,6 +999,7 @@ class detect_continuum(_base_detect):
             stdfit = poly(df, *std_coeff)
             xfit, yfit, stdfit, lower, upper = zip(
                 *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
+            foundOrders.append(o)
             # lower = xfit - 3 * stdfit
             # upper = xfit + 3 * stdfit
             if labelAdded == None:
@@ -995,11 +1017,14 @@ class detect_continuum(_base_detect):
             ymax.append(max(yfit))
             xmin.append(axisALength - max(xfit))
             xmax.append(axisALength - min(xfit))
-            midrow.text(yfit[10], xfit[10] + 10, int(o), fontsize=6, c=c[0].get_color(), verticalalignment='bottom')
+            try:
+                midrow.text(yfit[10], xfit[10] + 10, int(o), fontsize=6, c=c[0].get_color(), verticalalignment='bottom')
+            except:
+                pass
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         orderMetaTable = {
-            "order": uniqueOrders,
+            "order": foundOrders,
             f"{self.axisB}min": ymin,
             f"{self.axisB}max": ymax,
             f"{self.axisA}min": xmin,

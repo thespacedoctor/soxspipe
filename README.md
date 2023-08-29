@@ -11,7 +11,7 @@
 [![](https://img.shields.io/pypi/pyversions/soxspipe)](https://pypi.org/project/soxspipe/)
 [![](https://img.shields.io/pypi/v/soxspipe)](https://pypi.org/project/soxspipe/)
 [![](https://img.shields.io/conda/vn/conda-forge/soxspipe)](https://anaconda.org/conda-forge/soxspipe)
-[![](https://pepy.tech/badge/soxspipe)](https://pepy.tech/project/soxspipe)
+[![](https://static.pepy.tech/badge/soxspipe/month)](https://pepy.tech/project/soxspipe)
 [![](https://img.shields.io/github/license/thespacedoctor/soxspipe)](https://github.com/thespacedoctor/soxspipe)
 
 <!-- STATUS BADGES -->  

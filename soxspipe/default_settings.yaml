@@ -55,12 +55,12 @@ soxs-mflat:
     clipping-iteration-count: 1
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
-    min-percentage-threshold-for-edge-detection: 20
-    max-percentage-threshold-for-edge-detection: 50
-    disp-axis-deg: 2
+    min-percentage-threshold-for-edge-detection: 10
+    max-percentage-threshold-for-edge-detection: 90
+    disp-axis-deg: 3
     order-deg: 5
-    poly-fitting-residual-clipping-sigma: 5
-    poly-clipping-iteration-limit: 5
+    poly-fitting-residual-clipping-sigma: 7
+    poly-clipping-iteration-limit: 1
     low-sensitivity-clipping-sigma: 2
 
 soxs-spatial-solution:

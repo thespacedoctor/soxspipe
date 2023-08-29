@@ -299,7 +299,7 @@ class soxs_spatial_solution(_base_recipe_):
 
         # INSPECT THE MAP AGAINST THE MULTIPINHOLE FRAME
         quicklook_image(
-            log=self.log, CCDObject=self.multiPinholeFrame, show=True, ext=False, stdWindow=1, title="Multi-pinhole Frame Overlaid with Dispersion Solution", surfacePlot=True, dispMap=mapPath, dispMapImage=mapImagePath, settings=self.settings, skylines=False)
+            log=self.log, CCDObject=self.multiPinholeFrame, show=False, ext=False, stdWindow=1, title="Multi-pinhole Frame Overlaid with Dispersion Solution", surfacePlot=True, dispMap=mapPath, dispMapImage=mapImagePath, settings=self.settings, skylines=False)
 
         self.report_output()
 

@@ -142,6 +142,7 @@ class create_dispersion_map(object):
         import pandas as pd
         from astropy.table import Table
         import numpy as np
+        from astropy.stats import sigma_clipped_stats
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -157,27 +158,66 @@ class create_dispersion_map(object):
         windowSize = self.recipeSettings["pixel-window-size"]
         self.windowHalf = int(windowSize / 2)
 
+        # MASK THE PINHOLE FRAME
+        pinholeFrame = self.pinholeFrame
+        pinholeFrameMasked = np.ma.array(pinholeFrame.data, mask=pinholeFrame.mask)
+        mean, median, std = sigma_clipped_stats(pinholeFrameMasked, sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+        pinholeFrameMasked = pinholeFrameMasked - median
+        self.pinholeFrameMasked = pinholeFrameMasked
+
         # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
         iteration = 0
         print(f"FINDING PINHOLE ARC-LINES ON IMAGE")
-        while iteration < 2:
+
+        # FIRST USE A RANDOM SELECTION OF LINES TO ITERATE ENTIRE INPUT LINE-LIST CLOSER TO THE OBSERVED LINES
+        orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x']
+        orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y']
+        medianx = 1
+        mediany = 1
+        final = False
+        while iteration < 7 and (np.abs(medianx) > 0.05 or np.abs(mediany) > 0.05):
             iteration += 1
-            orderPixelTable = orderPixelTable.apply(
-                self.detect_pinhole_arc_line, axis=1)
 
-            if 'detector_x_shifted' in orderPixelTable.columns:
-                orderPixelTable['x_diff'] = orderPixelTable['detector_x_shifted'] - orderPixelTable['observed_x']
-                orderPixelTable['y_diff'] = orderPixelTable['detector_y_shifted'] - orderPixelTable['observed_y']
-                orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x_shifted'] - orderPixelTable['x_diff'].mean()
-                orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y_shifted'] - orderPixelTable['y_diff'].mean()
-            else:
-                orderPixelTable['x_diff'] = orderPixelTable['detector_x'] - orderPixelTable['observed_x']
-                orderPixelTable['y_diff'] = orderPixelTable['detector_y'] - orderPixelTable['observed_y']
-                orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x'] - orderPixelTable['x_diff'].mean()
-                orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y'] - orderPixelTable['y_diff'].mean()
+            # TAKE A RANDOM SAMPLE OF 10% OF LINES
+            sampleDF = orderPixelTable.sample(frac=0.1)
 
-            print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
+            sampleDF['xlow'] = sampleDF["detector_x_shifted"].astype(int) - self.windowHalf
+            sampleDF.loc[sampleDF['xlow'] < 0, 'xlow'] = 0
+            sampleDF['stampx'] = sampleDF["detector_x_shifted"] - sampleDF['xlow']
+            sampleDF['xup'] = sampleDF["detector_x_shifted"].astype(int) + self.windowHalf
+            sampleDF.loc[sampleDF['xup'] > pinholeFrame.shape[1], 'xup'] = pinholeFrame.shape[1]
+            sampleDF['ylow'] = sampleDF["detector_y_shifted"].astype(int) - self.windowHalf
+            sampleDF.loc[sampleDF['ylow'] < 0, 'ylow'] = 0
+            sampleDF['yup'] = sampleDF["detector_y_shifted"].astype(int) + self.windowHalf
+            sampleDF.loc[sampleDF['yup'] > pinholeFrame.shape[0], 'yup'] = pinholeFrame.shape[0]
+            sampleDF['stampy'] = sampleDF["detector_y_shifted"] - sampleDF['ylow']
+            sampleDF["stamp"] = [pinholeFrameMasked[yl:yu, xl:xu] for xl, xu, yl, yu in zip(sampleDF['xlow'], sampleDF['xup'], sampleDF['ylow'], sampleDF['yup'])]
+            sampleDF = sampleDF.apply(
+                self.detect_pinhole_arc_line, axis=1, std=std)
+            sampleDF["observed_x"] = sampleDF["xcentroid"] + sampleDF["xlow"]
+            sampleDF["observed_y"] = sampleDF["ycentroid"] + sampleDF["ylow"]
+
+            sampleDF['x_diff'] = sampleDF['detector_x_shifted'] - sampleDF['observed_x']
+            sampleDF['y_diff'] = sampleDF['detector_y_shifted'] - sampleDF['observed_y']
+
+            meanx, medianx, std = sigma_clipped_stats(sampleDF['x_diff'], sigma=5.0, stdfunc="mad_std", cenfunc="median")
+            meany, mediany, std = sigma_clipped_stats(sampleDF['y_diff'], sigma=5.0, stdfunc="mad_std", cenfunc="median")
+
+            orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x_shifted'] - medianx
+            orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y_shifted'] - mediany
+
+            if iteration > 1:
+                # Cursor up one line and clear line
+                sys.stdout.write("\x1b[1A\x1b[2K")
+            print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {medianx:0.3f},{mediany:0.3f}")
+
+        # NOW TRY AND DETECT ALL LINES
+        orderPixelTable = self.measure_pinhole_lines(orderPixelTable, pinholeFrameMasked, std)
+
+        # iraf_find = IRAFStarFinder(
+        #     fwhm=3.0, threshold=1.3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=False, xycoords=xycoords)
+        # iraf_sources = iraf_find(pinholeFrameMasked).to_pandas()
 
         # COLLECT MISSING LINES
         mask = (orderPixelTable['observed_x'].isnull())
@@ -441,11 +481,13 @@ class create_dispersion_map(object):
 
     def detect_pinhole_arc_line(
             self,
-            predictedLine):
+            predictedLine,
+            std):
         """*detect the observed position of an arc-line given the predicted pixel positions*
 
         **Key Arguments:**
             - ``predictedLine`` -- single predicted line coordinates from predicted line-list
+            - ``std`` -- standard deviation of the pinhole frame flux
 
         **Return:**
             - ``predictedLine`` -- the line with the observed pixel coordinates appended (if detected, otherwise nan)
@@ -454,34 +496,16 @@ class create_dispersion_map(object):
 
         import numpy as np
         from photutils import DAOStarFinder, IRAFStarFinder
-        from astropy.stats import sigma_clipped_stats
 
-        pinholeFrame = self.pinholeFrame
         windowHalf = self.windowHalf
-        if 'detector_x_shifted' in predictedLine:
-            x = predictedLine['detector_x_shifted']
-            y = predictedLine['detector_y_shifted']
-        else:
-            x = predictedLine['detector_x']
-            y = predictedLine['detector_y']
 
         # CLIP A STAMP FROM IMAGE AROUNDS PREDICTED POSITION
-        xlow = int(np.max([x - windowHalf, 0]))
-        xup = int(np.min([x + windowHalf, pinholeFrame.shape[1]]))
-        ylow = int(np.max([y - windowHalf, 0]))
-        yup = int(np.min([y + windowHalf, pinholeFrame.shape[0]]))
-        stamp = pinholeFrame[ylow:yup, xlow:xup]
+        stamp = predictedLine['stamp']
 
-        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
-        stamp = np.ma.array(stamp.data, mask=stamp.mask)
         # USE DAOStarFinder TO FIND LINES WITH 2D GUASSIAN FITTING
-        mean, median, std = sigma_clipped_stats(stamp, sigma=3.0, stdfunc="mad_std", cenfunc="median")
-
         try:
             daofind = DAOStarFinder(
-                fwhm=2.5, threshold=3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
-            # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
-            # sources = daofind(stamp - median)
+                fwhm=3., threshold=1.3 * std, exclude_border=False)
             sources = daofind(stamp)
         except Exception as e:
             sources = None
@@ -506,57 +530,22 @@ class create_dispersion_map(object):
                     new_resid = ((windowHalf - tmp_x)**2 +
                                  (windowHalf - tmp_y)**2)**0.5
                     if new_resid < old_resid:
-                        observed_x = tmp_x + xlow
-                        observed_y = tmp_y + ylow
                         stamp_x = tmp_x
                         stamp_y = tmp_y
                         old_resid = new_resid
                         selectedSource = source
             else:
-                observed_x = sources[0]['xcentroid'] + xlow
-                observed_y = sources[0]['ycentroid'] + ylow
-                stamp_x = sources[0]['xcentroid']
-                stamp_y = sources[0]['ycentroid']
                 selectedSource = sources[0]
-
-            try:
-                # Rerun detection with IRAFStarFinder
-                iraf_find = IRAFStarFinder(
-                    fwhm=2.5, threshold=1.3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True, xycoords=[(stamp_x, stamp_y)])
-                iraf_sources = iraf_find(stamp)
-                fwhm = iraf_sources['fwhm'][0]
-            except Exception as e:
-                fwhm = np.nan
-                # print(np.shape(stamp))
-                # print(stamp_x,stamp_y)
-                # print(e)
-                pass
-
-            if 1 == 0 and ran:
-                plt.scatter(0, 0, marker='x', s=30)
-                plt.scatter(observed_x - xlow, observed_y -
-                            ylow, s=30)
-                plt.text(windowHalf - 2, windowHalf - 2, f"{observed_x-xlow:0.2f},{observed_y -ylow:0.2f}", fontsize=16, c="black", verticalalignment='bottom')
-                plt.show()
-
         else:
-            observed_x = np.nan
-            observed_y = np.nan
-            fwhm = np.nan
             selectedSource = None
-        # plt.show()
 
-        keepValues = ["sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux"]
+        keepValues = ["xcentroid", "ycentroid", "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux"]
         if not selectedSource:
             for k in keepValues:
                 predictedLine[k] = np.nan
         else:
             for k in keepValues:
                 predictedLine[k] = selectedSource[k]
-
-        predictedLine['observed_x'] = observed_x
-        predictedLine['observed_y'] = observed_y
-        predictedLine['fwhm_px'] = fwhm
 
         self.log.debug('completed the ``detect_pinhole_arc_line`` method')
         return predictedLine
@@ -1118,14 +1107,13 @@ class create_dispersion_map(object):
         toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-
         toprow.tick_params(axis='both', which='major', labelsize=9)
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
-        toprow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
-                      fontsize=6)
-
+        toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
             toprow.invert_yaxis()
+        toprow.set_ylim([0, rotatedImg.shape[0]])
 
         midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.5)
         midrow.set_title(
@@ -1139,11 +1127,12 @@ class create_dispersion_map(object):
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
+        midrow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
             midrow.invert_yaxis()
+        midrow.set_ylim([0, rotatedImg.shape[0]])
 
-        midrow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
-                      fontsize=6)
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
@@ -1158,6 +1147,7 @@ class create_dispersion_map(object):
              alpha=0.7, density=True)
         bottomright.set_xlabel('xy residual')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
+
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         if self.firstGuessMap:
             fig.suptitle(f"residuals of global dispersion solution fitting - multi-pinhole\n{subtitle}", fontsize=12)
@@ -1360,7 +1350,7 @@ class create_dispersion_map(object):
         os.environ['OMP_NUM_THREADS'] = numThreads
         os.environ['BLAS_NUM_THREADS'] = numThreads
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=False)
+                                inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=True)
         del os.environ['OPENBLAS_NUM_THREADS']
         del os.environ['OMP_NUM_THREADS']
         del os.environ['BLAS_NUM_THREADS']
@@ -1612,3 +1602,78 @@ class create_dispersion_map(object):
 
         self.log.debug('completed the ``convert_and_fit`` method')
         return orderPixelTable, remainingCount
+
+    def measure_pinhole_lines(
+            self,
+            orderPixelTable,
+            pinholeFrameMasked,
+            std):
+        """*measure the pinhole lines on the entire image*
+
+        **Key Arguments:**
+            - ``orderPixelTable`` -- a dataframe with predicted locations of pinhole arc-lines, pre-shifted to match the specific pinhole frame
+            - ``pinholeFrameMasked`` -- the masked pinhole frame to measure the arc-lines on
+            - ``std`` -- standard deviation in pinhole frame
+
+        **Return:**
+            - ``orderPixelTable`` -- the input dataframe with matched columns appended
+
+        **Usage:**
+
+        ```python
+        orderPixelTable = self.measure_pinhole_lines(orderPixelTable, pinholeFrameMasked, std)
+        ```
+        """
+        self.log.debug('starting the ``measure_pinhole_lines`` method')
+
+        from photutils import DAOStarFinder, IRAFStarFinder
+        import pandas as pd
+        import numpy as np
+        from scipy.spatial import cKDTree
+
+        # RUN DAOFINDER ON ENTIRE IMAGE
+        orderPixelTableCoords = list(zip(orderPixelTable['detector_x_shifted'].values, orderPixelTable['detector_y_shifted'].values))
+        daofind = DAOStarFinder(
+            fwhm=3., threshold=1.3 * std, exclude_border=False, xycoords=orderPixelTableCoords)
+        daosources = daofind(pinholeFrameMasked).to_pandas()
+        daosourcesCoords = list(zip(daosources['xcentroid'].values, daosources['ycentroid'].values))
+
+        iraffind = IRAFStarFinder(
+            fwhm=3.0, threshold=1.3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=False, xycoords=orderPixelTableCoords)
+        irafsources = iraffind(pinholeFrameMasked).to_pandas()
+        irafsourcesCoords = list(zip(irafsources['xcentroid'].values, irafsources['ycentroid'].values))
+
+        def do_kdtree(orderPixelTableCoords, measuredSources):
+            mytree = cKDTree(orderPixelTableCoords)
+            dist, indexes = mytree.query(measuredSources)
+            return dist, indexes
+
+        # ADD COLUMNS FOR orderPixelTableCoords INDEX AND DISTANCE TO daosources TABLE
+        matchedPairs = do_kdtree(orderPixelTableCoords, daosourcesCoords)
+        daosources['matchedIndex'] = matchedPairs[1]
+        daosources['matchDist'] = matchedPairs[0]
+
+        # MERGE DATAFRAMES BY MATCHING NEAREST DAOFINDER COORDINATES AGAINST THE INPUT COORDINATES
+        orderPixelTable["index"] = orderPixelTable.index
+        orderPixelTable = orderPixelTable.merge(daosources, left_on='index', right_on='matchedIndex', how='outer')
+
+        # ADD COLUMNS FOR orderPixelTableCoords INDEX AND DISTANCE TO irafsources TABLE
+        matchedPairs = do_kdtree(orderPixelTableCoords, irafsourcesCoords)
+        irafsources['matchedIndex'] = matchedPairs[1]
+        irafsources['matchDist'] = matchedPairs[0]
+
+        # MERGE DATAFRAMES BY MATCHING NEAREST DAOFINDER COORDINATES AGAINST THE INPUT COORDINATES
+        orderPixelTable = orderPixelTable.merge(irafsources, left_on='index', right_on='matchedIndex', how='outer', suffixes=('', '_iraf'))
+
+        # RENAME COLUMNS
+        orderPixelTable.rename(columns={"xcentroid": "observed_x"}, inplace=True)
+        orderPixelTable.rename(columns={"ycentroid": "observed_y"}, inplace=True)
+        orderPixelTable.rename(columns={"fwhm": "fwhm_px"}, inplace=True)
+        orderPixelTable["x_diff"] = orderPixelTable["observed_x"] - orderPixelTable["detector_x_shifted"]
+        orderPixelTable["y_diff"] = orderPixelTable["observed_y"] - orderPixelTable["detector_y_shifted"]
+
+        self.log.debug('completed the ``measure_pinhole_lines`` method')
+        return orderPixelTable
+
+    # use the tab-trigger below for new method
+    # xt-class-method

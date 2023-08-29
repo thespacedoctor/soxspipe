@@ -66,6 +66,8 @@ def main(arguments=None):
                 print(f"The product of this recipe already exists at '{productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
 
+    clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
+
     # setup the command-line util settings
     su = tools(
         arguments=arguments,
@@ -245,7 +247,7 @@ def main(arguments=None):
             )
             do.prepare()
     except Exception as e:
-        log.error(f'{e}', exc_info=True)
+        log.error(f'{e}\n{clCommand}', exc_info=True)
 
     # CALL FUNCTIONS/OBJECTS
 
@@ -259,3 +261,8 @@ def main(arguments=None):
              (endTime, runningTime, ))
 
     return
+
+
+if __name__ == '__main__':
+
+    main()
