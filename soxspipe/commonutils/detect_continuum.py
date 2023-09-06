@@ -211,7 +211,7 @@ class _base_detect(object):
 
             if iteration > 1:
                 sys.stdout.write("\x1b[1A\x1b[2K")
-            print(f'\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+            print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
         allClipped = pd.concat(allClipped, ignore_index=True)
 
@@ -563,6 +563,11 @@ class detect_continuum(_base_detect):
         quicklook_image(
             log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
+        if "order" in self.recipeName.lower():
+            print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
+        else:
+            print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
+
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
         allLines = len(orderPixelTable.index)
@@ -572,7 +577,10 @@ class detect_continuum(_base_detect):
 
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
+
         print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
+
+        print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = orderPixelTable['order'].unique()
@@ -580,8 +588,6 @@ class detect_continuum(_base_detect):
         orderLocations = {}
         orderPixelTable[f'cont_{self.axisA}_fit'] = np.nan
         orderPixelTable[f'cont_{self.axisA}_fit_res'] = np.nan
-
-        print("\n# FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         fitFound = False
@@ -663,7 +669,7 @@ class detect_continuum(_base_detect):
             product_desc = f"Residuals of the order centre polynomial fit"
         else:
             label = "OBJECT_TRACE_RES"
-            product_desc = f"Residuals of the object trace polynomial fit",
+            product_desc = f"Residuals of the object trace polynomial fit"
 
         self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,

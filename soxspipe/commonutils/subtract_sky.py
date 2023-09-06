@@ -117,7 +117,7 @@ class subtract_sky(object):
         self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame, kw=kw)
 
         quicklook_image(
-            log=self.log, CCDObject=self.objectFrame, show=True, ext=False, stdWindow=0.1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
+            log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=0.1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
 
         # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
@@ -1209,7 +1209,7 @@ class subtract_sky(object):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=imageArray, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True, inst="dummy")
+            log=self.log, CCDObject=imageArray, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, inst="dummy")
 
         self.log.debug('completed the ``rectify_order`` method')
         return imageArray

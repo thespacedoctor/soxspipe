@@ -33,10 +33,10 @@ class horne_extraction(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
-        - ``skyModelFrame`` -- sky model frame
-        - ``skySubtractedFrame`` -- sky subtracted frame
+        - ``skyModelFrame`` -- path to sky model frame
+        - ``skySubtractedFrame`` -- path to sky subtracted frame
+        - ``twoDMapPath`` -- path to 2D dispersion map image path
         - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
-        - ``twoDMapPath`` -- 2D dispersion map image path
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
         - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
@@ -59,7 +59,20 @@ class horne_extraction(object):
     ```
 
     ```python
-    usage code
+    from soxspipe.commonutils import horne_extraction
+    optimalExtractor = horne_extraction(
+        log=log,
+        skyModelFrame=skyModelFrame,
+        skySubtractedFrame=skySubtractedFrame,
+        twoDMapPath=twoDMap,
+        settings=settings,
+        recipeName="soxs-stare",
+        qcTable=qc,
+        productsTable=products,
+        dispersionMap=dispMap,
+        sofName=sofName
+    )
+    qc, products = optimalExtractor.extract()
     ```
 
     """
@@ -93,10 +106,13 @@ class horne_extraction(object):
         self.dispersionMap = dispersionMap
         self.twoDMapPath = twoDMapPath
         self.settings = settings
-        self.productsTable = productsTable
-        self.qcTable = qcTable
+        self.products = productsTable
+        self.qc = qcTable
         self.recipeName = recipeName
         self.sofName = sofName
+
+        home = expanduser("~")
+        self.outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
 
         # COLLECT SETTINGS FROM SETTINGS FILE
         self.slitHalfLength = int(self.settings["soxs-stare"]["horne-extraction-slit-length"] / 2)
@@ -108,14 +124,20 @@ class horne_extraction(object):
         self.ron = 3.0
 
         # OPEN THE SKY-SUBTRACTED FRAME
-        self.skySubtractedFrame = CCDData.read(skySubtractedFrame, hdu=0, unit=u.electron,
-                                               hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
-                                               key_uncertainty_type='UTYPE')
+        if isinstance(skySubtractedFrame, CCDData):
+            self.skySubtractedFrame = skySubtractedFrame
+        else:
+            self.skySubtractedFrame = CCDData.read(skySubtractedFrame, hdu=0, unit=u.electron,
+                                                   hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
+                                                   key_uncertainty_type='UTYPE')
 
         # OPEN THE SKY-MODEL FRAME
-        self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
-                                          hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
-                                          key_uncertainty_type='UTYPE')
+        if isinstance(skyModelFrame, CCDData):
+            self.skyModelFrame = skyModelFrame
+        else:
+            self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
+                                              hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
+                                              key_uncertainty_type='UTYPE')
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -152,15 +174,26 @@ class horne_extraction(object):
         ydim = self.twoDMap[0].data.shape[0]
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
-        self.imageMap = pd.DataFrame.from_dict({
-            "x": xarray,
-            "y": yarray,
-            "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-            "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
-            "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
-            "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
-        })
-        self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        try:
+            self.imageMap = pd.DataFrame.from_dict({
+                "x": xarray,
+                "y": yarray,
+                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+                "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
+                "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
+                "flux": self.skySubtractedFrame.data.flatten()
+            })
+            self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        except:
+            self.imageMap = pd.DataFrame.from_dict({
+                "x": xarray,
+                "y": yarray,
+                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+                "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
+                "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
+                "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
+            })
+            self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
         # FIND THE OBJECT TRACE IN EACH ORDER
         detector = detect_continuum(
@@ -170,10 +203,10 @@ class horne_extraction(object):
             settings=self.settings,
             sofName=self.sofName,
             recipeName=self.recipeName,
-            qcTable=self.qcTable,
-            productsTable=self.productsTable
+            qcTable=self.qc,
+            productsTable=self.products
         )
-        productPath, self.qcTable, self.productsTable = detector.get()
+        productPath, self.qc, self.products = detector.get()
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
@@ -196,6 +229,7 @@ class horne_extraction(object):
         from astropy.io import fits
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
+        from datetime import datetime
 
         kw = self.kw
         arm = self.arm
@@ -204,6 +238,8 @@ class horne_extraction(object):
         uniqueOrders = self.orderPixelTable['order'].unique()
         # uniqueOrders = uniqueOrders[3:5]
         extractions = []
+
+        print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
 
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
@@ -264,9 +300,23 @@ class horne_extraction(object):
         plt.close()
         # plt.show()
 
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": "EXTRACTED_ORDERS_QC_PLOT",
+            "file_name": filename,
+            "file_type": "PDF",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"QC plot of extracted source",
+            "file_path": filePath,
+            "label": "QC"
+        }).to_frame().T], ignore_index=True)
+
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
-        mergedSpectum = self.merge_extracted_orders(extractedOrdersDF)
+        mergedSpectumDF = self.merge_extracted_orders(extractedOrdersDF)
 
         # CONVERT TO FITS BINARY TABLE
         header = copy.deepcopy(self.skySubtractedFrame.header)
@@ -284,29 +334,58 @@ class horne_extraction(object):
         header["HIERARCH " + kw("PRO_TECH")] = header.pop(kw("DPR_TECH"))
         extractedOrdersTable = Table.from_pandas(extractedOrdersDF)
         BinTableHDU = fits.table_to_hdu(extractedOrdersTable)
-
         header[kw("SEQ_ARM")] = arm
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
         header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{arm}".upper()
         priHDU = fits.PrimaryHDU(header=header)
-
         hduList = fits.HDUList([priHDU, BinTableHDU])
 
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
-
-        filePath = f"{outDir}/{self.filenameTemplate}".replace(".fits", "_EXTRACTED_ORDERS.fits")
+        # DISCRETE ORDERS
+        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_ORDERS.fits")
+        filePath = f"{self.outDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": "EXTRACTED_ORDERS_TABLE",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"Table of the extracted source in each order",
+            "file_path": filePath,
+            "label": "PROD"
+        }).to_frame().T], ignore_index=True)
+
+        # NOW MERGED SPECTRUM
+        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED.fits")
+        filePath = f"{self.outDir}/{filename}"
+        mergedTable = Table.from_pandas(mergedSpectumDF)
+        BinTableHDU = fits.table_to_hdu(mergedTable)
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+        hduList.writeto(filePath, checksum=True, overwrite=True)
+
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": "EXTRACTED_MERGED_TABLE",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"Table of the extracted, order-merged",
+            "file_path": filePath,
+            "label": "PROD"
+        }).to_frame().T], ignore_index=True)
+
         self.log.debug('completed the ``extract`` method')
-        return None
+        return self.qc, self.products
 
     def weighted_average(self, group):
         import numpy as np
-        group['wf'] = (group['flux_resampled'] * np.abs(group['snr'])).sum() / np.abs(group['snr']).sum()
+        group['FLUX_COUNTS'] = (group['flux_resampled'] * np.abs(group['snr'])).sum() / np.abs(group['snr']).sum()
         # group['wf'] = group['flux_resampled'].mean()
 
-        return group['wf']
+        return group['FLUX_COUNTS']
 
     def residual_merge(self, group):
         import numpy as np
@@ -317,13 +396,13 @@ class horne_extraction(object):
         #     group['wf'] = group[1]['flux_resampled']
         if len(group) > 1:
             if np.abs(group.iloc[0]['flux_resampled']) >= np.abs(group.iloc[1]['flux_resampled']):
-                group['wf'] = group.iloc[1]['flux_resampled']
+                group['FLUX_COUNTS'] = group.iloc[1]['flux_resampled']
             else:
-                group['wf'] = group.iloc[0]['flux_resampled']
+                group['FLUX_COUNTS'] = group.iloc[0]['flux_resampled']
         else:
-            group['wf'] = group.iloc[0]['flux_resampled']
+            group['FLUX_COUNTS'] = group.iloc[0]['flux_resampled']
 
-        return group['wf']
+        return group['FLUX_COUNTS']
 
     def merge_extracted_orders(
             self,
@@ -337,62 +416,92 @@ class horne_extraction(object):
             - None
         """
 
-        # PARAMETERS FROM INPUT FILE
-        stepWavelengthOrderMerge = 0.06
-        ratio = 1 / stepWavelengthOrderMerge
+        self.log.debug('starting the ``merge_extracted_orders`` method')
+
+        print(f"\n# MERGING ORDERS INTO SINGLE SPECTRUM")
 
         import numpy as np
         from astropy.table import Table
-
         from specutils.manipulation import FluxConservingResampler, LinearInterpolatedResampler
         from specutils import Spectrum1D
         import astropy.units as u
         import pandas as pd
         from astropy.io import fits
-
         import matplotlib.pyplot as plt
         import matplotlib
-        self.log.debug('starting the ``merge_extracted_orders`` method')
+        from datetime import datetime
+        from astropy.nddata import VarianceUncertainty
 
-        minWave = np.min(extractedOrdersDF['wavelengthMedian'])
-        maxWave = np.max(extractedOrdersDF['wavelengthMedian'])
+        kw = self.kw
+        arm = self.arm
 
-        extractedOrdersDF['fluxDensity'] = extractedOrdersDF['extractedFluxOptimal'] / extractedOrdersDF['pixelScaleNm']
-
-        extractedOrdersDF['fluxDensity'] = extractedOrdersDF['extractedFluxOptimal']
+        # PARAMETERS FROM INPUT FILE
+        # THIS IS THE STEP SIZE IN NM (0.06 nm IS SIMILAR TO XHSOOTER EXTRACTION)
+        stepWavelengthOrderMerge = 0.06
+        ratio = 1 / stepWavelengthOrderMerge
         order_list = []
 
+        extractedOrdersDF["varianceSpectrum"] = VarianceUncertainty(extractedOrdersDF["varianceSpectrum"])
+
         for order in extractedOrdersDF['order'].unique():
+            # LIMIT DATAFRAME TO JUST THIS ORDER
+            orderDF = extractedOrdersDF.loc[extractedOrdersDF['order'] == order]
 
-            order_a = extractedOrdersDF.loc[extractedOrdersDF['order'] == order]
-            wave_a = np.arange(float(format(np.min(order_a['wavelengthMedian']) * ratio, '.0f')) / ratio, float(format(np.max(order_a['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
-            wave_a = wave_a * u.nm
+            # DEFINE THE WAVELENGTH ARRAY
+            wave_resample_grid = np.arange(float(format(np.min(orderDF['wavelengthMedian']) * ratio, '.0f')) / ratio, float(format(np.max(orderDF['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
+            wave_resample_grid = wave_resample_grid * u.nm
 
-            flux_a = order_a['fluxDensity'].values * u.electron
+            # INTERPOLATE THE ORDER SPECTRUM INTO THIS NEW ARRAY WITH A SINGLE STEP SIZE
+            flux_orig = orderDF['extractedFluxOptimal'].values * u.electron
+            # PASS ORIGINAL RAW SPECTRUM AND RESAMPLE
 
-            flux_a_spectra = Spectrum1D(flux=flux_a, spectral_axis=order_a['wavelengthMedian'].values * u.nm)
-
+            spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=orderDF['wavelengthMedian'].values * u.nm, uncertainty=extractedOrdersDF["varianceSpectrum"])
             resampler = FluxConservingResampler()
-            flux_a_resampled = resampler(flux_a_spectra, wave_a)
-            current_order = pd.DataFrame()
-            current_order['flux_resampled'] = flux_a_resampled.flux
-            current_order['wavelength'] = wave_a
-            current_order['order'] = order
+            flux_resampled = resampler(spectrum_orig, wave_resample_grid)
+            resampledOrderDf = pd.DataFrame()
+            resampledOrderDf['flux_resampled'] = flux_resampled.flux
+            resampledOrderDf['wavelength'] = wave_resample_grid
+            resampledOrderDf['order'] = order
 
             # RESAMPLING THE SNR
-            snr_spec = Spectrum1D(flux=order_a['snr'].values * u.dimensionless_unscaled, spectral_axis=order_a['wavelengthMedian'].values * u.nm)
-            resampler_snr = LinearInterpolatedResampler()
-            resampled_snr = resampler_snr(snr_spec, wave_a)
-            current_order['snr'] = resampled_snr.flux
-            order_list.append(current_order)
+            snr_orig = Spectrum1D(flux=orderDF['snr'].values * u.dimensionless_unscaled, spectral_axis=orderDF['wavelengthMedian'].values * u.nm)
+            resampler = LinearInterpolatedResampler()
+            snr_resampled = resampler(snr_orig, wave_resample_grid)
+            resampledOrderDf['snr'] = snr_resampled.flux
+            order_list.append(resampledOrderDf)
 
-        orders = pd.concat(order_list, ignore_index=True)
-        orders['wavelength'] = orders['wavelength'].apply(lambda x: round(x.value, 2))
-        # orders['wavelength'] = orders['wavelength'].astype(str)
+        print("TWO")
 
-        # Duplicated rows containes duplicated values for wave and flux. No matter which row is considered to be dropped!
-        merged_orders = orders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
-        # gb = orders.groupby('wavelength').size().to_frame(name='count').reset_index()
+        # JOIN ALL ORDER INTO ONE DATAFRAME AGAIN
+        resampledOrders = pd.concat(order_list, ignore_index=True)
+        # DEFINE PRECISION OF WAVELENGTH TO CORRECTLY GROUP MEASUREMENTS WITH THE SAME WAVELENGTH
+        resampledOrders['wavelength'] = resampledOrders['wavelength'].apply(lambda x: round(x.value, 2))
+        # DUPLICATED ROWS CONTAINES DUPLICATED VALUES FOR WAVE AND FLUX. NO MATTER WHICH ROW IS CONSIDERED TO BE DROPPED!
+        print("THREE")
+
+        merged_orders = resampledOrders.groupby(['wavelength'], as_index=False)["flux_resampled"].count()
+        from tabulate import tabulate
+        print(tabulate(merged_orders, headers='keys', tablefmt='psql'))
+        sys.exit(0)
+
+        merged_orders = merged_orders.to_frame(name='count').reset_index()
+        from tabulate import tabulate
+        print(tabulate(merged_orders, headers='keys', tablefmt='psql'))
+
+        sys.exit(0)
+
+        merged_orders = resampledOrders.groupby('wavelength')
+
+        # GROUP RESULTS
+
+        breakpoint()
+        merged_orders = resampledOrders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index()
+        merged_orders = resampledOrders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
+        # gb = resampledOrders.groupby('wavelength').size().to_frame(name='count').reset_index()
+        print("FOUR")
+
+        from tabulate import tabulate
+        print(tabulate(merged_orders, headers='keys', tablefmt='psql'))
 
         # RENAME SOME INDIVIDUALLY
         merged_orders.rename(columns={"wf": "FLUX_COUNTS"}, inplace=True)
@@ -400,25 +509,48 @@ class horne_extraction(object):
         # REMOVE COLUMN FROM DATA FRAME
         merged_orders.drop(columns=['level_1'], inplace=True)
 
-        merged = Table.from_pandas(merged_orders)
-
-        from os.path import expanduser
-        home = expanduser("~")
-        merged.write(f'{home}/Desktop/soxspipe.fits', overwrite=True)
         # print(gb[gb['count']> 1])
         # from tabulate import tabulate
         # print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
-
-        plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'])
-        #
-
+        print("FIVE")
+        fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
+        gs = fig.add_gridspec(1, 1)
+        toprow = fig.add_subplot(gs[0:1, :])
+        toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
+                      fontsize=8)
+        toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
+        toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
+        toprow.set_title(
+            f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
         for o in order_list:
             plt.plot(o['wavelength'], o['flux_resampled'])
 
+        plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#002b36")
+
+        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
+        filePath = f"{self.qcDir}/{filename}"
+        # plt.tight_layout()
         # plt.show()
+        plt.savefig(filePath, dpi='figure')
+
+        plt.show()
         # self.log.debug('completed the ``merge_extracted_orders`` method')
 
-        return None
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": "EXTRACTED_MERGED_QC_PLOT",
+            "file_name": filename,
+            "file_type": "PDF",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"QC plot of extracted order-merged source",
+            "file_path": filePath,
+            "label": "QC"
+        }).to_frame().T], ignore_index=True)
+
+        return merged_orders
 
     # use the tab-trigger below for new method
     # xt-class-method
@@ -447,7 +579,8 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     order = crossDispersionSlices["order"].values[0]
 
     # CREATE THE SLICES AND DROP SLICES WITH ALL NANs (TYPICALLY PIXELS WITH NANs IN 2D IMAGE MAP)
-    print(f"\n# SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
+    sys.stdout.write("\x1b[1A\x1b[2K")
+    print(f"\t## SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
 
     # REMOVE SLICES WITH ALL NANS
     crossDispersionSlices["sliceRawFlux"] = [np.nan if np.isnan(x).all() else x for x in crossDispersionSlices["sliceRawFlux"]]
@@ -472,7 +605,8 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
-    print(f"\n# FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
+    sys.stdout.write("\x1b[1A\x1b[2K")
+    print(f"\t## FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
     for slitPixelIndex in range(0, slitHalfLength * 2):
 
         iteration = 1
@@ -502,10 +636,10 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
                 i, masked_residuals.mask)) for i in a]
             clipped_count = startCount - len(fractions)
             percent = (float(clipped_count) / float(startCount)) * 100.
-            print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
+            # print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
             iteration = iteration + 1
-            if iteration > 1:
-                sys.stdout.write("\x1b[1A\x1b[2K")
+            # if iteration > 1:
+            #     sys.stdout.write("\x1b[1A\x1b[2K")
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
         profile = np.polyval(coeff, crossDispersionSlices["ycoord"])
@@ -524,7 +658,8 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     transposedProfiles = crossSlitProfiles.T.tolist()
     crossDispersionSlices["sliceFittedProfile"] = [np.array(t) for t in transposedProfiles]
 
-    print(f"\n# EXTRACTING THE SPECTRUM - ORDER {order}")
+    sys.stdout.write("\x1b[1A\x1b[2K")
+    print(f"\t## EXTRACTING THE SPECTRUM - ORDER {order}")
 
     # NORMALISE THE FLUX IN EACH SLICE
     sliceFittedProfileSums = [x.sum() for x in crossDispersionSlices["sliceFittedProfile"]]
@@ -600,6 +735,9 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     # SORT BY COLUMN NAME
     crossDispersionSlices.sort_values(['wavelengthMedian'],
                                       ascending=[True], inplace=True)
+
+    # REMOVE 0 WAVELENGTH
+    crossDispersionSlices = crossDispersionSlices.loc[crossDispersionSlices['wavelengthMedian'] > 0]
 
     # DETERMINE THE PIXEL SCALE FOR EACH PIXEL - NEEDED FOR ORDER MERGING
     this = (crossDispersionSlices['wavelengthMedian'].values[2:] - crossDispersionSlices['wavelengthMedian'].values[:-2]) / 2

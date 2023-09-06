@@ -285,7 +285,7 @@ class soxs_stare(_base_recipe_):
         home = expanduser("~")
         fileDir = self.settings["workspace-root-dir"].replace("~", home)
         # filename = "/override/filename.fits"
-        filepath = self._write(combined_object, fileDir, filename="combined_object_frame.fits", overwrite=True)
+        # filepath = self._write(combined_object, fileDir, filename="combined_object_frame.fits", overwrite=True)
         # print(f"\nxxx frame saved to {filepath}\n")
 
         # ADD QUALITY CHECKS
@@ -293,6 +293,21 @@ class soxs_stare(_base_recipe_):
             log=self.log, frame=skySubtractedCCDData, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
         self.qc = spectroscopic_image_quality_checks(
             log=self.log, frame=skySubtractedCCDData, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
+
+        from soxspipe.commonutils import horne_extraction
+        optimalExtractor = horne_extraction(
+            log=self.log,
+            skyModelFrame=skymodelCCDData,
+            skySubtractedFrame=skySubtractedCCDData,
+            twoDMapPath=twoDMap,
+            settings=self.settings,
+            recipeName=self.recipeName,
+            qcTable=self.qc,
+            productsTable=self.products,
+            dispersionMap=dispMap,
+            sofName=self.sofName
+        )
+        self.qc, self.products = optimalExtractor.extract()
 
         self.clean_up()
         self.report_output()
