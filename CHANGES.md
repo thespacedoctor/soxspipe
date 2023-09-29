@@ -1,6 +1,7 @@
 
 # Release Notes  
 
+* **REFACTOR:** init command no longer opens the settings file in the users default text editor.
 * **REFACTOR:** continuum fitting code made more robust against edge cases (orders of the fit are automatically reduced if fit does not converge)
 * **ENHANCEMENT:** flux (and other daostarfinder metrics) are now recorded in the detected line-list QC file. This will help measure degradation of arc-lamps over time.
 * **FIXED**: sky-subtraction code and data-organiser fixed to work with binned data

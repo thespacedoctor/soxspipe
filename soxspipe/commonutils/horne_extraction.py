@@ -418,6 +418,12 @@ class horne_extraction(object):
 
         self.log.debug('starting the ``merge_extracted_orders`` method')
 
+        # THINGS TO TRY
+        # - experiment with FluxConserving, Linear and Spline resampling
+        # - need to dynamically define the ends of each order (possibly from order centre traces) and don't extract beyong these points
+        # - set a S/N threshold, below which the data point is ignored
+        # - run some kind of median smoothing to remove obvious spikes (with higher resolution than spectrograph)
+
         print(f"\n# MERGING ORDERS INTO SINGLE SPECTRUM")
 
         import numpy as np
@@ -441,78 +447,24 @@ class horne_extraction(object):
         ratio = 1 / stepWavelengthOrderMerge
         order_list = []
 
-        extractedOrdersDF["varianceSpectrum"] = VarianceUncertainty(extractedOrdersDF["varianceSpectrum"])
+        # SORT BY COLUMN NAME
+        extractedOrdersDF.sort_values(['wavelengthMedian'],
+                                      ascending=[True], inplace=True)
 
-        for order in extractedOrdersDF['order'].unique():
-            # LIMIT DATAFRAME TO JUST THIS ORDER
-            orderDF = extractedOrdersDF.loc[extractedOrdersDF['order'] == order]
+        # DEFINE THE WAVELENGTH ARRAY
+        wave_resample_grid = np.arange(float(format(np.min(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, float(format(np.max(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
+        wave_resample_grid = wave_resample_grid * u.nm
 
-            # DEFINE THE WAVELENGTH ARRAY
-            wave_resample_grid = np.arange(float(format(np.min(orderDF['wavelengthMedian']) * ratio, '.0f')) / ratio, float(format(np.max(orderDF['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
-            wave_resample_grid = wave_resample_grid * u.nm
+        # INTERPOLATE THE ORDER SPECTRUM INTO THIS NEW ARRAY WITH A SINGLE STEP SIZE
+        flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
+        # PASS ORIGINAL RAW SPECTRUM AND RESAMPLE
+        spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values * u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"]))
+        resampler = FluxConservingResampler()
+        flux_resampled = resampler(spectrum_orig, wave_resample_grid)
+        merged_orders = pd.DataFrame()
+        merged_orders['FLUX_COUNTS'] = flux_resampled.flux
+        merged_orders['WAVE'] = flux_resampled.spectral_axis
 
-            # INTERPOLATE THE ORDER SPECTRUM INTO THIS NEW ARRAY WITH A SINGLE STEP SIZE
-            flux_orig = orderDF['extractedFluxOptimal'].values * u.electron
-            # PASS ORIGINAL RAW SPECTRUM AND RESAMPLE
-
-            spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=orderDF['wavelengthMedian'].values * u.nm, uncertainty=extractedOrdersDF["varianceSpectrum"])
-            resampler = FluxConservingResampler()
-            flux_resampled = resampler(spectrum_orig, wave_resample_grid)
-            resampledOrderDf = pd.DataFrame()
-            resampledOrderDf['flux_resampled'] = flux_resampled.flux
-            resampledOrderDf['wavelength'] = wave_resample_grid
-            resampledOrderDf['order'] = order
-
-            # RESAMPLING THE SNR
-            snr_orig = Spectrum1D(flux=orderDF['snr'].values * u.dimensionless_unscaled, spectral_axis=orderDF['wavelengthMedian'].values * u.nm)
-            resampler = LinearInterpolatedResampler()
-            snr_resampled = resampler(snr_orig, wave_resample_grid)
-            resampledOrderDf['snr'] = snr_resampled.flux
-            order_list.append(resampledOrderDf)
-
-        print("TWO")
-
-        # JOIN ALL ORDER INTO ONE DATAFRAME AGAIN
-        resampledOrders = pd.concat(order_list, ignore_index=True)
-        # DEFINE PRECISION OF WAVELENGTH TO CORRECTLY GROUP MEASUREMENTS WITH THE SAME WAVELENGTH
-        resampledOrders['wavelength'] = resampledOrders['wavelength'].apply(lambda x: round(x.value, 2))
-        # DUPLICATED ROWS CONTAINES DUPLICATED VALUES FOR WAVE AND FLUX. NO MATTER WHICH ROW IS CONSIDERED TO BE DROPPED!
-        print("THREE")
-
-        merged_orders = resampledOrders.groupby(['wavelength'], as_index=False)["flux_resampled"].count()
-        from tabulate import tabulate
-        print(tabulate(merged_orders, headers='keys', tablefmt='psql'))
-        sys.exit(0)
-
-        merged_orders = merged_orders.to_frame(name='count').reset_index()
-        from tabulate import tabulate
-        print(tabulate(merged_orders, headers='keys', tablefmt='psql'))
-
-        sys.exit(0)
-
-        merged_orders = resampledOrders.groupby('wavelength')
-
-        # GROUP RESULTS
-
-        breakpoint()
-        merged_orders = resampledOrders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index()
-        merged_orders = resampledOrders.groupby('wavelength').apply(self.residual_merge).to_frame().reset_index().drop_duplicates(subset=['wf'])
-        # gb = resampledOrders.groupby('wavelength').size().to_frame(name='count').reset_index()
-        print("FOUR")
-
-        from tabulate import tabulate
-        print(tabulate(merged_orders, headers='keys', tablefmt='psql'))
-
-        # RENAME SOME INDIVIDUALLY
-        merged_orders.rename(columns={"wf": "FLUX_COUNTS"}, inplace=True)
-        merged_orders.rename(columns={"wavelength": "WAVE"}, inplace=True)
-        # REMOVE COLUMN FROM DATA FRAME
-        merged_orders.drop(columns=['level_1'], inplace=True)
-
-        # print(gb[gb['count']> 1])
-        # from tabulate import tabulate
-        # print(tabulate(merged_orders.head(10000), headers='keys', tablefmt='psql'))
-        print("FIVE")
         fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
         gs = fig.add_gridspec(1, 1)
         toprow = fig.add_subplot(gs[0:1, :])
@@ -522,8 +474,11 @@ class horne_extraction(object):
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
         toprow.set_title(
             f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
-        for o in order_list:
-            plt.plot(o['wavelength'], o['flux_resampled'])
+
+        for order in extractedOrdersDF['order'].unique():
+            # LIMIT DATAFRAME TO JUST THIS ORDER
+            orderDF = extractedOrdersDF.loc[extractedOrdersDF['order'] == order]
+            plt.plot(orderDF['wavelengthMedian'], orderDF['extractedFluxOptimal'])
 
         plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#002b36")
 

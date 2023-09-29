@@ -147,22 +147,6 @@ def main(arguments=None):
         if a['outputDirectory']:
             settings["workspace-root-dir"] = a['outputDirectory']
 
-        if a["init"]:
-            from os.path import expanduser
-            home = expanduser("~")
-            filepath = home + "/.config/soxspipe/soxspipe.yaml"
-            try:
-                cmd = """open %(filepath)s""" % locals()
-                p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
-            except:
-                pass
-            try:
-                cmd = """start %(filepath)s""" % locals()
-                p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
-            except:
-                pass
-            return
-
         if a["mbias"]:
             from soxspipe.recipes import soxs_mbias
             recipe = soxs_mbias(
