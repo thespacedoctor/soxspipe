@@ -5,7 +5,6 @@
 Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
-    soxspipe init
     soxspipe prep <workspaceDirectory>
     soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -16,7 +15,6 @@ Usage:
     soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
-    init                                   setup the soxspipe settings file for the first time
     prep                                   prepare a folder of raw data (workspace) for data reduction
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
@@ -68,9 +66,26 @@ def main(arguments=None):
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
+    if sys.argv[1] == "prep":
+        # DOES SETTINGS FILE EXIST YET
+        testPath = sys.argv[2] + "/soxspipe.yaml"
+        exists = os.path.exists(testPath)
+        if not exists:
+            sys.argv[1] = "init"
+            # setup the command-line util settings
+            su = tools(
+                arguments=None,
+                docString=__doc__.replace("prep", "init"),
+                logLevel="ERROR",
+                options_first=False,
+                projectName="soxspipe",
+                defaultSettingsFile=True
+            )
+            arguments, settings, log, dbConn = su.setup()
+            sys.argv[1] = "prep"
     # setup the command-line util settings
     su = tools(
-        arguments=arguments,
+        arguments=None,
         docString=__doc__,
         logLevel="ERROR",
         options_first=False,

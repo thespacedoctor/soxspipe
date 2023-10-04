@@ -22,29 +22,6 @@ With each new release of soxspipe, you can upgrade to the latest version using t
 conda upgrade soxspipe -c conda-forge
 ```
 
-## Initialising SOXSPIPE for the first time (or after an upgrade)
-
-If this is the first time you have installed soxspipe on the machine you are using, you must first initialise it by running:
-
-```bash
-soxspipe init
-```
-
-This adds a default soxspipe settings file to `~/.config/soxspipe/soxspipe.yaml`. The default parameters set within this settings file are good for typical reductions, but as a user, you can adjust these settings to your needs. 
-
-```eval_rst
-.. note::
-    It is also possible to run soxspipe with alternative settings files using the `--settings` option. Run `soxspipe -h` to see how.
-```
-
-If you have just upgraded SOXSPIPE to a more recent release, we advise you back up your current setting file and re-initialise soxspipe to get the latest default settings:
-
-```bash
-stamp=`date +\%Y\%m\%dt\%H\%M`
-mv ~/.config/soxspipe/soxspipe.yaml ~/.config/soxspipe/soxspipe_${stamp}.yaml 
-soxspipe init
-```
-
 ## Demo Data
 
 The demo XShooter data (stare-mode) is of the X-ray binary SAX J1808.4-3658 taken during a 2019 outburst. You can download and unpack the data with the following commands:

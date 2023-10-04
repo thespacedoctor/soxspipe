@@ -39,18 +39,6 @@ If you have previously installed soxspipe, a warning will be issued stating that
 
 To check installation was successful run `soxspipe -v`. This should return the version number of the install.
 
-## Initialisation 
-
-Before using soxspipe you need to use the `init` command to generate a user settings file. Running the following creates a [yaml](https://learnxinyminutes.com/docs/yaml/) settings file in your home folder under `~/.config/soxspipe/soxspipe.yaml`:
-
-```bash
-soxspipe init
-```
-
-The file is initially populated with soxspipe's default settings which can be adjusted to your preference.
-
-If at any point the user settings file becomes corrupted or you just want to start afresh, simply trash the `soxspipe.yaml` file and rerun `soxspipe init`.
-
 ## How to cite soxspipe
 
 If you use `soxspipe` in your work, please cite using the following BibTeX entry: 

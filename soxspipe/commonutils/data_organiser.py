@@ -94,7 +94,6 @@ class data_organiser(object):
             self.freshRun = True
             emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
             shutil.copyfile(emptyDb, self.dbPath)
-            print("soxspipe.db does not yet exist, this is a fresh reduction")
 
         def dict_factory(cursor, row):
             d = {}
