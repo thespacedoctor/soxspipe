@@ -90,20 +90,6 @@ def main(arguments=None):
     )
     arguments, settings, log, dbConn = su.setup()
 
-    import logging
-    recipeLog = logging.FileHandler("/Users/Dave/Desktop/junk.log", mode='a', encoding=None, delay=True)
-    recipeLog.set_name("recipelog")
-
-    log.addHandler(recipeLog)
-    log.error("SHIT")
-    for handler in log.handlers:
-        if handler.get_name() == "recipelog":
-            log.removeHandler(handler)
-    log.error("SHIT2")
-    print(recipeLog.get_name())
-
-    sys.exit(0)
-
     # ALIGN ASTROPY LOGGING LEVEL WITH SOXSPIPES
     try:
         from astropy import log as astrolog

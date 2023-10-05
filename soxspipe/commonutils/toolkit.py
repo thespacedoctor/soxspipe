@@ -924,15 +924,9 @@ def predict_product_path(
 
     **Usage:**
 
-    ```eval_rst
-    .. todo::
-
-            add usage info
-            create a sublime snippet for usage
-    ```
-
     ```python
-    usage code 
+    from soxspipe.commonutils import toolkit
+    productPath = toolkit.predict_product_path(sofFilePath)
     ```           
     """
     try:

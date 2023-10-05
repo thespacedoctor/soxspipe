@@ -53,8 +53,9 @@ class _base_recipe_(object):
         self.log = log
         import yaml
         import pandas as pd
+        from soxspipe.commonutils import toolkit
 
-        log.debug("instansiating a new '__init__' object")
+        log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
         self.settings = settings
         self.workspaceRootPath = self._absolute_path(
@@ -63,8 +64,8 @@ class _base_recipe_(object):
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
-            productPath = self.workspaceRootPath + "/product/" + self.recipeName + "/" + self.sofName + ".fits"
-            self.productPath = productPath.replace("//", "/")
+            self.productPath = toolkit.predict_product_path(inputFrames)
+            self.add_recipe_logger()
             if os.path.exists(self.productPath) and not overwrite:
                 print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
@@ -1310,6 +1311,34 @@ class _base_recipe_(object):
                 kw("PRO_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
 
         self.log.debug('completed the ``update_fits_keywords`` method')
+        return None
+
+    def add_recipe_logger(
+            self):
+        """*add a recipe-specific handler to the default logger that writes the recipe's logs adjacent to the recipe project*
+        """
+        self.log.debug('starting the ``add_recipe_logger`` method')
+
+        import logging
+
+        for handler in self.log.handlers:
+            if handler.get_name() == "recipelog":
+                self.log.removeHandler(handler)
+
+        # GET THE EXTENSION (WITH DOT PREFIX)
+        loggingPath = os.path.splitext(self.productPath)[0] + ".log"
+
+        # PARENT DIRECTORY PATH NEEDS TO EXIST FOR LOGGER TO WRITE
+        parentDirectory = os.path.dirname(loggingPath)
+        if not os.path.exists(parentDirectory):
+            os.makedirs(parentDirectory)
+
+        recipeLog = logging.FileHandler(loggingPath, mode='a', encoding=None, delay=True)
+        recipeLog.set_name("recipelog")
+        self.log.addHandler(recipeLog)
+        self.log.error("SHIT")
+
+        self.log.debug('completed the ``add_recipe_logger`` method')
         return None
 
     # use the tab-trigger below for new method
