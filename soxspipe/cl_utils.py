@@ -54,12 +54,8 @@ def main(arguments=None):
     # QUICKLY SKIP IF PRODUCT EXIST
     if len(sys.argv[1:]) == 2:
         if sys.argv[2].split(".")[-1].lower() == "sof":
-            sofName = os.path.basename(sys.argv[2]).replace(".sof", "")
-            if "_STARE_" in sofName:
-                sofName += "_SKYSUB"
-            productPath = "./product/soxs-" + sys.argv[1].replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
-
-            productPath = productPath.replace("//", "/")
+            from soxspipe.commonutils import toolkit
+            productPath = toolkit.predict_product_path(sys.argv[2])
             if os.path.exists(productPath):
                 print(f"The product of this recipe already exists at '{productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
@@ -93,6 +89,20 @@ def main(arguments=None):
         defaultSettingsFile=True
     )
     arguments, settings, log, dbConn = su.setup()
+
+    import logging
+    recipeLog = logging.FileHandler("/Users/Dave/Desktop/junk.log", mode='a', encoding=None, delay=True)
+    recipeLog.set_name("recipelog")
+
+    log.addHandler(recipeLog)
+    log.error("SHIT")
+    for handler in log.handlers:
+        if handler.get_name() == "recipelog":
+            log.removeHandler(handler)
+    log.error("SHIT2")
+    print(recipeLog.get_name())
+
+    sys.exit(0)
 
     # ALIGN ASTROPY LOGGING LEVEL WITH SOXSPIPES
     try:

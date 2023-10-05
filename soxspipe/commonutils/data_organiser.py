@@ -128,6 +128,8 @@ class data_organiser(object):
             'eso det ncorrs name',
             'eso det out1 conad',
             'eso det out1 ron',
+            'eso obs id',
+            'eso obs name',
             "naxis",
             "object"
         ]
@@ -142,6 +144,8 @@ class data_organiser(object):
             'eso pro catg',
             'eso pro tech',
             'eso pro type',
+            'eso obs id',
+            'eso obs name',
             'exptime',
             'binning',
             'rospeed',
@@ -609,6 +613,7 @@ class data_organiser(object):
             else:
                 mask = np.logical_and(mask, (filteredFrames[i] == "--"))
 
+        print(filterKeywordsRaw)
         rawFrames = filteredFrames.loc[mask]
 
         reducedFrames = filteredFrames.loc[~mask]

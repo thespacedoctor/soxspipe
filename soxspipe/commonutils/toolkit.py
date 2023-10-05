@@ -912,5 +912,40 @@ def twoD_disp_map_image_to_dataframe(
     log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
     return mapDF
 
+
+def predict_product_path(
+        sofName):
+    """*predict the path of the recipe product from a given SOF name*
+
+    **Key Arguments:**
+
+    - `log` -- logger,
+    - `sofName` -- name or full path to the sof file
+
+    **Usage:**
+
+    ```eval_rst
+    .. todo::
+
+            add usage info
+            create a sublime snippet for usage
+    ```
+
+    ```python
+    usage code 
+    ```           
+    """
+    try:
+        sofName = os.path.basename(sofName)
+    except:
+        pass
+    sofName = sofName.replace(".sof", "")
+    if "_STARE_" in sofName:
+        sofName += "_SKYSUB"
+    productPath = "./product/soxs-" + sys.argv[1].replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = productPath.replace("//", "/")
+
+    return productPath
+
 # use the tab-trigger below for new function
 # xt-def-function
