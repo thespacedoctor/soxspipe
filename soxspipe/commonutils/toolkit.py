@@ -933,13 +933,73 @@ def predict_product_path(
         sofName = os.path.basename(sofName)
     except:
         pass
+
+    recipeName = sys.argv[1]
+    if recipeName[0] == "-":
+        recipeName = sys.argv[2]
+
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_SKYSUB"
-    productPath = "./product/soxs-" + sys.argv[1].replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = "./product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
     productPath = productPath.replace("//", "/")
 
     return productPath
+
+
+def add_recipe_logger(
+        log,
+        productPath):
+    """*add a recipe-specific handler to the default logger that writes the recipe's logs adjacent to the recipe project*
+    """
+    import logging
+    import os
+
+    for handler in log.handlers:
+        if handler.get_name() == "recipeLog":
+            log.removeHandler(handler)
+        if handler.get_name() == "recipeErr":
+            log.removeHandler(handler)
+
+    # GET THE EXTENSION (WITH DOT PREFIX)
+    loggingPath = os.path.splitext(productPath)[0] + ".log"
+    loggingErrorPath = os.path.splitext(productPath)[0] + "_ERROR.log"
+    try:
+        os.remove(loggingPath)
+        os.remove(loggingErrorPath)
+    except:
+        pass
+
+    # PARENT DIRECTORY PATH NEEDS TO EXIST FOR LOGGER TO WRITE
+    parentDirectory = os.path.dirname(loggingPath)
+    if not os.path.exists(parentDirectory):
+        os.makedirs(parentDirectory)
+
+    recipeLog = logging.FileHandler(loggingPath, mode='a', encoding=None, delay=False)
+    recipeLogFormatter = logging.Formatter("%(message)s")
+    recipeLog.set_name("recipeLog")
+    recipeLog.setLevel(logging.INFO + 1)
+    recipeLog.setFormatter(recipeLogFormatter)
+    recipeLog.addFilter(MaxFilter(logging.WARNING))
+    log.addHandler(recipeLog)
+
+    recipeErr = logging.FileHandler(loggingErrorPath, mode='a', encoding=None, delay=True)
+    recipeErrFormatter = logging.Formatter('%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', '%Y-%m-%d %H:%M:%S')
+    recipeErr.set_name("recipeErr")
+    recipeErr.setLevel(logging.WARNING)
+    recipeErr.setFormatter(recipeErrFormatter)
+    log.addHandler(recipeErr)
+
+    return log
+
+
+class MaxFilter:
+    def __init__(self, max_level):
+        self.max_level = max_level
+
+    def filter(self, record):
+        if record.levelno < self.max_level:
+            return True
 
 # use the tab-trigger below for new function
 # xt-def-function

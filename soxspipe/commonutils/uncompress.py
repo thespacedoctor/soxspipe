@@ -51,7 +51,7 @@ def uncompress(
             p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
             stdout, stderr = p.communicate()
             log.debug(f'output: {stdout}')
-            print(f"Decompressed {count} fits.Z files")
+            log.print(f"Decompressed {count} fits.Z files")
         except Exception as e:
             log.error(f'Could not uncompress .Z files')
 

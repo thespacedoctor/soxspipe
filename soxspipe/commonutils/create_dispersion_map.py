@@ -168,7 +168,7 @@ class create_dispersion_map(object):
         # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
         iteration = 0
-        print(f"FINDING PINHOLE ARC-LINES ON IMAGE")
+        self.log.print(f"FINDING PINHOLE ARC-LINES ON IMAGE")
 
         # FIRST USE A RANDOM SELECTION OF LINES TO ITERATE ENTIRE INPUT LINE-LIST CLOSER TO THE OBSERVED LINES
         orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x']
@@ -210,7 +210,7 @@ class create_dispersion_map(object):
             if iteration > 1:
                 # Cursor up one line and clear line
                 sys.stdout.write("\x1b[1A\x1b[2K")
-            print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {medianx:0.3f},{mediany:0.3f}")
+            self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {medianx:0.3f},{mediany:0.3f}")
 
         # NOW TRY AND DETECT ALL LINES
         orderPixelTable = self.measure_pinhole_lines(orderPixelTable, pinholeFrameMasked, std)
@@ -296,10 +296,10 @@ class create_dispersion_map(object):
                 degList = [wavelengthDeg, orderDeg, slitDeg]
                 degList[degList.index(max(degList))] -= 1
                 wavelengthDeg, orderDeg, slitDeg = degList
-                print(f"Wavelength, Order and Slit fitting orders reduced to {wavelengthDeg}, {orderDeg}, {slitDeg} to try and achieve a dispersion solution.")
+                self.log.print(f"Wavelength, Order and Slit fitting orders reduced to {wavelengthDeg}, {orderDeg}, {slitDeg} to try and achieve a dispersion solution.")
                 tryCount += 1
                 if tryCount == 5:
-                    print(f"Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
+                    self.log.print(f"Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
 
         # GET FILENAME FOR THE LINE LISTS
@@ -964,7 +964,7 @@ class create_dispersion_map(object):
         clippingIterationLimit = self.settings[
             recipe]["poly-clipping-iteration-limit"]
 
-        print("\n# FINDING DISPERSION SOLUTION\n")
+        self.log.print("\n# FINDING DISPERSION SOLUTION\n")
 
         iteration = 0
 
@@ -1043,7 +1043,7 @@ class create_dispersion_map(object):
                 # Cursor up one line and clear line
                 sys.stdout.write("\x1b[1A\x1b[2K")
 
-            print(f'ITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
+            self.log.print(f'ITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
 
             mask = (orderPixelTable['sigma_clipped'] == True)
             orderPixelTable = orderPixelTable.loc[~mask]
@@ -1325,7 +1325,7 @@ class create_dispersion_map(object):
         from astropy.io import fits
         import copy
 
-        print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
+        self.log.print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
         self.dispersionMapPath = dispersionMapPath
         kw = self.kw
@@ -1571,8 +1571,8 @@ class create_dispersion_map(object):
 
         sys.stdout.write("\x1b[1A\x1b[2K")
         percentageFound = (1 - (np.count_nonzero(np.isnan(wlMap.data)) / np.count_nonzero(wlMap.data))) * 100
-        print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted.")
-        # print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
+        self.log.print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted.")
+        # self.log.print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
 
         if plots:
             from matplotlib import cm

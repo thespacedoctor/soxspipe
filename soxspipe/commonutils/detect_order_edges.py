@@ -163,7 +163,7 @@ class detect_order_edges(_base_detect):
         import pandas as pd
         from astropy.stats import mad_std
 
-        print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
+        self.log.print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
 
         orderTablePath = None
 
@@ -183,7 +183,7 @@ class detect_order_edges(_base_detect):
             log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=self.sliceWidth)
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
-        print("\tDETERMINING ORDER FLUX THRESHOLDS")
+        self.log.print("\tDETERMINING ORDER FLUX THRESHOLDS")
         orderMetaTable["maxThreshold"] = np.nan
         orderMetaTable["minThreshold"] = np.nan
         orderMetaTable = orderMetaTable.apply(
@@ -197,7 +197,7 @@ class detect_order_edges(_base_detect):
         for o in uniqueOrders:
             orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderMetaTable.loc[(orderMetaTable["order"] == o), ["minThreshold", "maxThreshold"]].values
 
-        print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
+        self.log.print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
         orderPixelTable[f"{self.axisA}coord_upper"] = np.nan
         orderPixelTable[f"{self.axisA}coord_lower"] = np.nan
         orderPixelTable = orderPixelTable.apply(
@@ -251,7 +251,7 @@ class detect_order_edges(_base_detect):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
+        self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
         orderPixelTableUpper = orderPixelTable.dropna(axis='index', how='any',
                                                       subset=[f"{self.axisA}coord_upper"])
 
@@ -270,7 +270,7 @@ class detect_order_edges(_base_detect):
             f"{self.axisA}_fit": f"{self.axisA}coord_upper_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_upper_fit_res"}, inplace=True)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
+        self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
         orderPixelTableLower = orderPixelTable.dropna(axis='index', how='any',
                                                       subset=[f"{self.axisA}coord_lower"])
         lowerCoeff, orderPixelTableLower, clippedLower = self.fit_global_polynomial(
@@ -313,7 +313,7 @@ class detect_order_edges(_base_detect):
             orderEdgePolyTable[cols_to_use])
 
         # GENERATE AN OUTPUT PLOT OF RESULTS AND FITTING RESIDUALS
-        print("\tMEASURING AND PLOTTING RESIDUALS OF FITS")
+        self.log.print("\tMEASURING AND PLOTTING RESIDUALS OF FITS")
         allResiduals = np.concatenate((orderPixelTableLower[
             f"{self.axisA}coord_lower_fit_res"], orderPixelTableUpper[f"{self.axisA}coord_upper_fit_res"]))
         plotPath = self.plot_results(
@@ -709,7 +709,7 @@ class detect_order_edges(_base_detect):
         if 1 == 0:
             import matplotlib.pyplot as plt
             # CHECK THE SLICE POINTS IF NEEDED
-            print(order)
+            self.log.print(order)
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko', alpha=0.5)

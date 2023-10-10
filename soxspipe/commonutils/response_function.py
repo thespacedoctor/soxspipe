@@ -75,7 +75,7 @@ class response_function(object):
         stdExtractionDF = stdExtractionDF.to_pandas()
 
         from tabulate import tabulate
-        print(tabulate(stdExtractionDF.head(100), headers='keys', tablefmt='psql'))
+        self.log.print(tabulate(stdExtractionDF.head(100), headers='keys', tablefmt='psql'))
 
         return None
 

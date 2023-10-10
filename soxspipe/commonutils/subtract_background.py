@@ -114,7 +114,7 @@ class subtract_background(object):
         imageTech = self.frame.header[kw("DPR_TECH")].replace(",", "-")
         imageCat = self.frame.header[kw("DPR_CATG")].replace(",", "-")
 
-        print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
+        self.log.print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(

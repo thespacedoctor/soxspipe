@@ -6,7 +6,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe prep <workspaceDirectory>
-    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
+    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -72,28 +72,29 @@ def main(arguments=None):
             su = tools(
                 arguments=None,
                 docString=__doc__.replace("prep", "init"),
-                logLevel="ERROR",
+                logLevel="WARNING",
                 options_first=False,
                 projectName="soxspipe",
                 defaultSettingsFile=True
             )
-            arguments, settings, log, dbConn = su.setup()
+            arguments, settings, replacedLog, dbConn = su.setup()
             sys.argv[1] = "prep"
+
     # setup the command-line util settings
     su = tools(
         arguments=None,
         docString=__doc__,
-        logLevel="ERROR",
+        logLevel="WARNING",
         options_first=False,
         projectName="soxspipe",
         defaultSettingsFile=True
     )
     arguments, settings, log, dbConn = su.setup()
 
-    # ALIGN ASTROPY LOGGING LEVEL WITH SOXSPIPES
+    # SET ASTROPY LOGGING LEVEL
     try:
         from astropy import log as astrolog
-        astrolog.setLevel(settings["logging settings"]["root"]["level"])
+        astrolog.setLevel("WARNING")
     except:
         pass
 
@@ -118,7 +119,7 @@ def main(arguments=None):
 
     ## START LOGGING ##
     startTime = times.get_now_sql_datetime()
-    log.info(
+    log.debug(
         '--- STARTING TO RUN THE cl_utils.py AT %s' %
         (startTime,))
 
@@ -252,8 +253,8 @@ def main(arguments=None):
     ## FINISH LOGGING ##
     endTime = times.get_now_sql_datetime()
     runningTime = times.calculate_time_difference(startTime, endTime)
-    log.info('-- FINISHED ATTEMPT TO RUN THE cl_utils.py AT %s (RUNTIME: %s) --' %
-             (endTime, runningTime, ))
+    log.debug('-- FINISHED ATTEMPT TO RUN THE cl_utils.py AT %s (RUNTIME: %s) --' %
+              (endTime, runningTime, ))
 
     return
 

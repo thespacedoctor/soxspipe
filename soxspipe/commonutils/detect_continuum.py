@@ -127,7 +127,7 @@ class _base_detect(object):
             clippedCount = startCount - len(pixelListFiltered.index)
 
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print(f'\t\tORDER {order:0.0f}: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+            self.log.print(f'\t\tORDER {order:0.0f}: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
         self.log.debug('completed the ``fit_order_polynomial`` method')
         return coeff, pixelList
@@ -211,7 +211,7 @@ class _base_detect(object):
 
             if iteration > 1:
                 sys.stdout.write("\x1b[1A\x1b[2K")
-            print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+            self.log.print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
         allClipped = pd.concat(allClipped, ignore_index=True)
 
@@ -564,9 +564,9 @@ class detect_continuum(_base_detect):
             log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         if "order" in self.recipeName.lower():
-            print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
+            self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
         else:
-            print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
+            self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
 
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
@@ -578,9 +578,9 @@ class detect_continuum(_base_detect):
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
 
-        print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
+        self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
 
-        print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
+        self.log.print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = orderPixelTable['order'].unique()
@@ -631,10 +631,10 @@ class detect_continuum(_base_detect):
                 self.axisBDeg, self.orderDeg = degList
                 coeff_dict["degorder_cent"] = self.orderDeg
                 coeff_dict[f"deg{self.axisB}_cent"] = self.axisBDeg
-                print(f"{self.axisB} and Order fitting orders reduced to {self.axisBDeg}, {self.orderDeg} to try and successfully fit the continuum.")
+                self.log.print(f"{self.axisB} and Order fitting orders reduced to {self.axisBDeg}, {self.orderDeg} to try and successfully fit the continuum.")
                 tryCount += 1
                 if tryCount == 5:
-                    print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
+                    self.log.print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
 
         # orderLocations[o] = coeff
@@ -867,7 +867,7 @@ class detect_continuum(_base_detect):
         # CENTRE THE GAUSSIAN ON THE PEAK
         g_init = models.Gaussian1D(
             amplitude=1000., mean=peaks[0], stddev=1.)
-        # print(f"g_init: {g_init}")
+        # self.log.print(f"g_init: {g_init}")
         fit_g = fitting.LevMarLSQFitter()
 
         # NOW FIT
