@@ -316,7 +316,7 @@ def quicklook_image(
 
         for o in uniqueOrders:
             filDF = dispMapDF.loc[dispMapDF["order"] == o]
-            wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
+            wlLims.append((filDF['wavelength'].min() - 200, filDF['wavelength'].max() + 200))
             spLims.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
 
         lineNumber = 0
@@ -343,7 +343,8 @@ def quicklook_image(
                 mask = skylinesDF['WAVELENGTH'].between(wlLim[0], wlLim[1])
                 wlRange = skylinesDF.loc[mask]['WAVELENGTH'].values
             else:
-                wlRange = np.arange(wlLim[0], wlLim[1], 15)
+                step = int(wlLim[1] - wlLim[0]) / 400
+                wlRange = np.arange(wlLim[0], wlLim[1], step)
             wlRange = np.append(wlRange, [wlLim[1]])
             for l in wlRange:
                 myDict = {
@@ -363,7 +364,7 @@ def quicklook_image(
         )
         for l in range(lineNumber):
             mask = (orderPixelTable['line'] == l)
-            ax2.plot(orderPixelTable.loc[mask]["fit_y"], orderPixelTable.loc[mask]["fit_x"], "w:", alpha=0.5)
+            ax2.plot(orderPixelTable.loc[mask]["fit_y"], orderPixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
 
     ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
@@ -409,7 +410,8 @@ def unpack_order_table(
         extend=0.,
         pixelDelta=1,
         binx=1,
-        biny=1):
+        biny=1,
+        prebinned=False):
     """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
 
     **Key Arguments:**
@@ -419,6 +421,7 @@ def unpack_order_table(
     - ``pixelDelta`` -- space between returned data points. Default *1* (sampled at every pixel)
     - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
+    - ``prebinned`` -- was the order-table measured on a pre-binned frame (typically only for mflats). Default *False*
 
     **Usage:**
 
@@ -457,8 +460,12 @@ def unpack_order_table(
         axisBbin = binx
 
     # ADD AXIS B COORD LIST
+    if prebinned:
+        ratio = axisBbin
+    else:
+        ratio = 1
     axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(
-        orderMetaTable[f"{axisB}min"].values, orderMetaTable[f"{axisB}max"].values, orderMetaTable[f"{axisB}max"].values - orderMetaTable[f"{axisB}min"].values)]
+        orderMetaTable[f"{axisB}min"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio)]
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
 
@@ -488,18 +495,18 @@ def unpack_order_table(
         poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
         orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
 
-    if axisAbin > 1:
+    if axisAbin != 1:
         orderPixelTable[f"{axisA}coord_centre"] /= axisAbin
         orderPixelTable[f"{axisA}coord_edgeup"] /= axisAbin
         orderPixelTable[f"{axisA}coord_edgelow"] /= axisAbin
-    if axisBbin > 1:
+    if axisBbin != 1:
         orderMetaTable[f"{axisB}min"] /= axisBbin
         orderMetaTable[f"{axisB}max"] /= axisBbin
         orderPixelTable[f"{axisB}coord"] /= axisBbin
         orderPixelTable["std"] /= axisBbin
         mask = (orderPixelTable[f"{axisB}coord"].mod(1) > 0)
         orderPixelTable = orderPixelTable.loc[~mask]
-        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].astype('int')
+        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].round().astype('int')
 
     log.debug('completed the ``functionName`` function')
     return orderPolyTable, orderPixelTable, orderMetaTable
@@ -766,8 +773,8 @@ def read_spectral_format(
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
-    waveLengthMin = specFormatTable["WLMINFUL"].values
-    waveLengthMax = specFormatTable["WLMAXFUL"].values
+    waveLengthMin = specFormatTable["WLMINFUL"].values - 10
+    waveLengthMax = specFormatTable["WLMAXFUL"].values + 10
 
     log.debug('completed the ``read_spectral_format`` function')
     return orderNums, waveLengthMin, waveLengthMax
@@ -904,6 +911,95 @@ def twoD_disp_map_image_to_dataframe(
 
     log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
     return mapDF
+
+
+def predict_product_path(
+        sofName):
+    """*predict the path of the recipe product from a given SOF name*
+
+    **Key Arguments:**
+
+    - `log` -- logger,
+    - `sofName` -- name or full path to the sof file
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils import toolkit
+    productPath = toolkit.predict_product_path(sofFilePath)
+    ```           
+    """
+    try:
+        sofName = os.path.basename(sofName)
+    except:
+        pass
+
+    recipeName = sys.argv[1]
+    if recipeName[0] == "-":
+        recipeName = sys.argv[2]
+
+    sofName = sofName.replace(".sof", "")
+    if "_STARE_" in sofName:
+        sofName += "_SKYSUB"
+    productPath = "./product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = productPath.replace("//", "/")
+
+    return productPath
+
+
+def add_recipe_logger(
+        log,
+        productPath):
+    """*add a recipe-specific handler to the default logger that writes the recipe's logs adjacent to the recipe project*
+    """
+    import logging
+    import os
+
+    for handler in log.handlers:
+        if handler.get_name() == "recipeLog":
+            log.removeHandler(handler)
+        if handler.get_name() == "recipeErr":
+            log.removeHandler(handler)
+
+    # GET THE EXTENSION (WITH DOT PREFIX)
+    loggingPath = os.path.splitext(productPath)[0] + ".log"
+    loggingErrorPath = os.path.splitext(productPath)[0] + "_ERROR.log"
+    try:
+        os.remove(loggingPath)
+        os.remove(loggingErrorPath)
+    except:
+        pass
+
+    # PARENT DIRECTORY PATH NEEDS TO EXIST FOR LOGGER TO WRITE
+    parentDirectory = os.path.dirname(loggingPath)
+    if not os.path.exists(parentDirectory):
+        os.makedirs(parentDirectory)
+
+    recipeLog = logging.FileHandler(loggingPath, mode='a', encoding=None, delay=False)
+    recipeLogFormatter = logging.Formatter("%(message)s")
+    recipeLog.set_name("recipeLog")
+    recipeLog.setLevel(logging.INFO + 1)
+    recipeLog.setFormatter(recipeLogFormatter)
+    recipeLog.addFilter(MaxFilter(logging.WARNING))
+    log.addHandler(recipeLog)
+
+    recipeErr = logging.FileHandler(loggingErrorPath, mode='a', encoding=None, delay=True)
+    recipeErrFormatter = logging.Formatter('%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', '%Y-%m-%d %H:%M:%S')
+    recipeErr.set_name("recipeErr")
+    recipeErr.setLevel(logging.WARNING)
+    recipeErr.setFormatter(recipeErrFormatter)
+    log.addHandler(recipeErr)
+
+    return log
+
+
+class MaxFilter:
+    def __init__(self, max_level):
+        self.max_level = max_level
+
+    def filter(self, record):
+        if record.levelno < self.max_level:
+            return True
 
 # use the tab-trigger below for new function
 # xt-def-function

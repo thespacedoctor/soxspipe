@@ -64,9 +64,11 @@ class data_organiser(object):
         import sqlite3 as sql
         from os.path import expanduser
 
-        self.log = log
-        log.debug("instansiating a new 'data_organiser' object")
+        log.debug("instantiating a new 'data_organiser' object")
         self.settings = settings
+
+        from soxspipe.commonutils import toolkit
+        self.log = toolkit.add_recipe_logger(log, "./data-organiser.log")
 
         if rootDir == ".":
             rootDir = os.getcwd()
@@ -94,7 +96,6 @@ class data_organiser(object):
             self.freshRun = True
             emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
             shutil.copyfile(emptyDb, self.dbPath)
-            print("soxspipe.db does not yet exist, this is a fresh reduction")
 
         def dict_factory(cursor, row):
             d = {}
@@ -129,6 +130,8 @@ class data_organiser(object):
             'eso det ncorrs name',
             'eso det out1 conad',
             'eso det out1 ron',
+            'eso obs id',
+            'eso obs name',
             "naxis",
             "object"
         ]
@@ -143,6 +146,8 @@ class data_organiser(object):
             'eso pro catg',
             'eso pro tech',
             'eso pro type',
+            'eso obs id',
+            'eso obs name',
             'exptime',
             'binning',
             'rospeed',
@@ -250,7 +255,7 @@ class data_organiser(object):
         self.log.debug('starting the ``prepare`` method')
 
         basename = os.path.basename(self.rootDir)
-        print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
+        self.log.print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
         self._sync_raw_frames()
         self._move_misc_files()
         self._populate_product_frames_db_table()
@@ -258,14 +263,14 @@ class data_organiser(object):
         self._write_sof_files()
         self._write_reduction_shell_scripts()
 
-        sys.stdout.write("\x1b[1A\x1b[2K")
-        print(f"THE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
-        print(f"In this workspace you will find:\n")
-        print(f"   - `raw_frames/`: all raw-frames to be reduced")
-        print(f"   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the prep command")
-        print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
-        print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
-        print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace\n")
+        # sys.stdout.write("\x1b[1A\x1b[2K")
+        self.log.print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
+        self.log.print(f"In this workspace you will find:\n")
+        self.log.print(f"   - `raw_frames/`: all raw-frames to be reduced")
+        self.log.print(f"   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the prep command")
+        self.log.print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
+        self.log.print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
+        self.log.print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace\n")
 
         self.log.debug('completed the ``prepare`` method')
         return None
@@ -632,36 +637,40 @@ class data_organiser(object):
         keywordsTerseReducedTable = keywordsTerseReduced[:]
         keywordsTerseReducedTable.remove("binning")
 
-        if verbose:
-            print("\n# CONTENT SETS INDEX\n")
         reducedPixelsGroups = reducedFramesPixels.groupby(filterKeywordsReduced).size().reset_index(name='counts')
         reducedPixelsGroups.style.hide(axis='index')
+
         # SORT BY COLUMN NAME
         reducedPixelsGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
-        if verbose and len(reducedPixelsGroups.index):
-            print("\n## REDUCED PIXEL-FRAME-SET SUMMARY\n")
-            print(tabulate(reducedPixelsGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
 
         reducedTablesGroups = reducedFramesTables.groupby(filterKeywordsReducedTable).size().reset_index(name='counts')
         reducedTablesGroups.style.hide(axis='index')
         reducedTablesGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
-        if verbose and len(reducedTablesGroups.index):
-            print("\n## REDUCED TABLES-SET SUMMARY\n")
-            print(tabulate(reducedTablesGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
 
-        if verbose:
-            print("\n# CONTENT FILE INDEX\n")
-        if verbose and len(rawGroups.index):
-            print("\n## ALL RAW FRAMES\n")
-            print(tabulate(rawFrames[keywordsTerseRaw], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+        if verbose and (len(reducedPixelsGroups.index) or len(reducedTablesGroups.index)):
+            self.log.print("\n# CONTENT SETS INDEX\n")
 
         if verbose and len(reducedPixelsGroups.index):
-            print("\n## ALL REDUCED PIXEL-FRAMES\n")
-            print(tabulate(reducedFramesPixels[keywordsTerseReduced], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+            self.log.print("\n## REDUCED PIXEL-FRAME-SET SUMMARY\n")
+            self.log.print(tabulate(reducedPixelsGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
 
         if verbose and len(reducedTablesGroups.index):
-            print("\n## ALL REDUCED TABLES\n")
-            print(tabulate(reducedFramesTables[keywordsTerseReducedTable], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+            self.log.print("\n## REDUCED TABLES-SET SUMMARY\n")
+            self.log.print(tabulate(reducedTablesGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
+
+        if verbose:
+            self.log.print("\n# CONTENT FILE INDEX\n")
+        if verbose and len(rawGroups.index):
+            self.log.print("\n## ALL RAW FRAMES\n")
+            self.log.print(tabulate(rawFrames[keywordsTerseRaw], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+
+        if verbose and len(reducedPixelsGroups.index):
+            self.log.print("\n## ALL REDUCED PIXEL-FRAMES\n")
+            self.log.print(tabulate(reducedFramesPixels[keywordsTerseReduced], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+
+        if verbose and len(reducedTablesGroups.index):
+            self.log.print("\n## ALL REDUCED TABLES\n")
+            self.log.print(tabulate(reducedFramesTables[keywordsTerseReducedTable], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
 
         self.log.debug('completed the ``catagorise_frames`` method')
         return rawFrames[keywordsTerseRaw].replace(['--'], None), reducedFramesPixels[keywordsTerseReduced], reducedFramesTables[keywordsTerseReducedTable]

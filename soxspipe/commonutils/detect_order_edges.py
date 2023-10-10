@@ -43,6 +43,8 @@ class detect_order_edges(_base_detect):
         - ``sofName`` -- name of the originating SOF file
         - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
+        - ``extendToEdges`` -- if true, extend the order edge tracing to the edges of the frame.
+        -
 
     **Usage:**
 
@@ -62,7 +64,8 @@ class detect_order_edges(_base_detect):
         recipeName="soxs-mflat",
         verbose=False,
         qcTable=False,
-        productsTable=False
+        productsTable=False,
+        extendToEdges=True
     )
     productsTable, qcTable, orderDetectionCounts = edges.get()
     ```
@@ -81,7 +84,8 @@ class detect_order_edges(_base_detect):
             tag="",
             sofName=False,
             binx=1,
-            biny=1
+            biny=1,
+            extendToEdges=True
     ):
         self.log = log
         log.debug("instansiating a new 'detect_order_edges' object")
@@ -99,6 +103,7 @@ class detect_order_edges(_base_detect):
         self.products = productsTable
         self.tag = tag
         self.sofName = sofName
+        self.extendToEdges = extendToEdges
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -156,8 +161,9 @@ class detect_order_edges(_base_detect):
 
         import numpy as np
         import pandas as pd
+        from astropy.stats import mad_std
 
-        print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
+        self.log.print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
 
         orderTablePath = None
 
@@ -174,10 +180,10 @@ class detect_order_edges(_base_detect):
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=9)
+            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=self.sliceWidth)
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
-        print("\tDETERMINING ORDER FLUX THRESHOLDS")
+        self.log.print("\tDETERMINING ORDER FLUX THRESHOLDS")
         orderMetaTable["maxThreshold"] = np.nan
         orderMetaTable["minThreshold"] = np.nan
         orderMetaTable = orderMetaTable.apply(
@@ -191,7 +197,7 @@ class detect_order_edges(_base_detect):
         for o in uniqueOrders:
             orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderMetaTable.loc[(orderMetaTable["order"] == o), ["minThreshold", "maxThreshold"]].values
 
-        print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
+        self.log.print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
         orderPixelTable[f"{self.axisA}coord_upper"] = np.nan
         orderPixelTable[f"{self.axisA}coord_lower"] = np.nan
         orderPixelTable = orderPixelTable.apply(
@@ -202,20 +208,41 @@ class detect_order_edges(_base_detect):
                                subset=[f"{self.axisA}coord_upper"], inplace=True)
         orderPixelTable.dropna(axis='index', how='any',
                                subset=[f"{self.axisA}coord_lower"], inplace=True)
+
+        # MEASURE ORDER HEIGHT, FIND MEDIAN AND RE-ADJUST LOWER FROM UPPER EDGE
+        orderPixelTable["order_height_upper"] = orderPixelTable[f"{self.axisA}coord_upper"] - orderPixelTable[f"{self.axisA}coord_centre"]
+        orderPixelTable["order_height_lower"] = orderPixelTable[f"{self.axisA}coord_centre"] - orderPixelTable[f"{self.axisA}coord_lower"]
+
+        # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
+        uniqueOrders = orderPixelTable['order'].unique()
+
+        # COUPLE THE UPPER AND LOWER EDGES FOR HOMOGENEOUS HEIGHT
+        for o in uniqueOrders:
+            mask = (orderPixelTable['order'] == o)
+            medianHeight = orderPixelTable.loc[mask]['order_height_upper'].median() + mad_std(orderPixelTable.loc[mask]['order_height_upper'])
+            orderPixelTable.loc[mask, f"{self.axisA}coord_upper"] = orderPixelTable.loc[mask, f"{self.axisA}coord_centre"] + medianHeight
+            medianHeight = orderPixelTable.loc[mask]['order_height_lower'].median() + mad_std(orderPixelTable.loc[mask]['order_height_lower'])
+            orderPixelTable.loc[mask, f"{self.axisA}coord_lower"] = orderPixelTable.loc[mask, f"{self.axisA}coord_centre"] - medianHeight
+
         if self.axisAbin > 1:
             orderPixelTable[f"{self.axisA}coord_upper"] *= self.axisAbin
         if self.axisBbin > 1:
             orderPixelTable[f"{self.axisB}coord"] *= self.axisBbin
 
-        # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
-        uniqueOrders = orderPixelTable['order'].unique()
+        if self.axisA == "x":
+            minAxis = 1
+            maxAxis = 0
+        else:
+            minAxis = 0
+            maxAxis = 1
 
         for o in uniqueOrders:
-            orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"] = np.nanmin(orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values)
-            orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"] = np.nanmax(orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values)
-
-        # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
-        uniqueOrders = orderPixelTable['order'].unique()
+            if self.extendToEdges:
+                orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"] = 0
+                orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"] = self.flatFrame.data.shape[maxAxis]
+            else:
+                orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"] = np.nanmin(orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values)
+                orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"] = np.nanmax(orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values)
 
         # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
         for i in range(0, self.axisBDeg + 1):
@@ -224,23 +251,29 @@ class detect_order_edges(_base_detect):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        upperCoeff, orderPixelTable, clippedUpper = self.fit_global_polynomial(
-            pixelList=orderPixelTable,
+        self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
+        orderPixelTableUpper = orderPixelTable.dropna(axis='index', how='any',
+                                                      subset=[f"{self.axisA}coord_upper"])
+
+        upperCoeff, orderPixelTableUpper, clippedUpper = self.fit_global_polynomial(
+            pixelList=orderPixelTableUpper,
             axisBCol=f"{self.axisB}coord",
             axisACol=f"{self.axisA}coord_upper",
             orderCol="order",
             exponentsIncluded=True
         )
 
-        # RENAME SOME INDIVIDUALLY
-        orderPixelTable.rename(columns={
+        # RENAME COLUMNS
+        orderPixelTableUpper.rename(columns={
             f"{self.axisA}_fit": f"{self.axisA}coord_upper_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_upper_fit_res"}, inplace=True)
         clippedUpper.rename(columns={
             f"{self.axisA}_fit": f"{self.axisA}coord_upper_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_upper_fit_res"}, inplace=True)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
-        lowerCoeff, orderPixelTable, clippedLower = self.fit_global_polynomial(
+        self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
+        orderPixelTableLower = orderPixelTable.dropna(axis='index', how='any',
+                                                      subset=[f"{self.axisA}coord_lower"])
+        lowerCoeff, orderPixelTableLower, clippedLower = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisBCol=f"{self.axisB}coord",
             axisACol=f"{self.axisA}coord_lower",
@@ -249,7 +282,7 @@ class detect_order_edges(_base_detect):
         )
 
         # RENAME SOME INDIVIDUALLY
-        orderPixelTable.rename(columns={
+        orderPixelTableLower.rename(columns={
             f"{self.axisA}_fit": f"{self.axisA}coord_lower_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_lower_fit_res"}, inplace=True)
         clippedLower.rename(columns={
             f"{self.axisA}_fit": f"{self.axisA}coord_lower_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_lower_fit_res"}, inplace=True)
@@ -280,11 +313,12 @@ class detect_order_edges(_base_detect):
             orderEdgePolyTable[cols_to_use])
 
         # GENERATE AN OUTPUT PLOT OF RESULTS AND FITTING RESIDUALS
-        print("\tMEASURING AND PLOTTING RESIDUALS OF FITS")
-        allResiduals = np.concatenate((orderPixelTable[
-            f"{self.axisA}coord_lower_fit_res"], orderPixelTable[f"{self.axisA}coord_upper_fit_res"]))
+        self.log.print("\tMEASURING AND PLOTTING RESIDUALS OF FITS")
+        allResiduals = np.concatenate((orderPixelTableLower[
+            f"{self.axisA}coord_lower_fit_res"], orderPixelTableUpper[f"{self.axisA}coord_upper_fit_res"]))
         plotPath = self.plot_results(
-            orderPixelTable=orderPixelTable,
+            orderPixelTableUpper=orderPixelTableUpper,
+            orderPixelTableLower=orderPixelTableLower,
             orderPolyTable=orderPolyTable,
             orderMetaTable=orderMetaTable,
             clippedDataUpper=clippedUpper,
@@ -370,7 +404,8 @@ class detect_order_edges(_base_detect):
 
     def plot_results(
             self,
-            orderPixelTable,
+            orderPixelTableUpper,
+            orderPixelTableLower,
             orderPolyTable,
             orderMetaTable,
             clippedDataUpper,
@@ -378,7 +413,8 @@ class detect_order_edges(_base_detect):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
-            - ``orderPixelTable`` -- the pixel table with residuals of fits
+            - ``orderPixelTableUpper`` -- the pixel table with residuals of fits for the upper edges
+            - ``orderPixelTableLower`` -- the pixel table with residuals of fits for the lower edges
             - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
             - ``orderMetaTable`` -- data-frame containing the limits of the fit
             - ``clippedDataUpper`` -- the sigma-clipped data from upper edge
@@ -393,12 +429,12 @@ class detect_order_edges(_base_detect):
         import pandas as pd
         import matplotlib.pyplot as plt
 
-        allResiduals = np.concatenate((orderPixelTable[
-            f"{self.axisA}coord_lower_fit_res"], orderPixelTable[f"{self.axisA}coord_upper_fit_res"]))
+        allResiduals = np.concatenate((orderPixelTableLower[
+            f"{self.axisA}coord_lower_fit_res"], orderPixelTableUpper[f"{self.axisA}coord_upper_fit_res"]))
         allAxisACoords = np.concatenate((
-            orderPixelTable[f"{self.axisA}coord_lower"], orderPixelTable[f"{self.axisA}coord_upper"]))
+            orderPixelTableLower[f"{self.axisA}coord_lower"], orderPixelTableUpper[f"{self.axisA}coord_upper"]))
         allAxisBCoords = np.concatenate((
-            orderPixelTable[f"{self.axisB}coord"], orderPixelTable[f"{self.axisB}coord"]))
+            orderPixelTableLower[f"{self.axisB}coord"], orderPixelTableUpper[f"{self.axisB}coord"]))
         allAxisACoordsClipped = np.concatenate((
             clippedDataLower[f"{self.axisA}coord_lower"], clippedDataUpper[f"{self.axisA}coord_upper"]))
         allAxisBCoordsClipped = np.concatenate((
@@ -406,28 +442,32 @@ class detect_order_edges(_base_detect):
 
         if self.axisBbin > 1:
             allAxisBCoords /= self.axisBbin
+            allAxisBCoordsClipped /= self.axisBbin
         if self.axisAbin > 1:
             allAxisACoords /= self.axisAbin
+            allAxisACoordsClipped /= self.axisAbin
 
         arm = self.arm
 
         # a = plt.figure(figsize=(40, 15))
         if arm == "UVB" or self.inst == "SOXS":
-            fig = plt.figure(figsize=(5, 13.5))
+            fig = plt.figure(figsize=(5, 8))
             # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(6, 4)
+            gs = fig.add_gridspec(4, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:, 0:2])
-            bottomright = fig.add_subplot(gs[4:, 2:])
+            if False:
+                bottomleft = fig.add_subplot(gs[4:, 0:2])
+                bottomright = fig.add_subplot(gs[4:, 2:])
         else:
-            fig = plt.figure(figsize=(6, 11))
+            fig = plt.figure(figsize=(6, 8))
             # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(6, 4)
+            gs = fig.add_gridspec(4, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:, 0:2])
-            bottomright = fig.add_subplot(gs[4:, 2:])
+            if False:
+                bottomleft = fig.add_subplot(gs[4:, 0:2])
+                bottomright = fig.add_subplot(gs[4:, 2:])
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = self.flatFrame.data
@@ -450,9 +490,10 @@ class detect_order_edges(_base_detect):
         # toprow.set_xticklabels([])
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
+        toprow.xaxis.set_label_coords(0.4, -0.08)
         toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
-                      fontsize=6)
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05),
+                      fontsize=4)
 
         midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.9)
         if self.axisA == "x":
@@ -480,7 +521,7 @@ class detect_order_edges(_base_detect):
             coeffupper = [float(v) for k, v in row.items() if "edgeup_" in k]
             coefflower = [float(v) for k, v in row.items() if "edgelow_" in k]
 
-        uniqueOrders = orderPixelTable['order'].unique()
+        uniqueOrders = orderPixelTableLower['order'].unique()
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {f"{self.axisB}": axisBlinelist}
         df = pd.DataFrame(myDict)
@@ -526,7 +567,7 @@ class detect_order_edges(_base_detect):
                 axisBfitup = np.array(axisBfitup) / self.axisBbin
                 axisBfitlow = np.array(axisBfitlow) / self.axisBbin
 
-            l = midrow.plot(axisBfitlow, axisAfitlow)
+            l = midrow.plot(axisBfitlow, axisAfitlow, linewidth=0.1)
             colors.append(l[0].get_color())
 
             if labelAdded == None:
@@ -537,7 +578,7 @@ class detect_order_edges(_base_detect):
                 label1 = None
                 label2 = None
 
-            u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color(), label=label1)
+            u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color(), label=label1, linewidth=0.1)
             try:
                 midrow.fill_between(axisBfitlow, axisAfitlow, axisAfitup, alpha=0.4, fc=l[0].get_color(), label=label2)
             except:
@@ -551,40 +592,43 @@ class detect_order_edges(_base_detect):
         # midrow.set_xticklabels([])
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
+        midrow.xaxis.set_label_coords(0.4, -0.08)
         midrow.tick_params(axis='both', which='major', labelsize=9)
 
-        midrow.legend(loc='upper center', bbox_to_anchor=(0.5, -0.07),
-                      fontsize=6)
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05),
+                      fontsize=4)
 
         # PLOT THE FINAL RESULTS:
-        plt.subplots_adjust(top=0.92)
-        for o, c in zip(uniqueOrders, colors):
-            mask = (orderPixelTable['order'] == o)
-            orderAxisACoords = np.concatenate((orderPixelTable.loc[mask][f"{self.axisA}coord_lower"], orderPixelTable.loc[mask][f"{self.axisA}coord_upper"]))
-            orderAxisBCoords = np.concatenate((orderPixelTable.loc[mask][f"{self.axisB}coord"], orderPixelTable.loc[mask][f"{self.axisB}coord"]))
-            orderResiduals = np.concatenate((orderPixelTable.loc[mask][
-                f"{self.axisA}coord_lower_fit_res"], orderPixelTable.loc[mask][f"{self.axisA}coord_upper_fit_res"]))
-            bottomleft.scatter(orderAxisACoords, orderResiduals, alpha=0.6, s=0.2, c=c)
-            try:
-                bottomleft.text(orderAxisACoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
-            except:
-                pass
-            bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
-            try:
-                bottomright.text(orderAxisBCoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
-            except:
-                pass
+        if False:
+            plt.subplots_adjust(top=0.92)
+            for o, c in zip(uniqueOrders, colors):
+                maskLower = (orderPixelTableLower['order'] == o)
+                maskUpper = (orderPixelTableUpper['order'] == o)
+                orderAxisACoords = np.concatenate((orderPixelTableLower.loc[maskLower][f"{self.axisA}coord_lower"], orderPixelTableUpper.loc[maskUpper][f"{self.axisA}coord_upper"]))
+                orderAxisBCoords = np.concatenate((orderPixelTableLower.loc[maskLower][f"{self.axisB}coord"], orderPixelTableUpper.loc[maskUpper][f"{self.axisB}coord"]))
+                orderResiduals = np.concatenate((orderPixelTableLower.loc[maskLower][
+                    f"{self.axisA}coord_lower_fit_res"], orderPixelTableUpper.loc[maskUpper][f"{self.axisA}coord_upper_fit_res"]))
+                bottomleft.scatter(orderAxisACoords, orderResiduals, alpha=0.6, s=0.2, c=c)
+                try:
+                    bottomleft.text(orderAxisACoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
+                except:
+                    pass
+                bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
+                try:
+                    bottomright.text(orderAxisBCoords[10], orderResiduals[10], int(o), fontsize=6, c=c, verticalalignment='bottom')
+                except:
+                    pass
 
-        bottomleft.set_xlabel(f'{self.axisA} pixel position')
-        bottomleft.set_ylabel(f'{self.axisA} residual')
-        bottomleft.tick_params(axis='both', which='major', labelsize=9)
+            bottomleft.set_xlabel(f'{self.axisA} pixel position')
+            bottomleft.set_ylabel(f'{self.axisA} residual')
+            bottomleft.tick_params(axis='both', which='major', labelsize=9)
 
-        # PLOT THE FINAL RESULTS:
-        plt.subplots_adjust(top=0.92)
-        bottomright.set_xlabel(f'{self.axisB} pixel position')
-        bottomright.tick_params(axis='both', which='major', labelsize=9)
-        # bottomright.set_ylabel(f'{self.axisA} residual')
-        bottomright.set_yticklabels([])
+            # PLOT THE FINAL RESULTS:
+            plt.subplots_adjust(top=0.92)
+            bottomright.set_xlabel(f'{self.axisB} pixel position')
+            bottomright.tick_params(axis='both', which='major', labelsize=9)
+            # bottomright.set_ylabel(f'{self.axisA} residual')
+            bottomright.set_yticklabels([])
 
         mean_res = np.mean(np.abs(allResiduals))
         std_res = np.std(np.abs(allResiduals))
@@ -665,7 +709,7 @@ class detect_order_edges(_base_detect):
         if 1 == 0:
             import matplotlib.pyplot as plt
             # CHECK THE SLICE POINTS IF NEEDED
-            print(order)
+            self.log.print(order)
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko', alpha=0.5)

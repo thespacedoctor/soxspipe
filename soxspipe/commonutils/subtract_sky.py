@@ -117,7 +117,7 @@ class subtract_sky(object):
         self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, assosiatedFrame=self.objectFrame, kw=kw)
 
         quicklook_image(
-            log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
+            log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=0.1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
 
         # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
@@ -164,7 +164,7 @@ class subtract_sky(object):
         import pandas as pd
         pd.options.mode.chained_assignment = None
 
-        print(f'\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME')
+        self.log.print(f'\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME')
 
         # THESE PLACEHOLDERS ARE INITAILLY BLANK AND AWAITING PIXEL VALUES TO BE ADDED
         skymodelCCDData, skySubtractedCCDData = self.create_placeholder_images()
@@ -183,7 +183,7 @@ class subtract_sky(object):
         allimageMapOrderWithObject = []
 
         # GET OVER SAMPLED SKY & SKY+OBJECT AS LISTS OF DATAFRAMES
-        print(f"\n  ## CLIPPING DEVIANT PIXELS AND PIXELS WITH OBJECT FLUX\n")
+        self.log.print(f"\n  ## CLIPPING DEVIANT PIXELS AND PIXELS WITH OBJECT FLUX\n")
 
         imageMapOrders = []
         for o in uniqueOrders:
@@ -202,7 +202,7 @@ class subtract_sky(object):
         # MASK OUT OBJECT PIXELS
         allimageMapOrder = self.clip_object_slit_positions(allimageMapOrder, aggressive=self.settings["sky-subtraction"]["aggressive_object_masking"])
 
-        print(f"\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH) AND LOW-ORDER POLY (SLIT-ILLUMINATION PROFILE)\n")
+        self.log.print(f"\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH) AND LOW-ORDER POLY (SLIT-ILLUMINATION PROFILE)\n")
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         newAllimageMapOrder = []
@@ -748,7 +748,7 @@ class subtract_sky(object):
             # Cursor up one line and clear line
             sys.stdout.write("\x1b[1A\x1b[2K")
             percent = (float(totalClipped) / float(allPixels)) * 100.
-            print(f'\tORDER {order}, ITERATION {i}: {newlyClipped} more pixels clipped ({totalClipped} pixels clipped in total = {percent:1.1f}%)')
+            self.log.print(f'\tORDER {order}, ITERATION {i}: {newlyClipped} more pixels clipped ({totalClipped} pixels clipped in total = {percent:1.1f}%)')
             if newlyClipped == 0:
                 break
             i += 1
@@ -859,7 +859,7 @@ class subtract_sky(object):
             t, c, k = tck
 
             if ier == 10:
-                print(f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n")
+                self.log.print(f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n")
                 tck = tck_previous
                 break
             else:
@@ -891,8 +891,8 @@ class subtract_sky(object):
                 flux_error_ratio = flux_error_ratio[1000:-1000]
 
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print(f'\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
-            # print(fp, ier, msg)
+            self.log.print(f'\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
+            # self.log.print(fp, ier, msg)
 
         imageMapOrder["sky_model"] = ip.splev(imageMapOrder["wavelength"].values, tck)
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"] * imageMapOrder['flux_normaliser']
@@ -986,7 +986,7 @@ class subtract_sky(object):
             fig = plt.figure(figsize=(6, 11), constrained_layout=True)
         gs = fig.add_gridspec(6, 4)
 
-        # CREATE THE GID OF AXES
+        # CREATE THE GRID OF AXES
         toprow = fig.add_subplot(gs[0:2, :])
         midrow = fig.add_subplot(gs[2:4, :])
         bottomrow = fig.add_subplot(gs[4:6, :])
@@ -1039,8 +1039,6 @@ class subtract_sky(object):
         bottomrow.set_ylabel("x-axis", fontsize=8)
         bottomrow.set_xlabel("y-axis", fontsize=8)
         bottomrow.tick_params(axis='both', which='major', labelsize=9)
-        # subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        # fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
 
         # plt.show()
         filename = self.filenameTemplate.replace(".fits", "_skysub_quicklook.pdf")
@@ -1178,7 +1176,7 @@ class subtract_sky(object):
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
         mask = (orderPixelTable['flux'].isnull())
-        print(orderPixelTable.loc[~mask, "wavelength"].min())
+        self.log.print(orderPixelTable.loc[~mask, "wavelength"].min())
 
         # DROP MISSING VALUES
         # orderPixelTable.dropna(axis='index', how='any', subset=['x'], inplace=True)
@@ -1211,7 +1209,7 @@ class subtract_sky(object):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=imageArray, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True, inst="dummy")
+            log=self.log, CCDObject=imageArray, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, inst="dummy")
 
         self.log.debug('completed the ``rectify_order`` method')
         return imageArray
@@ -1335,7 +1333,7 @@ class subtract_sky(object):
 
         if 1 == 0:
             import matplotlib.pyplot as plt
-            print(object_ranges)
+            self.log.print(object_ranges)
             width = (maxsp - minsp) / nbins
             fig, ax = plt.subplots()
             bins = bins[:-1]

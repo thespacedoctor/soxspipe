@@ -1,6 +1,10 @@
 
 # Release Notes  
 
+* **FEATURE:** added a `predict_product_path` function to determine the product path from a recipe's input sof file
+* **ENHANCEMENT:** OB ids now getting add to the data-organiser database tables.
+* **REFACTOR:** `init` command has been subsumed into the prep command. The `prep` command will generate a settings file to live within the prepared workspace.
+* **REFACTOR:** continuum fitting code made more robust against edge cases (orders of the fit are automatically reduced if fit does not converge)
 * **ENHANCEMENT:** flux (and other daostarfinder metrics) are now recorded in the detected line-list QC file. This will help measure degradation of arc-lamps over time.
 * **FIXED**: sky-subtraction code and data-organiser fixed to work with binned data
 * **REFACTOR:** command-line startup speeds improved
@@ -17,7 +21,7 @@
 * **ENHANCEMENT:** verifying the master flat used to calibrate object/std spectra has the same slit-witdh as used to take the science frames
 * **DOCS:** updated docs with a more robust SOXSPIPE upgrade path (users having issue with `conda update ...`)
 * **REFACTOR:** `misc/` directory created by data-organiser even if empty
-* **REFACTOR:** close matplotlib plot after writting plots to file
+* **REFACTOR:** close matplotlib plot after writing plots to file
 
 ## v0.8.0 - May 18, 2023
 

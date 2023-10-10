@@ -62,16 +62,16 @@ class soxs_straighten(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_straighten - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
-        print("# VERIFYING INPUT FRAMES")
+        self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
         sys.stdout.write("\x1b[1A\x1b[2K")
-        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+        self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
-            print("# RAW INPUT FRAMES - SUMMARY")
-            print(self.inputFrames.summary, "\n")
+            self.log.print("# RAW INPUT FRAMES - SUMMARY")
+            self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -105,7 +105,7 @@ class soxs_straighten(_base_recipe_):
         #     # MIXED INPUT IMAGE TYPES ARE BAD
         #     if len(imageTypes) > 1:
         #         imageTypes = " and ".join(imageTypes)
-        #         print(self.inputFrames.summary)
+        #         self.log.print(self.inputFrames.summary)
         #         raise TypeError(
         #             "Input frames are a mix of %(imageTypes)s" % locals())
 
@@ -132,9 +132,9 @@ class soxs_straighten(_base_recipe_):
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
-            print()
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print()
             raise TypeError(error)
 
         self.imageType = imageTypes[0]

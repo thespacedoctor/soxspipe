@@ -50,11 +50,11 @@ class _base_recipe_(object):
             overwrite=False,
             recipeName=False
     ):
-        self.log = log
         import yaml
         import pandas as pd
+        from soxspipe.commonutils import toolkit
 
-        log.debug("instansiating a new '__init__' object")
+        log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
         self.settings = settings
         self.workspaceRootPath = self._absolute_path(
@@ -63,14 +63,15 @@ class _base_recipe_(object):
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
-            productPath = self.workspaceRootPath + "/product/" + self.recipeName + "/" + self.sofName + ".fits"
-            self.productPath = productPath.replace("//", "/")
+            self.productPath = toolkit.predict_product_path(inputFrames)
+            self.log = toolkit.add_recipe_logger(log, self.productPath)
             if os.path.exists(self.productPath) and not overwrite:
-                print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                self.log.print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
         else:
             self.sofName = False
             self.productPath = False
+            self.log = log
 
         from soxspipe.commonutils.toolkit import get_calibrations_path
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
@@ -244,8 +245,8 @@ class _base_recipe_(object):
         # if frame.header[kw("DPR_TYPE")] == "BIAS":
         #     bitMap.data = np.zeros_like(bitMap.data)
 
-        # print(bitMap.data.shape)
-        # print(frame.data.shape)
+        # self.log.print(bitMap.data.shape)
+        # self.log.print(frame.data.shape)
 
         frame.flags = bitMap.data
 
@@ -314,14 +315,12 @@ class _base_recipe_(object):
         myPath = self._absolute_path(myPath)
         ```
         """
-        self.log.debug('starting the ``_absolute_path`` method')
 
         from os.path import expanduser
         home = expanduser("~")
         if path[0] == "~":
             path = home + "/" + path[1:]
 
-        self.log.debug('completed the ``_absolute_path`` method')
         return path.replace("//", "/")
 
     def prepare_frames(
@@ -354,7 +353,7 @@ class _base_recipe_(object):
 
         frameCount = len(filepaths)
 
-        print("\n# PREPARING %(frameCount)s RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
+        self.log.print("\n# PREPARING %(frameCount)s RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
         preframes = []
         preframes[:] = [self._prepare_single_frame(
             frame=frame, save=save) for frame in filepaths]
@@ -368,13 +367,13 @@ class _base_recipe_(object):
         preframes, supplementaryInput = sof.get()
         preframes.sort([kw('MJDOBS')])
 
-        print("# PREPARED FRAMES - SUMMARY")
+        self.log.print("# PREPARED FRAMES - SUMMARY")
         columns = preframes.summary.colnames
         if "filename" in columns:
             columns.remove("file")
             columns.remove("filename")
             columns = ["filename"] + columns
-        print(preframes.summary[columns])
+        self.log.print(preframes.summary[columns])
 
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
@@ -398,7 +397,7 @@ class _base_recipe_(object):
         # CHECK WE ACTUALLY HAVE IMAGES
         if not len(self.inputFrames.files_filtered(include_path=True)):
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             raise FileNotFoundError(
                 "No image frames where passed to the recipe")
 
@@ -422,8 +421,8 @@ class _base_recipe_(object):
         if len(arm) > 1:
             arms = " and ".join(arm)
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of %(imageTypes)s" % locals())
         else:
@@ -454,7 +453,7 @@ class _base_recipe_(object):
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             raise TypeError(
                 "Input frames are a mix of binnings" % locals())
 
@@ -470,8 +469,8 @@ class _base_recipe_(object):
 
         if len(readSpeed) > 1:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
             raise TypeError(
                 f"Input frames are a mix of readout speeds. {readSpeed}" % locals())
 
@@ -490,8 +489,8 @@ class _base_recipe_(object):
 
         if len(gain) > 1:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
             raise TypeError(
                 "Input frames are a mix of gain" % locals())
         if len(gain) and gain[0]:
@@ -524,8 +523,8 @@ class _base_recipe_(object):
 
         if len(slitWidth) > 1:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
             raise TypeError(
                 f"Input frames are a mix of slit-width ({slitWidth})" % locals())
 
@@ -538,8 +537,8 @@ class _base_recipe_(object):
         # MIXED NOISE
         if len(ron) > 1:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
             raise TypeError(f"Input frames are a mix of readnoise. {ron}" % locals())
         if len(ron) and ron[0]:
             # UVB & VIS
@@ -828,7 +827,7 @@ class _base_recipe_(object):
         imageTech = ccds[0].header[kw("DPR_TECH")].replace(",", "-")
         imageCat = ccds[0].header[kw("DPR_CATG")].replace(",", "-")
 
-        print(f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
+        self.log.print(f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
 
         # COMBINE MASKS AND THEN RESET
         combinedMask = ccds[0].mask
@@ -842,13 +841,13 @@ class _base_recipe_(object):
         # MASKED IN ALL INDIVIDUAL IMAGES ARE MASK IN THE FINAL COMBINED IMAGE
         combiner = Combiner(ccds)
 
-        # print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
+        # self.log.print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
         # PRINT SOME INFO FOR USER
         badCount = combinedMask.sum()
         totalPixels = np.size(combinedMask)
         percent = (float(badCount) / float(totalPixels)) * 100.
         if imageType != "BIAS":
-            print(f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
+            self.log.print(f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
 
         # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INPUT FRAMES - USING
         # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
@@ -875,10 +874,10 @@ class _base_recipe_(object):
         diff = new_n_masked - old_n_masked
         if self.verbose:
             percent = 100 * combiner.data_arr.mask[0].sum() / totalPixels
-            print(f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)")
+            self.log.print(f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)")
 
         # GENERATE THE COMBINED MEAN
-        # print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
+        # self.log.print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
         combined_frame = combiner.average_combine()
 
         # RECOMBINE THE COMBINED MASK FROM ABOVE
@@ -915,7 +914,7 @@ class _base_recipe_(object):
             diff = newBadCount - badCount
             totalPixels = np.size(combinedMask)
             percent = (float(newBadCount) / float(totalPixels)) * 100.
-            print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
+            self.log.print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
 
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame
@@ -1049,10 +1048,11 @@ class _base_recipe_(object):
             soxspipe_recipe = self.recipeName.upper()
 
         if rformat == "stdout":
-            print(f"\n# {soxspipe_recipe} QC METRICS")
-            print(tabulate(self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
-            print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
-            print(tabulate(self.products[columns2], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
+            self.log.print(f"\n# {soxspipe_recipe} QC METRICS")
+            self.log.print(tabulate(self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
+            self.log.print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
+            self.log.print(tabulate(self.products[columns2], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
+            self.log.print("\n")
 
         self.log.debug('completed the ``report_output`` method')
         return None

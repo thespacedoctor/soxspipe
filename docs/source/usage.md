@@ -5,7 +5,6 @@
     Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
     
     Usage:
-        soxspipe init
         soxspipe prep <workspaceDirectory>
         soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
         soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -16,7 +15,6 @@
         soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     
     Options:
-        init                                   setup the soxspipe settings file for the first time
         prep                                   prepare a folder of raw data (workspace) for data reduction
         mbias                                  the master bias recipe
         mdark                                  the master dark recipe

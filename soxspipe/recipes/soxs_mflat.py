@@ -92,16 +92,16 @@ class soxs_mflat(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY soxs_mflat - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
-        print("# VERIFYING INPUT FRAMES")
+        self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
         sys.stdout.write("\x1b[1A\x1b[2K")
-        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+        self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION BY MJD
         self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
-            print("# RAW INPUT FRAMES - SUMMARY")
-            print(self.inputFrames.summary, "\n")
+            self.log.print("# RAW INPUT FRAMES - SUMMARY")
+            self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -201,9 +201,9 @@ class soxs_mflat(_base_recipe_):
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
-            print()
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print()
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -278,7 +278,7 @@ class soxs_mflat(_base_recipe_):
 
             # DIVIDE THROUGH BY FIRST-PASS MASTER FRAME TO REMOVE CROSS-PLANE
             # ILLUMINATION VARIATIONS
-            print("\n# DIVIDING EACH ORIGINAL FLAT FRAME BY FIRST PASS MASTER FLAT")
+            self.log.print("\n# DIVIDING EACH ORIGINAL FLAT FRAME BY FIRST PASS MASTER FLAT")
             exposureFrames = []
             exposureFrames[:] = [
                 n.divide(combined_normalised_flat) for n in cf]
@@ -367,7 +367,7 @@ class soxs_mflat(_base_recipe_):
             self.products = productTable
             self.qc = qcTable
 
-        quicklook_image(log=self.log, CCDObject=mflat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
+        quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
 
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home)
@@ -496,7 +496,7 @@ class soxs_mflat(_base_recipe_):
         dcalibratedFlats = []
         qcalibratedFlats = []
         if not darkCollection and bias:
-            print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
+            self.log.print("\n# SUBTRACTING MASTER BIAS FROM FRAMES")
             for flat in flats:
                 calibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=None))
@@ -514,7 +514,7 @@ class soxs_mflat(_base_recipe_):
                         for h in darkCollection.headers()]
             darks = [c for c in darkCollection.ccds(ccd_kwargs={
                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
-            print("\n# SUBTRACTING MASTER DARK/OFF-LAMP FROM FRAMES")
+            self.log.print("\n# SUBTRACTING MASTER DARK/OFF-LAMP FROM FRAMES")
             for flat in flats:
                 mjd = flat.header[kw("MJDOBS")]
                 matchValue, matchIndex = nearest_neighbour(
@@ -610,7 +610,7 @@ class soxs_mflat(_base_recipe_):
             maskedFrame = ma.array(frame.data, mask=mask)
             quicklook_image(log=self.log, CCDObject=maskedFrame, show=False, ext=None, surfacePlot=True, title="Single masked flat frame")
 
-        print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL")
+        self.log.print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL")
         for frame, exp in zip(inputFlats, exposureFrames):
             maskedFrame = ma.array(exp.data, mask=mask)
 
@@ -656,27 +656,28 @@ class soxs_mflat(_base_recipe_):
         import numpy as np
         from astropy.stats import sigma_clip
 
-        print("\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY")
+        self.log.print("\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY")
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=orderTablePath, binx=self.binx, biny=self.biny)
+            log=self.log, orderTablePath=orderTablePath, binx=self.binx, biny=self.biny, prebinned=True)
 
         # BAD PIXEL COUNT AT START
         originalBPM = np.copy(frame.mask)
 
+        # SET MASK TO ZEROS OR ONES
         if zero:
             interOrderMask = np.zeros_like(frame.data)
         else:
             interOrderMask = np.ones_like(frame.data)
+
         orders = orderTablePixels["order"].values
-        axisAcoords_up = orderTablePixels[f"{self.axisA}coord_edgeup"].values
-        axisAcoords_low = orderTablePixels[f"{self.axisA}coord_edgelow"].values
+        axisAcoords_up = orderTablePixels[f"{self.axisA}coord_edgeup"].values.round().astype(int)
+        axisAcoords_low = orderTablePixels[f"{self.axisA}coord_edgelow"].values.round().astype(int)
         axisBcoords = orderTablePixels[f"{self.axisB}coord"].values
-        axisAcoords_up = axisAcoords_up.astype(int)
-        axisAcoords_low = axisAcoords_low.astype(int)
         uniqueOrders = orderTablePixels['order'].unique()
 
+        # CALCULATE AND RETURN MEDIAN FLUXES FOR ORDERS
         if returnMedianOrderFlux:
             orderFluxes = {}
             bAxisMiddles = {}
@@ -687,8 +688,12 @@ class soxs_mflat(_base_recipe_):
                 bAxisMiddles[o] = int(filteredDf[f"{self.axisB}coord"].mean())
             medianFlux = []
 
-        # UPDATE THE MASK TO INCLUDE INTER-ORDER BACKGROUND
+        # UPDATE THE MASK TO ALLOW INTER-ORDER PIXELS
         for u, l, b, o in zip(axisAcoords_up, axisAcoords_low, axisBcoords, orders):
+            if l < 0:
+                l = 0
+            if u < 0:
+                u = 0
             if self.axisA == "x":
                 interOrderMask[b, l:u] = 0
                 if returnMedianOrderFlux and b > bAxisMiddles[o] - 3 and b < bAxisMiddles[o] + 3:
@@ -732,7 +737,7 @@ class soxs_mflat(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow
         }).to_frame().T], ignore_index=True)
-        print(f"        {lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
+        self.log.print(f"        {lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
 
         frame.mask = (lowSensitivityPixelMask == 1) | (originalBPM == 1)
 

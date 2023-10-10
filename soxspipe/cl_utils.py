@@ -5,9 +5,8 @@
 Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
-    soxspipe init
     soxspipe prep <workspaceDirectory>
-    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
+    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -16,7 +15,6 @@ Usage:
     soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
-    init                                   setup the soxspipe settings file for the first time
     prep                                   prepare a folder of raw data (workspace) for data reduction
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
@@ -56,31 +54,47 @@ def main(arguments=None):
     # QUICKLY SKIP IF PRODUCT EXIST
     if len(sys.argv[1:]) == 2:
         if sys.argv[2].split(".")[-1].lower() == "sof":
-            sofName = os.path.basename(sys.argv[2]).replace(".sof", "")
-            if "_STARE_" in sofName:
-                sofName += "_SKYSUB"
-            productPath = "./product/soxs-" + sys.argv[1].replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
-
-            productPath = productPath.replace("//", "/")
+            from soxspipe.commonutils import toolkit
+            productPath = toolkit.predict_product_path(sys.argv[2])
             if os.path.exists(productPath):
                 print(f"The product of this recipe already exists at '{productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
 
+    clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
+
+    if sys.argv[1] == "prep":
+        # DOES SETTINGS FILE EXIST YET
+        testPath = sys.argv[2] + "/soxspipe.yaml"
+        exists = os.path.exists(testPath)
+        if not exists:
+            sys.argv[1] = "init"
+            # setup the command-line util settings
+            su = tools(
+                arguments=None,
+                docString=__doc__.replace("prep", "init"),
+                logLevel="WARNING",
+                options_first=False,
+                projectName="soxspipe",
+                defaultSettingsFile=True
+            )
+            arguments, settings, replacedLog, dbConn = su.setup()
+            sys.argv[1] = "prep"
+
     # setup the command-line util settings
     su = tools(
-        arguments=arguments,
+        arguments=None,
         docString=__doc__,
-        logLevel="ERROR",
+        logLevel="WARNING",
         options_first=False,
         projectName="soxspipe",
         defaultSettingsFile=True
     )
     arguments, settings, log, dbConn = su.setup()
 
-    # ALIGN ASTROPY LOGGING LEVEL WITH SOXSPIPES
+    # SET ASTROPY LOGGING LEVEL
     try:
         from astropy import log as astrolog
-        astrolog.setLevel(settings["logging settings"]["root"]["level"])
+        astrolog.setLevel("WARNING")
     except:
         pass
 
@@ -105,7 +119,7 @@ def main(arguments=None):
 
     ## START LOGGING ##
     startTime = times.get_now_sql_datetime()
-    log.info(
+    log.debug(
         '--- STARTING TO RUN THE cl_utils.py AT %s' %
         (startTime,))
 
@@ -144,22 +158,6 @@ def main(arguments=None):
         # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
         if a['outputDirectory']:
             settings["workspace-root-dir"] = a['outputDirectory']
-
-        if a["init"]:
-            from os.path import expanduser
-            home = expanduser("~")
-            filepath = home + "/.config/soxspipe/soxspipe.yaml"
-            try:
-                cmd = """open %(filepath)s""" % locals()
-                p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
-            except:
-                pass
-            try:
-                cmd = """start %(filepath)s""" % locals()
-                p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
-            except:
-                pass
-            return
 
         if a["mbias"]:
             from soxspipe.recipes import soxs_mbias
@@ -245,7 +243,7 @@ def main(arguments=None):
             )
             do.prepare()
     except Exception as e:
-        log.error(f'{e}', exc_info=True)
+        log.error(f'{e}\n{clCommand}', exc_info=True)
 
     # CALL FUNCTIONS/OBJECTS
 
@@ -255,7 +253,12 @@ def main(arguments=None):
     ## FINISH LOGGING ##
     endTime = times.get_now_sql_datetime()
     runningTime = times.calculate_time_difference(startTime, endTime)
-    log.info('-- FINISHED ATTEMPT TO RUN THE cl_utils.py AT %s (RUNTIME: %s) --' %
-             (endTime, runningTime, ))
+    log.debug('-- FINISHED ATTEMPT TO RUN THE cl_utils.py AT %s (RUNTIME: %s) --' %
+              (endTime, runningTime, ))
 
     return
+
+
+if __name__ == '__main__':
+
+    main()
