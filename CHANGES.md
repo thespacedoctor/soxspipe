@@ -1,27 +1,32 @@
 
 # Release Notes  
 
+## v0.9.0 - October 11, 2023
+
 * **FEATURE:** added a `predict_product_path` function to determine the product path from a recipe's input sof file
-* **ENHANCEMENT:** OB ids now getting add to the data-organiser database tables.
-* **REFACTOR:** `init` command has been subsumed into the prep command. The `prep` command will generate a settings file to live within the prepared workspace.
-* **REFACTOR:** continuum fitting code made more robust against edge cases (orders of the fit are automatically reduced if fit does not converge)
-* **ENHANCEMENT:** flux (and other daostarfinder metrics) are now recorded in the detected line-list QC file. This will help measure degradation of arc-lamps over time.
-* **FIXED**: sky-subtraction code and data-organiser fixed to work with binned data
-* **REFACTOR:** command-line startup speeds improved
 * **FEATURE:** Merging of individual order extracted spectra from object frame into a single spectrum for each arm
 * **FEATURE:** Object spectra are now extracted from the sky-subtracted frames using the Horne 86 method
 * **FEATURE:** Real SOXS data is now included in the unit-test suite (starting to replace simulated data unit-tests). `soxs-disp-solu` recipe so far.
 * **FEATURE:** SOXS NIR Xe line-lists added to static-calibration suite (single and multi pinhole).
-* **REFACTOR:** soxspipe now has a 'full' and a 'lite' test-suite. Using the lite suite will speed up deploying of new releases.
-* **ENHANCEMENT:** object trace FITS binary table added to stare-mode products (alongside complimentary QC plot)
+* **FEATURE:** when running a recipe, `soxspipe` writes informative logs to stdoutAND to a log file adjacent to the recipe's product file(s). Error logs are also written if a recipe fails (see docs).
+* **ENHANCEMENT:** recipe timing added to the end of the logs
 * **ENHANCEMENT:** fitted lines from the dispersion solution are written out to file as a QC product
+* **ENHANCEMENT:** flux (and other daostarfinder metrics) are now recorded in the detected line-list QC file. This will help measure degradation of arc-lamps over time.
 * **ENHANCEMENT:** FWHM and pixel-scale added to fitted lines from the dispersion solution
-* **ENHANCEMENT:** products and QC outputs are differentiated in the table reported upon recipe completion (see label column).
 * **ENHANCEMENT:** legends added to many of the QC plots
+* **ENHANCEMENT:** OB ids now getting add to the data-organiser database tables.
+* **ENHANCEMENT:** object trace FITS binary table added to stare-mode products (alongside complimentary QC plot)
+* **ENHANCEMENT:** products and QC outputs are differentiated in the table reported upon recipe completion (see label column).
 * **ENHANCEMENT:** verifying the master flat used to calibrate object/std spectra has the same slit-witdh as used to take the science frames
-* **DOCS:** updated docs with a more robust SOXSPIPE upgrade path (users having issue with `conda update ...`)
+* **REFACTOR:** `init` command has been subsumed into the prep command. The `prep` command will generate a settings file to live within the prepared workspace.
 * **REFACTOR:** `misc/` directory created by data-organiser even if empty
 * **REFACTOR:** close matplotlib plot after writing plots to file
+* **REFACTOR:** command-line startup speeds improved
+* **REFACTOR:** continuum fitting code made more robust against edge cases (orders of the fit are automatically reduced if fit does not converge)
+* **REFACTOR:** soxspipe now has a 'full' and a 'lite' test-suite. Using the lite suite will speed up deploying of new releases.
+* **DOCS:** updated docs with a more robust SOXSPIPE upgrade path (users having issue with `conda update ...`)
+* **FIXED**: sky-subtraction code and data-organiser fixed to work with binned data
+
 
 ## v0.8.0 - May 18, 2023
 

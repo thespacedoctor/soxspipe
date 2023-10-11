@@ -1052,7 +1052,6 @@ class _base_recipe_(object):
             self.log.print(tabulate(self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
             self.log.print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
             self.log.print(tabulate(self.products[columns2], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
-            self.log.print("\n")
 
         self.log.debug('completed the ``report_output`` method')
         return None
