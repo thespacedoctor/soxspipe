@@ -28,33 +28,16 @@ Documentation for soxspipe is hosted by [Read the Docs](https://soxspipe.readthe
 
 ## Installation
 
-The best way to install soxspipe is to use `conda` and install the package in its own isolated environment, as shown here:
+The best way to install or upgrade soxspipe is to use `conda` to install the package in its own isolated environment, as shown here:
 
 ``` bash
 conda create -n soxspipe python=3.9 soxspipe -c conda-forge
 conda activate soxspipe
 ```
 
+If you have previously installed soxspipe, a warning will be issued stating that a conda environment already exists; select 'y' when asked to remove the existing environment.
+
 To check installation was successful run `soxspipe -v`. This should return the version number of the install.
-
-To upgrade to the latest version of soxspipe use the command:
-
-``` bash
-conda upgrade soxspipe -c conda-forge
-```
-
-## Initialisation 
-
-Before using soxspipe you need to use the `init` command to generate a user settings file. Running the following creates a [yaml](https://learnxinyminutes.com/docs/yaml/) settings file in your home folder under `~/.config/soxspipe/soxspipe.yaml`:
-
-```bash
-soxspipe init
-```
-
-The file is initially populated with soxspipe's default settings which can be adjusted to your preference.
-
-If at any point the user settings file becomes corrupted or you just want to start afresh, simply trash the `soxspipe.yaml` file and rerun `soxspipe init`.
-
 
 ## How to cite soxspipe
 

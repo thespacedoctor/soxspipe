@@ -80,16 +80,16 @@ class soxs_spatial_solution(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_spatial_solution - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
-        print("# VERIFYING INPUT FRAMES")
+        self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
         sys.stdout.write("\x1b[1A\x1b[2K")
-        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+        self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
-            print("# RAW INPUT FRAMES - SUMMARY")
-            print(self.inputFrames.summary, "\n")
+            self.log.print("# RAW INPUT FRAMES - SUMMARY")
+            self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -151,9 +151,9 @@ class soxs_spatial_solution(_base_recipe_):
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
-            print()
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print()
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -184,6 +184,7 @@ class soxs_spatial_solution(_base_recipe_):
         from astropy.nddata import CCDData
         from astropy import units as u
         import pandas as pd
+        from soxspipe.commonutils.toolkit import quicklook_image
 
         arm = self.arm
         kw = self.kw
@@ -245,7 +246,7 @@ class soxs_spatial_solution(_base_recipe_):
             fileDir = self.workspaceRootPath
             filepath = self._write(
                 self.multiPinholeFrame, fileDir, filename=False, overwrite=True, product=False)
-            print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
+            self.log.print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
 
         # GENERATE AN UPDATED DISPERSION MAP
         from soxspipe.commonutils import create_dispersion_map
@@ -278,7 +279,8 @@ class soxs_spatial_solution(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} full dispersion-spatial solution",
-            "file_path": productPath
+            "file_path": productPath,
+            "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         if mapImagePath:
@@ -291,8 +293,13 @@ class soxs_spatial_solution(_base_recipe_):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "product_desc": f"{self.arm} 2D detector map of wavelength, slit position and order",
-                "file_path": productPath
+                "file_path": productPath,
+                "label": "PROD"
             }).to_frame().T], ignore_index=True)
+
+        # INSPECT THE MAP AGAINST THE MULTIPINHOLE FRAME
+        quicklook_image(
+            log=self.log, CCDObject=self.multiPinholeFrame, show=False, ext=False, stdWindow=1, title="Multi-pinhole Frame Overlaid with Dispersion Solution", surfacePlot=True, dispMap=mapPath, dispMapImage=mapImagePath, settings=self.settings, skylines=False)
 
         self.report_output()
 

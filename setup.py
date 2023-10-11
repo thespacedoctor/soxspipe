@@ -25,7 +25,8 @@ install_requires = [
     'tabulate',
     'bottleneck',
     'multiprocess',
-    'jinja2'
+    'jinja2',
+    'specutils'
 ]
 
 # READ THE DOCS SERVERS
@@ -40,7 +41,7 @@ setup(name="soxspipe",
       long_description_content_type='text/markdown',
       classifiers=[
           'Development Status :: 4 - Beta',
-          'License :: OSI Approved :: MIT License',
+          'License :: OSI Approved :: GPLv3 License',
           'Programming Language :: Python :: 3.9',
           'Topic :: Utilities',
       ],
@@ -50,7 +51,7 @@ setup(name="soxspipe",
       ),
       author='David Young',
       author_email='davidrobertyoung@gmail.com',
-      license='MIT',
+      license='GPLv3',
       packages=find_packages(exclude=["*tests*"]),
       include_package_data=True,
       install_requires=install_requires,

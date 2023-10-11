@@ -58,6 +58,22 @@ if not os.path.exists(pathToOutputDir):
 
 class test_soxs_spatial_solution(unittest.TestCase):
 
+    import pytest
+
+    @pytest.mark.full
+    def test_soxs_real_spatial_solution_nir_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs/spat-solution/sof/SOXS_REAL_MPH_ARC.sof"
+        from soxspipe.recipes import soxs_spatial_solution
+        this = soxs_spatial_solution(
+            log=log2,
+            settings=settings2,
+            inputFrames=sofPath,
+            overwrite=True,
+            create2DMap=True
+        )
+        this.produce_product()
+
+    @pytest.mark.full
     def test_soxs_spatial_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/MPH_ARC/sof/SOXSIM_MPH_ARC.sof"
         from soxspipe.recipes import soxs_spatial_solution
@@ -70,7 +86,7 @@ class test_soxs_spatial_solution(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_spatial_solution_nir_function2(self):
+    def test_xsh_spatial_solution_nir_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_NIR_SPAT_SOLUTION.sof"
         from soxspipe.recipes import soxs_spatial_solution
         this = soxs_spatial_solution(
@@ -82,7 +98,8 @@ class test_soxs_spatial_solution(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_spatial_solution_uvb_function(self):
+    @pytest.mark.full
+    def test_xsh_spatial_solution_uvb_function(self):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_UVB_SPAT_SOLUTION_1x1_fast.sof"
         from soxspipe.recipes import soxs_spatial_solution
@@ -95,27 +112,18 @@ class test_soxs_spatial_solution(unittest.TestCase):
         )
         this.produce_product()
 
-    # def test_soxs_spatial_solution_vis_function(self):
-    #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_VIS_SPAT_SOLUTION_1x1_fast.sof"
-    #     from soxspipe.recipes import soxs_spatial_solution
-    #     this = soxs_spatial_solution(
-    #         log=log,
-    #         settings=settings,
-    #         inputFrames=sofPath
-    #     )
-    #     this.produce_product()
+    @pytest.mark.full
+    def test_xsh_spatial_solution_vis_function(self):
+        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_VIS_SPAT_SOLUTION_1x1_fast.sof"
+        from soxspipe.recipes import soxs_spatial_solution
+        this = soxs_spatial_solution(
+            log=log,
+            settings=settings,
+            inputFrames=sofPath
+        )
+        this.produce_product()
 
-    # def test_soxs_spatial_solution_function(self):
-
-    #     # utKit.refresh_database() # reset database to database found in
-    #     # soxspipe/test/input
-    #     from soxspipe.recipes import soxs_spatial_solution
-    #     this = soxs_spatial_solution(
-    #         log=log,
-    #         settings=settings
-    #     )
-    #     this.get()
-
+    @pytest.mark.full
     def test_soxs_spatial_solution_function_exception(self):
 
         from soxspipe.recipes import soxs_spatial_solution

@@ -45,7 +45,10 @@ if not os.path.exists(pathToOutputDir):
 
 class test__base_recipe_(unittest.TestCase):
 
-    def test__base_recipe__function(self):
+    import pytest
+
+    @pytest.mark.full
+    def test_xsh_base_recipe__function(self):
 
         framePath = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
@@ -74,7 +77,8 @@ class test__base_recipe_(unittest.TestCase):
         # NOW CLEAN UP
         recipe.clean_up()
 
-    def test__base_recipe__function_exception(self):
+    @pytest.mark.full
+    def test_soxs_base_recipe__function_exception(self):
 
         from soxspipe.recipes import _base_recipe_
         try:

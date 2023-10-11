@@ -11,7 +11,6 @@
 """
 ################# GLOBAL IMPORTS ####################
 
-import math
 from fundamentals import tools
 from builtins import object
 import sys

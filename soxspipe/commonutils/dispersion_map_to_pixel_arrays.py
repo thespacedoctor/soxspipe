@@ -11,7 +11,6 @@
 """
 
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-import unicodecsv as csv
 from os.path import expanduser
 from fundamentals import tools
 from builtins import object
