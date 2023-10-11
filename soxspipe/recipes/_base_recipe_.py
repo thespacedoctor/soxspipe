@@ -518,7 +518,8 @@ class _base_recipe_(object):
             for j in removeItems:
                 if j in str(i).lower():
                     slitWidth.remove(i)
-        slitWidth = [s.replace("JH", "") for s in slitWidth]
+
+        slitWidth = [str(s).replace("JH", "") for s in slitWidth]
         slitWidth = list(set(slitWidth))
 
         if len(slitWidth) > 1:
