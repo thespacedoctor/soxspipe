@@ -58,7 +58,9 @@ if not os.path.exists(pathToOutputDir):
 
 class test_mbias(unittest.TestCase):
 
-    def test_mbias_from_directory_function(self):
+    import pytest
+
+    def test_xsh_mbias_from_directory_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/1x1/fast_read"
 
@@ -72,7 +74,7 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    def test_mbias_from_sof_function(self):
+    def test_xsh_mbias_from_sof_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mbias/sof/bias_uvb_1x1.sof"
 
         # utKit.refresh_database() # reset database to database found in
@@ -87,7 +89,8 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    def test_mbias_from_vis_sof_function(self):
+    @pytest.mark.full
+    def test_xsh_mbias_from_vis_sof_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mbias/sof/bias_vis_1x1.sof"
 
         # utKit.refresh_database() # reset database to database found in
@@ -102,7 +105,8 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    def test_mbias_from_list_of_fits_function(self):
+    @pytest.mark.full
+    def test_xsh_mbias_from_list_of_fits_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/1x1/slow_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
@@ -129,7 +133,8 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    def test_produce_product_function(self):
+    @pytest.mark.full
+    def test_xsh_produce_product_function(self):
         directory = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/1x1/fast_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
@@ -154,7 +159,7 @@ class test_mbias(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    def test_mbias_mixed_image_type_exception(self):
+    def test_xsh_mbias_mixed_image_type_exception(self):
 
         directory = settings["test-data-root"] + "/xshooter-lingain/vis"
         try:
@@ -171,7 +176,7 @@ class test_mbias(unittest.TestCase):
             assert True
             print(str(e))
 
-    def test_mbias_wrong_image_type_exception(self):
+    def test_xsh_mbias_wrong_image_type_exception(self):
 
         directory = settings["test-data-root"] + "/xshooter-mdark/vis"
         try:
@@ -188,7 +193,7 @@ class test_mbias(unittest.TestCase):
             assert True
             print(str(e))
 
-    def test_mbias_mixed_binning_exception(self):
+    def test_xsh_mbias_mixed_binning_exception(self):
 
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         try:
@@ -206,7 +211,8 @@ class test_mbias(unittest.TestCase):
             assert True
             print(str(e))
 
-    def test_mbias_function_exception(self):
+    @pytest.mark.full
+    def test_soxs_mbias_function_exception(self):
 
         from soxspipe.recipes import soxs_mbias
         try:

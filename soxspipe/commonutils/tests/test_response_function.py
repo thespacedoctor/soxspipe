@@ -27,8 +27,8 @@ arguments, settings, log, dbConn = su.setup()
 
 # SETUP PATHS TO COMMON DIRECTORIES FOR TEST DATA
 moduleDirectory = os.path.dirname(__file__)
-pathToInputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/uncompress/input"
-pathToOutputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/uncompress/output"
+pathToInputDir = moduleDirectory + "/input/"
+pathToOutputDir = moduleDirectory + "/output/"
 
 try:
     shutil.rmtree(pathToOutputDir)
@@ -45,24 +45,26 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 # xt-utkit-refresh-database
 
+class test_response_function(unittest.TestCase):
 
-class test_soxs_uncompress(unittest.TestCase):
     import pytest
 
-    def test_uncompress_function(self):
+    def test_xsh_response_function_function(self):
 
-        from soxspipe.commonutils import uncompress
-        uncompress(
+        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
+        from soxspipe.commonutils import response_function
+        reponse = response_function(
             log=log,
-            directory=pathToOutputDir
+            settings=settings,
+            stdExtractionPath=stdExtractionPath
         )
+        reponse.get()
 
-    @pytest.mark.full
-    def test_soxs_uncompress_function_exception(self):
+    def test_soxs_response_function_function_exception(self):
 
-        from soxspipe.commonutils import uncompress
+        from soxspipe.commonutils import response_function
         try:
-            this = uncompress(
+            this = response_function(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"

@@ -45,7 +45,7 @@ if not os.path.exists(pathToOutputDir):
 
 class test_set_of_files(unittest.TestCase):
 
-    def test01_set_of_files_function(self):
+    def test01_xsh_set_of_files_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
         from soxspipe.commonutils.set_of_files import set_of_files
@@ -57,7 +57,7 @@ class test_set_of_files(unittest.TestCase):
             directory=directory, sofPath=sofPath)
         print("sof file written to %(sofPath)s" % locals())
 
-    def test_sof_to_collection_from_directory_function(self):
+    def test_xsh_sof_to_collection_from_directory_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
         from soxspipe.commonutils.set_of_files import set_of_files
@@ -82,7 +82,7 @@ class test_set_of_files(unittest.TestCase):
         sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
 
-    def test_sof_to_collection_from_list_of_fits_files_function(self):
+    def test_xsh_sof_to_collection_from_list_of_fits_files_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
@@ -105,7 +105,7 @@ class test_set_of_files(unittest.TestCase):
         sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
 
-    def test_validate_sof_frames_function(self):
+    def test_xsh_validate_sof_frames_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
         from soxspipe.commonutils.set_of_files import set_of_files
@@ -118,7 +118,7 @@ class test_set_of_files(unittest.TestCase):
 
         print("sof file written to %(sofPath)s" % locals())
 
-    def test_set_of_files_function_exception(self):
+    def test_soxs_set_of_files_function_exception(self):
 
         from soxspipe.commonutils.set_of_files import set_of_files
         try:

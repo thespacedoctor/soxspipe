@@ -10,6 +10,7 @@
 
    Install <index>
    quickstart
+   logging
    primer_on_soxs_obs_modes
    recipes/index
    utils/index

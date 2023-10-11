@@ -14,7 +14,6 @@
 from soxspipe.commonutils.toolkit import generic_quality_checks
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-import math
 from ._base_recipe_ import _base_recipe_
 from fundamentals import tools
 from builtins import object
@@ -67,7 +66,6 @@ class soxs_mbias(_base_recipe_):
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
         super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
-        self.log = log
         log.debug("instansiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
@@ -89,15 +87,15 @@ class soxs_mbias(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MBIAS - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
-        print("# VERIFYING INPUT FRAMES")
+        self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
         sys.stdout.write("\x1b[1A\x1b[2K")
-        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+        self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        # print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
+        # self.log.print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
-        # print(self.inputFrames.summary, "\n")
+        # self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -130,9 +128,9 @@ class soxs_mbias(_base_recipe_):
 
         if error:
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
-            print()
+            self.log.error("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print()
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -230,7 +228,8 @@ class soxs_mbias(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
             "product_desc": f"{self.arm} Master bias frame",
-            "file_path": productPath
+            "file_path": productPath,
+            "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         self.report_output()
@@ -357,7 +356,7 @@ class soxs_mbias(_base_recipe_):
 
             # frame_mad = median_abs_deviation(dark_image_grey_fourier, axis=None)
             # frame_std = np.std(dark_image_grey_fourier)
-            # print(frame_std, frame_mad, frame_std / frame_mad)
+            # self.log.print(frame_std, frame_mad, frame_std / frame_mad)
 
             frame_mad = median_abs_deviation(goodData, axis=None)
             frame_std = np.std(goodData)

@@ -11,15 +11,11 @@
 """
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
-import random
 from soxspipe.commonutils.toolkit import quicklook_image
-
 from soxspipe.commonutils.toolkit import unpack_order_table
 from fundamentals import tools
 from builtins import object
 import sys
-import math
-
 import os
 os.environ['TERM'] = 'vt100'
 
@@ -118,7 +114,7 @@ class subtract_background(object):
         imageTech = self.frame.header[kw("DPR_TECH")].replace(",", "-")
         imageCat = self.frame.header[kw("DPR_CATG")].replace(",", "-")
 
-        print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
+        self.log.print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
@@ -204,6 +200,8 @@ class subtract_background(object):
         from scipy.signal import medfilt2d
         from scipy.interpolate import BSpline, splrep
         import numpy.ma as ma
+        import math
+        import random
 
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA

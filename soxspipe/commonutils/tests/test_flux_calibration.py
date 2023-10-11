@@ -27,8 +27,8 @@ arguments, settings, log, dbConn = su.setup()
 
 # SETUP PATHS TO COMMON DIRECTORIES FOR TEST DATA
 moduleDirectory = os.path.dirname(__file__)
-pathToInputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/uncompress/input"
-pathToOutputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/uncompress/output"
+pathToInputDir = moduleDirectory + "/input/"
+pathToOutputDir = moduleDirectory + "/output/"
 
 try:
     shutil.rmtree(pathToOutputDir)
@@ -45,24 +45,27 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 # xt-utkit-refresh-database
 
+class test_flux_calibration(unittest.TestCase):
 
-class test_soxs_uncompress(unittest.TestCase):
-    import pytest
+    def test_xsh_flux_calibration_function(self):
 
-    def test_uncompress_function(self):
+        responseFunction = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-fluxcal/nir/PLACEHOLDER.fits"
+        extractedSpectrum = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-fluxcal/nir/PLACEHOLDER.fits"
 
-        from soxspipe.commonutils import uncompress
-        uncompress(
+        from soxspipe.commonutils import flux_calibration
+        fluxcal = flux_calibration(
             log=log,
-            directory=pathToOutputDir
+            settings=settings,
+            responseFunction=responseFunction,
+            extractedSpectrum=extractedSpectrum
         )
+        fluxcal.calibrate()
 
-    @pytest.mark.full
-    def test_soxs_uncompress_function_exception(self):
+    def test_soxs_flux_calibration_function_exception(self):
 
-        from soxspipe.commonutils import uncompress
+        from soxspipe.commonutils import flux_calibration
         try:
-            this = uncompress(
+            this = flux_calibration(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"

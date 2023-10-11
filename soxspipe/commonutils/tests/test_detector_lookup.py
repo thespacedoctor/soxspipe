@@ -47,7 +47,7 @@ if not os.path.exists(pathToOutputDir):
 
 class test_detector_lookup(unittest.TestCase):
 
-    def test_detector_lookup_function(self):
+    def test_soxs_detector_lookup_function(self):
 
         from soxspipe.commonutils import detector_lookup
         this = detector_lookup(
@@ -57,7 +57,7 @@ class test_detector_lookup(unittest.TestCase):
         detectorDict = this._select_dictionary()
         print(this._select_dictionary())
 
-    def test_detector_lookup_get_function(self):
+    def test_soxs_detector_lookup_get_function(self):
 
         from soxspipe.commonutils import detector_lookup
         detectDict = detector_lookup(
@@ -85,7 +85,7 @@ class test_detector_lookup(unittest.TestCase):
         ).get("nir")
         print(detectDict)
 
-    def test_detector_lookup_function_wrong_arm(self):
+    def test_soxs_detector_lookup_function_wrong_arm(self):
 
         from soxspipe.commonutils import detector_lookup
         try:
@@ -98,7 +98,10 @@ class test_detector_lookup(unittest.TestCase):
             assert True
             print(str(e))
 
-    def test_detector_lookup_function_exception(self):
+    import pytest
+
+    @pytest.mark.full
+    def test_soxs_detector_lookup_function_exception(self):
 
         from soxspipe.commonutils import detector_lookup
         try:

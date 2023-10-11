@@ -47,15 +47,27 @@ if not os.path.exists(pathToOutputDir):
 
 class test_horne_extraction(unittest.TestCase):
 
-    def test_horne_extraction_function(self):
+    import pytest
 
-        skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
-        skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYSUB.fits"
-        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
-        dispMap = "~/xshooter-pipeline-dTata/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.fits"
+    def test_xsh_horne_extraction_merge_function(self):
+
+        # XRAY BINARY (FAINT)
+        # skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
+        # skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYSUB.fits"
+        # twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
+        # dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.fits"
+
+        # STANDARD STAR (BRIGHT)
+        skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T23.25.41.0889_NIR_STARE_205PT0_EG_274_SKYMODEL.fits"
+        skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T23.25.41.0889_NIR_STARE_205PT0_EG_274_SKYSUB.fits"
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T15.54.49.8571_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
+        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T15.54.49.8571_NIR_SPAT_SOL_0PT6651.fits"
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         import pandas as pd
+        import matplotlib.pyplot as plt
+        from matplotlib.pyplot import figure
+
         qc = pd.DataFrame({
             "soxspipe_recipe": [],
             "qc_name": [],
@@ -73,8 +85,16 @@ class test_horne_extraction(unittest.TestCase):
             "file_type": [],
             "obs_date_utc": [],
             "reduction_date_utc": [],
-            "file_path": []
+            "file_path": [],
+            "label": []
         })
+
+        from os.path import expanduser
+        home = expanduser("~")
+        twoDMap = twoDMap.replace("~", home)
+        skyModelFrame = skyModelFrame.replace("~", home)
+        skySubtractedFrame = skySubtractedFrame.replace("~", home)
+        dispMap = dispMap.replace("~", home)
 
         from soxspipe.commonutils import horne_extraction
         optimalExtractor = horne_extraction(
@@ -83,13 +103,92 @@ class test_horne_extraction(unittest.TestCase):
             skySubtractedFrame=skySubtractedFrame,
             twoDMapPath=twoDMap,
             settings=settings,
-            recipeName="soxs-order-stare",
+            recipeName="soxs-stare",
             qcTable=qc,
-            productsTable=products
+            productsTable=products,
+            dispersionMap=dispMap,
+            sofName="2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274"
         )
-        optimalExtractor.extract()
 
-    def test_horne_extraction_function_exception(self):
+        extractedOrdersTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.23T23.25.41.0889_NIR_STARE_205PT0_EG_274_EXTRACTED_ORDERS.fits"
+        # SPEC FORMAT TO PANDAS DATAFRAME
+        from astropy.table import Table
+        dat = Table.read(extractedOrdersTable, format='fits')
+        extractedOrdersDF = dat.to_pandas()
+        optimalExtractor.merge_extracted_orders(extractedOrdersDF)
+
+    @pytest.mark.full
+    def test_xsh_horne_extraction_function(self):
+
+        # XRAY BINARY (FAINT)
+        skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYMODEL.fits"
+        skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.31T00.13.27.1305_NIR_STARE_300PT0_SAX_J1808.43658_SKYSUB.fits"
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
+        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/2019.08.30T18.43.48.7597_NIR_SPAT_SOL_0PT6651.fits"
+
+        # STANDARD STAR (BRIGHT)
+        skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYMODEL.fits"
+        skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_SKYSUB.fits"
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
+        dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651.fits"
+
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        from matplotlib.pyplot import figure
+
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": [],
+            "label": []
+        })
+
+        from os.path import expanduser
+        home = expanduser("~")
+        twoDMap = twoDMap.replace("~", home)
+        skyModelFrame = skyModelFrame.replace("~", home)
+        skySubtractedFrame = skySubtractedFrame.replace("~", home)
+        dispMap = dispMap.replace("~", home)
+
+        from soxspipe.commonutils import horne_extraction
+        optimalExtractor = horne_extraction(
+            log=log,
+            skyModelFrame=skyModelFrame,
+            skySubtractedFrame=skySubtractedFrame,
+            twoDMapPath=twoDMap,
+            settings=settings,
+            recipeName="soxs-stare",
+            qcTable=qc,
+            productsTable=products,
+            dispersionMap=dispMap,
+            sofName="2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274"
+        )
+        #(w, f) = optimalExtractor.extract(15,3, 10, 2.0)
+
+        #figure(figsize=(13, 6))
+
+        #plt.ylim(-100, 300)
+        #plt.plot(w, f)
+
+        this = optimalExtractor.extract()
+
+    @pytest.mark.full
+    def test_soxs_horne_extraction_function_exception(self):
 
         from soxspipe.commonutils import horne_extraction
         try:
