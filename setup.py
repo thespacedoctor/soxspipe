@@ -34,6 +34,7 @@ exists = os.path.exists("/home/docs/")
 if exists:
     install_requires = ['fundamentals']
 
+
 setup(name="soxspipe",
       version=__version__,
       description="A python package and command-line tools to The data-reduction pipeline for the SOXS instrument",
