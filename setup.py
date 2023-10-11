@@ -42,7 +42,7 @@ setup(name="soxspipe",
       long_description_content_type='text/markdown',
       classifiers=[
           'Development Status :: 4 - Beta',
-          'License :: OSI Approved :: GPLv3 License',
+          'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
           'Programming Language :: Python :: 3.9',
           'Topic :: Utilities',
       ],
