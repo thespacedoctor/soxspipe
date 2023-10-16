@@ -746,6 +746,7 @@ class subtract_sky(object):
                 totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == True) | (imageMapOrderDF["object"] == True)].index)
 
             # Cursor up one line and clear line
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             percent = (float(totalClipped) / float(allPixels)) * 100.
             self.log.print(f'\tORDER {order}, ITERATION {i}: {newlyClipped} more pixels clipped ({totalClipped} pixels clipped in total = {percent:1.1f}%)')
@@ -890,6 +891,7 @@ class subtract_sky(object):
             if flux_error_ratio[1000:-1000].shape[0]:
                 flux_error_ratio = flux_error_ratio[1000:-1000]
 
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print(f'\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
             # self.log.print(fp, ier, msg)

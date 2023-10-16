@@ -253,8 +253,9 @@ def main(arguments=None):
     ## FINISH LOGGING ##
     endTime = times.get_now_sql_datetime()
     runningTime = times.calculate_time_difference(startTime, endTime)
-    log.print(f'Recipe Command: {(" ").join(sys.argv)}')
+    log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
     log.print(f'Recipe Run Time: {runningTime}\n\n')
+    print(f"{'='*70}\n")
 
     return
 

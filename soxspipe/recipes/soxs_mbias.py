@@ -89,6 +89,7 @@ class soxs_mbias(_base_recipe_):
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
+        sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
@@ -127,6 +128,7 @@ class soxs_mbias(_base_recipe_):
             error = "Input frames not BIAS frames" % locals()
 
         if error:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.error("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)

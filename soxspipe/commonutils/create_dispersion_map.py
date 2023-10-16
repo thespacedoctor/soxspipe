@@ -74,7 +74,6 @@ class create_dispersion_map(object):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
 
-        from photutils.utils import NoDetectionsWarning
         import warnings
 
         self.settings = settings
@@ -111,7 +110,11 @@ class create_dispersion_map(object):
             settings=settings
         ).get(self.arm)
 
+        from photutils.utils import NoDetectionsWarning
         warnings.simplefilter('ignore', NoDetectionsWarning)
+        # ASTROPY HAS RESET LOGGING LEVEL -- FIX
+        import logging
+        logging.getLogger().setLevel(logging.INFO + 5)
 
         # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
@@ -168,7 +171,7 @@ class create_dispersion_map(object):
         # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
         iteration = 0
-        self.log.print(f"FINDING PINHOLE ARC-LINES ON IMAGE")
+        self.log.print(f"\n# FINDING PINHOLE ARC-LINES ON IMAGE")
 
         # FIRST USE A RANDOM SELECTION OF LINES TO ITERATE ENTIRE INPUT LINE-LIST CLOSER TO THE OBSERVED LINES
         orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x']
@@ -209,7 +212,9 @@ class create_dispersion_map(object):
 
             if iteration > 1:
                 # Cursor up one line and clear line
+                sys.stdout.flush()
                 sys.stdout.write("\x1b[1A\x1b[2K")
+
             self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {medianx:0.3f},{mediany:0.3f}")
 
         # NOW TRY AND DETECT ALL LINES
@@ -496,6 +501,9 @@ class create_dispersion_map(object):
 
         import numpy as np
         from photutils import DAOStarFinder, IRAFStarFinder
+        # ASTROPY HAS RESET LOGGING LEVEL -- FIX
+        import logging
+        logging.getLogger().setLevel(logging.INFO + 5)
 
         windowHalf = self.windowHalf
 
@@ -964,7 +972,7 @@ class create_dispersion_map(object):
         clippingIterationLimit = self.settings[
             recipe]["poly-clipping-iteration-limit"]
 
-        self.log.print("\n# FINDING DISPERSION SOLUTION\n")
+        self.log.print("\n# FINDING DISPERSION SOLUTION")
 
         iteration = 0
 
@@ -1041,9 +1049,10 @@ class create_dispersion_map(object):
 
             if iteration > 1:
                 # Cursor up one line and clear line
+                sys.stdout.flush()
                 sys.stdout.write("\x1b[1A\x1b[2K")
 
-            self.log.print(f'ITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
+            self.log.print(f'\t ITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
 
             mask = (orderPixelTable['sigma_clipped'] == True)
             orderPixelTable = orderPixelTable.loc[~mask]
@@ -1098,10 +1107,10 @@ class create_dispersion_map(object):
             "observed arc-line positions (post-clipping)", fontsize=10)
 
         if isinstance(missingLines, pd.core.frame.DataFrame):
-            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.1, linewidths=0.5, label="undetected line location")
+            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.4, linewidths=0.5, label="undetected line location")
         if len(allClippedLines):
-            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.2, linewidths=0.5, label="line clipped during dispersion solution fitting")
-        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.1, label="detected line location")
+            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.4, linewidths=0.5, label="line clipped during dispersion solution fitting")
+        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.4, label="detected line location")
         # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
         mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))
         toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
@@ -1569,6 +1578,7 @@ class create_dispersion_map(object):
                 # PIXELS OUTSIDE OF DETECTOR EDGES - IGNORE
                 pass
 
+        sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
         percentageFound = (1 - (np.count_nonzero(np.isnan(wlMap.data)) / np.count_nonzero(wlMap.data))) * 100
         self.log.print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted.")
@@ -1632,6 +1642,12 @@ class create_dispersion_map(object):
         from scipy.spatial import cKDTree
 
         # RUN DAOFINDER ON ENTIRE IMAGE
+        # REMOVE LOCATIONS OUTSIDE OF IMAGE
+        mask = ((orderPixelTable['detector_x_shifted'] < pinholeFrameMasked.shape[0]) & (orderPixelTable['detector_x_shifted'] > 0) & (orderPixelTable['detector_y_shifted'] < pinholeFrameMasked.shape[1]) & (orderPixelTable['detector_y_shifted'] > 0))
+        orderPixelTable = orderPixelTable.loc[mask]
+
+        orderPixelTable.reset_index(inplace=True)
+
         orderPixelTableCoords = list(zip(orderPixelTable['detector_x_shifted'].values, orderPixelTable['detector_y_shifted'].values))
         daofind = DAOStarFinder(
             fwhm=3., threshold=1.3 * std, exclude_border=False, xycoords=orderPixelTableCoords)

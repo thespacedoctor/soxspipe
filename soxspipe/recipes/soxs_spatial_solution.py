@@ -82,6 +82,7 @@ class soxs_spatial_solution(_base_recipe_):
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
+        sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
@@ -150,6 +151,7 @@ class soxs_spatial_solution(_base_recipe_):
                         error = f"Input frames for soxspipe spatial_solution need to be LAMP,WAVE, a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
 
         if error:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)

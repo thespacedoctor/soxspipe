@@ -534,6 +534,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     order = crossDispersionSlices["order"].values[0]
 
     # CREATE THE SLICES AND DROP SLICES WITH ALL NANs (TYPICALLY PIXELS WITH NANs IN 2D IMAGE MAP)
+    sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
     self.log.print(f"\t## SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
 
@@ -560,6 +561,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
+    sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
     self.log.print(f"\t## FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
     for slitPixelIndex in range(0, slitHalfLength * 2):
@@ -594,6 +596,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
             # self.log.print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
             iteration = iteration + 1
             # if iteration > 1:
+            #     sys.stdout.flush()
             #     sys.stdout.write("\x1b[1A\x1b[2K")
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
@@ -613,6 +616,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     transposedProfiles = crossSlitProfiles.T.tolist()
     crossDispersionSlices["sliceFittedProfile"] = [np.array(t) for t in transposedProfiles]
 
+    sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
     self.log.print(f"\t## EXTRACTING THE SPECTRUM - ORDER {order}")
 
