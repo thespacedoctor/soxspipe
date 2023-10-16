@@ -263,7 +263,6 @@ class data_organiser(object):
         self._write_sof_files()
         self._write_reduction_shell_scripts()
 
-        # sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
         self.log.print(f"In this workspace you will find:\n")
         self.log.print(f"   - `raw_frames/`: all raw-frames to be reduced")

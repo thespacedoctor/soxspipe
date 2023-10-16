@@ -396,6 +396,7 @@ class _base_recipe_(object):
 
         # CHECK WE ACTUALLY HAVE IMAGES
         if not len(self.inputFrames.files_filtered(include_path=True)):
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             raise FileNotFoundError(
@@ -420,6 +421,7 @@ class _base_recipe_(object):
         # MIXED INPUT ARMS ARE BAD
         if len(arm) > 1:
             arms = " and ".join(arm)
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -452,6 +454,7 @@ class _base_recipe_(object):
                 pass
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             raise TypeError(
@@ -468,6 +471,7 @@ class _base_recipe_(object):
             readSpeed.remove(None)
 
         if len(readSpeed) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -488,6 +492,7 @@ class _base_recipe_(object):
             gain.remove(None)
 
         if len(gain) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -523,6 +528,7 @@ class _base_recipe_(object):
         slitWidth = list(set(slitWidth))
 
         if len(slitWidth) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -537,6 +543,7 @@ class _base_recipe_(object):
 
         # MIXED NOISE
         if len(ron) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -739,6 +746,10 @@ class _base_recipe_(object):
                 os.makedirs(filedir)
 
         filepath = filedir + "/" + filename
+
+        # SET BAD-PIXELS TO 0 IN DATA FRAME
+        # self.log.print(f"Setting {frame.mask.sum()} bad-pixels to a value of 0")
+        frame.data[frame.mask] = 0
 
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
