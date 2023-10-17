@@ -3,6 +3,7 @@
 
 ## v0.9.1 - October 16, 2023
 
+* **REFACTOR:** nans have been replaced by zero in FITS image product
 * **FIXED**: a mismatch between daofind results and the original input pixel table was causing dispersion solution to break (a recent bug introduced during code optimisations)
 * **FIXED**: the internal soxspipe logger was being interfered with by astropy so that logs were somtimes getting redirected to the wrong place
 * **REFACTOR:** bad-pixel values set to 0 in data extensions of products

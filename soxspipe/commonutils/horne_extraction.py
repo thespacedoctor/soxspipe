@@ -174,6 +174,9 @@ class horne_extraction(object):
         ydim = self.twoDMap[0].data.shape[0]
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
+
+        skySubtractedFrame.data[skySubtractedFrame.data == 0] = np.nan
+
         try:
             self.imageMap = pd.DataFrame.from_dict({
                 "x": xarray,

@@ -256,9 +256,6 @@ class subtract_sky(object):
 
         # WRITE CCDDATA OBJECT TO FILE
         # SET NANs TO 0
-
-        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
-
         skymodelCCDData.data[np.isnan(skymodelCCDData.data)] = 0
         skymodelCCDData.uncertainty.array[np.isnan(skymodelCCDData.uncertainty.array)] = 0
         HDUList = skymodelCCDData.to_hdu(
