@@ -255,6 +255,12 @@ class subtract_sky(object):
         }).to_frame().T], ignore_index=True)
 
         # WRITE CCDDATA OBJECT TO FILE
+        # SET NANs TO 0
+
+        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+
+        skymodelCCDData.data[np.isnan(skymodelCCDData.data)] = 0
+        skymodelCCDData.uncertainty.array[np.isnan(skymodelCCDData.uncertainty.array)] = 0
         HDUList = skymodelCCDData.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
@@ -278,6 +284,8 @@ class subtract_sky(object):
         }).to_frame().T], ignore_index=True)
 
         # WRITE CCDDATA OBJECT TO FILE
+        skySubtractedCCDData.data[np.isnan(skySubtractedCCDData.data)] = 0
+        skySubtractedCCDData.uncertainty.array[np.isnan(skySubtractedCCDData.uncertainty.array)] = 0
         HDUList = skySubtractedCCDData.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
@@ -860,7 +868,7 @@ class subtract_sky(object):
             t, c, k = tck
 
             if ier == 10:
-                self.log.print(f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n")
+                self.log.info(f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n")
                 tck = tck_previous
                 break
             else:

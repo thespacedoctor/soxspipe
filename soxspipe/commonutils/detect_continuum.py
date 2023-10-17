@@ -611,7 +611,7 @@ class detect_continuum(_base_detect):
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
                 if mean_res > 1:
                     # BAD FIT ... FORCE A FAIL
-                    raise e
+                    raise AttributeError("Failed to continuum trace")
 
                 n_coeff = 0
                 for i in range(0, self.orderDeg + 1):

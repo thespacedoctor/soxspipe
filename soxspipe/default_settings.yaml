@@ -113,7 +113,7 @@ soxs-stare:
         # NUMBER OF CROSS-ORDER SLICES PER ORDER
         order-sample-count: 200
         # LENGTH OF EACH SLICE (PIXELS)
-        slice-length: 10
+        slice-length: 15
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
         peak-sigma-limit: 3
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
