@@ -165,8 +165,16 @@ class create_dispersion_map(object):
         pinholeFrame = self.pinholeFrame
         pinholeFrameMasked = np.ma.array(pinholeFrame.data, mask=pinholeFrame.mask)
         mean, median, std = sigma_clipped_stats(pinholeFrameMasked, sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+
+        self.mean = mean
+        self.std = std
+
         pinholeFrameMasked = pinholeFrameMasked - median
         self.pinholeFrameMasked = pinholeFrameMasked
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=pinholeFrameMasked, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
@@ -176,6 +184,7 @@ class create_dispersion_map(object):
         # FIRST USE A RANDOM SELECTION OF LINES TO ITERATE ENTIRE INPUT LINE-LIST CLOSER TO THE OBSERVED LINES
         orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x']
         orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y']
+
         medianx = 1
         mediany = 1
         final = False
@@ -289,7 +298,7 @@ class create_dispersion_map(object):
         tryCount = 0
         while not fitFound and tryCount < 5:
             try:
-                popt_x, popt_y, res_plots, goodLinesTable, clippedLinesTable = self.fit_polynomials(
+                popt_x, popt_y, goodLinesTable, clippedLinesTable = self.fit_polynomials(
                     orderPixelTable=orderPixelTable,
                     wavelengthDeg=wavelengthDeg,
                     orderDeg=orderDeg,
@@ -306,6 +315,17 @@ class create_dispersion_map(object):
                 if tryCount == 5:
                     self.log.print(f"Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
+
+        res_plots = self.create_dispersion_map_qc_plot(
+            xcoeff=popt_x,
+            ycoeff=popt_y,
+            orderDeg=orderDeg,
+            wavelengthDeg=wavelengthDeg,
+            slitDeg=slitDeg,
+            orderPixelTable=goodLinesTable,
+            missingLines=missingLines,
+            allClippedLines=clippedLinesTable
+        )
 
         # GET FILENAME FOR THE LINE LISTS
         if not self.sofName:
@@ -897,7 +917,6 @@ class create_dispersion_map(object):
         **Return:**
             - ``xcoeff`` -- the x-coefficients post clipping
             - ``ycoeff`` -- the y-coefficients post clipping
-            - ``res_plots`` -- plot of fit residuals
             - ``goodLinesTable`` -- the fitted line-list with metrics
             - ``clippedLinesTable`` -- the lines that were sigma-clipped during polynomial fitting
         """
@@ -916,15 +935,6 @@ class create_dispersion_map(object):
 
         arm = self.arm
         dp = self.detectorParams
-
-        # XSH
-        if self.inst == "XSHOOTER":
-            rotateImage = 90
-            flipImage = 1
-        else:
-            # SOXS
-            rotateImage = 0
-            flipImage = 0
 
         if self.firstGuessMap:
             recipe = "soxs-spatial-solution"
@@ -1060,147 +1070,8 @@ class create_dispersion_map(object):
         if len(allClippedLines):
             allClippedLines = pd.concat(allClippedLines, ignore_index=True)
 
-        mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
-            orderPixelTable=orderPixelTable,
-            xcoeff=xcoeff,
-            ycoeff=ycoeff,
-            orderDeg=orderDeg,
-            wavelengthDeg=wavelengthDeg,
-            slitDeg=slitDeg,
-            writeQCs=True,
-            pixelRange=True)
-
-        mean_x_res = abs(orderPixelTable["residuals_x"]).mean()
-        mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
-
-        # a = plt.figure(figsize=(40, 15))
-        import matplotlib.pyplot as plt
-        if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
-            fig = plt.figure(figsize=(6, 16.5), constrained_layout=True)
-            # CREATE THE GRID OF AXES
-            gs = fig.add_gridspec(5, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:, 0:2])
-            bottomright = fig.add_subplot(gs[4:, 2:])
-        else:
-            fig = plt.figure(figsize=(6, 11), constrained_layout=True)
-            # CREATE THE GRID OF AXES
-            gs = fig.add_gridspec(6, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:, 0:2])
-            bottomright = fig.add_subplot(gs[4:, 2:])
-
-        # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = self.pinholeFrame.data
-        if self.axisA == "x":
-            rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
-            rotatedImg = np.flipud(rotatedImg)
-
-        std = np.nanstd(rotatedImg)
-        mean = np.nanmean(rotatedImg)
-        vmax = mean + 2 * std
-        vmin = mean - 0.5 * std
-        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.5)
-        toprow.set_title(
-            "observed arc-line positions (post-clipping)", fontsize=10)
-
-        if isinstance(missingLines, pd.core.frame.DataFrame):
-            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.4, linewidths=0.5, label="undetected line location")
-        if len(allClippedLines):
-            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.4, linewidths=0.5, label="line clipped during dispersion solution fitting")
-        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.4, label="detected line location")
-        # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
-        mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))
-        toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
-        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
-        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
-
-        toprow.set_xlim([0, rotatedImg.shape[1]])
-        if self.axisA == "x":
-            toprow.invert_yaxis()
-        toprow.set_ylim([0, rotatedImg.shape[0]])
-
-        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.5)
-        midrow.set_title(
-            "global dispersion solution", fontsize=10)
-
-        xfit = orderPixelTable[f"fit_{self.axisA}"]
-        # midrow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='red', s=1, alpha=0.9)
-        midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
-                       orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1, label="fitted line (size proportion to line-fit residual)")
-
-        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
-        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        midrow.tick_params(axis='both', which='major', labelsize=9)
-        midrow.set_xlim([0, rotatedImg.shape[1]])
-        if self.axisA == "x":
-            midrow.invert_yaxis()
-        midrow.set_ylim([0, rotatedImg.shape[0]])
-
-        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
-
-        # PLOT THE FINAL RESULTS:
-        plt.subplots_adjust(top=0.92)
-        bottomleft.scatter(orderPixelTable[f"residuals_{self.axisA}"], orderPixelTable[
-            f"residuals_{self.axisB}"], alpha=0.1)
-        bottomleft.set_xlabel(f'{self.axisA} residual (mean: {mean_x_res:2.2f} pix)')
-        bottomleft.set_ylabel(f'{self.axisB} residual (mean: {mean_y_res:2.2f} pix)')
-        bottomleft.tick_params(axis='both', which='major', labelsize=9)
-
-        from astropy.visualization import hist
-        hist(orderPixelTable["residuals_xy"], bins='scott', ax=bottomright, histtype='stepfilled',
-             alpha=0.7, density=True)
-        bottomright.set_xlabel('xy residual')
-        bottomright.tick_params(axis='both', which='major', labelsize=9)
-
-        subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        if self.firstGuessMap:
-            fig.suptitle(f"residuals of global dispersion solution fitting - multi-pinhole\n{subtitle}", fontsize=12)
-        else:
-            fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
-
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-
-        # GET FILENAME FOR THE RESIDUAL PLOT
-        if not self.sofName:
-            res_plots = filenamer(
-                log=self.log,
-                frame=self.pinholeFrame,
-                settings=self.settings
-            )
-            res_plots = res_plots.replace(".fits", ".pdf")
-        else:
-            res_plots = self.sofName + "_RESIDUALS.pdf"
-        # plt.show()
-
-        if self.firstGuessMap:
-            filePath = f"{self.qcDir}/{res_plots}"
-        else:
-            filePath = f"{self.qcDir}/{res_plots}"
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "product_label": "DISP_MAP_RES",
-            "file_name": res_plots,
-            "file_type": "PDF",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"{self.arm} dispersion solution QC plots",
-            "file_path": filePath,
-            "label": "QC"
-        }).to_frame().T], ignore_index=True)
-
-        plt.tight_layout()
-        # plt.show()
-        plt.savefig(filePath, dpi=720)
-        plt.close()
-
         self.log.debug('completed the ``fit_polynomials`` method')
-        return xcoeff, ycoeff, res_plots, orderPixelTable, allClippedLines
+        return xcoeff, ycoeff, orderPixelTable, allClippedLines
 
     def create_placeholder_images(
             self,
@@ -1234,7 +1105,7 @@ class create_dispersion_map(object):
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderTable, extend=0.)
+            log=self.log, orderTablePath=self.orderTable, extend=0., order=order)
 
         # CREATE THE IMAGE SAME SIZE AS DETECTOR - NAN INSIDE ORDERS, 0 OUTSIDE
         science_pixels = dp["science-pixels"]
@@ -1268,7 +1139,11 @@ class create_dispersion_map(object):
                 f"{self.axisA}coord_edgeup"] + expandEdges
             axisACoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
                 f"{self.axisA}coord_edgelow"] - expandEdges
-            axisACoord_edgelow, axisACoord_edgeup, axisBcoord = zip(*[(l, u, b) for l, u, b in zip(axisACoord_edgelow, axisACoord_edgeup, axisBcoord) if l > 0 and l < axisALen and u > 0 and u < axisALen and b > 0 and b < axisBLen])
+            axisACoord_edgeup[axisACoord_edgeup > axisALen] = axisALen
+            axisACoord_edgeup[axisACoord_edgeup < 0] = 0
+            axisACoord_edgelow[axisACoord_edgelow > axisALen] = axisALen
+            axisACoord_edgelow[axisACoord_edgelow < 0] = 0
+            axisACoord_edgelow, axisACoord_edgeup, axisBcoord = zip(*[(l, u, b) for l, u, b in zip(axisACoord_edgelow, axisACoord_edgeup, axisBcoord) if l >= 0 and l <= axisALen and u >= 0 and u <= axisALen and b >= 0 and b <= axisBLen])
             if reverse:
                 for b, u, l in zip(axisBcoord, np.ceil(axisACoord_edgeup).astype(int), np.floor(axisACoord_edgelow).astype(int)):
                     if self.axisA == "x":
@@ -1643,7 +1518,7 @@ class create_dispersion_map(object):
 
         # RUN DAOFINDER ON ENTIRE IMAGE
         # REMOVE LOCATIONS OUTSIDE OF IMAGE
-        mask = ((orderPixelTable['detector_x_shifted'] < pinholeFrameMasked.shape[0]) & (orderPixelTable['detector_x_shifted'] > 0) & (orderPixelTable['detector_y_shifted'] < pinholeFrameMasked.shape[1]) & (orderPixelTable['detector_y_shifted'] > 0))
+        mask = ((orderPixelTable['detector_y_shifted'] < pinholeFrameMasked.shape[0]) & (orderPixelTable['detector_y_shifted'] > 0) & (orderPixelTable['detector_x_shifted'] < pinholeFrameMasked.shape[1]) & (orderPixelTable['detector_x_shifted'] > 0))
         orderPixelTable = orderPixelTable.loc[mask]
 
         orderPixelTable.reset_index(inplace=True)
@@ -1690,6 +1565,204 @@ class create_dispersion_map(object):
 
         self.log.debug('completed the ``measure_pinhole_lines`` method')
         return orderPixelTable
+
+    # use the tab-trigger below for new method
+    def create_dispersion_map_qc_plot(
+            self,
+            xcoeff,
+            ycoeff,
+            orderDeg,
+            wavelengthDeg,
+            slitDeg,
+            orderPixelTable,
+            missingLines,
+            allClippedLines):
+        """*create dispersion map qc plot*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - ``res_plots``
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``create_dispersion_map_qc_plot`` method')
+
+        import numpy as np
+        from astropy.visualization import hist
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+        arm = self.arm
+        kw = self.kw
+        dp = self.detectorParams
+
+        # XSH
+        if self.inst == "XSHOOTER":
+            rotateImage = 90
+            flipImage = 1
+        else:
+            # SOXS
+            rotateImage = 0
+            flipImage = 0
+
+        mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
+            orderPixelTable=orderPixelTable,
+            xcoeff=xcoeff,
+            ycoeff=ycoeff,
+            orderDeg=orderDeg,
+            wavelengthDeg=wavelengthDeg,
+            slitDeg=slitDeg,
+            writeQCs=True,
+            pixelRange=True)
+
+        mean_x_res = abs(orderPixelTable["residuals_x"]).mean()
+        mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
+
+        # a = plt.figure(figsize=(40, 15))
+
+        if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
+            fig = plt.figure(figsize=(6, 16.5), constrained_layout=True)
+            # CREATE THE GRID OF AXES
+            gs = fig.add_gridspec(5, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:, 0:2])
+            bottomright = fig.add_subplot(gs[4:, 2:])
+        else:
+            fig = plt.figure(figsize=(6, 11), constrained_layout=True)
+            # CREATE THE GRID OF AXES
+            gs = fig.add_gridspec(6, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:, 0:2])
+            bottomright = fig.add_subplot(gs[4:, 2:])
+
+        # ROTATE THE IMAGE FOR BETTER LAYOUT
+        rotatedImg = self.pinholeFrameMasked
+        if self.axisA == "x":
+            rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
+            rotatedImg = np.flipud(rotatedImg)
+
+        std = self.std
+        mean = self.mean
+
+        vmax = mean + 2 * std
+        vmin = mean - 0.5 * std
+        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.5)
+        toprow.set_title(
+            "observed arc-line positions (post-clipping)", fontsize=10)
+
+        if isinstance(missingLines, pd.core.frame.DataFrame):
+            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.4, linewidths=0.5, label="undetected line location")
+        if len(allClippedLines):
+            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.4, linewidths=0.5, label="line clipped during dispersion solution fitting")
+        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.4, label="detected line location")
+        # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
+        mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))
+        toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
+        toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
+        toprow.tick_params(axis='both', which='major', labelsize=9)
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+
+        toprow.set_xlim([0, rotatedImg.shape[1]])
+        if self.axisA == "x":
+            toprow.invert_yaxis()
+        toprow.set_ylim([0, rotatedImg.shape[0]])
+
+        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.5)
+        midrow.set_title(
+            "global dispersion solution", fontsize=10)
+
+        xfit = orderPixelTable[f"fit_{self.axisA}"]
+        # midrow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='red', s=1, alpha=0.9)
+        midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
+                       orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1, label="fitted line (size proportion to line-fit residual)")
+
+        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
+        midrow.tick_params(axis='both', which='major', labelsize=9)
+        midrow.set_xlim([0, rotatedImg.shape[1]])
+        if self.axisA == "x":
+            midrow.invert_yaxis()
+        midrow.set_ylim([0, rotatedImg.shape[0]])
+
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+
+        # PLOT THE FINAL RESULTS:
+        plt.subplots_adjust(top=0.92)
+        bottomleft.scatter(orderPixelTable[f"residuals_{self.axisA}"], orderPixelTable[
+            f"residuals_{self.axisB}"], alpha=0.1)
+        bottomleft.set_xlabel(f'{self.axisA} residual (mean: {mean_x_res:2.2f} pix)')
+        bottomleft.set_ylabel(f'{self.axisB} residual (mean: {mean_y_res:2.2f} pix)')
+        bottomleft.tick_params(axis='both', which='major', labelsize=9)
+
+        hist(orderPixelTable["residuals_xy"], bins='scott', ax=bottomright, histtype='stepfilled',
+             alpha=0.7, density=True)
+        bottomright.set_xlabel('xy residual')
+        bottomright.tick_params(axis='both', which='major', labelsize=9)
+
+        subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
+        if self.firstGuessMap:
+            fig.suptitle(f"residuals of global dispersion solution fitting - multi-pinhole\n{subtitle}", fontsize=12)
+        else:
+            fig.suptitle(f"residuals of global dispersion solution fitting - single pinhole\n{subtitle}", fontsize=12)
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        # GET FILENAME FOR THE RESIDUAL PLOT
+        if not self.sofName:
+            res_plots = filenamer(
+                log=self.log,
+                frame=self.pinholeFrame,
+                settings=self.settings
+            )
+            res_plots = res_plots.replace(".fits", ".pdf")
+        else:
+            res_plots = self.sofName + "_RESIDUALS.pdf"
+        # plt.show()
+
+        if self.firstGuessMap:
+            filePath = f"{self.qcDir}/{res_plots}"
+        else:
+            filePath = f"{self.qcDir}/{res_plots}"
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "DISP_MAP_RES",
+            "file_name": res_plots,
+            "file_type": "PDF",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"{self.arm} dispersion solution QC plots",
+            "file_path": filePath,
+            "label": "QC"
+        }).to_frame().T], ignore_index=True)
+
+        plt.tight_layout()
+        # plt.show()
+        plt.savefig(filePath, dpi=720)
+        plt.close()
+
+        self.log.debug('completed the ``create_dispersion_map_qc_plot`` method')
+        return res_plots
 
     # use the tab-trigger below for new method
     # xt-class-method

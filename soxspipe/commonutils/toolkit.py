@@ -411,7 +411,8 @@ def unpack_order_table(
         pixelDelta=1,
         binx=1,
         biny=1,
-        prebinned=False):
+        prebinned=False,
+        order=False):
     """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
 
     **Key Arguments:**
@@ -422,6 +423,7 @@ def unpack_order_table(
     - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
     - ``prebinned`` -- was the order-table measured on a pre-binned frame (typically only for mflats). Default *False*
+    - ``order`` -- unpack only a single order
 
     **Usage:**
 
@@ -447,6 +449,10 @@ def unpack_order_table(
 
     dat = Table.read(orderTablePath, format='fits', hdu=2)
     orderMetaTable = dat.to_pandas()
+
+    if order:
+        mask = (orderMetaTable["order"] == order)
+        orderMetaTable = orderMetaTable.loc[mask]
 
     if "degy_cent" in orderPolyTable.columns:
         axisA = "x"
