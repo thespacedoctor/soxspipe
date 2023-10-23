@@ -625,9 +625,9 @@ class create_dispersion_map(object):
         # SORT X COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_x = {}
         coeff_dict_x["axis"] = "x"
-        coeff_dict_x["order-deg"] = orderDeg
-        coeff_dict_x["wavelength-deg"] = wavelengthDeg
-        coeff_dict_x["slit-deg"] = slitDeg
+        coeff_dict_x["order_deg"] = orderDeg
+        coeff_dict_x["wavelength_deg"] = wavelengthDeg
+        coeff_dict_x["slit_deg"] = slitDeg
         n_coeff = 0
         for i in range(0, orderDeg + 1):
             for j in range(0, wavelengthDeg + 1):
@@ -638,9 +638,9 @@ class create_dispersion_map(object):
         # SORT Y COEFFICIENT OUTPUT TO WRITE TO FILE
         coeff_dict_y = {}
         coeff_dict_y["axis"] = "y"
-        coeff_dict_y["order-deg"] = orderDeg
-        coeff_dict_y["wavelength-deg"] = wavelengthDeg
-        coeff_dict_y["slit-deg"] = slitDeg
+        coeff_dict_y["order_deg"] = orderDeg
+        coeff_dict_y["wavelength_deg"] = wavelengthDeg
+        coeff_dict_y["slit_deg"] = slitDeg
         n_coeff = 0
         for i in range(0, orderDeg + 1):
             for j in range(0, wavelengthDeg + 1):
