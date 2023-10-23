@@ -157,6 +157,8 @@ class create_dispersion_map(object):
         orderPixelTable = self.get_predicted_line_list()
         totalLines = len(orderPixelTable.index)
 
+        self.uniqueSlitPos = orderPixelTable['slit_position'].unique()
+
         # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME
         windowSize = self.recipeSettings["pixel-window-size"]
         self.windowHalf = int(windowSize / 2)
@@ -306,6 +308,7 @@ class create_dispersion_map(object):
                     missingLines=missingLines
                 )
                 fitFound = True
+
             except Exception as e:
                 degList = [wavelengthDeg, orderDeg, slitDeg]
                 degList[degList.index(max(degList))] -= 1
@@ -315,17 +318,6 @@ class create_dispersion_map(object):
                 if tryCount == 5:
                     self.log.print(f"Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
-
-        res_plots = self.create_dispersion_map_qc_plot(
-            xcoeff=popt_x,
-            ycoeff=popt_y,
-            orderDeg=orderDeg,
-            wavelengthDeg=wavelengthDeg,
-            slitDeg=slitDeg,
-            orderPixelTable=goodLinesTable,
-            missingLines=missingLines,
-            allClippedLines=clippedLinesTable
-        )
 
         # GET FILENAME FOR THE LINE LISTS
         if not self.sofName:
@@ -390,7 +382,30 @@ class create_dispersion_map(object):
 
         if self.firstGuessMap and self.orderTable and self.create2DMap:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
+            res_plots = self._create_dispersion_map_qc_plot(
+                xcoeff=popt_x,
+                ycoeff=popt_y,
+                orderDeg=orderDeg,
+                wavelengthDeg=wavelengthDeg,
+                slitDeg=slitDeg,
+                orderPixelTable=goodLinesTable,
+                missingLines=missingLines,
+                allClippedLines=clippedLinesTable,
+                dispMap=mapPath,
+                dispMapImage=mapImagePath
+            )
             return mapPath, mapImagePath, res_plots, self.qc, self.products
+
+        res_plots = self._create_dispersion_map_qc_plot(
+            xcoeff=popt_x,
+            ycoeff=popt_y,
+            orderDeg=orderDeg,
+            wavelengthDeg=wavelengthDeg,
+            slitDeg=slitDeg,
+            orderPixelTable=goodLinesTable,
+            missingLines=missingLines,
+            allClippedLines=clippedLinesTable
+        )
 
         self.log.debug('completed the ``get`` method')
         return mapPath, None, res_plots, self.qc, self.products
@@ -1070,6 +1085,16 @@ class create_dispersion_map(object):
         if len(allClippedLines):
             allClippedLines = pd.concat(allClippedLines, ignore_index=True)
 
+        mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
+            orderPixelTable=orderPixelTable,
+            xcoeff=xcoeff,
+            ycoeff=ycoeff,
+            orderDeg=orderDeg,
+            wavelengthDeg=wavelengthDeg,
+            slitDeg=slitDeg,
+            writeQCs=False,
+            pixelRange=True)
+
         self.log.debug('completed the ``fit_polynomials`` method')
         return xcoeff, ycoeff, orderPixelTable, allClippedLines
 
@@ -1234,7 +1259,7 @@ class create_dispersion_map(object):
         os.environ['OMP_NUM_THREADS'] = numThreads
         os.environ['BLAS_NUM_THREADS'] = numThreads
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray[-2:], poolSize=6, timeout=3600, turnOffMP=True)
+                                inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=True)
         del os.environ['OPENBLAS_NUM_THREADS']
         del os.environ['OMP_NUM_THREADS']
         del os.environ['BLAS_NUM_THREADS']
@@ -1566,8 +1591,7 @@ class create_dispersion_map(object):
         self.log.debug('completed the ``measure_pinhole_lines`` method')
         return orderPixelTable
 
-    # use the tab-trigger below for new method
-    def create_dispersion_map_qc_plot(
+    def _create_dispersion_map_qc_plot(
             self,
             xcoeff,
             ycoeff,
@@ -1576,33 +1600,27 @@ class create_dispersion_map(object):
             slitDeg,
             orderPixelTable,
             missingLines,
-            allClippedLines):
-        """*create dispersion map qc plot*
+            allClippedLines,
+            dispMap=False,
+            dispMapImage=False):
+        """*create the QC plot for the dispersion map solution*
 
         **Key Arguments:**
-            # -
+            -- ``xcoeff`` -- the x-coefficients
+            - ``ycoeff`` -- the y-coefficients
+            - ``orderDeg`` -- degree of the order fitting
+            - ``wavelengthDeg`` -- degree of wavelength fitting
+            - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
+            - ``orderPixelTable`` -- a panda's data-frame containing wavelength,order,slit_index,slit_position,detector_x,detector_y
+            - ``missingLines`` -- lines not detected on the image
+            - `allClippedLines` -- lines clipped during dispersion solution fitting
+            - `dispMap` -- path to dispersion map. Default *False*
+            - `dispMapImage` -- the 2D dispersion map image
 
         **Return:**
-            - ``res_plots``
-
-        **Usage:**
-
-        ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
+            - ``res_plots`` -- path the the output QC plot
         """
-        self.log.debug('starting the ``create_dispersion_map_qc_plot`` method')
+        self.log.debug('starting the ``_create_dispersion_map_qc_plot`` method')
 
         import numpy as np
         from astropy.visualization import hist
@@ -1622,15 +1640,28 @@ class create_dispersion_map(object):
             rotateImage = 0
             flipImage = 0
 
-        mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
-            orderPixelTable=orderPixelTable,
-            xcoeff=xcoeff,
-            ycoeff=ycoeff,
-            orderDeg=orderDeg,
-            wavelengthDeg=wavelengthDeg,
-            slitDeg=slitDeg,
-            writeQCs=True,
-            pixelRange=True)
+        gridLinePixelTable = False
+
+        if not isinstance(dispMapImage, bool):
+            from soxspipe.commonutils.toolkit import create_dispersion_solution_grid_lines_for_plot
+            gridLinePixelTable = create_dispersion_solution_grid_lines_for_plot(
+                log=self.log,
+                dispMap=dispMap,
+                dispMapImage=dispMapImage,
+                associatedFrame=self.pinholeFrame,
+                kw=kw,
+                skylines=False,
+                slitPositions=self.uniqueSlitPos
+            )
+
+        # DROP MISSING VALUES
+        orderPixelTable.dropna(axis='index', how='any', subset=[
+            'residuals_xy'], inplace=True)
+        orderPixelTable["residuals_xy"] = np.sqrt(np.square(
+            orderPixelTable["residuals_x"]) + np.square(orderPixelTable["residuals_y"]))
+        mean_res = np.mean(orderPixelTable["residuals_xy"])
+        std_res = np.std(orderPixelTable["residuals_xy"])
+        median_res = np.median(orderPixelTable["residuals_xy"])
 
         mean_x_res = abs(orderPixelTable["residuals_x"]).mean()
         mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
@@ -1670,10 +1701,10 @@ class create_dispersion_map(object):
             "observed arc-line positions (post-clipping)", fontsize=10)
 
         if isinstance(missingLines, pd.core.frame.DataFrame):
-            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=5, alpha=0.4, linewidths=0.5, label="undetected line location")
+            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=1, alpha=0.1, linewidths=0.5, label="undetected line location")
+        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=2, alpha=0.5, label="detected line location")
         if len(allClippedLines):
             toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.4, linewidths=0.5, label="line clipped during dispersion solution fitting")
-        toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.4, label="detected line location")
         # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
         mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))
         toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
@@ -1693,8 +1724,17 @@ class create_dispersion_map(object):
 
         xfit = orderPixelTable[f"fit_{self.axisA}"]
         # midrow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='red', s=1, alpha=0.9)
-        midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
-                       orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1, label="fitted line (size proportion to line-fit residual)")
+
+        if not isinstance(gridLinePixelTable, bool):
+            for l in range(int(gridLinePixelTable['line'].max())):
+                mask = (gridLinePixelTable['line'] == l)
+                if l == 1:
+                    midrow.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.2, alpha=0.5, color="blue", label="dispersion solution")
+                else:
+                    midrow.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.2, alpha=0.5, color="blue")
+        else:
+            midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
+                           orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1, label="fitted line (size proportion to line-fit residual)")
 
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
@@ -1761,7 +1801,7 @@ class create_dispersion_map(object):
         plt.savefig(filePath, dpi=720)
         plt.close()
 
-        self.log.debug('completed the ``create_dispersion_map_qc_plot`` method')
+        self.log.debug('completed the ``_create_dispersion_map_qc_plot`` method')
         return res_plots
 
     # use the tab-trigger below for new method

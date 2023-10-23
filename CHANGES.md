@@ -3,6 +3,7 @@
 
 ## v0.9.1 - October 16, 2023
 
+added a `create_dispersion_solution_grid_lines_for_plot` function to allow adding dispersion solution grid to QC plots.  This is extremely useful for quickly diagnosing problems with the fits.
 * **REFACTOR:** nans have been replaced by zero in FITS image product
 * **FIXED**: a mismatch between daofind results and the original input pixel table was causing dispersion solution to break (a recent bug introduced during code optimisations)
 * **FIXED**: the internal soxspipe logger was being interfered with by astropy so that logs were somtimes getting redirected to the wrong place

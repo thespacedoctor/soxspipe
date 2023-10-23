@@ -969,7 +969,8 @@ def create_dispersion_solution_grid_lines_for_plot(
         dispMapImage,
         associatedFrame,
         kw,
-        skylines=False):
+        skylines=False,
+        slitPositions=False):
     """*give a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
 
     **Key Arguments:**
@@ -980,6 +981,7 @@ def create_dispersion_solution_grid_lines_for_plot(
     - `associatedFrame` -- a frame associated with the reduction (to read arm and binning info).
     - `kw` -- fits header kw dictionary
     - `skylines` -- a list of skylines to use as the grid. Default *False*
+    - `slitPositions` -- slit positions to plot (else plot min and max)
 
     **Usage:**
 
@@ -1007,15 +1009,18 @@ def create_dispersion_solution_grid_lines_for_plot(
     dispMapDF = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
     uniqueOrders = dispMapDF['order'].unique()
     wlLims = []
-    spLims = []
+    sPos = []
 
     for o in uniqueOrders:
         filDF = dispMapDF.loc[dispMapDF["order"] == o]
         wlLims.append((filDF['wavelength'].min() - 200, filDF['wavelength'].max() + 200))
-        spLims.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
+        if isinstance(slitPositions, bool):
+            sPos.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
+        else:
+            sPos.append(slitPositions)
 
     lineNumber = 0
-    for o, wlLim, spLim in zip(uniqueOrders, wlLims, spLims):
+    for o, wlLim, spLim in zip(uniqueOrders, wlLims, sPos):
         wlRange = np.arange(wlLim[0], wlLim[1], 1)
         wlRange = np.append(wlRange, [wlLim[1]])
         for e in spLim:
@@ -1032,8 +1037,8 @@ def create_dispersion_solution_grid_lines_for_plot(
                 orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
             lineNumber += 1
 
-        spRange = np.arange(spLim[0], spLim[1], 1)
-        spRange = np.append(spRange, [spLim[1]])
+        spRange = np.arange(spLim[0], spLim[-1], 1)
+        spRange = np.append(spRange, [spLim[-1]])
         if skylines:
             mask = skylinesDF['WAVELENGTH'].between(wlLim[0], wlLim[1])
             wlRange = skylinesDF.loc[mask]['WAVELENGTH'].values
