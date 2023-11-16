@@ -126,6 +126,7 @@ class _base_detect(object):
             pixelListFiltered = pixelList.loc[mask]
             clippedCount = startCount - len(pixelListFiltered.index)
 
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print(f'\t\tORDER {order:0.0f}: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
@@ -210,6 +211,7 @@ class _base_detect(object):
             clippedCount = startCount - len(pixelList.index)
 
             if iteration > 1:
+                sys.stdout.flush()
                 sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
@@ -609,7 +611,7 @@ class detect_continuum(_base_detect):
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
                 if mean_res > 1:
                     # BAD FIT ... FORCE A FAIL
-                    raise e
+                    raise AttributeError("Failed to continuum trace")
 
                 n_coeff = 0
                 for i in range(0, self.orderDeg + 1):

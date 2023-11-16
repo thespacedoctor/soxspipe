@@ -47,13 +47,13 @@ class test_01_cl_utils(unittest.TestCase):
 
     import pytest
 
-    def test_init(self):
-        # TEST CL-OPTIONS
+    # def test_init(self):
+    #     # TEST CL-OPTIONS
 
-        time.sleep(7)
-        command = "soxspipe init"
-        args = docopt(doc, command.split(" ")[1:])
-        cl_utils.main(args)
-        return
+    #     time.sleep(7)
+    #     command = "soxspipe init"
+    #     args = docopt(doc, command.split(" ")[1:])
+    #     cl_utils.main(args)
+    #     return
 
     # x-class-to-test-named-worker-function

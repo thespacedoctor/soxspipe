@@ -396,6 +396,7 @@ class _base_recipe_(object):
 
         # CHECK WE ACTUALLY HAVE IMAGES
         if not len(self.inputFrames.files_filtered(include_path=True)):
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             raise FileNotFoundError(
@@ -420,6 +421,7 @@ class _base_recipe_(object):
         # MIXED INPUT ARMS ARE BAD
         if len(arm) > 1:
             arms = " and ".join(arm)
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -452,6 +454,7 @@ class _base_recipe_(object):
                 pass
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             raise TypeError(
@@ -468,6 +471,7 @@ class _base_recipe_(object):
             readSpeed.remove(None)
 
         if len(readSpeed) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -488,6 +492,7 @@ class _base_recipe_(object):
             gain.remove(None)
 
         if len(gain) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -518,10 +523,12 @@ class _base_recipe_(object):
             for j in removeItems:
                 if j in str(i).lower():
                     slitWidth.remove(i)
-        slitWidth = [s.replace("JH", "") for s in slitWidth]
+
+        slitWidth = [str(s).replace("JH", "") for s in slitWidth]
         slitWidth = list(set(slitWidth))
 
         if len(slitWidth) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -536,6 +543,7 @@ class _base_recipe_(object):
 
         # MIXED NOISE
         if len(ron) > 1:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
@@ -738,6 +746,10 @@ class _base_recipe_(object):
                 os.makedirs(filedir)
 
         filepath = filedir + "/" + filename
+
+        # SET BAD-PIXELS TO 0 IN DATA FRAME
+        # self.log.print(f"Setting {frame.mask.sum()} bad-pixels to a value of 0")
+        frame.data[frame.mask] = 0
 
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
@@ -959,6 +971,9 @@ class _base_recipe_(object):
 
         import ccdproc
         from astropy import units as u
+        import copy
+        from astropy.io import fits
+        import pandas as pd
 
         arm = self.arm
         kw = self.kw
@@ -995,6 +1010,7 @@ class _base_recipe_(object):
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
         if order_table != False and 1 == 1:
+
             background = subtract_background(
                 log=self.log,
                 frame=processedFrame,
@@ -1002,6 +1018,40 @@ class _base_recipe_(object):
                 settings=self.settings
             )
             backgroundFrame, processedFrame = background.subtract()
+
+            from datetime import datetime
+            from os.path import expanduser
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+            # DETERMINE WHERE TO WRITE THE FILE
+            home = expanduser("~")
+            outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+            outDir = outDir.replace("//", "/")
+            # RECURSIVELY CREATE MISSING DIRECTORIES
+            if not os.path.exists(outDir):
+                os.makedirs(outDir)
+
+            # GET THE EXTENSION (WITH DOT PREFIX)
+            filename = self.sofName + "_BKGROUND.fits"
+            filepath = f"{outDir}/{filename}"
+            header = copy.deepcopy(inputFrame.header)
+            primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
+            hdul = fits.HDUList([primary_hdu])
+            hdul.writeto(filepath, output_verify='exception',
+                         overwrite=True, checksum=True)
+
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": "BKGROUND",
+                "file_name": filename,
+                "file_type": "FITS",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"Fitted intra-order image background",
+                "file_path": filepath,
+                "label": "QC"
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``detrend`` method')
         return processedFrame
@@ -1038,6 +1088,8 @@ class _base_recipe_(object):
         self.products.sort_values(['label'],
                                   ascending=[True], inplace=True)
 
+        self.products.drop_duplicates(inplace=True)
+
         columns2 = list(self.products.columns)
         columns2.remove("reduction_date_utc")
         columns2.remove("soxspipe_recipe")
@@ -1052,7 +1104,6 @@ class _base_recipe_(object):
             self.log.print(tabulate(self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
             self.log.print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
             self.log.print(tabulate(self.products[columns2], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
-            self.log.print("\n")
 
         self.log.debug('completed the ``report_output`` method')
         return None
