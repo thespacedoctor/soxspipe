@@ -1259,7 +1259,7 @@ class create_dispersion_map(object):
         os.environ['OMP_NUM_THREADS'] = numThreads
         os.environ['BLAS_NUM_THREADS'] = numThreads
         results = fmultiprocess(log=self.log, function=self.order_to_image,
-                                inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=True)
+                                inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=False)
         del os.environ['OPENBLAS_NUM_THREADS']
         del os.environ['OMP_NUM_THREADS']
         del os.environ['BLAS_NUM_THREADS']
@@ -1303,7 +1303,7 @@ class create_dispersion_map(object):
         image_hdu2.header['EXTNAME'] = 'ORDER'
         hdul = fits.HDUList([primary_hdu, image_hdu, image_hdu2])
         hdul.writeto(dispersion_image_filePath, output_verify='exception',
-                     overwrite=True, checksum=False)
+                     overwrite=True, checksum=True)
 
         self.log.debug('completed the ``map_to_image`` method')
         return dispersion_image_filePath

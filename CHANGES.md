@@ -3,6 +3,8 @@
 
 ## v0.9.1 - October 16, 2023
 
+intra-order background (scattered light) fits are now being written to FITS image files in the QC directories and reported at the end of a recipe run.
+All product FITS files now pass fitverify without error or warnings. All issues were due to using '-' instead of underscores in FITS binary table column names.
 added a `create_dispersion_solution_grid_lines_for_plot` function to allow adding dispersion solution grid to QC plots.  This is extremely useful for quickly diagnosing problems with the fits.
 * **REFACTOR:** nans have been replaced by zero in FITS image product
 * **FIXED**: a mismatch between daofind results and the original input pixel table was causing dispersion solution to break (a recent bug introduced during code optimisations)

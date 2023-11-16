@@ -971,6 +971,9 @@ class _base_recipe_(object):
 
         import ccdproc
         from astropy import units as u
+        import copy
+        from astropy.io import fits
+        import pandas as pd
 
         arm = self.arm
         kw = self.kw
@@ -1007,6 +1010,7 @@ class _base_recipe_(object):
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
         if order_table != False and 1 == 1:
+
             background = subtract_background(
                 log=self.log,
                 frame=processedFrame,
@@ -1014,6 +1018,40 @@ class _base_recipe_(object):
                 settings=self.settings
             )
             backgroundFrame, processedFrame = background.subtract()
+
+            from datetime import datetime
+            from os.path import expanduser
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+            # DETERMINE WHERE TO WRITE THE FILE
+            home = expanduser("~")
+            outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+            outDir = outDir.replace("//", "/")
+            # RECURSIVELY CREATE MISSING DIRECTORIES
+            if not os.path.exists(outDir):
+                os.makedirs(outDir)
+
+            # GET THE EXTENSION (WITH DOT PREFIX)
+            filename = self.sofName + "_BKGROUND.fits"
+            filepath = f"{outDir}/{filename}"
+            header = copy.deepcopy(inputFrame.header)
+            primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
+            hdul = fits.HDUList([primary_hdu])
+            hdul.writeto(filepath, output_verify='exception',
+                         overwrite=True, checksum=True)
+
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": "BKGROUND",
+                "file_name": filename,
+                "file_type": "FITS",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"Fitted intra-order image background",
+                "file_path": filepath,
+                "label": "QC"
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``detrend`` method')
         return processedFrame
@@ -1049,6 +1087,8 @@ class _base_recipe_(object):
         # SORT BY COLUMN NAME
         self.products.sort_values(['label'],
                                   ascending=[True], inplace=True)
+
+        self.products.drop_duplicates(inplace=True)
 
         columns2 = list(self.products.columns)
         columns2.remove("reduction_date_utc")
