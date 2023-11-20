@@ -53,12 +53,12 @@ class test_response_function(unittest.TestCase):
 
         stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
         from soxspipe.commonutils import response_function
-        reponse = response_function(
+        response = response_function(
             log=log,
             settings=settings,
             stdExtractionPath=stdExtractionPath
         )
-        reponse.get()
+        response.get()
 
     def test_response_function_function_exception(self):
 

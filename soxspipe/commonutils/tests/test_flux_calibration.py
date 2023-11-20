@@ -50,7 +50,7 @@ class test_flux_calibration(unittest.TestCase):
     def test_flux_calibration_function(self):
 
         responseFunction = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-fluxcal/nir/PLACEHOLDER.fits"
-        extractedSpectrum = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-fluxcal/nir/PLACEHOLDER.fits"
+        extractedSpectrum = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-fluxcal/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
 
         from soxspipe.commonutils import flux_calibration
         fluxcal = flux_calibration(
