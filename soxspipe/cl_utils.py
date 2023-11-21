@@ -62,7 +62,7 @@ def main(arguments=None):
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
-    if sys.argv[1] == "prep":
+    if len(sys.argv) > 1 and sys.argv[1] == "prep":
         # DOES SETTINGS FILE EXIST YET
         testPath = sys.argv[2] + "/soxspipe.yaml"
         exists = os.path.exists(testPath)
