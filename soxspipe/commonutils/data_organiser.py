@@ -1318,8 +1318,12 @@ class data_organiser(object):
         return sessionId
 
     def session_list(
-            self):
+            self,
+            silent=False):
         """*list the sessions available to the user*
+
+        **Key Arguments:**
+            - ``silent`` -- don't print listings if True
 
         **Return:**
             - ``currentSession`` -- the single ID of the currently used session
@@ -1355,14 +1359,53 @@ class data_organiser(object):
         allSessions = [d for d in os.listdir(self.sessionsDir) if os.path.isdir(os.path.join(self.sessionsDir, d))]
         allSessions.sort()
 
-        for s in allSessions:
-            if s == currentSession.strip():
-                print(f"\033[0;32m*{s}*\033[0m")
-            else:
-                print(s)
+        if not silent:
+            for s in allSessions:
+                if s == currentSession.strip():
+                    print(f"\033[0;32m*{s}*\u001b[38;5;15m")
+                else:
+                    print(s)
 
         self.log.debug('completed the ``session_list`` method')
         return currentSession, allSessions
+
+    def session_switch(
+            self,
+            sessionId):
+        """*switch to an existing workspace data-reduction session*
+
+        **Key Arguments:**
+            - ``sessionId`` -- the sessionId to switch to
+
+        **Usage:**
+
+        ```python
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            settings=settings,
+            rootDir="."
+        )
+        do.session_switch(mySessionId)
+        ```
+        """
+        self.log.debug('starting the ``session_switch`` method')
+        import codecs
+
+        currentSession, allSessions = self.session_list(silent=True)
+
+        if sessionId == currentSession:
+            print(f"Session '{sessionId}' is already in use.")
+        elif sessionId in allSessions:
+            # WRITE THE SESSION ID FILE
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
+                writeFile.write(sessionId)
+            print(f"Session successfully switched to '{sessionId}'.")
+        else:
+            print(f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`.")
+
+        self.log.debug('completed the ``session_switch`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method

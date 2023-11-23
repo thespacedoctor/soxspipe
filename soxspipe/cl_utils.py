@@ -238,6 +238,15 @@ def main(arguments=None):
             )
             currentSession, allSessions = do.session_list()
 
+        if a['session'] and a['sessionId']:
+            from soxspipe.commonutils import data_organiser
+            do = data_organiser(
+                log=log,
+                settings=settings,
+                rootDir="."
+            )
+            do.session_switch(a['sessionId'])
+
     except Exception as e:
         log.error(f'{e}\n{clCommand}', exc_info=True)
 
