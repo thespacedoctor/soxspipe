@@ -149,7 +149,7 @@ logging settings:
             stream: ext://sys.stdout
         file:
             class: logging.handlers.GroupWriteRotatingFileHandler
-            level: INFO
+            level: WARNING
             formatter: file_style
             filename: /Users/Dave/.config/soxspipe/soxspipe.log
             mode: w+

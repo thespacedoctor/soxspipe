@@ -63,12 +63,12 @@ class data_organiser(object):
         import shutil
         import sqlite3 as sql
         from os.path import expanduser
+        import codecs
+        from fundamentals.logs import emptyLogger
 
         log.debug("instantiating a new 'data_organiser' object")
         self.settings = settings
-
-        from soxspipe.commonutils import toolkit
-        self.log = toolkit.add_recipe_logger(log, "./data-organiser.log")
+        self.log = emptyLogger()
 
         if rootDir == ".":
             rootDir = os.getcwd()
@@ -81,10 +81,25 @@ class data_organiser(object):
         self.rawDir = rootDir + "/raw_frames"
         self.miscDir = rootDir + "/misc"
         self.sofDir = rootDir + "/sof"
+        self.sessionsDir = rootDir + "/sessions"
 
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
             os.makedirs(self.rawDir)
+
+        # MK RAW FRAME DIRECTORY
+        if not os.path.exists(self.sessionsDir):
+            os.makedirs(self.sessionsDir)
+
+        # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
+        # OTHERWISE USE CURRENT SESSION
+        self.sessionIdFile = self.sessionsDir + "/.sessionid"
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            sessionId = self.session_create()
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                sessionId = readFile.read()
 
         # TEST FOR SQLITE DATABASE
         self.dbPath = rootDir + "/soxspipe.db"
@@ -228,34 +243,11 @@ class data_organiser(object):
     def prepare(
             self):
         """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*
-
-        **Key Arguments:**
-            # -
-
-        **Return:**
-            - None
-
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
         """
         self.log.debug('starting the ``prepare`` method')
 
         basename = os.path.basename(self.rootDir)
-        self.log.print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
+        print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
         self._sync_raw_frames()
         self._move_misc_files()
         self._populate_product_frames_db_table()
@@ -263,13 +255,14 @@ class data_organiser(object):
         self._write_sof_files()
         self._write_reduction_shell_scripts()
 
-        self.log.print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
-        self.log.print(f"In this workspace you will find:\n")
-        self.log.print(f"   - `raw_frames/`: all raw-frames to be reduced")
-        self.log.print(f"   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the prep command")
-        self.log.print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
-        self.log.print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
-        self.log.print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace\n")
+        print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
+        print(f"In this workspace you will find:\n")
+        print(f"   - `misc/`: a lost-and-found archive of non-fits files")
+        print(f"   - `raw_frames/`: all raw-frames to be reduced")
+        print(f"   - `sessions/`: directory of data-reduction sessions")
+        print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
+        print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace")
+        print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
 
         self.log.debug('completed the ``prepare`` method')
         return None
@@ -1268,9 +1261,108 @@ class data_organiser(object):
         self.log.debug('completed the ``_write_reduction_shell_scripts`` method')
         return None
 
+    def session_create(
+            self):
+        """*create a data-reduction session with accompanying settings file and required directories*
+
+        **Return:**
+            - ``sessionId`` -- the unique ID of the data-reduction session
+
+        **Usage:**
+
+        ```python
+        do = data_organiser(
+            log=log,
+            settings=settings,
+            rootDir="/path/to/workspace/root/"
+        )
+        sessionId = do.session_create()
+        ```
+        """
+        self.log.debug('starting the ``session_create`` method')
+
+        # CREATE SESSION ID FROM TIME STAMP
+        from datetime import datetime, date, time
+        now = datetime.now()
+        sessionId = now.strftime("%Y%m%dt%H%M%S")
+
+        # MAKE THE SESSION DIRECTORY
+        sessionPath = self.sessionsDir + "/" + sessionId
+        if not os.path.exists(sessionPath):
+            os.makedirs(sessionPath)
+
+        # SETUP SESSION SETTINGS AND LOGGING
+        testPath = sessionPath + "/soxspipe.yaml"
+        exists = os.path.exists(testPath)
+        if not exists:
+            su = tools(
+                arguments={"<workspaceDirectory>": sessionPath, "init": True, "settingsFile": None},
+                docString=False,
+                logLevel="WARNING",
+                options_first=False,
+                projectName="soxspipe",
+                defaultSettingsFile=True
+            )
+            arguments, settings, replacedLog, dbConn = su.setup()
+
+        # WRITE THE SESSION ID FILE
+        import codecs
+        with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
+            writeFile.write(sessionId)
+
+        try:
+            self.log.print(f"A new data-reduction session has been created with sessionId {sessionId}")
+        except:
+            pass
+        self.log.debug('completed the ``session_create`` method')
+        return sessionId
+
+    def session_list(
+            self):
+        """*list the sessions available to the user*
+
+        **Return:**
+            - ``currentSession`` -- the single ID of the currently used session
+            - ``allSessions`` -- the IDs of the other sessions
+
+        **Usage:**
+
+        ```python
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            settings=settings,
+            rootDir="."
+        )
+        currentSession, allSessions = do.session_list()
+        ```
+        """
+        self.log.debug('starting the ``session_list`` method')
+
+        import codecs
+
+        # IF SESSION ID FILE DOES NOT EXIST, REPORT
+        self.sessionIdFile = self.sessionsDir + "/.sessionid"
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            print("No reduction sessions exist in this workspace yet.")
+            return None, None
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                currentSession = readFile.read()
+
+        # LIST ALL SESSIONS
+        allSessions = [d for d in os.listdir(self.sessionsDir) if os.path.isdir(os.path.join(self.sessionsDir, d))]
+        allSessions.sort()
+
+        for s in allSessions:
+            if s == currentSession.strip():
+                print(f"\033[0;32m*{s}*\033[0m")
+            else:
+                print(s)
+
+        self.log.debug('completed the ``session_list`` method')
+        return currentSession, allSessions
+
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
-    # Override Method Attributes
-    # method-override-tmpx

@@ -65,6 +65,7 @@ class test_xsh_data_organiser(unittest.TestCase):
             rootDir=pathToOutputDir + "01_EG274"
         )
         do.prepare()
+        do.session_list()
 
     @pytest.mark.full
     def test_soxs_data_organiser_function_exception(self):
