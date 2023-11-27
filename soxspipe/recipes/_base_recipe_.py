@@ -103,6 +103,16 @@ class _base_recipe_(object):
         # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
         self.settings = {**advs, **self.settings}
 
+        # FIND THE CURRENT SESSION
+        from os.path import expanduser
+        home = expanduser("~")
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=self.log,
+            rootDir=self.settings["workspace-root-dir"].replace("~", home)
+        )
+        self.currentSession, allSessions = do.session_list(silent=True)
+
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc = pd.DataFrame({
             "soxspipe_recipe": [],
@@ -419,6 +429,8 @@ class _base_recipe_(object):
             self.axisB = "y"
 
         # MIXED INPUT ARMS ARE BAD
+        if None in arm:
+            arm.remove(None)
         if len(arm) > 1:
             arms = " and ".join(arm)
             sys.stdout.flush()
@@ -1026,7 +1038,11 @@ class _base_recipe_(object):
 
             # DETERMINE WHERE TO WRITE THE FILE
             home = expanduser("~")
-            outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+
+            if self.currentSession:
+                outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
+            else:
+                outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
             outDir = outDir.replace("//", "/")
             # RECURSIVELY CREATE MISSING DIRECTORIES
             if not os.path.exists(outDir):

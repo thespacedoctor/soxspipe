@@ -812,6 +812,7 @@ def twoD_disp_map_image_to_dataframe(
     biny = 1
 
     # FIND THE APPROPRIATE PREDICTED LINE-LIST
+    print(kw)
     if associatedFrame:
         arm = associatedFrame.header[kw("SEQ_ARM")]
         if arm != "NIR" and kw('WIN_BINX') in associatedFrame.header:
@@ -895,6 +896,15 @@ def predict_product_path(
     except:
         pass
 
+    from soxspipe.commonutils import data_organiser
+    from fundamentals.logs import emptyLogger
+    log = emptyLogger()
+    do = data_organiser(
+        log=log,
+        rootDir="."
+    )
+    currentSession, allSessions = do.session_list(silent=True)
+
     recipeName = sys.argv[1]
     if recipeName[0] == "-":
         recipeName = sys.argv[2]
@@ -902,7 +912,7 @@ def predict_product_path(
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_SKYSUB"
-    productPath = "./product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = f"./sessions/{currentSession}/product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
     productPath = productPath.replace("//", "/")
 
     return productPath

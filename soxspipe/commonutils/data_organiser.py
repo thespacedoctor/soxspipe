@@ -24,7 +24,6 @@ class data_organiser(object):
 
     **Key Arguments:**
         - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
         - ``rootDir`` -- the root directory of the data to process
 
     **Usage:**
@@ -45,7 +44,6 @@ class data_organiser(object):
     from soxspipe.commonutils import data_organiser
     do = data_organiser(
         log=log,
-        settings=settings,
         rootDir="/path/to/workspace/root/"
     )
     do.prepare()
@@ -56,8 +54,7 @@ class data_organiser(object):
     def __init__(
             self,
             log,
-            rootDir,
-            settings=False
+            rootDir
     ):
 
         import shutil
@@ -67,11 +64,10 @@ class data_organiser(object):
         from fundamentals.logs import emptyLogger
 
         log.debug("instantiating a new 'data_organiser' object")
-        self.settings = settings
         self.log = emptyLogger()
 
-        if rootDir == ".":
-            rootDir = os.getcwd()
+        # if rootDir == ".":
+        #     rootDir = os.getcwd()
         # MAKE RELATIVE HOME PATH ABSOLUTE
         if rootDir[0] == "~":
             home = expanduser("~")
@@ -91,15 +87,8 @@ class data_organiser(object):
         if not os.path.exists(self.sessionsDir):
             os.makedirs(self.sessionsDir)
 
-        # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
-        # OTHERWISE USE CURRENT SESSION
+        # SESSION ID PLACEHOLDER FILE
         self.sessionIdFile = self.sessionsDir + "/.sessionid"
-        exists = os.path.exists(self.sessionIdFile)
-        if not exists:
-            sessionId = self.session_create()
-        else:
-            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
-                sessionId = readFile.read()
 
         # TEST FOR SQLITE DATABASE
         self.dbPath = rootDir + "/soxspipe.db"
@@ -246,6 +235,15 @@ class data_organiser(object):
         """
         self.log.debug('starting the ``prepare`` method')
 
+        # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
+        # OTHERWISE USE CURRENT SESSION
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            sessionId = self.session_create(sessionId="base")
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                sessionId = readFile.read()
+
         basename = os.path.basename(self.rootDir)
         print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
         self._sync_raw_frames()
@@ -284,7 +282,6 @@ class data_organiser(object):
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
-            settings=settings,
             rootDir="/path/to/root/folder/"
         )
         do._sync_raw_frames()
@@ -1262,8 +1259,12 @@ class data_organiser(object):
         return None
 
     def session_create(
-            self):
+            self,
+            sessionId=False):
         """*create a data-reduction session with accompanying settings file and required directories*
+
+        **Key Arguments:**
+            - ``sessionId`` -- optionally provide a sessionId (A-Z, a-z 0-9 and/or _- allowed, 16 character limit)
 
         **Return:**
             - ``sessionId`` -- the unique ID of the data-reduction session
@@ -1273,18 +1274,25 @@ class data_organiser(object):
         ```python
         do = data_organiser(
             log=log,
-            settings=settings,
             rootDir="/path/to/workspace/root/"
         )
-        sessionId = do.session_create()
+        sessionId = do.session_create(sessionId="my_supernova")
         ```
         """
         self.log.debug('starting the ``session_create`` method')
 
-        # CREATE SESSION ID FROM TIME STAMP
-        from datetime import datetime, date, time
-        now = datetime.now()
-        sessionId = now.strftime("%Y%m%dt%H%M%S")
+        import re
+        if sessionId:
+            if len(sessionId) > 16:
+                print("Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-")
+            matchObjectList = re.findall(r'[^0-9a-zA-Z\-\_]+', sessionId)
+            if matchObjectList:
+                print("Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-")
+        else:
+            # CREATE SESSION ID FROM TIME STAMP
+            from datetime import datetime, date, time
+            now = datetime.now()
+            sessionId = now.strftime("%Y%m%dt%H%M%S")
 
         # MAKE THE SESSION DIRECTORY
         sessionPath = self.sessionsDir + "/" + sessionId
@@ -1310,10 +1318,11 @@ class data_organiser(object):
         with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
             writeFile.write(sessionId)
 
+        message = f"A new data-reduction session has been created with sessionId '{sessionId}'"
         try:
-            self.log.print(f"A new data-reduction session has been created with sessionId {sessionId}")
+            self.log.print(message)
         except:
-            pass
+            print(message)
         self.log.debug('completed the ``session_create`` method')
         return sessionId
 
@@ -1335,7 +1344,6 @@ class data_organiser(object):
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
-            settings=settings,
             rootDir="."
         )
         currentSession, allSessions = do.session_list()
@@ -1349,7 +1357,8 @@ class data_organiser(object):
         self.sessionIdFile = self.sessionsDir + "/.sessionid"
         exists = os.path.exists(self.sessionIdFile)
         if not exists:
-            print("No reduction sessions exist in this workspace yet.")
+            if not silent:
+                print("No reduction sessions exist in this workspace yet.")
             return None, None
         else:
             with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
@@ -1383,7 +1392,6 @@ class data_organiser(object):
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
-            settings=settings,
             rootDir="."
         )
         do.session_switch(mySessionId)

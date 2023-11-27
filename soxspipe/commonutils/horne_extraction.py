@@ -175,7 +175,7 @@ class horne_extraction(object):
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
 
-        skySubtractedFrame.data[skySubtractedFrame.data == 0] = np.nan
+        self.skySubtractedFrame.data[self.skySubtractedFrame.data == 0] = np.nan
 
         try:
             self.imageMap = pd.DataFrame.from_dict({
@@ -495,7 +495,7 @@ class horne_extraction(object):
         # plt.show()
         plt.savefig(filePath, dpi='figure')
 
-        plt.show()
+        # plt.show()
         # self.log.debug('completed the ``merge_extracted_orders`` method')
 
         utcnow = datetime.utcnow()
