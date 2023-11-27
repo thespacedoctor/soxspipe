@@ -812,7 +812,6 @@ def twoD_disp_map_image_to_dataframe(
     biny = 1
 
     # FIND THE APPROPRIATE PREDICTED LINE-LIST
-    print(kw)
     if associatedFrame:
         arm = associatedFrame.header[kw("SEQ_ARM")]
         if arm != "NIR" and kw('WIN_BINX') in associatedFrame.header:
