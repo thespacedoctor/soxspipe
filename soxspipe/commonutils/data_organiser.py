@@ -234,6 +234,7 @@ class data_organiser(object):
         """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*
         """
         self.log.debug('starting the ``prepare`` method')
+        import codecs
 
         # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
         # OTHERWISE USE CURRENT SESSION
