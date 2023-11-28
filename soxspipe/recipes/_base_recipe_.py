@@ -539,7 +539,7 @@ class _base_recipe_(object):
         slitWidth = [str(s).replace("JH", "") for s in slitWidth]
         slitWidth = list(set(slitWidth))
 
-        if len(slitWidth) > 1:
+        if len(slitWidth) > 1 and False:
             sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
