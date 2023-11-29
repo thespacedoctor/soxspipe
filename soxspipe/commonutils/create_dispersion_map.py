@@ -532,7 +532,7 @@ class create_dispersion_map(object):
                 fwhm=2.5, threshold=3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=False)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
-            sources = daofind(stamp)
+            sources = daofind(stamp.data, mask=stamp.mask)
         except Exception as e:
             sources = None
 
