@@ -65,7 +65,7 @@ soxs-mflat:
 
 soxs-spatial-solution:
     pixel-window-size: 10
-    order-deg: 5
+    order-deg: 4
     wavelength-deg: 5
     slit-deg: 2
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
