@@ -272,7 +272,7 @@ class horne_extraction(object):
 
         from fundamentals import fmultiprocess
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
-                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma)
+                                    inputArray=orderSlices, poolSize=False, timeout=300,  ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma)
 
         fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
         gs = fig.add_gridspec(1, 1)
@@ -598,7 +598,10 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
             i, mask)) for i in a]
 
         startCount = len(fractions)
+        print(order)
         while (iteration < clippingIterationLimit) and (clipped_count > 0):
+            print(wave_px)
+            print(fractions)
 
             coeff = np.polyfit(wave_px, fractions, deg=2)
             residuals = fractions - np.polyval(coeff, wave_px)

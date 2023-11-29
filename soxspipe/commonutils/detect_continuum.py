@@ -538,6 +538,14 @@ class detect_continuum(_base_detect):
             waveLengthMin,
             waveLengthMax)
 
+        #print(orderPixelTable.columns)
+
+        binx = self.pinholeFlat.header[self.kw("WIN_BINX")]
+        biny = self.pinholeFlat.header[self.kw("WIN_BINY")]
+
+        orderPixelTable['fit_x'] = orderPixelTable['fit_x'] / binx
+        orderPixelTable['fit_y'] = orderPixelTable['fit_y'] / biny
+
         # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
         self.sliceLength = self.recipeSettings["slice-length"]
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
