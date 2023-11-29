@@ -168,7 +168,7 @@ class create_dispersion_map(object):
         pinholeFrameMasked = np.ma.array(pinholeFrame.data, mask=pinholeFrame.mask)
         mean, median, std = sigma_clipped_stats(pinholeFrameMasked, sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
 
-        pinholeFrameMasked = pinholeFrameMasked - median
+        # pinholeFrameMasked = pinholeFrameMasked - median
         self.pinholeFrameMasked = pinholeFrameMasked
 
         self.mean = mean
@@ -506,7 +506,7 @@ class create_dispersion_map(object):
         import logging
         logging.getLogger().setLevel(logging.INFO + 5)
 
-        pinholeFrame = self.pinholeFrame
+        pinholeFrame = self.pinholeFrameMasked
         windowHalf = self.windowHalf
         if 'detector_x_shifted' in predictedLine:
             x = predictedLine['detector_x_shifted']
