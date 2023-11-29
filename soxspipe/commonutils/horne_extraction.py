@@ -174,6 +174,9 @@ class horne_extraction(object):
         ydim = self.twoDMap[0].data.shape[0]
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
+
+        self.skySubtractedFrame.data[self.skySubtractedFrame.data == 0] = np.nan
+
         try:
             self.imageMap = pd.DataFrame.from_dict({
                 "x": xarray,
@@ -438,6 +441,10 @@ class horne_extraction(object):
         from datetime import datetime
         from astropy.nddata import VarianceUncertainty
 
+        # ASTROPY HAS RESET LOGGING LEVEL -- FIX
+        import logging
+        logging.getLogger().setLevel(logging.INFO + 5)
+
         kw = self.kw
         arm = self.arm
 
@@ -488,7 +495,7 @@ class horne_extraction(object):
         # plt.show()
         plt.savefig(filePath, dpi='figure')
 
-        plt.show()
+        # plt.show()
         # self.log.debug('completed the ``merge_extracted_orders`` method')
 
         utcnow = datetime.utcnow()
@@ -536,7 +543,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     # CREATE THE SLICES AND DROP SLICES WITH ALL NANs (TYPICALLY PIXELS WITH NANs IN 2D IMAGE MAP)
     sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
-    self.log.print(f"\t## SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
+    log.print(f"\t## SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
 
     # REMOVE SLICES WITH ALL NANS
     crossDispersionSlices["sliceRawFlux"] = [np.nan if np.isnan(x).all() else x for x in crossDispersionSlices["sliceRawFlux"]]
@@ -563,7 +570,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
     sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
-    self.log.print(f"\t## FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
+    log.print(f"\t## FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
     for slitPixelIndex in range(0, slitHalfLength * 2):
 
         iteration = 1
@@ -618,7 +625,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
-    self.log.print(f"\t## EXTRACTING THE SPECTRUM - ORDER {order}")
+    log.print(f"\t## EXTRACTING THE SPECTRUM - ORDER {order}")
 
     # NORMALISE THE FLUX IN EACH SLICE
     sliceFittedProfileSums = [x.sum() for x in crossDispersionSlices["sliceFittedProfile"]]

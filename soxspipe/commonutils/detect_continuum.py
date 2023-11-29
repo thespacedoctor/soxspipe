@@ -609,9 +609,10 @@ class detect_continuum(_base_detect):
                     writeQCs=True
                 )
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+
                 if mean_res > 1:
                     # BAD FIT ... FORCE A FAIL
-                    raise e
+                    raise AttributeError("Failed to continuum trace")
 
                 n_coeff = 0
                 for i in range(0, self.orderDeg + 1):
@@ -818,7 +819,7 @@ class detect_continuum(_base_detect):
             sliceAntiAxis = "y"
 
         slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.pinholeFlat,
-                                                                         width=1, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
+                                                                         width=5, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
 
         if slice is None:
             pixelPostion[f"cont_{self.axisA}"] = np.nan

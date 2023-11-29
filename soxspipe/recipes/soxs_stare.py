@@ -309,6 +309,7 @@ class soxs_stare(_base_recipe_):
             dispersionMap=dispMap,
             sofName=self.sofName
         )
+
         self.qc, self.products = optimalExtractor.extract()
 
         self.clean_up()

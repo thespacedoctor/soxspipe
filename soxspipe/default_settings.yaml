@@ -55,19 +55,19 @@ soxs-mflat:
     clipping-iteration-count: 1
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
-    min-percentage-threshold-for-edge-detection: 10
-    max-percentage-threshold-for-edge-detection: 90
-    disp-axis-deg: 3
+    min-percentage-threshold-for-edge-detection: 20
+    max-percentage-threshold-for-edge-detection: 50
+    disp-axis-deg: 2
     order-deg: 5
-    poly-fitting-residual-clipping-sigma: 7
-    poly-clipping-iteration-limit: 1
+    poly-fitting-residual-clipping-sigma: 5
+    poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
 
 soxs-spatial-solution:
     pixel-window-size: 10
-    order-deg: 5
-    wavelength-deg: 4
-    slit-deg: 1
+    order-deg: 4
+    wavelength-deg: 5
+    slit-deg: 2
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
     poly-clipping-iteration-limit: 9
     poly-fitting-residual-clipping-sigma: 5
@@ -111,19 +111,19 @@ soxs-stare:
     horne-extraction-profile-clipping-iteration-count: 10
     detect-continuum:
         # NUMBER OF CROSS-ORDER SLICES PER ORDER
-        order-sample-count: 200
+        order-sample-count: 600
         # LENGTH OF EACH SLICE (PIXELS)
         slice-length: 10
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-        peak-sigma-limit: 3
-        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        disp-axis-deg: 3
-        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        order-deg: 5
-        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-fitting-residual-clipping-sigma: 3
-        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-clipping-iteration-limit: 7
+        peak-sigma-limit: 1.5
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        order-deg: 4
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-fitting-residual-clipping-sigma: 3.
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-clipping-iteration-limit: 5
 
 # UTILS
 background-subtraction:
@@ -149,7 +149,7 @@ logging settings:
             stream: ext://sys.stdout
         file:
             class: logging.handlers.GroupWriteRotatingFileHandler
-            level: INFO
+            level: WARNING
             formatter: file_style
             filename: /Users/Dave/.config/soxspipe/soxspipe.log
             mode: w+

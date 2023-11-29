@@ -6,7 +6,8 @@
     
     Usage:
         soxspipe prep <workspaceDirectory>
-        soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>] 
+        soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
+        soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -16,6 +17,9 @@
     
     Options:
         prep                                   prepare a folder of raw data (workspace) for data reduction
+        session ls                             list all available data-reduction sessions in the workspace
+        session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
+        session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
         mbias                                  the master bias recipe
         mdark                                  the master dark recipe
         mflat                                  the master flat recipe

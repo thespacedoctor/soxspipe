@@ -6,6 +6,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe prep <workspaceDirectory>
+    soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -16,6 +17,9 @@ Usage:
 
 Options:
     prep                                   prepare a folder of raw data (workspace) for data reduction
+    session ls                             list all available data-reduction sessions in the workspace
+    session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
+    session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
     mflat                                  the master flat recipe
@@ -51,6 +55,17 @@ def main(arguments=None):
     """
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
     """
+
+    # DETERMINE CURRENT DATA-REDUCTION SESSION
+    from fundamentals.logs import emptyLogger
+    from soxspipe.commonutils import data_organiser
+    eLog = emptyLogger()
+    do = data_organiser(
+        log=eLog,
+        rootDir="."
+    )
+    currentSession, allSessions = do.session_list(silent=True)
+
     # QUICKLY SKIP IF PRODUCT EXIST
     if len(sys.argv[1:]) == 2:
         if sys.argv[2].split(".")[-1].lower() == "sof":
@@ -62,25 +77,14 @@ def main(arguments=None):
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
-    if sys.argv[1] == "prep":
-        # DOES SETTINGS FILE EXIST YET
-        testPath = sys.argv[2] + "/soxspipe.yaml"
-        exists = os.path.exists(testPath)
-        if not exists:
-            sys.argv[1] = "init"
-            # setup the command-line util settings
-            su = tools(
-                arguments=None,
-                docString=__doc__.replace("prep", "init"),
-                logLevel="WARNING",
-                options_first=False,
-                projectName="soxspipe",
-                defaultSettingsFile=True
-            )
-            arguments, settings, replacedLog, dbConn = su.setup()
-            sys.argv[1] = "prep"
-
     # setup the command-line util settings
+    arguments = None
+    if "-s" not in sys.argv and "prep" not in sys.argv and "session" not in sys.argv and currentSession:
+        settingsFile = f"./sessions/{currentSession}/soxspipe.yaml"
+        exists = os.path.exists(settingsFile)
+        sys.argv.append("-s")
+        sys.argv.append(settingsFile)
+
     su = tools(
         arguments=None,
         docString=__doc__,
@@ -154,10 +158,18 @@ def main(arguments=None):
     verbose = a['verboseFlag']
 
     try:
-
         # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
         if a['outputDirectory']:
             settings["workspace-root-dir"] = a['outputDirectory']
+        else:
+            from soxspipe.commonutils import data_organiser
+            do = data_organiser(
+                log=log,
+                rootDir="."
+            )
+            currentSession, allSessions = do.session_list(silent=True)
+            if currentSession:
+                settings["workspace-root-dir"] = f"./sessions/{currentSession}/"
 
         if a["mbias"]:
             from soxspipe.recipes import soxs_mbias
@@ -238,10 +250,34 @@ def main(arguments=None):
             from soxspipe.commonutils import data_organiser
             do = data_organiser(
                 log=log,
-                settings=settings,
                 rootDir=a["workspaceDirectory"]
             )
             do.prepare()
+
+        if a['session'] and a['ls']:
+            from soxspipe.commonutils import data_organiser
+            do = data_organiser(
+                log=log,
+                rootDir="."
+            )
+            currentSession, allSessions = do.session_list()
+
+        if a['session'] and a['sessionId'] and not a['new']:
+            from soxspipe.commonutils import data_organiser
+            do = data_organiser(
+                log=log,
+                rootDir="."
+            )
+            do.session_switch(a['sessionId'])
+
+        if a['session'] and a['new']:
+            from soxspipe.commonutils import data_organiser
+            do = data_organiser(
+                log=log,
+                rootDir="."
+            )
+            sessionId = do.session_create(sessionId=a['sessionId'])
+
     except Exception as e:
         log.error(f'{e}\n{clCommand}', exc_info=True)
 
@@ -253,9 +289,12 @@ def main(arguments=None):
     ## FINISH LOGGING ##
     endTime = times.get_now_sql_datetime()
     runningTime = times.calculate_time_difference(startTime, endTime)
+    sys.argv[0] = os.path.basename(sys.argv[0])
     log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
     log.print(f'Recipe Run Time: {runningTime}\n\n')
-    print(f"{'='*70}\n")
+
+    if not a['prep'] and not a['session']:
+        print(f"{'='*70}\n")
 
     return
 
