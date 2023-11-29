@@ -176,7 +176,7 @@ class create_dispersion_map(object):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=pinholeFrameMasked, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         # DETECT THE LINES ON THE PINHOLE FRAME AND
         # ADD OBSERVED LINES TO DATAFRAME
