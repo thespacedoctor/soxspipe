@@ -761,7 +761,7 @@ class _base_recipe_(object):
 
         # SET BAD-PIXELS TO 0 IN DATA FRAME
         # self.log.print(f"Setting {frame.mask.sum()} bad-pixels to a value of 0")
-        frame.data[frame.mask] = 0
+        # frame.data[frame.mask] = 0
 
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
