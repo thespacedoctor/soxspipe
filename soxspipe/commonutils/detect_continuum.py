@@ -527,21 +527,17 @@ class detect_continuum(_base_detect):
 
         arm = self.arm
 
-        # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
-        orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
-            log=self.log, settings=self.settings, arm=arm)
-
-        # CONVERT WAVELENGTH TO PIXEL POSTIONS AND RETURN ARRAY OF POSITIONS TO
+        # CONVERT WAVELENGTH TO PIXEL POSITIONS AND RETURN ARRAY OF POSITIONS TO
         # SAMPLE THE TRACES
-        orderPixelTable = self.create_pixel_arrays(
-            orderNums,
-            waveLengthMin,
-            waveLengthMax)
+        orderPixelTable = self.create_pixel_arrays()
 
-        #print(orderPixelTable.columns)
-
-        binx = self.pinholeFlat.header[self.kw("WIN_BINX")]
-        biny = self.pinholeFlat.header[self.kw("WIN_BINY")]
+        binx = 1
+        biny = 1
+        try:
+            binx = self.pinholeFlat.header[self.kw("WIN_BINX")]
+            biny = self.pinholeFlat.header[self.kw("WIN_BINY")]
+        except:
+            pass
 
         orderPixelTable['fit_x'] = orderPixelTable['fit_x'] / binx
         orderPixelTable['fit_y'] = orderPixelTable['fit_y'] / biny
@@ -549,6 +545,7 @@ class detect_continuum(_base_detect):
         # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
         self.sliceLength = self.recipeSettings["slice-length"]
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
+        self.sliceWidth = self.recipeSettings["slice-width"]
 
         # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
@@ -705,16 +702,8 @@ class detect_continuum(_base_detect):
         return order_table_path, self.qc, self.products
 
     def create_pixel_arrays(
-            self,
-            orderNums,
-            waveLengthMin,
-            waveLengthMax):
+            self):
         """*create a pixel array for the approximate centre of each order*
-
-        **Key Arguments:**
-            - ``orderNums`` -- a list of the order numbers
-            - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
-            - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
 
         **Return:**
             - ``orderPixelTable`` -- a data-frame containing lines and associated pixel locations
@@ -724,45 +713,15 @@ class detect_continuum(_base_detect):
         import numpy as np
         import pandas as pd
 
+        # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
+        orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
+            log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersion_map)
+
         # READ ORDER SAMPLING RESOLUTION FROM SETTINGS
         sampleCount = self.recipeSettings["order-sample-count"]
 
-        # FIND THE PIXEL RANGES FOR ALL ORDERS
-        myDict = {
-            "order": np.asarray([]),
-            "wavelength": np.asarray([]),
-            "slit_position": np.asarray([])
-        }
-        for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
-            wlArray = np.array([wmin, wmax])
-            myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
-            myDict["order"] = np.append(
-                myDict["order"], np.ones(len(wlArray)) * o)
-            myDict["slit_position"] = np.append(
-                myDict["slit_position"], np.zeros(len(wlArray)))
-        orderPixelTable = pd.DataFrame(myDict)
-        orderPixelTable = dispersion_map_to_pixel_arrays(
-            log=self.log,
-            dispersionMapPath=self.dispersion_map,
-            orderPixelTable=orderPixelTable,
-            removeOffDetectorLocation=False
-        )
         orderPixelRanges = []
-        if self.inst == "SOXS":
-            axis = "x"
-            rowCol = "columns"
-        else:
-            axis = "y"
-            rowCol = "rows"
-
-        for o in orderNums:
-            amin = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].min()
-            amax = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].max()
-            if amin < 0:
-                amin = 0
-            if amax > self.detectorParams["science-pixels"][rowCol]["end"]:
-                amax = self.detectorParams["science-pixels"][rowCol]["end"]
-
+        for o, amin, amax in zip(orderNums, amins, amaxs):
             arange = amax - amin
             orderPixelRanges.append(arange)
 
@@ -775,13 +734,14 @@ class detect_continuum(_base_detect):
             "wavelength": np.asarray([]),
             "slit_position": np.asarray([])
         }
-        expandRatio = 1.1
+
         for o, wmin, wmax, pixelRange in zip(orderNums, waveLengthMin, waveLengthMax, orderPixelRanges):
+
             orderSampleCount = int(pixelRange / samplePixelSep)
             wrange = wmax - wmin
-            expand = wrange * expandRatio / 2
+
             wlArray = np.arange(
-                wmin - expand, wmax + expand, (wmax - wmin + expand * 2) / orderSampleCount)
+                wmin, wmax, (wmax - wmin) / orderSampleCount)
             myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
             myDict["order"] = np.append(
                 myDict["order"], np.ones(len(wlArray)) * o)
@@ -827,7 +787,7 @@ class detect_continuum(_base_detect):
             sliceAntiAxis = "y"
 
         slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.pinholeFlat,
-                                                                         width=5, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
+                                                                         width=self.sliceWidth, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
 
         if slice is None:
             pixelPostion[f"cont_{self.axisA}"] = np.nan
