@@ -170,10 +170,16 @@ class horne_extraction(object):
         self.twoDMap = fits.open(twoDMapPath)
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
-        binx = int(self.skySubtractedFrame.header[kw("WIN_BINX")])
-        biny = int(self.skySubtractedFrame.header[kw("WIN_BINY")])
+        binx = 1
+        biny = 1
+        try:
+            binx = int(self.skySubtractedFrame.header[kw("WIN_BINX")])
+            biny = int(self.skySubtractedFrame.header[kw("WIN_BINY")])
+        except:
+            pass
+
         xdim = int(self.twoDMap[0].data.shape[1] / binx)
-        ydim = int(self.twoDMap[0].data.shape[0]/ biny)
+        ydim = int(self.twoDMap[0].data.shape[0] / biny)
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
 
@@ -185,29 +191,37 @@ class horne_extraction(object):
             self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (biny, binx), func=np.mean)
             self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (biny, binx), func=np.mean)
 
-
         try:
-
-            self.imageMap = pd.DataFrame.from_dict({
-                "x": xarray,
-                "y": yarray,
-                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten(),
-                "slit_position": self.twoDMap["SLIT"].data.flatten(),
-                "order": self.twoDMap["ORDER"].data.flatten(),
-                "flux": self.skySubtractedFrame.data.flatten()
-            })
-            self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-        except:
-
             self.imageMap = pd.DataFrame.from_dict({
                 "x": xarray,
                 "y": yarray,
                 "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
                 "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
                 "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
-                "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
+                "flux": self.skySubtractedFrame.data.flatten()
             })
             self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        except:
+            try:
+                self.imageMap = pd.DataFrame.from_dict({
+                    "x": xarray,
+                    "y": yarray,
+                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+                    "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
+                    "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
+                    "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
+                })
+                self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+            except:
+                self.imageMap = pd.DataFrame.from_dict({
+                    "x": xarray,
+                    "y": yarray,
+                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten(),
+                    "slit_position": self.twoDMap["SLIT"].data.flatten(),
+                    "order": self.twoDMap["ORDER"].data.flatten(),
+                    "flux": self.skySubtractedFrame.data.flatten()
+                })
+                self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
         # FIND THE OBJECT TRACE IN EACH ORDER
         detector = detect_continuum(
