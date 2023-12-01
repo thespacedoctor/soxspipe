@@ -258,6 +258,9 @@ class horne_extraction(object):
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
         from datetime import datetime
+        from soxspipe.commonutils.toolkit import read_spectral_format
+        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
+        import numpy as np
 
         kw = self.kw
         arm = self.arm
@@ -268,6 +271,10 @@ class horne_extraction(object):
         extractions = []
 
         self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
+
+        # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
+        orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
+            log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap)
 
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
@@ -698,7 +705,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     crossDispersionSlices.loc[mask, 'horneDenominatorSum'] = [x.sum() for x in crossDispersionSlices.loc[mask, "horneDenominator"]]
     crossDispersionSlices.loc[mask, "fudged"] = True
 
-    # CALULCATE THE FINAL EXTRACTED SPECTRA
+    # CALCULATE THE FINAL EXTRACTED SPECTRA
     crossDispersionSlices["varianceSpectrum"] = 1 / crossDispersionSlices["horneDenominatorSum"]
     crossDispersionSlices["extractedFluxOptimal"] = crossDispersionSlices["horneNumeratorSum"] / crossDispersionSlices["horneDenominatorSum"]
     crossDispersionSlices["extractedFluxBoxcar"] = [x.sum() for x in crossDispersionSlices["sliceRawFlux"]]
@@ -756,6 +763,6 @@ def create_cross_dispersion_slice(
 
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
-        series["sliceRawFlux"], sigma_lower=7, sigma_upper=7, maxiters=1, cenfunc='median', stdfunc="mad_std")
+        series["sliceRawFlux"], sigma_lower=7, sigma_upper=50, maxiters=1, cenfunc='median', stdfunc="mad_std")
 
     return series
