@@ -9,13 +9,10 @@ sphinx:
 # BUILD FORMATS
 formats: all
 
-
 python:
   version: 3.8
   install:
     - requirements: docs/requirements.txt
-    - method: setuptools
-      path: .
 
 submodules:
   include: all
