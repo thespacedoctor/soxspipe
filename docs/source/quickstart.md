@@ -52,11 +52,15 @@ soxspipe prep .
 
 Once the workspace has been prepared, you should find it contains the following files and folders:
 
+   - `misc/`: a lost-and-found archive of non-fits files
    - `raw_frames/`: all raw-frames to be reduced
-   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the `prep` command
+   - `sessions/`: directory of data-reduction sessions
    - `sof/`: the set-of-files (sof) files required for each reduction step
-   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete
    - `_reduce_all.sh`: a single script to reduce all the data in the workspace
+   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete
+
+soxspipe reduces data within a 'reduction session' and an initial `base` session is automatically created when running the `prep` command. 
+
 
 ## Reduce the Data
 

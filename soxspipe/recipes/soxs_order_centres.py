@@ -88,6 +88,7 @@ class soxs_order_centres(_base_recipe_):
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
+        sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
@@ -156,10 +157,11 @@ class soxs_order_centres(_base_recipe_):
                         error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS." % locals()
 
         if error:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
-            self.log.print()
+            self.log.print("")
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -249,7 +251,7 @@ class soxs_order_centres(_base_recipe_):
             biny = 1
 
         # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
-        self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
+        # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
         detector = detect_continuum(
             log=self.log,
             pinholeFlat=self.orderFrame,
