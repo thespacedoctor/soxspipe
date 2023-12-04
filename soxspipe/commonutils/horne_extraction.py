@@ -526,7 +526,7 @@ class horne_extraction(object):
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
-        plt.show()
+        # plt.show()
         plt.savefig(filePath, dpi='figure')
 
         # plt.show()
