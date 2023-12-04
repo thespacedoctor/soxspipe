@@ -36,7 +36,8 @@ The purpose of the [`soxs_nod`](../_api/soxspipe.recipes.soxs_nod_mode.html) rec
 
 ### Recipe API
 
-```eval_rst
+<!-- ```eval_rst
 .. autoclass:: soxspipe.recipes.soxs_nod_mode
     :members:
 ```
+ -->

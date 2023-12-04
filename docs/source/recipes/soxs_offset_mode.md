@@ -36,7 +36,8 @@
 
 ### Recipe API
 
-```eval_rst
+<!-- ```eval_rst
 .. autoclass:: soxspipe.recipes.soxs_offset_mode
     :members:
 ```
+ -->
