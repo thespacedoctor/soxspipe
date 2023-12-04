@@ -1,3 +1,4 @@
+
 # .readthedocs.yaml
 # Read the Docs configuration file
 # See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
@@ -9,8 +10,15 @@ sphinx:
 # BUILD FORMATS
 formats: all
 
+<<<<<<< Updated upstream
+=======
+build:
+  os: "ubuntu-22.04"
+  tools:
+    python: "3.8"
+
+>>>>>>> Stashed changes
 python:
-  version: 3.8
   install:
     - requirements: docs/requirements.txt
 
