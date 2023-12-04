@@ -1,6 +1,9 @@
 
 # Release Notes  
 
+read_spectral_format function can now return limits to the usable region of each spectral order if a dispersion map is given.
+fixes to make detect_continuum more robust
+
 ## v0.9.1 - October 16, 2023
 
 intra-order background (scattered light) fits are now being written to FITS image files in the QC directories and reported at the end of a recipe run.

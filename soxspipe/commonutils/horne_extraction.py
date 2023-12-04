@@ -278,22 +278,24 @@ class horne_extraction(object):
 
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
-        for order in uniqueOrders:
-            orderTable = self.orderPixelTable.loc[self.orderPixelTable['order'] == order]
-            xstart = orderTable["xcoord_centre"].astype(int) - self.slitHalfLength
-            xstop = orderTable["xcoord_centre"].astype(int) + self.slitHalfLength
-            ycoord = orderTable["ycoord"].astype(int)
-            xcoords = list(map(lambda x: list(range(x[0], x[1])), zip(xstart, xstop)))
-            ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
-            orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
-            orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
-            orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords])
-            orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
-            orderSlices.append(orderTable)
+        for order, amin, amax in zip(orderNums, amins, amaxs):
+            if order in uniqueOrders:
+                orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin + 15) & (self.orderPixelTable["ycoord"] < amax - 15)]
+                # xpd-update-filter-dataframe-column-values
+                xstart = orderTable["xcoord_centre"].astype(int) - self.slitHalfLength
+                xstop = orderTable["xcoord_centre"].astype(int) + self.slitHalfLength
+                ycoord = orderTable["ycoord"].astype(int)
+                xcoords = list(map(lambda x: list(range(x[0], x[1])), zip(xstart, xstop)))
+                ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
+                orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
+                orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
+                orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords])
+                orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
+                orderSlices.append(orderTable)
 
         from fundamentals import fmultiprocess
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
-                                    inputArray=orderSlices, poolSize=False, timeout=300,  ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma)
+                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma)
 
         fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
         gs = fig.add_gridspec(1, 1)
@@ -524,7 +526,7 @@ class horne_extraction(object):
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
-        # plt.show()
+        plt.show()
         plt.savefig(filePath, dpi='figure')
 
         # plt.show()
@@ -619,10 +621,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
             i, mask)) for i in a]
 
         startCount = len(fractions)
-        print(order)
         while (iteration < clippingIterationLimit) and (clipped_count > 0):
-            print(wave_px)
-            print(fractions)
 
             coeff = np.polyfit(wave_px, fractions, deg=2)
             residuals = fractions - np.polyval(coeff, wave_px)
