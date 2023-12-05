@@ -1,11 +1,14 @@
 
 # Release Notes  
 
-## v0.9.3 - December 4, 2023
+
+## v0.9.4 - December 5, 2023
 
 * **REFACTOR:** orders are now clipped so that only the pixels deemed to be within the flux receiving regions of the order are extracted (according to the static calibration spectral format table).
 * **REFACTOR:** `soxspipe prep` will now warn user if no FITS files are found in the workspace directory and quit before moving any files (safer).
 * **REFACTOR:** `soxspipe session` commands will look for a sessions directory before creating any new files and folders (cleaner).
+* **REFACTOR:** `read_spectral_format` function can now return limits to the usable region of each spectral order if a dispersion map is given.
+* **FIXED**: fixes to make detect_continuum more robust.
 
 ## v0.9.2 - November 29, 2023
 
