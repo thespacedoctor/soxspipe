@@ -170,12 +170,26 @@ class horne_extraction(object):
         self.twoDMap = fits.open(twoDMapPath)
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
-        xdim = self.twoDMap[0].data.shape[1]
-        ydim = self.twoDMap[0].data.shape[0]
+        binx = 1
+        biny = 1
+        try:
+            binx = int(self.skySubtractedFrame.header[kw("WIN_BINX")])
+            biny = int(self.skySubtractedFrame.header[kw("WIN_BINY")])
+        except:
+            pass
+
+        xdim = int(self.twoDMap[0].data.shape[1] / binx)
+        ydim = int(self.twoDMap[0].data.shape[0] / biny)
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
 
         self.skySubtractedFrame.data[self.skySubtractedFrame.data == 0] = np.nan
+
+        if binx > 1 or biny > 1:
+            from astropy.nddata import block_reduce
+            self.twoDMap["WAVELENGTH"].data = block_reduce(self.twoDMap["WAVELENGTH"].data, (biny, binx), func=np.mean)
+            self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (biny, binx), func=np.mean)
+            self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (biny, binx), func=np.mean)
 
         try:
             self.imageMap = pd.DataFrame.from_dict({
@@ -188,15 +202,26 @@ class horne_extraction(object):
             })
             self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
         except:
-            self.imageMap = pd.DataFrame.from_dict({
-                "x": xarray,
-                "y": yarray,
-                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-                "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
-                "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
-                "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
-            })
-            self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+            try:
+                self.imageMap = pd.DataFrame.from_dict({
+                    "x": xarray,
+                    "y": yarray,
+                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+                    "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
+                    "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
+                    "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
+                })
+                self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+            except:
+                self.imageMap = pd.DataFrame.from_dict({
+                    "x": xarray,
+                    "y": yarray,
+                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten(),
+                    "slit_position": self.twoDMap["SLIT"].data.flatten(),
+                    "order": self.twoDMap["ORDER"].data.flatten(),
+                    "flux": self.skySubtractedFrame.data.flatten()
+                })
+                self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
         # FIND THE OBJECT TRACE IN EACH ORDER
         detector = detect_continuum(
@@ -233,6 +258,9 @@ class horne_extraction(object):
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
         from datetime import datetime
+        from soxspipe.commonutils.toolkit import read_spectral_format
+        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
+        import numpy as np
 
         kw = self.kw
         arm = self.arm
@@ -244,20 +272,26 @@ class horne_extraction(object):
 
         self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
 
+        # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
+        orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
+            log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap)
+
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
-        for order in uniqueOrders:
-            orderTable = self.orderPixelTable.loc[self.orderPixelTable['order'] == order]
-            xstart = orderTable["xcoord_centre"].astype(int) - self.slitHalfLength
-            xstop = orderTable["xcoord_centre"].astype(int) + self.slitHalfLength
-            ycoord = orderTable["ycoord"].astype(int)
-            xcoords = list(map(lambda x: list(range(x[0], x[1])), zip(xstart, xstop)))
-            ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
-            orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
-            orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
-            orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords])
-            orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
-            orderSlices.append(orderTable)
+        for order, amin, amax in zip(orderNums, amins, amaxs):
+            if order in uniqueOrders:
+                orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin + 15) & (self.orderPixelTable["ycoord"] < amax - 15)]
+                # xpd-update-filter-dataframe-column-values
+                xstart = orderTable["xcoord_centre"].astype(int) - self.slitHalfLength
+                xstop = orderTable["xcoord_centre"].astype(int) + self.slitHalfLength
+                ycoord = orderTable["ycoord"].astype(int)
+                xcoords = list(map(lambda x: list(range(x[0], x[1])), zip(xstart, xstop)))
+                ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
+                orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
+                orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
+                orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords])
+                orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
+                orderSlices.append(orderTable)
 
         from fundamentals import fmultiprocess
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
@@ -670,7 +704,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     crossDispersionSlices.loc[mask, 'horneDenominatorSum'] = [x.sum() for x in crossDispersionSlices.loc[mask, "horneDenominator"]]
     crossDispersionSlices.loc[mask, "fudged"] = True
 
-    # CALULCATE THE FINAL EXTRACTED SPECTRA
+    # CALCULATE THE FINAL EXTRACTED SPECTRA
     crossDispersionSlices["varianceSpectrum"] = 1 / crossDispersionSlices["horneDenominatorSum"]
     crossDispersionSlices["extractedFluxOptimal"] = crossDispersionSlices["horneNumeratorSum"] / crossDispersionSlices["horneDenominatorSum"]
     crossDispersionSlices["extractedFluxBoxcar"] = [x.sum() for x in crossDispersionSlices["sliceRawFlux"]]
@@ -728,6 +762,6 @@ def create_cross_dispersion_slice(
 
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
-        series["sliceRawFlux"], sigma_lower=7, sigma_upper=7, maxiters=1, cenfunc='median', stdfunc="mad_std")
+        series["sliceRawFlux"], sigma_lower=7, sigma_upper=50, maxiters=1, cenfunc='median', stdfunc="mad_std")
 
     return series

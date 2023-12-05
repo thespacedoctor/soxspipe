@@ -56,9 +56,6 @@ class data_organiser(object):
             log,
             rootDir
     ):
-
-        import shutil
-        import sqlite3 as sql
         from os.path import expanduser
         import codecs
         from fundamentals.logs import emptyLogger
@@ -79,38 +76,10 @@ class data_organiser(object):
         self.sofDir = rootDir + "/sof"
         self.sessionsDir = rootDir + "/sessions"
 
-        # MK RAW FRAME DIRECTORY
-        if not os.path.exists(self.rawDir):
-            os.makedirs(self.rawDir)
-
-        # MK RAW FRAME DIRECTORY
-        if not os.path.exists(self.sessionsDir):
-            os.makedirs(self.sessionsDir)
-
         # SESSION ID PLACEHOLDER FILE
         self.sessionIdFile = self.sessionsDir + "/.sessionid"
 
-        # TEST FOR SQLITE DATABASE
         self.dbPath = rootDir + "/soxspipe.db"
-        try:
-            with open(self.dbPath):
-                pass
-            self.freshRun = False
-        except IOError:
-            self.freshRun = True
-            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
-            shutil.copyfile(emptyDb, self.dbPath)
-
-        def dict_factory(cursor, row):
-            d = {}
-            for idx, col in enumerate(cursor.description):
-                d[col[0]] = row[idx]
-            return d
-
-        # CREATE THE DATABASE CONNECTION
-        self.conn = sql.connect(
-            self.dbPath)
-        self.conn.row_factory = dict_factory
 
         # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
         self.keywords = [
@@ -236,6 +205,54 @@ class data_organiser(object):
         """
         self.log.debug('starting the ``prepare`` method')
         import codecs
+        import shutil
+        import sqlite3 as sql
+
+        # TEST FITS FILES OR raw_frames DIRECT EXISTS
+        fitsExist = False
+        exists = os.path.exists(self.rawDir)
+        if exists:
+            fitsExist = True
+        if not fitsExist:
+            for d in os.listdir(self.rootDir):
+                filepath = os.path.join(self.rootDir, d)
+                if os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)):
+                    fitsExist = True
+                    break
+
+        # EXIST IF NO FITS FILES EXIST - SOME PROTECT AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
+        if fitsExist == False:
+            print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
+            sys.exit(0)
+
+        # MK RAW FRAME DIRECTORY
+        if not os.path.exists(self.rawDir):
+            os.makedirs(self.rawDir)
+
+        # TEST FOR SQLITE DATABASE - ADD IF MISSING
+        try:
+            with open(self.dbPath):
+                pass
+            self.freshRun = False
+        except IOError:
+            self.freshRun = True
+            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
+            shutil.copyfile(emptyDb, self.dbPath)
+
+        def dict_factory(cursor, row):
+            d = {}
+            for idx, col in enumerate(cursor.description):
+                d[col[0]] = row[idx]
+            return d
+
+        # CREATE THE DATABASE CONNECTION
+        self.conn = sql.connect(
+            self.dbPath)
+        self.conn.row_factory = dict_factory
+
+        # MK SESSION DIRECTORY
+        if not os.path.exists(self.sessionsDir):
+            os.makedirs(self.sessionsDir)
 
         # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
         # OTHERWISE USE CURRENT SESSION
@@ -1291,6 +1308,13 @@ class data_organiser(object):
         self.log.debug('starting the ``session_create`` method')
 
         import re
+
+        # TEST SESSION DIRECTORY EXISTS
+        exists = os.path.exists(self.sessionsDir)
+        if not exists:
+            print("Please prepare your workspace using the `soxspipe prep` command before creating a new session.")
+            sys.exit(0)
+
         if sessionId:
             if len(sessionId) > 16:
                 print("Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-")
