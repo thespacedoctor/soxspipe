@@ -35,6 +35,8 @@ soxs-order-centre:
         order-sample-count: 200
         # LENGTH OF EACH SLICE (PIXELS)
         slice-length: 10
+        # WIDTH OF EACH SLICE (PIXELS)
+        slice-width: 1
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
         peak-sigma-limit: 1.5
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
@@ -111,9 +113,11 @@ soxs-stare:
     horne-extraction-profile-clipping-iteration-count: 10
     detect-continuum:
         # NUMBER OF CROSS-ORDER SLICES PER ORDER
-        order-sample-count: 600
+        order-sample-count: 200
         # LENGTH OF EACH SLICE (PIXELS)
-        slice-length: 10
+        slice-length: 20
+        # WIDTH OF EACH SLICE (PIXELS)
+        slice-width: 5
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
         peak-sigma-limit: 1.5
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
