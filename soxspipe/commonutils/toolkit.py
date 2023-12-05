@@ -367,7 +367,8 @@ def unpack_order_table(
         binx=1,
         biny=1,
         prebinned=False,
-        order=False):
+        order=False,
+        limitToDetectorFormat=False):
     """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
 
     **Key Arguments:**
@@ -379,6 +380,7 @@ def unpack_order_table(
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
     - ``prebinned`` -- was the order-table measured on a pre-binned frame (typically only for mflats). Default *False*
     - ``order`` -- unpack only a single order
+    - ``limitToDetectorFormat`` -- limit the pixels return to those limited by the detector format static calibration table
 
     **Usage:**
 
@@ -425,6 +427,7 @@ def unpack_order_table(
         ratio = axisBbin
     else:
         ratio = 1
+
     axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(
         orderMetaTable[f"{axisB}min"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio)]
     orders = [np.full_like(a, o) for a, o in zip(
@@ -687,7 +690,8 @@ def spectroscopic_image_quality_checks(
 def read_spectral_format(
         log,
         settings,
-        arm):
+        arm,
+        dispersionMap=False):
     """*read the spectral format table to get some key parameters*
 
     **Key Arguments:**
@@ -695,6 +699,7 @@ def read_spectral_format(
     - `log` -- logger
     - `settings` -- soxspipe settings
     - `arm` -- arm to retrieve format for
+    - `dispersionMap` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are computed
 
     **Return:**
         - ``orderNums`` -- a list of the order numbers
@@ -712,11 +717,22 @@ def read_spectral_format(
     """
     log.debug('starting the ``read_spectral_format`` function')
 
+    import numpy as np
+    import pandas as pd
+    from astropy.io import fits
+
     # DETECTOR PARAMETERS LOOKUP OBJECT
     dp = detector_lookup(
         log=log,
         settings=settings
     ).get(arm)
+
+    # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+    # FOLDER
+    kw = keyword_lookup(
+        log=log,
+        settings=settings
+    ).get
 
     science_pixels = dp["science-pixels"]
 
@@ -734,8 +750,58 @@ def read_spectral_format(
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
-    waveLengthMin = specFormatTable["WLMINFUL"].values - 10
-    waveLengthMax = specFormatTable["WLMAXFUL"].values + 10
+    waveLengthMin = specFormatTable["WLMINFUL"].values
+    waveLengthMax = specFormatTable["WLMAXFUL"].values
+
+    # USE DISPERSION MAP TO FIND X-Y LIMITS OF THE SPECTRAL FORMAT FOR EACH ORDER
+    # WE WANT TO LIMIT THE EXTRACTION TO THESE REGIONS
+    if not isinstance(dispersionMap, bool):
+        myDict = {
+            "order": np.asarray([]),
+            "wavelength": np.asarray([]),
+            "slit_position": np.asarray([])
+        }
+        for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
+            wlArray = np.array([wmin, wmax])
+            myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
+            myDict["order"] = np.append(
+                myDict["order"], np.ones(len(wlArray)) * o)
+            myDict["slit_position"] = np.append(
+                myDict["slit_position"], np.zeros(len(wlArray)))
+        orderPixelTable = pd.DataFrame(myDict)
+        orderPixelTable = dispersion_map_to_pixel_arrays(
+            log=log,
+            dispersionMapPath=dispersionMap,
+            orderPixelTable=orderPixelTable,
+            removeOffDetectorLocation=False
+        )
+
+        # GRAB HEADER FROM DISPERSION MAP
+        with fits.open(dispersionMap, memmap=True) as hdul:
+            header = hdul[0].header
+
+        orderPixelRanges = []
+        if header[kw("INSTRUME")] == "SOXS":
+            axis = "x"
+            rowCol = "columns"
+        else:
+            axis = "y"
+            rowCol = "rows"
+
+        amins = []
+        amaxs = []
+        for o in orderNums:
+            amin = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].min()
+            amax = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].max()
+            if amin < 0:
+                amin = 0
+            if amax > dp["science-pixels"][rowCol]["end"]:
+                amax = dp["science-pixels"][rowCol]["end"]
+            amins.append(amin)
+            amaxs.append(amax)
+
+        log.debug('completed the ``read_spectral_format`` function')
+        return orderNums, waveLengthMin, waveLengthMax, amins, amaxs
 
     log.debug('completed the ``read_spectral_format`` function')
     return orderNums, waveLengthMin, waveLengthMax
@@ -895,6 +961,15 @@ def predict_product_path(
     except:
         pass
 
+    from soxspipe.commonutils import data_organiser
+    from fundamentals.logs import emptyLogger
+    log = emptyLogger()
+    do = data_organiser(
+        log=log,
+        rootDir="."
+    )
+    currentSession, allSessions = do.session_list(silent=True)
+
     recipeName = sys.argv[1]
     if recipeName[0] == "-":
         recipeName = sys.argv[2]
@@ -902,7 +977,7 @@ def predict_product_path(
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_SKYSUB"
-    productPath = "./product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = f"./sessions/{currentSession}/product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
     productPath = productPath.replace("//", "/")
 
     return productPath

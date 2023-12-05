@@ -61,10 +61,10 @@ class test_xsh_data_organiser(unittest.TestCase):
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
-            settings=settings,
             rootDir=pathToOutputDir + "01_EG274"
         )
         do.prepare()
+        do.session_list()
 
     @pytest.mark.full
     def test_soxs_data_organiser_function_exception(self):
@@ -73,7 +73,6 @@ class test_xsh_data_organiser(unittest.TestCase):
         try:
             this = data_organiser(
                 log=log,
-                settings=settings,
                 fakeKey="break the code"
             )
             this.get()

@@ -14,13 +14,9 @@ conda create -n soxspipe python=3.9 soxspipe -c conda-forge
 conda activate soxspipe
 ```
 
+If you have previously installed soxspipe, a warning will be issued stating that a conda environment already exists; select `y` when asked to remove the existing environment. This has proven to be the cleanest way to upgrade soxspipe.
+
 To check installation was successful run `soxspipe -v`. This should return the version number of the installation.
-
-With each new release of soxspipe, you can upgrade to the latest version using the command:
-
-``` bash
-conda upgrade soxspipe -c conda-forge
-```
 
 ## Demo Data
 
@@ -52,11 +48,15 @@ soxspipe prep .
 
 Once the workspace has been prepared, you should find it contains the following files and folders:
 
+   - `misc/`: a lost-and-found archive of non-fits files
    - `raw_frames/`: all raw-frames to be reduced
-   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the `prep` command
+   - `sessions/`: directory of data-reduction sessions
    - `sof/`: the set-of-files (sof) files required for each reduction step
-   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete
    - `_reduce_all.sh`: a single script to reduce all the data in the workspace
+   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete
+
+soxspipe reduces data within a [`reduction session`](./sessions.md) and an initial `base` session is automatically created when running the `prep` command. 
+
 
 ## Reduce the Data
 

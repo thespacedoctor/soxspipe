@@ -59,8 +59,16 @@ class test_subtract_sky(unittest.TestCase):
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
         twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
 
+        from soxspipe.commonutils import keyword_lookup
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        kw = keyword_lookup(
+            log=log,
+            settings=settings
+        ).get
+
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-        mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, slit_length=11)
+        mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, slit_length=11, kw=kw)
 
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
         from astropy.nddata import CCDData
@@ -74,7 +82,7 @@ class test_subtract_sky(unittest.TestCase):
         objectFrame = CCDData.read(objectPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-        mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, slit_length=11)
+        mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, slit_length=11, kw=kw)
 
         from tabulate import tabulate
         print(tabulate(mapDF.head(100), headers='keys', tablefmt='psql'))

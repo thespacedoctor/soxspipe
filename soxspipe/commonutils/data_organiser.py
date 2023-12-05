@@ -24,7 +24,6 @@ class data_organiser(object):
 
     **Key Arguments:**
         - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
         - ``rootDir`` -- the root directory of the data to process
 
     **Usage:**
@@ -45,7 +44,6 @@ class data_organiser(object):
     from soxspipe.commonutils import data_organiser
     do = data_organiser(
         log=log,
-        settings=settings,
         rootDir="/path/to/workspace/root/"
     )
     do.prepare()
@@ -56,22 +54,17 @@ class data_organiser(object):
     def __init__(
             self,
             log,
-            rootDir,
-            settings=False
+            rootDir
     ):
-
-        import shutil
-        import sqlite3 as sql
         from os.path import expanduser
+        import codecs
+        from fundamentals.logs import emptyLogger
 
         log.debug("instantiating a new 'data_organiser' object")
-        self.settings = settings
+        self.log = emptyLogger()
 
-        from soxspipe.commonutils import toolkit
-        self.log = toolkit.add_recipe_logger(log, "./data-organiser.log")
-
-        if rootDir == ".":
-            rootDir = os.getcwd()
+        # if rootDir == ".":
+        #     rootDir = os.getcwd()
         # MAKE RELATIVE HOME PATH ABSOLUTE
         if rootDir[0] == "~":
             home = expanduser("~")
@@ -81,32 +74,12 @@ class data_organiser(object):
         self.rawDir = rootDir + "/raw_frames"
         self.miscDir = rootDir + "/misc"
         self.sofDir = rootDir + "/sof"
+        self.sessionsDir = rootDir + "/sessions"
 
-        # MK RAW FRAME DIRECTORY
-        if not os.path.exists(self.rawDir):
-            os.makedirs(self.rawDir)
+        # SESSION ID PLACEHOLDER FILE
+        self.sessionIdFile = self.sessionsDir + "/.sessionid"
 
-        # TEST FOR SQLITE DATABASE
         self.dbPath = rootDir + "/soxspipe.db"
-        try:
-            with open(self.dbPath):
-                pass
-            self.freshRun = False
-        except IOError:
-            self.freshRun = True
-            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
-            shutil.copyfile(emptyDb, self.dbPath)
-
-        def dict_factory(cursor, row):
-            d = {}
-            for idx, col in enumerate(cursor.description):
-                d[col[0]] = row[idx]
-            return d
-
-        # CREATE THE DATABASE CONNECTION
-        self.conn = sql.connect(
-            self.dbPath)
-        self.conn.row_factory = dict_factory
 
         # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
         self.keywords = [
@@ -228,34 +201,69 @@ class data_organiser(object):
     def prepare(
             self):
         """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*
-
-        **Key Arguments:**
-            # -
-
-        **Return:**
-            - None
-
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
         """
         self.log.debug('starting the ``prepare`` method')
+        import codecs
+        import shutil
+        import sqlite3 as sql
+
+        # TEST FITS FILES OR raw_frames DIRECT EXISTS
+        fitsExist = False
+        exists = os.path.exists(self.rawDir)
+        if exists:
+            fitsExist = True
+        if not fitsExist:
+            for d in os.listdir(self.rootDir):
+                filepath = os.path.join(self.rootDir, d)
+                if os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)):
+                    fitsExist = True
+                    break
+
+        # EXIST IF NO FITS FILES EXIST - SOME PROTECT AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
+        if fitsExist == False:
+            print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
+            sys.exit(0)
+
+        # MK RAW FRAME DIRECTORY
+        if not os.path.exists(self.rawDir):
+            os.makedirs(self.rawDir)
+
+        # TEST FOR SQLITE DATABASE - ADD IF MISSING
+        try:
+            with open(self.dbPath):
+                pass
+            self.freshRun = False
+        except IOError:
+            self.freshRun = True
+            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
+            shutil.copyfile(emptyDb, self.dbPath)
+
+        def dict_factory(cursor, row):
+            d = {}
+            for idx, col in enumerate(cursor.description):
+                d[col[0]] = row[idx]
+            return d
+
+        # CREATE THE DATABASE CONNECTION
+        self.conn = sql.connect(
+            self.dbPath)
+        self.conn.row_factory = dict_factory
+
+        # MK SESSION DIRECTORY
+        if not os.path.exists(self.sessionsDir):
+            os.makedirs(self.sessionsDir)
+
+        # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
+        # OTHERWISE USE CURRENT SESSION
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            sessionId = self.session_create(sessionId="base")
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                sessionId = readFile.read()
 
         basename = os.path.basename(self.rootDir)
-        self.log.print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
+        print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
         self._sync_raw_frames()
         self._move_misc_files()
         self._populate_product_frames_db_table()
@@ -263,13 +271,14 @@ class data_organiser(object):
         self._write_sof_files()
         self._write_reduction_shell_scripts()
 
-        self.log.print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
-        self.log.print(f"In this workspace you will find:\n")
-        self.log.print(f"   - `raw_frames/`: all raw-frames to be reduced")
-        self.log.print(f"   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the prep command")
-        self.log.print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
-        self.log.print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
-        self.log.print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace\n")
+        print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
+        print(f"In this workspace you will find:\n")
+        print(f"   - `misc/`: a lost-and-found archive of non-fits files")
+        print(f"   - `raw_frames/`: all raw-frames to be reduced")
+        print(f"   - `sessions/`: directory of data-reduction sessions")
+        print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
+        print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace")
+        print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
 
         self.log.debug('completed the ``prepare`` method')
         return None
@@ -291,7 +300,6 @@ class data_organiser(object):
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
-            settings=settings,
             rootDir="/path/to/root/folder/"
         )
         do._sync_raw_frames()
@@ -1268,9 +1276,169 @@ class data_organiser(object):
         self.log.debug('completed the ``_write_reduction_shell_scripts`` method')
         return None
 
+    def session_create(
+            self,
+            sessionId=False):
+        """*create a data-reduction session with accompanying settings file and required directories*
+
+        **Key Arguments:**
+            - ``sessionId`` -- optionally provide a sessionId (A-Z, a-z 0-9 and/or _- allowed, 16 character limit)
+
+        **Return:**
+            - ``sessionId`` -- the unique ID of the data-reduction session
+
+        **Usage:**
+
+        ```python
+        do = data_organiser(
+            log=log,
+            rootDir="/path/to/workspace/root/"
+        )
+        sessionId = do.session_create(sessionId="my_supernova")
+        ```
+        """
+        self.log.debug('starting the ``session_create`` method')
+
+        import re
+
+        # TEST SESSION DIRECTORY EXISTS
+        exists = os.path.exists(self.sessionsDir)
+        if not exists:
+            print("Please prepare your workspace using the `soxspipe prep` command before creating a new session.")
+            sys.exit(0)
+
+        if sessionId:
+            if len(sessionId) > 16:
+                print("Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-")
+            matchObjectList = re.findall(r'[^0-9a-zA-Z\-\_]+', sessionId)
+            if matchObjectList:
+                print("Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-")
+        else:
+            # CREATE SESSION ID FROM TIME STAMP
+            from datetime import datetime, date, time
+            now = datetime.now()
+            sessionId = now.strftime("%Y%m%dt%H%M%S")
+
+        # MAKE THE SESSION DIRECTORY
+        sessionPath = self.sessionsDir + "/" + sessionId
+        if not os.path.exists(sessionPath):
+            os.makedirs(sessionPath)
+
+        # SETUP SESSION SETTINGS AND LOGGING
+        testPath = sessionPath + "/soxspipe.yaml"
+        exists = os.path.exists(testPath)
+        if not exists:
+            su = tools(
+                arguments={"<workspaceDirectory>": sessionPath, "init": True, "settingsFile": None},
+                docString=False,
+                logLevel="WARNING",
+                options_first=False,
+                projectName="soxspipe",
+                defaultSettingsFile=True
+            )
+            arguments, settings, replacedLog, dbConn = su.setup()
+
+        # WRITE THE SESSION ID FILE
+        import codecs
+        with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
+            writeFile.write(sessionId)
+
+        message = f"A new data-reduction session has been created with sessionId '{sessionId}'"
+        try:
+            self.log.print(message)
+        except:
+            print(message)
+        self.log.debug('completed the ``session_create`` method')
+        return sessionId
+
+    def session_list(
+            self,
+            silent=False):
+        """*list the sessions available to the user*
+
+        **Key Arguments:**
+            - ``silent`` -- don't print listings if True
+
+        **Return:**
+            - ``currentSession`` -- the single ID of the currently used session
+            - ``allSessions`` -- the IDs of the other sessions
+
+        **Usage:**
+
+        ```python
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            rootDir="."
+        )
+        currentSession, allSessions = do.session_list()
+        ```
+        """
+        self.log.debug('starting the ``session_list`` method')
+
+        import codecs
+
+        # IF SESSION ID FILE DOES NOT EXIST, REPORT
+        self.sessionIdFile = self.sessionsDir + "/.sessionid"
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            if not silent:
+                print("No reduction sessions exist in this workspace yet.")
+            return None, None
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                currentSession = readFile.read()
+
+        # LIST ALL SESSIONS
+        allSessions = [d for d in os.listdir(self.sessionsDir) if os.path.isdir(os.path.join(self.sessionsDir, d))]
+        allSessions.sort()
+
+        if not silent:
+            for s in allSessions:
+                if s == currentSession.strip():
+                    print(f"\033[0;32m*{s}*\u001b[38;5;15m")
+                else:
+                    print(s)
+
+        self.log.debug('completed the ``session_list`` method')
+        return currentSession, allSessions
+
+    def session_switch(
+            self,
+            sessionId):
+        """*switch to an existing workspace data-reduction session*
+
+        **Key Arguments:**
+            - ``sessionId`` -- the sessionId to switch to
+
+        **Usage:**
+
+        ```python
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            rootDir="."
+        )
+        do.session_switch(mySessionId)
+        ```
+        """
+        self.log.debug('starting the ``session_switch`` method')
+        import codecs
+
+        currentSession, allSessions = self.session_list(silent=True)
+
+        if sessionId == currentSession:
+            print(f"Session '{sessionId}' is already in use.")
+        elif sessionId in allSessions:
+            # WRITE THE SESSION ID FILE
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
+                writeFile.write(sessionId)
+            print(f"Session successfully switched to '{sessionId}'.")
+        else:
+            print(f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`.")
+
+        self.log.debug('completed the ``session_switch`` method')
+        return None
+
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
-    # Override Method Attributes
-    # method-override-tmpx

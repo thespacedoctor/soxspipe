@@ -132,6 +132,12 @@ class test_horne_extraction(unittest.TestCase):
         twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651_IMAGE.fits"
         dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/nir/eg274/2019.08.25T02.26.41.5906_NIR_SPAT_SOL_0PT6651.fits"
 
+        # # XRAY BINARY VIS (FAINT)
+        # skyModelFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/vis/2019.08.31T00.29.36.007_VIS_1X1_SLOW_STARE_SAX_J1808.43658_SKYMODEL.fits"
+        # skySubtractedFrame = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/vis/2019.08.31T00.29.36.007_VIS_1X1_SLOW_STARE_SAX_J1808.43658_SKYSUB.fits"
+        # twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/vis/2019.08.30T18.42.31.199_VIS_1X1_FAST_SPAT_SOL_IMAGE.fits"
+        # dispMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-horne-extraction/vis/2019.08.30T18.42.31.199_VIS_1X1_FAST_SPAT_SOL.fits"
+
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         import pandas as pd
         import matplotlib.pyplot as plt
