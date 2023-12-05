@@ -378,7 +378,28 @@ class _base_recipe_(object):
         preframes.sort([kw('MJDOBS')])
 
         self.log.print("# PREPARED FRAMES - SUMMARY")
+
+        slitname = kw(f"SLIT_{self.arm}".upper())
+        try:
+            preframes.summary["SLIT"] = preframes.summary[slitname]
+        except:
+            pass
+
         columns = preframes.summary.colnames
+
+        try:
+            columns.remove(kw("SLIT_NIR"))
+        except:
+            pass
+        try:
+            columns.remove(kw("SLIT_VIS"))
+        except:
+            pass
+        try:
+            columns.remove(kw("SLIT_UVB"))
+        except:
+            pass
+
         if "filename" in columns:
             columns.remove("file")
             columns.remove("filename")
