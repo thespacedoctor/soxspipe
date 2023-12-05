@@ -378,7 +378,28 @@ class _base_recipe_(object):
         preframes.sort([kw('MJDOBS')])
 
         self.log.print("# PREPARED FRAMES - SUMMARY")
+
+        slitname = kw(f"SLIT_{self.arm}".upper())
+        try:
+            preframes.summary["SLIT"] = preframes.summary[slitname]
+        except:
+            pass
+
         columns = preframes.summary.colnames
+
+        try:
+            columns.remove(kw("SLIT_NIR"))
+        except:
+            pass
+        try:
+            columns.remove(kw("SLIT_VIS"))
+        except:
+            pass
+        try:
+            columns.remove(kw("SLIT_UVB"))
+        except:
+            pass
+
         if "filename" in columns:
             columns.remove("file")
             columns.remove("filename")
@@ -539,7 +560,7 @@ class _base_recipe_(object):
         slitWidth = [str(s).replace("JH", "") for s in slitWidth]
         slitWidth = list(set(slitWidth))
 
-        if len(slitWidth) > 1 and False:
+        if len(slitWidth) > 1:
             sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")

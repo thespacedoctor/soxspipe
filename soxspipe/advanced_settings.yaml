@@ -3,7 +3,7 @@ version: 1
 # KEYS TO USES AS COLUMNS IN QUICKLOOK SUMMARY TABLES PRINTS TO STDOUT
 summary-keys:
     default: ['INSTRUME', 'MJDOBS', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'SEQ_ARM',
-                    'EXPTIME']
+                    'EXPTIME', 'SLIT_UVB', 'SLIT_VIS', 'SLIT_NIR']
     verbose: ['INSTRUME','MJDOBS', 'CDELT1', 'CDELT2', 'PSZX', 'DPR_TYPE', 'DPR_CATG', 'DPR_TECH', 'PRO_TYPE', 'PRO_CATG', 'PRO_TECH','SEQ_ARM',
                     'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT', 'SLIT_UVB', 'SLIT_VIS', 'SLIT_NIR']
 

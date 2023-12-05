@@ -503,8 +503,8 @@ class horne_extraction(object):
         resampler = FluxConservingResampler()
         flux_resampled = resampler(spectrum_orig, wave_resample_grid)
         merged_orders = pd.DataFrame()
-        merged_orders['FLUX_COUNTS'] = flux_resampled.flux
         merged_orders['WAVE'] = flux_resampled.spectral_axis
+        merged_orders['FLUX_COUNTS'] = flux_resampled.flux
 
         fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
         gs = fig.add_gridspec(1, 1)

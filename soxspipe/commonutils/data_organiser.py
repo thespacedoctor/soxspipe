@@ -124,6 +124,7 @@ class data_organiser(object):
             'exptime',
             'binning',
             'rospeed',
+            'slit',
             'night start date',
             'night start mjd',
             'mjd-obs',
@@ -181,7 +182,7 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'binning', 'night start mjd', 'night start date']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "LAMP,WAVE", "STD,FLUX", "STD,TELLURIC", "OBJECT"]
@@ -587,7 +588,7 @@ class data_organiser(object):
 
         **Key Arguments:**
             - ``filteredFrames`` -- the dataframe from which to split frames into categorise.
-            - ``verbose`` -- print restuls to stdout.
+            - ``verbose`` -- print results to stdout.
 
         **Return:**
             - ``rawFrames`` -- dataframe of raw frames only
@@ -612,6 +613,13 @@ class data_organiser(object):
         keywordsTerseReduced = self.keywordsTerse[:]
         filterKeywordsRaw = self.filterKeywords[:]
         filterKeywordsReduced = self.filterKeywords[:]
+
+        filteredFrames['slit'] = "--"
+
+        # ADD SLIT FOR SPECTROSCOPIC DATA
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "eso ins opti5 name"]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "eso ins opti4 name"]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "eso ins opti3 name"]
 
         mask = []
         for i in self.proKeywords:
@@ -655,29 +663,29 @@ class data_organiser(object):
         reducedTablesGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
 
         if verbose and (len(reducedPixelsGroups.index) or len(reducedTablesGroups.index)):
-            self.log.print("\n# CONTENT SETS INDEX\n")
+            print("\n# CONTENT SETS INDEX\n")
 
         if verbose and len(reducedPixelsGroups.index):
-            self.log.print("\n## REDUCED PIXEL-FRAME-SET SUMMARY\n")
-            self.log.print(tabulate(reducedPixelsGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
+            print("\n## REDUCED PIXEL-FRAME-SET SUMMARY\n")
+            print(tabulate(reducedPixelsGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
 
         if verbose and len(reducedTablesGroups.index):
-            self.log.print("\n## REDUCED TABLES-SET SUMMARY\n")
-            self.log.print(tabulate(reducedTablesGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
+            print("\n## REDUCED TABLES-SET SUMMARY\n")
+            print(tabulate(reducedTablesGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
 
         if verbose:
-            self.log.print("\n# CONTENT FILE INDEX\n")
+            print("\n# CONTENT FILE INDEX\n")
         if verbose and len(rawGroups.index):
-            self.log.print("\n## ALL RAW FRAMES\n")
-            self.log.print(tabulate(rawFrames[keywordsTerseRaw], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+            print("\n## ALL RAW FRAMES\n")
+            print(tabulate(rawFrames[keywordsTerseRaw], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
 
         if verbose and len(reducedPixelsGroups.index):
-            self.log.print("\n## ALL REDUCED PIXEL-FRAMES\n")
-            self.log.print(tabulate(reducedFramesPixels[keywordsTerseReduced], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+            print("\n## ALL REDUCED PIXEL-FRAMES\n")
+            print(tabulate(reducedFramesPixels[keywordsTerseReduced], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
 
         if verbose and len(reducedTablesGroups.index):
-            self.log.print("\n## ALL REDUCED TABLES\n")
-            self.log.print(tabulate(reducedFramesTables[keywordsTerseReducedTable], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
+            print("\n## ALL REDUCED TABLES\n")
+            print(tabulate(reducedFramesTables[keywordsTerseReducedTable], headers='keys', tablefmt='github', showindex=False, stralign="right", floatfmt=".3f"))
 
         self.log.debug('completed the ``catagorise_frames`` method')
         return rawFrames[keywordsTerseRaw].replace(['--'], None), reducedFramesPixels[keywordsTerseReduced], reducedFramesTables[keywordsTerseReducedTable]
@@ -1031,6 +1039,12 @@ class data_organiser(object):
             else:
                 mask = (df['recipe'] == "mflat")
             df = df.loc[mask]
+
+            if series["recipe"] in ["spat_sol"]:
+                # REMOVE BLOCKING FILTERS
+                mask = df['slit'].str.contains('JH')
+                df = df.loc[~mask]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 if series["eso seq arm"].upper() in ["UVB"] and series["recipe"] == "mflat":
@@ -1054,6 +1068,17 @@ class data_organiser(object):
         if series["recipe"] in ["spat_sol", "stare"]:
             mask = calibrationFrames['eso pro catg'].str.contains('MASTER_FLAT')
             df = calibrationFrames.loc[mask]
+
+            if series["recipe"] in ["spat_sol"]:
+                # REMOVE BLOCKING FILTERS
+                mask = df['slit'].str.contains('JH')
+                df = df.loc[~mask]
+
+            if series["recipe"] in ["stare"]:
+                from tabulate import tabulate
+                if len(filteredFrames["slit"].values):
+                    df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 files = np.append(files, df["file"].values[0])

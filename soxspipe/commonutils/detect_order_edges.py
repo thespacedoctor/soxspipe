@@ -114,6 +114,7 @@ class detect_order_edges(_base_detect):
         kw = self.kw
         self.arm = flatFrame.header[kw("SEQ_ARM")]
         self.dateObs = flatFrame.header[kw("DATE_OBS")]
+        self.slit = flatFrame.header[kw(f"SLIT_{self.arm}".upper())]
 
         self.binx = binx
         self.biny = biny
@@ -181,6 +182,11 @@ class detect_order_edges(_base_detect):
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=self.sliceWidth)
+
+        # REMOVE TOP 2 ORDERS IF BLOCKING FILTER USED
+        if "JH" in self.slit:
+            orderPixelTable = orderPixelTable.loc[(orderPixelTable["order"] > 12)]
+            orderMetaTable = orderMetaTable.loc[(orderMetaTable["order"] > 12)]
 
         # ADD MIN AND MAX FLUX THRESHOLDS TO ORDER TABLE
         self.log.print("\tDETERMINING ORDER FLUX THRESHOLDS")
@@ -326,7 +332,6 @@ class detect_order_edges(_base_detect):
         )
 
         # WRITE OUT THE FITS TO THE ORDER LOCATION TABLE
-
         orderTablePath = self.write_order_table_to_file(
             frame=self.flatFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
         mean_res = np.mean(np.abs(allResiduals))
