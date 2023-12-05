@@ -1039,6 +1039,12 @@ class data_organiser(object):
             else:
                 mask = (df['recipe'] == "mflat")
             df = df.loc[mask]
+
+            if series["recipe"] in ["spat_sol"]:
+                # REMOVE BLOCKING FILTERS
+                mask = df['slit'].str.contains('JH')
+                df = df.loc[~mask]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 if series["eso seq arm"].upper() in ["UVB"] and series["recipe"] == "mflat":
@@ -1062,6 +1068,17 @@ class data_organiser(object):
         if series["recipe"] in ["spat_sol", "stare"]:
             mask = calibrationFrames['eso pro catg'].str.contains('MASTER_FLAT')
             df = calibrationFrames.loc[mask]
+
+            if series["recipe"] in ["spat_sol"]:
+                # REMOVE BLOCKING FILTERS
+                mask = df['slit'].str.contains('JH')
+                df = df.loc[~mask]
+
+            if series["recipe"] in ["stare"]:
+                from tabulate import tabulate
+                if len(filteredFrames["slit"].values):
+                    df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 files = np.append(files, df["file"].values[0])

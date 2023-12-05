@@ -1,6 +1,8 @@
 
 # Release Notes  
 
+blocking filters now taken into account when building the master-flats and determining the order-edges
+
 ## v0.9.4 - December 5, 2023
 
 * **REFACTOR:** orders are now clipped so that only the pixels deemed to be within the flux receiving regions of the order are extracted (according to the static calibration spectral format table).
