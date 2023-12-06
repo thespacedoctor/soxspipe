@@ -387,10 +387,12 @@ class _base_detect(object):
         order_table_path = f"{outDir}/{filename}"
 
         header = copy.deepcopy(frame.header)
-        header.pop(kw("DPR_TECH"))
-        header.pop(kw("DPR_CATG"))
-        header.pop(kw("DPR_TYPE"))
-
+        with suppress(KeyError):
+            header.pop(kw("DPR_TECH"))
+        with suppress(KeyError):
+            header.pop(kw("DPR_CATG"))
+        with suppress(KeyError):
+            header.pop(kw("DPR_TYPE"))
         with suppress(KeyError):
             header.pop(kw("DET_READ_SPEED"))
         with suppress(KeyError):

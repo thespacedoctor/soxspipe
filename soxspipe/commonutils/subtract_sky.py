@@ -240,61 +240,11 @@ class subtract_sky(object):
                         "label": "QC"
                     }).to_frame().T], ignore_index=True)
 
-        filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
-        outDir = outDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-
-        filePath = f"{outDir}/{filename}"
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": "SKY_MODEL",
-            "file_name": filename,
-            "file_type": "FITS",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"The sky background model",
-            "file_path": filePath,
-            "label": "PROD"
-        }).to_frame().T], ignore_index=True)
-
-        # WRITE CCDDATA OBJECT TO FILE
         # SET NANs TO 0
         skymodelCCDData.data[np.isnan(skymodelCCDData.data)] = 0
         skymodelCCDData.uncertainty.array[np.isnan(skymodelCCDData.uncertainty.array)] = 0
-        HDUList = skymodelCCDData.to_hdu(
-            hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
-        HDUList[0].name = "FLUX"
-        HDUList.writeto(filePath, output_verify='exception',
-                        overwrite=True, checksum=True)
-
-        filename = self.filenameTemplate.replace(".fits", "_SKYSUB.fits")
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
-        filePath = f"{outDir}/{filename}"
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": "SKY_SUBTRACTED_OBJECT",
-            "file_name": filename,
-            "file_type": "FITS",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"The sky-subtracted object",
-            "file_path": filePath,
-            "label": "PROD"
-        }).to_frame().T], ignore_index=True)
-
-        # WRITE CCDDATA OBJECT TO FILE
         skySubtractedCCDData.data[np.isnan(skySubtractedCCDData.data)] = 0
         skySubtractedCCDData.uncertainty.array[np.isnan(skySubtractedCCDData.uncertainty.array)] = 0
-        HDUList = skySubtractedCCDData.to_hdu(
-            hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
-        HDUList[0].name = "FLUX"
-        HDUList.writeto(filePath, output_verify='exception',
-                        overwrite=True, checksum=True)
 
         comparisonPdf = self.plot_image_comparison(self.objectFrame, skymodelCCDData, skySubtractedCCDData)
 

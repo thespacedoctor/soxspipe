@@ -357,8 +357,10 @@ class horne_extraction(object):
 
         # CONVERT TO FITS BINARY TABLE
         header = copy.deepcopy(self.skySubtractedFrame.header)
-        header.pop(kw("DPR_CATG"))
-        header.pop(kw("DPR_TYPE"))
+        with suppress(KeyError):
+            header.pop(kw("DPR_CATG"))
+        with suppress(KeyError):
+            header.pop(kw("DPR_TYPE"))
         with suppress(KeyError):
             header.pop(kw("DET_READ_SPEED"))
         with suppress(KeyError):
@@ -368,7 +370,7 @@ class horne_extraction(object):
         with suppress(KeyError):
             header.pop(kw("RON"))
 
-        header["HIERARCH " + kw("PRO_TECH")] = header.pop(kw("DPR_TECH"))
+        # header["HIERARCH " + kw("PRO_TECH")] = header.pop(kw("DPR_TECH"))
         extractedOrdersTable = Table.from_pandas(extractedOrdersDF)
         BinTableHDU = fits.table_to_hdu(extractedOrdersTable)
         header[kw("SEQ_ARM")] = arm
@@ -526,7 +528,7 @@ class horne_extraction(object):
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
-        # plt.show()
+        plt.show()
         plt.savefig(filePath, dpi='figure')
 
         # plt.show()
