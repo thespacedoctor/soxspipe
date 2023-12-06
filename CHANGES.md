@@ -1,12 +1,15 @@
 
 # Release Notes  
 
-the instrument name is now included in the SOF & product filename
-setting bad pixels to zero in skysubtracted product frames
-blocking filters now taken into account when building the master-flats and determining the order-edges
-master flats taken with blocking filters are no longer matched with multi-pinhole frames fro the spatial solution recipe
-master flats with identical slit-widths now matched against science frames within the data-organiser when building SOF files.
-the order of the columns in the extracted & merged spectrum tables is now WAVE, FLUX (was FLUX, WAVE).
+
+## v0.9.5 - December 5, 2023
+
+* **ENHANCEMENT:** the instrument name is now included in the SOF & product filename
+* **ENHANCEMENT:** setting bad pixels to zero in sky-subtracted product frames
+* **FIXED**: blocking filters now taken into account when building the master-flats and determining the order-edges
+* **FIXED**: master flats taken with blocking filters are no longer matched with multi-pinhole frames fro the spatial solution recipe
+* **FIXED**: master flats with identical slit-widths now matched against science frames within the data-organiser when building SOF files.
+* **FIXED**: the order of the columns in the extracted & merged spectrum tables is now WAVE, FLUX (was FLUX, WAVE).
 
 ## v0.9.4 - December 5, 2023
 
