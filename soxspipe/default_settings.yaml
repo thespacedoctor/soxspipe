@@ -89,7 +89,7 @@ sky-subtraction:
     # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
     clip-slit-edge-fraction: 0.05
     aggressive_object_masking: True
-    bspline_order: 3
+    bspline_order: 2
     slit_illumination_order: 3
 
 soxs-stare:
