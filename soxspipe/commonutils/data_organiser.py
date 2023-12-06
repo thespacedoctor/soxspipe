@@ -106,7 +106,8 @@ class data_organiser(object):
             'eso obs id',
             'eso obs name',
             "naxis",
-            "object"
+            "object",
+            "instrume"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -129,7 +130,8 @@ class data_organiser(object):
             'night start mjd',
             'mjd-obs',
             'date-obs',
-            'object'
+            'object',
+            "instrume"
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
@@ -182,7 +184,7 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "LAMP,WAVE", "STD,FLUX", "STD,TELLURIC", "OBJECT"]
@@ -755,6 +757,7 @@ class data_organiser(object):
 
         # MERGE DATAFRAMES
         rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
@@ -858,6 +861,7 @@ class data_organiser(object):
         if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and "FLAT" in series["eso dpr type"].upper())):
             matchDict['exptime'] = float(series["exptime"])
             sofName.append(str(series["exptime"]).replace(".", "pt"))
+        sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
