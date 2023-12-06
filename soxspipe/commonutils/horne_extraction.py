@@ -280,7 +280,10 @@ class horne_extraction(object):
         orderSlices = []
         for order, amin, amax in zip(orderNums, amins, amaxs):
             if order in uniqueOrders:
-                orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin + 15) & (self.orderPixelTable["ycoord"] < amax - 15)]
+                if self.arm == "NIR":
+                    orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin + 30) & (self.orderPixelTable["ycoord"] < amax - 30)]
+                else:
+                    orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin + 10) & (self.orderPixelTable["ycoord"] < amax - 10)]
                 # xpd-update-filter-dataframe-column-values
                 xstart = orderTable["xcoord_centre"].astype(int) - self.slitHalfLength
                 xstop = orderTable["xcoord_centre"].astype(int) + self.slitHalfLength
@@ -476,6 +479,8 @@ class horne_extraction(object):
         import matplotlib
         from datetime import datetime
         from astropy.nddata import VarianceUncertainty
+        from specutils.manipulation import median_smooth
+        from astropy.stats import sigma_clipped_stats
 
         # ASTROPY HAS RESET LOGGING LEVEL -- FIX
         import logging
@@ -504,6 +509,7 @@ class horne_extraction(object):
         spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values * u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"]))
         resampler = FluxConservingResampler()
         flux_resampled = resampler(spectrum_orig, wave_resample_grid)
+        flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
         merged_orders['WAVE'] = flux_resampled.spectral_axis
         merged_orders['FLUX_COUNTS'] = flux_resampled.flux
@@ -518,17 +524,19 @@ class horne_extraction(object):
         toprow.set_title(
             f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
 
-        for order in extractedOrdersDF['order'].unique():
-            # LIMIT DATAFRAME TO JUST THIS ORDER
-            orderDF = extractedOrdersDF.loc[extractedOrdersDF['order'] == order]
-            plt.plot(orderDF['wavelengthMedian'], orderDF['extractedFluxOptimal'])
+        # for order in extractedOrdersDF['order'].unique():
+        #     # LIMIT DATAFRAME TO JUST THIS ORDER
+        #     orderDF = extractedOrdersDF.loc[extractedOrdersDF['order'] == order]
+        #     plt.plot(orderDF['wavelengthMedian'], orderDF['extractedFluxOptimal'])
 
-        plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#002b36")
+        mean, median, std = sigma_clipped_stats(merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+        plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
+        plt.ylim(-20, median + 20 * std)
 
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
-        plt.show()
+        # plt.show()
         plt.savefig(filePath, dpi='figure')
 
         # plt.show()

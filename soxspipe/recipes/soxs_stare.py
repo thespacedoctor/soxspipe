@@ -98,6 +98,16 @@ class soxs_stare(_base_recipe_):
         self.inputFrames = self.prepare_frames(
             save=self.settings["save-intermediate-products"])
 
+        # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
+        if self.sofName:
+            self.filenameTemplate = self.sofName + ".fits"
+        else:
+            self.filenameTemplate = filenamer(
+                log=self.log,
+                frame=self.objectFrame,
+                settings=self.settings
+            )
+
         return None
 
     def verify_input_frames(
@@ -180,6 +190,8 @@ class soxs_stare(_base_recipe_):
 
         from astropy.nddata import CCDData
         from astropy import units as u
+        import pandas as pd
+        from datetime import datetime
 
         arm = self.arm
         kw = self.kw
@@ -283,12 +295,50 @@ class soxs_stare(_base_recipe_):
         )
         skymodelCCDData, skySubtractedCCDData, self.qc, self.products = skymodel.subtract()
 
-        from os.path import expanduser
-        home = expanduser("~")
-        fileDir = self.settings["workspace-root-dir"].replace("~", home)
-        # filename = "/override/filename.fits"
-        # filepath = self._write(combined_object, fileDir, filename="combined_object_frame.fits", overwrite=True)
-        # self.log.print(f"\nxxx frame saved to {filepath}\n")
+        # WRITE SKY-SUBTRACTON TO DISK
+        filename = self.filenameTemplate.replace(".fits", "_SKYSUB.fits")
+        productPath = self._write(
+            frame=skySubtractedCCDData,
+            filedir=self.workspaceRootPath,
+            filename=filename,
+            overwrite=True,
+            maskToZero=True
+        )
+        filename = os.path.basename(productPath)
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": "SKY_SUBTRACTED_OBJECT",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"The sky-subtracted object",
+            "file_path": productPath,
+            "label": "PROD"
+        }).to_frame().T], ignore_index=True)
+
+        # WRITE SKY-MODEL TO DISK
+        filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
+        productPath = self._write(
+            frame=skymodelCCDData,
+            filedir=self.workspaceRootPath,
+            filename=filename,
+            overwrite=True
+        )
+        filename = os.path.basename(productPath)
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": "SKY_MODEL",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"The sky background model",
+            "file_path": productPath,
+            "label": "PROD"
+        }).to_frame().T], ignore_index=True)
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(

@@ -713,7 +713,8 @@ class _base_recipe_(object):
             filedir,
             filename=False,
             overwrite=True,
-            product=True):
+            product=True,
+            maskToZero=False):
         """*write frame to disk at the specified location*
 
         **Key Arguments:**
@@ -722,6 +723,7 @@ class _base_recipe_(object):
             - ``filename`` -- the filename to save the file as. Default: **False** (standardised filename generated in code)
             - ``overwrite`` -- if a file exists at the filepath then choose to overwrite the file. Default: True
             - ``product`` -- is this a recipe product?
+            - ``maskToZero`` -- set masked pixels to zero before writing to file?
 
         **Usage:**
 
@@ -781,8 +783,9 @@ class _base_recipe_(object):
         filepath = filedir + "/" + filename
 
         # SET BAD-PIXELS TO 0 IN DATA FRAME
-        # self.log.print(f"Setting {frame.mask.sum()} bad-pixels to a value of 0")
-        # frame.data[frame.mask] = 0
+        if maskToZero:
+            self.log.print(f"\nSetting {frame.mask.sum()} bad-pixels to a value of 0 while saving '{filename}'.")
+            frame.data[frame.mask] = 1
 
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
