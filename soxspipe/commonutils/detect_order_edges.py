@@ -114,7 +114,11 @@ class detect_order_edges(_base_detect):
         kw = self.kw
         self.arm = flatFrame.header[kw("SEQ_ARM")]
         self.dateObs = flatFrame.header[kw("DATE_OBS")]
-        self.slit = flatFrame.header[kw(f"SLIT_{self.arm}".upper())]
+        try:
+            self.slit = flatFrame.header[kw(f"SLIT_{self.arm}".upper())]
+        except:
+            self.log.warning(kw(f"SLIT_{self.arm}".upper()) + " keyword not found")
+            self.slit = ""
 
         self.binx = binx
         self.biny = biny
