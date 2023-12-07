@@ -691,7 +691,8 @@ def read_spectral_format(
         log,
         settings,
         arm,
-        dispersionMap=False):
+        dispersionMap=False,
+        extended=True):
     """*read the spectral format table to get some key parameters*
 
     **Key Arguments:**
@@ -700,6 +701,7 @@ def read_spectral_format(
     - `settings` -- soxspipe settings
     - `arm` -- arm to retrieve format for
     - `dispersionMap` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are computed
+    - `extended` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL (extended=True)
 
     **Return:**
         - ``orderNums`` -- a list of the order numbers
@@ -750,8 +752,12 @@ def read_spectral_format(
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
-    waveLengthMin = specFormatTable["WLMINFUL"].values
-    waveLengthMax = specFormatTable["WLMAXFUL"].values
+    if extended:
+        waveLengthMin = specFormatTable["WLMINFUL"].values
+        waveLengthMax = specFormatTable["WLMAXFUL"].values
+    else:
+        waveLengthMin = specFormatTable["WLMIN"].values
+        waveLengthMax = specFormatTable["WLMAX"].values
 
     # USE DISPERSION MAP TO FIND X-Y LIMITS OF THE SPECTRAL FORMAT FOR EACH ORDER
     # WE WANT TO LIMIT THE EXTRACTION TO THESE REGIONS

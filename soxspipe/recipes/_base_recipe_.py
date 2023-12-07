@@ -12,7 +12,7 @@
 ################# GLOBAL IMPORTS ####################
 
 from soxspipe.commonutils import filenamer
-from datetime import datetime
+
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import subtract_background
@@ -170,6 +170,7 @@ class _base_recipe_(object):
         import numpy as np
         import logging
         import warnings
+        from datetime import datetime
 
         warnings.filterwarnings(
             action='ignore'
@@ -1010,6 +1011,8 @@ class _base_recipe_(object):
         import copy
         from astropy.io import fits
         import pandas as pd
+        from datetime import datetime
+        from os.path import expanduser
 
         arm = self.arm
         kw = self.kw
@@ -1055,8 +1058,6 @@ class _base_recipe_(object):
             )
             backgroundFrame, processedFrame = background.subtract()
 
-            from datetime import datetime
-            from os.path import expanduser
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -1184,6 +1185,7 @@ class _base_recipe_(object):
         import numpy as np
         import pandas as pd
         import math
+        from datetime import datetime
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -1286,6 +1288,7 @@ class _base_recipe_(object):
 
         import numpy as np
         import pandas as pd
+        from datetime import datetime
 
         if not medianFlux:
             # DETERMINE MEDIAN BIAS LEVEL
