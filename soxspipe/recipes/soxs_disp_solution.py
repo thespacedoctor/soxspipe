@@ -18,7 +18,7 @@ from builtins import object
 import sys
 import os
 from soxspipe.commonutils import create_dispersion_map
-from datetime import datetime
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -183,6 +183,7 @@ class soxs_disp_solution(_base_recipe_):
         from astropy.nddata import CCDData
         from astropy import units as u
         import pandas as pd
+        from datetime import datetime
 
         arm = self.arm
         kw = self.kw

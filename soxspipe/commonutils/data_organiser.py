@@ -824,7 +824,7 @@ class data_organiser(object):
 
         # FILTER BY TYPE FIRST
         if "FLAT" in series["eso dpr type"].upper():
-            mask = (filteredFrames["eso dpr type"].str.contains("FLAT"))
+            mask = ((filteredFrames["eso dpr type"].str.contains("FLAT")) & (filteredFrames["slit"] == series["slit"]))
         else:
             mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
         filteredFrames = filteredFrames.loc[mask]
@@ -933,8 +933,6 @@ class data_organiser(object):
             if isinstance(filteredFrames, astropy.table.row.Row):
                 filteredFrames = Table(filteredFrames)
 
-            # SELECT FIRST DATE
-            # SORT BY COLUMN NAME
             filteredFrames.sort_values(['date-obs'], inplace=True)
             firstDate = filteredFrames['date-obs'].values[0].replace("-", ".").replace(":", ".")
             sofName.insert(0, firstDate)
