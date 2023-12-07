@@ -274,17 +274,14 @@ class horne_extraction(object):
 
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
-            log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap)
+            log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap, extended=False)
 
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
         for order, amin, amax in zip(orderNums, amins, amaxs):
+
             if order in uniqueOrders:
-                if self.arm == "NIR":
-                    orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin + 30) & (self.orderPixelTable["ycoord"] < amax - 30)]
-                else:
-                    orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin + 10) & (self.orderPixelTable["ycoord"] < amax - 10)]
-                # xpd-update-filter-dataframe-column-values
+                orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin) & (self.orderPixelTable["ycoord"] < amax)]
                 xstart = orderTable["xcoord_centre"].astype(int) - self.slitHalfLength
                 xstop = orderTable["xcoord_centre"].astype(int) + self.slitHalfLength
                 ycoord = orderTable["ycoord"].astype(int)
@@ -531,7 +528,8 @@ class horne_extraction(object):
 
         mean, median, std = sigma_clipped_stats(merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
         plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
-        plt.ylim(-20, median + 20 * std)
+        plt.ylim(-200, median + 20 * std)
+        plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
 
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
         filePath = f"{self.qcDir}/{filename}"
@@ -755,7 +753,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     this = np.append(this, np.nan)
     crossDispersionSlices['pixelScaleNm'] = this
 
-    crossDispersionSlices.dropna(how="any", subset=["pixelScaleNm", "wavelengthMedian"], inplace=True)
+    crossDispersionSlices.dropna(how="any", subset=["pixelScaleNm", "wavelengthMedian", "extractedFluxOptimal", "snr", "varianceSpectrum"], inplace=True)
 
     log.debug('completed the ``extract_single_order`` method')
 
