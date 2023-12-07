@@ -2,7 +2,7 @@
 # Release Notes  
 
 
-## v0.9.6 - December 7, 2023
+## v0.9.7 - December 7, 2023
 
 * **ENHANCEMENT:** the instrument name is now included in the SOF & product filename.
 * **ENHANCEMENT:** setting bad pixels to zero in sky-subtracted product frames.
