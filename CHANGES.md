@@ -2,14 +2,15 @@
 # Release Notes  
 
 
-## v0.9.5 - December 5, 2023
+## v0.9.6 - December 7, 2023
 
-* **ENHANCEMENT:** the instrument name is now included in the SOF & product filename
-* **ENHANCEMENT:** setting bad pixels to zero in sky-subtracted product frames
-* **FIXED**: blocking filters now taken into account when building the master-flats and determining the order-edges
-* **FIXED**: master flats taken with blocking filters are no longer matched with multi-pinhole frames fro the spatial solution recipe
+* **ENHANCEMENT:** the instrument name is now included in the SOF & product filename.
+* **ENHANCEMENT:** setting bad pixels to zero in sky-subtracted product frames.
+* **FIXED**: blocking filters now taken into account when building the master-flats and determining the order-edges.
+* **FIXED**: master flats taken with blocking filters are no longer matched with multi-pinhole frames fro the spatial solution recipe.
 * **FIXED**: master flats with identical slit-widths now matched against science frames within the data-organiser when building SOF files.
 * **FIXED**: the order of the columns in the extracted & merged spectrum tables is now WAVE, FLUX (was FLUX, WAVE).
+* **FIXED**: specutils dependency added to conda-forge requirements.
 
 ## v0.9.4 - December 5, 2023
 
