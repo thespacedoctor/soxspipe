@@ -85,7 +85,7 @@ class test_soxs_order_centres(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_order_centres_nir_function(self):
+    def test_xsh_order_centres_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_NIR_ORDER_CENTRE.sof"
         # sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-orderpos/nir"
         from soxspipe.recipes import soxs_order_centres
@@ -97,7 +97,7 @@ class test_soxs_order_centres(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_order_centres_uvb_function(self):
+    def test_xsh_order_centres_uvb_function(self):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_UVB_ORDER_CENTRE_DLAMP_1x1_fast.sof"
         from soxspipe.recipes import soxs_order_centres
@@ -119,7 +119,7 @@ class test_soxs_order_centres(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_order_centres_vis_function(self):
+    def test_xsh_order_centres_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_VIS_ORDER_CENTRE_1x1_fast.sof"
         from soxspipe.recipes import soxs_order_centres
         this = soxs_order_centres(

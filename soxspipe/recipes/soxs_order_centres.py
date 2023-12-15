@@ -14,8 +14,6 @@ from soxspipe.commonutils import detect_continuum
 from soxspipe.commonutils import keyword_lookup
 from ._base_recipe_ import _base_recipe_
 from fundamentals import tools
-from builtins import object
-from datetime import datetime
 import sys
 import os
 os.environ['TERM'] = 'vt100'
@@ -88,16 +86,17 @@ class soxs_order_centres(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_order_centres - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
-        print("# VERIFYING INPUT FRAMES")
+        self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
+        sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
-        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+        self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
-            print("# RAW INPUT FRAMES - SUMMARY")
-            print(self.inputFrames.summary, "\n")
+            self.log.print("# RAW INPUT FRAMES - SUMMARY")
+            self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -158,10 +157,11 @@ class soxs_order_centres(_base_recipe_):
                         error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS." % locals()
 
         if error:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
-            print()
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print("")
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -180,6 +180,7 @@ class soxs_order_centres(_base_recipe_):
         from astropy.nddata import CCDData
         from astropy import units as u
         import pandas as pd
+        from datetime import datetime
 
         arm = self.arm
         kw = self.kw
@@ -239,7 +240,7 @@ class soxs_order_centres(_base_recipe_):
             fileDir = self.workspaceRootPath
             filepath = self._write(
                 self.orderFrame, fileDir, filename=False, overwrite=True, product=False)
-            print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
+            self.log.print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
         # FIND THE APPROPRIATE PREDICTED LINE-LIST
         if arm != "NIR" and kw('WIN_BINX') in self.orderFrame.header:
@@ -250,7 +251,7 @@ class soxs_order_centres(_base_recipe_):
             biny = 1
 
         # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
-        print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
+        # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
         detector = detect_continuum(
             log=self.log,
             pinholeFlat=self.orderFrame,

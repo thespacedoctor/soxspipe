@@ -35,14 +35,16 @@ soxs-order-centre:
         order-sample-count: 200
         # LENGTH OF EACH SLICE (PIXELS)
         slice-length: 10
+        # WIDTH OF EACH SLICE (PIXELS)
+        slice-width: 1
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-        peak-sigma-limit: 3
+        peak-sigma-limit: 1.5
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        disp-axis-deg: 3
+        disp-axis-deg: 5
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        order-deg: 5
+        order-deg: 6
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-fitting-residual-clipping-sigma: 3
+        poly-fitting-residual-clipping-sigma: 5
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
         poly-clipping-iteration-limit: 7
 
@@ -65,8 +67,8 @@ soxs-mflat:
 
 soxs-spatial-solution:
     pixel-window-size: 10
-    order-deg: 5
-    wavelength-deg: 4
+    order-deg: 4
+    wavelength-deg: 5
     slit-deg: 2
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
     poly-clipping-iteration-limit: 9
@@ -87,7 +89,7 @@ sky-subtraction:
     # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
     clip-slit-edge-fraction: 0.05
     aggressive_object_masking: True
-    bspline_order: 3
+    bspline_order: 2
     slit_illumination_order: 3
 
 soxs-stare:
@@ -113,32 +115,32 @@ soxs-stare:
         # NUMBER OF CROSS-ORDER SLICES PER ORDER
         order-sample-count: 200
         # LENGTH OF EACH SLICE (PIXELS)
-        slice-length: 10
+        slice-length: 20
+        # WIDTH OF EACH SLICE (PIXELS)
+        slice-width: 5
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-        peak-sigma-limit: 3
-        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        disp-axis-deg: 3
-        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        order-deg: 5
-        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-fitting-residual-clipping-sigma: 3
-        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-clipping-iteration-limit: 7
+        peak-sigma-limit: 1.5
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        order-deg: 4
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-fitting-residual-clipping-sigma: 3.
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-clipping-iteration-limit: 5
 
 # UTILS
 background-subtraction:
     bspline-deg: 3
     median-filter-pixels: 9
 
-
-
 logging settings:
     formatters:
         file_style:
-            format: '* %(asctime)s - %(name)s - %(levelname)s (%(pathname)s > %(funcName)s > %(lineno)d) - %(message)s  '
+            format: '%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s'
             datefmt: '%Y/%m/%d %H:%M:%S'
         console_style:
-            format: '* %(asctime)s - %(levelname)s: %(pathname)s:%(funcName)s:%(lineno)d > %(message)s'
+            format: '%(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s'
             datefmt: '%H:%M:%S'
         html_style:
             format: '<div id="row" class="%(levelname)s"><span class="date">%(asctime)s</span>   <span class="label">file:</span><span class="filename">%(filename)s</span>   <span class="label">method:</span><span class="funcName">%(funcName)s</span>   <span class="label">line#:</span><span class="lineno">%(lineno)d</span> <span class="pathname">%(pathname)s</span>  <div class="right"><span class="message">%(message)s</span><span class="levelname">%(levelname)s</span></div></div>'
@@ -146,7 +148,7 @@ logging settings:
     handlers:
         console:
             class: logging.StreamHandler
-            level: DEBUG
+            level: WARNING
             formatter: console_style
             stream: ext://sys.stdout
         file:
@@ -157,6 +159,8 @@ logging settings:
             mode: w+
             maxBytes: 102400
             backupCount: 1
+            delay: True
     root:
-        level: WARNING
+        level: INFO
         handlers: [file,console]
+

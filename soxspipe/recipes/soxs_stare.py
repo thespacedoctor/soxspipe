@@ -81,21 +81,32 @@ class soxs_stare(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_stare - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
-        print("# VERIFYING INPUT FRAMES")
+        self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
+        sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
-        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+        self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
-            print("# RAW INPUT FRAMES - SUMMARY")
-            print(self.inputFrames.summary, "\n")
+            self.log.print("# RAW INPUT FRAMES - SUMMARY")
+            self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(
             save=self.settings["save-intermediate-products"])
+
+        # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
+        if self.sofName:
+            self.filenameTemplate = self.sofName + ".fits"
+        else:
+            self.filenameTemplate = filenamer(
+                log=self.log,
+                frame=self.objectFrame,
+                settings=self.settings
+            )
 
         return None
 
@@ -116,40 +127,40 @@ class soxs_stare(_base_recipe_):
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
+        arm = self.arm
 
         if self.arm == "NIR":
             if not error:
                 for i in imageTypes:
                     if i not in ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX"]:
-                        error = "Found a {i} file. Input frames for soxspipe stare need to be OBJECT, ***. Can optionally supply a master-flat for NIR."
+                        error = f"Found a {i} file. Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR."
 
             if not error:
                 for i in imageTech:
                     if i not in ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
-                        error = "Input frames for soxspipe stare need to be ********* lamp on and lamp off frames for NIR" % locals()
+                        error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR. The sof file is missing a {i} frame."
 
         else:
             if not error:
                 for i in imageTypes:
                     if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK"]:
-                        error = "Input frames for soxspipe stare need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals()
+                        error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
 
             if not error:
                 for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
                     if i not in imageCat:
-                        error = "Input frames for soxspipe stare need to be ********* and a master-bias and possibly a master dark for UVB/VIS" % locals()
+                        error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
 
-        # LOOK FOR ****
-        arm = self.arm
         # if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
         #     raise TypeError(
         #         "Need a **** for %(arm)s - none found with the input files" % locals())
 
         if error:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
-            print()
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print()
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -179,6 +190,8 @@ class soxs_stare(_base_recipe_):
 
         from astropy.nddata import CCDData
         from astropy import units as u
+        import pandas as pd
+        from datetime import datetime
 
         arm = self.arm
         kw = self.kw
@@ -282,18 +295,72 @@ class soxs_stare(_base_recipe_):
         )
         skymodelCCDData, skySubtractedCCDData, self.qc, self.products = skymodel.subtract()
 
-        from os.path import expanduser
-        home = expanduser("~")
-        fileDir = self.settings["workspace-root-dir"].replace("~", home)
-        # filename = "/override/filename.fits"
-        filepath = self._write(combined_object, fileDir, filename="combined_object_frame.fits", overwrite=True)
-        # print(f"\nxxx frame saved to {filepath}\n")
+        # WRITE SKY-SUBTRACTON TO DISK
+        filename = self.filenameTemplate.replace(".fits", "_SKYSUB.fits")
+        productPath = self._write(
+            frame=skySubtractedCCDData,
+            filedir=self.workspaceRootPath,
+            filename=filename,
+            overwrite=True,
+            maskToZero=True
+        )
+        filename = os.path.basename(productPath)
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": "SKY_SUBTRACTED_OBJECT",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"The sky-subtracted object",
+            "file_path": productPath,
+            "label": "PROD"
+        }).to_frame().T], ignore_index=True)
+
+        # WRITE SKY-MODEL TO DISK
+        filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
+        productPath = self._write(
+            frame=skymodelCCDData,
+            filedir=self.workspaceRootPath,
+            filename=filename,
+            overwrite=True
+        )
+        filename = os.path.basename(productPath)
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": "SKY_MODEL",
+            "file_name": filename,
+            "file_type": "FITS",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"The sky background model",
+            "file_path": productPath,
+            "label": "PROD"
+        }).to_frame().T], ignore_index=True)
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
             log=self.log, frame=skySubtractedCCDData, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
         self.qc = spectroscopic_image_quality_checks(
             log=self.log, frame=skySubtractedCCDData, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
+
+        from soxspipe.commonutils import horne_extraction
+        optimalExtractor = horne_extraction(
+            log=self.log,
+            skyModelFrame=skymodelCCDData,
+            skySubtractedFrame=skySubtractedCCDData,
+            twoDMapPath=twoDMap,
+            settings=self.settings,
+            recipeName=self.recipeName,
+            qcTable=self.qc,
+            productsTable=self.products,
+            dispersionMap=dispMap,
+            sofName=self.sofName
+        )
+
+        self.qc, self.products = optimalExtractor.extract()
 
         self.clean_up()
         self.report_output()

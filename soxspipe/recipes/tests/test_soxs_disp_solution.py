@@ -72,7 +72,7 @@ class test_soxs_disp_solution(unittest.TestCase):
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
-    def test_soxs_disp_solution_nir_function(self):
+    def test_xsh_disp_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-disp-solution/sof/20170818_NIR_DISP_SOLUTION.sof"
         from soxspipe.recipes import soxs_disp_solution
         disp_map_path = soxs_disp_solution(
@@ -83,7 +83,7 @@ class test_soxs_disp_solution(unittest.TestCase):
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
-    def test_soxs_disp_solution_uvb_function(self):
+    def test_xsh_disp_solution_uvb_function(self):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-disp-solution/sof/20170818_UVB_DISP_SOLUTION_1x1_fast.sof"
         from soxspipe.recipes import soxs_disp_solution
@@ -95,7 +95,7 @@ class test_soxs_disp_solution(unittest.TestCase):
         ).produce_product()
         print(f"Here is the final product `{disp_map_path}`")
 
-    def test_soxs_disp_solution_vis_function(self):
+    def test_xsh_disp_solution_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-disp-solution/sof/20170818_VIS_DISP_SOLUTION_1x1_fast.sof"
         from soxspipe.recipes import soxs_disp_solution
         disp_map_path = soxs_disp_solution(

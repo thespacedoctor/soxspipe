@@ -51,7 +51,7 @@ class test_create_dispersion_map(unittest.TestCase):
     import pytest
 
     @pytest.mark.full
-    def test_create_dispersion_map_single_nir_function(self):
+    def test_xsh_create_dispersion_map_single_nir_function(self):
         import pandas as pd
         frame = "~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/single_pinhole_NIR_calibrated.fits"
         from os.path import expanduser
@@ -94,7 +94,7 @@ class test_create_dispersion_map(unittest.TestCase):
         print(mapPath)
 
     @pytest.mark.full
-    def test_create_dispersion_map_multi_nir_function(self):
+    def test_xsh_create_dispersion_map_multi_nir_function(self):
         import pandas as pd
         frame = "~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T173315_NIR_ARC_MULTIPIN.fits"
         from os.path import expanduser
@@ -138,7 +138,7 @@ class test_create_dispersion_map(unittest.TestCase):
         print(mapPath)
 
     @pytest.mark.full
-    def test_create_dispersion_map_function_exception(self):
+    def test_soxs_create_dispersion_map_function_exception(self):
 
         from soxspipe.commonutils import create_dispersion_map
         try:

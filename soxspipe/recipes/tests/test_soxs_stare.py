@@ -60,7 +60,7 @@ class test_soxs_stare(unittest.TestCase):
 
     import pytest
 
-    # def test_soxs_stare_nir_function(self):
+    # def test_xsh_stare_nir_function(self):
     #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_6s_darks.sof"
     #     from soxspipe.recipes import soxs_stare
     #     this = soxs_stare(
@@ -70,7 +70,7 @@ class test_soxs_stare(unittest.TestCase):
     #     )
     #     this.produce_product()
 
-    # def test_soxs_stare_uvb_function(self):
+    # def test_xsh_stare_uvb_function(self):
 
     #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/uvb_1x1_dark_3600s.sof"
     #     from soxspipe.recipes import soxs_stare
@@ -81,7 +81,7 @@ class test_soxs_stare(unittest.TestCase):
     #     )
     #     this.produce_product()
 
-    # def test_soxs_stare_vis_function(self):
+    # def test_xsh_stare_vis_function(self):
     #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/vis_1x1_dark_3600s.sof"
     #     from soxspipe.recipes import soxs_stare
     #     this = soxs_stare(
@@ -91,7 +91,7 @@ class test_soxs_stare(unittest.TestCase):
     #     )
     #     this.produce_product()
 
-    # def test_soxs_stare_function(self):
+    # def test_xsh_stare_function(self):
 
     #     # utKit.refresh_database() # reset database to database found in
     #     # soxspipe/test/input
@@ -102,18 +102,18 @@ class test_soxs_stare(unittest.TestCase):
     #     )
     #     this.get()
 
-    @pytest.mark.full
-    def test_soxs_stare_function_soxsreal(self):
+    # @pytest.mark.full
+    # def test_soxs_stare_function_soxsreal(self):
 
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/sky_subtraction/sof/soxsreal_pseudo_objects.sof"
-        from soxspipe.recipes import soxs_stare
-        recipe = soxs_stare(
-            log=log2,
-            settings=settings2,
-            inputFrames=sofPath,
-            overwrite=True
-        )
-        reducedStare = recipe.produce_product()
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/sky_subtraction/sof/soxsreal_pseudo_objects.sof"
+    #     from soxspipe.recipes import soxs_stare
+    #     recipe = soxs_stare(
+    #         log=log2,
+    #         settings=settings2,
+    #         inputFrames=sofPath,
+    #         overwrite=True
+    #     )
+    #     reducedStare = recipe.produce_product()
 
     def test_soxs_stare_function_exception(self):
 

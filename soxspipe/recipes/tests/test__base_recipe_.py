@@ -48,7 +48,7 @@ class test__base_recipe_(unittest.TestCase):
     import pytest
 
     @pytest.mark.full
-    def test__base_recipe__function(self):
+    def test_xsh_base_recipe__function(self):
 
         framePath = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
@@ -78,7 +78,7 @@ class test__base_recipe_(unittest.TestCase):
         recipe.clean_up()
 
     @pytest.mark.full
-    def test__base_recipe__function_exception(self):
+    def test_soxs_base_recipe__function_exception(self):
 
         from soxspipe.recipes import _base_recipe_
         try:

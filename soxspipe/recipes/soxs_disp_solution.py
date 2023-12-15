@@ -10,7 +10,6 @@
     August 25, 2020
 """
 ################# GLOBAL IMPORTS ####################
-import unicodecsv as csv
 from soxspipe.commonutils import keyword_lookup
 from ._base_recipe_ import _base_recipe_
 
@@ -19,7 +18,7 @@ from builtins import object
 import sys
 import os
 from soxspipe.commonutils import create_dispersion_map
-from datetime import datetime
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -88,16 +87,17 @@ class soxs_disp_solution(_base_recipe_):
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_disp_solution - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
-        print("# VERIFYING INPUT FRAMES")
+        self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
+        sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
-        print("# VERIFYING INPUT FRAMES - ALL GOOD")
+        self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
         if self.verbose:
-            print("# RAW INPUT FRAMES - SUMMARY")
-            print(self.inputFrames.summary, "\n")
+            self.log.print("# RAW INPUT FRAMES - SUMMARY")
+            self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -160,10 +160,11 @@ class soxs_disp_solution(_base_recipe_):
                         error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS"
 
         if error:
+            sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
-            print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            print(self.inputFrames.summary)
-            print()
+            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print()
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -182,6 +183,7 @@ class soxs_disp_solution(_base_recipe_):
         from astropy.nddata import CCDData
         from astropy import units as u
         import pandas as pd
+        from datetime import datetime
 
         arm = self.arm
         kw = self.kw
@@ -207,8 +209,8 @@ class soxs_disp_solution(_base_recipe_):
         # NIR DARK
         add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK', kw("DPR_TECH"): 'IMAGE'}
         # from tabulate import tabulate
-        # print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
-        # print(self.inputFrames.files_filtered(include_path=True, **add_filters))
+        # self.log.print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
+        # self.log.print(self.inputFrames.files_filtered(include_path=True, **add_filters))
         # sys.exit(0)
 
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -233,7 +235,7 @@ class soxs_disp_solution(_base_recipe_):
                 overwrite=True,
                 product=False
             )
-            print(f"\nCalibrated single pinhole frame: {filePath}\n")
+            self.log.print(f"\nCalibrated single pinhole frame: {filePath}\n")
 
         productPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,

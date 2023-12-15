@@ -51,7 +51,7 @@ if not os.path.exists(pathToOutputDir):
     os.makedirs(pathToOutputDir)
 
 
-class test_data_organiser(unittest.TestCase):
+class test_xsh_data_organiser(unittest.TestCase):
 
     import pytest
 
@@ -61,19 +61,18 @@ class test_data_organiser(unittest.TestCase):
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
-            settings=settings,
             rootDir=pathToOutputDir + "01_EG274"
         )
         do.prepare()
+        do.session_list()
 
     @pytest.mark.full
-    def test_data_organiser_function_exception(self):
+    def test_soxs_data_organiser_function_exception(self):
 
         from soxspipe.commonutils import data_organiser
         try:
             this = data_organiser(
                 log=log,
-                settings=settings,
                 fakeKey="break the code"
             )
             this.get()

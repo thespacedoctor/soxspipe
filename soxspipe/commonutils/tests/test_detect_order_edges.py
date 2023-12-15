@@ -52,7 +52,7 @@ class test_detect_order_edges(unittest.TestCase):
     import pytest
 
     @pytest.mark.full
-    def test_detect_vis_order_edges_function(self):
+    def test_xsh_detect_vis_order_edges_function(self):
 
         flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/first_iteration_VIS_master_flat.fits"
         orderCentreTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-detect-order-edges/20170818T172920_VIS_1X1_FAST_ORDER_LOCATIONS.fits"
@@ -72,7 +72,7 @@ class test_detect_order_edges(unittest.TestCase):
         edges.get()
 
     @pytest.mark.full
-    def test_detect_order_edges_function_exception(self):
+    def test_soxs_detect_order_edges_function_exception(self):
 
         from soxspipe.commonutils import detect_order_edges
         try:

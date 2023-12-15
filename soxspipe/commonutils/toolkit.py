@@ -13,12 +13,8 @@
 
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
-from copy import copy
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-import math
-import random
-import unicodecsv as csv
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
 from builtins import object
@@ -68,6 +64,7 @@ def cut_image_slice(
 
     import numpy.ma as ma
     import numpy as np
+    import random
 
     halfSlice = length / 2
     # NEED AN EVEN PIXEL SIZE
@@ -170,6 +167,7 @@ def quicklook_image(
     import pandas as pd
     import matplotlib as mpl
     import numpy as np
+    from copy import copy
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
     from soxspipe.commonutils import keyword_lookup
     from soxspipe.commonutils import detector_lookup
@@ -193,9 +191,6 @@ def quicklook_image(
         # USE THIS ELSEWHERE IN THE OBJECT METHODS
         dp = detectorParams
         science_pixels = dp["science-pixels"]
-
-    if dispMapImage:
-        dispMapDF = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, assosiatedFrame=CCDObject)
 
     originalRC = dict(mpl.rcParams)
 
@@ -311,61 +306,20 @@ def quicklook_image(
         dat = Table.read(skylines, format='fits')
         skylinesDF = dat.to_pandas()
 
-    if dispMap and not isinstance(dispMapDF, bool):
-        uniqueOrders = dispMapDF['order'].unique()
-        wlLims = []
-        spLims = []
+    if not isinstance(dispMapImage, bool):
 
-        for o in uniqueOrders:
-            filDF = dispMapDF.loc[dispMapDF["order"] == o]
-            wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
-            spLims.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
-
-        lineNumber = 0
-        for o, wlLim, spLim in zip(uniqueOrders, wlLims, spLims):
-            wlRange = np.arange(wlLim[0], wlLim[1], 1)
-            wlRange = np.append(wlRange, [wlLim[1]])
-            for e in spLim:
-                myDict = {
-                    "line": np.full_like(wlRange, lineNumber),
-                    "order": np.full_like(wlRange, o),
-                    "wavelength": wlRange,
-                    "slit_position": np.full_like(wlRange, e)
-                }
-                if lineNumber == 0:
-                    orderPixelTable = pd.DataFrame(myDict)
-                else:
-                    orderPixelTableNew = pd.DataFrame(myDict)
-                    orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
-                lineNumber += 1
-
-            spRange = np.arange(spLim[0], spLim[1], 1)
-            spRange = np.append(spRange, [spLim[1]])
-            if skylines:
-                mask = skylinesDF['WAVELENGTH'].between(wlLim[0], wlLim[1])
-                wlRange = skylinesDF.loc[mask]['WAVELENGTH'].values
-            else:
-                wlRange = np.arange(wlLim[0], wlLim[1], 15)
-            wlRange = np.append(wlRange, [wlLim[1]])
-            for l in wlRange:
-                myDict = {
-                    "line": np.full_like(spRange, lineNumber),
-                    "order": np.full_like(spRange, o),
-                    "wavelength": np.full_like(spRange, l),
-                    "slit_position": spRange
-                }
-                orderPixelTableNew = pd.DataFrame(myDict)
-                orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
-                lineNumber += 1
-
-        orderPixelTable = dispersion_map_to_pixel_arrays(
+        gridLinePixelTable = create_dispersion_solution_grid_lines_for_plot(
             log=log,
-            dispersionMapPath=dispMap,
-            orderPixelTable=orderPixelTable
+            dispMap=dispMap,
+            dispMapImage=dispMapImage,
+            associatedFrame=CCDObject,
+            kw=kw,
+            skylines=skylines
         )
-        for l in range(lineNumber):
-            mask = (orderPixelTable['line'] == l)
-            ax2.plot(orderPixelTable.loc[mask]["fit_y"], orderPixelTable.loc[mask]["fit_x"], "w:", alpha=0.5)
+
+        for l in range(int(gridLinePixelTable['line'].max())):
+            mask = (gridLinePixelTable['line'] == l)
+            ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
 
     ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
@@ -411,7 +365,10 @@ def unpack_order_table(
         extend=0.,
         pixelDelta=1,
         binx=1,
-        biny=1):
+        biny=1,
+        prebinned=False,
+        order=False,
+        limitToDetectorFormat=False):
     """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
 
     **Key Arguments:**
@@ -421,6 +378,9 @@ def unpack_order_table(
     - ``pixelDelta`` -- space between returned data points. Default *1* (sampled at every pixel)
     - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
+    - ``prebinned`` -- was the order-table measured on a pre-binned frame (typically only for mflats). Default *False*
+    - ``order`` -- unpack only a single order
+    - ``limitToDetectorFormat`` -- limit the pixels return to those limited by the detector format static calibration table
 
     **Usage:**
 
@@ -435,6 +395,7 @@ def unpack_order_table(
     from astropy.table import Table
     import pandas as pd
     import numpy as np
+    import math
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
     home = expanduser("~")
@@ -445,6 +406,10 @@ def unpack_order_table(
 
     dat = Table.read(orderTablePath, format='fits', hdu=2)
     orderMetaTable = dat.to_pandas()
+
+    if order:
+        mask = (orderMetaTable["order"] == order)
+        orderMetaTable = orderMetaTable.loc[mask]
 
     if "degy_cent" in orderPolyTable.columns:
         axisA = "x"
@@ -458,8 +423,13 @@ def unpack_order_table(
         axisBbin = binx
 
     # ADD AXIS B COORD LIST
+    if prebinned:
+        ratio = axisBbin
+    else:
+        ratio = 1
+
     axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(
-        orderMetaTable[f"{axisB}min"].values, orderMetaTable[f"{axisB}max"].values, orderMetaTable[f"{axisB}max"].values - orderMetaTable[f"{axisB}min"].values)]
+        orderMetaTable[f"{axisB}min"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio)]
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
 
@@ -489,18 +459,18 @@ def unpack_order_table(
         poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
         orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
 
-    if axisAbin > 1:
+    if axisAbin != 1:
         orderPixelTable[f"{axisA}coord_centre"] /= axisAbin
         orderPixelTable[f"{axisA}coord_edgeup"] /= axisAbin
         orderPixelTable[f"{axisA}coord_edgelow"] /= axisAbin
-    if axisBbin > 1:
+    if axisBbin != 1:
         orderMetaTable[f"{axisB}min"] /= axisBbin
         orderMetaTable[f"{axisB}max"] /= axisBbin
         orderPixelTable[f"{axisB}coord"] /= axisBbin
         orderPixelTable["std"] /= axisBbin
         mask = (orderPixelTable[f"{axisB}coord"].mod(1) > 0)
         orderPixelTable = orderPixelTable.loc[~mask]
-        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].astype('int')
+        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].round().astype('int')
 
     log.debug('completed the ``functionName`` function')
     return orderPolyTable, orderPixelTable, orderMetaTable
@@ -720,7 +690,9 @@ def spectroscopic_image_quality_checks(
 def read_spectral_format(
         log,
         settings,
-        arm):
+        arm,
+        dispersionMap=False,
+        extended=True):
     """*read the spectral format table to get some key parameters*
 
     **Key Arguments:**
@@ -728,6 +700,8 @@ def read_spectral_format(
     - `log` -- logger
     - `settings` -- soxspipe settings
     - `arm` -- arm to retrieve format for
+    - `dispersionMap` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are computed
+    - `extended` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL (extended=True)
 
     **Return:**
         - ``orderNums`` -- a list of the order numbers
@@ -745,11 +719,22 @@ def read_spectral_format(
     """
     log.debug('starting the ``read_spectral_format`` function')
 
+    import numpy as np
+    import pandas as pd
+    from astropy.io import fits
+
     # DETECTOR PARAMETERS LOOKUP OBJECT
     dp = detector_lookup(
         log=log,
         settings=settings
     ).get(arm)
+
+    # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+    # FOLDER
+    kw = keyword_lookup(
+        log=log,
+        settings=settings
+    ).get
 
     science_pixels = dp["science-pixels"]
 
@@ -767,8 +752,62 @@ def read_spectral_format(
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
-    waveLengthMin = specFormatTable["WLMINFUL"].values
-    waveLengthMax = specFormatTable["WLMAXFUL"].values
+    if extended:
+        waveLengthMin = specFormatTable["WLMINFUL"].values
+        waveLengthMax = specFormatTable["WLMAXFUL"].values
+    else:
+        waveLengthMin = specFormatTable["WLMIN"].values
+        waveLengthMax = specFormatTable["WLMAX"].values
+
+    # USE DISPERSION MAP TO FIND X-Y LIMITS OF THE SPECTRAL FORMAT FOR EACH ORDER
+    # WE WANT TO LIMIT THE EXTRACTION TO THESE REGIONS
+    if not isinstance(dispersionMap, bool):
+        myDict = {
+            "order": np.asarray([]),
+            "wavelength": np.asarray([]),
+            "slit_position": np.asarray([])
+        }
+        for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
+            wlArray = np.array([wmin, wmax])
+            myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
+            myDict["order"] = np.append(
+                myDict["order"], np.ones(len(wlArray)) * o)
+            myDict["slit_position"] = np.append(
+                myDict["slit_position"], np.zeros(len(wlArray)))
+        orderPixelTable = pd.DataFrame(myDict)
+        orderPixelTable = dispersion_map_to_pixel_arrays(
+            log=log,
+            dispersionMapPath=dispersionMap,
+            orderPixelTable=orderPixelTable,
+            removeOffDetectorLocation=False
+        )
+
+        # GRAB HEADER FROM DISPERSION MAP
+        with fits.open(dispersionMap, memmap=True) as hdul:
+            header = hdul[0].header
+
+        orderPixelRanges = []
+        if header[kw("INSTRUME")] == "SOXS":
+            axis = "x"
+            rowCol = "columns"
+        else:
+            axis = "y"
+            rowCol = "rows"
+
+        amins = []
+        amaxs = []
+        for o in orderNums:
+            amin = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].min()
+            amax = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].max()
+            if amin < 0:
+                amin = 0
+            if amax > dp["science-pixels"][rowCol]["end"]:
+                amax = dp["science-pixels"][rowCol]["end"]
+            amins.append(amin)
+            amaxs.append(amax)
+
+        log.debug('completed the ``read_spectral_format`` function')
+        return orderNums, waveLengthMin, waveLengthMax, amins, amaxs
 
     log.debug('completed the ``read_spectral_format`` function')
     return orderNums, waveLengthMin, waveLengthMax
@@ -809,7 +848,8 @@ def twoD_disp_map_image_to_dataframe(
         log,
         slit_length,
         twoDMapPath,
-        assosiatedFrame=False,
+        kw=False,
+        associatedFrame=False,
         removeMaskedPixels=False):
     """*convert the 2D dispersion image map to a pandas dataframe*
 
@@ -817,14 +857,15 @@ def twoD_disp_map_image_to_dataframe(
 
     - `log` -- logger
     - `twoDMapPath` -- 2D dispersion map image path
-    - `assosiatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
+    - `kw` -- fits keyword lookup dictionary
+    - `associatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
     - `removeMaskedPixels` -- remove the masked pixels from the assosicated image? Default *False*
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-    mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, assosiatedFrame=objectFrame)
+    mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, kw=kw)
     ```           
     """
     log.debug('starting the ``twoD_disp_map_image_to_dataframe`` function')
@@ -839,12 +880,27 @@ def twoD_disp_map_image_to_dataframe(
     if twoDMapPath[0] == "~":
         twoDMapPath = twoDMapPath.replace("~", home)
 
+    binx = 1
+    biny = 1
+
+    # FIND THE APPROPRIATE PREDICTED LINE-LIST
+    if associatedFrame:
+        arm = associatedFrame.header[kw("SEQ_ARM")]
+        if arm != "NIR" and kw('WIN_BINX') in associatedFrame.header:
+            binx = int(associatedFrame.header[kw('WIN_BINX')])
+            biny = int(associatedFrame.header[kw('WIN_BINY')])
+
     hdul = fits.open(twoDMapPath)
+
+    if binx > 1 or biny > 1:
+        from astropy.nddata import block_reduce
+        hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
+        hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
+        hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
 
     # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
     xdim = hdul[0].data.shape[1]
     ydim = hdul[0].data.shape[0]
-
     xarray = np.tile(np.arange(0, xdim), ydim)
     yarray = np.repeat(np.arange(0, ydim), xdim)
 
@@ -857,16 +913,16 @@ def twoD_disp_map_image_to_dataframe(
     }
 
     try:
-        if assosiatedFrame:
-            thisDict["flux"] = assosiatedFrame.data.flatten()
-            thisDict["mask"] = assosiatedFrame.mask.flatten()
-            thisDict["error"] = assosiatedFrame.uncertainty.flatten()
+        if associatedFrame:
+            thisDict["flux"] = associatedFrame.data.flatten()
+            thisDict["mask"] = associatedFrame.mask.flatten()
+            thisDict["error"] = associatedFrame.uncertainty.flatten()
 
     except:
-        if assosiatedFrame:
-            thisDict["flux"] = assosiatedFrame.data.flatten().byteswap().newbyteorder()
-            thisDict["mask"] = assosiatedFrame.mask.flatten().byteswap().newbyteorder()
-            thisDict["error"] = assosiatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
+        if associatedFrame:
+            thisDict["flux"] = associatedFrame.data.flatten().byteswap().newbyteorder()
+            thisDict["mask"] = associatedFrame.mask.flatten().byteswap().newbyteorder()
+            thisDict["error"] = associatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
 
     mapDF = pd.DataFrame.from_dict(thisDict)
     if removeMaskedPixels:
@@ -881,13 +937,215 @@ def twoD_disp_map_image_to_dataframe(
 
     # REMOVE FILTERED ROWS FROM DATA FRAME
     mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
-    mapDF.drop(index=mapDF[mask].index, inplace=True)
+    mapDF = mapDF.loc[~mask]
 
     # SORT BY COLUMN NAME
     mapDF.sort_values(['wavelength'], inplace=True)
 
     log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
     return mapDF
+
+
+def predict_product_path(
+        sofName):
+    """*predict the path of the recipe product from a given SOF name*
+
+    **Key Arguments:**
+
+    - `log` -- logger,
+    - `sofName` -- name or full path to the sof file
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils import toolkit
+    productPath = toolkit.predict_product_path(sofFilePath)
+    ```           
+    """
+    try:
+        sofName = os.path.basename(sofName)
+    except:
+        pass
+
+    from soxspipe.commonutils import data_organiser
+    from fundamentals.logs import emptyLogger
+    log = emptyLogger()
+    do = data_organiser(
+        log=log,
+        rootDir="."
+    )
+    currentSession, allSessions = do.session_list(silent=True)
+
+    recipeName = sys.argv[1]
+    if recipeName[0] == "-":
+        recipeName = sys.argv[2]
+
+    sofName = sofName.replace(".sof", "")
+    if "_STARE_" in sofName:
+        sofName += "_SKYSUB"
+    productPath = f"./sessions/{currentSession}/product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = productPath.replace("//", "/")
+
+    return productPath
+
+
+def add_recipe_logger(
+        log,
+        productPath):
+    """*add a recipe-specific handler to the default logger that writes the recipe's logs adjacent to the recipe project*
+    """
+    import logging
+    import os
+
+    for handler in log.handlers:
+        if handler.get_name() == "recipeLog":
+            log.removeHandler(handler)
+        if handler.get_name() == "recipeErr":
+            log.removeHandler(handler)
+
+    # GET THE EXTENSION (WITH DOT PREFIX)
+    loggingPath = os.path.splitext(productPath)[0] + ".log"
+    loggingErrorPath = os.path.splitext(productPath)[0] + "_ERROR.log"
+    try:
+        os.remove(loggingPath)
+        os.remove(loggingErrorPath)
+    except:
+        pass
+
+    # PARENT DIRECTORY PATH NEEDS TO EXIST FOR LOGGER TO WRITE
+    parentDirectory = os.path.dirname(loggingPath)
+    if not os.path.exists(parentDirectory):
+        os.makedirs(parentDirectory)
+
+    recipeLog = logging.FileHandler(loggingPath, mode='a', encoding=None, delay=False)
+    recipeLogFormatter = logging.Formatter("%(message)s")
+    recipeLog.set_name("recipeLog")
+    recipeLog.setLevel(logging.INFO + 1)
+    recipeLog.setFormatter(recipeLogFormatter)
+    recipeLog.addFilter(MaxFilter(logging.WARNING))
+    log.addHandler(recipeLog)
+
+    recipeErr = logging.FileHandler(loggingErrorPath, mode='a', encoding=None, delay=True)
+    recipeErrFormatter = logging.Formatter('%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', '%Y-%m-%d %H:%M:%S')
+    recipeErr.set_name("recipeErr")
+    recipeErr.setLevel(logging.WARNING)
+    recipeErr.setFormatter(recipeErrFormatter)
+    log.addHandler(recipeErr)
+
+    return log
+
+
+class MaxFilter:
+    def __init__(self, max_level):
+        self.max_level = max_level
+
+    def filter(self, record):
+        if record.levelno < self.max_level:
+            return True
+
+
+def create_dispersion_solution_grid_lines_for_plot(
+        log,
+        dispMap,
+        dispMapImage,
+        associatedFrame,
+        kw,
+        skylines=False,
+        slitPositions=False):
+    """*give a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - ``dispMap`` -- path to dispersion map. Default *False*
+    - ``dispMapImage`` -- the 2D dispersion map image
+    - `associatedFrame` -- a frame associated with the reduction (to read arm and binning info).
+    - `kw` -- fits header kw dictionary
+    - `skylines` -- a list of skylines to use as the grid. Default *False*
+    - `slitPositions` -- slit positions to plot (else plot min and max)
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import create_dispersion_solution_grid_lines_for_plot
+    gridLinePixelTable = create_dispersion_solution_grid_lines_for_plot(
+        log=log,
+        dispMap=dispMap,
+        dispMapImage=dispMapImage,
+        associatedFrame=CCDObject,
+        kw=kw,
+        skylines=skylines
+    )
+
+    for l in range(int(gridLinePixelTable['line'].max())):
+        mask = (gridLinePixelTable['line'] == l)
+        ax.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
+    ```           
+    """
+    log.debug('starting the ``create_dispersion_solution_grid_lines_for_plot`` function')
+
+    import numpy as np
+    import pandas as pd
+
+    dispMapDF = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
+    uniqueOrders = dispMapDF['order'].unique()
+    wlLims = []
+    sPos = []
+
+    for o in uniqueOrders:
+        filDF = dispMapDF.loc[dispMapDF["order"] == o]
+        wlLims.append((filDF['wavelength'].min() - 200, filDF['wavelength'].max() + 200))
+        if isinstance(slitPositions, bool):
+            sPos.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
+        else:
+            sPos.append(slitPositions)
+
+    lineNumber = 0
+    for o, wlLim, spLim in zip(uniqueOrders, wlLims, sPos):
+        wlRange = np.arange(wlLim[0], wlLim[1], 1)
+        wlRange = np.append(wlRange, [wlLim[1]])
+        for e in spLim:
+            myDict = {
+                "line": np.full_like(wlRange, lineNumber),
+                "order": np.full_like(wlRange, o),
+                "wavelength": wlRange,
+                "slit_position": np.full_like(wlRange, e)
+            }
+            if lineNumber == 0:
+                orderPixelTable = pd.DataFrame(myDict)
+            else:
+                orderPixelTableNew = pd.DataFrame(myDict)
+                orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
+            lineNumber += 1
+
+        spRange = np.arange(spLim[0], spLim[-1], 1)
+        spRange = np.append(spRange, [spLim[-1]])
+        if skylines:
+            mask = skylinesDF['WAVELENGTH'].between(wlLim[0], wlLim[1])
+            wlRange = skylinesDF.loc[mask]['WAVELENGTH'].values
+        else:
+            step = int(wlLim[1] - wlLim[0]) / 400
+            wlRange = np.arange(wlLim[0], wlLim[1], step)
+        wlRange = np.append(wlRange, [wlLim[1]])
+        for l in wlRange:
+            myDict = {
+                "line": np.full_like(spRange, lineNumber),
+                "order": np.full_like(spRange, o),
+                "wavelength": np.full_like(spRange, l),
+                "slit_position": spRange
+            }
+            orderPixelTableNew = pd.DataFrame(myDict)
+            orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
+            lineNumber += 1
+
+    orderPixelTable = dispersion_map_to_pixel_arrays(
+        log=log,
+        dispersionMapPath=dispMap,
+        orderPixelTable=orderPixelTable
+    )
+
+    log.debug('completed the ``create_dispersion_solution_grid_lines_for_plot`` function')
+    return orderPixelTable
 
 # use the tab-trigger below for new function
 # xt-def-function

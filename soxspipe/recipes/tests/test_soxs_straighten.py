@@ -60,7 +60,7 @@ class test_soxs_straighten(unittest.TestCase):
 
     import pytest
 
-    def test_soxs_straighten_nir_function(self):
+    def test_xsh_straighten_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-straighten/sof/nir_straighten_telluric.sof"
         from soxspipe.recipes import soxs_straighten
         this = soxs_straighten(
@@ -71,7 +71,7 @@ class test_soxs_straighten(unittest.TestCase):
         this.produce_product()
 
     # @pytest.mark.full
-    # def test_soxs_straighten_uvb_function(self):
+    # def test_xsh_straighten_uvb_function(self):
 
     #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/uvb_1x1_dark_3600s.sof"
     #     from soxspipe.recipes import soxs_straighten
@@ -83,7 +83,7 @@ class test_soxs_straighten(unittest.TestCase):
     #     this.produce_product()
 
     # @pytest.mark.full
-    # def test_soxs_straighten_vis_function(self):
+    # def test_xsh_straighten_vis_function(self):
     #     sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/vis_1x1_dark_3600s.sof"
     #     from soxspipe.recipes import soxs_straighten
     #     this = soxs_straighten(

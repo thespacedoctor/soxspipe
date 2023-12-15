@@ -29,6 +29,8 @@ soxs-order-centre:
         order-sample-count: 200
         # LENGTH OF EACH SLICE (PIXELS)
         slice-length: 10
+        # WIDTH OF EACH SLICE (PIXELS)
+        slice-width: 5
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
         peak-sigma-limit: 3
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
@@ -67,11 +69,43 @@ soxs-mflat:
     low-sensitivity-clipping-sigma: 2
     
 soxs-stare:
+    # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
     stacked-clipping-sigma: 5
+    # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
-    clipping-iteration-count: 1
-    clipping-lower-sigma: 50
-    clipping-upper-sigma: 1000 
+    # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
+    clipping-lower-simga: 10
+    # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
+    clipping-upper-simga: 10 
+    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
+    clipping-iteration-count: 0
+    clipping-lower-sigma: 10
+    clipping-upper-sigma: 10 
+    # the length of the 'slit' used to collect object flux (in pixels)
+    horne-extraction-slit-length: 20
+    # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
+    horne-extraction-profile-global-clipping-sigma: 25
+    # the number of σ deviations that residuals from the fitted, dispersion-direction profile need to be beyond for a pixel to be clipped
+    horne-extraction-profile-clipping-sigma: 3.0
+    # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
+    horne-extraction-profile-clipping-iteration-count: 10
+    detect-continuum:
+        # NUMBER OF CROSS-ORDER SLICES PER ORDER
+        order-sample-count: 200
+        # LENGTH OF EACH SLICE (PIXELS)
+        slice-length: 25
+        # WIDTH OF EACH SLICE (PIXELS)
+        slice-width: 5
+        # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+        peak-sigma-limit: 3
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        order-deg: 4
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-fitting-residual-clipping-sigma: 5.0
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-clipping-iteration-limit: 1
 
 
 sky-subtraction:
@@ -111,10 +145,10 @@ save-intermediate-products: True
 logging settings:
     formatters:
         file_style:
-            format: '* %(asctime)s - %(name)s - %(levelname)s (%(pathname)s > %(funcName)s > %(lineno)d) - %(message)s  '
+            format: '%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s'
             datefmt: '%Y/%m/%d %H:%M:%S'
         console_style:
-            format: '* %(asctime)s - %(levelname)s: %(pathname)s:%(funcName)s:%(lineno)d > %(message)s'
+            format: '%(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s'
             datefmt: '%H:%M:%S'
         html_style:
             format: '<div id="row" class="%(levelname)s"><span class="date">%(asctime)s</span>   <span class="label">file:</span><span class="filename">%(filename)s</span>   <span class="label">method:</span><span class="funcName">%(funcName)s</span>   <span class="label">line#:</span><span class="lineno">%(lineno)d</span> <span class="pathname">%(pathname)s</span>  <div class="right"><span class="message">%(message)s</span><span class="levelname">%(levelname)s</span></div></div>'

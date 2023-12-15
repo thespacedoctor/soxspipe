@@ -9,18 +9,13 @@
 :Date Created:
     January 22, 2020
 """
+from os import listdir, path
+from ccdproc import ImageFileCollection
 import os
 import sys
 from builtins import object
 from fundamentals import tools
-
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
-import codecs
-from ccdproc import ImageFileCollection
-
-
-from collections import OrderedDict
-from os import listdir, path
 
 
 class ImageFileCollection(ImageFileCollection):
@@ -30,6 +25,7 @@ class ImageFileCollection(ImageFileCollection):
 
         """
         from astropy.io import fits
+        from collections import OrderedDict
 
         def _add_val_to_dict(key, value, tbl_dict, n_previous, missing_marker):
             try:
@@ -84,6 +80,7 @@ class ImageFileCollection(ImageFileCollection):
                 # already processed so any further duplication is probably
                 # a mistake. It would lead to problems in ImageFileCollection
                 # to add it as well, so simply ignore those.
+                import warnings
                 warnings.warn(
                     'Header from file "{f}" contains multiple entries for '
                     '"{k}", the pair "{k}={v}" will be ignored.'
@@ -151,7 +148,7 @@ class set_of_files(object):
 
     `inputFrames` can be a directory, a list of fits filepaths or a set-of-files (SOF) file
     """
-    # Initialisation
+    # Initialization
 
     def __init__(
             self,
@@ -159,10 +156,11 @@ class set_of_files(object):
             settings=False,
             inputFrames=[],
             verbose=True,
-            ext=0
+            ext=0,
+            session=None
     ):
         self.log = log
-        log.debug("instansiating a new 'sof' object")
+        log.debug("instantiating a new 'sof' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
@@ -190,6 +188,14 @@ class set_of_files(object):
         home = expanduser("~")
         if isinstance(self.inputFrames, str) and self.inputFrames[0] == "~":
             self.inputFrames = home + "/" + self.inputFrames[1:]
+
+        # GRAB THE WORKSPACE SESSION
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=self.log,
+            rootDir="."
+        )
+        self.currentSession, allSessions = do.session_list(silent=True)
 
         return None
 
@@ -262,7 +268,7 @@ class set_of_files(object):
 
                     content += "%(fitsPath)s %(catagory)s\n" % locals()
 
-        # Recursively create missing directories
+        # RECURSIVELY CREATE MISSING DIRECTORIES
         moduleDirectory = os.path.dirname(sofPath)
         if not os.path.exists(moduleDirectory):
             os.makedirs(moduleDirectory)
@@ -304,7 +310,7 @@ class set_of_files(object):
         self.log.debug('starting the ``get`` method')
 
         from astropy.table import join
-
+        import codecs
         from os.path import expanduser
         home = expanduser("~")
 
@@ -349,8 +355,15 @@ class set_of_files(object):
             fitsFiles = []
             fitsFiles[:] = [l.split(".fits")[0].replace("~/", home + "/") +
                             ".fits" for l in lines if ".fits" in l]
+
             supplementaryFilepaths = [
                 l.replace("~/", home + "/") for l in lines if ".fits" not in l.lower() and len(l) > 3]
+
+            # PREPEND SESSION PATHS
+            if self.currentSession:
+                fitsFiles[:] = [f.replace("./product", f"./sessions/{self.currentSession}/product") for f in fitsFiles]
+                supplementaryFilepaths[:] = [f.replace("./product", f"./sessions/{self.currentSession}/product") for f in supplementaryFilepaths]
+
             # MAKE SURE FILES EXIST
             allFiles = fitsFiles.extend(supplementaryFilepaths)
             for f in fitsFiles + supplementaryFilepaths:
@@ -394,6 +407,7 @@ class set_of_files(object):
                     f) for f in fitsFiles]
             else:
                 location = None
+
             sof = ImageFileCollection(
                 filenames=fitsFiles, keywords=self.keys, location=location, ext=self.ext)
 

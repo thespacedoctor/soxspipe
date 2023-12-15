@@ -11,7 +11,7 @@
 [![](https://img.shields.io/pypi/pyversions/soxspipe)](https://pypi.org/project/soxspipe/)
 [![](https://img.shields.io/pypi/v/soxspipe)](https://pypi.org/project/soxspipe/)
 [![](https://img.shields.io/conda/vn/conda-forge/soxspipe)](https://anaconda.org/conda-forge/soxspipe)
-[![](https://pepy.tech/badge/soxspipe)](https://pepy.tech/project/soxspipe)
+[![](https://static.pepy.tech/badge/soxspipe/month)](https://pepy.tech/project/soxspipe)
 [![](https://img.shields.io/github/license/thespacedoctor/soxspipe)](https://github.com/thespacedoctor/soxspipe)
 
 <!-- STATUS BADGES -->  
@@ -38,18 +38,6 @@ conda activate soxspipe
 If you have previously installed soxspipe, a warning will be issued stating that a conda environment already exists; select 'y' when asked to remove the existing environment.
 
 To check installation was successful run `soxspipe -v`. This should return the version number of the install.
-
-## Initialisation 
-
-Before using soxspipe you need to use the `init` command to generate a user settings file. Running the following creates a [yaml](https://learnxinyminutes.com/docs/yaml/) settings file in your home folder under `~/.config/soxspipe/soxspipe.yaml`:
-
-```bash
-soxspipe init
-```
-
-The file is initially populated with soxspipe's default settings which can be adjusted to your preference.
-
-If at any point the user settings file becomes corrupted or you just want to start afresh, simply trash the `soxspipe.yaml` file and rerun `soxspipe init`.
 
 ## How to cite soxspipe
 

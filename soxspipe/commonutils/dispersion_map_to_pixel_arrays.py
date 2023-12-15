@@ -11,7 +11,6 @@
 """
 
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-import unicodecsv as csv
 from os.path import expanduser
 from fundamentals import tools
 from builtins import object
@@ -72,9 +71,9 @@ def dispersion_map_to_pixel_arrays(
     check = 1
     for index, row in tableData.iterrows():
         axis = row["axis"].decode("utf-8")
-        orderDeg = int(row["order-deg"])
-        wavelengthDeg = int(row["wavelength-deg"])
-        slitDeg = int(row["slit-deg"])
+        orderDeg = int(row["order_deg"])
+        wavelengthDeg = int(row["wavelength_deg"])
+        slitDeg = int(row["slit_deg"])
 
         if check:
             for i in range(0, orderDeg + 1):
@@ -86,7 +85,7 @@ def dispersion_map_to_pixel_arrays(
             check = 0
 
         coeff[axis] = [float(v) for k, v in row.items() if k not in [
-            "axis", "order-deg", "wavelength-deg", "slit-deg"]]
+            "axis", "order_deg", "wavelength_deg", "slit_deg"]]
         poly[axis] = chebyshev_order_wavelength_polynomials(
             log=log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True).poly
 

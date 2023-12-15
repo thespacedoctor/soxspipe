@@ -24,7 +24,6 @@ class data_organiser(object):
 
     **Key Arguments:**
         - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
         - ``rootDir`` -- the root directory of the data to process
 
     **Usage:**
@@ -45,7 +44,6 @@ class data_organiser(object):
     from soxspipe.commonutils import data_organiser
     do = data_organiser(
         log=log,
-        settings=settings,
         rootDir="/path/to/workspace/root/"
     )
     do.prepare()
@@ -56,20 +54,17 @@ class data_organiser(object):
     def __init__(
             self,
             log,
-            rootDir,
-            settings=False
+            rootDir
     ):
-
-        import shutil
-        import sqlite3 as sql
         from os.path import expanduser
+        import codecs
+        from fundamentals.logs import emptyLogger
 
-        self.log = log
-        log.debug("instansiating a new 'data_organiser' object")
-        self.settings = settings
+        log.debug("instantiating a new 'data_organiser' object")
+        self.log = emptyLogger()
 
-        if rootDir == ".":
-            rootDir = os.getcwd()
+        # if rootDir == ".":
+        #     rootDir = os.getcwd()
         # MAKE RELATIVE HOME PATH ABSOLUTE
         if rootDir[0] == "~":
             home = expanduser("~")
@@ -79,33 +74,12 @@ class data_organiser(object):
         self.rawDir = rootDir + "/raw_frames"
         self.miscDir = rootDir + "/misc"
         self.sofDir = rootDir + "/sof"
+        self.sessionsDir = rootDir + "/sessions"
 
-        # MK RAW FRAME DIRECTORY
-        if not os.path.exists(self.rawDir):
-            os.makedirs(self.rawDir)
+        # SESSION ID PLACEHOLDER FILE
+        self.sessionIdFile = self.sessionsDir + "/.sessionid"
 
-        # TEST FOR SQLITE DATABASE
         self.dbPath = rootDir + "/soxspipe.db"
-        try:
-            with open(self.dbPath):
-                pass
-            self.freshRun = False
-        except IOError:
-            self.freshRun = True
-            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
-            shutil.copyfile(emptyDb, self.dbPath)
-            print("soxspipe.db does not yet exist, this is a fresh reduction")
-
-        def dict_factory(cursor, row):
-            d = {}
-            for idx, col in enumerate(cursor.description):
-                d[col[0]] = row[idx]
-            return d
-
-        # CREATE THE DATABASE CONNECTION
-        self.conn = sql.connect(
-            self.dbPath)
-        self.conn.row_factory = dict_factory
 
         # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
         self.keywords = [
@@ -129,8 +103,11 @@ class data_organiser(object):
             'eso det ncorrs name',
             'eso det out1 conad',
             'eso det out1 ron',
+            'eso obs id',
+            'eso obs name',
             "naxis",
-            "object"
+            "object",
+            "instrume"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -143,14 +120,18 @@ class data_organiser(object):
             'eso pro catg',
             'eso pro tech',
             'eso pro type',
+            'eso obs id',
+            'eso obs name',
             'exptime',
             'binning',
             'rospeed',
+            'slit',
             'night start date',
             'night start mjd',
             'mjd-obs',
             'date-obs',
-            'object'
+            'object',
+            "instrume"
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
@@ -203,7 +184,7 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'binning', 'night start mjd', 'night start date']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "LAMP,WAVE", "STD,FLUX", "STD,TELLURIC", "OBJECT"]
@@ -223,31 +204,66 @@ class data_organiser(object):
     def prepare(
             self):
         """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*
-
-        **Key Arguments:**
-            # -
-
-        **Return:**
-            - None
-
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
         """
         self.log.debug('starting the ``prepare`` method')
+        import codecs
+        import shutil
+        import sqlite3 as sql
+
+        # TEST FITS FILES OR raw_frames DIRECT EXISTS
+        fitsExist = False
+        exists = os.path.exists(self.rawDir)
+        if exists:
+            fitsExist = True
+        if not fitsExist:
+            for d in os.listdir(self.rootDir):
+                filepath = os.path.join(self.rootDir, d)
+                if os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)):
+                    fitsExist = True
+                    break
+
+        # EXIST IF NO FITS FILES EXIST - SOME PROTECT AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
+        if fitsExist == False:
+            print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
+            sys.exit(0)
+
+        # MK RAW FRAME DIRECTORY
+        if not os.path.exists(self.rawDir):
+            os.makedirs(self.rawDir)
+
+        # TEST FOR SQLITE DATABASE - ADD IF MISSING
+        try:
+            with open(self.dbPath):
+                pass
+            self.freshRun = False
+        except IOError:
+            self.freshRun = True
+            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
+            shutil.copyfile(emptyDb, self.dbPath)
+
+        def dict_factory(cursor, row):
+            d = {}
+            for idx, col in enumerate(cursor.description):
+                d[col[0]] = row[idx]
+            return d
+
+        # CREATE THE DATABASE CONNECTION
+        self.conn = sql.connect(
+            self.dbPath)
+        self.conn.row_factory = dict_factory
+
+        # MK SESSION DIRECTORY
+        if not os.path.exists(self.sessionsDir):
+            os.makedirs(self.sessionsDir)
+
+        # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
+        # OTHERWISE USE CURRENT SESSION
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            sessionId = self.session_create(sessionId="base")
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                sessionId = readFile.read()
 
         basename = os.path.basename(self.rootDir)
         print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
@@ -258,14 +274,14 @@ class data_organiser(object):
         self._write_sof_files()
         self._write_reduction_shell_scripts()
 
-        sys.stdout.write("\x1b[1A\x1b[2K")
-        print(f"THE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
+        print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
         print(f"In this workspace you will find:\n")
+        print(f"   - `misc/`: a lost-and-found archive of non-fits files")
         print(f"   - `raw_frames/`: all raw-frames to be reduced")
-        print(f"   - `misc/`: an archive of other files that may have been found at the root of the workspace when running the prep command")
+        print(f"   - `sessions/`: directory of data-reduction sessions")
         print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
-        print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
-        print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace\n")
+        print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace")
+        print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
 
         self.log.debug('completed the ``prepare`` method')
         return None
@@ -287,7 +303,6 @@ class data_organiser(object):
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
-            settings=settings,
             rootDir="/path/to/root/folder/"
         )
         do._sync_raw_frames()
@@ -575,7 +590,7 @@ class data_organiser(object):
 
         **Key Arguments:**
             - ``filteredFrames`` -- the dataframe from which to split frames into categorise.
-            - ``verbose`` -- print restuls to stdout.
+            - ``verbose`` -- print results to stdout.
 
         **Return:**
             - ``rawFrames`` -- dataframe of raw frames only
@@ -600,6 +615,13 @@ class data_organiser(object):
         keywordsTerseReduced = self.keywordsTerse[:]
         filterKeywordsRaw = self.filterKeywords[:]
         filterKeywordsReduced = self.filterKeywords[:]
+
+        filteredFrames['slit'] = "--"
+
+        # ADD SLIT FOR SPECTROSCOPIC DATA
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "eso ins opti5 name"]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "eso ins opti4 name"]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "eso ins opti3 name"]
 
         mask = []
         for i in self.proKeywords:
@@ -632,19 +654,23 @@ class data_organiser(object):
         keywordsTerseReducedTable = keywordsTerseReduced[:]
         keywordsTerseReducedTable.remove("binning")
 
-        if verbose:
-            print("\n# CONTENT SETS INDEX\n")
         reducedPixelsGroups = reducedFramesPixels.groupby(filterKeywordsReduced).size().reset_index(name='counts')
         reducedPixelsGroups.style.hide(axis='index')
+
         # SORT BY COLUMN NAME
         reducedPixelsGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
-        if verbose and len(reducedPixelsGroups.index):
-            print("\n## REDUCED PIXEL-FRAME-SET SUMMARY\n")
-            print(tabulate(reducedPixelsGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
 
         reducedTablesGroups = reducedFramesTables.groupby(filterKeywordsReducedTable).size().reset_index(name='counts')
         reducedTablesGroups.style.hide(axis='index')
         reducedTablesGroups.sort_values(by=['eso pro type', 'eso seq arm', 'eso pro catg', 'eso pro tech'], inplace=True)
+
+        if verbose and (len(reducedPixelsGroups.index) or len(reducedTablesGroups.index)):
+            print("\n# CONTENT SETS INDEX\n")
+
+        if verbose and len(reducedPixelsGroups.index):
+            print("\n## REDUCED PIXEL-FRAME-SET SUMMARY\n")
+            print(tabulate(reducedPixelsGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
+
         if verbose and len(reducedTablesGroups.index):
             print("\n## REDUCED TABLES-SET SUMMARY\n")
             print(tabulate(reducedTablesGroups, headers='keys', tablefmt='github', showindex=False, stralign="right"))
@@ -731,6 +757,7 @@ class data_organiser(object):
 
         # MERGE DATAFRAMES
         rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
@@ -797,7 +824,7 @@ class data_organiser(object):
 
         # FILTER BY TYPE FIRST
         if "FLAT" in series["eso dpr type"].upper():
-            mask = (filteredFrames["eso dpr type"].str.contains("FLAT"))
+            mask = ((filteredFrames["eso dpr type"].str.contains("FLAT")) & (filteredFrames["slit"] == series["slit"]))
         else:
             mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
         filteredFrames = filteredFrames.loc[mask]
@@ -834,6 +861,7 @@ class data_organiser(object):
         if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and "FLAT" in series["eso dpr type"].upper())):
             matchDict['exptime'] = float(series["exptime"])
             sofName.append(str(series["exptime"]).replace(".", "pt"))
+        sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
@@ -849,7 +877,7 @@ class data_organiser(object):
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_")) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE"))
-                elif "rospeed" in k.lower():
+                elif "rospeed" in k.lower() or "binning" in k.lower():
                     mask = (calibrationFrames[k].isin([v]) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
                 else:
                     mask = (calibrationFrames[k].isin([v]))
@@ -867,9 +895,13 @@ class data_organiser(object):
 
         # EXTRA CALIBRATION TABLES
         for k, v in matchDict.items():
-            if k in ["binning", "rospeed", "exptime"]:
+            if k in ["rospeed", "exptime"]:
                 continue
-            if "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
+            if k in ["binning"] and seriesRecipe in ["mflat"]:
+                continue
+            if k in ["binning"]:
+                mask = (calibrationTables[k].isin([v]) | calibrationTables['eso pro catg'].str.contains("DISP_TAB_"))
+            elif "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
                 mask = (calibrationTables['eso pro catg'].str.contains("_TAB_"))
             else:
                 try:
@@ -901,8 +933,6 @@ class data_organiser(object):
             if isinstance(filteredFrames, astropy.table.row.Row):
                 filteredFrames = Table(filteredFrames)
 
-            # SELECT FIRST DATE
-            # SORT BY COLUMN NAME
             filteredFrames.sort_values(['date-obs'], inplace=True)
             firstDate = filteredFrames['date-obs'].values[0].replace("-", ".").replace(":", ".")
             sofName.insert(0, firstDate)
@@ -1011,6 +1041,12 @@ class data_organiser(object):
             else:
                 mask = (df['recipe'] == "mflat")
             df = df.loc[mask]
+
+            if series["recipe"] in ["spat_sol"]:
+                # REMOVE BLOCKING FILTERS
+                mask = df['slit'].str.contains('JH')
+                df = df.loc[~mask]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 if series["eso seq arm"].upper() in ["UVB"] and series["recipe"] == "mflat":
@@ -1034,6 +1070,17 @@ class data_organiser(object):
         if series["recipe"] in ["spat_sol", "stare"]:
             mask = calibrationFrames['eso pro catg'].str.contains('MASTER_FLAT')
             df = calibrationFrames.loc[mask]
+
+            if series["recipe"] in ["spat_sol"]:
+                # REMOVE BLOCKING FILTERS
+                mask = df['slit'].str.contains('JH')
+                df = df.loc[~mask]
+
+            if series["recipe"] in ["stare"]:
+                from tabulate import tabulate
+                if len(filteredFrames["slit"].values):
+                    df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 files = np.append(files, df["file"].values[0])
@@ -1113,6 +1160,8 @@ class data_organiser(object):
             template["eso pro type"] = template.pop("eso dpr type")
 
             for i in self.productMap[template["recipe"].lower()]:
+                # if template["recipe"].lower() == "mflat" and template["binning"] in ["1x2", "2x2"] and i[2] == "ORDER_TAB":
+                #     continue
                 products = template.copy()
                 products["eso pro type"] = i[0]
                 products["eso pro tech"] = i[1]
@@ -1137,7 +1186,7 @@ class data_organiser(object):
         self.log.debug('starting the ``_move_misc_files`` method')
 
         import shutil
-        if check and not os.path.exists(self.miscDir):
+        if not os.path.exists(self.miscDir):
             os.makedirs(self.miscDir)
 
         # GENERATE A LIST OF FILE PATHS
@@ -1254,9 +1303,169 @@ class data_organiser(object):
         self.log.debug('completed the ``_write_reduction_shell_scripts`` method')
         return None
 
+    def session_create(
+            self,
+            sessionId=False):
+        """*create a data-reduction session with accompanying settings file and required directories*
+
+        **Key Arguments:**
+            - ``sessionId`` -- optionally provide a sessionId (A-Z, a-z 0-9 and/or _- allowed, 16 character limit)
+
+        **Return:**
+            - ``sessionId`` -- the unique ID of the data-reduction session
+
+        **Usage:**
+
+        ```python
+        do = data_organiser(
+            log=log,
+            rootDir="/path/to/workspace/root/"
+        )
+        sessionId = do.session_create(sessionId="my_supernova")
+        ```
+        """
+        self.log.debug('starting the ``session_create`` method')
+
+        import re
+
+        # TEST SESSION DIRECTORY EXISTS
+        exists = os.path.exists(self.sessionsDir)
+        if not exists:
+            print("Please prepare your workspace using the `soxspipe prep` command before creating a new session.")
+            sys.exit(0)
+
+        if sessionId:
+            if len(sessionId) > 16:
+                print("Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-")
+            matchObjectList = re.findall(r'[^0-9a-zA-Z\-\_]+', sessionId)
+            if matchObjectList:
+                print("Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-")
+        else:
+            # CREATE SESSION ID FROM TIME STAMP
+            from datetime import datetime, date, time
+            now = datetime.now()
+            sessionId = now.strftime("%Y%m%dt%H%M%S")
+
+        # MAKE THE SESSION DIRECTORY
+        sessionPath = self.sessionsDir + "/" + sessionId
+        if not os.path.exists(sessionPath):
+            os.makedirs(sessionPath)
+
+        # SETUP SESSION SETTINGS AND LOGGING
+        testPath = sessionPath + "/soxspipe.yaml"
+        exists = os.path.exists(testPath)
+        if not exists:
+            su = tools(
+                arguments={"<workspaceDirectory>": sessionPath, "init": True, "settingsFile": None},
+                docString=False,
+                logLevel="WARNING",
+                options_first=False,
+                projectName="soxspipe",
+                defaultSettingsFile=True
+            )
+            arguments, settings, replacedLog, dbConn = su.setup()
+
+        # WRITE THE SESSION ID FILE
+        import codecs
+        with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
+            writeFile.write(sessionId)
+
+        message = f"A new data-reduction session has been created with sessionId '{sessionId}'"
+        try:
+            self.log.print(message)
+        except:
+            print(message)
+        self.log.debug('completed the ``session_create`` method')
+        return sessionId
+
+    def session_list(
+            self,
+            silent=False):
+        """*list the sessions available to the user*
+
+        **Key Arguments:**
+            - ``silent`` -- don't print listings if True
+
+        **Return:**
+            - ``currentSession`` -- the single ID of the currently used session
+            - ``allSessions`` -- the IDs of the other sessions
+
+        **Usage:**
+
+        ```python
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            rootDir="."
+        )
+        currentSession, allSessions = do.session_list()
+        ```
+        """
+        self.log.debug('starting the ``session_list`` method')
+
+        import codecs
+
+        # IF SESSION ID FILE DOES NOT EXIST, REPORT
+        self.sessionIdFile = self.sessionsDir + "/.sessionid"
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            if not silent:
+                print("No reduction sessions exist in this workspace yet.")
+            return None, None
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                currentSession = readFile.read()
+
+        # LIST ALL SESSIONS
+        allSessions = [d for d in os.listdir(self.sessionsDir) if os.path.isdir(os.path.join(self.sessionsDir, d))]
+        allSessions.sort()
+
+        if not silent:
+            for s in allSessions:
+                if s == currentSession.strip():
+                    print(f"\033[0;32m*{s}*\u001b[38;5;15m")
+                else:
+                    print(s)
+
+        self.log.debug('completed the ``session_list`` method')
+        return currentSession, allSessions
+
+    def session_switch(
+            self,
+            sessionId):
+        """*switch to an existing workspace data-reduction session*
+
+        **Key Arguments:**
+            - ``sessionId`` -- the sessionId to switch to
+
+        **Usage:**
+
+        ```python
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            rootDir="."
+        )
+        do.session_switch(mySessionId)
+        ```
+        """
+        self.log.debug('starting the ``session_switch`` method')
+        import codecs
+
+        currentSession, allSessions = self.session_list(silent=True)
+
+        if sessionId == currentSession:
+            print(f"Session '{sessionId}' is already in use.")
+        elif sessionId in allSessions:
+            # WRITE THE SESSION ID FILE
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
+                writeFile.write(sessionId)
+            print(f"Session successfully switched to '{sessionId}'.")
+        else:
+            print(f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`.")
+
+        self.log.debug('completed the ``session_switch`` method')
+        return None
+
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
-    # Override Method Attributes
-    # method-override-tmpx

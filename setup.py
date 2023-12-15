@@ -25,13 +25,15 @@ install_requires = [
     'tabulate',
     'bottleneck',
     'multiprocess',
-    'jinja2'
+    'jinja2',
+    'specutils'
 ]
 
 # READ THE DOCS SERVERS
 exists = os.path.exists("/home/docs/")
 if exists:
     install_requires = ['fundamentals']
+
 
 setup(name="soxspipe",
       version=__version__,
@@ -40,7 +42,7 @@ setup(name="soxspipe",
       long_description_content_type='text/markdown',
       classifiers=[
           'Development Status :: 4 - Beta',
-          'License :: OSI Approved :: MIT License',
+          'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
           'Programming Language :: Python :: 3.9',
           'Topic :: Utilities',
       ],
@@ -50,7 +52,7 @@ setup(name="soxspipe",
       ),
       author='David Young',
       author_email='davidrobertyoung@gmail.com',
-      license='MIT',
+      license='GPLv3',
       packages=find_packages(exclude=["*tests*"]),
       include_package_data=True,
       install_requires=install_requires,

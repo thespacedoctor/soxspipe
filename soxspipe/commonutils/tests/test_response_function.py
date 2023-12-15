@@ -49,7 +49,7 @@ class test_response_function(unittest.TestCase):
 
     import pytest
 
-    def test_response_function_function(self):
+    def test_xsh_response_function_function(self):
 
         stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
         from soxspipe.commonutils import response_function
@@ -60,7 +60,7 @@ class test_response_function(unittest.TestCase):
         )
         response.get()
 
-    def test_response_function_function_exception(self):
+    def test_soxs_response_function_function_exception(self):
 
         from soxspipe.commonutils import response_function
         try:
