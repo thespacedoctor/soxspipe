@@ -288,6 +288,10 @@ class horne_extraction(object):
                 xcoords = list(map(lambda x: list(range(x[0], x[1])), zip(xstart, xstop)))
                 ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
                 orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
+                orderTable["wavelength_centre"] = self.twoDMap["WAVELENGTH"].data[ycoord, orderTable["xcoord_centre"].astype(int)]
+                # FIND THE DIFFERENCE BEWTEEN ADJACENT CELLS IN 1D ARRAY
+                orderTable["pixelScaleNm"] = np.append(np.abs(np.diff(orderTable["wavelength_centre"])), np.nan)
+
                 orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
                 orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords])
                 orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
@@ -302,6 +306,7 @@ class horne_extraction(object):
         toprow = fig.add_subplot(gs[0:1, :])
         addedLegend = True
         for df, o in zip(extractions, uniqueOrders):
+            extracted_pixelscale = df["pixelScaleNm"]
             extracted_wave_spectrum = df["wavelengthMedian"]
             extracted_spectrum = df["extractedFluxOptimal"]
             extracted_spectrum_nonopt = df["extractedFluxBoxcarRobust"]
@@ -746,13 +751,6 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     # REMOVE 0 WAVELENGTH
     crossDispersionSlices = crossDispersionSlices.loc[crossDispersionSlices['wavelengthMedian'] > 0]
-
-    # DETERMINE THE PIXEL SCALE FOR EACH PIXEL - NEEDED FOR ORDER MERGING
-    this = (crossDispersionSlices['wavelengthMedian'].values[2:] - crossDispersionSlices['wavelengthMedian'].values[:-2]) / 2
-    this = np.insert(this, 0, np.nan)
-    this = np.append(this, np.nan)
-    crossDispersionSlices['pixelScaleNm'] = this
-
     crossDispersionSlices.dropna(how="any", subset=["pixelScaleNm", "wavelengthMedian", "extractedFluxOptimal", "snr", "varianceSpectrum"], inplace=True)
 
     log.debug('completed the ``extract_single_order`` method')
