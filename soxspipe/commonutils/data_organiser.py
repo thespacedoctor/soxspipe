@@ -73,13 +73,12 @@ class data_organiser(object):
         self.rootDir = rootDir
         self.rawDir = rootDir + "/raw_frames"
         self.miscDir = rootDir + "/misc"
-        self.sofDir = rootDir + "/sof"
         self.sessionsDir = rootDir + "/sessions"
 
         # SESSION ID PLACEHOLDER FILE
         self.sessionIdFile = self.sessionsDir + "/.sessionid"
 
-        self.dbPath = rootDir + "/soxspipe.db"
+        self.rootDbPath = rootDir + "/.soxspipe.db"
 
         # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
         self.keywords = [
@@ -233,13 +232,13 @@ class data_organiser(object):
 
         # TEST FOR SQLITE DATABASE - ADD IF MISSING
         try:
-            with open(self.dbPath):
+            with open(self.rootDbPath):
                 pass
             self.freshRun = False
         except IOError:
             self.freshRun = True
             emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
-            shutil.copyfile(emptyDb, self.dbPath)
+            shutil.copyfile(emptyDb, self.rootDbPath)
 
         def dict_factory(cursor, row):
             d = {}
@@ -249,12 +248,19 @@ class data_organiser(object):
 
         # CREATE THE DATABASE CONNECTION
         self.conn = sql.connect(
-            self.dbPath)
+            self.rootDbPath)
         self.conn.row_factory = dict_factory
 
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
             os.makedirs(self.sessionsDir)
+
+        basename = os.path.basename(self.rootDir)
+        print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
+        self._sync_raw_frames()
+        self._move_misc_files()
+        self._populate_product_frames_db_table()
+        self._populate_product_frames_db_table()
 
         # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
         # OTHERWISE USE CURRENT SESSION
@@ -264,15 +270,7 @@ class data_organiser(object):
         else:
             with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
                 sessionId = readFile.read()
-
-        basename = os.path.basename(self.rootDir)
-        print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
-        self._sync_raw_frames()
-        self._move_misc_files()
-        self._populate_product_frames_db_table()
-        self._populate_product_frames_db_table()
-        self._write_sof_files()
-        self._write_reduction_shell_scripts()
+                self.sessionPath = self.sessionsDir + "/" + sessionId
 
         print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
         print(f"In this workspace you will find:\n")
@@ -725,7 +723,7 @@ class data_organiser(object):
         import sqlite3 as sql
 
         conn = sql.connect(
-            self.dbPath)
+            self.rootDbPath)
 
         rawFrames = pd.read_sql('SELECT * FROM raw_frames', con=conn)
 
@@ -1196,7 +1194,7 @@ class data_organiser(object):
             filepath = os.path.join(pathToDirectory, d)
             if os.path.splitext(filepath)[1] in allowlistExtensions:
                 continue
-            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme" not in d.lower():
+            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme." not in d.lower():
                 shutil.move(filepath, self.miscDir + "/" + d)
 
         self.log.debug('completed the ``_move_misc_files`` method')
@@ -1236,9 +1234,10 @@ class data_organiser(object):
         import sqlite3 as sql
 
         conn = sql.connect(
-            self.dbPath)
+            self.rootDbPath)
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
+        self.sofDir = self.sessionPath + "/sof"
         if not os.path.exists(self.sofDir):
             os.makedirs(self.sofDir)
 
@@ -1288,7 +1287,7 @@ class data_organiser(object):
         import sqlite3 as sql
 
         conn = sql.connect(
-            self.dbPath)
+            self.rootDbPath)
 
         rawGroups = pd.read_sql(
             'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=conn)
@@ -1296,7 +1295,7 @@ class data_organiser(object):
         rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
 
         # WRITE FULL REDUCTION SCRIPT
-        myFile = open(self.rootDir + "/_reduce_all.sh", 'w')
+        myFile = open(self.sessionPath + "/_reduce_all.sh", 'w')
         myFile.write(("\n").join(pd.unique(rawGroups["command"])))
         myFile.close()
 
@@ -1347,16 +1346,16 @@ class data_organiser(object):
             sessionId = now.strftime("%Y%m%dt%H%M%S")
 
         # MAKE THE SESSION DIRECTORY
-        sessionPath = self.sessionsDir + "/" + sessionId
-        if not os.path.exists(sessionPath):
-            os.makedirs(sessionPath)
+        self.sessionPath = self.sessionsDir + "/" + sessionId
+        if not os.path.exists(self.sessionPath):
+            os.makedirs(self.sessionPath)
 
         # SETUP SESSION SETTINGS AND LOGGING
-        testPath = sessionPath + "/soxspipe.yaml"
+        testPath = self.sessionPath + "/soxspipe.yaml"
         exists = os.path.exists(testPath)
         if not exists:
             su = tools(
-                arguments={"<workspaceDirectory>": sessionPath, "init": True, "settingsFile": None},
+                arguments={"<workspaceDirectory>": self.sessionPath, "init": True, "settingsFile": None},
                 docString=False,
                 logLevel="WARNING",
                 options_first=False,
@@ -1364,6 +1363,17 @@ class data_organiser(object):
                 defaultSettingsFile=True
             )
             arguments, settings, replacedLog, dbConn = su.setup()
+
+        # MAKE ASSET PLACEHOLDERS
+        folders = ["sof", "qc", "products"]
+        for f in folders:
+            if not os.path.exists(self.sessionPath + f"/{f}"):
+                os.makedirs(self.sessionPath + f"/{f}")
+
+        self._write_sof_files()
+        self._write_reduction_shell_scripts()
+
+        self.symlink_session_assets_to_workspace_root()
 
         # WRITE THE SESSION ID FILE
         import codecs
@@ -1456,15 +1466,91 @@ class data_organiser(object):
 
         if sessionId == currentSession:
             print(f"Session '{sessionId}' is already in use.")
+            return None
         elif sessionId in allSessions:
             # WRITE THE SESSION ID FILE
             with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
                 writeFile.write(sessionId)
-            print(f"Session successfully switched to '{sessionId}'.")
         else:
             print(f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`.")
+            return None
+
+        self.sessionPath = self.sessionsDir + "/" + sessionId
+        self.symlink_session_assets_to_workspace_root()
+        print(f"Session successfully switched to '{sessionId}'.")
 
         self.log.debug('completed the ``session_switch`` method')
+        return None
+
+    def symlink_session_assets_to_workspace_root(
+            self):
+        """*symlink session QC, product, SOF directories, database and scripts to workspace root*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``symlink_session_assets_to_workspace_root`` method')
+
+        import shutil
+        import os
+
+        # UNLINK SYMLINK IN ROOT
+        for d in os.listdir(self.rootDir):
+            filepath = os.path.join(self.rootDir, d)
+            if os.path.islink(filepath):
+                os.unlink(filepath)
+
+        # COPY THE WORKSPACE DATABASE INTO THE SESSION FOLDER
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
+        rootDbExists = os.path.exists(self.rootDbPath)
+        sessionDbExists = os.path.exists(self.sessionDB)
+        if rootDbExists and not sessionDbExists:
+            shutil.copyfile(self.rootDbPath, self.sessionDB)
+
+        # SYMLINK FILES AND FOLDERS
+        toLink = ["products", "qc", "soxspipe.db", "soxspipe.yaml", "sof", "soxspipe.log"]
+        for l in toLink:
+            dest = self.rootDir + f"/{l}"
+            src = self.sessionPath + f"/{l}"
+            try:
+                os.symlink(src, dest)
+            except:
+                os.unlink(dest)
+                os.symlink(src, dest)
+
+        # REDUCTION SCRIPTS
+        for d in os.listdir(self.sessionPath):
+            filepath = os.path.join(self.sessionPath, d)
+            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] == ".sh":
+                dest = self.rootDir + f"/{d}"
+                src = filepath
+                try:
+                    os.symlink(src, dest)
+                except:
+                    os.unlink(dest)
+                    os.symlink(src, dest)
+
+        self.log.debug('completed the ``symlink_session_assets_to_workspace_root`` method')
         return None
 
     # use the tab-trigger below for new method

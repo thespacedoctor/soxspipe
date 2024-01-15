@@ -791,8 +791,12 @@ class _base_recipe_(object):
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
-        HDUList.writeto(filepath, output_verify='fix+warn',
-                        overwrite=overwrite, checksum=True)
+        if product:
+            HDUList.writeto(filepath, output_verify='fix+warn',
+                            overwrite=overwrite, checksum=True)
+        else:
+            HDUList.writeto(filepath,
+                            overwrite=overwrite, checksum=False)
 
         filepath = os.path.abspath(filepath)
 
@@ -824,14 +828,6 @@ class _base_recipe_(object):
         combined_bias_mean = self.clip_and_stack(
             frames=self.inputFrames, recipe="soxs_mbias", ignore_input_masks=False, post_stack_clipping=True)
         ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - revisit error propagation when combining frames: https://github.com/thespacedoctor/soxspipe/issues/42
-        ```
         """
         self.log.debug('starting the ``clip_and_stack`` method')
 
@@ -857,13 +853,6 @@ class _base_recipe_(object):
             recipe]["stacked-clipping-sigma"]
         stacked_clipping_iterations = self.settings[
             recipe]["stacked-clipping-iterations"]
-        # UNPACK SETTINGS
-        clipping_lower_sigma = self.settings[
-            recipe]["clipping-lower-sigma"]
-        clipping_upper_sigma = self.settings[
-            recipe]["clipping-upper-sigma"]
-        clipping_iteration_count = self.settings[
-            recipe]["clipping-iteration-count"]
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
@@ -941,13 +930,6 @@ class _base_recipe_(object):
             combiner.data_arr.data[i] = ccd.uncertainty.array
         combined_uncertainty = combiner.average_combine()
         combined_frame.uncertainty = combined_uncertainty.data / (np.sqrt(len(new_individual_masks) - masked_values))
-
-        # NOW SIMGA-CLIP ACROSS THE FRAME
-        # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
-        if clipping_iteration_count:
-            maskedFrame = sigma_clip(
-                combined_frame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
-            combined_frame.mask = combined_frame.mask | maskedFrame.mask
 
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
         # IMAGES
@@ -1202,7 +1184,7 @@ class _base_recipe_(object):
 
             # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
             masked_diff = sigma_clip(
-                raw_diff, sigma_lower=10, sigma_upper=10, maxiters=5, cenfunc='median', stdfunc='mad_std')
+                raw_diff, sigma_lower=10, sigma_upper=10, maxiters=2, cenfunc='median', stdfunc='mad_std')
             combinedMask = raw_diff.mask | masked_diff.mask
 
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
@@ -1313,7 +1295,7 @@ class _base_recipe_(object):
         self.log.debug('completed the ``qc_median_flux_level`` method')
         return medianFlux
 
-    def subtact_mean_flux_level(
+    def subtract_mean_flux_level(
             self,
             rawFrame):
         """*iteratively median sigma-clip raw bias data frames before calculating and removing the mean bias level*
@@ -1323,30 +1305,29 @@ class _base_recipe_(object):
 
         **Return:**
             - `meanFluxLevel` -- the frame mean bias level
-            - `fluxStd` -- the standard deviation of the flux destribution (RON)
+            - `fluxStd` -- the standard deviation of the flux distribution (RON)
             - `noiseFrame` -- the raw bias frame with mean bias level removed
 
         **Usage:**
 
         ```python
-        meanFluxLevel, fluxStd, noiseFrame = self.subtact_mean_flux_level(rawFrame)
+        meanFluxLevel, fluxStd, noiseFrame = self.subtract_mean_flux_level(rawFrame)
         ```
         """
-        self.log.debug('starting the ``subtact_mean_flux_level`` method')
+        self.log.debug('starting the ``subtract_mean_flux_level`` method')
 
         from astropy.stats import sigma_clip, mad_std
         import numpy as np
 
         # UNPACK SETTINGS
         clipping_lower_sigma = self.settings[
-            "soxs-mbias"]["clipping-lower-sigma"]
-        clipping_upper_sigma = self.settings[
-            "soxs-mbias"]["clipping-upper-sigma"]
+            "soxs-mbias"]["frame-clipping-sigma"]
+        clipping_upper_sigma = clipping_lower_sigma
         clipping_iteration_count = self.settings[
-            "soxs-mbias"]["clipping-iteration-count"]
+            "soxs-mbias"]["frame-clipping-iterations"]
 
         maskedFrame = sigma_clip(
-            rawFrame, sigma_lower=clipping_lower_sigma, sigma_upper=clipping_upper_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
+            rawFrame, sigma=clipping_lower_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
 
         # DETERMINE MEDIAN BIAS LEVEL
         maskedDataArray = np.ma.array(
@@ -1355,8 +1336,8 @@ class _base_recipe_(object):
         fluxStd = np.ma.std(maskedDataArray)
         rawFrame.data -= meanFluxLevel
 
-        self.log.debug('completed the ``subtact_mean_flux_level`` method')
-        return meanFluxLevel, fluxStd, rawFrame
+        self.log.debug('completed the ``subtract_mean_flux_level`` method')
+        return (meanFluxLevel, fluxStd, rawFrame)
 
     def update_fits_keywords(
             self,
