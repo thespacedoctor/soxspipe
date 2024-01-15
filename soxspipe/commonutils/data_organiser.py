@@ -1233,8 +1233,9 @@ class data_organiser(object):
         from tabulate import tabulate
         import sqlite3 as sql
 
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
         conn = sql.connect(
-            self.rootDbPath)
+            self.sessionDB)
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         self.sofDir = self.sessionPath + "/sof"
@@ -1286,8 +1287,9 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
 
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
         conn = sql.connect(
-            self.rootDbPath)
+            self.sessionDB)
 
         rawGroups = pd.read_sql(
             'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=conn)
@@ -1326,6 +1328,7 @@ class data_organiser(object):
         self.log.debug('starting the ``session_create`` method')
 
         import re
+        import shutil
 
         # TEST SESSION DIRECTORY EXISTS
         exists = os.path.exists(self.sessionsDir)
@@ -1369,6 +1372,13 @@ class data_organiser(object):
         for f in folders:
             if not os.path.exists(self.sessionPath + f"/{f}"):
                 os.makedirs(self.sessionPath + f"/{f}")
+
+        # COPY THE WORKSPACE DATABASE INTO THE SESSION FOLDER
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
+        rootDbExists = os.path.exists(self.rootDbPath)
+        sessionDbExists = os.path.exists(self.sessionDB)
+        if rootDbExists and not sessionDbExists:
+            shutil.copyfile(self.rootDbPath, self.sessionDB)
 
         self._write_sof_files()
         self._write_reduction_shell_scripts()
@@ -1519,13 +1529,6 @@ class data_organiser(object):
             filepath = os.path.join(self.rootDir, d)
             if os.path.islink(filepath):
                 os.unlink(filepath)
-
-        # COPY THE WORKSPACE DATABASE INTO THE SESSION FOLDER
-        self.sessionDB = self.sessionPath + "/soxspipe.db"
-        rootDbExists = os.path.exists(self.rootDbPath)
-        sessionDbExists = os.path.exists(self.sessionDB)
-        if rootDbExists and not sessionDbExists:
-            shutil.copyfile(self.rootDbPath, self.sessionDB)
 
         # SYMLINK FILES AND FOLDERS
         toLink = ["products", "qc", "soxspipe.db", "soxspipe.yaml", "sof", "soxspipe.log"]

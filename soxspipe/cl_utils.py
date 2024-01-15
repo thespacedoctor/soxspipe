@@ -282,7 +282,6 @@ def main(arguments=None):
         log.error(f'{e}\n{clCommand}', exc_info=True)
 
     # CALL FUNCTIONS/OBJECTS
-
     if "dbConn" in locals() and dbConn:
         dbConn.commit()
         dbConn.close()
@@ -290,8 +289,10 @@ def main(arguments=None):
     endTime = times.get_now_sql_datetime()
     runningTime = times.calculate_time_difference(startTime, endTime)
     sys.argv[0] = os.path.basename(sys.argv[0])
-    log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
-    log.print(f'Recipe Run Time: {runningTime}\n\n')
+
+    if not a['session']:
+        log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
+        log.print(f'Recipe Run Time: {runningTime}\n\n')
 
     if not a['prep'] and not a['session']:
         print(f"{'='*70}\n")
