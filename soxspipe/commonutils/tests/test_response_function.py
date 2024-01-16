@@ -14,6 +14,7 @@ packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + \
 #     "/git_repos/_misc_/settings/soxspipe/test_settings.yaml"
+#pip install -e . (in the repo dir)
 
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -50,7 +51,7 @@ class test_response_function(unittest.TestCase):
     import pytest
 
     def test_xsh_response_function_function(self):
-
+        #print(packageDirectory)
         stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
         from soxspipe.commonutils import response_function
         response = response_function(

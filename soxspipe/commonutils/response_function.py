@@ -11,9 +11,9 @@
 """
 import os
 from builtins import object
-
+from matplotlib.pyplot import figure
 os.environ['TERM'] = 'vt100'
-
+import sys
 
 class response_function(object):
     """
@@ -82,9 +82,8 @@ class response_function(object):
 
         # TODO READING NECESSARY KEYWORDS FROM THE HEADER
         hdul = fits.open(self.stdExtractionPath)
-        print(hdul[1].header)
         self.texp = 1.0
-        self.std_objName = ''
+        self.std_objName = 'EG274'
         #TEXP, OBJECT NAME
 
 
@@ -115,48 +114,65 @@ class response_function(object):
         ```
         """
         self.log.debug('starting the ``get`` method')
+
         import pandas as pd
-        from scipy.interpolate import UnivariateSpline
+        from scipy.interpolate import interp1d
         import numpy as np
         import matplotlib.pyplot as plt
 
-
         response_function = None
 
+        wave = np.array(self.stdExtractionDF['WAVE'])
+        flux = np.array(self.stdExtractionDF['FLUX_COUNTS'])
 
-        # TODO: read from static library
-        stdData = pd.read_csv('/Users/mlandoni/Desktop/std.dat',sep=' ',header=None)
+        # TODO: ADD CORRECT PATH
+        # READING THE DATA FROM THE DATABASE, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
+        stdData = pd.read_csv('/Users/mlandoni/Desktop/std.dat',sep=' ',header=0)
 
 
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE
-        selected_rows = stdData[(stdData[0] >= np.min(self.stdExtractionDF['WAVE'])) & (stdData[0] <= np.max(self.stdExtractionDF['WAVE']))]
+        selected_rows = stdData[(stdData['WAVE'] >= np.min(self.stdExtractionDF['WAVE'])) & (stdData['WAVE'] <= np.max(self.stdExtractionDF['WAVE']))]
 
 
-        # TODO DATA IN THE EXTRACTED FLUX SHALL BE DIVIDED HERE BY THE PIXEL SIZE.
-        # TODO THE NUMBER [4] SHALL BE COMPUTED FROM THE OBJECT NAME LIST
+        #FLUX IS CONVERTED IN ERG / CM2 / S / ANG
+        try:
+            refitted_flux = interp1d(np.array(selected_rows['WAVE']),np.array(selected_rows[self.std_objName])*10*10**17,kind='next')
+        except Exception as e:
+            raise Exception("Standard star %s not found in the static calibration database" % self.std_objName)
+            sys.exit(1)
 
-        # CONVERT IN AB MAGNITUDE AND FIT TO THE STANDARD STAR FLUX TO A FUNCTION
-        spline = UnivariateSpline(selected_rows[0], -2.5*np.log10(selected_rows[4]/ (3.63e-20)) , k=5)
-        refitted_flux = spline(selected_rows[0])
-
-
-        #INTEGRATING THE FLUX IN 10nm BINS
 
         # STRONG SKY ABS REGION TO BE EXCLUDED - 1 TABLE PER ARM
         #TODO Check on FITS Header for the correct arm
         exclude_regions = [(1100 ,1190), (1300, 1500), (1800, 1900), (1850,2700)]
 
+
+
+
         #INTEGRATING THE OBS SPECTRUM IN xx nm BIN-WIDE FILTERS
-        #TODO DIVIDE BY PIXEL SIZE IN NM
-        bin_width = 5
+
+        # CONVERTING FLUX_COUNTS IN FLUX_COUNTS PER NM DIVIDING BY THE PIXEL SIZE
+        dispersion = wave - np.roll(wave, 1)
+        dispersion[0] = dispersion[1]  # first element will be out
+
+        flux = flux / dispersion
+
+        #NOW DIVIDING FOR THE EXPOSURE TIME
+        flux = flux/self.texp
+
+        #TODO APPLY EXTINCTION CORRECTION FOR ARMS DIFFERENT FROM NIR
+
+        bin_width = 3
         bin_starts = np.arange(min(self.stdExtractionDF['WAVE']), max(self.stdExtractionDF['WAVE']), bin_width)
         bin_ends = bin_starts + bin_width
 
         central_wavelengths = []
         integrated_flux = []
-        wave = np.array(self.stdExtractionDF['WAVE'])
-        flux = np.array(self.stdExtractionDF['FLUX_COUNTS'])
+
+
+
+
         for bin_start, bin_end in zip(bin_starts, bin_ends):
             central_wave = (bin_start + bin_end) / 2
             exclude_bin = any(start <= bin_start <= end or start <= bin_end <= end for start, end in exclude_regions)
@@ -167,28 +183,38 @@ class response_function(object):
                 bin_integral = np.trapz(bin_flux, wave[mask])/(bin_end - bin_start)
                 if not np.isnan(bin_integral) and bin_integral > 0:
                     central_wavelengths.append(central_wave)
-                    integrated_flux.append(bin_integral/bin_width)
+                    integrated_flux.append(bin_integral)
 
         # NOW FINDING THE RESPONSE FUNCTION POINTS AND THEN FIT
-        # -2.5log10(counts/texp) + ZP = STDFLUX
-        #ZP = STDFLUX + 2.5log10(counts/texp)
 
-        #CONVERTING THE DATA IN AB-MAG
 
-        zp = spline(central_wavelengths) + 2.5*np.log10(integrated_flux)
+        figure(figsize = (8, 12))
+        fig, axs = plt.subplots(5)
 
-        #FROM HERE ZP IS THE Y DATA, CENTRAL WAVELENGTH THE X DATA
-        zp = np.array(zp)
+        axs[0].plot(wave,refitted_flux(wave))
+        axs[0].set_title('Tabulated flux')
+        axs[1].scatter(central_wavelengths,integrated_flux)
+        axs[1].set_title('Passband Photometry')
+
+
+        # FINDING THE FUNCTION S = F/C
+        zp = np.array(refitted_flux(central_wavelengths)/integrated_flux)
         central_wavelengths = np.array(central_wavelengths)
+
+        axs[2].plot(central_wavelengths, zp)
+        axs[2].set_title('Response function points vs fit')
+
+
+
 
         zp_original = zp
         central_wavelengths_original = central_wavelengths
         numIter = 0
         deletedPoints = 1
-        order = 4
+        order = 5
 
 
-
+        #FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
         while (numIter < 5) and (deletedPoints > 0):
             try:
                 #FITTING THE DATA
@@ -196,7 +222,7 @@ class response_function(object):
                 coefficients = np.polyfit(central_wavelengths, zp, order)
                 for index, (w,z, zf) in enumerate(zip(central_wavelengths, zp, np.polyval(coefficients, central_wavelengths ))):
                     #if np.abs(np.abs(z)-np.abs(zf)) > 0.05:
-                    if np.abs(np.abs(z) - np.abs(zf))/np.abs(z) > 0.01:
+                    if np.abs(np.abs(z) - np.abs(zf))/np.abs(z) > 0.1:
                         elements_to_delete.append(index)
 
                 central_wavelengths = np.delete(central_wavelengths, elements_to_delete)
@@ -205,19 +231,34 @@ class response_function(object):
                 numIter = numIter + 1
             except Exception as e:
                 raise Exception('The fitting of response function did not converge!')
+                sys.exit(1)
+        axs[2].plot(wave, np.polyval(coefficients,wave),c='red')
+        axs[2].set_xlim(min(central_wavelengths), max(central_wavelengths))
+        axs[2].set_ylim(min(zp), max(zp))
 
 
-        plt.plot(central_wavelengths_original, zp_original, c='blue',alpha=0.4)
-        plt.scatter(central_wavelengths_original, np.polyval(coefficients, central_wavelengths_original),c='red')
-        plt.show()
-
-        plt.figure()
-        wave_range = np.arange(min(self.stdExtractionDF['WAVE']), max(self.stdExtractionDF['WAVE']))
-        plt.plot(wave_range, np.polyval(coefficients,wave_range))
-        plt.show()
 
         response_function = coefficients
         self.log.debug('completed the ``get`` method')
+
+
+        #TEST THE X-CALIB
+
+        #FLUX IS ALREADY DIVIDED BY DISPERSION AND
+        flux_calib = flux*np.polyval(response_function, self.stdExtractionDF['WAVE'])
+
+
+        axs[3].plot(self.stdExtractionDF['WAVE'], flux_calib)
+        axs[3].set_title('Self calibration of std star')
+        #axs[3].set_xlim(0,np.max(flux_calib))
+
+        axs[4].plot(self.stdExtractionDF['WAVE'], (flux_calib - refitted_flux(self.stdExtractionDF['WAVE']))/refitted_flux(self.stdExtractionDF['WAVE']))
+        axs[4].set_ylim(-5, 5)
+        #plt.plot(np.array(selected_rows[0]),np.array(selected_rows[4])*10**17,c='red')
+        plt.subplots_adjust(hspace=1.0)
+        axs[4].set_title('Relative residuals')
+        plt.show()
+
         return response_function
 
     # xt-class-method
