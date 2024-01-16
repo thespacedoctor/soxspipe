@@ -1368,7 +1368,7 @@ class data_organiser(object):
             arguments, settings, replacedLog, dbConn = su.setup()
 
         # MAKE ASSET PLACEHOLDERS
-        folders = ["sof", "qc", "products"]
+        folders = ["sof", "qc", "product"]
         for f in folders:
             if not os.path.exists(self.sessionPath + f"/{f}"):
                 os.makedirs(self.sessionPath + f"/{f}")
@@ -1531,7 +1531,7 @@ class data_organiser(object):
                 os.unlink(filepath)
 
         # SYMLINK FILES AND FOLDERS
-        toLink = ["products", "qc", "soxspipe.db", "soxspipe.yaml", "sof", "soxspipe.log"]
+        toLink = ["product", "qc", "soxspipe.db", "soxspipe.yaml", "sof", "soxspipe.log"]
         for l in toLink:
             dest = self.rootDir + f"/{l}"
             src = self.sessionPath + f"/{l}"

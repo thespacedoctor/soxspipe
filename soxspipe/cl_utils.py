@@ -161,15 +161,6 @@ def main(arguments=None):
         # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
         if a['outputDirectory']:
             settings["workspace-root-dir"] = a['outputDirectory']
-        else:
-            from soxspipe.commonutils import data_organiser
-            do = data_organiser(
-                log=log,
-                rootDir="."
-            )
-            currentSession, allSessions = do.session_list(silent=True)
-            if currentSession:
-                settings["workspace-root-dir"] = f"./sessions/{currentSession}/"
 
         if a["mbias"]:
             from soxspipe.recipes import soxs_mbias
@@ -243,7 +234,6 @@ def main(arguments=None):
                 verbose=verbose,
                 overwrite=a["overwriteFlag"]
             )
-
             reducedStare = recipe.produce_product()
 
         if a['prep']:

@@ -12,7 +12,6 @@
 ################# GLOBAL IMPORTS ####################
 
 from soxspipe.commonutils import filenamer
-
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import subtract_background
@@ -53,6 +52,7 @@ class _base_recipe_(object):
         import yaml
         import pandas as pd
         from soxspipe.commonutils import toolkit
+        import sqlite3 as sql
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
@@ -112,6 +112,22 @@ class _base_recipe_(object):
             rootDir=self.settings["workspace-root-dir"].replace("~", home)
         )
         self.currentSession, allSessions = do.session_list(silent=True)
+
+        if self.currentSession and self.sofName:
+            self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/soxspipe.db"
+
+            def dict_factory(cursor, row):
+                d = {}
+                for idx, col in enumerate(cursor.description):
+                    d[col[0]] = row[idx]
+                return d
+
+            self.dbConn = sql.connect(self.sessionDb)
+            self.dbConn.row_factory = dict_factory
+            c = self.dbConn.cursor()
+            sqlQuery = f"update product_frames set status = 'fail' where sof = '{self.sofName}';"
+            c.execute(sqlQuery)
+            c.close()
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc = pd.DataFrame({
