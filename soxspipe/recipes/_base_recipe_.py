@@ -113,6 +113,8 @@ class _base_recipe_(object):
         )
         self.currentSession, allSessions = do.session_list(silent=True)
 
+        # INITIATE A DB CONNECTION
+        self.dbConn = None
         if self.currentSession and self.sofName:
             self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/soxspipe.db"
 
@@ -121,11 +123,13 @@ class _base_recipe_(object):
                 for idx, col in enumerate(cursor.description):
                     d[col[0]] = row[idx]
                 return d
+            self.conn = sql.connect(self.sessionDb, isolation_level=None)
+            self.conn.row_factory = dict_factory
 
-            self.dbConn = sql.connect(self.sessionDb)
-            self.dbConn.row_factory = dict_factory
-            c = self.dbConn.cursor()
-            sqlQuery = f"update product_frames set status = 'fail' where sof = '{self.sofName}';"
+        # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
+        if self.conn:
+            c = self.conn.cursor()
+            sqlQuery = f"update product_frames set status = 'fail' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
 
@@ -638,7 +642,7 @@ class _base_recipe_(object):
 
     def clean_up(
             self):
-        """*remove intermediate files once recipe is complete*
+        """*update product status in DB and remove intermediate files once recipe is complete*
 
         **Usage**
 
@@ -647,6 +651,13 @@ class _base_recipe_(object):
         ```
         """
         self.log.debug('starting the ``clean_up`` method')
+
+        # SET RECIPE PRODUCTS TO 'PASS'
+        if self.conn:
+            c = self.conn.cursor()
+            sqlQuery = f"update product_frames set status = 'pass' where sof = '{self.sofName}.sof'"
+            c.execute(sqlQuery)
+            c.close()
 
         import shutil
 
