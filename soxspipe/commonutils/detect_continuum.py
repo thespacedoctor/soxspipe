@@ -471,7 +471,7 @@ class detect_continuum(_base_detect):
             biny=1
     ):
         self.log = log
-        log.debug("instansiating a new 'detect_continuum' object")
+        log.debug("instantiating a new 'detect_continuum' object")
         self.settings = settings
         if recipeName:
             self.recipeSettings = settings[recipeName]["detect-continuum"]

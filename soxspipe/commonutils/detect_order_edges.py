@@ -88,7 +88,7 @@ class detect_order_edges(_base_detect):
             extendToEdges=True
     ):
         self.log = log
-        log.debug("instansiating a new 'detect_order_edges' object")
+        log.debug("instantiating a new 'detect_order_edges' object")
         self.settings = settings
         self.recipeName = recipeName
         if recipeName:

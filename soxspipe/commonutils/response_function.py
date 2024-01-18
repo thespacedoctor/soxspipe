@@ -47,7 +47,7 @@ class response_function(object):
 
     """
     # Initialisation
-    # 1. @flagged: what are the unique attrributes for each object? Add them
+    # 1. @flagged: what are the unique Attributes for each object? Add them
     # to __init__
 
     def __init__(
@@ -57,15 +57,15 @@ class response_function(object):
             settings=False,
     ):
         self.log = log
-        log.debug("instansiating a new 'response_function' object")
+        log.debug("instantiating a new 'response_function' object")
         self.settings = settings
         self.stdExtractionPath = stdExtractionPath
         from astropy.table import Table
 
-        # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
+        # 2. @flagged: what are the default Attributes each object could have? Add them to variable attribute set here
         # Variable Data Atrributes
 
-        # 3. @flagged: what variable attrributes need overriden in any baseclass(es) used
+        # 3. @flagged: what variable Attributes need overriden in any baseclass(es) used
         # Override Variable Data Atrributes
 
         # Initial Actions

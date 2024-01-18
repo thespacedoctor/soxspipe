@@ -51,7 +51,7 @@ class flux_calibration(object):
 
     """
     # Initialisation
-    # 1. @flagged: what are the unique attrributes for each object? Add them
+    # 1. @flagged: what are the unique Attributes for each object? Add them
     # to __init__
 
     def __init__(
@@ -62,17 +62,17 @@ class flux_calibration(object):
             settings=False,
     ):
         self.log = log
-        log.debug("instansiating a new 'flux_calibration' object")
+        log.debug("instantiating a new 'flux_calibration' object")
         self.settings = settings
         self.responseFunction = responseFunction
         self.extractedSpectrum = extractedSpectrum
 
         # xt-self-arg-tmpx
 
-        # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
+        # 2. @flagged: what are the default Attributes each object could have? Add them to variable attribute set here
         # Variable Data Atrributes
 
-        # 3. @flagged: what variable attrributes need overriden in any baseclass(es) used
+        # 3. @flagged: what variable Attributes need overriden in any baseclass(es) used
         # Override Variable Data Atrributes
 
         # Initial Actions

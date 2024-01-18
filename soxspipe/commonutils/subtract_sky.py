@@ -85,7 +85,7 @@ class subtract_sky(object):
             recipeName="soxs-stare"
     ):
         self.log = log
-        log.debug("instansiating a new 'subtract_sky' object")
+        log.debug("instantiating a new 'subtract_sky' object")
         self.settings = settings
         self.objectFrame = objectFrame
         self.twoDMap = twoDMap

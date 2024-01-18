@@ -63,11 +63,11 @@ class _base_recipe_(object):
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
-            self.productPath = toolkit.predict_product_path(inputFrames)
+            self.productPath = toolkit.predict_product_path(inputFrames, self.recipeName)
             self.log = toolkit.add_recipe_logger(log, self.productPath)
             if os.path.exists(self.productPath) and not overwrite:
                 self.log.print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
-                sys.exit(0)
+                raise FileExistsError
         else:
             self.sofName = False
             self.productPath = False

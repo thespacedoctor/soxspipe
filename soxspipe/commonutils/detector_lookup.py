@@ -10,11 +10,11 @@
     August 13, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
 
 
 class detector_lookup(object):
@@ -46,7 +46,7 @@ class detector_lookup(object):
             settings=False,
     ):
         self.log = log
-        log.debug("instansiating a new 'detector_lookup' object")
+        log.debug("instantiating a new 'detector_lookup' object")
         self.settings = settings
 
         # SELECT THE INSTRUMENT AND READ THE KEYWORD DICTIONARY IN RESOURCES
@@ -100,7 +100,6 @@ class detector_lookup(object):
         # GENERATE PATH TO YAML DICTIONARY
         yamlFilePath = os.path.dirname(os.path.dirname(
             __file__)) + "/resources/" + self.instrument + "_detector_parameters.yaml"
-
 
         # YAML CONTENT TO DICTIONARY
         import yaml

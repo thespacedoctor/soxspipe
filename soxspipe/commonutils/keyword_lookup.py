@@ -69,7 +69,7 @@ class keyword_lookup(object):
 
     ):
         self.log = log
-        log.debug("instansiating a new 'keyword_lookup' object")
+        log.debug("instantiating a new 'keyword_lookup' object")
         self.settings = settings
         # xt-self-arg-tmpx
 

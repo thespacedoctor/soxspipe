@@ -73,7 +73,7 @@ class soxs_mflat(_base_recipe_):
         super(soxs_mflat, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mflat")
         self.log = log
-        log.debug("instansiating a new 'soxs_mflat' object")
+        log.debug("instantiating a new 'soxs_mflat' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose

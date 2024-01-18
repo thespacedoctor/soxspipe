@@ -7,6 +7,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 Usage:
     soxspipe prep <workspaceDirectory>
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
+    soxspipe reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -20,6 +21,8 @@ Options:
     session ls                             list all available data-reduction sessions in the workspace
     session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
     session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
+    reduce all                             reduce all of the data in a workspace.                 
+
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
     mflat                                  the master flat recipe
@@ -271,6 +274,16 @@ def main(arguments=None):
     except Exception as e:
         log.error(f'{e}\n{clCommand}', exc_info=True)
 
+    if a["reduce"] and a["all"]:
+        from soxspipe.commonutils import reducer
+        collection = reducer(
+            log=log,
+            workspaceDirectory=a["workspaceDirectory"],
+            settings=settings,
+            pathToSettings=arguments["--settings"]
+        )
+        collection.reduce()
+
     # CALL FUNCTIONS/OBJECTS
     if "dbConn" in locals() and dbConn:
         dbConn.commit()
@@ -280,11 +293,11 @@ def main(arguments=None):
     runningTime = times.calculate_time_difference(startTime, endTime)
     sys.argv[0] = os.path.basename(sys.argv[0])
 
-    if not a['session']:
+    if not a['session'] and not a['reduce']:
         log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
         log.print(f'Recipe Run Time: {runningTime}\n\n')
 
-    if not a['prep'] and not a['session']:
+    if not a['prep'] and not a['session'] and not a['reduce']:
         print(f"{'='*70}\n")
 
     return

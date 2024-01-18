@@ -947,13 +947,15 @@ def twoD_disp_map_image_to_dataframe(
 
 
 def predict_product_path(
-        sofName):
+        sofName,
+        recipeName=False):
     """*predict the path of the recipe product from a given SOF name*
 
     **Key Arguments:**
 
     - `log` -- logger,
     - `sofName` -- name or full path to the sof file
+    - ``recipeName`` -- name of the recipe being considered. Default *False*.
 
     **Usage:**
 
@@ -976,14 +978,16 @@ def predict_product_path(
     )
     currentSession, allSessions = do.session_list(silent=True)
 
-    recipeName = sys.argv[1]
-    if recipeName[0] == "-":
-        recipeName = sys.argv[2]
+    if not recipeName:
+        recipeName = sys.argv[1]
+        if recipeName[0] == "-":
+            recipeName = sys.argv[2]
+        recipeName = "soxs-" + recipeName
 
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_SKYSUB"
-    productPath = f"./sessions/{currentSession}/product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
     productPath = productPath.replace("//", "/")
 
     return productPath

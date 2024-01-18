@@ -102,7 +102,7 @@ class horne_extraction(object):
         from soxspipe.commonutils.toolkit import unpack_order_table
 
         self.log = log
-        log.debug("instansiating a new 'horne_extraction' object")
+        log.debug("instantiating a new 'horne_extraction' object")
         self.dispersionMap = dispersionMap
         self.twoDMapPath = twoDMapPath
         self.settings = settings
