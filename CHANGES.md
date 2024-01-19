@@ -1,6 +1,9 @@
 
 # Release Notes  
 
+## v0.9.8 - January 19, 2024
+
+* **FIXED**: bug fix in collecting settings files from the default location
 
 ## v0.9.7 - December 7, 2023
 
