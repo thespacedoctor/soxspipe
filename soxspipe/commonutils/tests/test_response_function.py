@@ -52,7 +52,7 @@ class test_response_function(unittest.TestCase):
 
     def test_xsh_response_function_function(self):
         #print(packageDirectory)
-        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
+        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/uvb/2019.08.23T23.24.12.925_UVB_1X2_SLOW_STARE_XSHOOTER_EG_274_EXTRACTED_MERGED.fits"
         from soxspipe.commonutils import response_function
         response = response_function(
             log=log,

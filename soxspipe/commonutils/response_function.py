@@ -83,12 +83,44 @@ class response_function(object):
         # TODO READING NECESSARY KEYWORDS FROM THE HEADER
         hdul = fits.open(self.stdExtractionPath)
         self.texp = 1.0
-        self.std_objName = 'EG274'
+        self.std_objName = 'EG 274'
+        self.airmass = 1.039
+        self.arm = 'UVB'
         #TEXP, OBJECT NAME
 
 
 
+    def extinction_correction_factor(self, wave):
+        from scipy.interpolate import interp1d
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import pandas as pd
 
+        #READ THE EXTINCTION CURVE FOR THE OBSERVATORY
+
+        extinctionData = pd.read_csv('/Users/mlandoni/Desktop/extinction_lasilla.dat', sep='\t', header=0)
+
+        #DATA IS ORGANIZED AS FOLLOWS:
+        #FIRST COLUMN, WAVELENGTH (IN ANGSTROM), SECOND COLUMN MAG/AIRMASS
+
+        wave_ext = extinctionData['WAVE']/10
+
+        #INTERPOLATING ON THE REQUIRED WAVE SCALE
+
+        refitted_ext = interp1d(np.array(wave_ext),
+                                 np.array(extinctionData['MAG_AIRMASS']), kind='next',fill_value='extrapolate')
+        if False:
+            fig, ax = plt.subplots(2)
+            ax[0].plot(wave, refitted_ext(wave))
+            ax[0].plot(wave_ext, extinctionData['MAG_AIRMASS'])
+            ax[1].plot(wave_ext,refitted_ext(wave_ext))
+            plt.show()
+
+        return 10**(0.4*refitted_ext(wave)*self.airmass)
+
+
+
+        pass
     # 4. @flagged: what actions does each object have to be able to perform? Add them here
     # Method Attributes
     def get(self):
@@ -125,16 +157,18 @@ class response_function(object):
         wave = np.array(self.stdExtractionDF['WAVE'])
         flux = np.array(self.stdExtractionDF['FLUX_COUNTS'])
 
+        self.extinction_correction_factor(wave)
+
         # TODO: ADD CORRECT PATH
         # READING THE DATA FROM THE DATABASE, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
         stdData = pd.read_csv('/Users/mlandoni/Desktop/std.dat',sep=' ',header=0)
 
 
 
-        # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE
-        selected_rows = stdData[(stdData['WAVE'] >= np.min(self.stdExtractionDF['WAVE'])) & (stdData['WAVE'] <= np.max(self.stdExtractionDF['WAVE']))]
+        # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
+        selected_rows = stdData[(stdData['WAVE'] > np.min(self.stdExtractionDF['WAVE']) -10 ) & (stdData['WAVE'] < 10 + np.max(self.stdExtractionDF['WAVE']))]
 
-
+        print(selected_rows['WAVE'])
         #FLUX IS CONVERTED IN ERG / CM2 / S / ANG
         try:
             refitted_flux = interp1d(np.array(selected_rows['WAVE']),np.array(selected_rows[self.std_objName])*10*10**17,kind='next')
@@ -145,7 +179,9 @@ class response_function(object):
 
         # STRONG SKY ABS REGION TO BE EXCLUDED - 1 TABLE PER ARM
         #TODO Check on FITS Header for the correct arm
-        exclude_regions = [(1100 ,1190), (1300, 1500), (1800, 1900), (1850,2700)]
+        #exclude_regions = [(1100 ,1190), (1300, 1500), (1800, 1900), (1850,2700)]
+
+        exclude_regions = [(200, 400), (590,600), (405, 416), (426,440),(460,475),  (563, 574), (478,495), (528,538)]
 
 
 
@@ -161,7 +197,10 @@ class response_function(object):
         #NOW DIVIDING FOR THE EXPOSURE TIME
         flux = flux/self.texp
 
-        #TODO APPLY EXTINCTION CORRECTION FOR ARMS DIFFERENT FROM NIR
+        if self.arm == 'UVB' or self.arm == 'VIS':
+            print('Applying extinction correction')
+            factor = self.extinction_correction_factor(wave)
+            flux = flux * factor
 
         bin_width = 3
         bin_starts = np.arange(min(self.stdExtractionDF['WAVE']), max(self.stdExtractionDF['WAVE']), bin_width)
@@ -190,6 +229,7 @@ class response_function(object):
 
         figure(figsize = (8, 12))
         fig, axs = plt.subplots(5)
+        print(wave)
 
         axs[0].plot(wave,refitted_flux(wave))
         axs[0].set_title('Tabulated flux')
@@ -211,7 +251,7 @@ class response_function(object):
         central_wavelengths_original = central_wavelengths
         numIter = 0
         deletedPoints = 1
-        order = 5
+        order = 7
 
 
         #FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
@@ -244,7 +284,8 @@ class response_function(object):
 
         #TEST THE X-CALIB
 
-        #FLUX IS ALREADY DIVIDED BY DISPERSION AND
+        #FLUX IS ALREADY DIVIDED BY DISPERSION AND CORRECTED FOR THE EXTINCTION !!
+        #OTHERWISE, COPY LINES 192-203
         flux_calib = flux*np.polyval(response_function, self.stdExtractionDF['WAVE'])
 
 
