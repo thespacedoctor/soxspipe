@@ -61,7 +61,8 @@ class data_organiser(object):
         from fundamentals.logs import emptyLogger
 
         log.debug("instantiating a new 'data_organiser' object")
-        self.log = emptyLogger()
+
+        self.log = log
 
         # if rootDir == ".":
         #     rootDir = os.getcwd()
@@ -249,7 +250,7 @@ class data_organiser(object):
         # CREATE THE DATABASE CONNECTION
         self.conn = sql.connect(
             self.rootDbPath)
-        self.conn.row_factory = dict_factory
+        # self.conn.row_factory = dict_factory
 
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
@@ -722,9 +723,7 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
 
-        conn = sql.connect(
-            self.rootDbPath)
-
+        conn = self.conn
         rawFrames = pd.read_sql('SELECT * FROM raw_frames', con=conn)
 
         rawFrames.fillna("--", inplace=True)
@@ -759,10 +758,10 @@ class data_organiser(object):
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
-        calibrationFrames = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%"', con=conn)
+        calibrationFrames = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%" and (status != "fail" or status is null)', con=conn)
         calibrationFrames.fillna("--", inplace=True)
 
-        calibrationTables = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%"', con=conn)
+        calibrationTables = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%" and (status != "fail" or status is null)', con=conn)
         calibrationTables.fillna("--", inplace=True)
 
         # generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
@@ -1554,6 +1553,72 @@ class data_organiser(object):
                     os.symlink(src, dest)
 
         self.log.debug('completed the ``symlink_session_assets_to_workspace_root`` method')
+        return None
+
+    def session_refresh(
+            self):
+        """*refresh a session's SOF file (needed if a recipe fails)*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``session_refresh`` method')
+
+        self.log.print("Refeshing SOF file due to recipe failure\n")
+
+        import codecs
+        import sqlite3 as sql
+
+        # IF SESSION ID FILE DOES NOT EXIST, REPORT
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            if not silent:
+                print("No reduction sessions exist in this workspace yet.")
+            return None, None
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                sessionId = readFile.read()
+        self.sessionPath = self.sessionsDir + "/" + sessionId
+        self.sessionPath = self.sessionsDir + "/" + sessionId
+
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
+        self.conn = sql.connect(
+            self.sessionDB)
+
+        # CLEAN UP FAILED FILES
+        c = self.conn.cursor()
+        sqlQuery = 'delete from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and p.status = "fail");'
+        c.execute(sqlQuery)
+        c.close()
+
+        self._populate_product_frames_db_table()
+        self._write_sof_files()
+
+        sys.stdout.flush()
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        self.log.print("SOF file refresh complete")
+
+        self.log.debug('completed the ``session_refresh`` method')
         return None
 
     # use the tab-trigger below for new method

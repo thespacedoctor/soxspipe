@@ -1199,7 +1199,7 @@ class _base_recipe_(object):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        if not rawRon:
+        if not rawRon and len(self.inputFrames.files) > 1:
             # LIST OF RAW CCDDATA OBJECTS
             ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]

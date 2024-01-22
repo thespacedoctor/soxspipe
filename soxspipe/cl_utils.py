@@ -293,11 +293,9 @@ def main(arguments=None):
     runningTime = times.calculate_time_difference(startTime, endTime)
     sys.argv[0] = os.path.basename(sys.argv[0])
 
-    if not a['session'] and not a['reduce']:
+    if not a['prep'] and not a['session'] and not a['reduce']:
         log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
         log.print(f'Recipe Run Time: {runningTime}\n\n')
-
-    if not a['prep'] and not a['session'] and not a['reduce']:
         print(f"{'='*70}\n")
 
     return

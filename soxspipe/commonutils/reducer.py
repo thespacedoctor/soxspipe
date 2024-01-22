@@ -29,28 +29,18 @@ class reducer(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
-
-    To initiate a reducer object, use the following:
-
-    ```eval_rst
-    .. todo::
-
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``reducer`` to documentation
-        - create a blog post about what ``reducer`` does
-    ```
-
     ```python
-    usage code 
+    from soxspipe.commonutils import reducer
+    collection = reducer(
+        log=log,
+        workspaceDirectory="/path/to/workspace/root/",
+        settings=settings,
+        pathToSettings="/path/to/settings.yaml"
+    )
+    collection.reduce()
     ```
 
     """
-    # Initialisation
-    # 1. @flagged: what are the unique Attributes for each object? Add them
-    # to __init__
 
     def __init__(
             self,
@@ -68,6 +58,7 @@ class reducer(object):
         self.overwrite = overwrite
         self.pathToSettings = pathToSettings
 
+        # REQUEST THE WORKSPACE PARAMETERS FROM THE DATA-ORGANISER
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
@@ -79,8 +70,6 @@ class reducer(object):
 
         return None
 
-    # 4. @flagged: what actions does each object have to be able to perform? Add them here
-    # Method Attributes
     def reduce(self):
         """
         *reduce the selected data*
@@ -106,7 +95,10 @@ class reducer(object):
         self.log.debug('starting the ``reduce`` method')
 
         from fundamentals import times
+        import traceback
 
+        # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
+        # THE ENTRIES ARE SELECTED IN THE ORDER THEY NEED TO RUN
         rawGroups = self.select_sof_files_to_process()
 
         for index, row in rawGroups.iterrows():
@@ -116,6 +108,18 @@ class reducer(object):
             try:
                 self.run_recipe(recipe, sof)
             except FileExistsError as e:
+                continue
+            except Exception as e:
+                # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                self.log.error(f'\nRecipe Command: {row["command"]}\n\n')
+                from soxspipe.commonutils import data_organiser
+                do = data_organiser(
+                    log=self.log,
+                    rootDir=self.workspaceDirectory
+                )
+                do.session_refresh()
+                print(f"{'='*70}\n")
                 continue
 
             ## FINISH LOGGING ##
@@ -138,40 +142,27 @@ class reducer(object):
             # -
 
         **Return:**
-            - None
+            - `rawGroups` -- a dataframe of the containing a list of recipes and sof file paths
 
         **Usage:**
 
         ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        rawGroups = reducer.select_sof_files_to_process()
         ```
         """
         self.log.debug('starting the ``select_sof_files_to_process`` method')
 
         import pandas as pd
         import sqlite3 as sql
-
         conn = sql.connect(
             self.sessionDB)
 
+        # GET THE GROUPS OF FILES NEEDING REDUCED, ASSIGN THE CORRECT COMMAND TO EXECUTE THE RECIPE
         rawGroups = pd.read_sql(
             'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=conn)
         rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
-
         if self.pathToSettings:
             rawGroups["command"] += f" -s {self.pathToSettings}"
-
         conn.close()
 
         self.log.debug('completed the ``select_sof_files_to_process`` method')
@@ -181,29 +172,16 @@ class reducer(object):
             self,
             recipe,
             sof):
-        """*run a recipe on an sof *
+        """*execute a pipeline recipe*
 
         **Key Arguments:**
-            # -
-
-        **Return:**
-            - None
+            - ``recipe`` -- the name of the recipe tp execute
+            - ``sof`` -- path to the sof file containing the files the recipe requires
 
         **Usage:**
 
         ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        reducer.run_recipe("mbias", "/path/to/sofs/my_bias_files.sof")
         ```
         """
         self.log.debug('starting the ``run_recipe`` method')
@@ -282,7 +260,3 @@ class reducer(object):
 
     # use the tab-trigger below for new method
     # xt-class-method
-
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
-    # Override Method Attributes
-    # method-override-tmpx
