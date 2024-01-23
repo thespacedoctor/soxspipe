@@ -12,6 +12,7 @@
    quickstart
    logging
    sessions
+   reduce
    primer_on_soxs_obs_modes
    recipes/index
    utils/index

@@ -61,7 +61,8 @@ class data_organiser(object):
         from fundamentals.logs import emptyLogger
 
         log.debug("instantiating a new 'data_organiser' object")
-        self.log = emptyLogger()
+
+        self.log = log
 
         # if rootDir == ".":
         #     rootDir = os.getcwd()
@@ -73,13 +74,12 @@ class data_organiser(object):
         self.rootDir = rootDir
         self.rawDir = rootDir + "/raw_frames"
         self.miscDir = rootDir + "/misc"
-        self.sofDir = rootDir + "/sof"
         self.sessionsDir = rootDir + "/sessions"
 
         # SESSION ID PLACEHOLDER FILE
         self.sessionIdFile = self.sessionsDir + "/.sessionid"
 
-        self.dbPath = rootDir + "/soxspipe.db"
+        self.rootDbPath = rootDir + "/.soxspipe.db"
 
         # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
         self.keywords = [
@@ -233,13 +233,13 @@ class data_organiser(object):
 
         # TEST FOR SQLITE DATABASE - ADD IF MISSING
         try:
-            with open(self.dbPath):
+            with open(self.rootDbPath):
                 pass
             self.freshRun = False
         except IOError:
             self.freshRun = True
             emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
-            shutil.copyfile(emptyDb, self.dbPath)
+            shutil.copyfile(emptyDb, self.rootDbPath)
 
         def dict_factory(cursor, row):
             d = {}
@@ -249,12 +249,19 @@ class data_organiser(object):
 
         # CREATE THE DATABASE CONNECTION
         self.conn = sql.connect(
-            self.dbPath)
-        self.conn.row_factory = dict_factory
+            self.rootDbPath)
+        # self.conn.row_factory = dict_factory
 
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
             os.makedirs(self.sessionsDir)
+
+        basename = os.path.basename(self.rootDir)
+        print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
+        self._sync_raw_frames()
+        self._move_misc_files()
+        self._populate_product_frames_db_table()
+        self._populate_product_frames_db_table()
 
         # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
         # OTHERWISE USE CURRENT SESSION
@@ -264,15 +271,7 @@ class data_organiser(object):
         else:
             with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
                 sessionId = readFile.read()
-
-        basename = os.path.basename(self.rootDir)
-        print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
-        self._sync_raw_frames()
-        self._move_misc_files()
-        self._populate_product_frames_db_table()
-        self._populate_product_frames_db_table()
-        self._write_sof_files()
-        self._write_reduction_shell_scripts()
+                self.sessionPath = self.sessionsDir + "/" + sessionId
 
         print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
         print(f"In this workspace you will find:\n")
@@ -280,7 +279,6 @@ class data_organiser(object):
         print(f"   - `raw_frames/`: all raw-frames to be reduced")
         print(f"   - `sessions/`: directory of data-reduction sessions")
         print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
-        print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace")
         print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
 
         self.log.debug('completed the ``prepare`` method')
@@ -724,9 +722,7 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
 
-        conn = sql.connect(
-            self.dbPath)
-
+        conn = self.conn
         rawFrames = pd.read_sql('SELECT * FROM raw_frames', con=conn)
 
         rawFrames.fillna("--", inplace=True)
@@ -761,10 +757,10 @@ class data_organiser(object):
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
-        calibrationFrames = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%"', con=conn)
+        calibrationFrames = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%" and (status != "fail" or status is null)', con=conn)
         calibrationFrames.fillna("--", inplace=True)
 
-        calibrationTables = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%"', con=conn)
+        calibrationTables = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%" and (status != "fail" or status is null)', con=conn)
         calibrationTables.fillna("--", inplace=True)
 
         # generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
@@ -1196,7 +1192,7 @@ class data_organiser(object):
             filepath = os.path.join(pathToDirectory, d)
             if os.path.splitext(filepath)[1] in allowlistExtensions:
                 continue
-            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme" not in d.lower():
+            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme." not in d.lower():
                 shutil.move(filepath, self.miscDir + "/" + d)
 
         self.log.debug('completed the ``_move_misc_files`` method')
@@ -1235,10 +1231,12 @@ class data_organiser(object):
         from tabulate import tabulate
         import sqlite3 as sql
 
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
         conn = sql.connect(
-            self.dbPath)
+            self.sessionDB)
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
+        self.sofDir = self.sessionPath + "/sof"
         if not os.path.exists(self.sofDir):
             os.makedirs(self.sofDir)
 
@@ -1254,10 +1252,11 @@ class data_organiser(object):
         self.log.debug('completed the ``_write_sof_files`` method')
         return None
 
-    # use the tab-trigger below for new method
     def _write_reduction_shell_scripts(
             self):
         """*write the reduction shell scripts*
+
+        _reduce_all.sh HAS BEEN REPLACED WITH THE `SOXSPIPE REDUCE` COMMAND
 
         **Key Arguments:**
             # -
@@ -1287,8 +1286,9 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
 
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
         conn = sql.connect(
-            self.dbPath)
+            self.sessionDB)
 
         rawGroups = pd.read_sql(
             'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=conn)
@@ -1296,7 +1296,7 @@ class data_organiser(object):
         rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
 
         # WRITE FULL REDUCTION SCRIPT
-        myFile = open(self.rootDir + "/_reduce_all.sh", 'w')
+        myFile = open(self.sessionPath + "/_reduce_all.sh", 'w')
         myFile.write(("\n").join(pd.unique(rawGroups["command"])))
         myFile.close()
 
@@ -1327,6 +1327,7 @@ class data_organiser(object):
         self.log.debug('starting the ``session_create`` method')
 
         import re
+        import shutil
 
         # TEST SESSION DIRECTORY EXISTS
         exists = os.path.exists(self.sessionsDir)
@@ -1347,16 +1348,16 @@ class data_organiser(object):
             sessionId = now.strftime("%Y%m%dt%H%M%S")
 
         # MAKE THE SESSION DIRECTORY
-        sessionPath = self.sessionsDir + "/" + sessionId
-        if not os.path.exists(sessionPath):
-            os.makedirs(sessionPath)
+        self.sessionPath = self.sessionsDir + "/" + sessionId
+        if not os.path.exists(self.sessionPath):
+            os.makedirs(self.sessionPath)
 
         # SETUP SESSION SETTINGS AND LOGGING
-        testPath = sessionPath + "/soxspipe.yaml"
+        testPath = self.sessionPath + "/soxspipe.yaml"
         exists = os.path.exists(testPath)
         if not exists:
             su = tools(
-                arguments={"<workspaceDirectory>": sessionPath, "init": True, "settingsFile": None},
+                arguments={"<workspaceDirectory>": self.sessionPath, "init": True, "settingsFile": None},
                 docString=False,
                 logLevel="WARNING",
                 options_first=False,
@@ -1364,6 +1365,26 @@ class data_organiser(object):
                 defaultSettingsFile=True
             )
             arguments, settings, replacedLog, dbConn = su.setup()
+
+        # MAKE ASSET PLACEHOLDERS
+        folders = ["sof", "qc", "product"]
+        for f in folders:
+            if not os.path.exists(self.sessionPath + f"/{f}"):
+                os.makedirs(self.sessionPath + f"/{f}")
+
+        # COPY THE WORKSPACE DATABASE INTO THE SESSION FOLDER
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
+        rootDbExists = os.path.exists(self.rootDbPath)
+        sessionDbExists = os.path.exists(self.sessionDB)
+        if rootDbExists and not sessionDbExists:
+            shutil.copyfile(self.rootDbPath, self.sessionDB)
+
+        self._write_sof_files()
+
+        # _reduce_all.sh HAS BEEN REPLACED WITH THE `SOXSPIPE REDUCE` COMMAND
+        # self._write_reduction_shell_scripts()
+
+        self.symlink_session_assets_to_workspace_root()
 
         # WRITE THE SESSION ID FILE
         import codecs
@@ -1456,15 +1477,150 @@ class data_organiser(object):
 
         if sessionId == currentSession:
             print(f"Session '{sessionId}' is already in use.")
+            return None
         elif sessionId in allSessions:
             # WRITE THE SESSION ID FILE
             with codecs.open(self.sessionIdFile, encoding='utf-8', mode='w') as writeFile:
                 writeFile.write(sessionId)
-            print(f"Session successfully switched to '{sessionId}'.")
         else:
             print(f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`.")
+            return None
+
+        self.sessionPath = self.sessionsDir + "/" + sessionId
+        self.symlink_session_assets_to_workspace_root()
+        print(f"Session successfully switched to '{sessionId}'.")
 
         self.log.debug('completed the ``session_switch`` method')
+        return None
+
+    def symlink_session_assets_to_workspace_root(
+            self):
+        """*symlink session QC, product, SOF directories, database and scripts to workspace root*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``symlink_session_assets_to_workspace_root`` method')
+
+        import shutil
+        import os
+
+        # UNLINK SYMLINK IN ROOT
+        for d in os.listdir(self.rootDir):
+            filepath = os.path.join(self.rootDir, d)
+            if os.path.islink(filepath):
+                os.unlink(filepath)
+
+        # SYMLINK FILES AND FOLDERS
+        toLink = ["product", "qc", "soxspipe.db", "soxspipe.yaml", "sof", "soxspipe.log"]
+        for l in toLink:
+            dest = self.rootDir + f"/{l}"
+            src = self.sessionPath + f"/{l}"
+            try:
+                os.symlink(src, dest)
+            except:
+                os.unlink(dest)
+                os.symlink(src, dest)
+
+        # REDUCTION SCRIPTS
+        for d in os.listdir(self.sessionPath):
+            filepath = os.path.join(self.sessionPath, d)
+            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] == ".sh":
+                dest = self.rootDir + f"/{d}"
+                src = filepath
+                try:
+                    os.symlink(src, dest)
+                except:
+                    os.unlink(dest)
+                    os.symlink(src, dest)
+
+        self.log.debug('completed the ``symlink_session_assets_to_workspace_root`` method')
+        return None
+
+    def session_refresh(
+            self):
+        """*refresh a session's SOF file (needed if a recipe fails)*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``session_refresh`` method')
+
+        self.log.print("Refeshing SOF file due to recipe failure\n")
+
+        import codecs
+        import sqlite3 as sql
+
+        # IF SESSION ID FILE DOES NOT EXIST, REPORT
+        exists = os.path.exists(self.sessionIdFile)
+        if not exists:
+            if not silent:
+                print("No reduction sessions exist in this workspace yet.")
+            return None, None
+        else:
+            with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
+                sessionId = readFile.read()
+        self.sessionPath = self.sessionsDir + "/" + sessionId
+        self.sessionPath = self.sessionsDir + "/" + sessionId
+
+        self.sessionDB = self.sessionPath + "/soxspipe.db"
+        self.conn = sql.connect(
+            self.sessionDB)
+
+        # CLEAN UP FAILED FILES
+        c = self.conn.cursor()
+        sqlQuery = 'delete from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and p.status = "fail");'
+        c.execute(sqlQuery)
+        c.close()
+
+        self._populate_product_frames_db_table()
+        self._write_sof_files()
+
+        sys.stdout.flush()
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        self.log.print("SOF file refresh complete")
+
+        self.log.debug('completed the ``session_refresh`` method')
         return None
 
     # use the tab-trigger below for new method

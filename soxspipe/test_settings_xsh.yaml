@@ -20,16 +20,12 @@ version: 1
 instrument: xsh
 
 soxs-mbias:
-    # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
+    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 1
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
     stacked-clipping-sigma: 5
-    # number of σ-clipping iterations to perform before stacking
-    stacked-clipping-iterations: 5
-    # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-sigma: 5
-    # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-sigma: 5   
-    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-iteration-count: 5
+    stacked-clipping-iterations: 3
 
 soxs-mdark:
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack

@@ -73,7 +73,7 @@ class soxs_mflat(_base_recipe_):
         super(soxs_mflat, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mflat")
         self.log = log
-        log.debug("instansiating a new 'soxs_mflat' object")
+        log.debug("instantiating a new 'soxs_mflat' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
@@ -264,6 +264,7 @@ class soxs_mflat(_base_recipe_):
             orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
             if len(orderTablePaths) == 1:
                 orderTablePath = orderTablePaths[0]
+                thisPath = orderTablePath
             else:
                 self.orderTableSet.append(None)
 
@@ -364,7 +365,7 @@ class soxs_mflat(_base_recipe_):
 
         # UV-STITCHING
         if len(self.detectionCountSet) > 1:
-            mflat = self.stitch_uv_mflats(medianOrderFluxDF)
+            mflat = self.stitch_uv_mflats(medianOrderFluxDF, orderTablePath=thisPath)
         else:
             self.products = productTable
             self.qc = qcTable
@@ -578,12 +579,12 @@ class soxs_mflat(_base_recipe_):
 
         window = int(self.settings[
             "soxs-mflat"]["centre-order-window"] / 2)
-        if self.axisA == "x" and self.binx > 1:
-            window = int(window / self.binx)
-            self.recipeSettings["slice-length-for-edge-detection"] = int(self.recipeSettings["slice-length-for-edge-detection"] / self.binx)
-        elif self.axisA == "y" and self.biny > 1:
-            window = int(window / self.biny)
-            self.recipeSettings["slice-length-for-edge-detection"] = int(self.recipeSettings["slice-length-for-edge-detection"] / self.biny)
+        # if self.axisA == "x" and self.binx > 1:
+        #     window = int(window / self.binx)
+        #     self.recipeSettings["slice-length-for-edge-detection"] = int(self.recipeSettings["slice-length-for-edge-detection"] / self.binx)
+        # elif self.axisA == "y" and self.biny > 1:
+        #     window = int(window / self.biny)
+        #     self.recipeSettings["slice-length-for-edge-detection"] = int(self.recipeSettings["slice-length-for-edge-detection"] / self.biny)
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
@@ -764,11 +765,13 @@ class soxs_mflat(_base_recipe_):
 
     def stitch_uv_mflats(
             self,
-            medianOrderFluxDF):
+            medianOrderFluxDF,
+            orderTablePath):
         """*return a master UV-VIS flat frame after determining the best order to slice and stitch the UV-VIS D-Lamp and QTH-Lamp flat frames*
 
         **Key Arguments:**
             - ``medianOrderFluxDF`` -- data frame containing median order fluxes for D and QTH frames
+            - ``orderTablePath`` -- the original order table paths from order-centre tracing
 
         **Return:**
             - ``stitchedFlat`` -- the stitch D and QTH-Lamp master flat frame
@@ -794,6 +797,7 @@ class soxs_mflat(_base_recipe_):
         orderFlip = detectionCount.loc[mask]
         # THIS IS THE ORDER THAT WE USE TO RESCALE ONE FLAT TO ANOTHER
         orderFlip = orderFlip.index.max() - 1
+
         filteredDf = medianOrderFluxDF.loc[(medianOrderFluxDF["order"] == orderFlip)]
         filteredDf["scale"] = filteredDf["_DLAMP"] / filteredDf["_QLAMP"]
         DQscale = filteredDf["scale"].values[0]
@@ -837,7 +841,7 @@ class soxs_mflat(_base_recipe_):
         edges = detect_order_edges(
             log=self.log,
             flatFrame=stitchedFlat,
-            orderCentreTable=self.orderTableSet[2],
+            orderCentreTable=orderTablePath,
             settings=self.settings,
             qcTable=self.qc,
             productsTable=self.products,

@@ -460,9 +460,9 @@ def unpack_order_table(
         orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
 
     if axisAbin != 1:
-        orderPixelTable[f"{axisA}coord_centre"] /= axisAbin
-        orderPixelTable[f"{axisA}coord_edgeup"] /= axisAbin
-        orderPixelTable[f"{axisA}coord_edgelow"] /= axisAbin
+        for c in ["coord_centre", "coord_edgeup", "coord_edgelow"]:
+            if f"{axisA}{c}" in orderPixelTable.columns:
+                orderPixelTable[f"{axisA}{c}"] /= axisAbin
     if axisBbin != 1:
         orderMetaTable[f"{axisB}min"] /= axisBbin
         orderMetaTable[f"{axisB}max"] /= axisBbin
@@ -947,13 +947,15 @@ def twoD_disp_map_image_to_dataframe(
 
 
 def predict_product_path(
-        sofName):
+        sofName,
+        recipeName=False):
     """*predict the path of the recipe product from a given SOF name*
 
     **Key Arguments:**
 
     - `log` -- logger,
     - `sofName` -- name or full path to the sof file
+    - ``recipeName`` -- name of the recipe being considered. Default *False*.
 
     **Usage:**
 
@@ -976,14 +978,20 @@ def predict_product_path(
     )
     currentSession, allSessions = do.session_list(silent=True)
 
-    recipeName = sys.argv[1]
-    if recipeName[0] == "-":
-        recipeName = sys.argv[2]
+    if not recipeName:
+        recipeName = sys.argv[1]
+        if recipeName[0] == "-":
+            recipeName = sys.argv[2]
+        recipeName = "soxs-" + recipeName
 
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_SKYSUB"
-    productPath = f"./sessions/{currentSession}/product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
+    if "spatial" not in productPath:
+        productPath = productPath.replace("spat", "spatial")
+    if "solution" not in productPath:
+        productPath = productPath.replace("spat", "spatial")
     productPath = productPath.replace("//", "/")
 
     return productPath

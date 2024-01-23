@@ -16,11 +16,11 @@ The purpose of the [`soxs_mdark`](../_api/soxspipe.recipes.soxs_mdark.html) reci
 
 | Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
 | ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
+| frame-clipping-sigma     | number of σ from the median *frame* flux beyond which pixel is added to the bad-pixel mask    | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
+| clipping-iteration-count | number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask | int   | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
 | stacked-clipping-sigma | number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
 | stacked-clipping-iterations | number of σ-clipping iterations to perform before stacking | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
-| clipping-lower-sigma     | number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask    | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
-| clipping-upper-sigma     | number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask    | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
-| clipping-iteration-count | number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask | int   | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
+
 
 ### Method
 

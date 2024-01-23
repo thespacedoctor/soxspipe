@@ -67,7 +67,7 @@ class soxs_disp_solution(_base_recipe_):
         super(soxs_disp_solution, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-disp-solution")
         self.log = log
-        log.debug("instansiating a new 'soxs_disp_solution' object")
+        log.debug("instantiating a new 'soxs_disp_solution' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose

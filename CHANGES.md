@@ -1,9 +1,14 @@
 
 # Release Notes  
 
-## v0.9.8 - January 19, 2024
-
-* **FIXED**: bug fix in collecting settings files from the default location
+* **FIXED:** many bug fixes to increase pipeline robustness 
+* **FIXED:** mdark recipe will succeed even if only one input frame is given.
+* **FEATURE:** a new 'reduce' command-line command to replace the `_reduce_all.sh` script. The pipeline only needs to initialise once instead of once per recipe, so overheads are reduced, and the pipeline runs faster.
+* **ENHANCEMENT:** Thanks to the new reducer module, the pipeline can now rewrite SOF files on the fly to compensate for missing products due to failed recipes.
+* **ENHANCEMENT:** For user convenience, when you switch to a new session, the symbolic links found within the workspace root folder are automatically switched to point to the current session assets (`products`, `qc`, `sof`, `soxspipe.yaml`,`soxspipe.db` etc). 
+* **REFACTOR:** `clipping-lower-sigma` and `clipping-iteration-count` renamed to `frame-clipping-sigma` and `frame-clipping-iterations`
+* **REFACTOR:** optimised `qc_periodic_pattern_noise` for speed
+* **REFACTOR:** mask from the sigma-clipped noise map is added to the master bias frames
 
 ## v0.9.7 - December 7, 2023
 

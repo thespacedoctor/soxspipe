@@ -7,6 +7,7 @@
     Usage:
         soxspipe prep <workspaceDirectory>
         soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
+        soxspipe [-q] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
         soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -20,6 +21,8 @@
         session ls                             list all available data-reduction sessions in the workspace
         session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
         session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
+        reduce all                             reduce all of the data in a workspace.                 
+    
         mbias                                  the master bias recipe
         mdark                                  the master dark recipe
         mflat                                  the master flat recipe
@@ -30,6 +33,7 @@
     
         inputFrames                            path to a directory of frames or a set-of-files file
     
+        -q, --quitOnFail                       stop the pipeline if a recipe fails
         -h, --help                             show this help message
         -v, --version                          show version
         -s, --settings <pathToSettingsFile>    the settings file

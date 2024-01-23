@@ -7,6 +7,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 Usage:
     soxspipe prep <workspaceDirectory>
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
+    soxspipe [-q] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -20,6 +21,8 @@ Options:
     session ls                             list all available data-reduction sessions in the workspace
     session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
     session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
+    reduce all                             reduce all of the data in a workspace.                 
+
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
     mflat                                  the master flat recipe
@@ -30,6 +33,7 @@ Options:
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
+    -q, --quitOnFail                       stop the pipeline if a recipe fails
     -h, --help                             show this help message
     -v, --version                          show version
     -s, --settings <pathToSettingsFile>    the settings file
@@ -67,7 +71,7 @@ def main(arguments=None):
     currentSession, allSessions = do.session_list(silent=True)
 
     # QUICKLY SKIP IF PRODUCT EXIST
-    if len(sys.argv[1:]) == 2:
+    if len(sys.argv[1:]) == 2 or len(sys.argv[1:]) == 4:
         if sys.argv[2].split(".")[-1].lower() == "sof":
             from soxspipe.commonutils import toolkit
             productPath = toolkit.predict_product_path(sys.argv[2])
@@ -161,15 +165,6 @@ def main(arguments=None):
         # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
         if a['outputDirectory']:
             settings["workspace-root-dir"] = a['outputDirectory']
-        else:
-            from soxspipe.commonutils import data_organiser
-            do = data_organiser(
-                log=log,
-                rootDir="."
-            )
-            currentSession, allSessions = do.session_list(silent=True)
-            if currentSession:
-                settings["workspace-root-dir"] = f"./sessions/{currentSession}/"
 
         if a["mbias"]:
             from soxspipe.recipes import soxs_mbias
@@ -243,7 +238,6 @@ def main(arguments=None):
                 verbose=verbose,
                 overwrite=a["overwriteFlag"]
             )
-
             reducedStare = recipe.produce_product()
 
         if a['prep']:
@@ -278,11 +272,24 @@ def main(arguments=None):
             )
             sessionId = do.session_create(sessionId=a['sessionId'])
 
+    except FileExistsError as e:
+        sys.exit(0)
+
     except Exception as e:
         log.error(f'{e}\n{clCommand}', exc_info=True)
 
-    # CALL FUNCTIONS/OBJECTS
+    if a["reduce"] and a["all"]:
+        from soxspipe.commonutils import reducer
+        collection = reducer(
+            log=log,
+            workspaceDirectory=a["workspaceDirectory"],
+            settings=settings,
+            pathToSettings=arguments["--settings"],
+            quitOnFail=a["quitOnFailFlag"]
+        )
+        collection.reduce()
 
+    # CALL FUNCTIONS/OBJECTS
     if "dbConn" in locals() and dbConn:
         dbConn.commit()
         dbConn.close()
@@ -291,7 +298,7 @@ def main(arguments=None):
     runningTime = times.calculate_time_difference(startTime, endTime)
     sys.argv[0] = os.path.basename(sys.argv[0])
 
-    if not a['prep'] and not a['session']:
+    if not a['prep'] and not a['session'] and not a['reduce']:
         log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
         log.print(f'Recipe Run Time: {runningTime}\n\n')
         print(f"{'='*70}\n")

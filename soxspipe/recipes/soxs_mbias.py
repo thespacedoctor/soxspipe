@@ -65,8 +65,8 @@ class soxs_mbias(_base_recipe_):
             overwrite=False
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
-        super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
-        log.debug("instansiating a new 'soxs_mbias' object")
+        this = super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
+        log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
@@ -159,7 +159,7 @@ class soxs_mbias(_base_recipe_):
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        meanBiasLevels, rons, noiseFrames = zip(*[self.subtact_mean_flux_level(c) for c in ccds])
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
@@ -169,17 +169,11 @@ class soxs_mbias(_base_recipe_):
 
         masterRon = np.std(combined_noise.data)
 
-        # FILL MASKED PIXELS WITH 0
+        # USE COMBINED NOISE MASK AS MBIAS MASK
         combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
         combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
         combined_bias_mean = combined_noise
-        combined_bias_mean.mask[:] = False
-
-        # # MULTIPROCESSING HERE ADDS A SELF_DEFEATING OVERHEAD
-        # from fundamentals import fmultiprocess
-        # # DEFINE AN INPUT ARRAY
-        # results = fmultiprocess(log=self.log, function=self.subtact_mean_flux_level,
-        #                         inputArray=ccds, poolSize=False, timeout=300)
+        combined_bias_mean.mask = combined_noise.mask
 
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
 
@@ -341,6 +335,7 @@ class soxs_mbias(_base_recipe_):
         from astropy.stats import sigma_clip
         import numpy as np
         import pandas as pd
+        from ccdproc import block_reduce
 
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
@@ -349,11 +344,13 @@ class soxs_mbias(_base_recipe_):
         for frame in ccds:
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
+            # BIN THE FRAME TO INCREASE SPEED
+            maskedDataArray = block_reduce(maskedDataArray, 5, np.mean)
             dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
 
             # SIGMA-CLIP THE DATA
             masked_dark_image_grey_fourier = sigma_clip(
-                dark_image_grey_fourier, sigma_lower=1000, sigma_upper=1000, maxiters=1, cenfunc='mean')
+                dark_image_grey_fourier, sigma_lower=100, sigma_upper=100, maxiters=1, cenfunc='mean')
             goodData = np.ma.compressed(masked_dark_image_grey_fourier)
 
             # frame_mad = median_abs_deviation(dark_image_grey_fourier, axis=None)
@@ -366,6 +363,8 @@ class soxs_mbias(_base_recipe_):
             from soxspipe.commonutils.toolkit import quicklook_image
             quicklook_image(
                 log=self.log, CCDObject=abs(masked_dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
+            quicklook_image(
+                log=self.log, CCDObject=abs(dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
 
             ratios.append(frame_std / frame_mad)
 

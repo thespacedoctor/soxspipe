@@ -179,13 +179,18 @@ class _base_detect(object):
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
 
+            if len(pixelList.index) == 0:
+                # REMOVE THIS ORDER FROM PIXEL LIST
+                coeff = None
+                return coeff, pixelList, pixelList
+
             try:
                 coeff, pcov_x = curve_fit(
                     poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 coeff = None
-                return coeff, pixelList
+                return coeff, pixelList, pixelList
             except Exception as e:
                 raise e
 
@@ -471,7 +476,7 @@ class detect_continuum(_base_detect):
             biny=1
     ):
         self.log = log
-        log.debug("instansiating a new 'detect_continuum' object")
+        log.debug("instantiating a new 'detect_continuum' object")
         self.settings = settings
         if recipeName:
             self.recipeSettings = settings[recipeName]["detect-continuum"]

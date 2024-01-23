@@ -4,9 +4,12 @@ version: 1
 instrument: soxs
 
 soxs-mbias:
-    clipping-lower-sigma: 5
-    clipping-upper-sigma: 5   
-    clipping-iteration-count: 5
+    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 1
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 3
 
 soxs-mdark:
     stacked-clipping-sigma: 5

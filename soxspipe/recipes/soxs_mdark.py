@@ -67,7 +67,7 @@ class soxs_mdark(_base_recipe_):
         # INHERIT INITIALISATION FROM  _base_recipe_
         super(soxs_mdark, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mdark")
         self.log = log
-        log.debug("instansiating a new 'soxs_mdark' object")
+        log.debug("instantiating a new 'soxs_mdark' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
@@ -171,7 +171,7 @@ class soxs_mdark(_base_recipe_):
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        meanFluxLevels, rons, noiseFrames = zip(*[self.subtact_mean_flux_level(c) for c in ccds])
+        meanFluxLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanFluxLevel = np.mean(meanFluxLevels)
         masterMedianFluxLevel = np.median(meanFluxLevels)
         rawRon = np.mean(rons)

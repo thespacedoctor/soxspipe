@@ -61,7 +61,7 @@ class soxs_stare(_base_recipe_):
         super(soxs_stare, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-stare")
         self.log = log
-        log.debug("instansiating a new 'soxs_stare' object")
+        log.debug("instantiating a new 'soxs_stare' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose

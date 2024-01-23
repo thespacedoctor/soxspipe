@@ -85,7 +85,7 @@ class subtract_sky(object):
             recipeName="soxs-stare"
     ):
         self.log = log
-        log.debug("instansiating a new 'subtract_sky' object")
+        log.debug("instantiating a new 'subtract_sky' object")
         self.settings = settings
         self.objectFrame = objectFrame
         self.twoDMap = twoDMap
@@ -967,8 +967,13 @@ class subtract_sky(object):
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = np.rot90(objectFrame.data, 1)
         maskedDataArray = np.ma.array(objectFrame.data, mask=combinedMask)
-        std = np.nanstd(maskedDataArray)
-        mean = np.nanmean(maskedDataArray)
+
+        try:
+            std = np.nanstd(maskedDataArray)
+            mean = np.nanmean(maskedDataArray)
+        except:
+            std = np.std(maskedDataArray)
+            mean = np.mean(maskedDataArray)
         vmax = mean + 1 * std
         vmin = mean - 0.1 * std
         toprow.imshow(rotatedImg, vmin=0, vmax=100, cmap='gray', alpha=1.)
@@ -993,8 +998,14 @@ class subtract_sky(object):
 
         rotatedImg = np.rot90(skySubFrame.data, 1)
         maskedDataArray = np.ma.array(skySubFrame.data, mask=combinedMask)
-        std = np.nanstd(maskedDataArray)
-        mean = np.nanmean(maskedDataArray)
+
+        try:
+            std = np.nanstd(maskedDataArray)
+            mean = np.nanmean(maskedDataArray)
+        except:
+            std = np.std(maskedDataArray)
+            mean = np.mean(maskedDataArray)
+
         vmax = 0 + std
         vmin = 0
         bottomrow.imshow(rotatedImg, vmin=vmin, vmax=30, cmap='gray', alpha=1.)
