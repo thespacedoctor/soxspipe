@@ -70,7 +70,7 @@ def main(arguments=None):
     currentSession, allSessions = do.session_list(silent=True)
 
     # QUICKLY SKIP IF PRODUCT EXIST
-    if len(sys.argv[1:]) == 2:
+    if len(sys.argv[1:]) == 2 or len(sys.argv[1:]) == 4:
         if sys.argv[2].split(".")[-1].lower() == "sof":
             from soxspipe.commonutils import toolkit
             productPath = toolkit.predict_product_path(sys.argv[2])

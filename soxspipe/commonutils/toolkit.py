@@ -987,7 +987,11 @@ def predict_product_path(
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_SKYSUB"
-    productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+    productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
+    if "spatial" not in productPath:
+        productPath = productPath.replace("spat", "spatial")
+    if "solution" not in productPath:
+        productPath = productPath.replace("spat", "spatial")
     productPath = productPath.replace("//", "/")
 
     return productPath
