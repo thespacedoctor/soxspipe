@@ -1,6 +1,7 @@
 
 # Release Notes  
 
+* **FIXED:** many bug fixes to increase pipeline robustness 
 * **FIXED:** mdark recipe will succeed even if only one input frame is given.
 * **FEATURE:** a new 'reduce' command-line command to replace the `_reduce_all.sh` script. The pipeline only needs to initialise once instead of once per recipe, so overheads are reduced, and the pipeline runs faster.
 * **ENHANCEMENT:** Thanks to the new reducer module, the pipeline can now rewrite SOF files on the fly to compensate for missing products due to failed recipes.
