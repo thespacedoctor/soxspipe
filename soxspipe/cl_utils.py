@@ -7,7 +7,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 Usage:
     soxspipe prep <workspaceDirectory>
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
-    soxspipe reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
+    soxspipe [-q] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -33,6 +33,7 @@ Options:
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
+    -q, --quitOnFail                       stop the pipeline if a recipe fails
     -h, --help                             show this help message
     -v, --version                          show version
     -s, --settings <pathToSettingsFile>    the settings file
@@ -271,6 +272,9 @@ def main(arguments=None):
             )
             sessionId = do.session_create(sessionId=a['sessionId'])
 
+    except FileExistsError as e:
+        sys.exit(0)
+
     except Exception as e:
         log.error(f'{e}\n{clCommand}', exc_info=True)
 
@@ -280,7 +284,8 @@ def main(arguments=None):
             log=log,
             workspaceDirectory=a["workspaceDirectory"],
             settings=settings,
-            pathToSettings=arguments["--settings"]
+            pathToSettings=arguments["--settings"],
+            quitOnFail=a["quitOnFailFlag"]
         )
         collection.reduce()
 

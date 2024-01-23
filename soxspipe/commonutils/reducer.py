@@ -25,6 +25,7 @@ class reducer(object):
         - ``workspaceDirectory`` -- path to the root of the workspace
         - ``settings`` -- the settings dictionary
         - ``pathToSettings`` -- path to the settings file.
+        - ``quitOnFail`` -- quit the pipeline on any recipe failure
         - ``overwrite`` -- overwrite existing reductions. Default *False*.
 
     **Usage:**
@@ -48,6 +49,7 @@ class reducer(object):
             workspaceDirectory,
             settings=False,
             pathToSettings=False,
+            quitOnFail=False,
             overwrite=False
 
     ):
@@ -57,6 +59,7 @@ class reducer(object):
         self.workspaceDirectory = workspaceDirectory
         self.overwrite = overwrite
         self.pathToSettings = pathToSettings
+        self.quitOnFail = quitOnFail
 
         # REQUEST THE WORKSPACE PARAMETERS FROM THE DATA-ORGANISER
         from soxspipe.commonutils import data_organiser
@@ -120,7 +123,10 @@ class reducer(object):
                 )
                 do.session_refresh()
                 print(f"{'='*70}\n")
-                continue
+                if self.quitOnFail:
+                    sys.exit(0)
+                else:
+                    continue
 
             ## FINISH LOGGING ##
             endTime = times.get_now_sql_datetime()
