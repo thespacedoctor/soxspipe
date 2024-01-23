@@ -52,7 +52,6 @@ Once the workspace has been prepared, you should find it contains the following 
    - `raw_frames/`: all raw-frames to be reduced
    - `sessions/`: directory of data-reduction sessions
    - `sof/`: the set-of-files (sof) files required for each reduction step
-   - `_reduce_all.sh`: a single script to reduce all the data in the workspace
    - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete
 
 soxspipe reduces data within a [`reduction session`](./sessions.md) and an initial `base` session is automatically created when running the `prep` command. 
@@ -60,8 +59,8 @@ soxspipe reduces data within a [`reduction session`](./sessions.md) and an initi
 
 ## Reduce the Data
 
-All of the `soxspipe` recipe commands needed to reduce workspace data can be found in the `_reduce_all.sh` script. To reduce the data, simple execute that script:
+In most use case, you will want to reduce all of the raw frames contained within your workspace. To do this run the command:
 
 ```bash
-sh _reduce_all.sh
+soxspipe reduce all .
 ```

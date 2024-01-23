@@ -279,7 +279,6 @@ class data_organiser(object):
         print(f"   - `raw_frames/`: all raw-frames to be reduced")
         print(f"   - `sessions/`: directory of data-reduction sessions")
         print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
-        print(f"   - `_reduce_all.sh`: a single script to reduce all the data in the workspace")
         print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
 
         self.log.debug('completed the ``prepare`` method')
@@ -1253,10 +1252,11 @@ class data_organiser(object):
         self.log.debug('completed the ``_write_sof_files`` method')
         return None
 
-    # use the tab-trigger below for new method
     def _write_reduction_shell_scripts(
             self):
         """*write the reduction shell scripts*
+
+        _reduce_all.sh HAS BEEN REPLACED WITH THE `SOXSPIPE REDUCE` COMMAND
 
         **Key Arguments:**
             # -
@@ -1380,7 +1380,9 @@ class data_organiser(object):
             shutil.copyfile(self.rootDbPath, self.sessionDB)
 
         self._write_sof_files()
-        self._write_reduction_shell_scripts()
+
+        # _reduce_all.sh HAS BEEN REPLACED WITH THE `SOXSPIPE REDUCE` COMMAND
+        # self._write_reduction_shell_scripts()
 
         self.symlink_session_assets_to_workspace_root()
 
