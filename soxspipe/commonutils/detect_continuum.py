@@ -179,13 +179,18 @@ class _base_detect(object):
             iteration += 1
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
 
+            if len(pixelList.index) == 0:
+                # REMOVE THIS ORDER FROM PIXEL LIST
+                coeff = None
+                return coeff, pixelList, pixelList
+
             try:
                 coeff, pcov_x = curve_fit(
                     poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 coeff = None
-                return coeff, pixelList
+                return coeff, pixelList, pixelList
             except Exception as e:
                 raise e
 

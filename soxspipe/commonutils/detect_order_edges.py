@@ -44,7 +44,6 @@ class detect_order_edges(_base_detect):
         - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
         - ``extendToEdges`` -- if true, extend the order edge tracing to the edges of the frame.
-        -
 
     **Usage:**
 
@@ -153,6 +152,10 @@ class detect_order_edges(_base_detect):
         if not os.path.exists(self.qcDir):
             os.makedirs(self.qcDir)
 
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=self.flatFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+
         return None
 
     def get(self):
@@ -184,6 +187,7 @@ class detect_order_edges(_base_detect):
             self.recipeSettings["max-percentage-threshold-for-edge-detection"]) / 100
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
+
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=self.sliceWidth)
 
@@ -236,6 +240,8 @@ class detect_order_edges(_base_detect):
 
         if self.axisAbin > 1:
             orderPixelTable[f"{self.axisA}coord_upper"] *= self.axisAbin
+        if self.axisAbin > 1:
+            orderPixelTable[f"{self.axisA}coord_lower"] *= self.axisAbin
         if self.axisBbin > 1:
             orderPixelTable[f"{self.axisB}coord"] *= self.axisBbin
 
@@ -283,6 +289,7 @@ class detect_order_edges(_base_detect):
         self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
         orderPixelTableLower = orderPixelTable.dropna(axis='index', how='any',
                                                       subset=[f"{self.axisA}coord_lower"])
+
         lowerCoeff, orderPixelTableLower, clippedLower = self.fit_global_polynomial(
             pixelList=orderPixelTable,
             axisBCol=f"{self.axisB}coord",
@@ -704,6 +711,10 @@ class detect_order_edges(_base_detect):
 
         slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.flatFrame,
                                                                          width=sliceWidth, length=sliceLength, x=x, y=y, sliceAxis=self.axisA, median=True, plot=False)
+
+        if slice is None:
+            return orderData
+
         # SMOOTH WITH A MEDIAN FILTER
         medSlide = medfilt(slice, 9)
         # DETERMINE THRESHOLD FLUX VALUE

@@ -460,9 +460,9 @@ def unpack_order_table(
         orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
 
     if axisAbin != 1:
-        orderPixelTable[f"{axisA}coord_centre"] /= axisAbin
-        orderPixelTable[f"{axisA}coord_edgeup"] /= axisAbin
-        orderPixelTable[f"{axisA}coord_edgelow"] /= axisAbin
+        for c in ["coord_centre", "coord_edgeup", "coord_edgelow"]:
+            if f"{axisA}{c}" in orderPixelTable.columns:
+                orderPixelTable[f"{axisA}{c}"] /= axisAbin
     if axisBbin != 1:
         orderMetaTable[f"{axisB}min"] /= axisBbin
         orderMetaTable[f"{axisB}max"] /= axisBbin

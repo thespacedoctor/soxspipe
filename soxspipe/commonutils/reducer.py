@@ -116,6 +116,10 @@ class reducer(object):
                 # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
                 self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
                 self.log.error(f'\nRecipe Command: {row["command"]}\n\n')
+
+                if self.quitOnFail:
+                    sys.exit(0)
+
                 from soxspipe.commonutils import data_organiser
                 do = data_organiser(
                     log=self.log,
@@ -123,10 +127,7 @@ class reducer(object):
                 )
                 do.session_refresh()
                 print(f"{'='*70}\n")
-                if self.quitOnFail:
-                    sys.exit(0)
-                else:
-                    continue
+                continue
 
             ## FINISH LOGGING ##
             endTime = times.get_now_sql_datetime()
