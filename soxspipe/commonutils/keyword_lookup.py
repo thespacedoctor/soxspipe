@@ -23,7 +23,8 @@ class keyword_lookup(object):
 
     **Key Arguments:**
         - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
+        - ``settings`` -- the settings dictionary. Default *False*
+        - ``instrument`` -- can directly add the instrument if settings file is not avalable. Default *False*
 
     **Usage**
 
@@ -33,7 +34,8 @@ class keyword_lookup(object):
     from soxspipe.commonutils import keyword_lookup
     kw = keyword_lookup(
         log=log,
-        settings=settings
+        settings=settings,
+        instrument=False,
     ).get
     ```
 
@@ -65,17 +67,21 @@ class keyword_lookup(object):
     def __init__(
             self,
             log,
+            instrument=False,
             settings=False,
 
     ):
         self.log = log
         log.debug("instantiating a new 'keyword_lookup' object")
         self.settings = settings
+        self.instrument = instrument
         # xt-self-arg-tmpx
 
         # SELECT THE INSTRUMENT AND READ THE KEYWORD DICTIONARY IN RESOURCES
         # FOLDER
-        if "instrument" in settings:
+        if instrument:
+            self.instrument = instrument
+        elif settings and "instrument" in settings:
             self.instrument = settings["instrument"]
         else:
             self.instrument = "soxs"
