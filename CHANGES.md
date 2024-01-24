@@ -1,6 +1,10 @@
 
 # Release Notes  
 
+## v0.9.9 - January 24, 2024
+
+* **FIXED**: bug fix logger
+
 ## v0.9.8 - January 19, 2024
 
 * **FIXED**: bug fix in collecting settings files from the default location
