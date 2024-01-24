@@ -114,7 +114,7 @@ class _base_recipe_(object):
         self.currentSession, allSessions = do.session_list(silent=True)
 
         # INITIATE A DB CONNECTION
-        self.dbConn = None
+        self.conn = None
         if self.currentSession and self.sofName:
             self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/soxspipe.db"
 
