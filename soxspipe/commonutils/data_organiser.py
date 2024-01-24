@@ -81,33 +81,31 @@ class data_organiser(object):
 
         self.rootDbPath = rootDir + "/.soxspipe.db"
 
-        # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
-        self.keywords = [
-            'file',
-            'mjd-obs',
-            'date-obs',
-            'eso seq arm',
-            'eso dpr catg',
-            'eso dpr tech',
-            'eso dpr type',
-            'eso pro catg',
-            'eso pro tech',
-            'eso pro type',
-            'exptime',
-            'cdelt1',
-            'cdelt2',
-            'eso det read speed',
-            'eso ins opti3 name',
-            'eso ins opti4 name',
-            'eso ins opti5 name',
-            'eso det ncorrs name',
-            'eso det out1 conad',
-            'eso det out1 ron',
-            'eso obs id',
-            'eso obs name',
-            "naxis",
-            "object",
-            "instrume"
+        self.keyword_lookups = [
+            'MJDOBS',
+            'DATE_OBS',
+            'SEQ_ARM',
+            'DPR_CATG',
+            'DPR_TECH',
+            'DPR_TYPE',
+            'PRO_CATG',
+            'PRO_TECH',
+            'PRO_TYPE',
+            'EXPTIME',
+            'WIN_BINX',
+            'WIN_BINY',
+            'DET_READ_SPEED',
+            'SLIT_UVB',
+            'SLIT_VIS',
+            'SLIT_NIR',
+            'DET_READ_TYPE',
+            'CONAD',
+            'RON',
+            'OBS_ID',
+            'OBS_NAME',
+            "NAXIS",
+            "OBJECT",
+            "INSTRUME"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -312,7 +310,7 @@ class data_organiser(object):
         import shutil
 
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
-        filteredFrames, fitsPaths, fitsNames = self.create_directory_table(pathToDirectory=self.rootDir, keys=self.keywords, filterKeys=self.filterKeywords)
+        filteredFrames, fitsPaths, fitsNames = self.create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
 
         if fitsPaths:
             # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
@@ -335,7 +333,6 @@ class data_organiser(object):
     def create_directory_table(
             self,
             pathToDirectory,
-            keys,
             filterKeys):
         """*create an astropy table based on the contents of a directory*
 
@@ -343,7 +340,6 @@ class data_organiser(object):
 
         - `log` -- logger
         - `pathToDirectory` -- path to the directory containing the FITS frames
-        - `keys` -- the keys needed to be returned for the imageFileCollection
         - `filterKeys` -- these are the keywords we want to filter on later
 
         **Return**
@@ -371,6 +367,7 @@ class data_organiser(object):
         import numpy as np
         from fundamentals.files import recursive_directory_listing
         import pandas as pd
+        from soxspipe.commonutils import keyword_lookup
 
         # GENERATE A LIST OF FITS FILE PATHS
         fitsPaths = []
@@ -399,16 +396,48 @@ class data_organiser(object):
             # print(f"No fits files found in directory `{pathToDirectory}`")
             return None, None, None
 
-        # TOP-LEVEL COLLECTION
+        # INSTRUMENT CHECK
         if recursive:
-            allFrames = ImageFileCollection(filenames=fitsPaths, keywords=keys)
+            allFrames = ImageFileCollection(filenames=fitsPaths, keywords=["instrume"])
         else:
             allFrames = ImageFileCollection(
-                location=pathToDirectory, filenames=fitsNames, keywords=keys)
+                location=pathToDirectory, filenames=fitsNames, keywords=["instrume"])
+
+        instrument = allFrames.summary["instrume"]
+        instrument = list(set(instrument))
+
+        self.instrument = None
+        if len(instrument) > 1:
+            self.log.error(f'The directory contains data from a mix of instruments. Please only provide data from either SOXS or XSH')
+            raise AssertionError
+        else:
+            self.instrument = instrument[0]
+            print(f"The instrument has been set to '{self.instrument}'")
+
+        if "XSH" in self.instrument.upper():
+            self.instrument = "XSH"
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        self.kw = keyword_lookup(
+            log=self.log,
+            instrument=self.instrument
+        ).get
+        self.keywords = ['file']
+        for k in self.keyword_lookups:
+            self.keywords.append(self.kw(k).lower())
+
+        # TOP-LEVEL COLLECTIONi
+        if recursive:
+            allFrames = ImageFileCollection(filenames=fitsPaths, keywords=self.keywords)
+        else:
+            allFrames = ImageFileCollection(
+                location=pathToDirectory, filenames=fitsNames, keywords=self.keywords)
+
         masterTable = allFrames.summary
 
         # ADD FILLED VALUES FOR MISSING CELLS
-        for fil in keys:
+        for fil in self.keywords:
             if fil in filterKeys and fil not in ["exptime"]:
 
                 try:
@@ -425,12 +454,25 @@ class data_organiser(object):
                     masterTable[fil].fill_value = "--"
         masterTable = masterTable.filled()
 
+        # FILTER OUT FRAMES WITH NO MJD
+        matches = (masterTable["mjd-obs"] == -99.99)
+        missingMJDFiles = masterTable['file'][matches]
+        if len(missingMJDFiles):
+            print("The following FITS files are missing the MJD-OBS keyword and will be ignored:\n\n")
+            print(missingMJDFiles)
+            matches = (masterTable["mjd-obs"] != -99.99)
+            masterTable = masterTable[matches]
+
+        from tabulate import tabulate
+        print(tabulate(masterTable, headers='keys', tablefmt='psql'))
+
         # SETUP A NEW COLUMN GIVING THE INT MJD THE CHILEAN NIGHT BEGAN ON
         # 12:00 NOON IN CHILE IS TYPICALLY AT 16:00 UTC (CHILE = UTC - 4)
         # SO COUNT CHILEAN OBSERVING NIGHTS AS 15:00 UTC-15:00 UTC (11am-11am)
         if "mjd-obs" in masterTable.colnames:
             chile_offset = TimeDelta(4.0 * 60 * 60, format='sec')
             night_start_offset = TimeDelta(15.0 * 60 * 60, format='sec')
+            masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
             chileTimes = Time(masterTable["mjd-obs"],
                               format='mjd', scale='utc') - chile_offset
             startNightDate = Time(masterTable["mjd-obs"],
@@ -481,7 +523,7 @@ class data_organiser(object):
             masterTable.add_index("binning")
 
         # ADD INDEXES ON ALL KEYS
-        for k in keys:
+        for k in self.keywords:
             try:
                 masterTable.add_index(k)
             except:
@@ -560,7 +602,8 @@ class data_organiser(object):
 
         sqlQuery = f"select filepath from {tableName};"
         c.execute(sqlQuery)
-        dbFiles = [r["filepath"] for r in c.fetchall()]
+
+        dbFiles = [r[0] for r in c.fetchall()]
 
         # DELETED FILES
         filesNotInDB = set(fitsPaths) - set(dbFiles)
@@ -752,7 +795,8 @@ class data_organiser(object):
         rawScienceFrames = rawScienceFrames.size().reset_index(name='counts')
 
         # MERGE DATAFRAMES
-        rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+        if len(rawScienceFrames.index):
+            rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
@@ -1506,7 +1550,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
@@ -1570,7 +1614,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
