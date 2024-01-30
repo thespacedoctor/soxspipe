@@ -485,8 +485,8 @@ class data_organiser(object):
             masterTable.add_index("night start date")
             masterTable.add_index("night start mjd")
 
-        if "eso det read speed" in masterTable.colnames:
-            masterTable["rospeed"] = np.copy(masterTable["eso det read speed"])
+        if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
+            masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
             try:
                 masterTable["rospeed"][masterTable[
                     "rospeed"] == -99.99] = '--'
@@ -511,11 +511,11 @@ class data_organiser(object):
             masterTable["table"][masterTable[
                 "table"] != 'T'] = 'F'
 
-        if "cdelt2" in masterTable.colnames:
+        if self.kw("WIN_BINX").lower() in masterTable.colnames:
             masterTable["binning"] = np.core.defchararray.add(
-                masterTable["cdelt1"].astype('int').astype('str'), "x")
+                masterTable[self.kw("WIN_BINX").lower()].astype('int').astype('str'), "x")
             masterTable["binning"] = np.core.defchararray.add(masterTable["binning"],
-                                                              masterTable["cdelt2"].astype('int').astype('str'))
+                                                              masterTable[self.kw("WIN_BINY").lower()].astype('int').astype('str'))
             masterTable["binning"][masterTable[
                 "binning"] == '-99x-99'] = '--'
             masterTable["binning"][masterTable[
@@ -660,9 +660,9 @@ class data_organiser(object):
         filteredFrames['slit'] = "--"
 
         # ADD SLIT FOR SPECTROSCOPIC DATA
-        filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "eso ins opti5 name"]
-        filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "eso ins opti4 name"]
-        filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "eso ins opti3 name"]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), self.kw("SLIT_NIR").lower()]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), self.kw("SLIT_VIS").lower()]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), self.kw("SLIT_UVB").lower()]
 
         mask = []
         for i in self.proKeywords:
