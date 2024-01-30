@@ -297,12 +297,29 @@ class create_dispersion_map(object):
             missingLinesFN = self.sofName + "_MISSED_LINES.fits"
 
         # WRITE CLIPPED LINE LIST TO FILE
-        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_px', 'R']
+        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_px', 'R', 'pixelScaleNm']
         clippedLinesTable['sigma_clipped'] = True
         clippedLinesTable['R'] = np.nan
+        clippedLinesTable['pixelScaleNm'] = np.nan
 
         goodAndClippedLines = pd.concat([clippedLinesTable[keepColumns], goodLinesTable[keepColumns]], ignore_index=True)
         goodLinesTable = goodLinesTable[keepColumns]
+
+        # GET UNIQUE VALUES IN COLUMN
+        # uniqueOrders = goodAndClippedLines['order'].unique()
+        # uniqueOrders = np.sort(uniqueOrders)
+        # for o in uniqueOrders:
+        #     # FILTER DATA FRAME
+        #     # FIRST CREATE THE MASK
+        #     mask = (goodAndClippedLines['order'] == o)
+        #     pixelScaleAng = goodAndClippedLines.loc[mask]['pixelScaleNm'].mean() * 10.
+        #     pixelScaleAng4 = pixelScaleAng * 4
+        #     # INVERTED FILTER
+        #     print("| ", o, "| ", f"{pixelScaleAng:0.2f}", "| ", f"{pixelScaleAng4:0.2f}", "| ")
+
+        # sys.exit(0)
+
+        # xpd-update-filter-dataframe-column-values
 
         # SORT BY COLUMN NAME
         goodAndClippedLines.sort_values(['order', 'wavelength', 'slit_index'], inplace=True)
@@ -412,6 +429,8 @@ class create_dispersion_map(object):
 
         # READ THE FILE
         home = expanduser("~")
+
+        print(dp)
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
@@ -815,8 +834,8 @@ class create_dispersion_map(object):
             orderPixelTable["fit_x_low"] = orderPixelTableLow["fit_x"]
             orderPixelTable["fit_y_low"] = orderPixelTableLow["fit_y"]
 
-            orderPixelTable["pixelScale"] = nmRange / np.power(np.power(orderPixelTable["fit_x_high"] - orderPixelTable["fit_x_low"], 2) + np.power(orderPixelTable["fit_y_high"] - orderPixelTable["fit_y_low"], 2), 0.5)
-            orderPixelTable["delta_wavelength"] = orderPixelTable["pixelScale"] * orderPixelTable["fwhm_px"]
+            orderPixelTable["pixelScaleNm"] = nmRange / np.power(np.power(orderPixelTable["fit_x_high"] - orderPixelTable["fit_x_low"], 2) + np.power(orderPixelTable["fit_y_high"] - orderPixelTable["fit_y_low"], 2), 0.5)
+            orderPixelTable["delta_wavelength"] = orderPixelTable["pixelScaleNm"] * orderPixelTable["fwhm_px"]
             orderPixelTable["R"] = orderPixelTable["wavelength"] / orderPixelTable["delta_wavelength"]
 
             # REMOVE COLUMN FROM DATA FRAME
