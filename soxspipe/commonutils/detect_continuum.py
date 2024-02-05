@@ -901,7 +901,8 @@ class detect_continuum(_base_detect):
         arm = self.arm
 
         # a = plt.figure(figsize=(40, 15))
-        if arm == "UVB" or self.inst == "SOXS":
+
+        if arm == "UVB" or (self.inst == "SOXS" and arm == "NIR"):
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
             # CREATE THE GID OF AXES
             gs = fig.add_gridspec(6, 4)

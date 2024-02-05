@@ -117,10 +117,10 @@ class create_dispersion_map(object):
         logging.getLogger().setLevel(logging.INFO + 5)
 
         # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
+        if self.inst == "SOXS" and self.arm == "NIR":
             self.axisA = "y"
             self.axisB = "x"
-        elif self.inst == "XSHOOTER":
+        else:
             self.axisA = "x"
             self.axisB = "y"
 
@@ -442,8 +442,9 @@ class create_dispersion_map(object):
         # FITS TO PYTHON INDEXING
         # PHOTUTILS CENTRE OF BOTTOM LEFT PIXEL IS (0,0) BUT FOR WCS IT IS (1,1)
         # AND FOR PYTHON IT IS ALSO (0,0)
-        orderPixelTable["detector_x"] -= 1.0
-        orderPixelTable["detector_y"] -= 1.0
+        if self.inst != "SOXS":
+            orderPixelTable["detector_x"] -= 1.0
+            orderPixelTable["detector_y"] -= 1.0
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -1592,13 +1593,12 @@ class create_dispersion_map(object):
         dp = self.detectorParams
 
         # XSH
-        if self.inst == "XSHOOTER":
-            rotateImage = 90
-            flipImage = 1
-        else:
-            # SOXS
+        if self.inst == "SOXS" and self.arm == "NIR":
             rotateImage = 0
             flipImage = 0
+        else:
+            rotateImage = 90
+            flipImage = 1
 
         gridLinePixelTable = False
 
@@ -1627,8 +1627,7 @@ class create_dispersion_map(object):
         mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
 
         # a = plt.figure(figsize=(40, 15))
-
-        if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
+        if arm == "UVB" or (self.inst == "SOXS" and arm == "NIR"):
             fig = plt.figure(figsize=(6, 16.5), constrained_layout=True)
             # CREATE THE GRID OF AXES
             gs = fig.add_gridspec(5, 4)
