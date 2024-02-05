@@ -84,16 +84,20 @@ def filenamer(
         binning = ""
 
     romode = ""
+
     if kw("DET_READ_SPEED") in frame.header:
-        if frame.header[kw("DET_READ_SPEED")] == 1:
-            romode = "_rospeed1"
-        elif "100k" in frame.header[kw("DET_READ_SPEED")].lower():
-            romode = "_slow"
-        elif "400k" in frame.header[kw("DET_READ_SPEED")].lower():
-            romode = "_fast"
+        if frame.header[kw("INSTRUME")].strip().upper() == "SOXS":
+            romode = "_ro" + str(frame.header[kw("DET_READ_SPEED")])
         else:
-            self.log.print(frame.header[kw("DET_READ_SPEED")])
-            raise LookupError(f"Cound not parse readout mode")
+            if frame.header[kw("DET_READ_SPEED")] == 1:
+                romode = "_rospeed1"
+            elif "100k" in frame.header[kw("DET_READ_SPEED")].lower():
+                romode = "_slow"
+            elif "400k" in frame.header[kw("DET_READ_SPEED")].lower():
+                romode = "_fast"
+            else:
+                log.print(frame.header[kw("DET_READ_SPEED")])
+                raise LookupError(f"Cound not parse readout mode")
 
     filename = f"{dateStamp}_{arm}{binning}{romode}"
 
