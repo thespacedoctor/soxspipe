@@ -1070,6 +1070,11 @@ class create_dispersion_map(object):
                 slitDeg=slitDeg,
                 writeQCs=False)
 
+            # DO SOME CLIPPING ON THE PROFILES OF THE DETECTED LINES
+            from tabulate import tabulate
+            print(tabulate(orderPixelTable.head(10), headers='keys', tablefmt='psql'))
+            print(orderPixelTable.columns)
+
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
 
