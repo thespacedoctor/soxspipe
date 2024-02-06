@@ -159,17 +159,19 @@ logging settings:
     handlers:
         console:
             class: logging.StreamHandler
-            level: DEBUG
+            level: WARNING
             formatter: console_style
             stream: ext://sys.stdout
         file:
             class: logging.handlers.GroupWriteRotatingFileHandler
             level: WARNING
             formatter: file_style
-            filename: ~/.config/soxspipe/soxspipe.log
+            filename: /Users/Dave/.config/soxspipe/soxspipe.log
             mode: w+
             maxBytes: 102400
             backupCount: 1
+            delay: True
     root:
-        level: WARNING
+        level: INFO
         handlers: [file,console]
+
