@@ -403,8 +403,11 @@ class data_organiser(object):
             allFrames = ImageFileCollection(
                 location=pathToDirectory, filenames=fitsNames, keywords=["instrume"])
 
-        instrument = allFrames.summary["instrume"]
+        tmpTable = allFrames.summary
+        tmpTable['instrume'].fill_value = "--"
+        instrument = tmpTable['instrume'].filled()
         instrument = list(set(instrument))
+        instrument.remove("--")
 
         self.instrument = None
         if len(instrument) > 1:
