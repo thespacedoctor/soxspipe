@@ -141,11 +141,13 @@ class data_organiser(object):
             "lamp,dorderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
             "lamp,qorderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
             "lamp,flat": [{"tech": None, "catg": None, "recipe": "mflat"}],
+            "flat,lamp": [{"tech": ["echelle,slit"], "catg": None, "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "catg": None, "recipe": "order_centres"}],
             "lamp,dflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
             "lamp,qflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}],
+            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "catg": None, "recipe": "disp_sol"}],
             "object": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
             "std,flux": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
+            "std": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
             "std,telluric": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
         }
 
@@ -185,7 +187,7 @@ class data_organiser(object):
                                'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
-        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "LAMP,WAVE", "STD,FLUX", "STD,TELLURIC", "OBJECT"]
+        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
 
         # THIS IS THE ORDER THE RECIPES NEED TO BE RUN IN (MAKE SURE THE REDUCTION SCRIPT HAS RECIPES IN THE CORRECT ORDER)
         self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare"]
@@ -407,7 +409,8 @@ class data_organiser(object):
         tmpTable['instrume'].fill_value = "--"
         instrument = tmpTable['instrume'].filled()
         instrument = list(set(instrument))
-        instrument.remove("--")
+        if "--" in instrument:
+            instrument.remove("--")
 
         self.instrument = None
         if len(instrument) > 1:
@@ -458,13 +461,12 @@ class data_organiser(object):
         masterTable = masterTable.filled()
 
         # FILTER OUT FRAMES WITH NO MJD
-        matches = (masterTable["mjd-obs"] == -99.99)
+        matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--"))
         missingMJDFiles = masterTable['file'][matches]
         if len(missingMJDFiles):
-            print("The following FITS files are missing the MJD-OBS keyword and will be ignored:\n\n")
+            print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
             print(missingMJDFiles)
-            matches = (masterTable["mjd-obs"] != -99.99)
-            masterTable = masterTable[matches]
+            masterTable = masterTable[~matches]
 
         from tabulate import tabulate
         print(tabulate(masterTable, headers='keys', tablefmt='psql'))
@@ -872,6 +874,11 @@ class data_organiser(object):
             mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
         filteredFrames = filteredFrames.loc[mask]
 
+        # DELETE
+        if "FLAT" in series["eso dpr type"].upper():
+            from tabulate import tabulate
+            print(tabulate(filteredFrames, headers='keys', tablefmt='psql'))
+
         # CHECK TECH
         if self.typeMap[series["eso dpr type"].lower()][0]["tech"]:
             match = False
@@ -886,6 +893,11 @@ class data_organiser(object):
                 return series
         else:
             seriesRecipe = self.typeMap[series["eso dpr type"].lower()][0]["recipe"]
+
+        # DELETE
+        if "FLAT" in series["eso dpr type"].upper():
+            from tabulate import tabulate
+            print(tabulate(filteredFrames, headers='keys', tablefmt='psql'))
 
         # GENEREATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
         if series["binning"] != "--":
@@ -908,10 +920,15 @@ class data_organiser(object):
 
         for k, v in matchDict.items():
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
-                mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT"]))
+                mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP"]))
             else:
                 mask = (filteredFrames[k].isin([v]))
             filteredFrames = filteredFrames.loc[mask]
+
+        # DELETE
+        if "FLAT" in series["eso dpr type"].upper():
+            from tabulate import tabulate
+            print(tabulate(filteredFrames, headers='keys', tablefmt='psql'))
 
         # INITIAL CALIBRATIONS FILTERING
         if series['eso seq arm'].upper() in ["UVB", "VIS"]:
@@ -957,6 +974,7 @@ class data_organiser(object):
         # NIGHT START
         # YYYY.MM.DDThh.mm.xxx
         if series["night start mjd"]:
+
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
                 filteredFrames = filteredFrames.loc[mask]
