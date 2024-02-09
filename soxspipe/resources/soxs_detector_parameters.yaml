@@ -33,6 +33,7 @@ VIS:
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 11 #arcsec
+  line-atlas: ThAr.fits
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -62,3 +63,4 @@ NIR:
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 11 #arcsec
+  line-atlas: ArHgNeXe.fits

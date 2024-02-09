@@ -33,6 +33,7 @@ UVB:
   spectral format table: SPECTRAL_FORMAT_TAB_UVB.fits
   slit_length: 11 #arcsec
   skylines: SKYLINES.fits
+  line-atlas: ThAr.fits
             
 VIS:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -69,6 +70,7 @@ VIS:
   spectral format table: SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 11 #arcsec
   skylines: SKYLINES.fits
+  line-atlas: ThAr.fits
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -99,4 +101,5 @@ NIR:
   spectral format table: SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 11 #arcsec
   skylines: SKYLINES.fits
+  line-atlas: ArHgNeXe.fits
 
