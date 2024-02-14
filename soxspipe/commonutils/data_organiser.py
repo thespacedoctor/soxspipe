@@ -145,10 +145,11 @@ class data_organiser(object):
             "lamp,dflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
             "lamp,qflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
             "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "catg": None, "recipe": "disp_sol"}],
-            "object": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
-            "std,flux": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
-            "std": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
-            "std,telluric": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
+            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "catg": None, "recipe": "disp_sol"}],
+            "object": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "catg": None, "recipe": "offset"}],
+            "std,flux": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "catg": None, "recipe": "offset"}],
+            "std": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "catg": None, "recipe": "offset"}],
+            "std,telluric": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "catg": None, "recipe": "offset"}]
         }
 
         # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULTS FROM REDUCING EACH SOFs
@@ -175,7 +176,7 @@ class data_organiser(object):
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_IMAGE", "PIXELS", ".fits", "_IMAGE.fits", "soxs-spatial-solution"]
             ],
             "stare": [
-                ["REDUCED", "ECHELLE,SLIT", "OBJECT_TAB", "TABLE", None, None, "soxs-stare"]
+                ["REDUCED", "ECHELLE,SLIT,STARE", "OBJECT_TAB", "TABLE", None, None, "soxs-stare"]
             ],
         }
 
@@ -187,10 +188,10 @@ class data_organiser(object):
                                'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
-        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
+        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
 
         # THIS IS THE ORDER THE RECIPES NEED TO BE RUN IN (MAKE SURE THE REDUCTION SCRIPT HAS RECIPES IN THE CORRECT ORDER)
-        self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare"]
+        self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
 
         # DECOMPRESS .Z FILES
         from soxspipe.commonutils import uncompress
@@ -467,9 +468,6 @@ class data_organiser(object):
             print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
             print(missingMJDFiles)
             masterTable = masterTable[~matches]
-
-        from tabulate import tabulate
-        print(tabulate(masterTable, headers='keys', tablefmt='psql'))
 
         # SETUP A NEW COLUMN GIVING THE INT MJD THE CHILEAN NIGHT BEGAN ON
         # 12:00 NOON IN CHILE IS TYPICALLY AT 16:00 UTC (CHILE = UTC - 4)
@@ -874,11 +872,6 @@ class data_organiser(object):
             mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
         filteredFrames = filteredFrames.loc[mask]
 
-        # DELETE
-        if "FLAT" in series["eso dpr type"].upper():
-            from tabulate import tabulate
-            print(tabulate(filteredFrames, headers='keys', tablefmt='psql'))
-
         # CHECK TECH
         if self.typeMap[series["eso dpr type"].lower()][0]["tech"]:
             match = False
@@ -894,11 +887,6 @@ class data_organiser(object):
         else:
             seriesRecipe = self.typeMap[series["eso dpr type"].lower()][0]["recipe"]
 
-        # DELETE
-        if "FLAT" in series["eso dpr type"].upper():
-            from tabulate import tabulate
-            print(tabulate(filteredFrames, headers='keys', tablefmt='psql'))
-
         # GENEREATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
         if series["binning"] != "--":
             matchDict['binning'] = series["binning"]
@@ -907,8 +895,12 @@ class data_organiser(object):
             matchDict['rospeed'] = series["rospeed"]
             sofName.append(series["rospeed"])
         if series["eso dpr type"].lower() in self.typeMap:
+
             matchDict['eso dpr type'] = series["eso dpr type"]
-            sofName.append(self.typeMap[series["eso dpr type"].lower()][0]["recipe"].replace("_centres", "_locations"))
+            for i in self.typeMap[series["eso dpr type"].lower()]:
+                if i["recipe"] == seriesRecipe:
+                    sofName.append(i["recipe"].replace("_centres", "_locations"))
+
             if "DORDER" in series["eso dpr type"].upper():
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
@@ -924,11 +916,6 @@ class data_organiser(object):
             else:
                 mask = (filteredFrames[k].isin([v]))
             filteredFrames = filteredFrames.loc[mask]
-
-        # DELETE
-        if "FLAT" in series["eso dpr type"].upper():
-            from tabulate import tabulate
-            print(tabulate(filteredFrames, headers='keys', tablefmt='psql'))
 
         # INITIAL CALIBRATIONS FILTERING
         if series['eso seq arm'].upper() in ["UVB", "VIS"]:
