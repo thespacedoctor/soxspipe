@@ -560,7 +560,8 @@ class data_organiser(object):
 
         sqlQuery = f"select filepath from {tableName};"
         c.execute(sqlQuery)
-        dbFiles = [r["filepath"] for r in c.fetchall()]
+
+        dbFiles = [r[0] for r in c.fetchall()]
 
         # DELETED FILES
         filesNotInDB = set(fitsPaths) - set(dbFiles)

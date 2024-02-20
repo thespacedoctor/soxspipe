@@ -66,6 +66,13 @@ class test_xsh_data_organiser(unittest.TestCase):
         do.prepare()
         do.session_list()
 
+        from soxspipe.commonutils import reducer
+        this = reducer(
+            log=log,
+            settings=settings,
+            workspaceDirectory=pathToOutputDir + "01_EG274"
+        )
+
     @pytest.mark.full
     def test_soxs_data_organiser_function_exception(self):
 
