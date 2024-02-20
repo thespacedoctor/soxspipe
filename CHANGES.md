@@ -1,6 +1,12 @@
 
 # Release Notes  
 
+## v0.10.0 - February 20, 2024
+
+* **FEATURE**: a new 'reducer' module and terminal command replace the old `_reduce_all/sh` script. This allows the data-organiser to dynamically self-correct if a recipe fails.
+* **ENHANCEMENT:** robustness fixes and updates.
+* **FIXED**: The bad-pixel mask from the noise map of the mbias frame is now injected mbias product. The Xshooter UVB electron trap is now clearly visible in the master bias quality extension.
+
 ## v0.9.9 - January 24, 2024
 
 * **FIXED**: bug fix logger
@@ -36,7 +42,7 @@
 * **REFACTOR:** bad-pixel values set to 0 in data extensions of products
 * **REFACTOR:** nans have been replaced by zero in FITS image product
 * **FIXED**: a mismatch between daofind results and the original input pixel table was causing dispersion solution to break (a recent bug introduced during code optimisations)
-* **FIXED**: the internal soxspipe logger was being interfered with by astropy so that logs were somtimes getting redirected to the wrong place
+* **FIXED**: the internal soxspipe logger was being interfered with by astropy so that logs were sometimes getting redirected to the wrong place
 
 ## v0.9.0 - October 11, 2023
 

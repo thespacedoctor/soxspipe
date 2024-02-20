@@ -787,7 +787,7 @@ def read_spectral_format(
             header = hdul[0].header
 
         orderPixelRanges = []
-        if header[kw("INSTRUME")] == "SOXS":
+        if kw("INSTRUME") in header and header[kw("INSTRUME")] == "SOXS":
             axis = "x"
             rowCol = "columns"
         else:
