@@ -185,8 +185,6 @@ class create_dispersion_map(object):
 
             # SORT BY COLUMN NAME
             orderPixelTable.sort_values(['wavelength'], inplace=True)
-            from tabulate import tabulate
-            print(tabulate(orderPixelTable, headers='keys', tablefmt='psql'))
 
             boost = False
             # DETECT THE LINES ON THE PINHOLE FRAME AND
@@ -566,7 +564,7 @@ class create_dispersion_map(object):
 
         try:
             daofind = DAOStarFinder(
-                fwhm=2.0, threshold=15 * std, roundlo=-2.0, roundhi=2.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
+                fwhm=2.5, threshold=15 * std, roundlo=-2.0, roundhi=2.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
             sources = daofind(stamp.data, mask=stamp.mask)
@@ -1779,7 +1777,7 @@ class create_dispersion_map(object):
         }).to_frame().T], ignore_index=True)
 
         plt.tight_layout()
-        plt.show()
+        # plt.show()
         plt.savefig(filePath, dpi=720)
         plt.close()
 
@@ -1928,33 +1926,10 @@ class create_dispersion_map(object):
         lineAtlas = Table.read(lineAtlas, format='fits')
         lineAtlas = lineAtlas.to_pandas()
 
-        from tabulate import tabulate
-        print(tabulate(lineAtlas.head(10), headers='keys', tablefmt='psql'))
-
-        lineAtlas['sigma_sq'] = 1.e4 / lineAtlas['wave']**2
-        lineAtlas['factor'] = 1 + (5.792105e-2 / (238.0185 - lineAtlas['sigma_sq'])) + (1.67918e-3 / (57.362 - lineAtlas['sigma_sq']))
-
-        # CONVERT FROM VACUUM TO AIR
-        mask = (lineAtlas['wave'] >= 2000)
-        lineAtlas.loc[mask]['factor'] = lineAtlas.loc[mask]['factor'] * lineAtlas.loc[mask]['wave']
-        lineAtlas.loc[~mask]['factor'] = lineAtlas.loc[~mask]['wave']
-        lineAtlas['wave'] = lineAtlas['wave'] / lineAtlas['factor']
-
-        # CONVERT FROM ANGSTROM TO NM
-        lineAtlas['wave'] /= 10.
-
-        from tabulate import tabulate
-        print(tabulate(lineAtlas, headers='keys', tablefmt='psql'))
-
         # REMOVE COLUMN FROM DATA FRAME
-        lineAtlas.drop(columns=['factor', 'sigma_sq'], inplace=True)
         lineAtlas['ion'] = lineAtlas['ion'].str.decode('ascii')
-        lineAtlas['Source'] = lineAtlas['Source'].str.decode('ascii')
+        lineAtlas['source'] = lineAtlas['source'].str.decode('ascii')
         lineAtlas['wave'] = lineAtlas['wave'].round(5)
-
-        lineAtlas.to_csv("/Users/Dave/desktop/ArHgNeXe2.csv", index=False)
-
-        sys.exit(0)
 
         dfCollection = []
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
@@ -1970,12 +1945,20 @@ class create_dispersion_map(object):
             wave = list(filteredDf["wave"].unique())
 
             if not self.firstGuessMap:
+                slit_positions = [0.0]
+                slit_indexes = [4]
+            else:
+                slit_positions = self.uniqueSlitPos
+                slit_indexes = list(range(0, len(self.uniqueSlitPos), 1))
+
+            for si, sp in zip(slit_indexes, slit_positions):
                 myDict = {
                     "order": [o] * len(wave),
                     "wavelength": wave,
-                    "slit_position": [0.0] * len(wave),
-                    "slit_index": [4] * len(wave)
+                    "slit_position": [sp] * len(wave),
+                    "slit_index": [si] * len(wave)
                 }
+
                 orderPixelTable = pd.DataFrame(myDict)
                 orderPixelTable = dispersion_map_to_pixel_arrays(
                     log=self.log,
