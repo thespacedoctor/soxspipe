@@ -98,6 +98,13 @@ class data_organiser(object):
             'SLIT_UVB',
             'SLIT_VIS',
             'SLIT_NIR',
+            'LAMP1',
+            'LAMP2',
+            'LAMP3',
+            'LAMP4',
+            'LAMP5',
+            'LAMP6',
+            'LAMP7',
             'DET_READ_TYPE',
             'CONAD',
             'RON',
@@ -105,6 +112,7 @@ class data_organiser(object):
             'OBS_NAME',
             "NAXIS",
             "OBJECT",
+            "TPL_ID",
             "INSTRUME"
         ]
 
@@ -124,11 +132,13 @@ class data_organiser(object):
             'binning',
             'rospeed',
             'slit',
+            'lamp',
             'night start date',
             'night start mjd',
             'mjd-obs',
             'date-obs',
             'object',
+            "template",
             "instrume"
         ]
 
@@ -185,7 +195,7 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
@@ -507,6 +517,9 @@ class data_organiser(object):
                 "rospeed"] == '1pt/100k/hg/AFC'] = 'slow'
             masterTable.add_index("rospeed")
 
+        if self.kw("TPL_ID").lower() in masterTable.colnames:
+            masterTable["template"] = np.copy(masterTable[self.kw("TPL_ID").lower()])
+
         if "naxis" in masterTable.colnames:
             masterTable["table"] = np.copy(masterTable["naxis"]).astype(str)
             masterTable["table"][masterTable[
@@ -661,11 +674,15 @@ class data_organiser(object):
         filterKeywordsReduced = self.filterKeywords[:]
 
         filteredFrames['slit'] = "--"
+        filteredFrames['lamp'] = "--"
 
         # ADD SLIT FOR SPECTROSCOPIC DATA
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), self.kw("SLIT_NIR").lower()]
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), self.kw("SLIT_VIS").lower()]
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), self.kw("SLIT_UVB").lower()]
+
+        for i in [1, 2, 3, 4, 5, 6, 7]:
+            filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"] = filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), self.kw(f"LAMP{i}").lower()]
 
         mask = []
         for i in self.proKeywords:
