@@ -148,6 +148,7 @@ class create_dispersion_map(object):
         from astropy.table import Table
         import numpy as np
         from astropy.stats import sigma_clipped_stats
+        from astropy.stats import sigma_clip
 
         bootstrap_dispersion_solution = False
 
@@ -183,6 +184,7 @@ class create_dispersion_map(object):
             log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         boost = True
+        recentre = True
         while boost:
 
             # SORT BY COLUMN NAME
@@ -193,10 +195,12 @@ class create_dispersion_map(object):
             # ADD OBSERVED LINES TO DATAFRAME
             iteration = 0
             self.log.print(f"\n# FINDING PINHOLE ARC-LINES ON IMAGE")
+            iraf = False
             while iteration < 2:
                 iteration += 1
                 orderPixelTable = orderPixelTable.apply(
-                    self.detect_pinhole_arc_line, axis=1)
+                    self.detect_pinhole_arc_line, axis=1, iraf=iraf)
+                iraf = True
 
                 if 'detector_x_shifted' in orderPixelTable.columns:
                     orderPixelTable['x_diff'] = orderPixelTable['detector_x_shifted'] - orderPixelTable['observed_x']
@@ -209,7 +213,16 @@ class create_dispersion_map(object):
                     orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x'] - orderPixelTable['x_diff'].mean()
                     orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y'] - orderPixelTable['y_diff'].mean()
 
+                orderPixelTable['xy_diff'] = orderPixelTable['x_diff'].pow(2) + orderPixelTable['y_diff'].pow(2)
+                orderPixelTable['xy_diff'] = orderPixelTable['xy_diff'].pow(0.5)
+
                 self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
+
+            # DO A QUICK CLIP ON VERY DEVIANT LINES
+            masked_residuals = sigma_clip(
+                orderPixelTable["xy_diff"], sigma_lower=12, sigma_upper=12, maxiters=1, cenfunc='median', stdfunc='mad_std')
+            orderPixelTable["sigma_clipped_xy_diff"] = masked_residuals.mask
+            orderPixelTable.loc[(orderPixelTable['xy_diff'] == True), "observed_x"] = np.nan
 
             # COLLECT MISSING LINES
             mask = (orderPixelTable['observed_x'].isnull())
@@ -528,11 +541,13 @@ class create_dispersion_map(object):
 
     def detect_pinhole_arc_line(
             self,
-            predictedLine):
+            predictedLine,
+            iraf=True):
         """*detect the observed position of an arc-line given the predicted pixel positions*
 
         **Key Arguments:**
             - ``predictedLine`` -- single predicted line coordinates from predicted line-list
+            - ``iraf`` -- use IRAF star finder to generate a FWHM
 
         **Return:**
             - ``predictedLine`` -- the line with the observed pixel coordinates appended (if detected, otherwise nan)
@@ -610,19 +625,19 @@ class create_dispersion_map(object):
                 stamp_y = sources[0]['ycentroid']
                 selectedSource = sources[0]
 
-            try:
-                # Rerun detection with IRAFStarFinder
-                iraf_find = IRAFStarFinder(
-                    fwhm=3., threshold=1 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=True, xycoords=[(stamp_x, stamp_y)])
-                iraf_sources = iraf_find(stamp)
-                fwhm = iraf_sources['fwhm'][0]
-            except Exception as e:
-                fwhm = np.nan
-                print("BALLS")
-                # print(np.shape(stamp))
-                # print(stamp_x,stamp_y)
-                # print(e)
-                pass
+            if iraf:
+                try:
+                    # Rerun detection with IRAFStarFinder
+                    iraf_find = IRAFStarFinder(
+                        fwhm=3., threshold=1 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=True, xycoords=[(stamp_x, stamp_y)])
+                    iraf_sources = iraf_find(stamp)
+                    fwhm = iraf_sources['fwhm'][0]
+                except Exception as e:
+                    fwhm = np.nan
+                    # print(np.shape(stamp))
+                    # print(stamp_x,stamp_y)
+                    # print(e)
+                    pass
 
             if 1 == 0 and ran:
                 plt.scatter(0, 0, marker='x', s=30)
@@ -648,7 +663,8 @@ class create_dispersion_map(object):
 
         predictedLine['observed_x'] = observed_x
         predictedLine['observed_y'] = observed_y
-        predictedLine['fwhm_px'] = fwhm
+        if iraf:
+            predictedLine['fwhm_px'] = fwhm
 
         self.log.debug('completed the ``detect_pinhole_arc_line`` method')
         return predictedLine
@@ -1847,6 +1863,8 @@ class create_dispersion_map(object):
         bottomrow = fig.add_subplot(gs[4:6, :])
         # bottomright = fig.add_subplot(gs[4:, 2:])
 
+        orderPixelTable.loc[(orderPixelTable['fwhm_px'].isnull()), "sigma_clipped"] = True
+
         from astropy.stats import sigma_clip
         # SIGMA-CLIP THE DATA
         masked_residuals = sigma_clip(
@@ -1856,9 +1874,9 @@ class create_dispersion_map(object):
 
         # SIGMA-CLIP THE DATA
         masked_residuals = sigma_clip(
-            orderPixelTable["npix"], sigma_lower=5000000, sigma_upper=5000000, maxiters=1, cenfunc='median', stdfunc='mad_std')
-        orderPixelTable["sigma_clipped_npix"] = masked_residuals.mask
-        orderPixelTable.loc[(orderPixelTable['sigma_clipped_npix'] == True), "sigma_clipped"] = True
+            orderPixelTable["xy_diff"], sigma_lower=100000, sigma_upper=1000000, maxiters=1, cenfunc='median', stdfunc='mad_std')
+        orderPixelTable["sigma_clipped_xy_diff"] = masked_residuals.mask
+        orderPixelTable.loc[(orderPixelTable['sigma_clipped_xy_diff'] == True), "sigma_clipped"] = True
 
         # # SIGMA-CLIP THE DATA
         # masked_residuals = sigma_clip(
@@ -1933,26 +1951,26 @@ class create_dispersion_map(object):
         #     label="clipped pinhole lines")
 
         midrow.scatter(
-            x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["roundness2"],  # numpy array of y-points
+            x=orderPixelTable["x_diff"],  # numpy array of x-points
+            y=orderPixelTable["y_diff"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
             alpha=0.6,
-            label="sharpness")
-        midrow.set_ylabel(f"Pinhole Npix", fontsize=12)
-        midrow.set_xlabel(f"wavelength (nm)", fontsize=12)
+            label="measure shift from expected position")
+        midrow.set_ylabel(f"y-shift (px)", fontsize=12)
+        midrow.set_xlabel(f"x-shift (px)", fontsize=12)
 
-        # midrow.scatter(
-        #     x=orderPixelTable[(orderPixelTable["sigma_clipped_npix"] == True)]["wavelength"],  # numpy array of x-points
-        #     y=orderPixelTable[(orderPixelTable["sigma_clipped_npix"] == True)]["npix"],  # numpy array of y-points
-        #     s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
-        #     c="red",    # color or sequence of color, optional, default
-        #     marker='x',
-        #     alpha=0.6,
-        #     label="clipped pinhole lines")
+        midrow.scatter(
+            x=orderPixelTable[(orderPixelTable["sigma_clipped_xy_diff"] == True)]["x_diff"],  # numpy array of x-points
+            y=orderPixelTable[(orderPixelTable["sigma_clipped_xy_diff"] == True)]["y_diff"],  # numpy array of y-points
+            s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
+            c="red",    # color or sequence of color, optional, default
+            marker='x',
+            alpha=0.6,
+            label="clipped pinhole lines")
 
-        # midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
         bottomrow.scatter(
             x=orderPixelTable["wavelength"],  # numpy array of x-points
