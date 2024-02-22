@@ -104,6 +104,8 @@ class create_dispersion_map(object):
             self.recipeName = "soxs-disp-solution"
             self.recipeSettings = self.settings["soxs-disp-solution"]
 
+        self.recipeSettings["pinhole-set-max-allowed-clipped"] = 80
+
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
             log=log,
@@ -147,7 +149,7 @@ class create_dispersion_map(object):
         import numpy as np
         from astropy.stats import sigma_clipped_stats
 
-        bootstrap_dispersion_solution = True
+        bootstrap_dispersion_solution = False
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -219,7 +221,7 @@ class create_dispersion_map(object):
 
             # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
             missingLineThreshold = 1
-            mask = (lineGroups['count'] > missingLineThreshold)
+            mask = (lineGroups['count'] >= missingLineThreshold)
             orderPixelTable["dropped"] = False
             lineGroups = lineGroups.loc[mask]
             setsToDrop = lineGroups[['wavelength', 'order']]
@@ -319,7 +321,10 @@ class create_dispersion_map(object):
         clippedLinesTable['R'] = np.nan
         clippedLinesTable['pixelScaleNm'] = np.nan
 
-        goodAndClippedLines = pd.concat([clippedLinesTable[keepColumns], goodLinesTable[keepColumns]], ignore_index=True)
+        if len(clippedLinesTable.index):
+            goodAndClippedLines = pd.concat([clippedLinesTable[keepColumns], goodLinesTable[keepColumns]], ignore_index=True)
+        else:
+            goodAndClippedLines = goodLinesTable[keepColumns]
         goodLinesTable = goodLinesTable[keepColumns]
 
         # GET UNIQUE VALUES IN COLUMN
@@ -559,15 +564,16 @@ class create_dispersion_map(object):
 
         # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
         stamp = np.ma.array(stamp.data, mask=stamp.mask)
-        # USE DAOStarFinder TO FIND LINES WITH 2D GUASSIAN FITTING
+        # USE DAOStarFinder TO FIND LINES WITH 2D GAUSSIAN FITTING
         mean, median, std = sigma_clipped_stats(stamp, sigma=3.0, stdfunc="mad_std", cenfunc="median")
 
         try:
+            # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
             daofind = DAOStarFinder(
-                fwhm=2.5, threshold=15 * std, roundlo=-2.0, roundhi=2.0, sharplo=0.0, sharphi=2.0, exclude_border=True)
+                fwhm=3., threshold=1 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
-            sources = daofind(stamp.data, mask=stamp.mask)
+            sources = daofind(stamp.data - median, mask=stamp.mask)
         except Exception as e:
             sources = None
 
@@ -607,11 +613,12 @@ class create_dispersion_map(object):
             try:
                 # Rerun detection with IRAFStarFinder
                 iraf_find = IRAFStarFinder(
-                    fwhm=2.5, threshold=1.3 * std, roundlo=-5.0, roundhi=5.0, sharplo=0.0, sharphi=2.0, exclude_border=True, xycoords=[(stamp_x, stamp_y)])
+                    fwhm=3., threshold=1 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=True, xycoords=[(stamp_x, stamp_y)])
                 iraf_sources = iraf_find(stamp)
                 fwhm = iraf_sources['fwhm'][0]
             except Exception as e:
                 fwhm = np.nan
+                print("BALLS")
                 # print(np.shape(stamp))
                 # print(stamp_x,stamp_y)
                 # print(e)
@@ -1058,6 +1065,7 @@ class create_dispersion_map(object):
                          (wavelengthDegx + 1) * (slitDegx + 1))
         ycoeff = np.ones((orderDegy + 1) *
                          (wavelengthDegy + 1) * (slitDegy + 1))
+        orderPixelTable['sigma_clipped'] = False
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
             observed_x = orderPixelTable["observed_x"].to_numpy()
@@ -1087,8 +1095,14 @@ class create_dispersion_map(object):
                 writeQCs=False)
 
             # DO SOME CLIPPING ON THE PROFILES OF THE DETECTED LINES
-            # self._clip_on_measured_line_metrics(orderPixelTable)
-            # sys.exit(0)
+            if iteration == 1:
+                orderPixelTable = self._clip_on_measured_line_metrics(orderPixelTable)
+
+            # COUNT THE CLIPPED LINES
+            mask = (orderPixelTable['sigma_clipped'] == True)
+            allClippedLines.append(orderPixelTable.loc[mask])
+            mask = (orderPixelTable['sigma_clipped'] == True)
+            orderPixelTable = orderPixelTable.loc[~mask]
 
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
@@ -1106,8 +1120,8 @@ class create_dispersion_map(object):
             lineGroups = totalAllClippedLines.groupby(['wavelength', 'order'])
             lineGroups = lineGroups.size().to_frame(name='count').reset_index()
             # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
-            missingLineThreshold = 3
-            mask = (lineGroups['count'] > missingLineThreshold)
+            missingLineThreshold = self.recipeSettings["pinhole-set-max-allowed-clipped"]
+            mask = (lineGroups['count'] >= missingLineThreshold)
             orderPixelTable["dropped"] = False
             lineGroups = lineGroups.loc[mask]
             setsToDrop = lineGroups[['wavelength', 'order']]
@@ -1815,7 +1829,7 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``_clip_on_measured_line_metrics`` method')
 
         from tabulate import tabulate
-        print(tabulate(orderPixelTable.head(50), headers='keys', tablefmt='psql'))
+
         import matplotlib.pyplot as plt
         from astropy.stats import sigma_clip
 
@@ -1833,6 +1847,31 @@ class create_dispersion_map(object):
         bottomrow = fig.add_subplot(gs[4:6, :])
         # bottomright = fig.add_subplot(gs[4:, 2:])
 
+        from astropy.stats import sigma_clip
+        # SIGMA-CLIP THE DATA
+        masked_residuals = sigma_clip(
+            orderPixelTable["fwhm_px"], sigma_lower=5, sigma_upper=5, maxiters=5, cenfunc='median', stdfunc='mad_std')
+        orderPixelTable["sigma_clipped_fwhm"] = masked_residuals.mask
+        orderPixelTable.loc[(orderPixelTable['sigma_clipped_fwhm'] == True), "sigma_clipped"] = True
+
+        # SIGMA-CLIP THE DATA
+        masked_residuals = sigma_clip(
+            orderPixelTable["npix"], sigma_lower=5000000, sigma_upper=5000000, maxiters=1, cenfunc='median', stdfunc='mad_std')
+        orderPixelTable["sigma_clipped_npix"] = masked_residuals.mask
+        orderPixelTable.loc[(orderPixelTable['sigma_clipped_npix'] == True), "sigma_clipped"] = True
+
+        # # SIGMA-CLIP THE DATA
+        # masked_residuals = sigma_clip(
+        #     orderPixelTable["roundness2"], sigma_lower=10, sigma_upper=10, maxiters=1, cenfunc='median', stdfunc='mad_std')
+        # orderPixelTable["sigma_clipped_roundness2"] = masked_residuals.mask
+        # orderPixelTable.loc[(orderPixelTable['sigma_clipped_roundness2'] == True), "sigma_clipped"] = True
+
+        # SIGMA-CLIP THE DATA
+        masked_residuals = sigma_clip(
+            orderPixelTable["peak"], sigma_lower=5000000, sigma_upper=5000000, maxiters=1, cenfunc='median', stdfunc='mad_std')
+        orderPixelTable["sigma_clipped_peak"] = masked_residuals.mask
+        orderPixelTable.loc[(orderPixelTable['sigma_clipped_peak'] == True), "sigma_clipped"] = True
+
         toprow.scatter(
             x=orderPixelTable["wavelength"],  # numpy array of x-points
             y=orderPixelTable["fwhm_px"],  # numpy array of y-points
@@ -1841,42 +1880,105 @@ class create_dispersion_map(object):
             marker='x',
             alpha=0.6,
             label="measured pinhole lines")
-        toprow.set_ylabel(f"R", fontsize=12)
+
+        toprow.scatter(
+            x=orderPixelTable[(orderPixelTable["sigma_clipped_fwhm"] == True)]["wavelength"],  # numpy array of x-points
+            y=orderPixelTable[(orderPixelTable["sigma_clipped_fwhm"] == True)]["fwhm_px"],  # numpy array of y-points
+            s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
+            c="red",    # color or sequence of color, optional, default
+            marker='x',
+            alpha=0.6,
+            label="clipped pinhole lines")
+
+        toprow.set_ylabel(f"fwhm (px)", fontsize=12)
         toprow.set_xlabel(f"wavelength (nm)", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
         toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
+        # midrow.scatter(
+        #     x=orderPixelTable["wavelength"],  # numpy array of x-points
+        #     y=orderPixelTable["roundness1"],  # numpy array of y-points
+        #     s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
+        #     c="black",    # color or sequence of color, optional, default
+        #     marker='x',
+        #     alpha=0.6,
+        #     label="symmetry roundness")
+        # midrow.set_ylabel(f"Pinhole Roundness", fontsize=12)
+        # midrow.set_xlabel(f"wavelength (nm)", fontsize=12)
+
+        # midrow.scatter(
+        #     x=orderPixelTable["wavelength"],  # numpy array of x-points
+        #     y=orderPixelTable["roundness2"],  # numpy array of y-points
+        #     s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
+        #     c="blue",    # color or sequence of color, optional, default
+        #     marker='x',
+        #     alpha=0.6,
+        #     label="gaussian roundness")
+
+        # midrow.scatter(
+        #     x=orderPixelTable[(orderPixelTable["sigma_clipped_roundness2"] == True)]["wavelength"],  # numpy array of x-points
+        #     y=orderPixelTable[(orderPixelTable["sigma_clipped_roundness2"] == True)]["roundness2"],  # numpy array of y-points
+        #     s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
+        #     c="red",    # color or sequence of color, optional, default
+        #     marker='x',
+        #     alpha=0.6,
+        #     label="clipped pinhole lines")
+        # midrow.scatter(
+        #     x=orderPixelTable[(orderPixelTable["sigma_clipped_roundness1"] == True)]["wavelength"],  # numpy array of x-points
+        #     y=orderPixelTable[(orderPixelTable["sigma_clipped_roundness1"] == True)]["roundness1"],  # numpy array of y-points
+        #     s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
+        #     c="red",    # color or sequence of color, optional, default
+        #     marker='x',
+        #     alpha=0.6,
+        #     label="clipped pinhole lines")
+
         midrow.scatter(
             x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["roundness1"],  # numpy array of y-points
+            y=orderPixelTable["roundness2"],  # numpy array of y-points
+            s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
+            c="black",    # color or sequence of color, optional, default
+            marker='x',
+            alpha=0.6,
+            label="sharpness")
+        midrow.set_ylabel(f"Pinhole Npix", fontsize=12)
+        midrow.set_xlabel(f"wavelength (nm)", fontsize=12)
+
+        # midrow.scatter(
+        #     x=orderPixelTable[(orderPixelTable["sigma_clipped_npix"] == True)]["wavelength"],  # numpy array of x-points
+        #     y=orderPixelTable[(orderPixelTable["sigma_clipped_npix"] == True)]["npix"],  # numpy array of y-points
+        #     s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
+        #     c="red",    # color or sequence of color, optional, default
+        #     marker='x',
+        #     alpha=0.6,
+        #     label="clipped pinhole lines")
+
+        # midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+
+        bottomrow.scatter(
+            x=orderPixelTable["wavelength"],  # numpy array of x-points
+            y=orderPixelTable["peak"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
             alpha=0.6,
             label="measured pinhole lines")
 
-        midrow.scatter(
-            x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["roundness2"],  # numpy array of y-points
-            s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
-            c="red",    # color or sequence of color, optional, default
-            marker='x',
-            alpha=0.6,
-            label="measured pinhole lines")
-
         bottomrow.scatter(
-            x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["peak"],  # numpy array of y-points
-            s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
+            x=orderPixelTable[(orderPixelTable["sigma_clipped_peak"] == True)]["wavelength"],  # numpy array of x-points
+            y=orderPixelTable[(orderPixelTable["sigma_clipped_peak"] == True)]["peak"],  # numpy array of y-points
+            s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="red",    # color or sequence of color, optional, default
             marker='x',
             alpha=0.6,
-            label="measured pinhole lines")
+            label="clipped pinhole lines")
+
+        bottomrow.set_ylabel(f"Peak Flux", fontsize=12)
+        bottomrow.set_xlabel(f"wavelength (nm)", fontsize=12)
 
         plt.show()
 
         self.log.debug('completed the ``_clip_on_measured_line_metrics`` method')
-        return None
+        return orderPixelTable
 
     def create_new_static_line_list(
             self,
