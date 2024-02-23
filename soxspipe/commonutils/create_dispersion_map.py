@@ -150,7 +150,7 @@ class create_dispersion_map(object):
         from astropy.stats import sigma_clipped_stats
         from astropy.stats import sigma_clip
 
-        bootstrap_dispersion_solution = False
+        bootstrap_dispersion_solution = True
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -184,7 +184,7 @@ class create_dispersion_map(object):
             log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         boost = True
-        recentre = True
+        intialPixelShiftThreshold = 7.
         while boost:
 
             # SORT BY COLUMN NAME
@@ -219,10 +219,10 @@ class create_dispersion_map(object):
                 self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
 
             # DO A QUICK CLIP ON VERY DEVIANT LINES
-            masked_residuals = sigma_clip(
-                orderPixelTable["xy_diff"], sigma_lower=12, sigma_upper=12, maxiters=1, cenfunc='median', stdfunc='mad_std')
-            orderPixelTable["sigma_clipped_xy_diff"] = masked_residuals.mask
-            orderPixelTable.loc[(orderPixelTable['xy_diff'] == True), "observed_x"] = np.nan
+            # masked_residuals = sigma_clip(
+            #     orderPixelTable["xy_diff"], sigma_lower=12, sigma_upper=12, maxiters=1, cenfunc='median', stdfunc='mad_std')
+            # orderPixelTable["sigma_clipped_xy_diff"] = masked_residuals.mask
+            orderPixelTable.loc[(orderPixelTable['xy_diff'] > intialPixelShiftThreshold), "observed_x"] = np.nan
 
             # COLLECT MISSING LINES
             mask = (orderPixelTable['observed_x'].isnull())
@@ -314,6 +314,7 @@ class create_dispersion_map(object):
                     orderPixelTable = self.create_new_static_line_list(dispersionMapPath=mapPath)
                     boost = True
                     bootstrap_dispersion_solution = False
+                    intialPixelShiftThreshold = 1.0
 
         # GET FILENAME FOR THE LINE LISTS
         if not self.sofName:
