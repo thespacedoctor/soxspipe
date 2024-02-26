@@ -252,7 +252,7 @@ class create_dispersion_map(object):
             lineGroups = lineGroups.size().to_frame(name='count').reset_index()
 
             # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
-            missingLineThreshold = 5000
+            missingLineThreshold = 1
             mask = (lineGroups['count'] >= missingLineThreshold)
             lineGroups = lineGroups.loc[mask]
             setsToDrop = lineGroups[['wavelength', 'order']]
@@ -610,7 +610,7 @@ class create_dispersion_map(object):
         try:
             # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
             daofind = DAOStarFinder(
-                fwhm=3., threshold=2 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False, min_separation=2)
+                fwhm=3., threshold=2.0 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False, min_separation=2)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
             sources = daofind(stamp.data, mask=stamp.mask)
@@ -1729,7 +1729,7 @@ class create_dispersion_map(object):
         std = self.std
         mean = self.mean
 
-        vmax = mean + 100 * std
+        vmax = mean + 25 * std
         vmin = mean
         toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.5)
         toprow.set_title(
@@ -1737,21 +1737,23 @@ class create_dispersion_map(object):
 
         if isinstance(missingLines, pd.core.frame.DataFrame):
             toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=1, alpha=0.1, linewidths=0.5, label="undetected line location")
-            toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=2, alpha=0.5, label="detected line location")
+            # toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=2, alpha=0.5, label="detected line location")
 
         if len(allClippedLines) and False:
             toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.4, linewidths=0.5, label="line clipped during dispersion solution fitting")
         else:
             mask = (allClippedLines['dropped'] == True)
-            toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"detector_{self.axisA}"], marker='o', c='blue', s=1, alpha=0.1, linewidths=0.5, label="dropped line location")
-            toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='red', s=1, alpha=0.1, linewidths=0.5, label="dropped line location")
+            # toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"detector_{self.axisA}"], marker='o', c='blue', s=1, alpha=0.1, linewidths=0.5, label="dropped line location")
+            toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='blue', s=1, alpha=0.1, linewidths=0.5, label="dropped line location")
+            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.4, linewidths=0.5, label="line clipped during dispersion solution fitting")
+            toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.5, label="detected line location")
         # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
         mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))
-        toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
+        # toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1), fontsize=4)
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
@@ -1783,7 +1785,7 @@ class create_dispersion_map(object):
             midrow.invert_yaxis()
         midrow.set_ylim([0, rotatedImg.shape[0]])
 
-        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1), fontsize=4)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
@@ -2025,7 +2027,7 @@ class create_dispersion_map(object):
         bottomrow.set_ylabel(f"sky", fontsize=12)
         bottomrow.set_xlabel(f"wavelength (nm)", fontsize=12)
 
-        plt.show()
+        # plt.show()
 
         self.log.debug('completed the ``_clip_on_measured_line_metrics`` method')
         return orderPixelTable
@@ -2033,30 +2035,13 @@ class create_dispersion_map(object):
     def create_new_static_line_list(
             self,
             dispersionMapPath):
-        """*using a first pass dispersion solution, use a line atlas to generate a fuller static line list*
+        """*using a first pass dispersion solution, use a line atlas to generate a more accurate and more complete static line list*
 
         **Key Arguments:**
-            # -
+            - `dispersionMapPath` -- path to the first pass dispersion solution
 
         **Return:**
-            - `newPredictedLineList` -- a new predicted line list
-
-        **Usage:**
-
-        ```python
-        usage code 
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        ```
+            - `newPredictedLineList` -- a new predicted line list (to replace the static calibration line-list)
         """
         self.log.debug('starting the ``create_new_static_line_list`` method')
 
