@@ -803,12 +803,12 @@ class data_organiser(object):
         rawGroups = rawGroups.size().reset_index(name='counts')
         rawGroups['mjd-obs'] = mjds
 
-        # REMOVE GROUPED STARE AND NODDING - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
-        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]))
+        # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
+        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"]))
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = pd.read_sql(
-            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE","ECHELLE,SLIT,NODDING")', con=conn)
+            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE")', con=conn)
 
         rawScienceFrames.fillna("--", inplace=True)
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
@@ -979,7 +979,7 @@ class data_organiser(object):
         # YYYY.MM.DDThh.mm.xxx
         if series["night start mjd"]:
 
-            if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]:
+            if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
                 filteredFrames = filteredFrames.loc[mask]
             else:
