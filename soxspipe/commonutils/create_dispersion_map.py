@@ -150,7 +150,7 @@ class create_dispersion_map(object):
         from astropy.stats import sigma_clipped_stats
         from astropy.stats import sigma_clip
 
-        bootstrap_dispersion_solution = True
+        bootstrap_dispersion_solution = False
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -219,29 +219,53 @@ class create_dispersion_map(object):
                 self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
 
             # DO A QUICK CLIP ON VERY DEVIANT LINES
-            # masked_residuals = sigma_clip(
-            #     orderPixelTable["xy_diff"], sigma_lower=12, sigma_upper=12, maxiters=1, cenfunc='median', stdfunc='mad_std')
-            # orderPixelTable["sigma_clipped_xy_diff"] = masked_residuals.mask
-            orderPixelTable.loc[(orderPixelTable['xy_diff'] > intialPixelShiftThreshold), "observed_x"] = np.nan
+            print(intialPixelShiftThreshold)
 
-            # COLLECT MISSING LINES
-            mask = (orderPixelTable['observed_x'].isnull())
-            missingLines = orderPixelTable.loc[mask]
-
-            # GROUP RESULTS BY WAVELENGTH
-            lineGroups = missingLines.groupby(['wavelength', 'order'])
-            lineGroups = lineGroups.size().to_frame(name='count').reset_index()
-
-            # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
-            missingLineThreshold = 1
-            mask = (lineGroups['count'] >= missingLineThreshold)
+            # GROUP FOUND LINES INTO SETS AND CLIP ON MEAN XY SHIFT RESIDUALS
             orderPixelTable["dropped"] = False
+            lineGroups = orderPixelTable.groupby(['wavelength', 'order'])['xy_diff'].mean()
+            lineGroups = lineGroups.reset_index()
+
+            masked_residuals = sigma_clip(
+                lineGroups["xy_diff"], sigma_lower=50, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
+            lineGroups["sigma_clipped"] = masked_residuals.mask
+            mask = (lineGroups["sigma_clipped"] == True)
             lineGroups = lineGroups.loc[mask]
             setsToDrop = lineGroups[['wavelength', 'order']]
             s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
             s["dropped"] = False
             s.loc[(s["_merge"] == "both"), "dropped"] = True
             orderPixelTable["dropped"] = s["dropped"].values
+
+            from tabulate import tabulate
+            print(tabulate(setsToDrop, headers='keys', tablefmt='psql'))
+
+            print(len(s.loc[(s["_merge"] == "both")].index))
+
+            # orderPixelTable.loc[(orderPixelTable['xy_diff'] > intialPixelShiftThreshold), "observed_x"] = np.nan
+
+            # COLLECT MISSING LINES
+            mask = (orderPixelTable['observed_x'].isnull())
+            missingLines = orderPixelTable.loc[mask]
+            # GROUP RESULTS BY WAVELENGTH
+            lineGroups = missingLines.groupby(['wavelength', 'order'])
+            lineGroups = lineGroups.size().to_frame(name='count').reset_index()
+
+            # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
+            missingLineThreshold = 5000
+            mask = (lineGroups['count'] >= missingLineThreshold)
+            lineGroups = lineGroups.loc[mask]
+            setsToDrop = lineGroups[['wavelength', 'order']]
+
+            from tabulate import tabulate
+            print(tabulate(setsToDrop, headers='keys', tablefmt='psql'))
+
+            s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
+            s["dropped"] = False
+            s.loc[(s["_merge"] == "both"), "dropped"] = True
+            orderPixelTable["dropped"] = s["dropped"].values
+
+            print(len(s.loc[(s["_merge"] == "both")].index))
 
             # DROP MISSING VALUES
             orderPixelTable.dropna(axis='index', how='any', subset=[
@@ -586,10 +610,10 @@ class create_dispersion_map(object):
         try:
             # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
             daofind = DAOStarFinder(
-                fwhm=3., threshold=1 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False)
+                fwhm=3., threshold=2 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False, min_separation=2)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
-            sources = daofind(stamp.data - median, mask=stamp.mask)
+            sources = daofind(stamp.data, mask=stamp.mask)
         except Exception as e:
             sources = None
 
@@ -1714,9 +1738,13 @@ class create_dispersion_map(object):
         if isinstance(missingLines, pd.core.frame.DataFrame):
             toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='red', s=1, alpha=0.1, linewidths=0.5, label="undetected line location")
             toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=2, alpha=0.5, label="detected line location")
-        if len(allClippedLines):
-            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.4, linewidths=0.5, label="line clipped during dispersion solution fitting")
 
+        if len(allClippedLines) and False:
+            toprow.scatter(allClippedLines[f"observed_{self.axisB}"], allClippedLines[f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.4, linewidths=0.5, label="line clipped during dispersion solution fitting")
+        else:
+            mask = (allClippedLines['dropped'] == True)
+            toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"detector_{self.axisA}"], marker='o', c='blue', s=1, alpha=0.1, linewidths=0.5, label="dropped line location")
+            toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='red', s=1, alpha=0.1, linewidths=0.5, label="dropped line location")
         # SHOW MID-SLIT PINHOLE - CHECK WE ARE LATCHING ONTO THE CORRECT PINHOLE POSITION
         mask = (orderPixelTable['slit_index'] == int(dp["mid_slit_index"]))
         toprow.scatter(orderPixelTable.loc[mask][f"observed_{self.axisB}"], orderPixelTable.loc[mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.1, linewidths=0.5)
@@ -1857,6 +1885,9 @@ class create_dispersion_map(object):
 
         # orderPixelTable["sigma_clipped"] = masked_residuals.mask
 
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable.head(30), headers='keys', tablefmt='psql'))
+
         fig = plt.figure(figsize=(6, 10), constrained_layout=True)
         gs = fig.add_gridspec(6, 4)
         toprow = fig.add_subplot(gs[0:2, :])
@@ -1887,9 +1918,9 @@ class create_dispersion_map(object):
 
         # SIGMA-CLIP THE DATA
         masked_residuals = sigma_clip(
-            orderPixelTable["peak"], sigma_lower=5000000, sigma_upper=5000000, maxiters=1, cenfunc='median', stdfunc='mad_std')
-        orderPixelTable["sigma_clipped_peak"] = masked_residuals.mask
-        orderPixelTable.loc[(orderPixelTable['sigma_clipped_peak'] == True), "sigma_clipped"] = True
+            orderPixelTable["sky"], sigma_lower=5, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
+        orderPixelTable["sigma_clipped_sky"] = masked_residuals.mask
+        orderPixelTable.loc[(orderPixelTable['sigma_clipped_sky'] == True), "sigma_clipped"] = True
 
         toprow.scatter(
             x=orderPixelTable["wavelength"],  # numpy array of x-points
@@ -1975,7 +2006,7 @@ class create_dispersion_map(object):
 
         bottomrow.scatter(
             x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["peak"],  # numpy array of y-points
+            y=orderPixelTable["sky"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
@@ -1983,15 +2014,15 @@ class create_dispersion_map(object):
             label="measured pinhole lines")
 
         bottomrow.scatter(
-            x=orderPixelTable[(orderPixelTable["sigma_clipped_peak"] == True)]["wavelength"],  # numpy array of x-points
-            y=orderPixelTable[(orderPixelTable["sigma_clipped_peak"] == True)]["peak"],  # numpy array of y-points
+            x=orderPixelTable[(orderPixelTable["sigma_clipped_sky"] == True)]["wavelength"],  # numpy array of x-points
+            y=orderPixelTable[(orderPixelTable["sigma_clipped_sky"] == True)]["sky"],  # numpy array of y-points
             s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="red",    # color or sequence of color, optional, default
             marker='x',
             alpha=0.6,
             label="clipped pinhole lines")
 
-        bottomrow.set_ylabel(f"Peak Flux", fontsize=12)
+        bottomrow.set_ylabel(f"sky", fontsize=12)
         bottomrow.set_xlabel(f"wavelength (nm)", fontsize=12)
 
         plt.show()
