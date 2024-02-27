@@ -146,6 +146,10 @@ soxs-stare:
         poly-fitting-residual-clipping-sigma: 3.
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
         poly-clipping-iteration-limit: 5
+
+
+soxs-nod:
+    settings: True
     
 
 # sky-subtraction:

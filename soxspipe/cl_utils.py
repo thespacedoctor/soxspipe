@@ -15,6 +15,7 @@ Usage:
     soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
     prep                                   prepare a folder of raw data (workspace) for data reduction
@@ -30,6 +31,7 @@ Options:
     order_centres                          the order centres recipe
     spat_sol                               the spatial solution recipe
     stare                                  reduce stare mode science frames
+    nod                                    reduce nodding mode science frames
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -239,6 +241,17 @@ def main(arguments=None):
                 overwrite=a["overwriteFlag"]
             )
             reducedStare = recipe.produce_product()
+
+        if a["nod"]:
+            from soxspipe.recipes import soxs_nod
+            recipe = soxs_nod(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            )
+            reducedNod = recipe.produce_product()
 
         if a['prep']:
             from soxspipe.commonutils import data_organiser

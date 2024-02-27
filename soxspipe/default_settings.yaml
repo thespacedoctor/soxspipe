@@ -130,6 +130,10 @@ soxs-stare:
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
         poly-clipping-iteration-limit: 5
 
+soxs-nod:
+    settings: True
+    
+
 # UTILS
 background-subtraction:
     bspline-deg: 3

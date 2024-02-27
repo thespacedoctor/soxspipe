@@ -1033,10 +1033,10 @@ class _base_recipe_(object):
             dark = False
 
         # VERIFY DATA IS IN ORDER
-        if master_bias == False and dark == False:
+        if master_bias == False and dark == False and master_flat == False:
             raise TypeError(
-                "detrend method needs at least a master-bias frame and/or a dark frame to subtract")
-        if master_bias == False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
+                "detrend method needs at least a master-bias frame, a dark frame or a master flat frame")
+        if master_bias == False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             self.log.warning("Dark and science/calibration frame have differing exposure-times.")
         if master_bias != False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             raise AttributeError(
