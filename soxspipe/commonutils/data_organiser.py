@@ -1069,12 +1069,12 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # DISP SOLS
-        if series["recipe"] in ["order_centres", "spat_sol", "stare"]:
+        if series["recipe"] in ["order_centres", "spat_sol", "stare", "nod"]:
             mask = calibrationTables['eso pro catg'].str.contains("DISP_TAB")
             df = calibrationTables.loc[mask]
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
-                if series["recipe"] in ["stare"]:
+                if series["recipe"] in ["stare", "nod"]:
                     mask = (df['recipe'] == "spat_sol")
                     if len(df.loc[mask, "file"].index):
                         files = np.append(files, df.loc[mask, "file"].values[0])
@@ -1088,7 +1088,7 @@ class data_organiser(object):
                         filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
 
         # DISP SOLS IMAGE
-        if series["recipe"] in ["stare"]:
+        if series["recipe"] in ["stare", "nod"]:
             mask = calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")
             df = calibrationFrames.loc[mask]
             if len(df.index):
@@ -1098,7 +1098,7 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # ORDER TAB
-        if series["recipe"] in ["mflat", "spat_sol", "stare"]:
+        if series["recipe"] in ["mflat", "spat_sol", "stare", "nod"]:
             mask = calibrationTables['eso pro catg'].str.contains('ORDER_TAB')
             df = calibrationTables.loc[mask]
             if series["recipe"] in ["mflat"]:
@@ -1132,7 +1132,7 @@ class data_organiser(object):
                     filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
 
         # FLAT FRAMES
-        if series["recipe"] in ["spat_sol", "stare"]:
+        if series["recipe"] in ["spat_sol", "stare", "nod"]:
             mask = calibrationFrames['eso pro catg'].str.contains('MASTER_FLAT')
             df = calibrationFrames.loc[mask]
 
@@ -1141,7 +1141,7 @@ class data_organiser(object):
                 mask = df['slit'].str.contains('JH')
                 df = df.loc[~mask]
 
-            if series["recipe"] in ["stare"]:
+            if series["recipe"] in ["stare", "nod"]:
                 from tabulate import tabulate
                 if len(filteredFrames["slit"].values):
                     df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]
