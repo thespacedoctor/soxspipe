@@ -901,7 +901,8 @@ class detect_continuum(_base_detect):
         arm = self.arm
 
         # a = plt.figure(figsize=(40, 15))
-        if arm == "UVB" or self.inst == "SOXS":
+
+        if arm == "UVB" or (self.inst == "SOXS" and arm == "NIR"):
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
             # CREATE THE GID OF AXES
             gs = fig.add_gridspec(6, 4)
@@ -942,9 +943,12 @@ class detect_continuum(_base_detect):
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
         toprow.set_xlim([0, rotatedImg.shape[1]])
+
         if self.axisA == "x":
             toprow.invert_yaxis()
-        toprow.set_ylim([0, rotatedImg.shape[0]])
+            toprow.set_ylim([0, rotatedImg.shape[0]])
+        else:
+            toprow.set_ylim([rotatedImg.shape[0], 0])
 
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         if "order" in self.recipeName.lower():

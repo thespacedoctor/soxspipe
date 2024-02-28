@@ -81,33 +81,39 @@ class data_organiser(object):
 
         self.rootDbPath = rootDir + "/.soxspipe.db"
 
-        # HERE ARE THE KEYS WE WANT PRESENTED IN THE SUMMARY OUTPUT TABLES
-        self.keywords = [
-            'file',
-            'mjd-obs',
-            'date-obs',
-            'eso seq arm',
-            'eso dpr catg',
-            'eso dpr tech',
-            'eso dpr type',
-            'eso pro catg',
-            'eso pro tech',
-            'eso pro type',
-            'exptime',
-            'cdelt1',
-            'cdelt2',
-            'eso det read speed',
-            'eso ins opti3 name',
-            'eso ins opti4 name',
-            'eso ins opti5 name',
-            'eso det ncorrs name',
-            'eso det out1 conad',
-            'eso det out1 ron',
-            'eso obs id',
-            'eso obs name',
-            "naxis",
-            "object",
-            "instrume"
+        self.keyword_lookups = [
+            'MJDOBS',
+            'DATE_OBS',
+            'SEQ_ARM',
+            'DPR_CATG',
+            'DPR_TECH',
+            'DPR_TYPE',
+            'PRO_CATG',
+            'PRO_TECH',
+            'PRO_TYPE',
+            'EXPTIME',
+            'WIN_BINX',
+            'WIN_BINY',
+            'DET_READ_SPEED',
+            'SLIT_UVB',
+            'SLIT_VIS',
+            'SLIT_NIR',
+            'LAMP1',
+            'LAMP2',
+            'LAMP3',
+            'LAMP4',
+            'LAMP5',
+            'LAMP6',
+            'LAMP7',
+            'DET_READ_TYPE',
+            'CONAD',
+            'RON',
+            'OBS_ID',
+            'OBS_NAME',
+            "NAXIS",
+            "OBJECT",
+            "TPL_ID",
+            "INSTRUME"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -126,29 +132,35 @@ class data_organiser(object):
             'binning',
             'rospeed',
             'slit',
+            'slitmask',
+            'lamp',
             'night start date',
             'night start mjd',
             'mjd-obs',
             'date-obs',
             'object',
+            "template",
             "instrume"
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
         self.typeMap = {
-            "bias": [{"tech": None, "catg": None, "recipe": "mbias"}],
-            "dark": [{"tech": None, "catg": None, "recipe": "mdark"}],
-            "lamp,fmtchk": [{"tech": None, "catg": None, "recipe": "disp_sol"}],
-            "lamp,orderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,dorderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,qorderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,flat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,dflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,qflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}],
-            "object": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
-            "std,flux": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
-            "std,telluric": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
+            "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
+            "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,orderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,dorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,qorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,flat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
+            "flat,lamp": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
+            "lamp,dflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,qflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}],
+            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
+            "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
         }
 
         # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULTS FROM REDUCING EACH SOFs
@@ -175,7 +187,7 @@ class data_organiser(object):
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_IMAGE", "PIXELS", ".fits", "_IMAGE.fits", "soxs-spatial-solution"]
             ],
             "stare": [
-                ["REDUCED", "ECHELLE,SLIT", "OBJECT_TAB", "TABLE", None, None, "soxs-stare"]
+                ["REDUCED", "ECHELLE,SLIT,STARE", "OBJECT_TAB", "TABLE", None, None, "soxs-stare"]
             ],
         }
 
@@ -184,13 +196,13 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
-        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "LAMP,WAVE", "STD,FLUX", "STD,TELLURIC", "OBJECT"]
+        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
 
         # THIS IS THE ORDER THE RECIPES NEED TO BE RUN IN (MAKE SURE THE REDUCTION SCRIPT HAS RECIPES IN THE CORRECT ORDER)
-        self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare"]
+        self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
 
         # DECOMPRESS .Z FILES
         from soxspipe.commonutils import uncompress
@@ -312,7 +324,7 @@ class data_organiser(object):
         import shutil
 
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
-        filteredFrames, fitsPaths, fitsNames = self.create_directory_table(pathToDirectory=self.rootDir, keys=self.keywords, filterKeys=self.filterKeywords)
+        filteredFrames, fitsPaths, fitsNames = self.create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
 
         if fitsPaths:
             # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
@@ -335,7 +347,6 @@ class data_organiser(object):
     def create_directory_table(
             self,
             pathToDirectory,
-            keys,
             filterKeys):
         """*create an astropy table based on the contents of a directory*
 
@@ -343,7 +354,6 @@ class data_organiser(object):
 
         - `log` -- logger
         - `pathToDirectory` -- path to the directory containing the FITS frames
-        - `keys` -- the keys needed to be returned for the imageFileCollection
         - `filterKeys` -- these are the keywords we want to filter on later
 
         **Return**
@@ -371,6 +381,7 @@ class data_organiser(object):
         import numpy as np
         from fundamentals.files import recursive_directory_listing
         import pandas as pd
+        from soxspipe.commonutils import keyword_lookup
 
         # GENERATE A LIST OF FITS FILE PATHS
         fitsPaths = []
@@ -399,16 +410,52 @@ class data_organiser(object):
             # print(f"No fits files found in directory `{pathToDirectory}`")
             return None, None, None
 
-        # TOP-LEVEL COLLECTION
+        # INSTRUMENT CHECK
         if recursive:
-            allFrames = ImageFileCollection(filenames=fitsPaths, keywords=keys)
+            allFrames = ImageFileCollection(filenames=fitsPaths, keywords=["instrume"])
         else:
             allFrames = ImageFileCollection(
-                location=pathToDirectory, filenames=fitsNames, keywords=keys)
+                location=pathToDirectory, filenames=fitsNames, keywords=["instrume"])
+
+        tmpTable = allFrames.summary
+        tmpTable['instrume'].fill_value = "--"
+        instrument = tmpTable['instrume'].filled()
+        instrument = list(set(instrument))
+        if "--" in instrument:
+            instrument.remove("--")
+
+        self.instrument = None
+        if len(instrument) > 1:
+            self.log.error(f'The directory contains data from a mix of instruments. Please only provide data from either SOXS or XSH')
+            raise AssertionError
+        else:
+            self.instrument = instrument[0]
+            print(f"The instrument has been set to '{self.instrument}'")
+
+        if "XSH" in self.instrument.upper():
+            self.instrument = "XSH"
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        self.kw = keyword_lookup(
+            log=self.log,
+            instrument=self.instrument
+        ).get
+        self.keywords = ['file']
+        for k in self.keyword_lookups:
+            self.keywords.append(self.kw(k).lower())
+
+        # TOP-LEVEL COLLECTIONi
+        if recursive:
+            allFrames = ImageFileCollection(filenames=fitsPaths, keywords=self.keywords)
+        else:
+            allFrames = ImageFileCollection(
+                location=pathToDirectory, filenames=fitsNames, keywords=self.keywords)
+
         masterTable = allFrames.summary
 
         # ADD FILLED VALUES FOR MISSING CELLS
-        for fil in keys:
+        for fil in self.keywords:
             if fil in filterKeys and fil not in ["exptime"]:
 
                 try:
@@ -425,12 +472,21 @@ class data_organiser(object):
                     masterTable[fil].fill_value = "--"
         masterTable = masterTable.filled()
 
+        # FILTER OUT FRAMES WITH NO MJD
+        matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--"))
+        missingMJDFiles = masterTable['file'][matches]
+        if len(missingMJDFiles):
+            print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
+            print(missingMJDFiles)
+            masterTable = masterTable[~matches]
+
         # SETUP A NEW COLUMN GIVING THE INT MJD THE CHILEAN NIGHT BEGAN ON
         # 12:00 NOON IN CHILE IS TYPICALLY AT 16:00 UTC (CHILE = UTC - 4)
         # SO COUNT CHILEAN OBSERVING NIGHTS AS 15:00 UTC-15:00 UTC (11am-11am)
         if "mjd-obs" in masterTable.colnames:
             chile_offset = TimeDelta(4.0 * 60 * 60, format='sec')
             night_start_offset = TimeDelta(15.0 * 60 * 60, format='sec')
+            masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
             chileTimes = Time(masterTable["mjd-obs"],
                               format='mjd', scale='utc') - chile_offset
             startNightDate = Time(masterTable["mjd-obs"],
@@ -443,8 +499,8 @@ class data_organiser(object):
             masterTable.add_index("night start date")
             masterTable.add_index("night start mjd")
 
-        if "eso det read speed" in masterTable.colnames:
-            masterTable["rospeed"] = np.copy(masterTable["eso det read speed"])
+        if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
+            masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
             try:
                 masterTable["rospeed"][masterTable[
                     "rospeed"] == -99.99] = '--'
@@ -462,6 +518,9 @@ class data_organiser(object):
                 "rospeed"] == '1pt/100k/hg/AFC'] = 'slow'
             masterTable.add_index("rospeed")
 
+        if self.kw("TPL_ID").lower() in masterTable.colnames:
+            masterTable["template"] = np.copy(masterTable[self.kw("TPL_ID").lower()])
+
         if "naxis" in masterTable.colnames:
             masterTable["table"] = np.copy(masterTable["naxis"]).astype(str)
             masterTable["table"][masterTable[
@@ -469,11 +528,11 @@ class data_organiser(object):
             masterTable["table"][masterTable[
                 "table"] != 'T'] = 'F'
 
-        if "cdelt2" in masterTable.colnames:
+        if self.kw("WIN_BINX").lower() in masterTable.colnames:
             masterTable["binning"] = np.core.defchararray.add(
-                masterTable["cdelt1"].astype('int').astype('str'), "x")
+                masterTable[self.kw("WIN_BINX").lower()].astype('int').astype('str'), "x")
             masterTable["binning"] = np.core.defchararray.add(masterTable["binning"],
-                                                              masterTable["cdelt2"].astype('int').astype('str'))
+                                                              masterTable[self.kw("WIN_BINY").lower()].astype('int').astype('str'))
             masterTable["binning"][masterTable[
                 "binning"] == '-99x-99'] = '--'
             masterTable["binning"][masterTable[
@@ -481,7 +540,7 @@ class data_organiser(object):
             masterTable.add_index("binning")
 
         # ADD INDEXES ON ALL KEYS
-        for k in keys:
+        for k in self.keywords:
             try:
                 masterTable.add_index(k)
             except:
@@ -616,11 +675,22 @@ class data_organiser(object):
         filterKeywordsReduced = self.filterKeywords[:]
 
         filteredFrames['slit'] = "--"
+        filteredFrames['slitmask'] = "--"
+        filteredFrames['lamp'] = "--"
 
         # ADD SLIT FOR SPECTROSCOPIC DATA
-        filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "eso ins opti5 name"]
-        filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "eso ins opti4 name"]
-        filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "eso ins opti3 name"]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), self.kw("SLIT_NIR").lower()]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), self.kw("SLIT_VIS").lower()]
+        filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), self.kw("SLIT_UVB").lower()]
+
+        filteredFrames["slit"] = filteredFrames["slit"].str.upper()
+
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("MULTI")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "MPH"
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
+
+        for i in [1, 2, 3, 4, 5, 6, 7]:
+            filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"] = filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), self.kw(f"LAMP{i}").lower()]
 
         mask = []
         for i in self.proKeywords:
@@ -741,19 +811,20 @@ class data_organiser(object):
         rawGroups = rawGroups.size().reset_index(name='counts')
         rawGroups['mjd-obs'] = mjds
 
-        # REMOVE GROUPED STARE AND NODDING - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
-        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]))
+        # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
+        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"]))
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = pd.read_sql(
-            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE","ECHELLE,SLIT,NODDING")', con=conn)
+            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE")', con=conn)
 
         rawScienceFrames.fillna("--", inplace=True)
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawScienceFrames = rawScienceFrames.size().reset_index(name='counts')
 
         # MERGE DATAFRAMES
-        rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+        if len(rawScienceFrames.index):
+            rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
@@ -819,6 +890,10 @@ class data_organiser(object):
         if series["eso dpr type"].lower() != reductionOrder.lower():
             return series
 
+        # FILTER BY TEMPLATE NAME
+        mask = (filteredFrames["template"].isin([series["template"]]))
+        filteredFrames = filteredFrames.loc[mask]
+
         # FILTER BY TYPE FIRST
         if "FLAT" in series["eso dpr type"].upper():
             mask = ((filteredFrames["eso dpr type"].str.contains("FLAT")) & (filteredFrames["slit"] == series["slit"]))
@@ -826,8 +901,25 @@ class data_organiser(object):
             mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
         filteredFrames = filteredFrames.loc[mask]
 
+        seriesRecipe = None
+
+        # CHECK SLIT
+        if self.typeMap[series["eso dpr type"].lower()][0]["slitmask"]:
+            match = False
+            for row in self.typeMap[series["eso dpr type"].lower()]:
+                rowSlit = [item.upper() for item in row["slitmask"]]
+                if not match and series["slitmask"] in rowSlit:
+                    match = True
+
+                    mask = (filteredFrames["slitmask"].isin(rowSlit))
+                    filteredFrames = filteredFrames.loc[mask]
+                    seriesRecipe = row["recipe"]
+                    print(rowSlit, series["slitmask"], seriesRecipe)
+            if not match:
+                return series
+
         # CHECK TECH
-        if self.typeMap[series["eso dpr type"].lower()][0]["tech"]:
+        if self.typeMap[series["eso dpr type"].lower()][0]["tech"] and not seriesRecipe:
             match = False
             for row in self.typeMap[series["eso dpr type"].lower()]:
                 rowTech = [item.upper() for item in row["tech"]]
@@ -838,7 +930,7 @@ class data_organiser(object):
                     seriesRecipe = row["recipe"]
             if not match:
                 return series
-        else:
+        elif not seriesRecipe:
             seriesRecipe = self.typeMap[series["eso dpr type"].lower()][0]["recipe"]
 
         # GENEREATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
@@ -849,8 +941,12 @@ class data_organiser(object):
             matchDict['rospeed'] = series["rospeed"]
             sofName.append(series["rospeed"])
         if series["eso dpr type"].lower() in self.typeMap:
+
             matchDict['eso dpr type'] = series["eso dpr type"]
-            sofName.append(self.typeMap[series["eso dpr type"].lower()][0]["recipe"].replace("_centres", "_locations"))
+            for i in self.typeMap[series["eso dpr type"].lower()]:
+                if i["recipe"] == seriesRecipe:
+                    sofName.append(i["recipe"].replace("_centres", "_locations"))
+
             if "DORDER" in series["eso dpr type"].upper():
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
@@ -862,7 +958,7 @@ class data_organiser(object):
 
         for k, v in matchDict.items():
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
-                mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT"]))
+                mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP"]))
             else:
                 mask = (filteredFrames[k].isin([v]))
             filteredFrames = filteredFrames.loc[mask]
@@ -911,7 +1007,8 @@ class data_organiser(object):
         # NIGHT START
         # YYYY.MM.DDThh.mm.xxx
         if series["night start mjd"]:
-            if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]:
+
+            if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
                 filteredFrames = filteredFrames.loc[mask]
             else:
@@ -1001,12 +1098,12 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # DISP SOLS
-        if series["recipe"] in ["order_centres", "spat_sol", "stare"]:
+        if series["recipe"] in ["order_centres", "spat_sol", "stare", "nod"]:
             mask = calibrationTables['eso pro catg'].str.contains("DISP_TAB")
             df = calibrationTables.loc[mask]
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
-                if series["recipe"] in ["stare"]:
+                if series["recipe"] in ["stare", "nod"]:
                     mask = (df['recipe'] == "spat_sol")
                     if len(df.loc[mask, "file"].index):
                         files = np.append(files, df.loc[mask, "file"].values[0])
@@ -1020,7 +1117,7 @@ class data_organiser(object):
                         filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
 
         # DISP SOLS IMAGE
-        if series["recipe"] in ["stare"]:
+        if series["recipe"] in ["stare", "nod"]:
             mask = calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")
             df = calibrationFrames.loc[mask]
             if len(df.index):
@@ -1030,7 +1127,7 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # ORDER TAB
-        if series["recipe"] in ["mflat", "spat_sol", "stare"]:
+        if series["recipe"] in ["mflat", "spat_sol", "stare", "nod"]:
             mask = calibrationTables['eso pro catg'].str.contains('ORDER_TAB')
             df = calibrationTables.loc[mask]
             if series["recipe"] in ["mflat"]:
@@ -1064,7 +1161,7 @@ class data_organiser(object):
                     filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
 
         # FLAT FRAMES
-        if series["recipe"] in ["spat_sol", "stare"]:
+        if series["recipe"] in ["spat_sol", "stare", "nod"]:
             mask = calibrationFrames['eso pro catg'].str.contains('MASTER_FLAT')
             df = calibrationFrames.loc[mask]
 
@@ -1073,7 +1170,7 @@ class data_organiser(object):
                 mask = df['slit'].str.contains('JH')
                 df = df.loc[~mask]
 
-            if series["recipe"] in ["stare"]:
+            if series["recipe"] in ["stare", "nod"]:
                 from tabulate import tabulate
                 if len(filteredFrames["slit"].values):
                     df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]
@@ -1507,7 +1604,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---
@@ -1571,7 +1668,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---

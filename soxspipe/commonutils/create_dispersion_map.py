@@ -117,10 +117,10 @@ class create_dispersion_map(object):
         logging.getLogger().setLevel(logging.INFO + 5)
 
         # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
+        if self.inst == "SOXS" and self.arm == "NIR":
             self.axisA = "y"
             self.axisB = "x"
-        elif self.inst == "XSHOOTER":
+        else:
             self.axisA = "x"
             self.axisB = "y"
 
@@ -297,12 +297,29 @@ class create_dispersion_map(object):
             missingLinesFN = self.sofName + "_MISSED_LINES.fits"
 
         # WRITE CLIPPED LINE LIST TO FILE
-        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_px', 'R']
+        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_px', 'R', 'pixelScaleNm']
         clippedLinesTable['sigma_clipped'] = True
         clippedLinesTable['R'] = np.nan
+        clippedLinesTable['pixelScaleNm'] = np.nan
 
         goodAndClippedLines = pd.concat([clippedLinesTable[keepColumns], goodLinesTable[keepColumns]], ignore_index=True)
         goodLinesTable = goodLinesTable[keepColumns]
+
+        # GET UNIQUE VALUES IN COLUMN
+        # uniqueOrders = goodAndClippedLines['order'].unique()
+        # uniqueOrders = np.sort(uniqueOrders)
+        # for o in uniqueOrders:
+        #     # FILTER DATA FRAME
+        #     # FIRST CREATE THE MASK
+        #     mask = (goodAndClippedLines['order'] == o)
+        #     pixelScaleAng = goodAndClippedLines.loc[mask]['pixelScaleNm'].mean() * 10.
+        #     pixelScaleAng4 = pixelScaleAng * 4
+        #     # INVERTED FILTER
+        #     print("| ", o, "| ", f"{pixelScaleAng:0.2f}", "| ", f"{pixelScaleAng4:0.2f}", "| ")
+
+        # sys.exit(0)
+
+        # xpd-update-filter-dataframe-column-values
 
         # SORT BY COLUMN NAME
         goodAndClippedLines.sort_values(['order', 'wavelength', 'slit_index'], inplace=True)
@@ -413,6 +430,8 @@ class create_dispersion_map(object):
         # READ THE FILE
         home = expanduser("~")
 
+        print(dp)
+
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 
@@ -423,8 +442,9 @@ class create_dispersion_map(object):
         # FITS TO PYTHON INDEXING
         # PHOTUTILS CENTRE OF BOTTOM LEFT PIXEL IS (0,0) BUT FOR WCS IT IS (1,1)
         # AND FOR PYTHON IT IS ALSO (0,0)
-        orderPixelTable["detector_x"] -= 1.0
-        orderPixelTable["detector_y"] -= 1.0
+        if self.inst != "SOXS":
+            orderPixelTable["detector_x"] -= 1.0
+            orderPixelTable["detector_y"] -= 1.0
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -815,8 +835,8 @@ class create_dispersion_map(object):
             orderPixelTable["fit_x_low"] = orderPixelTableLow["fit_x"]
             orderPixelTable["fit_y_low"] = orderPixelTableLow["fit_y"]
 
-            orderPixelTable["pixelScale"] = nmRange / np.power(np.power(orderPixelTable["fit_x_high"] - orderPixelTable["fit_x_low"], 2) + np.power(orderPixelTable["fit_y_high"] - orderPixelTable["fit_y_low"], 2), 0.5)
-            orderPixelTable["delta_wavelength"] = orderPixelTable["pixelScale"] * orderPixelTable["fwhm_px"]
+            orderPixelTable["pixelScaleNm"] = nmRange / np.power(np.power(orderPixelTable["fit_x_high"] - orderPixelTable["fit_x_low"], 2) + np.power(orderPixelTable["fit_y_high"] - orderPixelTable["fit_y_low"], 2), 0.5)
+            orderPixelTable["delta_wavelength"] = orderPixelTable["pixelScaleNm"] * orderPixelTable["fwhm_px"]
             orderPixelTable["R"] = orderPixelTable["wavelength"] / orderPixelTable["delta_wavelength"]
 
             # REMOVE COLUMN FROM DATA FRAME
@@ -1573,13 +1593,12 @@ class create_dispersion_map(object):
         dp = self.detectorParams
 
         # XSH
-        if self.inst == "XSHOOTER":
-            rotateImage = 90
-            flipImage = 1
-        else:
-            # SOXS
+        if self.inst == "SOXS" and self.arm == "NIR":
             rotateImage = 0
             flipImage = 0
+        else:
+            rotateImage = 90
+            flipImage = 1
 
         gridLinePixelTable = False
 
@@ -1608,8 +1627,7 @@ class create_dispersion_map(object):
         mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
 
         # a = plt.figure(figsize=(40, 15))
-
-        if arm == "UVB" or self.settings["instrument"].lower() == "soxs":
+        if arm == "UVB" or (self.inst == "SOXS" and arm == "NIR"):
             fig = plt.figure(figsize=(6, 16.5), constrained_layout=True)
             # CREATE THE GRID OF AXES
             gs = fig.add_gridspec(5, 4)

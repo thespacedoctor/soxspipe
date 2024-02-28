@@ -134,7 +134,7 @@ class detect_order_edges(_base_detect):
 
         self.inst = flatFrame.header[kw("INSTRUME")]
         # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
+        if self.inst == "SOXS" and self.arm == "NIR":
             self.axisA = "y"
             self.axisB = "x"
             self.axisAbin = self.biny
@@ -466,7 +466,7 @@ class detect_order_edges(_base_detect):
         arm = self.arm
 
         # a = plt.figure(figsize=(40, 15))
-        if arm == "UVB" or self.inst == "SOXS":
+        if arm == "UVB" or (self.inst == "SOXS" and arm == "NIR"):
             fig = plt.figure(figsize=(5, 8))
             # CREATE THE GID OF AXES
             gs = fig.add_gridspec(4, 4)
