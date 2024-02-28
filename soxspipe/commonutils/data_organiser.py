@@ -132,6 +132,7 @@ class data_organiser(object):
             'binning',
             'rospeed',
             'slit',
+            'slitmask',
             'lamp',
             'night start date',
             'night start mjd',
@@ -144,22 +145,22 @@ class data_organiser(object):
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
         self.typeMap = {
-            "bias": [{"tech": None, "catg": None, "recipe": "mbias"}],
-            "dark": [{"tech": None, "catg": None, "recipe": "mdark"}],
-            "lamp,fmtchk": [{"tech": None, "catg": None, "recipe": "disp_sol"}],
-            "lamp,orderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,dorderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,qorderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,flat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "flat,lamp": [{"tech": ["echelle,slit"], "catg": None, "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "catg": None, "recipe": "order_centres"}],
-            "lamp,dflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,qflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "catg": None, "recipe": "disp_sol"}],
-            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "catg": None, "recipe": "disp_sol"}],
-            "object": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "catg": None, "recipe": "offset"}],
-            "std,flux": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "catg": None, "recipe": "offset"}],
-            "std": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "catg": None, "recipe": "offset"}],
-            "std,telluric": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "catg": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "catg": None, "recipe": "offset"}]
+            "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
+            "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,orderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,dorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,qorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,flat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
+            "flat,lamp": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
+            "lamp,dflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,qflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}],
+            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
+            "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
         }
 
         # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULTS FROM REDUCING EACH SOFs
@@ -195,7 +196,7 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
@@ -674,12 +675,19 @@ class data_organiser(object):
         filterKeywordsReduced = self.filterKeywords[:]
 
         filteredFrames['slit'] = "--"
+        filteredFrames['slitmask'] = "--"
         filteredFrames['lamp'] = "--"
 
         # ADD SLIT FOR SPECTROSCOPIC DATA
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), self.kw("SLIT_NIR").lower()]
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), self.kw("SLIT_VIS").lower()]
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), self.kw("SLIT_UVB").lower()]
+
+        filteredFrames["slit"] = filteredFrames["slit"].str.upper()
+
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("MULTI")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "MPH"
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
 
         for i in [1, 2, 3, 4, 5, 6, 7]:
             filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"] = filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), self.kw(f"LAMP{i}").lower()]
@@ -882,6 +890,10 @@ class data_organiser(object):
         if series["eso dpr type"].lower() != reductionOrder.lower():
             return series
 
+        # FILTER BY TEMPLATE NAME
+        mask = (filteredFrames["template"].isin([series["template"]]))
+        filteredFrames = filteredFrames.loc[mask]
+
         # FILTER BY TYPE FIRST
         if "FLAT" in series["eso dpr type"].upper():
             mask = ((filteredFrames["eso dpr type"].str.contains("FLAT")) & (filteredFrames["slit"] == series["slit"]))
@@ -889,8 +901,25 @@ class data_organiser(object):
             mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
         filteredFrames = filteredFrames.loc[mask]
 
+        seriesRecipe = None
+
+        # CHECK SLIT
+        if self.typeMap[series["eso dpr type"].lower()][0]["slitmask"]:
+            match = False
+            for row in self.typeMap[series["eso dpr type"].lower()]:
+                rowSlit = [item.upper() for item in row["slitmask"]]
+                if not match and series["slitmask"] in rowSlit:
+                    match = True
+
+                    mask = (filteredFrames["slitmask"].isin(rowSlit))
+                    filteredFrames = filteredFrames.loc[mask]
+                    seriesRecipe = row["recipe"]
+                    print(rowSlit, series["slitmask"], seriesRecipe)
+            if not match:
+                return series
+
         # CHECK TECH
-        if self.typeMap[series["eso dpr type"].lower()][0]["tech"]:
+        if self.typeMap[series["eso dpr type"].lower()][0]["tech"] and not seriesRecipe:
             match = False
             for row in self.typeMap[series["eso dpr type"].lower()]:
                 rowTech = [item.upper() for item in row["tech"]]
@@ -901,7 +930,7 @@ class data_organiser(object):
                     seriesRecipe = row["recipe"]
             if not match:
                 return series
-        else:
+        elif not seriesRecipe:
             seriesRecipe = self.typeMap[series["eso dpr type"].lower()][0]["recipe"]
 
         # GENEREATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
