@@ -1,6 +1,8 @@
 
 # Release Notes  
 
+* **FEATURE:** the data-organiser has been 'plumbed' to work with SOXS data (will now work with Xshooter or SOXS data).
+
 ## v0.10.0 - February 20, 2024
 
 * **FEATURE**: a new 'reducer' module and terminal command replace the old `_reduce_all/sh` script. This allows the data-organiser to dynamically self-correct if a recipe fails.
