@@ -1,6 +1,9 @@
 
 # Release Notes  
 
+* `pinhole_fwhm_px_min` and `pinhole_fwhm_px_max` settings added to `soxs-spatial-solution`. Detected pinholes with a FWHM below/above these values get clipped.
+* `mph_line_set_min` setting added to `soxs-spatial-solution`. Full multi-pinholes sets (same arc line) with fewer than mph_line_set_min lines detected get clipped.
+
 ## v0.9.9 - January 24, 2024
 
 * **FIXED**: bug fix logger
