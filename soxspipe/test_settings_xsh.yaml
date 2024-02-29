@@ -74,6 +74,9 @@ soxs-spatial-solution:
     slit-deg: 3
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
+    pinhole_fwhm_px_max: 2.5
+    pinhole_fwhm_px_min: 1.0
+    mph_line_set_min: 8
 
 soxs-mflat:
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack

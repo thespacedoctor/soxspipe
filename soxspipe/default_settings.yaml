@@ -75,6 +75,12 @@ soxs-spatial-solution:
     poly-clipping-iteration-limit: 9
     poly-fitting-residual-clipping-sigma: 5
     map_to_image_displacement_threshold: 0.01 # in pixels
+    # pinholes with a FWHM above this value get clipped
+    pinhole_fwhm_px_max: 2.5
+    # pinholes with a FWHM below this value get clipped
+    pinhole_fwhm_px_min: 0.0
+    # full multi-pinholes sets (same arc line) with fewer than mph_line_set_min lines detected get clipped
+    mph_line_set_min: 8
 
 
 sky-subtraction:
