@@ -1068,6 +1068,10 @@ class _base_recipe_(object):
             )
             backgroundFrame, processedFrame = background.subtract()
 
+            from soxspipe.commonutils.toolkit import quicklook_image
+            quicklook_image(
+                log=self.log, CCDObject=backgroundFrame, show=True, ext='data', stdWindow=3, title="Background Light", surfacePlot=True)
+
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 

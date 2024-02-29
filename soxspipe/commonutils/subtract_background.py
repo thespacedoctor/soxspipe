@@ -265,7 +265,12 @@ class subtract_background(object):
                 rowmasked[:hw] = rowmasked[hw + 1]
                 rowmasked[-hw:] = rowmasked[-hw - 1]
 
-                seedKnots = xmasked[1:-1:25]
+                defaultPointsPerKnot = 25
+                n_interior_knots = int(xmasked.shape[0] / defaultPointsPerKnot)
+                # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONGS WAVELENGTH RANGE
+                qs = np.linspace(0, 1, n_interior_knots + 2)[1: -1]
+                seedKnots = np.quantile(xmasked, qs)
+
                 t, c, k = splrep(xmasked, rowmaskedSmoothed, t=seedKnots, s=10.0, k=rowFitOrder)
 
                 spline = BSpline(t, c, k, extrapolate=True)
@@ -274,7 +279,7 @@ class subtract_background(object):
                 # ADD FITTED ROW TO BACKGROUND IMAGE
                 backgroundMap[idx, :] = yfit
 
-                if random.randint(1, 501) == 42 and 1 == 0:
+                if random.randint(1, 501) == 42 and 1 == 1:
                     import matplotlib.pyplot as plt
                     fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
                     plt.scatter(xmasked, rowmasked)
