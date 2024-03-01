@@ -140,7 +140,8 @@ def quicklook_image(
         dispMapImage=False,
         inst=False,
         settings=False,
-        skylines=False):
+        skylines=False,
+        saveToPath=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
@@ -164,6 +165,9 @@ def quicklook_image(
     """
     log.debug('starting the ``quicklook_image`` function')
 
+    if not show and not saveToPath:
+        return
+
     import pandas as pd
     import matplotlib as mpl
     import numpy as np
@@ -171,6 +175,8 @@ def quicklook_image(
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
     from soxspipe.commonutils import keyword_lookup
     from soxspipe.commonutils import detector_lookup
+    originalRC = dict(mpl.rcParams)
+    import matplotlib.pyplot as plt
 
     if settings:
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -191,12 +197,6 @@ def quicklook_image(
         # USE THIS ELSEWHERE IN THE OBJECT METHODS
         dp = detectorParams
         science_pixels = dp["science-pixels"]
-
-    originalRC = dict(mpl.rcParams)
-
-    if not show:
-        return
-    import matplotlib.pyplot as plt
 
     if ext == "data":
         frame = CCDObject.data
@@ -234,14 +234,14 @@ def quicklook_image(
 
         from matplotlib import rc
 
-        axisColour = '#dddddd'
+        axisColour = '#002b36'
         rc('axes', edgecolor=axisColour, labelcolor=axisColour, linewidth=0.6)
         rc('xtick', color=axisColour)
         rc('ytick', color=axisColour)
         rc('grid', color=axisColour)
         rc('text', color=axisColour)
 
-        fig = plt.figure(figsize=(40, 10))
+        fig = plt.figure(figsize=(20, 8))
         ax = fig.add_subplot(121, projection='3d')
         if inst == "XSHOOTER":
             plt.gca().invert_yaxis()
@@ -268,11 +268,11 @@ def quicklook_image(
 
         ax.set_xlim(0, rotatedImg.shape[1])
         ax.set_ylim(0, rotatedImg.shape[0])
-        # ax.set_zlim(0, min(np.nanmax(frame), mean + stdWindow * 10 * std))
+        ax.set_zlim(vmin, min(np.nanmax(frame), vmax * 1.2))
 
         if inst == "SOXS":
             ax.invert_yaxis()
-        backgroundColour = '#404040'
+        backgroundColour = 'white'
         fig.set_facecolor(backgroundColour)
         ax.set_facecolor(backgroundColour)
         ax.xaxis.pane.set_edgecolor(backgroundColour)
@@ -281,14 +281,14 @@ def quicklook_image(
 
         if inst == "SOXS":
             plt.xlabel(
-                "x-axis", fontsize=10)
+                "x-axis", fontsize=16)
             plt.ylabel(
-                "y-axis", fontsize=10)
+                "y-axis", fontsize=16)
         else:
             plt.xlabel(
-                "y-axis", fontsize=10)
+                "y-axis", fontsize=16)
             plt.ylabel(
-                "x-axis", fontsize=10)
+                "x-axis", fontsize=16)
 
         ax2 = fig.add_subplot(122)
     else:
@@ -337,22 +337,27 @@ def quicklook_image(
         fig.colorbar(detectorPlot, shrink=shrink)
         # plt.colorbar()
     if title:
-        fig.suptitle(title, fontsize=16)
+        fig.suptitle(title, fontsize=20)
     if inst == "XSHOOTER":
         ax2.invert_yaxis()
     # cbar.ticklabel_format(useOffset=False)
     if inst == "SOXS":
         plt.xlabel(
-            "x-axis", fontsize=10)
+            "x-axis", fontsize=16)
         plt.ylabel(
-            "y-axis", fontsize=10)
+            "y-axis", fontsize=16)
     else:
         plt.xlabel(
-            "y-axis", fontsize=10)
+            "y-axis", fontsize=16)
         plt.ylabel(
-            "x-axis", fontsize=10)
+            "x-axis", fontsize=16)
 
-    plt.show()
+    if show:
+        plt.show()
+
+    if saveToPath:
+        plt.savefig(saveToPath, dpi='figure', bbox_inches='tight')
+        plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
 
     log.debug('completed the ``quicklook_image`` function')

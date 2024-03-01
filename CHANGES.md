@@ -1,6 +1,8 @@
 
 # Release Notes  
 
+* **REFACTOR:** The scattered light background images are now saved as QC PDFs instead of FITS frames.
+
 ## v0.10.0 - February 20, 2024
 
 * **FEATURE**: a new 'reducer' module and terminal command replace the old `_reduce_all/sh` script. This allows the data-organiser to dynamically self-correct if a recipe fails.
