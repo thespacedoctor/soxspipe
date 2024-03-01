@@ -212,7 +212,7 @@ class subtract_background(object):
         maskedImage = np.ma.array(self.frame.data, mask=mask)
 
         quicklook_image(
-            log=self.log, CCDObject=maskedImage, show=False, ext=True, stdWindow=3, surfacePlot=True, title="Sigma clipped masked image")
+            log=self.log, CCDObject=maskedImage, show=True, ext=True, stdWindow=3, surfacePlot=True, title="Sigma clipped masked image")
 
         # PLACEHOLDER ARRAY FOR BACKGROUND IMAGE
         backgroundMap = np.zeros_like(self.frame)
