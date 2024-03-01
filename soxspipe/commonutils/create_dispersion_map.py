@@ -430,8 +430,6 @@ class create_dispersion_map(object):
         # READ THE FILE
         home = expanduser("~")
 
-        print(dp)
-
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 

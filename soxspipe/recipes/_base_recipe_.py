@@ -1062,47 +1062,54 @@ class _base_recipe_(object):
 
             background = subtract_background(
                 log=self.log,
+
                 frame=processedFrame,
+                sofName=self.sofName,
+                recipeName=self.recipeName,
                 orderTable=order_table,
-                settings=self.settings
+                settings=self.settings,
+                productsTable=self.products,
+                qcTable=self.qc
             )
-            backgroundFrame, processedFrame = background.subtract()
+            backgroundFrame, processedFrame, self.products = background.subtract()
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-            # DETERMINE WHERE TO WRITE THE FILE
-            home = expanduser("~")
+            # WRITE FITS FRAME OF BACKGROUND IMAGE ... PDF BEING GENERATED INSTEAD
+            if False:
+                # DETERMINE WHERE TO WRITE THE FILE
+                home = expanduser("~")
 
-            if self.currentSession:
-                outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
-            else:
-                outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
-            outDir = outDir.replace("//", "/")
-            # RECURSIVELY CREATE MISSING DIRECTORIES
-            if not os.path.exists(outDir):
-                os.makedirs(outDir)
+                if self.currentSession:
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
+                else:
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+                outDir = outDir.replace("//", "/")
+                # RECURSIVELY CREATE MISSING DIRECTORIES
+                if not os.path.exists(outDir):
+                    os.makedirs(outDir)
 
-            # GET THE EXTENSION (WITH DOT PREFIX)
-            filename = self.sofName + "_BKGROUND.fits"
-            filepath = f"{outDir}/{filename}"
-            header = copy.deepcopy(inputFrame.header)
-            primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
-            hdul = fits.HDUList([primary_hdu])
-            hdul.writeto(filepath, output_verify='exception',
-                         overwrite=True, checksum=True)
+                # GET THE EXTENSION (WITH DOT PREFIX)
+                filename = self.sofName + "_BKGROUND.fits"
+                filepath = f"{outDir}/{filename}"
+                header = copy.deepcopy(inputFrame.header)
+                primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
+                hdul = fits.HDUList([primary_hdu])
+                hdul.writeto(filepath, output_verify='exception',
+                             overwrite=True, checksum=True)
 
-            self.products = pd.concat([self.products, pd.Series({
-                "soxspipe_recipe": self.recipeName,
-                "product_label": "BKGROUND",
-                "file_name": filename,
-                "file_type": "FITS",
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "product_desc": f"Fitted intra-order image background",
-                "file_path": filepath,
-                "label": "QC"
-            }).to_frame().T], ignore_index=True)
+                self.products = pd.concat([self.products, pd.Series({
+                    "soxspipe_recipe": self.recipeName,
+                    "product_label": "BKGROUND",
+                    "file_name": filename,
+                    "file_type": "FITS",
+                    "obs_date_utc": self.dateObs,
+                    "reduction_date_utc": utcnow,
+                    "product_desc": f"Fitted intra-order image background",
+                    "file_path": filepath,
+                    "label": "QC"
+                }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``detrend`` method')
         return processedFrame

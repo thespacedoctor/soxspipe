@@ -2,6 +2,7 @@
 # Release Notes  
 
 * **FEATURE:** the data-organiser has been 'plumbed' to work with SOXS data (will now work with Xshooter or SOXS data).
+* **REFACTOR:** The scattered light background images are now saved as QC PDFs instead of FITS frames.
 
 ## v0.10.0 - February 20, 2024
 
