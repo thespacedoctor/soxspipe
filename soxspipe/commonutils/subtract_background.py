@@ -249,7 +249,7 @@ class subtract_background(object):
         maskedImage = np.ma.array(self.frame.data, mask=mask)
 
         quicklook_image(
-            log=self.log, CCDObject=maskedImage, show=True, ext=True, stdWindow=3, surfacePlot=True, title="Sigma clipped masked image")
+            log=self.log, CCDObject=maskedImage, show=False, ext=True, stdWindow=3, surfacePlot=True, title="Sigma clipped masked image")
 
         # PLACEHOLDER ARRAY FOR BACKGROUND IMAGE
         backgroundMap = np.zeros_like(self.frame)
@@ -316,7 +316,7 @@ class subtract_background(object):
                 # ADD FITTED ROW TO BACKGROUND IMAGE
                 backgroundMap[idx, :] = yfit
 
-                if random.randint(1, 501) == 42 and 1 == 1:
+                if random.randint(1, 501) == 42 and 1 == 0:
                     import matplotlib.pyplot as plt
                     fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
                     plt.scatter(xmasked, rowmasked)

@@ -1802,6 +1802,7 @@ class create_dispersion_map(object):
 
         import matplotlib.pyplot as plt
         from astropy.stats import sigma_clip
+        from astropy.stats import sigma_clipped_stats
 
         # LAYOUT THE FIGURE
         fig = plt.figure(figsize=(6, 10), constrained_layout=True)
@@ -1840,16 +1841,31 @@ class create_dispersion_map(object):
         toprow.tick_params(axis='both', which='major', labelsize=9)
         toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
+        # SIGMA-CLIP FLUX DATA
+        # masked_flux = sigma_clip(
+        #     orderPixelTable['flux'], sigma_lower=3000, sigma_upper=300, maxiters=1, cenfunc='median', stdfunc='mad_std')
+        # orderPixelTable.loc["sigma_clipped_flux"] = masked_flux.mask
+        # orderPixelTable.loc[(orderPixelTable['sigma_clipped_flux'] == True), "sigma_clipped"] = True
+
+        # xnp-copy-mask-to-another-array
+
         midrow.scatter(
-            x=orderPixelTable["x_diff"],  # numpy array of x-points
-            y=orderPixelTable["y_diff"],  # numpy array of y-points
+            x=orderPixelTable["wavelength"],  # numpy array of x-points
+            y=orderPixelTable["flux"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
             alpha=0.6,
-            label="measure shift from expected position")
-        midrow.set_ylabel(f"y-shift (px)", fontsize=12)
-        midrow.set_xlabel(f"x-shift (px)", fontsize=12)
+            label="pinhole flux")
+
+        midrow.set_ylabel(f"pinhole flux", fontsize=12)
+        midrow.set_xlabel(f"wavelength (nm)", fontsize=12)
+        midrow.tick_params(axis='both', which='major', labelsize=9)
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+
+        mean, median, std = sigma_clipped_stats(orderPixelTable['flux'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+
+        midrow.ylim(median - std, median + std)
 
         # midrow.scatter(
         #     x=orderPixelTable[(orderPixelTable["sigma_clipped_xy_diff"] == True)]["x_diff"],  # numpy array of x-points
@@ -1864,12 +1880,12 @@ class create_dispersion_map(object):
 
         bottomrow.scatter(
             x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["sky"],  # numpy array of y-points
+            y=orderPixelTable["peak"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
             alpha=0.6,
-            label="measured pinhole lines")
+            label="pinhole peak flux")
 
         # bottomrow.scatter(
         #     x=orderPixelTable[(orderPixelTable["sigma_clipped_sky"] == True)]["wavelength"],  # numpy array of x-points
@@ -1880,10 +1896,15 @@ class create_dispersion_map(object):
         #     alpha=0.6,
         #     label="clipped pinhole lines")
 
-        bottomrow.set_ylabel(f"sky", fontsize=12)
+        bottomrow.set_ylabel(f"pinhole peak flux", fontsize=12)
         bottomrow.set_xlabel(f"wavelength (nm)", fontsize=12)
+        bottomrow.tick_params(axis='both', which='major', labelsize=9)
+        bottomrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
-        # plt.show()
+        mean, median, std = sigma_clipped_stats(orderPixelTable['peak'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+        bottomrow.ylim(median - std, median + std)
+
+        plt.show()
 
         self.log.debug('completed the ``_clip_on_measured_line_metrics`` method')
         return orderPixelTable
