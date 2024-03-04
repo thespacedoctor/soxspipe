@@ -33,18 +33,18 @@ soxs-order-centre:
         # LENGTH OF EACH SLICE (PIXELS)
         slice-length: 10
         # WIDTH OF EACH SLICE (PIXELS)
-        slice-width: 5
+        slice-width: 1
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-        peak-sigma-limit: 3
+        peak-sigma-limit: 1.5
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        disp-axis-deg: 3
+        disp-axis-deg: 5
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        order-deg: 5
+        order-deg: 6
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-fitting-residual-clipping-sigma: 3
+        poly-fitting-residual-clipping-sigma: 5
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
         poly-clipping-iteration-limit: 7
-
+        
 soxs-spatial-solution:
     pixel-window-size: 10
     order-deg: 4
@@ -162,17 +162,19 @@ logging settings:
     handlers:
         console:
             class: logging.StreamHandler
-            level: DEBUG
+            level: WARNING
             formatter: console_style
             stream: ext://sys.stdout
         file:
             class: logging.handlers.GroupWriteRotatingFileHandler
             level: WARNING
             formatter: file_style
-            filename: ~/.config/soxspipe/soxspipe.log
+            filename: /Users/Dave/.config/soxspipe/soxspipe.log
             mode: w+
             maxBytes: 102400
             backupCount: 1
+            delay: True
     root:
-        level: WARNING
+        level: INFO
         handlers: [file,console]
+

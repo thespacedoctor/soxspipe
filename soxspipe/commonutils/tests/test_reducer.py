@@ -48,28 +48,9 @@ if not os.path.exists(pathToOutputDir):
 class test_reducer(unittest.TestCase):
 
     def test_reducer_function(self):
-
-        from soxspipe.commonutils import reducer
-        this = reducer(
-            log=log,
-            settings=settings
-        )
-        this.get()
-
-    def test_reducer_function_exception(self):
-
-        from soxspipe.commonutils import reducer
-        try:
-            this = reducer(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
-            )
-            this.get()
-            assert False
-        except Exception as e:
-            assert True
-            print(str(e))
+        """
+        This class is now tested in test_data_organiser.py
+        """
 
         # x-print-testpage-for-pessto-marshall-web-object
 

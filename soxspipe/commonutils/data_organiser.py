@@ -98,6 +98,13 @@ class data_organiser(object):
             'SLIT_UVB',
             'SLIT_VIS',
             'SLIT_NIR',
+            'LAMP1',
+            'LAMP2',
+            'LAMP3',
+            'LAMP4',
+            'LAMP5',
+            'LAMP6',
+            'LAMP7',
             'DET_READ_TYPE',
             'CONAD',
             'RON',
@@ -105,6 +112,7 @@ class data_organiser(object):
             'OBS_NAME',
             "NAXIS",
             "OBJECT",
+            "TPL_ID",
             "INSTRUME"
         ]
 
@@ -124,29 +132,35 @@ class data_organiser(object):
             'binning',
             'rospeed',
             'slit',
+            'slitmask',
+            'lamp',
             'night start date',
             'night start mjd',
             'mjd-obs',
             'date-obs',
             'object',
+            "template",
             "instrume"
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
         self.typeMap = {
-            "bias": [{"tech": None, "catg": None, "recipe": "mbias"}],
-            "dark": [{"tech": None, "catg": None, "recipe": "mdark"}],
-            "lamp,fmtchk": [{"tech": None, "catg": None, "recipe": "disp_sol"}],
-            "lamp,orderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,dorderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,qorderdef": [{"tech": None, "catg": None, "recipe": "order_centres"}],
-            "lamp,flat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,dflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,qflat": [{"tech": None, "catg": None, "recipe": "mflat"}],
-            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "catg": None, "recipe": "spat_sol"}],
-            "object": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
-            "std,flux": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
-            "std,telluric": [{"tech": ["echelle,slit,stare"], "catg": None, "recipe": "stare"}],
+            "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
+            "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,orderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,dorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,qorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,flat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
+            "flat,lamp": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
+            "lamp,dflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,qflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}],
+            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
+            "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
         }
 
         # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULTS FROM REDUCING EACH SOFs
@@ -173,7 +187,7 @@ class data_organiser(object):
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_IMAGE", "PIXELS", ".fits", "_IMAGE.fits", "soxs-spatial-solution"]
             ],
             "stare": [
-                ["REDUCED", "ECHELLE,SLIT", "OBJECT_TAB", "TABLE", None, None, "soxs-stare"]
+                ["REDUCED", "ECHELLE,SLIT,STARE", "OBJECT_TAB", "TABLE", None, None, "soxs-stare"]
             ],
         }
 
@@ -182,13 +196,13 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'binning', 'night start mjd', 'night start date', 'instrume']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
-        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "LAMP,WAVE", "STD,FLUX", "STD,TELLURIC", "OBJECT"]
+        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
 
         # THIS IS THE ORDER THE RECIPES NEED TO BE RUN IN (MAKE SURE THE REDUCTION SCRIPT HAS RECIPES IN THE CORRECT ORDER)
-        self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare"]
+        self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
 
         # DECOMPRESS .Z FILES
         from soxspipe.commonutils import uncompress
@@ -403,8 +417,12 @@ class data_organiser(object):
             allFrames = ImageFileCollection(
                 location=pathToDirectory, filenames=fitsNames, keywords=["instrume"])
 
-        instrument = allFrames.summary["instrume"]
+        tmpTable = allFrames.summary
+        tmpTable['instrume'].fill_value = "--"
+        instrument = tmpTable['instrume'].filled()
         instrument = list(set(instrument))
+        if "--" in instrument:
+            instrument.remove("--")
 
         self.instrument = None
         if len(instrument) > 1:
@@ -455,16 +473,12 @@ class data_organiser(object):
         masterTable = masterTable.filled()
 
         # FILTER OUT FRAMES WITH NO MJD
-        matches = (masterTable["mjd-obs"] == -99.99)
+        matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--"))
         missingMJDFiles = masterTable['file'][matches]
         if len(missingMJDFiles):
-            print("The following FITS files are missing the MJD-OBS keyword and will be ignored:\n\n")
+            print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
             print(missingMJDFiles)
-            matches = (masterTable["mjd-obs"] != -99.99)
-            masterTable = masterTable[matches]
-
-        from tabulate import tabulate
-        print(tabulate(masterTable, headers='keys', tablefmt='psql'))
+            masterTable = masterTable[~matches]
 
         # SETUP A NEW COLUMN GIVING THE INT MJD THE CHILEAN NIGHT BEGAN ON
         # 12:00 NOON IN CHILE IS TYPICALLY AT 16:00 UTC (CHILE = UTC - 4)
@@ -503,6 +517,9 @@ class data_organiser(object):
             masterTable["rospeed"][masterTable[
                 "rospeed"] == '1pt/100k/hg/AFC'] = 'slow'
             masterTable.add_index("rospeed")
+
+        if self.kw("TPL_ID").lower() in masterTable.colnames:
+            masterTable["template"] = np.copy(masterTable[self.kw("TPL_ID").lower()])
 
         if "naxis" in masterTable.colnames:
             masterTable["table"] = np.copy(masterTable["naxis"]).astype(str)
@@ -658,11 +675,22 @@ class data_organiser(object):
         filterKeywordsReduced = self.filterKeywords[:]
 
         filteredFrames['slit'] = "--"
+        filteredFrames['slitmask'] = "--"
+        filteredFrames['lamp'] = "--"
 
         # ADD SLIT FOR SPECTROSCOPIC DATA
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "NIR"), self.kw("SLIT_NIR").lower()]
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "VIS"), self.kw("SLIT_VIS").lower()]
         filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), "slit"] = filteredFrames.loc[(filteredFrames['eso seq arm'] == "UVB"), self.kw("SLIT_UVB").lower()]
+
+        filteredFrames["slit"] = filteredFrames["slit"].str.upper()
+
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("MULTI")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "MPH"
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
+
+        for i in [1, 2, 3, 4, 5, 6, 7]:
+            filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"] = filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), self.kw(f"LAMP{i}").lower()]
 
         mask = []
         for i in self.proKeywords:
@@ -783,12 +811,12 @@ class data_organiser(object):
         rawGroups = rawGroups.size().reset_index(name='counts')
         rawGroups['mjd-obs'] = mjds
 
-        # REMOVE GROUPED STARE AND NODDING - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
-        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]))
+        # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
+        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"]))
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = pd.read_sql(
-            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE","ECHELLE,SLIT,NODDING")', con=conn)
+            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE")', con=conn)
 
         rawScienceFrames.fillna("--", inplace=True)
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
@@ -862,6 +890,10 @@ class data_organiser(object):
         if series["eso dpr type"].lower() != reductionOrder.lower():
             return series
 
+        # FILTER BY TEMPLATE NAME
+        mask = (filteredFrames["template"].isin([series["template"]]))
+        filteredFrames = filteredFrames.loc[mask]
+
         # FILTER BY TYPE FIRST
         if "FLAT" in series["eso dpr type"].upper():
             mask = ((filteredFrames["eso dpr type"].str.contains("FLAT")) & (filteredFrames["slit"] == series["slit"]))
@@ -869,8 +901,24 @@ class data_organiser(object):
             mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
         filteredFrames = filteredFrames.loc[mask]
 
+        seriesRecipe = None
+
+        # CHECK SLIT
+        if self.typeMap[series["eso dpr type"].lower()][0]["slitmask"]:
+            match = False
+            for row in self.typeMap[series["eso dpr type"].lower()]:
+                rowSlit = [item.upper() for item in row["slitmask"]]
+                if not match and series["slitmask"] in rowSlit:
+                    match = True
+
+                    mask = (filteredFrames["slitmask"].isin(rowSlit))
+                    filteredFrames = filteredFrames.loc[mask]
+                    seriesRecipe = row["recipe"]
+            if not match:
+                return series
+
         # CHECK TECH
-        if self.typeMap[series["eso dpr type"].lower()][0]["tech"]:
+        if self.typeMap[series["eso dpr type"].lower()][0]["tech"] and not seriesRecipe:
             match = False
             for row in self.typeMap[series["eso dpr type"].lower()]:
                 rowTech = [item.upper() for item in row["tech"]]
@@ -881,7 +929,7 @@ class data_organiser(object):
                     seriesRecipe = row["recipe"]
             if not match:
                 return series
-        else:
+        elif not seriesRecipe:
             seriesRecipe = self.typeMap[series["eso dpr type"].lower()][0]["recipe"]
 
         # GENEREATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
@@ -892,8 +940,12 @@ class data_organiser(object):
             matchDict['rospeed'] = series["rospeed"]
             sofName.append(series["rospeed"])
         if series["eso dpr type"].lower() in self.typeMap:
+
             matchDict['eso dpr type'] = series["eso dpr type"]
-            sofName.append(self.typeMap[series["eso dpr type"].lower()][0]["recipe"].replace("_centres", "_locations"))
+            for i in self.typeMap[series["eso dpr type"].lower()]:
+                if i["recipe"] == seriesRecipe:
+                    sofName.append(i["recipe"].replace("_centres", "_locations"))
+
             if "DORDER" in series["eso dpr type"].upper():
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
@@ -905,7 +957,7 @@ class data_organiser(object):
 
         for k, v in matchDict.items():
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
-                mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT"]))
+                mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP"]))
             else:
                 mask = (filteredFrames[k].isin([v]))
             filteredFrames = filteredFrames.loc[mask]
@@ -954,7 +1006,8 @@ class data_organiser(object):
         # NIGHT START
         # YYYY.MM.DDThh.mm.xxx
         if series["night start mjd"]:
-            if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING"]:
+
+            if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
                 filteredFrames = filteredFrames.loc[mask]
             else:
@@ -1044,12 +1097,12 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # DISP SOLS
-        if series["recipe"] in ["order_centres", "spat_sol", "stare"]:
+        if series["recipe"] in ["order_centres", "spat_sol", "stare", "nod"]:
             mask = calibrationTables['eso pro catg'].str.contains("DISP_TAB")
             df = calibrationTables.loc[mask]
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
-                if series["recipe"] in ["stare"]:
+                if series["recipe"] in ["stare", "nod"]:
                     mask = (df['recipe'] == "spat_sol")
                     if len(df.loc[mask, "file"].index):
                         files = np.append(files, df.loc[mask, "file"].values[0])
@@ -1063,7 +1116,7 @@ class data_organiser(object):
                         filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
 
         # DISP SOLS IMAGE
-        if series["recipe"] in ["stare"]:
+        if series["recipe"] in ["stare", "nod"]:
             mask = calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")
             df = calibrationFrames.loc[mask]
             if len(df.index):
@@ -1073,7 +1126,7 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # ORDER TAB
-        if series["recipe"] in ["mflat", "spat_sol", "stare"]:
+        if series["recipe"] in ["mflat", "spat_sol", "stare", "nod"]:
             mask = calibrationTables['eso pro catg'].str.contains('ORDER_TAB')
             df = calibrationTables.loc[mask]
             if series["recipe"] in ["mflat"]:
@@ -1107,7 +1160,7 @@ class data_organiser(object):
                     filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
 
         # FLAT FRAMES
-        if series["recipe"] in ["spat_sol", "stare"]:
+        if series["recipe"] in ["spat_sol", "stare", "nod"]:
             mask = calibrationFrames['eso pro catg'].str.contains('MASTER_FLAT')
             df = calibrationFrames.loc[mask]
 
@@ -1116,7 +1169,7 @@ class data_organiser(object):
                 mask = df['slit'].str.contains('JH')
                 df = df.loc[~mask]
 
-            if series["recipe"] in ["stare"]:
+            if series["recipe"] in ["stare", "nod"]:
                 from tabulate import tabulate
                 if len(filteredFrames["slit"].values):
                     df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]

@@ -28,6 +28,8 @@ class subtract_background(object):
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``frame`` -- the frame to subtract background light from
+        - ``recipeName`` -- name of the parent recipe
+        - ``sofName`` -- the sof file name given to the parent recipe
         - ``orderTable`` -- the order geometry table
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
@@ -59,6 +61,8 @@ class subtract_background(object):
             log,
             frame,
             orderTable,
+            sofName=False,
+            recipeName=False,
             settings=False,
             qcTable=False,
             productsTable=False,
@@ -67,6 +71,8 @@ class subtract_background(object):
         self.log = log
         log.debug("instantiating a new 'subtract_background' object")
         self.settings = settings
+        self.sofName = sofName
+        self.recipeName = recipeName
         self.frame = frame
         self.orderTable = orderTable
         self.qc = qcTable
@@ -108,6 +114,7 @@ class subtract_background(object):
         self.log.debug('starting the ``subtract`` method')
 
         import numpy as np
+        import pandas as pd
 
         kw = self.kw
         imageType = self.frame.header[kw("DPR_TYPE")].replace(",", "-")
@@ -137,11 +144,39 @@ class subtract_background(object):
         backgroundSubtractedFrame = self.frame.subtract(backgroundFrame)
         backgroundSubtractedFrame.header = self.frame.header
 
+        # GET FILENAME FOR THE RESIDUAL PLOT
+        saveToPath = False
+        if self.sofName:
+            backgroundQCImage = self.sofName + "_BKGROUND.pdf"
+            home = expanduser("~")
+            self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+            self.qcDir = self.qcDir.replace("//", "/")
+            # RECURSIVELY CREATE MISSING DIRECTORIES
+            if not os.path.exists(self.qcDir):
+                os.makedirs(self.qcDir)
+            saveToPath = self.qcDir + "/" + backgroundQCImage
+
         quicklook_image(
-            log=self.log, CCDObject=backgroundFrame, show=False, ext='data', stdWindow=3, surfacePlot=True, title="Scattered Light Image")
+            log=self.log, CCDObject=backgroundFrame, show=False, ext='data', stdWindow=1, surfacePlot=True, title="Background Scattered Light", saveToPath=saveToPath)
+
+        if saveToPath and not isinstance(self.products, bool):
+            from datetime import datetime
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": "BKGROUND",
+                "file_name": backgroundQCImage,
+                "file_type": "PDF",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": "Fitted intra-order image background",
+                "file_path": saveToPath,
+                "label": "QC"
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``subtract`` method')
-        return backgroundFrame, backgroundSubtractedFrame
+        return backgroundFrame, backgroundSubtractedFrame, self.products
 
     def mask_order_locations(
             self,
@@ -202,6 +237,8 @@ class subtract_background(object):
         import numpy.ma as ma
         import math
         import random
+        from soxspipe.commonutils.filenamer import filenamer
+        from os.path import expanduser
 
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA
