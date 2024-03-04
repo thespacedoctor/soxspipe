@@ -914,7 +914,6 @@ class data_organiser(object):
                     mask = (filteredFrames["slitmask"].isin(rowSlit))
                     filteredFrames = filteredFrames.loc[mask]
                     seriesRecipe = row["recipe"]
-                    print(rowSlit, series["slitmask"], seriesRecipe)
             if not match:
                 return series
 
