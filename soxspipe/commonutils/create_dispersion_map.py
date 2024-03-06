@@ -205,35 +205,21 @@ class create_dispersion_map(object):
                 if 'detector_x_shifted' in orderPixelTable.columns:
                     orderPixelTable['x_diff'] = orderPixelTable['detector_x_shifted'] - orderPixelTable['observed_x']
                     orderPixelTable['y_diff'] = orderPixelTable['detector_y_shifted'] - orderPixelTable['observed_y']
-                    orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x_shifted'] - orderPixelTable['x_diff'].mean()
-                    orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y_shifted'] - orderPixelTable['y_diff'].mean()
+                    mean, median, std = sigma_clipped_stats(orderPixelTable['x_diff'], sigma=2.0, stdfunc="mad_std", cenfunc="median")
+                    orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x_shifted'] - mean
+                    mean, median, std = sigma_clipped_stats(orderPixelTable['y_diff'], sigma=2.0, stdfunc="mad_std", cenfunc="median")
+                    orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y_shifted'] - mean
                 else:
                     orderPixelTable['x_diff'] = orderPixelTable['detector_x'] - orderPixelTable['observed_x']
                     orderPixelTable['y_diff'] = orderPixelTable['detector_y'] - orderPixelTable['observed_y']
-                    orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x'] - orderPixelTable['x_diff'].mean()
-                    orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y'] - orderPixelTable['y_diff'].mean()
+                    mean, median, std = sigma_clipped_stats(orderPixelTable['x_diff'], sigma=2.0, stdfunc="mad_std", cenfunc="median")
+                    orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x'] - mean
+                    mean, median, std = sigma_clipped_stats(orderPixelTable['y_diff'], sigma=2.0, stdfunc="mad_std", cenfunc="median")
+                    orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y'] - mean
 
-                orderPixelTable['xy_diff'] = orderPixelTable['x_diff'].pow(2) + orderPixelTable['y_diff'].pow(2)
-                orderPixelTable['xy_diff'] = orderPixelTable['xy_diff'].pow(0.5)
+                orderPixelTable['xy_diff'] = np.sqrt(np.square(orderPixelTable["x_diff"]) + np.square(orderPixelTable["y_diff"]))
 
                 self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {orderPixelTable['x_diff'].mean():0.3f},{orderPixelTable['y_diff'].mean():0.3f}")
-
-            # GROUP FOUND LINES INTO SETS AND CLIP ON MEAN XY SHIFT RESIDUALS
-            orderPixelTable["dropped"] = False
-            lineGroups = orderPixelTable.groupby(['wavelength', 'order'])['xy_diff'].mean()
-            lineGroups = lineGroups.reset_index()
-
-            masked_residuals = sigma_clip(
-                lineGroups["xy_diff"], sigma_lower=500, sigma_upper=2, maxiters=3, cenfunc='mean', stdfunc='std')
-            lineGroups["sigma_clipped"] = masked_residuals.mask
-            mask = (lineGroups["sigma_clipped"] == True)
-            lineGroups = lineGroups.loc[mask]
-            setsToDrop = lineGroups[['wavelength', 'order']]
-            s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
-            s["dropped"] = False
-            s.loc[(s["_merge"] == "both"), "dropped"] = True
-            orderPixelTable["droppedOnScatter"] = s["dropped"].values
-            orderPixelTable.loc[(orderPixelTable["droppedOnScatter"] == True), "dropped"] = True
 
             # COLLECT MISSING LINES
             mask = (orderPixelTable['observed_x'].isnull())
@@ -243,6 +229,7 @@ class create_dispersion_map(object):
             lineGroups = lineGroups.size().to_frame(name='count').reset_index()
 
             # CREATE THE LIST OF INCOMPLETE MULTIPINHOLE WAVELENGTHS & ORDER SETS TO DROP
+            orderPixelTable["dropped"] = False
             missingLineThreshold = 9 - self.recipeSettings['mph_line_set_min']
             mask = (lineGroups['count'] > missingLineThreshold)
             lineGroups = lineGroups.loc[mask]
@@ -294,6 +281,9 @@ class create_dispersion_map(object):
             orderDeg = self.recipeSettings["order-deg"]
             wavelengthDeg = self.recipeSettings["wavelength-deg"]
 
+            # GROUP FOUND LINES INTO SETS AND CLIP ON MEAN XY SHIFT RESIDUALS
+            orderPixelTable = self._clip_on_measured_line_metrics(orderPixelTable)
+
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
             fitFound = False
             tryCount = 0
@@ -304,7 +294,8 @@ class create_dispersion_map(object):
                         wavelengthDeg=wavelengthDeg,
                         orderDeg=orderDeg,
                         slitDeg=slitDeg,
-                        missingLines=missingLines
+                        missingLines=missingLines,
+                        clipOnMphSets=True
                     )
                     fitFound = True
                 except Exception as e:
@@ -579,7 +570,7 @@ class create_dispersion_map(object):
         try:
             # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
             daofind = DAOStarFinder(
-                fwhm=3., threshold=2.0 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False, min_separation=1)
+                fwhm=3., threshold=2.0 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
             sources = daofind(stamp.data, mask=stamp.mask)
@@ -989,7 +980,8 @@ class create_dispersion_map(object):
             wavelengthDeg,
             orderDeg,
             slitDeg,
-            missingLines=False):
+            missingLines=False,
+            clipOnMphSets=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
@@ -998,6 +990,7 @@ class create_dispersion_map(object):
             - ``orderDeg`` -- degree of the order fitting
             - ``slitDeg`` -- degree of the slit fitting (0 for single pinhole)
             - ``missingLines`` -- lines not detected on the image
+            - ``clipOnMphSets`` -- clip on MPH sets rather than single pinholes
 
         **Return:**
             - ``xcoeff`` -- the x-coefficients post clipping
@@ -1105,7 +1098,7 @@ class create_dispersion_map(object):
                 writeQCs=False)
 
             # DO SOME CLIPPING ON THE PROFILES OF THE DETECTED LINES
-            if iteration == 1:
+            if iteration == -1:
                 orderPixelTable = self._clip_on_measured_line_metrics(orderPixelTable)
 
             # COUNT THE CLIPPED LINES
@@ -1117,9 +1110,44 @@ class create_dispersion_map(object):
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
 
-            masked_residuals = sigma_clip(
-                orderPixelTable["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
-            orderPixelTable["sigma_clipped"] = masked_residuals.mask
+            if clipOnMphSets:
+
+                # GROUP BY ARC LINES (MPH SETS)
+                lineGroups = orderPixelTable.groupby(['wavelength', 'order']).mean()
+                lineGroups = lineGroups.reset_index()
+
+                # SIGMA-CLIP THE DATA ON SCATTER
+                masked_residuals = sigma_clip(
+                    lineGroups["residuals_x"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                lineGroups["sigma_clipped_x"] = masked_residuals.mask
+                masked_residuals = sigma_clip(
+                    lineGroups["residuals_y"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                lineGroups["sigma_clipped_y"] = masked_residuals.mask
+                masked_residuals = sigma_clip(
+                    lineGroups["residuals_xy"], sigma_lower=5000, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                lineGroups["sigma_clipped_xy"] = masked_residuals.mask
+                lineGroups.loc[((lineGroups["sigma_clipped_y"] == True) | (lineGroups["sigma_clipped_x"] == True) | (lineGroups["sigma_clipped_xy"] == True)), "sigma_clipped"] = True
+
+                # REMOVE THE CLIPPED DATA BEFORE CLIPPING ON FLUX
+                mask = (lineGroups["sigma_clipped"] == True)
+                clippedGroups = lineGroups.loc[mask]
+                clippedGroups = clippedGroups[['wavelength', 'order']]
+                s = orderPixelTable[['wavelength', 'order']].merge(clippedGroups, indicator=True, how='left')
+                s["clipped"] = False
+                s.loc[(s["_merge"] == "both"), "clipped"] = True
+                orderPixelTable["sigma_clipped"] = s["clipped"].values
+
+            else:
+                masked_residuals = sigma_clip(
+                    orderPixelTable["residuals_x"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
+                masked_residuals = sigma_clip(
+                    orderPixelTable["residuals_y"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                orderPixelTable["sigma_clipped_y"] = masked_residuals.mask
+                masked_residuals = sigma_clip(
+                    orderPixelTable["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                orderPixelTable["sigma_clipped_xy"] = masked_residuals.mask
+                orderPixelTable.loc[((orderPixelTable["sigma_clipped_y"] == True) | (orderPixelTable["sigma_clipped_x"] == True) | (orderPixelTable["sigma_clipped_xy"] == True)), "sigma_clipped"] = True
 
             # COUNT THE CLIPPED LINES
             mask = (orderPixelTable['sigma_clipped'] == True)
@@ -1790,7 +1818,7 @@ class create_dispersion_map(object):
     def _clip_on_measured_line_metrics(
             self,
             orderPixelTable):
-        """*clip lines based on measured line metrics (from daostarfinder etc)*
+        """*clip lines & sets of lines based on measured line metrics (from daostarfinder etc)*
 
         **Key Arguments:**
             - `orderPixelTable` -- panda's data-frame containing measure line metrics
@@ -1801,26 +1829,92 @@ class create_dispersion_map(object):
         self.log.debug('starting the ``_clip_on_measured_line_metrics`` method')
 
         import matplotlib.pyplot as plt
-        from astropy.stats import sigma_clip
-        from astropy.stats import sigma_clipped_stats
+        from astropy.stats import sigma_clip, sigma_clipped_stats
+        from astropy.visualization import hist
 
         # LAYOUT THE FIGURE
-        fig = plt.figure(figsize=(6, 10), constrained_layout=True)
-        gs = fig.add_gridspec(6, 4)
+        fig = plt.figure(figsize=(6, 12), constrained_layout=True)
+        gs = fig.add_gridspec(8, 4)
         toprow = fig.add_subplot(gs[0:2, :])
         midrow = fig.add_subplot(gs[2:4, :])
-        bottomrow = fig.add_subplot(gs[4:6, :])
+        midrow2 = fig.add_subplot(gs[4:6, :])
+        bottomleft = fig.add_subplot(gs[6:8, 0:2])
+        bottomright = fig.add_subplot(gs[6:8, 2:])
 
-        orderPixelTable.loc[(orderPixelTable['fwhm_px'].isnull()), "sigma_clipped"] = True
+        toprow.set_title(
+            "Pre-fitting QC Clipping on Pinhole-Sets", fontsize=10)
 
-        # CLIP ON FWHM. THESE ARE RIGID THRESHOLD FOUND IN THE SETTINGS FILE. SIGMA-CLIPPING WAS NOT ROBUST FOR THIS METRIC.
-        mask = ((orderPixelTable['fwhm_px'] > self.recipeSettings['pinhole_fwhm_px_max']) | (orderPixelTable['fwhm_px'] < self.recipeSettings['pinhole_fwhm_px_min']))
-        orderPixelTable.loc[mask, "sigma_clipped_fwhm"] = True
-        orderPixelTable.loc[(orderPixelTable['sigma_clipped_fwhm'] == True), "sigma_clipped"] = True
+        # GROUP BY ARC LINES (MPH SETS)
+        lineGroups = orderPixelTable.loc[(orderPixelTable["dropped"] == False)].groupby(['wavelength', 'order']).std()
+        lineGroups = lineGroups.reset_index()
+
+        # SIGMA-CLIP THE DATA ON SCATTER
+        # masked_residuals = sigma_clip(
+        #     lineGroups["xy_diff"], sigma_lower=5000, sigma_upper=7, maxiters=5, cenfunc='median', stdfunc='mad_std')
+        # lineGroups["sigma_clipped_scatter"] = masked_residuals.mask
+
+        # SIGMA-CLIP THE DATA ON SCATTER
+        lineGroups["sigma_clipped_scatter"] = False
+        masked_residuals = sigma_clip(
+            lineGroups["x_diff"], sigma_lower=5000, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
+        lineGroups["sigma_clipped_x"] = masked_residuals.mask
+        masked_residuals = sigma_clip(
+            lineGroups["y_diff"], sigma_lower=5000, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
+        lineGroups["sigma_clipped_y"] = masked_residuals.mask
+        masked_residuals = sigma_clip(
+            lineGroups["xy_diff"], sigma_lower=5000, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
+        lineGroups["sigma_clipped_xy"] = masked_residuals.mask
+        lineGroups.loc[((lineGroups["sigma_clipped_y"] == True) | (lineGroups["sigma_clipped_x"] == True) | (lineGroups["sigma_clipped_xy"] == True)), "sigma_clipped_scatter"] = True
+
+        bottomleft.scatter(
+            x=lineGroups["x_diff"],  # numpy array of x-points
+            y=lineGroups["y_diff"],  # numpy array of y-points
+            s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
+            c="black",    # color or sequence of color, optional, default
+            marker='x',
+            alpha=0.6,
+            label="arc line shift from predicted position")
+
+        bottomleft.scatter(
+            x=lineGroups.loc[(lineGroups["sigma_clipped_scatter"] == True)]["x_diff"],  # numpy array of x-points
+            y=lineGroups.loc[(lineGroups["sigma_clipped_scatter"] == True)]["y_diff"],  # numpy array of y-points
+            s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
+            c="red",    # color or sequence of color, optional, default
+            marker='x',
+            alpha=0.6,
+            label="clipped arc lines")
+
+        bottomleft.set_ylabel(f"y-shift rms (px)", fontsize=12)
+        bottomleft.set_xlabel(f"x-shift rms (px)", fontsize=12)
+        bottomleft.tick_params(axis='both', which='major', labelsize=9)
+        bottomleft.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+
+        hist(lineGroups[(lineGroups["sigma_clipped_scatter"] == False)]["xy_diff"], bins='scott', ax=bottomright, histtype='stepfilled',
+             alpha=0.7, density=True)
+        bottomright.set_xlabel('xy residual')
+        bottomright.tick_params(axis='both', which='major', labelsize=9)
+
+        # REMOVE THE CLIPPED DATA BEFORE CLIPPING ON FWHM
+        mask = (lineGroups["sigma_clipped_scatter"] == True)
+        dropGroups = lineGroups.loc[mask]
+        setsToDrop = dropGroups[['wavelength', 'order']]
+        s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
+        s["dropped"] = False
+        s.loc[(s["_merge"] == "both"), "dropped"] = True
+        orderPixelTable["droppedOnScatter"] = s["dropped"].values
+        orderPixelTable.loc[(orderPixelTable["droppedOnScatter"] == True), "dropped"] = True
+
+        # SIGMA-CLIP THE DATA ON FWHM
+        lineGroups = orderPixelTable.loc[(orderPixelTable["dropped"] == False)].groupby(['wavelength', 'order']).mean()
+        lineGroups = lineGroups.reset_index()
+        masked_residuals = sigma_clip(
+            lineGroups["fwhm_px"], sigma_lower=2.5, sigma_upper=3, maxiters=3, cenfunc='median', stdfunc='mad_std')
+        lineGroups["sigma_clipped_fwhm"] = masked_residuals.mask
+        lineGroups["sigma_clipped"] = masked_residuals.mask
 
         toprow.scatter(
-            x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["fwhm_px"],  # numpy array of y-points
+            x=lineGroups["wavelength"],  # numpy array of x-points
+            y=lineGroups["fwhm_px"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
@@ -1828,8 +1922,8 @@ class create_dispersion_map(object):
             label="measured pinhole lines")
 
         toprow.scatter(
-            x=orderPixelTable[(orderPixelTable["sigma_clipped_fwhm"] == True)]["wavelength"],  # numpy array of x-points
-            y=orderPixelTable[(orderPixelTable["sigma_clipped_fwhm"] == True)]["fwhm_px"],  # numpy array of y-points
+            x=lineGroups[(lineGroups["sigma_clipped_fwhm"] == True)]["wavelength"],  # numpy array of x-points
+            y=lineGroups[(lineGroups["sigma_clipped_fwhm"] == True)]["fwhm_px"],  # numpy array of y-points
             s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="red",    # color or sequence of color, optional, default
             marker='x',
@@ -1841,17 +1935,25 @@ class create_dispersion_map(object):
         toprow.tick_params(axis='both', which='major', labelsize=9)
         toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
-        # SIGMA-CLIP FLUX DATA
-        # masked_flux = sigma_clip(
-        #     orderPixelTable['flux'], sigma_lower=3000, sigma_upper=300, maxiters=1, cenfunc='median', stdfunc='mad_std')
-        # orderPixelTable.loc["sigma_clipped_flux"] = masked_flux.mask
-        # orderPixelTable.loc[(orderPixelTable['sigma_clipped_flux'] == True), "sigma_clipped"] = True
+        # REMOVE THE CLIPPED DATA BEFORE CLIPPING ON FLUX
+        mask = (lineGroups["sigma_clipped_fwhm"] == True)
+        dropGroups = lineGroups.loc[mask]
+        setsToDrop = dropGroups[['wavelength', 'order']]
+        s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
+        s["dropped"] = False
+        s.loc[(s["_merge"] == "both"), "dropped"] = True
+        orderPixelTable["droppedOnFWHM"] = s["dropped"].values
+        orderPixelTable.loc[(orderPixelTable["droppedOnFWHM"] == True), "dropped"] = True
 
-        # xnp-copy-mask-to-another-array
+        # SIGMA-CLIP THE DATA ON FLUX
+        lineGroups = lineGroups.loc[~mask]
+        masked_residuals = sigma_clip(
+            lineGroups["flux"], sigma_lower=5, sigma_upper=10, maxiters=1, cenfunc='median', stdfunc='mad_std')
+        lineGroups["sigma_clipped_flux"] = masked_residuals.mask
 
         midrow.scatter(
-            x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["flux"],  # numpy array of y-points
+            x=lineGroups["wavelength"],  # numpy array of x-points
+            y=lineGroups["flux"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
@@ -1863,46 +1965,68 @@ class create_dispersion_map(object):
         midrow.tick_params(axis='both', which='major', labelsize=9)
         midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
-        mean, median, std = sigma_clipped_stats(orderPixelTable['flux'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
-
-        midrow.ylim(median - std, median + std)
-
-        # midrow.scatter(
-        #     x=orderPixelTable[(orderPixelTable["sigma_clipped_xy_diff"] == True)]["x_diff"],  # numpy array of x-points
-        #     y=orderPixelTable[(orderPixelTable["sigma_clipped_xy_diff"] == True)]["y_diff"],  # numpy array of y-points
-        #     s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
-        #     c="red",    # color or sequence of color, optional, default
-        #     marker='x',
-        #     alpha=0.6,
-        #     label="clipped pinhole lines")
+        midrow.scatter(
+            x=lineGroups[(lineGroups["sigma_clipped_flux"] == True)]["wavelength"],  # numpy array of x-points
+            y=lineGroups[(lineGroups["sigma_clipped_flux"] == True)]["flux"],  # numpy array of y-points
+            s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
+            c="red",    # color or sequence of color, optional, default
+            marker='x',
+            alpha=0.6,
+            label="clipped pinhole lines")
 
         midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
-        bottomrow.scatter(
-            x=orderPixelTable["wavelength"],  # numpy array of x-points
-            y=orderPixelTable["peak"],  # numpy array of y-points
+        # REMOVE THE CLIPPED DATA BEFORE CLIPPING ON PEAK
+        mask = (lineGroups["sigma_clipped_flux"] == True)
+        dropGroups = lineGroups.loc[mask]
+        setsToDrop = dropGroups[['wavelength', 'order']]
+        s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
+        s["dropped"] = False
+        s.loc[(s["_merge"] == "both"), "dropped"] = True
+        orderPixelTable["droppedOnFlux"] = s["dropped"].values
+        orderPixelTable.loc[(orderPixelTable["droppedOnFlux"] == True), "dropped"] = True
+
+        # SIGMA-CLIP THE DATA ON FLUX
+        lineGroups = lineGroups.loc[~mask]
+        lineGroups["peak"] = lineGroups["peak"] / lineGroups["flux"]
+        masked_residuals = sigma_clip(
+            lineGroups["peak"], sigma_lower=5000, sigma_upper=7, maxiters=5, cenfunc='median', stdfunc='mad_std')
+        lineGroups["sigma_clipped_peak"] = masked_residuals.mask
+
+        midrow2.scatter(
+            x=lineGroups["wavelength"],  # numpy array of x-points
+            y=lineGroups["peak"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
             alpha=0.6,
-            label="pinhole peak flux")
+            label="pinhole peak flux / mean flux")
 
-        # bottomrow.scatter(
-        #     x=orderPixelTable[(orderPixelTable["sigma_clipped_sky"] == True)]["wavelength"],  # numpy array of x-points
-        #     y=orderPixelTable[(orderPixelTable["sigma_clipped_sky"] == True)]["sky"],  # numpy array of y-points
-        #     s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
-        #     c="red",    # color or sequence of color, optional, default
-        #     marker='x',
-        #     alpha=0.6,
-        #     label="clipped pinhole lines")
+        midrow2.set_ylabel(f"pinhole peak flux", fontsize=12)
+        midrow2.set_xlabel(f"wavelength (nm)", fontsize=12)
+        midrow2.tick_params(axis='both', which='major', labelsize=9)
+        midrow2.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
-        bottomrow.set_ylabel(f"pinhole peak flux", fontsize=12)
-        bottomrow.set_xlabel(f"wavelength (nm)", fontsize=12)
-        bottomrow.tick_params(axis='both', which='major', labelsize=9)
-        bottomrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+        midrow2.scatter(
+            x=lineGroups[(lineGroups["sigma_clipped_peak"] == True)]["wavelength"],  # numpy array of x-points
+            y=lineGroups[(lineGroups["sigma_clipped_peak"] == True)]["peak"],  # numpy array of y-points
+            s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
+            c="red",    # color or sequence of color, optional, default
+            marker='x',
+            alpha=0.6,
+            label="clipped pinhole lines")
 
-        mean, median, std = sigma_clipped_stats(orderPixelTable['peak'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
-        bottomrow.ylim(median - std, median + std)
+        midrow2.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05), fontsize=4)
+
+        # REMOVE THE CLIPPED DATA
+        mask = (lineGroups["sigma_clipped_peak"] == True)
+        dropGroups = lineGroups.loc[mask]
+        setsToDrop = dropGroups[['wavelength', 'order']]
+        s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
+        s["dropped"] = False
+        s.loc[(s["_merge"] == "both"), "dropped"] = True
+        orderPixelTable["droppedOnPeak"] = s["dropped"].values
+        orderPixelTable.loc[(orderPixelTable["droppedOnPeak"] == True), "dropped"] = True
 
         plt.show()
 
