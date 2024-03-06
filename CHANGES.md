@@ -1,6 +1,7 @@
 
 # Release Notes  
 
+* **ENHANCEMENT:** option added to relevant recipes settings to allow toggling of fitting and subtracting of intra-order scattered background light (`subtract_background`)
 * **FEATURE:** the data-organiser has been 'plumbed' to work with SOXS data (will now work with Xshooter or SOXS data).
 * **REFACTOR:** The scattered light background images are now saved as QC PDFs instead of FITS frames.
 
