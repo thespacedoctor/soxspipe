@@ -187,7 +187,7 @@ soxs-straighten:
 # UTILS
 background-subtraction:
     bspline-deg: 2
-    median-filter-pixels: 9
+    gaussian-blur-sigma: 50
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data/xsh
 workspace-root-dir: ~/soxspipe-unittests/intermediate/xsh

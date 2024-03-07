@@ -136,7 +136,7 @@ sky-subtraction:
 # UTILS
 background-subtraction:
     bspline-deg: 2
-    median-filter-pixels: 9
+    gaussian-blur-sigma: 50
 
 
 data-extension: 1

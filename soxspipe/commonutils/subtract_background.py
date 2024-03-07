@@ -33,7 +33,6 @@ class subtract_background(object):
         - ``orderTable`` -- the order geometry table
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
-        - ``surfaceFit`` -- fit a bspline surface to the background pixel data rather than series of linear detector-column bspline fits
 
     **Usage:**
 
@@ -47,8 +46,7 @@ class subtract_background(object):
         log=log,
         frame=myCCDDataObject,
         orderTable="/path/to/orderTable",
-        settings=settings,
-        surfaceFit=True
+        settings=settings
     )
     backgroundFrame, backgroundSubtractedFrame = background.subtract()
     ```
@@ -65,8 +63,7 @@ class subtract_background(object):
             recipeName=False,
             settings=False,
             qcTable=False,
-            productsTable=False,
-            surfaceFit=False
+            productsTable=False
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_background' object")
@@ -77,7 +74,6 @@ class subtract_background(object):
         self.orderTable = orderTable
         self.qc = qcTable
         self.products = productsTable
-        self.surfaceFit = surfaceFit
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -136,7 +132,7 @@ class subtract_background(object):
             log=self.log, CCDObject=self.frame, show=False, ext=None, surfacePlot=True, title="Initial input frame with order pixels masked")
 
         backgroundFrame = self.create_background_image(
-            rowFitOrder=self.settings['background-subtraction']['bspline-deg'], medianFilterSize=self.settings['background-subtraction']['median-filter-pixels'])
+            rowFitOrder=self.settings['background-subtraction']['bspline-deg'], gaussianSigma=self.settings['background-subtraction']['gaussian-blur-sigma'])
 
         # REPLACE MASK
         self.frame.mask = originalMask
@@ -157,7 +153,7 @@ class subtract_background(object):
             saveToPath = self.qcDir + "/" + backgroundQCImage
 
         quicklook_image(
-            log=self.log, CCDObject=backgroundFrame, show=False, ext='data', stdWindow=1, surfacePlot=True, title="Background Scattered Light", saveToPath=saveToPath)
+            log=self.log, CCDObject=backgroundFrame, show=False, ext='data', stdWindow=9, surfacePlot=False, title="Background Scattered Light", saveToPath=saveToPath)
 
         if saveToPath and not isinstance(self.products, bool):
             from datetime import datetime
@@ -206,8 +202,10 @@ class subtract_background(object):
                 f"{self.axisA}coord_edgeup"] + expandEdges
             axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
                 f"{self.axisA}coord_edgelow"] - expandEdges
-            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(*[(x1, x2, b) for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord) if x1 > 0 and x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen])
+            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(*[(x1, x2, b) for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord) if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen])
             for b, u, l in zip(axisBcoord, np.ceil(axisAcoord_edgeup).astype(int), np.floor(axisAcoord_edgelow).astype(int)):
+                if l < 0:
+                    l = 0
                 if self.axisA == "x":
                     self.frame.mask[b, l:u] = 1
                 else:
@@ -219,12 +217,12 @@ class subtract_background(object):
     def create_background_image(
             self,
             rowFitOrder,
-            medianFilterSize):
+            gaussianSigma):
         """*model the background image from intra-order flux detected*
 
         **Key Arguments:**
             - ``rowFitOrder`` -- order of the polynomial fit to flux in each row
-            - ``medianFilterSize`` -- the length of the line to median filter in y-direction (after bspline fitting)
+            - ``gaussianSigma`` -- the sigma of the gaussian used to blur the final image
         """
         self.log.debug('starting the ``create_background_image`` method')
 
@@ -233,7 +231,8 @@ class subtract_background(object):
         import pandas as pd
         from astropy.nddata import CCDData
         from scipy.signal import medfilt2d
-        from scipy.interpolate import BSpline, splrep
+        from scipy.interpolate import splrep, splev
+        import scipy
         import numpy.ma as ma
         import math
         import random
@@ -243,94 +242,87 @@ class subtract_background(object):
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA
         clippedDataMask = sigma_clip(
-            maskedImage, sigma_lower=2, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
+            maskedImage, sigma_lower=10, sigma_upper=50, maxiters=2, cenfunc='median', stdfunc='mad_std')
+
         # COMBINE MASK WITH THE BAD PIXEL MASK
         mask = (clippedDataMask.mask == 1) | (self.frame.mask == 1)
         maskedImage = np.ma.array(self.frame.data, mask=mask)
 
+        maskedAsNanImage = self.frame.data.copy()
+        maskedAsNanImage[mask] = np.nan
+
+        import skimage
+        from skimage.morphology import disk
+        maskedAsNanImage = skimage.filters.median(maskedAsNanImage, footprint=disk(4))
+
+        # REMOVE -VE VALUES
+        maskedAsNanImage = np.where(maskedAsNanImage < 0, 0, maskedAsNanImage)
+
+        # REGENERATE A MASK OF NANS
+        mask = np.isnan(maskedAsNanImage)
+        maskedImage = np.ma.array(maskedAsNanImage, mask=mask)
+
         quicklook_image(
-            log=self.log, CCDObject=maskedImage, show=False, ext=True, stdWindow=3, surfacePlot=True, title="Sigma clipped masked image")
+            log=self.log, CCDObject=maskedImage, show=False, ext=True, stdWindow=3, surfacePlot=True, title="Sigma clipped, blurred masked image")
 
         # PLACEHOLDER ARRAY FOR BACKGROUND IMAGE
         backgroundMap = np.zeros_like(self.frame)
 
-        if self.surfaceFit:
-            import matplotlib.pyplot as plt
-            fig = plt.figure(figsize=(40, 10))
-            from scipy.interpolate import griddata
-            flatMask = mask.flatten()
-            X, Y = np.meshgrid(np.linspace(0, self.frame.data.shape[1], self.frame.data.shape[1]), np.linspace(0, self.frame.data.shape[0], self.frame.data.shape[0]))
-            Z = self.frame.data.flatten()
-            Xflat = X.flatten()
-            Yflat = Y.flatten()
-            Xdata = Xflat[~flatMask]
-            Ydata = Yflat[~flatMask]
-            Zdata = Z[~flatMask]
+        for idx, row in enumerate(maskedImage):
 
-            backgroundMap = griddata((Xdata, Ydata), Zdata, (X, Y), method='cubic')
+            # SET X TO A MASKED RANGE ... BLANK DATA BUT WITH MASK FROM IMAGE
+            xunmasked = ma.masked_array(np.linspace(
+                0, len(row), len(row), dtype=int), mask=row.mask)
 
-            quicklook_image(
-                log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image - fitted with Cubic")
+            # fit = ma.polyfit(xunmasked, row, deg=rowFitOrder)
+            xfit = xunmasked.data
 
-        else:
-            for idx, row in enumerate(maskedImage):
+            # yfit = np.polyval(fit, xfit)
 
-                # SET X TO A MASKED RANGE
-                xunmasked = ma.masked_array(np.linspace(
-                    0, len(row), len(row), dtype=int), mask=row.mask)
+            xmasked = xunmasked[~xunmasked.mask]
+            xmin = xmasked.min()
+            xmax = xmasked.max()
+            rowmasked = row[~row.mask]
 
-                # fit = ma.polyfit(xunmasked, row, deg=rowFitOrder)
-                xfit = np.linspace(0, len(row), len(row), dtype=int)
+            window = 25
+            hw = math.floor(window / 2)
+            # rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).quantile(.1)
+            try:
+                rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
+            except:
+                rowmasked = rowmasked.byteswap().newbyteorder()
+                rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
+            rowmaskedSmoothed[:hw] = rowmaskedSmoothed.iloc[hw + 1]
+            rowmaskedSmoothed[-hw:] = rowmaskedSmoothed.iloc[-hw - 1]
+            rowmasked[:hw] = rowmasked[hw + 1]
+            rowmasked[-hw:] = rowmasked[-hw - 1]
 
-                # yfit = np.polyval(fit, xfit)
+            seedKnots = xmasked[1:-1:15]
+            tck, fp, ier, msg = splrep(xmasked, rowmaskedSmoothed, t=seedKnots, k=rowFitOrder, full_output=True)
+            t, c, k = tck
 
-                xmasked = xunmasked[~xunmasked.mask]
-                xmin = xmasked.min()
-                xmax = xmasked.max()
-                rowmasked = row[~row.mask]
+            if ier == 10:
+                self.log.info(f"\t\tpoor fit on columns {idx}.\n")
 
-                window = 9
-                hw = math.floor(window / 2)
-                # rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).quantile(.1)
-                try:
-                    rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
-                except:
-                    rowmasked = rowmasked.byteswap().newbyteorder()
-                    rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
-                rowmaskedSmoothed[:hw] = rowmaskedSmoothed.iloc[hw + 1]
-                rowmaskedSmoothed[-hw:] = rowmaskedSmoothed.iloc[-hw - 1]
-                rowmasked[:hw] = rowmasked[hw + 1]
-                rowmasked[-hw:] = rowmasked[-hw - 1]
+            yfit = splev(xfit, tck, ext=3)
 
-                defaultPointsPerKnot = 25
-                n_interior_knots = int(xmasked.shape[0] / defaultPointsPerKnot)
-                # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONGS WAVELENGTH RANGE
-                qs = np.linspace(0, 1, n_interior_knots + 2)[1: -1]
-                seedKnots = np.quantile(xmasked, qs)
+            # ADD FITTED ROW TO BACKGROUND IMAGE
+            backgroundMap[idx, :] = yfit
 
-                t, c, k = splrep(xmasked, rowmaskedSmoothed, t=seedKnots, s=10.0, k=rowFitOrder)
+            if random.randint(1, 401) == 42 and False:
+                import matplotlib.pyplot as plt
+                fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
+                plt.scatter(xmasked, rowmasked)
+                plt.scatter(xmasked, rowmaskedSmoothed)
+                plt.plot(xfit, yfit, 'b')
+                plt.ylabel("flux")
+                plt.xlabel("pixels along row")
+                plt.show()
 
-                spline = BSpline(t, c, k, extrapolate=True)
-                yfit = spline(xfit)
+        quicklook_image(
+            log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image")
 
-                # ADD FITTED ROW TO BACKGROUND IMAGE
-                backgroundMap[idx, :] = yfit
-
-                if random.randint(1, 501) == 42 and 1 == 0:
-                    import matplotlib.pyplot as plt
-                    fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
-                    plt.scatter(xmasked, rowmasked)
-                    plt.scatter(xmasked, rowmaskedSmoothed)
-                    plt.plot(xfit, yfit, 'b')
-                    plt.ylabel("flux")
-                    plt.xlabel("pixels along row")
-                    plt.show()
-
-            quicklook_image(
-                log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image")
-
-        backgroundMap = medfilt2d(
-            backgroundMap, medianFilterSize)
+        backgroundMap = scipy.ndimage.filters.gaussian_filter(backgroundMap, gaussianSigma)
 
         quicklook_image(
             log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image with median filtering")

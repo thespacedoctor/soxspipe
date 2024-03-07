@@ -1058,7 +1058,11 @@ class _base_recipe_(object):
         if master_flat != False:
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
-        if order_table != False and 1 == 1:
+        doSubtraction = True
+        if "subtract_background" in self.settings[self.recipeName] and not self.settings[self.recipeName]["subtract_background"]:
+            doSubtraction = False
+
+        if order_table != False and doSubtraction:
 
             background = subtract_background(
                 log=self.log,
