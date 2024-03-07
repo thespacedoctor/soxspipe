@@ -59,8 +59,8 @@ instrument: soxs
 
 # # UTILS
 # background-subtraction:
-#     bspline-deg: 3
-#     median-filter-pixels: 11
+#     bspline-deg: 2
+#     gaussian-blur-sigma: 50
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data
 workspace-root-dir: ~/soxspipe-unittests/intermediate/soxs
