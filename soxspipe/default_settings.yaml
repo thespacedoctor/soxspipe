@@ -141,8 +141,8 @@ sky-subtraction:
 
 # UTILS
 background-subtraction:
-    bspline-deg: 3
-    median-filter-pixels: 9
+    bspline-deg: 2
+    gaussian-blur-sigma: 50
 
 logging settings:
     formatters:
