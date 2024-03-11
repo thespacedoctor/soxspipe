@@ -75,11 +75,11 @@ soxs-spatial-solution:
     order-deg: 3
     wavelength-deg: 4
     slit-deg: 2
-    # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
+    # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
     poly-clipping-iteration-limit: 9
     poly-fitting-residual-clipping-sigma: 5
     map_to_image_displacement_threshold: 0.01 # in pixels
-    # NUMBER OF PINHOLES NEEDED TO BE DETECTED IN A PINHOLE SET TO BE CONSIDERED IN THE DISPERSION SOLUTION FITTING
+    # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
     mph_line_set_min: 9
 
 
@@ -142,7 +142,7 @@ sky-subtraction:
 # UTILS
 background-subtraction:
     bspline-deg: 2
-    gaussian-blur-sigma: 50
+    gaussian-blur-sigma: 15
 
 logging settings:
     formatters:

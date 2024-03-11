@@ -8,3 +8,6 @@ summary-keys:
                     'EXPTIME', 'NAXIS1', 'NAXIS2', 'DET_READ_SPEED', 'CONAD', 'DET_GAIN', 'RON', 'CHIP_RON', 'BUNIT', 'SLIT_UVB', 'SLIT_VIS', 'SLIT_NIR','INSTRUME']
 
 workspace-root-dir: ./
+
+
+bootstrap_dispersion_solution: False
