@@ -69,7 +69,6 @@ class soxs_order_centres(_base_recipe_):
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
@@ -257,6 +256,7 @@ class soxs_order_centres(_base_recipe_):
             pinholeFlat=self.orderFrame,
             dispersion_map=disp_map_table,
             settings=self.settings,
+            recipeSettings=self.recipeSettings,
             recipeName="soxs-order-centre",
             qcTable=self.qc,
             productsTable=self.products,

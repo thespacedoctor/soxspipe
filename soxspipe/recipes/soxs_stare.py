@@ -65,7 +65,6 @@ class soxs_stare(_base_recipe_):
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
@@ -285,6 +284,7 @@ class soxs_stare(_base_recipe_):
         skymodel = subtract_sky(
             log=self.log,
             settings=self.settings,
+            recipeSettings=self.recipeSettings,
             objectFrame=combined_object,
             twoDMap=twoDMap,
             qcTable=self.qc,

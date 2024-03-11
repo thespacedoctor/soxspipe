@@ -90,6 +90,7 @@ class test_detect_continuum(unittest.TestCase):
             pinholeFlat=pinholeFlat,
             dispersion_map=dispersion_map,
             settings=settings,
+            recipeSettings=settings["soxs-order-centre"],
             recipeName="soxs-order-centre",
             qcTable=qc,
             productsTable=products

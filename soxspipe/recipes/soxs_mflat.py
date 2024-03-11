@@ -77,7 +77,6 @@ class soxs_mflat(_base_recipe_):
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
@@ -311,6 +310,7 @@ class soxs_mflat(_base_recipe_):
                 flatFrame=combined_normalised_flat,
                 orderCentreTable=orderTablePath,
                 settings=self.settings,
+                recipeSettings=self.recipeSettings,
                 qcTable=qcTable,
                 productsTable=productTable,
                 tag=tag,
@@ -586,8 +586,7 @@ class soxs_mflat(_base_recipe_):
                 self.binx = 1
                 self.biny = 1
 
-        window = int(self.settings[
-            "soxs-mflat"]["centre-order-window"] / 2)
+        window = int(self.recipeSettings["centre-order-window"] / 2)
         # if self.axisA == "x" and self.binx > 1:
         #     window = int(window / self.binx)
         #     self.recipeSettings["slice-length-for-edge-detection"] = int(self.recipeSettings["slice-length-for-edge-detection"] / self.binx)
@@ -732,7 +731,7 @@ class soxs_mflat(_base_recipe_):
 
         # SIGMA-CLIP THE LOW-SENSITIVITY PIXELS
         frameClipped = sigma_clip(
-            frame, sigma_lower=self.settings["soxs-mflat"]["low-sensitivity-clipping-sigma"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc='mad_std')
+            frame, sigma_lower=self.recipeSettings["low-sensitivity-clipping-sigma"], sigma_upper=2000, maxiters=5, cenfunc='median', stdfunc='mad_std')
 
         lowSensitivityPixelMask = (frameClipped.mask == 1) & (beforeMask != 1)
         lowSensPixelCount = lowSensitivityPixelMask.sum()

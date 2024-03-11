@@ -437,7 +437,8 @@ class detect_continuum(_base_detect):
         - ``log`` -- logger
         - ``pinholeFlat`` -- calibrationed pinhole flat frame (CCDObject)
         - ``dispersion_map`` -- path to dispersion map csv file containing polynomial fits of the dispersion solution for the frame
-        - ``settings`` -- the recipe settings dictionary
+        - ``settings`` -- the settings dictionary
+        - ``recipeSettings`` -- the recipe specific settings
         - ``recipeName`` -- the recipe name as given in the settings dictionary
         - ``qcTable`` -- the data frame to collect measured QC metrics 
         - ``productsTable`` -- the data frame to collect output products
@@ -468,6 +469,7 @@ class detect_continuum(_base_detect):
             pinholeFlat,
             dispersion_map,
             settings=False,
+            recipeSettings=False,
             recipeName=False,
             qcTable=False,
             productsTable=False,
@@ -478,10 +480,6 @@ class detect_continuum(_base_detect):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
         self.settings = settings
-        if recipeName:
-            self.recipeSettings = settings[recipeName]["detect-continuum"]
-        else:
-            self.recipeSettings = False
         self.recipeName = recipeName
         self.pinholeFlat = pinholeFlat
         self.dispersion_map = dispersion_map
@@ -490,6 +488,7 @@ class detect_continuum(_base_detect):
         self.sofName = sofName
         self.binx = binx
         self.biny = biny
+        self.recipeSettings = recipeSettings["detect-continuum"]
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER

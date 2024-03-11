@@ -119,6 +119,7 @@ class test_create_dispersion_map(unittest.TestCase):
         mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=log,
             settings=settings2,
+            recipeSettings=settings2['soxs-disp-solution'],
             pinholeFrame=frame,
             qcTable=qc,
             productsTable=products,
@@ -162,6 +163,7 @@ class test_create_dispersion_map(unittest.TestCase):
         mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=log,
             settings=settings,
+            recipeSettings=settings['soxs-disp-solution'],
             pinholeFrame=frame,
             qcTable=qc,
             productsTable=products,
@@ -205,6 +207,7 @@ class test_create_dispersion_map(unittest.TestCase):
         mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=log,
             settings=settings,
+            recipeSettings=settings['soxs-spatial-solution'],
             pinholeFrame=frame,
             firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T172310_NIR_DISP_MAP.fits",
             qcTable=qc,
