@@ -135,6 +135,7 @@ class test_subtract_sky(unittest.TestCase):
         this = subtract_sky(
             log=log,
             settings=settings,
+            recipeSettings=settings["soxs-stare"],
             objectFrame=objectFrame,
             twoDMap=twoDMap,
             qcTable=qc,

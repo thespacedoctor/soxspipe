@@ -103,6 +103,12 @@ class _base_recipe_(object):
         # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
         self.settings = {**advs, **self.settings}
 
+        # SORT RECIPE AND ARM SETTINGS
+        if recipeName:
+            self.recipeSettings = self.settings[recipeName]
+        else:
+            self.recipeSettings = False
+
         # FIND THE CURRENT SESSION
         from os.path import expanduser
         home = expanduser("~")
@@ -876,10 +882,8 @@ class _base_recipe_(object):
         recipe = recipe.replace("soxs_", "soxs-")
 
         # UNPACK SETTINGS
-        stacked_clipping_sigma = self.settings[
-            recipe]["stacked-clipping-sigma"]
-        stacked_clipping_iterations = self.settings[
-            recipe]["stacked-clipping-iterations"]
+        stacked_clipping_sigma = self.recipeSettings["stacked-clipping-sigma"]
+        stacked_clipping_iterations = self.recipeSettings["stacked-clipping-iterations"]
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
@@ -1059,7 +1063,7 @@ class _base_recipe_(object):
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
         doSubtraction = True
-        if "subtract_background" in self.settings[self.recipeName] and not self.settings[self.recipeName]["subtract_background"]:
+        if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
             doSubtraction = False
 
         if order_table != False and doSubtraction:
@@ -1359,11 +1363,9 @@ class _base_recipe_(object):
         import numpy as np
 
         # UNPACK SETTINGS
-        clipping_lower_sigma = self.settings[
-            "soxs-mbias"]["frame-clipping-sigma"]
+        clipping_lower_sigma = self.recipeSettings["frame-clipping-sigma"]
         clipping_upper_sigma = clipping_lower_sigma
-        clipping_iteration_count = self.settings[
-            "soxs-mbias"]["frame-clipping-iterations"]
+        clipping_iteration_count = self.recipeSettings["frame-clipping-iterations"]
 
         maskedFrame = sigma_clip(
             rawFrame, sigma=clipping_lower_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')

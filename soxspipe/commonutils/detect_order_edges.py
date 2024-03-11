@@ -33,6 +33,7 @@ class detect_order_edges(_base_detect):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``recipeSettings`` -- the recipe specific settings
         - ``flatFrame`` -- the flat frame to detect the order edges on
         - ``orderCentreTable`` -- the order centre table
         - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
@@ -60,6 +61,7 @@ class detect_order_edges(_base_detect):
         flatFrame=flatFrame,
         orderCentreTable=orderCentreTable,
         settings=settings,
+        recipeSettings=recipeSettings,
         recipeName="soxs-mflat",
         verbose=False,
         qcTable=False,
@@ -76,6 +78,7 @@ class detect_order_edges(_base_detect):
             flatFrame,
             orderCentreTable,
             settings=False,
+            recipeSettings=False,
             recipeName="soxs-mflat",
             verbose=False,
             qcTable=False,
@@ -90,10 +93,7 @@ class detect_order_edges(_base_detect):
         log.debug("instantiating a new 'detect_order_edges' object")
         self.settings = settings
         self.recipeName = recipeName
-        if recipeName:
-            self.recipeSettings = settings[recipeName]
-        else:
-            self.recipeSettings = False
+        self.recipeSettings = recipeSettings
 
         self.orderCentreTable = orderCentreTable
         self.flatFrame = flatFrame

@@ -16,6 +16,9 @@ soxs-mbias:
     stacked-clipping-iterations: 3
 
 soxs-mdark:
+    # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 1
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
     clipping-lower-sigma: 3
@@ -121,23 +124,24 @@ soxs-stare:
         poly-fitting-residual-clipping-sigma: 3.
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
         poly-clipping-iteration-limit: 5
+    sky-subtraction:
+        # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+        median_clipping_sigma: 3
+        median_clipping_iterations: 5
+        # ROLLING WINDOW LENGTH IN DATA POINTS
+        median_rolling_window_size: 31
+        # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+        percential_clipping_sigma: 2
+        percential_clipping_iterations: 1
+        percential_rolling_window_size: 15
+        # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+        clip-slit-edge-fraction: 0.05
+        aggressive_object_masking: True
+        bspline_order: 2
+        slit_illumination_order: 3
 
 
-sky-subtraction:
-    # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-    median_clipping_sigma: 3
-    median_clipping_iterations: 5
-    # ROLLING WINDOW LENGTH IN DATA POINTS
-    median_rolling_window_size: 31
-    # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-    percential_clipping_sigma: 2
-    percential_clipping_iterations: 1
-    percential_rolling_window_size: 15
-    # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-    clip-slit-edge-fraction: 0.05
-    aggressive_object_masking: True
-    bspline_order: 2
-    slit_illumination_order: 3
+
 
 # UTILS
 background-subtraction:
