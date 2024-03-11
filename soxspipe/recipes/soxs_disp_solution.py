@@ -72,7 +72,6 @@ class soxs_disp_solution(_base_recipe_):
         self.inputFrames = inputFrames
         self.verbose = verbose
         self.recipeName = "soxs-disp-solution"
-        self.recipeSettings = settings[self.recipeName]
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
@@ -240,6 +239,7 @@ class soxs_disp_solution(_base_recipe_):
         productPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,
             settings=self.settings,
+            recipeSettings=self.recipeSettings,
             pinholeFrame=self.pinholeFrame,
             qcTable=self.qc,
             productsTable=self.products,

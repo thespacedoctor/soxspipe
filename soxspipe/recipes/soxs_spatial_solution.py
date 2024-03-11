@@ -61,7 +61,6 @@ class soxs_spatial_solution(_base_recipe_):
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
         self.create2DMap = create2DMap
 
         # xt-self-arg-tmpx
@@ -255,6 +254,7 @@ class soxs_spatial_solution(_base_recipe_):
         mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,
             settings=self.settings,
+            recipeSettings=self.recipeSettings,
             pinholeFrame=self.multiPinholeFrame,
             firstGuessMap=disp_map_table,
             orderTable=order_table,

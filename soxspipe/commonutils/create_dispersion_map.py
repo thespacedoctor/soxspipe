@@ -36,6 +36,7 @@ class create_dispersion_map(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``recipeSettings`` -- the recipe specific settings
         - ``pinholeFrame`` -- the calibrated pinhole frame (single or multi)
         - ``firstGuessMap`` -- the first guess dispersion map from the `soxs_disp_solution` recipe (needed in `soxs_spat_solution` recipe). Default *False*.
         - ``orderTable`` -- the order geometry table
@@ -63,6 +64,7 @@ class create_dispersion_map(object):
             self,
             log,
             settings,
+            recipeSettings,
             pinholeFrame,
             firstGuessMap=False,
             orderTable=False,
@@ -84,6 +86,7 @@ class create_dispersion_map(object):
         self.products = productsTable
         self.sofName = sofName
         self.create2DMap = create2DMap
+        self.recipeSettings = recipeSettings
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -99,10 +102,8 @@ class create_dispersion_map(object):
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
             self.recipeName = "soxs-spatial-solution"
-            self.recipeSettings = self.settings["soxs-spatial-solution"]
         else:
             self.recipeName = "soxs-disp-solution"
-            self.recipeSettings = self.settings["soxs-disp-solution"]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
@@ -987,11 +988,6 @@ class create_dispersion_map(object):
         arm = self.arm
         dp = self.detectorParams
 
-        if self.firstGuessMap:
-            recipe = "soxs-spatial-solution"
-        else:
-            recipe = "soxs-disp-solution"
-
         clippedCount = 1
 
         # ADD EXPONENTS TO ORDERTABLE UP-FRONT
@@ -1028,10 +1024,8 @@ class create_dispersion_map(object):
         polyy = chebyshev_order_wavelength_polynomials(
             log=self.log, orderDeg=orderDegy, wavelengthDeg=wavelengthDegy, slitDeg=slitDegy, exponentsIncluded=True, axis="y").poly
 
-        clippingSigma = self.settings[
-            recipe]["poly-fitting-residual-clipping-sigma"]
-        clippingIterationLimit = self.settings[
-            recipe]["poly-clipping-iteration-limit"]
+        clippingSigma = self.recipeSettings["poly-fitting-residual-clipping-sigma"]
+        clippingIterationLimit = self.recipeSettings["poly-clipping-iteration-limit"]
 
         self.log.print("\n# FINDING DISPERSION SOLUTION")
 

@@ -427,6 +427,9 @@ class _base_recipe_(object):
             columns = ["filename"] + columns
         self.log.print(preframes.summary[columns])
 
+        # SORT RECIPE AND ARM SETTINGS
+        self.recipeSettings = self.get_recipe_settings()
+
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
 
@@ -876,10 +879,8 @@ class _base_recipe_(object):
         recipe = recipe.replace("soxs_", "soxs-")
 
         # UNPACK SETTINGS
-        stacked_clipping_sigma = self.settings[
-            recipe]["stacked-clipping-sigma"]
-        stacked_clipping_iterations = self.settings[
-            recipe]["stacked-clipping-iterations"]
+        stacked_clipping_sigma = self.recipeSettings["stacked-clipping-sigma"]
+        stacked_clipping_iterations = self.recipeSettings["stacked-clipping-iterations"]
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
@@ -1059,7 +1060,7 @@ class _base_recipe_(object):
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
         doSubtraction = True
-        if "subtract_background" in self.settings[self.recipeName] and not self.settings[self.recipeName]["subtract_background"]:
+        if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
             doSubtraction = False
 
         if order_table != False and doSubtraction:
@@ -1359,11 +1360,9 @@ class _base_recipe_(object):
         import numpy as np
 
         # UNPACK SETTINGS
-        clipping_lower_sigma = self.settings[
-            "soxs-mbias"]["frame-clipping-sigma"]
+        clipping_lower_sigma = self.recipeSettings["frame-clipping-sigma"]
         clipping_upper_sigma = clipping_lower_sigma
-        clipping_iteration_count = self.settings[
-            "soxs-mbias"]["frame-clipping-iterations"]
+        clipping_iteration_count = self.recipeSettings["frame-clipping-iterations"]
 
         maskedFrame = sigma_clip(
             rawFrame, sigma=clipping_lower_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
@@ -1425,6 +1424,31 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``update_fits_keywords`` method')
         return None
+
+    def get_recipe_settings(
+            self):
+        """*get the recipe and arm specific settings*
+
+        **Return:**
+            - ``recipeSettings`` -- the recipe specific settings
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+        """
+        self.log.debug('starting the ``get_recipe_settings`` method')
+
+        recipeSettings = False
+        if self.recipeName:
+            recipeSettings = self.settings[self.recipeName]
+        if recipeSettings and self.arm and self.arm.lower() in recipeSettings:
+            for k, v in recipeSettings[self.arm.lower()].items():
+                recipeSettings[k] = v
+
+        self.log.debug('completed the ``get_recipe_settings`` method')
+        return recipeSettings
 
     # use the tab-trigger below for new method
     # xt-class-method
