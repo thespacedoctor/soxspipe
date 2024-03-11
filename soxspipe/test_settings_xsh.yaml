@@ -26,6 +26,13 @@ soxs-mbias:
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 3
+    uvb:
+        # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+        frame-clipping-sigma: 3 
+        frame-clipping-iterations: 1
+        # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
+        stacked-clipping-sigma: 5
+        stacked-clipping-iterations: 3
 
 soxs-mdark:
     # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.

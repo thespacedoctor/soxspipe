@@ -103,12 +103,6 @@ class _base_recipe_(object):
         # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
         self.settings = {**advs, **self.settings}
 
-        # SORT RECIPE AND ARM SETTINGS
-        if recipeName:
-            self.recipeSettings = self.settings[recipeName]
-        else:
-            self.recipeSettings = False
-
         # FIND THE CURRENT SESSION
         from os.path import expanduser
         home = expanduser("~")
@@ -432,6 +426,9 @@ class _base_recipe_(object):
             columns.remove("filename")
             columns = ["filename"] + columns
         self.log.print(preframes.summary[columns])
+
+        # SORT RECIPE AND ARM SETTINGS
+        self.recipeSettings = self.get_recipe_settings()
 
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
@@ -1427,6 +1424,31 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``update_fits_keywords`` method')
         return None
+
+    def get_recipe_settings(
+            self):
+        """*get the recipe and arm specific settings*
+
+        **Return:**
+            - ``recipeSettings`` -- the recipe specific settings
+
+        **Usage:**
+
+        ```python
+        usage code 
+        ```
+        """
+        self.log.debug('starting the ``get_recipe_settings`` method')
+
+        recipeSettings = False
+        if self.recipeName:
+            recipeSettings = self.settings[self.recipeName]
+        if recipeSettings and self.arm and self.arm.lower() in recipeSettings:
+            for k, v in recipeSettings[self.arm.lower()].items():
+                recipeSettings[k] = v
+
+        self.log.debug('completed the ``get_recipe_settings`` method')
+        return recipeSettings
 
     # use the tab-trigger below for new method
     # xt-class-method
