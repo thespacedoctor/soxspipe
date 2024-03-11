@@ -1,6 +1,7 @@
 
 # Release Notes  
 
+* **REFACTOR** recipe settings can now be set independently for each arm.
 * **REFACTOR:** fitting of the scatter background light is now much more robust.
 * **ENHANCEMENT:** option added to relevant recipes settings to allow toggling of fitting and subtracting of intra-order scattered background light (`subtract_background`)
 * **FEATURE:** the data-organiser has been 'plumbed' to work with SOXS data (will now work with Xshooter or SOXS data).
