@@ -353,6 +353,7 @@ class soxs_stare(_base_recipe_):
             skySubtractedFrame=skySubtractedCCDData,
             twoDMapPath=twoDMap,
             settings=self.settings,
+            recipeSettings=self.recipeSettings,
             recipeName=self.recipeName,
             qcTable=self.qc,
             productsTable=self.products,

@@ -851,6 +851,7 @@ class soxs_mflat(_base_recipe_):
             flatFrame=stitchedFlat,
             orderCentreTable=orderTablePath,
             settings=self.settings,
+            recipeSettings=self.recipeSettings,
             qcTable=self.qc,
             productsTable=self.products,
             tag="",

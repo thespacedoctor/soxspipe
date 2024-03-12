@@ -34,6 +34,9 @@ UVB:
   slit_length: 11 #arcsec
   skylines: SKYLINES.fits
   line-atlas: ThAr.fits
+  dispersion-axis: x
+  rotate-qc-plot: 90
+  flip-qc-plot: 1
             
 VIS:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -71,6 +74,9 @@ VIS:
   slit_length: 11 #arcsec
   skylines: SKYLINES.fits
   line-atlas: ThAr.fits
+  dispersion-axis: x
+  rotate-qc-plot: 90
+  flip-qc-plot: 1
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -102,4 +108,7 @@ NIR:
   slit_length: 11 #arcsec
   skylines: SKYLINES.fits
   line-atlas: ArHgNeXe.fits
+  dispersion-axis: x
+  rotate-qc-plot: 90
+  flip-qc-plot: 1
 

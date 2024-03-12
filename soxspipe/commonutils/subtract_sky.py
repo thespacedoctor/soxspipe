@@ -189,6 +189,7 @@ class subtract_sky(object):
 
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         qcPlotOrder = int(np.median(uniqueOrders)) - 1
+        qcPlotOrder = 16
 
         allimageMapOrder = []
         allimageMapOrderWithObject = []

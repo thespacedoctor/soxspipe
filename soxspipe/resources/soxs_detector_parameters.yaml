@@ -34,6 +34,9 @@ VIS:
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 11 #arcsec
   line-atlas: ThAr.fits
+  dispersion-axis: x
+  rotate-qc-plot: 90
+  flip-qc-plot: 1
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -64,3 +67,6 @@ NIR:
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 11 #arcsec
   line-atlas: ArHgNeXe.fits
+  dispersion-axis: y
+  rotate-qc-plot: 0
+  flip-qc-plot: 1

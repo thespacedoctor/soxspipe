@@ -297,6 +297,8 @@ class subtract_background(object):
             rowmasked[:hw] = rowmasked[hw + 1]
             rowmasked[-hw:] = rowmasked[-hw - 1]
 
+            rowmaskedSmoothed = np.where(rowmaskedSmoothed < 0, 0, rowmaskedSmoothed)
+
             seedKnots = xmasked[1:-1:15]
             tck, fp, ier, msg = splrep(xmasked, rowmaskedSmoothed, t=seedKnots, k=rowFitOrder, full_output=True)
             t, c, k = tck
