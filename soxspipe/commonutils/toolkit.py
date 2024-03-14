@@ -1191,7 +1191,7 @@ def get_calibration_lamp(
     for l in [kw("LAMP1"), kw("LAMP2"), kw("LAMP3"), kw("LAMP4"), kw("LAMP5"), kw("LAMP6"), kw("LAMP7")]:
         if l in frame.header:
             lamp = frame.header[l]
-            lamp = lamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("_lamp", "")
+            lamp = lamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("VIS_", "").replace("UVB_", "").replace("_lamp", "")
 
     log.debug('completed the ``read_calibration_lamp`` function')
     return lamp

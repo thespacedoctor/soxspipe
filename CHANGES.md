@@ -1,6 +1,7 @@
 
 # Release Notes  
 
+* fixed issue where logs were getting duplicated.
 * added arm and lamp to QC plot titles.
 * clipping of entire MPH set based on their combined RMS scatter from their predicted locations. MPH sets with large scatter are consider poor and removed before polynomial fitting.
 * **REFACTOR** recipe settings can now be set independently for each arm.

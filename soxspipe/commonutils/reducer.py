@@ -224,14 +224,14 @@ class reducer(object):
                 overwrite=self.overwrite
             ).produce_product()
 
-        # if recipe == "order_centres":
-        #     from soxspipe.recipes import soxs_order_centres
-        #     order_table = soxs_order_centres(
-        #         log=self.log,
-        #         settings=self.settings,
-        #         inputFrames=sof,
-        #         overwrite=self.overwrite
-        #     ).produce_product()
+        if recipe == "order_centres":
+            from soxspipe.recipes import soxs_order_centres
+            order_table = soxs_order_centres(
+                log=self.log,
+                settings=self.settings,
+                inputFrames=sof,
+                overwrite=self.overwrite
+            ).produce_product()
 
         # if recipe == "spat_sol":
         #     from soxspipe.recipes import soxs_spatial_solution
