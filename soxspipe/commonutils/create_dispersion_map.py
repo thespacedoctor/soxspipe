@@ -1640,7 +1640,6 @@ class create_dispersion_map(object):
         kw = self.kw
         dp = self.detectorParams
 
-        # XSH
         rotateImage = dp["rotate-qc-plot"]
         flipImage = dp["flip-qc-plot"]
 
