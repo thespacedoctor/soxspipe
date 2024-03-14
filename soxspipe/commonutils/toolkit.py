@@ -1010,11 +1010,14 @@ def add_recipe_logger(
     import logging
     import os
 
-    for handler in log.handlers:
-        if handler.get_name() == "recipeLog":
-            log.removeHandler(handler)
-        if handler.get_name() == "recipeErr":
-            log.removeHandler(handler)
+    i = 0
+    while i < 3:
+        for handler in log.handlers:
+            if handler.get_name() == "recipeLog":
+                log.removeHandler(handler)
+            if handler.get_name() == "recipeErr":
+                log.removeHandler(handler)
+        i += 1
 
     # GET THE EXTENSION (WITH DOT PREFIX)
     loggingPath = os.path.splitext(productPath)[0] + ".log"
@@ -1159,6 +1162,39 @@ def create_dispersion_solution_grid_lines_for_plot(
 
     log.debug('completed the ``create_dispersion_solution_grid_lines_for_plot`` function')
     return orderPixelTable
+
+
+def get_calibration_lamp(
+        log,
+        frame,
+        kw):
+    """*given a frame, determine which calibration lamp is being used*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `frame` -- the frame to determine the calibration lamp for
+    - `kw` -- the FITS header keyword dictionary
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import get_calibration_lamp
+    lamp = get_calibration_lamp(log=log, frame=frame, kw=kw)
+    ```           
+    """
+    log.debug('starting the ``read_calibration_lamp`` function')
+
+    inst = frame.header["INSTRUME"]
+    lamp = None
+
+    for l in [kw("LAMP1"), kw("LAMP2"), kw("LAMP3"), kw("LAMP4"), kw("LAMP5"), kw("LAMP6"), kw("LAMP7")]:
+        if l in frame.header:
+            lamp = frame.header[l]
+            lamp = lamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("_lamp", "")
+
+    log.debug('completed the ``read_calibration_lamp`` function')
+    return lamp
 
 # use the tab-trigger below for new function
 # xt-def-function
