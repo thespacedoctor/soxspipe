@@ -122,6 +122,9 @@ soxs-mflat:
     poly-fitting-residual-clipping-sigma: 5
     poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
+    # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+    scale-d2-to-qth: True
+
 
 soxs-spatial-solution:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT

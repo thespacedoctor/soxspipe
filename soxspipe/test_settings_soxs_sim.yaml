@@ -64,6 +64,8 @@ soxs-mflat:
     centre-order-window: 20
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
+    # NUMBER OF CROSS-ORDER SLICES PER ORDER
+    order-sample-count: 70
     clipping-lower-sigma: 50
     clipping-upper-sigma: 1000   
     clipping-iteration-count: 1
@@ -76,6 +78,8 @@ soxs-mflat:
     poly-fitting-residual-clipping-sigma: 5
     poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
+    # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+    scale-d2-to-qth: True
     
 soxs-stare:
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack

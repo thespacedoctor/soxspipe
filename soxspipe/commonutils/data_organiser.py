@@ -1146,9 +1146,10 @@ class data_organiser(object):
                     lamps = ["QLAMP", "DLAMP"]
                     for lamp in lamps:
                         mask = df['file'].str.contains(lamp)
-                        files = np.append(files, df.loc[mask, "file"].values[0])
-                        tags = np.append(tags, df.loc[mask, "eso pro catg"].values[0])
-                        filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
+                        if len(df.loc[mask, "file"].index):
+                            files = np.append(files, df.loc[mask, "file"].values[0])
+                            tags = np.append(tags, df.loc[mask, "eso pro catg"].values[0])
+                            filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
                 elif series["recipe"] == "mflat":
                     files = np.append(files, df["file"].values[0])
                     tags = np.append(tags, df["eso pro catg"].values[0])

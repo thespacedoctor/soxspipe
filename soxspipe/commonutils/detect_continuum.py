@@ -390,6 +390,9 @@ class _base_detect(object):
         elif "stare" in self.recipeName.lower():
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
 
+        if self.lampTag:
+            filename = filename.replace(".fits", f"{self.lampTag}.fits")
+
         order_table_path = f"{outDir}/{filename}"
 
         header = copy.deepcopy(frame.header)
@@ -561,7 +564,7 @@ class detect_continuum(_base_detect):
             self.axisA = "x"
             self.axisB = "y"
             coeff_dict = {"degorder_cent": self.orderDeg,
-                          "degx_cent": self.axisBDeg}
+                          "degy_cent": self.axisBDeg}
         else:
             self.axisA = "y"
             self.axisB = "x"

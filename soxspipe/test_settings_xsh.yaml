@@ -103,6 +103,8 @@ soxs-mflat:
     centre-order-window: 20
     # length of image slice to take across orders when detecting edges
     slice-length-for-edge-detection: 90
+    # NUMBER OF CROSS-ORDER SLICES PER ORDER
+    order-sample-count: 70
     # width of image slice to take across orders when detecting edges
     slice-width-for-edge-detection: 5
     # minimum value flux can drop to as percentage of central flux and be counted as an order edge
@@ -119,6 +121,8 @@ soxs-mflat:
     poly-clipping-iteration-limit: 3
     # number of σ deviations below the median flux of a master-flat frame beyond which a pixel is added to the bad-pixel mask
     low-sensitivity-clipping-sigma: 2
+    # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+    scale-d2-to-qth: True
 
     
 soxs-stare:
