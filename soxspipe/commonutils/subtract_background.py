@@ -33,6 +33,7 @@ class subtract_background(object):
         - ``orderTable`` -- the order geometry table
         - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
+        - ``lamp`` -- needed for UVB flats
 
     **Usage:**
 
@@ -63,7 +64,8 @@ class subtract_background(object):
             recipeName=False,
             settings=False,
             qcTable=False,
-            productsTable=False
+            productsTable=False,
+            lamp=""
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_background' object")
@@ -74,6 +76,7 @@ class subtract_background(object):
         self.orderTable = orderTable
         self.qc = qcTable
         self.products = productsTable
+        self.lamp = lamp
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -125,6 +128,9 @@ class subtract_background(object):
 
         originalMask = np.copy(self.frame.mask)
 
+        quicklook_image(
+            log=self.log, CCDObject=self.frame.data, show=False, ext=None, surfacePlot=True, title="Initial frame")
+
         # MASK THE INNER ORDER AREA (AND BAD PIXELS)
         self.mask_order_locations(orderPixelTable)
 
@@ -143,7 +149,7 @@ class subtract_background(object):
         # GET FILENAME FOR THE RESIDUAL PLOT
         saveToPath = False
         if self.sofName:
-            backgroundQCImage = self.sofName + "_BKGROUND.pdf"
+            backgroundQCImage = self.sofName + f"_BKGROUND{self.lamp}.pdf"
             home = expanduser("~")
             self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
             self.qcDir = self.qcDir.replace("//", "/")
@@ -161,12 +167,12 @@ class subtract_background(object):
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
             self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
-                "product_label": "BKGROUND",
+                "product_label": f"BKGROUND{self.lamp}",
                 "file_name": backgroundQCImage,
                 "file_type": "PDF",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "product_desc": "Fitted intra-order image background",
+                "product_desc": f"Fitted intra-order image background{self.lamp.replace('_',' ')}",
                 "file_path": saveToPath,
                 "label": "QC"
             }).to_frame().T], ignore_index=True)
@@ -187,21 +193,49 @@ class subtract_background(object):
         import numpy as np
 
         # MASK DATA INSIDE OF ORDERS (EXPAND THE INNER-ORDER AREA IF NEEDED)
-        uniqueOrders = orderPixelTable['order'].unique()
+        uniqueOrders = np.sort(orderPixelTable['order'].unique())
         if self.axisA == "x":
             axisALen = self.frame.data.shape[1]
             axisBLen = self.frame.data.shape[0]
         else:
             axisALen = self.frame.data.shape[0]
             axisBLen = self.frame.data.shape[1]
-        expandEdges = 2
+
+        oTop = orderPixelTable['order'].min()
+        oBot = orderPixelTable['order'].max()
+
         for o in uniqueOrders:
+
             axisBcoord = orderPixelTable.loc[
                 (orderPixelTable["order"] == o)][f"{self.axisB}coord"]
             axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][
-                f"{self.axisA}coord_edgeup"] + expandEdges
+                f"{self.axisA}coord_edgeup"]
             axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
-                f"{self.axisA}coord_edgelow"] - expandEdges
+                f"{self.axisA}coord_edgelow"]
+
+            if o != oBot:
+                next_axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o + 1)][
+                    f"{self.axisA}coord_edgeup"]
+                bottomGap = axisAcoord_edgelow.values - next_axisAcoord_edgeup.values
+                expandBottom = np.median(bottomGap) / 2 - 3
+                if expandBottom < 2:
+                    expandBottom = 2
+            else:
+                expandBottom = expandTop
+
+            if o != oTop:
+                previous_axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o - 1)][
+                    f"{self.axisA}coord_edgelow"]
+                topGap = previous_axisAcoord_edgelow.values - axisAcoord_edgeup.values
+                expandTop = np.median(topGap) / 2 - 3
+                if expandTop < 2:
+                    expandTop = 2
+            else:
+                expandTop = expandBottom
+
+            axisAcoord_edgeup += expandTop
+            axisAcoord_edgelow -= expandBottom
+
             axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(*[(x1, x2, b) for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord) if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen])
             for b, u, l in zip(axisBcoord, np.ceil(axisAcoord_edgeup).astype(int), np.floor(axisAcoord_edgelow).astype(int)):
                 if l < 0:
@@ -210,6 +244,26 @@ class subtract_background(object):
                     self.frame.mask[b, l:u] = 1
                 else:
                     self.frame.mask[l:u, b] = 1
+
+            if o == oTop:
+                # MASK TOP OF FRAME
+                mask_bottom = np.array(axisAcoord_edgeup) + 7
+                for b, m, in zip(axisBcoord, np.ceil(mask_bottom).astype(int)):
+                    if self.axisA == "x":
+                        self.frame.mask[b, m:] = 1
+                    else:
+                        self.frame.mask[m:, b] = 1
+
+            if o == oBot:
+                # MASK BOTTOM OF FRAME
+                mask_top = np.array(axisAcoord_edgelow) - 7
+                for b, m, in zip(axisBcoord, np.ceil(mask_top).astype(int)):
+                    if m < 0:
+                        m = 0
+                    if self.axisA == "x":
+                        self.frame.mask[b, :m] = 1
+                    else:
+                        self.frame.mask[:m, b] = 1
 
         self.log.debug('completed the ``mask_order_locations`` method')
         return None
@@ -251,6 +305,11 @@ class subtract_background(object):
         maskedAsNanImage = self.frame.data.copy()
         maskedAsNanImage[mask] = np.nan
 
+        maskedAsNanImage[:20, :] = 0
+        maskedAsNanImage[-20:, :] = 0
+        maskedAsNanImage[:, -20:] = 0
+        maskedAsNanImage[:, :20] = 0
+
         import skimage
         from skimage.morphology import disk
         maskedAsNanImage = skimage.filters.median(maskedAsNanImage, footprint=disk(4))
@@ -284,7 +343,7 @@ class subtract_background(object):
             xmax = xmasked.max()
             rowmasked = row[~row.mask]
 
-            window = 25
+            window = 7
             hw = math.floor(window / 2)
             # rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).quantile(.1)
             try:
@@ -299,7 +358,7 @@ class subtract_background(object):
 
             rowmaskedSmoothed = np.where(rowmaskedSmoothed < 0, 0, rowmaskedSmoothed)
 
-            seedKnots = xmasked[1:-1:15]
+            seedKnots = xmasked[1:-1:window * 2]
             tck, fp, ier, msg = splrep(xmasked, rowmaskedSmoothed, t=seedKnots, k=rowFitOrder, full_output=True)
             t, c, k = tck
 
@@ -311,7 +370,7 @@ class subtract_background(object):
             # ADD FITTED ROW TO BACKGROUND IMAGE
             backgroundMap[idx, :] = yfit
 
-            if random.randint(1, 401) == 42 and False:
+            if False and random.randint(1, 401) == 42:
                 import matplotlib.pyplot as plt
                 fig, (ax1) = plt.subplots(1, 1, figsize=(30, 15))
                 plt.scatter(xmasked, rowmasked)
@@ -325,6 +384,9 @@ class subtract_background(object):
             log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image")
 
         backgroundMap = scipy.ndimage.filters.gaussian_filter(backgroundMap, gaussianSigma)
+
+        # SET -VE T0 ZERO
+        backgroundMap = np.where(backgroundMap < 0, 0, backgroundMap)
 
         quicklook_image(
             log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image with median filtering")

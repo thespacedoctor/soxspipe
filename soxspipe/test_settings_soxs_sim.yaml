@@ -143,8 +143,8 @@ soxs-stare:
 
 # UTILS
 background-subtraction:
-    bspline-deg: 2
-    gaussian-blur-sigma: 15
+    bspline-deg: 3
+    gaussian-blur-sigma: 35
 
 
 data-extension: 1

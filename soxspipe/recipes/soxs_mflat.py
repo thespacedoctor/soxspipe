@@ -339,9 +339,9 @@ class soxs_mflat(_base_recipe_):
                 log=self.log, orderTablePath=orderTablePath)
 
             if tag in ("_DLAMP", "_QLAMP"):
-                zero = True
+                writeQC = False
             else:
-                zero = False
+                writeQC = True
 
             if self.recipeSettings["subtract_background"]:
 
@@ -353,12 +353,13 @@ class soxs_mflat(_base_recipe_):
                     orderTable=orderTablePath,
                     settings=self.settings,
                     productsTable=self.products,
-                    qcTable=self.qc
+                    qcTable=self.qc,
+                    lamp=tag
                 )
                 backgroundFrame, combined_normalised_flat, self.products = background.subtract()
 
                 quicklook_image(
-                    log=self.log, CCDObject=backgroundFrame, show=True, ext='data', stdWindow=3, title="Background Light", surfacePlot=True)
+                    log=self.log, CCDObject=backgroundFrame, show=False, ext='data', stdWindow=3, title="Background Light", surfacePlot=True)
 
                 utcnow = datetime.utcnow()
                 utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -378,7 +379,7 @@ class soxs_mflat(_base_recipe_):
                         os.makedirs(outDir)
 
                     # GET THE EXTENSION (WITH DOT PREFIX)
-                    filename = self.sofName + "_BKGROUND.fits"
+                    filename = self.sofName + tag + "_BKGROUND.fits"
                     filepath = f"{outDir}/{filename}"
                     header = copy.deepcopy(inputFrame.header)
                     primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
@@ -388,18 +389,18 @@ class soxs_mflat(_base_recipe_):
 
                     self.products = pd.concat([self.products, pd.Series({
                         "soxspipe_recipe": self.recipeName,
-                        "product_label": "BKGROUND",
+                        "product_label": f"BKGROUND{tag}",
                         "file_name": filename,
                         "file_type": "FITS",
                         "obs_date_utc": self.dateObs,
                         "reduction_date_utc": utcnow,
-                        "product_desc": f"Fitted intra-order image background",
+                        "product_desc": f"Fitted intra-order image background ({tag.replace('_','')})",
                         "file_path": filepath,
                         "label": "QC"
                     }).to_frame().T], ignore_index=True)
 
-            mflat, medianOrderFluxDF = self.mask_low_sens_and_inter_order_to_unity(
-                frame=combined_normalised_flat, orderTablePath=orderTablePath, returnMedianOrderFlux=True, zero=zero)
+            mflat, medianOrderFluxDF = self.mask_low_sens_pixels(
+                frame=combined_normalised_flat, orderTablePath=orderTablePath, returnMedianOrderFlux=True, writeQC=writeQC)
 
             self.masterFlatSet.append(mflat)
 
@@ -695,26 +696,26 @@ class soxs_mflat(_base_recipe_):
         self.log.debug('completed the ``normalise_flats`` method')
         return normalisedFrames
 
-    def mask_low_sens_and_inter_order_to_unity(
+    def mask_low_sens_pixels(
             self,
             frame,
             orderTablePath,
             returnMedianOrderFlux=False,
-            zero=False):
-        """*set inter-order pixels to unity and and low-sensitivity pixels to bad-pixel mask*
+            writeQC=True):
+        """*add low-sensitivity pixels to bad-pixel mask*
 
         **Key Arguments:**
             - ``frame`` -- the frame to work on
             - ``orderTablePath`` -- path to the order table
             - ``returnMedianOrderFlux`` -- return a table of the median order fluxes. Default *False*.
-            - ``zero`` -- set inter-order pixels to zero instead of one
+            - ``writeQC`` -- add the QCs to the QC table?
 
         **Return:**
-            - ``frame`` -- with inter-order pixels set to 1 and BPM updated with low-sensitivity pixels
+            - ``frame`` -- with BPM updated with low-sensitivity pixels
             - ``medianOrderFluxDF`` -- data-frame of the median order fluxes (if ``returnMedianOrderFlux`` is True)
         """
         self.log.debug(
-            'starting the ``mask_low_sens_and_inter_order_to_unity`` method')
+            'starting the ``mask_low_sens_pixels`` method')
 
         import pandas as pd
         import numpy.ma as ma
@@ -784,25 +785,24 @@ class soxs_mflat(_base_recipe_):
         lowSensitivityPixelMask = (frameClipped.mask == 1) & (beforeMask != 1)
         lowSensPixelCount = lowSensitivityPixelMask.sum()
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "NLOWSENS",
-            "qc_value": lowSensPixelCount,
-            "qc_comment": "Number of low-sensitivity pixels found in master flat",
-            "qc_unit": "pixels",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow
-        }).to_frame().T], ignore_index=True)
-        self.log.print(f"        {lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
+        if writeQC:
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            self.qc = pd.concat([self.qc, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "NLOWSENS",
+                "qc_value": lowSensPixelCount,
+                "qc_comment": "Number of low-sensitivity pixels found in master flat",
+                "qc_unit": "pixels",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow
+            }).to_frame().T], ignore_index=True)
+            self.log.print(f"        {lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
 
         frame.mask = (lowSensitivityPixelMask == 1) | (originalBPM == 1)
 
         # SET INTRA-ORDER TO 1 OR ZERO
-
-        if False and zero:
+        if False:
             frame.data[interOrderMask] = 0
         elif False:
             frame.data[interOrderMask] = 1
@@ -811,7 +811,7 @@ class soxs_mflat(_base_recipe_):
         quicklook_image(log=self.log, CCDObject=frame, show=False, ext=None, surfacePlot=True, title="Low Sensitivity pixels masked and inter-order pixel set to 1")
 
         self.log.debug(
-            'completed the ``mask_low_sens_and_inter_order_to_unity`` method')
+            'completed the ``mask_low_sens_pixels`` method')
 
         if returnMedianOrderFlux:
             medianOrderFluxDF = {
@@ -916,7 +916,7 @@ class soxs_mflat(_base_recipe_):
         mask = (self.products['product_label'] == f"ORDER_LOC")
         orderTablePath = self.products.loc[mask]["file_path"].values[0]
 
-        stitchedFlat = self.mask_low_sens_and_inter_order_to_unity(
+        stitchedFlat = self.mask_low_sens_pixels(
             frame=stitchedFlat, orderTablePath=orderTablePath)
 
         from soxspipe.commonutils.toolkit import quicklook_image

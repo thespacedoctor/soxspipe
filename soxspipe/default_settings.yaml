@@ -107,24 +107,74 @@ soxs-order-centre:
 soxs-mflat:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
-    centre-order-window: 20
+    # CLIPPING SETTINGS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-lower-sigma: 50
-    clipping-upper-sigma: 1000   
-    clipping-iteration-count: 1
-    slice-length-for-edge-detection: 90
-    slice-width-for-edge-detection: 5
-    min-percentage-threshold-for-edge-detection: 20
-    max-percentage-threshold-for-edge-detection: 50
-    disp-axis-deg: 2
-    order-deg: 5
-    poly-fitting-residual-clipping-sigma: 5
-    poly-clipping-iteration-limit: 5
-    low-sensitivity-clipping-sigma: 2
-    # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
-    scale-d2-to-qth: True
-
+    uvb:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 6
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 2
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
+        # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+        scale-d2-to-qth: True
+    vis:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 3
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 2
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
+    nir:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 5
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 3
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
 
 soxs-spatial-solution:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
@@ -204,8 +254,8 @@ soxs-stare:
 
 # UTILS
 background-subtraction:
-    bspline-deg: 2
-    gaussian-blur-sigma: 15
+    bspline-deg: 3
+    gaussian-blur-sigma: 35
 
 logging settings:
     formatters:
