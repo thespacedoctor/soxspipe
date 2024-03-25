@@ -16,6 +16,8 @@ import sys
 import os
 
 
+
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -131,13 +133,17 @@ class horne_extraction(object):
                                                    hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
                                                    key_uncertainty_type='UTYPE')
 
-        # OPEN THE SKY-MODEL FRAME
-        if isinstance(skyModelFrame, CCDData):
-            self.skyModelFrame = skyModelFrame
+        #CHECK SKY MODEL FRAME IS USED (ONLY IN STARE MODE)
+        if skyModelFrame == False:
+            self.skyModelFrame = None
         else:
-            self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
-                                              hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
-                                              key_uncertainty_type='UTYPE')
+            # OPEN THE SKY-MODEL FRAME
+            if isinstance(skyModelFrame, CCDData):
+                self.skyModelFrame = skyModelFrame
+            else:
+                self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
+                                                hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
+                                                key_uncertainty_type='UTYPE')
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -241,7 +247,7 @@ class horne_extraction(object):
             log=self.log, orderTablePath=productPath)
 
     def extract(
-            self):
+            self, noddingSequence='A'):
         """*extract the full spectrum order-by-order and return FITS Binary table containing order-merged spectrum*
 
         **Return:**
@@ -289,7 +295,7 @@ class horne_extraction(object):
                 ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
                 orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
                 orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
-                orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords])
+                orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords]) if self.skyModelFrame else [0] * len(ycoords)
                 orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
                 orderSlices.append(orderTable)
 
@@ -380,7 +386,7 @@ class horne_extraction(object):
         hduList = fits.HDUList([priHDU, BinTableHDU])
 
         # DISCRETE ORDERS
-        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_ORDERS.fits")
+        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS.fits")
         filePath = f"{self.outDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
@@ -397,7 +403,7 @@ class horne_extraction(object):
         }).to_frame().T], ignore_index=True)
 
         # NOW MERGED SPECTRUM
-        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED.fits")
+        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED_" + str(noddingSequence) + ".fits")
         filePath = f"{self.outDir}/{filename}"
         mergedTable = Table.from_pandas(mergedSpectumDF)
         BinTableHDU = fits.table_to_hdu(mergedTable)
@@ -417,7 +423,7 @@ class horne_extraction(object):
         }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``extract`` method')
-        return self.qc, self.products
+        return self.qc, self.products, mergedSpectumDF
 
     def weighted_average(self, group):
         import numpy as np

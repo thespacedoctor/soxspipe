@@ -17,8 +17,12 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from matplotlib import pyplot as plt  
+from soxspipe.commonutils.filenamer import filenamer
+from os.path import expanduser
+from astropy.io import fits
+from astropy.table import Table
 os.environ['TERM'] = 'vt100'
-
 
 class soxs_nod(_base_recipe_):
     """
@@ -85,6 +89,7 @@ class soxs_nod(_base_recipe_):
         sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
+
 
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
@@ -231,7 +236,55 @@ class soxs_nod(_base_recipe_):
         else:
             allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat) for f in allObjectFrames]
 
-        # DO THE WORK HERE!!
+
+            
+
+        #DIVIDING IN A AND B SEQUENCES
+        allFrameA = []
+        allFrameB = []
+
+
+        for frame in allObjectFrames:
+            if frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0:   
+                allFrameA.append(frame)
+
+            else:
+                allFrameB.append(frame)
+
+
+
+        #STACKING A AND B SEQUENCES
+        masterA = self.clip_and_stack(
+                frames= allFrameA, 
+                recipe = "soxs_nod", 
+                ignore_input_masks =False, 
+                post_stack_clipping= True)
+        
+        masterB = self.clip_and_stack( 
+            frames = allFrameB, 
+            recipe = "soxs_nod", 
+            ignore_input_masks = False,
+            post_stack_clipping = True)
+
+        #SUBTRACTING A FROM B
+        A_minus_B = masterA.subtract(masterB)
+        B_minus_A = masterB.subtract(masterA)
+
+        #ADD TO A_minus_B header of masterA
+
+        hdr = masterB.header
+        A_minus_B.header = hdr
+        B_minus_A.header = hdr  
+
+        
+
+        #Write the A-B and B-A frames to disk
+        A_minus_B_path = "A_minus_B.fits"
+        B_minus_A_path =  "B_minus_A.fits"
+
+        A_minus_B.write(A_minus_B_path, overwrite=True)
+        B_minus_A.write(B_minus_A_path, overwrite=True)
+
 
         # ADD QUALITY CHECKS
         # TODO: ADD THESE CHECK WHEN WE HAVE A FINAL FRAME TO CHECK ... LIKELY A-B FRAME
@@ -240,6 +293,85 @@ class soxs_nod(_base_recipe_):
                 log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
             self.qc = spectroscopic_image_quality_checks(
                 log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
+        from soxspipe.commonutils import horne_extraction
+        
+        #EXTRACT THE A MINUS B FRAME
+        
+        optimalExtractor = horne_extraction(
+             log=self.log,
+             skyModelFrame=False,
+             skySubtractedFrame=A_minus_B,
+             twoDMapPath=twoDMap,
+             settings=self.settings,
+             recipeName=self.recipeName,
+             qcTable=self.qc,
+             productsTable=self.products,
+             dispersionMap=dispMap,
+             sofName=self.sofName
+             
+         )
+        
+        self.qc, self.products, merged_orders_a = optimalExtractor.extract(noddingSequence='A')
+        #EXTRACT THE B MINUS A FRAME 
+
+        optimalExtractor = horne_extraction(
+             log=self.log,
+             skyModelFrame=False,
+             skySubtractedFrame=B_minus_A,
+             twoDMapPath=twoDMap,
+             settings=self.settings,
+             recipeName=self.recipeName,
+             qcTable=self.qc,
+             productsTable=self.products,
+             dispersionMap=dispMap,
+             sofName=self.sofName
+         )
+        self.qc, self.products, merged_orders_b = optimalExtractor.extract(noddingSequence='B')    
+
+        #MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGED_ORDERS_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
+
+        merged_dataframe = pd.concat([merged_orders_a, merged_orders_b])
+
+        groupedDataframe = merged_dataframe.groupby(by='WAVE', as_index=False).sum()
+
+        print(groupedDataframe)
+
+        #WRITING THE DATA ON THE FITS FILE
+        if self.sofName:
+            self.filenameTemplate = self.sofName + ".fits"
+        else:
+            self.filenameTemplate = filenamer(
+                log=self.log,
+                frame=self.skySubtractedFrame,
+                settings=self.settings
+            )
+        
+        #PREPARING THE HEADER
+        kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
+
+        #SELECTING HEADER A_minus_B (is this the same?)
+        header = A_minus_B.header
+        header[kw("SEQ_ARM")] = A_minus_B.header[kw("SEQ_ARM")]
+        header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
+        header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{arm}".upper()
+        
+        #PREPARING THE HDU
+        groupedDataframeTable = Table.from_pandas(groupedDataframe, index=False)
+        BinTableHDU = fits.table_to_hdu(groupedDataframeTable)
+
+        priHDU = fits.PrimaryHDU(header=header)
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+
+        #WRTIE PRODUCT TO DISK
+        home = expanduser("~")
+        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_AB.fits")
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+        filePath = f"{outDir}/{filename}"
+        hduList.writeto(filePath, checksum=True, overwrite=True)
+        
 
         self.clean_up()
         self.report_output()

@@ -8,7 +8,9 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+import sys
 home = expanduser("~")
+
 
 packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings_xsh.yaml"
@@ -44,7 +46,6 @@ if not os.path.exists(pathToOutputDir):
 
 
 class test_soxs_nod(unittest.TestCase):
-
     def test_soxs_nod_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-nod/sof/2010.09.14T23.39.32.2932_NIR_NOD_20PT0_XSHOOTER.sof"
         from soxspipe.recipes import soxs_nod
@@ -56,7 +57,6 @@ class test_soxs_nod(unittest.TestCase):
         this.produce_product()
 
     def test_soxs_nod_uvb_function(self):
-
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-nod/sof/2010.09.14T23.39.21.697_UVB_1X1_FAST_NOD_XSHOOTER.sof"
         from soxspipe.recipes import soxs_nod
         this = soxs_nod(
@@ -76,19 +76,7 @@ class test_soxs_nod(unittest.TestCase):
         )
         this.produce_product()
 
-    # def test_soxs_nod_function(self):
-
-    #     # utKit.refresh_database() # reset database to database found in
-    #     # soxspipe/test/input
-    #     from soxspipe.recipes import soxs_nod
-    #     this = soxs_nod(
-    #         log=log,
-    #         settings=settings
-    #     )
-    #     this.get()
-
     def test_soxs_nod_function_exception(self):
-
         from soxspipe.recipes import soxs_nod
         try:
             sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_mixed_exptime_darks.sof"
@@ -98,11 +86,13 @@ class test_soxs_nod(unittest.TestCase):
                 settings=settings,
                 inputFrames=sofPath
             )
-            assert False
         except Exception as e:
-            assert True
-            print(str(e))
+            self.fail(f"Exception raised: {str(e)}")
 
-        # x-print-testpage-for-pessto-marshall-web-object
+if __name__ == '__main__':
+    suite = unittest.TestSuite()
+    suite.addTest(test_soxs_nod("test_soxs_nod_nir_function"))
+    runner = unittest.TextTestRunner()
+    runner.run(suite)
 
-    # x-class-to-test-named-worker-function
+    #unittest.main()
