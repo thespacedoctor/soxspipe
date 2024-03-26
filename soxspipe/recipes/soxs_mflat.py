@@ -436,7 +436,6 @@ class soxs_mflat(_base_recipe_):
         if len(self.detectionCountSet) > 1:
             mflat = self.stitch_uv_mflats(medianOrderFluxDF, orderTablePath=thisPath)
         else:
-            self.products = productTable
             self.qc = qcTable
 
         quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")

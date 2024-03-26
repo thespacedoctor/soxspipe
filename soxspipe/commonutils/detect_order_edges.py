@@ -151,7 +151,7 @@ class detect_order_edges(_base_detect):
             elf.axisAbin = self.biny
             self.axisBbin = self.binx
 
-        self.lamp = get_calibration_lamp(log=log, frame=flatFrame, kw=self.kw)
+        # self.lamp = get_calibration_lamp(log=log, frame=flatFrame, kw=self.kw)
 
         home = expanduser("~")
         self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
@@ -663,17 +663,20 @@ class detect_order_edges(_base_detect):
         std_res = np.std(np.abs(allResiduals))
 
         lamp = ""
-        if self.lamp:
-            lamp = f" {self.lamp} lamp"
+        if self.tag:
+            lamp = " " + self.tag.replace("_", "")
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         fig.suptitle(f"detection of order-edge locations - {arm}{lamp} flat-frame\n{subtitle}", fontsize=12)
 
-        filename = filenamer(
-            log=self.log,
-            frame=self.flatFrame,
-            settings=self.settings
-        )
-        filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
+        if self.sofName:
+            filename = self.sofName + f"_ORDER_LOCATIONS{self.tag}.pdf"
+        else:
+            filename = filenamer(
+                log=self.log,
+                frame=self.flatFrame,
+                settings=self.settings
+            )
+            filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()

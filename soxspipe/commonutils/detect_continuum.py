@@ -449,6 +449,7 @@ class detect_continuum(_base_detect):
         - ``sofName`` ---- name of the originating SOF file
         - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
+        - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
 
     **Usage:**
 
@@ -479,7 +480,8 @@ class detect_continuum(_base_detect):
             productsTable=False,
             sofName=False,
             binx=1,
-            biny=1
+            biny=1,
+            lampTag=False
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -493,6 +495,7 @@ class detect_continuum(_base_detect):
         self.binx = binx
         self.biny = biny
         self.recipeSettings = recipeSettings["detect-continuum"]
+        self.lampTag = lampTag
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER

@@ -386,7 +386,7 @@ class create_dispersion_map(object):
         mapPath = self.write_map_to_file(
             popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
 
-        if self.firstGuessMap and self.orderTable and self.create2DMap:
+        if False and self.firstGuessMap and self.orderTable and self.create2DMap:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
             res_plots = self._create_dispersion_map_qc_plot(
                 xcoeff=popt_x,
@@ -686,30 +686,56 @@ class create_dispersion_map(object):
         kw = self.kw
 
         # SORT X COEFFICIENT OUTPUT TO WRITE TO FILE
-        coeff_dict_x = {}
-        coeff_dict_x["axis"] = "x"
-        coeff_dict_x["order_deg"] = orderDeg
-        coeff_dict_x["wavelength_deg"] = wavelengthDeg
-        coeff_dict_x["slit_deg"] = slitDeg
-        n_coeff = 0
-        for i in range(0, orderDeg + 1):
-            for j in range(0, wavelengthDeg + 1):
-                for k in range(0, slitDeg + 1):
-                    coeff_dict_x[f'c{i}{j}{k}'] = xcoeff[n_coeff]
-                    n_coeff += 1
+        if isinstance(orderDeg, list):
+            coeff_dict_x = {}
+            coeff_dict_x["axis"] = "x"
+            coeff_dict_x["order_deg"] = orderDeg[0]
+            coeff_dict_x["wavelength_deg"] = wavelengthDeg[0]
+            coeff_dict_x["slit_deg"] = slitDeg[0]
+            n_coeff = 0
+            for i in range(0, orderDeg[0] + 1):
+                for j in range(0, wavelengthDeg[0] + 1):
+                    for k in range(0, slitDeg[0] + 1):
+                        coeff_dict_x[f'c{i}{j}{k}'] = xcoeff[n_coeff]
+                        n_coeff += 1
+        else:
+            coeff_dict_x = {}
+            coeff_dict_x["axis"] = "x"
+            coeff_dict_x["order_deg"] = orderDeg
+            coeff_dict_x["wavelength_deg"] = wavelengthDeg
+            coeff_dict_x["slit_deg"] = slitDeg
+            n_coeff = 0
+            for i in range(0, orderDeg + 1):
+                for j in range(0, wavelengthDeg + 1):
+                    for k in range(0, slitDeg + 1):
+                        coeff_dict_x[f'c{i}{j}{k}'] = xcoeff[n_coeff]
+                        n_coeff += 1
 
         # SORT Y COEFFICIENT OUTPUT TO WRITE TO FILE
-        coeff_dict_y = {}
-        coeff_dict_y["axis"] = "y"
-        coeff_dict_y["order_deg"] = orderDeg
-        coeff_dict_y["wavelength_deg"] = wavelengthDeg
-        coeff_dict_y["slit_deg"] = slitDeg
-        n_coeff = 0
-        for i in range(0, orderDeg + 1):
-            for j in range(0, wavelengthDeg + 1):
-                for k in range(0, slitDeg + 1):
-                    coeff_dict_y[f'c{i}{j}{k}'] = ycoeff[n_coeff]
-                    n_coeff += 1
+        if isinstance(orderDeg, list):
+            coeff_dict_y = {}
+            coeff_dict_y["axis"] = "y"
+            coeff_dict_y["order_deg"] = orderDeg[1]
+            coeff_dict_y["wavelength_deg"] = wavelengthDeg[1]
+            coeff_dict_y["slit_deg"] = slitDeg[1]
+            n_coeff = 0
+            for i in range(0, orderDeg[1] + 1):
+                for j in range(0, wavelengthDeg[1] + 1):
+                    for k in range(0, slitDeg[1] + 1):
+                        coeff_dict_y[f'c{i}{j}{k}'] = ycoeff[n_coeff]
+                        n_coeff += 1
+        else:
+            coeff_dict_y = {}
+            coeff_dict_y["axis"] = "y"
+            coeff_dict_y["order_deg"] = orderDeg
+            coeff_dict_y["wavelength_deg"] = wavelengthDeg
+            coeff_dict_y["slit_deg"] = slitDeg
+            n_coeff = 0
+            for i in range(0, orderDeg + 1):
+                for j in range(0, wavelengthDeg + 1):
+                    for k in range(0, slitDeg + 1):
+                        coeff_dict_y[f'c{i}{j}{k}'] = ycoeff[n_coeff]
+                        n_coeff += 1
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
@@ -1746,7 +1772,7 @@ class create_dispersion_map(object):
                     midrow.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue")
         else:
             midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
-                           orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1 * alphaBoost, label="fitted line (size proportion to line-fit residual)")
+                           orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1 * alphaBoost, label="fitted line (size proportional to line-fit residual)")
 
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)

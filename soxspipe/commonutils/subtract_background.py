@@ -122,9 +122,17 @@ class subtract_background(object):
 
         self.log.print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
 
+        binx = 1
+        biny = 1
+        try:
+            binx = self.frame.header[self.kw("WIN_BINX")]
+            biny = self.frame.header[self.kw("WIN_BINY")]
+        except:
+            pass
+
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderTable, extend=4)
+            log=self.log, orderTablePath=self.orderTable, binx=binx, biny=biny, extend=4)
 
         originalMask = np.copy(self.frame.mask)
 
