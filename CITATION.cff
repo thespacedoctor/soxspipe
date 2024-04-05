@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: soxspipe
+title: soxspipe. The SOXS data-reduction pipeline
 message: If you use this software, please cite it as below.
 authors:
 - family-names: "Young"
