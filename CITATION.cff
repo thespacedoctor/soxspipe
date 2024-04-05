@@ -5,8 +5,8 @@ authors:
 - family-names: "Young"
   given-names: "David R."
   orcid: "https://orcid.org/0000-0002-1229-2499"
-doi: 10.5281/zenodo.7970743
-url: "https://github.com/thespacedoctor/soxspipe"
+doi: 10.5281/zenodo.8038264
+url: "https://zenodo.org/doi/10.5281/zenodo.8038264"
 abstract: The data-reduction pipeline for the SOXS instrument (a python package with command-line tools).
 keywords: [astronomy, data-reduction, pipeline]
 license: GPL-3.0-only
