@@ -2,7 +2,8 @@
 
 
 
-[![](https://zenodo.org/badge/186854638.svg)](https://zenodo.org/badge/latestdoi/186854638) 
+[![](https://zenodo.org/badge/DOI/10.5281/zenodo.8038264.svg)](https://zenodo.org/doi/10.5281/zenodo.8038264) 
+
 
 
 
@@ -46,10 +47,10 @@ If you use `soxspipe` in your work, please cite using the following BibTeX entry
 ```bibtex
 @software{Young_soxspipe,
     author = {Young, David R., Landoni, Marco},
-    doi = {10.5281/zenodo.8038265},
+    doi = {10.5281/zenodo.8038264},
     license = {GPL-3.0-only},
     title = {{soxspipe}},
-    url = {https://github.com/thespacedoctor/soxspipe}
+    url = {https://zenodo.org/doi/10.5281/zenodo.8038264}
 }
 ```
  
