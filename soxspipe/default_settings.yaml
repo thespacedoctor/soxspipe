@@ -177,6 +177,7 @@ soxs-mflat:
         low-sensitivity-clipping-sigma: 2
 
 soxs-spatial-solution:
+    use_flat: False
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
     uvb:
@@ -187,6 +188,8 @@ soxs-spatial-solution:
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 7
         poly-fitting-residual-clipping-sigma: 4
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 9
@@ -198,6 +201,8 @@ soxs-spatial-solution:
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 7
         poly-fitting-residual-clipping-sigma: 4
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 9
@@ -209,6 +214,8 @@ soxs-spatial-solution:
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 7
         poly-fitting-residual-clipping-sigma: 4
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 9

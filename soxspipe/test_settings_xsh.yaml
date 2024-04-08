@@ -78,12 +78,15 @@ soxs-order-centre:
         poly-clipping-iteration-limit: 1
 
 soxs-spatial-solution:
+    use_flat: False
     pixel-window-size: 10
     order-deg: 3
     wavelength-deg: 3
     slit-deg: 3
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
+    # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+    poly-clipping-pinhole-sets: True
     pinhole_fwhm_px_max: 2.5
     pinhole_fwhm_px_min: 1.0
     mph_line_set_min: 8

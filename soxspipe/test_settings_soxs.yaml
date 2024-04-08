@@ -32,6 +32,7 @@ instrument: soxs
 #     poly-clipping-iteration-limit: 5
 
 # soxs-spatial-solution:
+#     use_flat: False
 #     pixel-window-size: 10
 #     order-deg: 3
 #     wavelength-deg: 3

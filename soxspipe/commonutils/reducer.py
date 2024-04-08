@@ -252,15 +252,15 @@ class reducer(object):
                 overwrite=self.overwrite
             ).produce_product()
 
-        # if recipe == "stare":
-        #     from soxspipe.recipes import soxs_stare
-        #     recipe = soxs_stare(
-        #         log=self.log,
-        #         settings=self.settings,
-        #         inputFrames=sof,
-        #         overwrite=self.overwrite
-        #     )
-        #     reducedStare = recipe.produce_product()
+        if recipe == "stare":
+            from soxspipe.recipes import soxs_stare
+            recipe = soxs_stare(
+                log=self.log,
+                settings=self.settings,
+                inputFrames=sof,
+                overwrite=self.overwrite
+            )
+            reducedStare = recipe.produce_product()
 
         self.log.debug('completed the ``run_recipe`` method')
         return None

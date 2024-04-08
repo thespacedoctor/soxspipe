@@ -49,6 +49,7 @@ soxs-order-centre:
         poly-clipping-iteration-limit: 7
         
 soxs-spatial-solution:
+    use_flat: False
     pixel-window-size: 10
     order-deg: 4
     wavelength-deg: 5

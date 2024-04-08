@@ -31,7 +31,7 @@ class soxs_stare(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+        - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
 
     See `produce_product` method for usage.
@@ -270,16 +270,12 @@ class soxs_stare(_base_recipe_):
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
-        if False:
-            combined_object = self.detrend(
-                inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
-        else:
-            combined_object = self.detrend(
-                inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat)
+        combined_object = self.detrend(
+            inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
+            log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=3, title=False, surfacePlot=False, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=False)
 
         skymodel = subtract_sky(
             log=self.log,

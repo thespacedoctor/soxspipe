@@ -56,6 +56,7 @@ def dispersion_map_to_pixel_arrays(
     log.debug('starting the ``dispersion_map_to_pixel_arrays`` function')
 
     from astropy.table import Table
+    import math
 
     # READ THE FILE
     home = expanduser("~")
@@ -69,11 +70,14 @@ def dispersion_map_to_pixel_arrays(
     coeff = {}
     poly = {}
     check = 1
+
     for index, row in tableData.iterrows():
         axis = row["axis"].decode("utf-8")
         orderDeg = int(row["order_deg"])
         wavelengthDeg = int(row["wavelength_deg"])
         slitDeg = int(row["slit_deg"])
+
+        # print(axis, orderDeg, wavelengthDeg, slitDeg)
 
         if check:
             for i in range(0, orderDeg + 1):
@@ -85,7 +89,7 @@ def dispersion_map_to_pixel_arrays(
             # check = 0
 
         coeff[axis] = [float(v) for k, v in row.items() if k not in [
-            "axis", "order_deg", "wavelength_deg", "slit_deg"]]
+            "axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)]
         poly[axis] = chebyshev_order_wavelength_polynomials(
             log=log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True, axis=axis).poly
 
