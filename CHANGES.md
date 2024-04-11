@@ -1,15 +1,17 @@
 
 # Release Notes  
 
-* **FIXED**: the scaling and stitching together of the UVB D2 and QTH lamp flats.
-* fixed issue where logs were getting duplicated.
-* added arm and lamp to QC plot titles.
-* clipping of entire MPH set based on their combined RMS scatter from their predicted locations. MPH sets with large scatter are consider poor and removed before polynomial fitting.
+## v0.10.1 - April 11, 2024
+
+* **FEATURE:** the data-organiser has been 'plumbed' to work with SOXS data (will now work with Xshooter or SOXS data).
+* **ENHANCEMENT:** clipping of entire MPH set based on their combined RMS scatter from their predicted locations. MPH sets with large scatter are consider poor and removed before polynomial fitting.
+* **ENHANCEMENT:** option added to relevant recipes settings to allow toggling of fitting and subtracting of intra-order scattered background light (`subtract_background`)
+* **REFACTOR**: added arm and lamp to QC plot titles.
 * **REFACTOR** recipe settings can now be set independently for each arm.
 * **REFACTOR:** fitting of the scatter background light is now much more robust.
-* **ENHANCEMENT:** option added to relevant recipes settings to allow toggling of fitting and subtracting of intra-order scattered background light (`subtract_background`)
-* **FEATURE:** the data-organiser has been 'plumbed' to work with SOXS data (will now work with Xshooter or SOXS data).
 * **REFACTOR:** The scattered light background images are now saved as QC PDFs instead of FITS frames.
+* **FIXED**: fixed issue where logs were getting duplicated.
+* **FIXED**: the scaling and stitching together of the UVB D2 and QTH lamp flats.
 
 ## v0.10.0 - February 20, 2024
 
