@@ -391,7 +391,7 @@ class create_dispersion_map(object):
         mapPath = self.write_map_to_file(
             popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
 
-        if False and self.firstGuessMap and self.orderTable and self.create2DMap:
+        if self.firstGuessMap and self.orderTable and self.create2DMap:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
             res_plots = self._create_dispersion_map_qc_plot(
                 xcoeff=popt_x,
@@ -1125,13 +1125,13 @@ class create_dispersion_map(object):
             self.log.info("""curvefit x""" % locals())
 
             xcoeff, pcov_x = curve_fit(
-                polyx, xdata=orderPixelTable, ydata=observed_x, p0=xcoeff)
+                polyx, xdata=orderPixelTable, ydata=observed_x, p0=xcoeff, maxfev=30000)
 
             # NOW Y
             self.log.info("""curvefit y""" % locals())
 
             ycoeff, pcov_y = curve_fit(
-                polyy, xdata=orderPixelTable, ydata=observed_y, p0=ycoeff)
+                polyy, xdata=orderPixelTable, ydata=observed_y, p0=ycoeff, maxfev=30000)
 
             self.log.info("""calculate_residuals""" % locals())
             mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
@@ -1857,7 +1857,6 @@ class create_dispersion_map(object):
                 polyOrders = merged_list
             polyOrders[:] = [str(l) for l in polyOrders]
             polyOrders = "".join(polyOrders)
-            print(polyOrders)
             res_plots = self.sofName + f"_RESIDUALS_{polyOrders}.pdf"
 
         if self.firstGuessMap:
