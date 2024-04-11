@@ -214,6 +214,34 @@ def quicklook_image(
         except:
             inst = "XSHOOTER"
 
+    if skylines:
+        calibrationRootPath = get_calibrations_path(log=log, settings=settings)
+        skylines = calibrationRootPath + "/" + dp["skylines"]
+        # SPEC FORMAT TO PANDAS DATAFRAME
+        from astropy.table import Table
+        dat = Table.read(skylines, format='fits')
+        skylinesDF = dat.to_pandas()
+    else:
+        skylinesDF = False
+
+    # COMBINE MASK WITH THE BAD PIXEL MASK
+    if not isinstance(dispMapImage, bool):
+
+        gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
+            log=log,
+            dispMap=dispMap,
+            dispMapImage=dispMapImage,
+            associatedFrame=CCDObject,
+            kw=kw,
+            skylines=skylinesDF
+        )
+
+        try:
+            mask = (frame.mask == 1) | (interOrderMask == 1)
+        except:
+            mask = interOrderMask == 1
+        frame.mask = mask
+
     if inst == "SOXS":
         rotatedImg = np.flipud(frame)
     elif inst == "XSHOOTER":
@@ -222,9 +250,12 @@ def quicklook_image(
         rotatedImg = frame
     rotatedImg = np.flipud(rotatedImg)
 
-    std = np.nanstd(frame)
-    mean = np.nanmean(frame)
-    median = np.nanmean(frame)
+    from astropy.stats import sigma_clipped_stats
+    mean, median, std = sigma_clipped_stats(frame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+
+    # std = np.nanstd(frame)
+    # mean = np.nanmean(frame)
+    # median = np.nanmean(frame)
     palette = copy(plt.cm.viridis)
     palette.set_bad("#dc322f", 1.0)
     vmax = median + stdWindow * 0.5 * std
@@ -298,24 +329,7 @@ def quicklook_image(
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
 
-    if skylines:
-        calibrationRootPath = get_calibrations_path(log=log, settings=settings)
-        skylines = calibrationRootPath + "/" + dp["skylines"]
-        # SPEC FORMAT TO PANDAS DATAFRAME
-        from astropy.table import Table
-        dat = Table.read(skylines, format='fits')
-        skylinesDF = dat.to_pandas()
-
     if not isinstance(dispMapImage, bool):
-
-        gridLinePixelTable = create_dispersion_solution_grid_lines_for_plot(
-            log=log,
-            dispMap=dispMap,
-            dispMapImage=dispMapImage,
-            associatedFrame=CCDObject,
-            kw=kw,
-            skylines=skylines
-        )
 
         for l in range(int(gridLinePixelTable['line'].max())):
             mask = (gridLinePixelTable['line'] == l)
@@ -938,6 +952,10 @@ def twoD_disp_map_image_to_dataframe(
     mask = (mapDF['wavelength'] == 0)
     mapDF = mapDF.loc[~mask]
 
+    interOrderMask = hdul["ORDER"].data.copy()
+    interOrderMask = np.where(interOrderMask > 0, 0, interOrderMask)
+    interOrderMask = np.where(np.isnan(interOrderMask), 1, interOrderMask)
+
     mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
     # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -948,7 +966,7 @@ def twoD_disp_map_image_to_dataframe(
     mapDF.sort_values(['wavelength'], inplace=True)
 
     log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
-    return mapDF
+    return mapDF, interOrderMask
 
 
 def predict_product_path(
@@ -1010,11 +1028,14 @@ def add_recipe_logger(
     import logging
     import os
 
-    for handler in log.handlers:
-        if handler.get_name() == "recipeLog":
-            log.removeHandler(handler)
-        if handler.get_name() == "recipeErr":
-            log.removeHandler(handler)
+    i = 0
+    while i < 3:
+        for handler in log.handlers:
+            if handler.get_name() == "recipeLog":
+                log.removeHandler(handler)
+            if handler.get_name() == "recipeErr":
+                log.removeHandler(handler)
+        i += 1
 
     # GET THE EXTENSION (WITH DOT PREFIX)
     loggingPath = os.path.splitext(productPath)[0] + ".log"
@@ -1100,7 +1121,8 @@ def create_dispersion_solution_grid_lines_for_plot(
     import numpy as np
     import pandas as pd
 
-    dispMapDF = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
+    dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
+
     uniqueOrders = dispMapDF['order'].unique()
     wlLims = []
     sPos = []
@@ -1133,9 +1155,9 @@ def create_dispersion_solution_grid_lines_for_plot(
 
         spRange = np.arange(spLim[0], spLim[-1], 1)
         spRange = np.append(spRange, [spLim[-1]])
-        if skylines:
-            mask = skylinesDF['WAVELENGTH'].between(wlLim[0], wlLim[1])
-            wlRange = skylinesDF.loc[mask]['WAVELENGTH'].values
+        if not isinstance(skylines, bool):
+            mask = skylines['WAVELENGTH'].between(wlLim[0], wlLim[1])
+            wlRange = skylines.loc[mask]['WAVELENGTH'].values
         else:
             step = int(wlLim[1] - wlLim[0]) / 400
             wlRange = np.arange(wlLim[0], wlLim[1], step)
@@ -1158,7 +1180,40 @@ def create_dispersion_solution_grid_lines_for_plot(
     )
 
     log.debug('completed the ``create_dispersion_solution_grid_lines_for_plot`` function')
-    return orderPixelTable
+    return orderPixelTable, interOrderMask
+
+
+def get_calibration_lamp(
+        log,
+        frame,
+        kw):
+    """*given a frame, determine which calibration lamp is being used*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `frame` -- the frame to determine the calibration lamp for
+    - `kw` -- the FITS header keyword dictionary
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import get_calibration_lamp
+    lamp = get_calibration_lamp(log=log, frame=frame, kw=kw)
+    ```           
+    """
+    log.debug('starting the ``read_calibration_lamp`` function')
+
+    inst = frame.header["INSTRUME"]
+    lamp = None
+
+    for l in [kw("LAMP1"), kw("LAMP2"), kw("LAMP3"), kw("LAMP4"), kw("LAMP5"), kw("LAMP6"), kw("LAMP7")]:
+        if l in frame.header:
+            lamp = frame.header[l]
+            lamp = lamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("VIS_", "").replace("UVB_", "").replace("_lamp", "")
+
+    log.debug('completed the ``read_calibration_lamp`` function')
+    return lamp
 
 # use the tab-trigger below for new function
 # xt-def-function

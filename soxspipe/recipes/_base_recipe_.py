@@ -64,10 +64,10 @@ class _base_recipe_(object):
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath = toolkit.predict_product_path(inputFrames, self.recipeName)
-            self.log = toolkit.add_recipe_logger(log, self.productPath)
             if os.path.exists(self.productPath) and not overwrite:
-                self.log.print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 raise FileExistsError
+            self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:
             self.sofName = False
             self.productPath = False
@@ -1056,9 +1056,6 @@ class _base_recipe_(object):
             self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
             processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
 
-        if master_flat != False:
-            processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
-
         doSubtraction = True
         if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
             doSubtraction = False
@@ -1067,7 +1064,6 @@ class _base_recipe_(object):
 
             background = subtract_background(
                 log=self.log,
-
                 frame=processedFrame,
                 sofName=self.sofName,
                 recipeName=self.recipeName,
@@ -1077,6 +1073,10 @@ class _base_recipe_(object):
                 qcTable=self.qc
             )
             backgroundFrame, processedFrame, self.products = background.subtract()
+
+            from soxspipe.commonutils.toolkit import quicklook_image
+            quicklook_image(
+                log=self.log, CCDObject=backgroundFrame, show=False, ext='data', stdWindow=3, title="Background Light", surfacePlot=True)
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -1115,6 +1115,9 @@ class _base_recipe_(object):
                     "file_path": filepath,
                     "label": "QC"
                 }).to_frame().T], ignore_index=True)
+
+        if master_flat != False:
+            processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
         self.log.debug('completed the ``detrend`` method')
         return processedFrame

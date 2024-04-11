@@ -14,6 +14,7 @@
 
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
+from soxspipe.commonutils.toolkit import get_calibration_lamp
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import collections
 
@@ -389,6 +390,9 @@ class _base_detect(object):
         elif "stare" in self.recipeName.lower():
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
 
+        if self.lampTag:
+            filename = filename.replace(".fits", f"{self.lampTag}.fits")
+
         order_table_path = f"{outDir}/{filename}"
 
         header = copy.deepcopy(frame.header)
@@ -445,6 +449,7 @@ class detect_continuum(_base_detect):
         - ``sofName`` ---- name of the originating SOF file
         - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
+        - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
 
     **Usage:**
 
@@ -475,7 +480,8 @@ class detect_continuum(_base_detect):
             productsTable=False,
             sofName=False,
             binx=1,
-            biny=1
+            biny=1,
+            lampTag=False
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -489,6 +495,7 @@ class detect_continuum(_base_detect):
         self.binx = binx
         self.biny = biny
         self.recipeSettings = recipeSettings["detect-continuum"]
+        self.lampTag = lampTag
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -509,6 +516,8 @@ class detect_continuum(_base_detect):
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
         self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
+
+        self.lamp = get_calibration_lamp(log=log, frame=pinholeFlat, kw=self.kw)
 
         home = expanduser("~")
         self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
@@ -554,17 +563,16 @@ class detect_continuum(_base_detect):
         self.sliceWidth = self.recipeSettings["slice-width"]
 
         # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
-            self.axisA = "y"
-            self.axisB = "x"
-            coeff_dict = {"degorder_cent": self.orderDeg,
-                          "degx_cent": self.axisBDeg}
-
-        elif self.inst == "XSHOOTER":
+        if self.detectorParams["dispersion-axis"] == "x":
             self.axisA = "x"
             self.axisB = "y"
             coeff_dict = {"degorder_cent": self.orderDeg,
                           "degy_cent": self.axisBDeg}
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
+            coeff_dict = {"degorder_cent": self.orderDeg,
+                          "degx_cent": self.axisBDeg}
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan
@@ -785,12 +793,13 @@ class detect_continuum(_base_detect):
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
         halfSlice = self.sliceLength / 2
 
-        if self.inst == "SOXS":
-            sliceAxis = "y"
-            sliceAntiAxis = "x"
-        else:
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
             sliceAxis = "x"
             sliceAntiAxis = "y"
+        else:
+            sliceAxis = "y"
+            sliceAntiAxis = "x"
 
         slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.pinholeFlat,
                                                                          width=self.sliceWidth, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
@@ -899,9 +908,17 @@ class detect_continuum(_base_detect):
 
         arm = self.arm
 
-        # a = plt.figure(figsize=(40, 15))
+        # ROTATE THE IMAGE FOR BETTER LAYOUT
+        rotateImage = self.detectorParams["rotate-qc-plot"]
+        flipImage = self.detectorParams["flip-qc-plot"]
+        # ROTATE THE IMAGE FOR BETTER LAYOUT
+        rotatedImg = self.pinholeFlat.data
+        if rotateImage:
+            rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
+        if flipImage:
+            rotatedImg = np.flipud(rotatedImg)
 
-        if arm == "UVB" or (self.inst == "SOXS" and arm == "NIR"):
+        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
             # CREATE THE GID OF AXES
             gs = fig.add_gridspec(6, 4)
@@ -920,11 +937,6 @@ class detect_continuum(_base_detect):
             bottomright = fig.add_subplot(gs[4:6, 2:])
             fwhmaxis = fig.add_subplot(gs[6:7, :])
 
-        # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = self.pinholeFlat.data
-        if self.axisA == "x":
-            rotatedImg = np.rot90(rotatedImg, 1)
-            rotatedImg = np.flipud(rotatedImg)
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
@@ -932,7 +944,7 @@ class detect_continuum(_base_detect):
         toprow.scatter(clippedData[f"cont_{self.axisB}"], clippedData[f"cont_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5, label="peaks clipped during continuum fitting")
         # Put a legend below current axis
 
-        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05),
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
                       fontsize=4)
 
         # toprow.set_yticklabels([])
@@ -1032,7 +1044,7 @@ class detect_continuum(_base_detect):
             midrow.invert_yaxis()
             midrow.set_ylim(0, axisALength)
 
-        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05),
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
                       fontsize=4)
 
         # PLOT THE FINAL RESULTS:
@@ -1096,10 +1108,13 @@ class detect_continuum(_base_detect):
         std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
+        lamp = ""
+        if self.lamp:
+            lamp = f" {self.lamp} lamp"
         if "order" in self.recipeName.lower():
-            fig.suptitle(f"traces of order-centre locations - pinhole flat-frame\n{subtitle}", fontsize=12)
+            fig.suptitle(f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}", fontsize=12)
         else:
-            fig.suptitle(f"object trace locations\n{subtitle}", fontsize=12)
+            fig.suptitle(f"{arm} object trace locations\n{subtitle}", fontsize=12)
 
         # plt.show()
         if not self.sofName:

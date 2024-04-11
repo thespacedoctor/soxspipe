@@ -78,14 +78,21 @@ soxs-order-centre:
         poly-clipping-iteration-limit: 1
 
 soxs-spatial-solution:
+    use_flat: False
     pixel-window-size: 10
     order-deg: 3
     wavelength-deg: 3
     slit-deg: 3
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
+    # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+    poly-clipping-pinhole-sets: True
+    pinhole_fwhm_px_max: 2.5
+    pinhole_fwhm_px_min: 1.0
+    mph_line_set_min: 8
 
 soxs-mflat:
+    subtract_background: True
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
@@ -100,6 +107,8 @@ soxs-mflat:
     centre-order-window: 20
     # length of image slice to take across orders when detecting edges
     slice-length-for-edge-detection: 90
+    # NUMBER OF CROSS-ORDER SLICES PER ORDER
+    order-sample-count: 70
     # width of image slice to take across orders when detecting edges
     slice-width-for-edge-detection: 5
     # minimum value flux can drop to as percentage of central flux and be counted as an order edge
@@ -116,6 +125,8 @@ soxs-mflat:
     poly-clipping-iteration-limit: 3
     # number of σ deviations below the median flux of a master-flat frame beyond which a pixel is added to the bad-pixel mask
     low-sensitivity-clipping-sigma: 2
+    # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+    scale-d2-to-qth: True
 
     
 soxs-stare:
@@ -180,8 +191,8 @@ soxs-straighten:
 
 # UTILS
 background-subtraction:
-    bspline-deg: 2
-    gaussian-blur-sigma: 15
+    bspline-deg: 3
+    gaussian-blur-sigma: 35
 
 test-data-root: ~/xshooter-pipeline-data/unittest_data/xsh
 workspace-root-dir: ~/soxspipe-unittests/intermediate/xsh

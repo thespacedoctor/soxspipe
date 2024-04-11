@@ -1,6 +1,10 @@
 
 # Release Notes  
 
+* **FIXED**: the scaling and stitching together of the UVB D2 and QTH lamp flats.
+* fixed issue where logs were getting duplicated.
+* added arm and lamp to QC plot titles.
+* clipping of entire MPH set based on their combined RMS scatter from their predicted locations. MPH sets with large scatter are consider poor and removed before polynomial fitting.
 * **REFACTOR** recipe settings can now be set independently for each arm.
 * **REFACTOR:** fitting of the scatter background light is now much more robust.
 * **ENHANCEMENT:** option added to relevant recipes settings to allow toggling of fitting and subtracting of intra-order scattered background light (`subtract_background`)
@@ -9,9 +13,12 @@
 
 ## v0.10.0 - February 20, 2024
 
+* a `bootstrap_dispersion_solution` has been added to the advanced settings. It this is set to True, the pipeline will attempt to bootstrap the initial dispersion solution (using the static line list) with lines from a line-atlas. The line-atlas contains more lines and lines with more precise wavelength measurements.
 * **FEATURE**: a new 'reducer' module and terminal command replace the old `_reduce_all/sh` script. This allows the data-organiser to dynamically self-correct if a recipe fails.
 * **ENHANCEMENT:** robustness fixes and updates.
+* `pinhole_fwhm_px_min` and `pinhole_fwhm_px_max` settings added to `soxs-spatial-solution`. Detected pinholes with a FWHM below/above these values get clipped.
 * **FIXED**: The bad-pixel mask from the noise map of the mbias frame is now injected mbias product. The Xshooter UVB electron trap is now clearly visible in the master bias quality extension.
+* `mph_line_set_min` setting added to `soxs-spatial-solution`. Full multi-pinholes sets (same arc line) with fewer than mph_line_set_min lines detected get clipped.
 
 ## v0.9.9 - January 24, 2024
 

@@ -31,6 +31,7 @@ class soxs_spatial_solution(_base_recipe_):
         - ``verbose`` -- verbose. True or False. Default *False*
         - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
         - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
+        - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345435 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4, slit_x=3 ,slit_y=5. Default *False*. 
 
     See `produce_product` method for usage.
 
@@ -50,8 +51,8 @@ class soxs_spatial_solution(_base_recipe_):
             inputFrames=[],
             verbose=False,
             overwrite=False,
-            create2DMap=True
-
+            create2DMap=True,
+            polyOrders=False
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
         super(soxs_spatial_solution, self).__init__(
@@ -62,6 +63,15 @@ class soxs_spatial_solution(_base_recipe_):
         self.inputFrames = inputFrames
         self.verbose = verbose
         self.create2DMap = create2DMap
+        self.polyOrders = polyOrders
+
+        if self.polyOrders:
+            try:
+                self.polyOrders = int(self.polyOrders)
+            except:
+                pass
+            if not isinstance(self.polyOrders, int):
+                raise TypeError("THE poly VALUE NEEDS TO BE A 6 DIGIT INTEGER")
 
         # xt-self-arg-tmpx
 
@@ -240,6 +250,8 @@ class soxs_spatial_solution(_base_recipe_):
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             disp_map_table = i
 
+        if not self.recipeSettings["use_flat"]:
+            master_flat = False
         self.multiPinholeFrame = self.detrend(
             inputFrame=multi_pinhole_image, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=order_table)
 
@@ -248,6 +260,13 @@ class soxs_spatial_solution(_base_recipe_):
             filepath = self._write(
                 self.multiPinholeFrame, fileDir, filename=False, overwrite=True, product=False)
             self.log.print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
+
+        if self.polyOrders:
+            self.polyOrders = str(self.polyOrders)
+            self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+            self.recipeSettings["order-deg"] = self.polyOrders[:2]
+            self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
+            self.recipeSettings["slit-deg"] = self.polyOrders[4:]
 
         # GENERATE AN UPDATED DISPERSION MAP
         from soxspipe.commonutils import create_dispersion_map

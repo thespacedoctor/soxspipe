@@ -49,18 +49,25 @@ soxs-order-centre:
         poly-clipping-iteration-limit: 7
         
 soxs-spatial-solution:
+    use_flat: False
     pixel-window-size: 10
     order-deg: 4
     wavelength-deg: 5
     slit-deg: 2
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
+    pinhole_fwhm_px_max: 2.5
+    pinhole_fwhm_px_min: 1.0
+    mph_line_set_min: 8
 
 
 soxs-mflat:
+    subtract_background: True
     centre-order-window: 20
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
+    # NUMBER OF CROSS-ORDER SLICES PER ORDER
+    order-sample-count: 70
     clipping-lower-sigma: 50
     clipping-upper-sigma: 1000   
     clipping-iteration-count: 1
@@ -73,6 +80,8 @@ soxs-mflat:
     poly-fitting-residual-clipping-sigma: 5
     poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
+    # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+    scale-d2-to-qth: True
     
 soxs-stare:
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
@@ -136,8 +145,8 @@ soxs-stare:
 
 # UTILS
 background-subtraction:
-    bspline-deg: 2
-    gaussian-blur-sigma: 15
+    bspline-deg: 3
+    gaussian-blur-sigma: 35
 
 
 data-extension: 1

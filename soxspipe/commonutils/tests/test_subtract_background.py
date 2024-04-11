@@ -54,7 +54,7 @@ class test_subtract_background(unittest.TestCase):
     def test_xsh_subtract_background_function(self):
 
         flatPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-background/first_iteration_NIR_master_flat.fits"
-        orderTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-background/20170819T150225_NIR_ORDER_LOCATIONS.fits"
+        orderTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-background/2021.09.05T15.41.34.7030_NIR_ORDER_LOCATIONS.fits"
         home = expanduser("~")
         flatPath = flatPath.replace("~", home)
         orderTable = orderTable.replace("~", home)
