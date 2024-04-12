@@ -13,7 +13,7 @@
         soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-        soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
         soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     
     Options:
@@ -39,6 +39,7 @@
         -s, --settings <pathToSettingsFile>    the settings file
         -V, --verbose                          more verbose output
         -x, --overwrite                        more verbose output
+        --poly=<oowwss>                        polynomial degrees in this sequence: order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435 (overrides parameters found in setting file)
     
 
 ```
