@@ -243,7 +243,7 @@ class soxs_nod(_base_recipe_):
         allFrameA = []
         allFrameB = []
 
-
+        #HIERARCH ESO SEQ CUMOFF Y is the offset in the Y direction of the nodding sequence. Positive A, negative B
         for frame in allObjectFrames:
             if frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0:   
                 allFrameA.append(frame)
@@ -270,14 +270,12 @@ class soxs_nod(_base_recipe_):
         A_minus_B = masterA.subtract(masterB)
         B_minus_A = masterB.subtract(masterA)
 
-        #ADD TO A_minus_B header of masterA
+        #REAPPLYING HEADERS
 
-        hdr = masterB.header
-        A_minus_B.header = hdr
-        B_minus_A.header = hdr  
-
-        
-
+        hdr_A = masterA.header
+        hdr_B = masterB.header
+        A_minus_B.header = hdr_A
+        B_minus_A.header = hdr_B  
         #Write the A-B and B-A frames to disk
         A_minus_B_path = "A_minus_B.fits"
         B_minus_A_path =  "B_minus_A.fits"
@@ -286,7 +284,6 @@ class soxs_nod(_base_recipe_):
         B_minus_A.write(B_minus_A_path, overwrite=True)
 
 
-        # ADD QUALITY CHECKS
         # TODO: ADD THESE CHECK WHEN WE HAVE A FINAL FRAME TO CHECK ... LIKELY A-B FRAME
         if False:
             self.qc = generic_quality_checks(
@@ -308,10 +305,9 @@ class soxs_nod(_base_recipe_):
              productsTable=self.products,
              dispersionMap=dispMap,
              sofName=self.sofName
-             
          )
         
-        self.qc, self.products, merged_orders_a = optimalExtractor.extract(noddingSequence='A')
+        self.qc, products_a, merged_orders_a = optimalExtractor.extract()
         #EXTRACT THE B MINUS A FRAME 
 
         optimalExtractor = horne_extraction(
@@ -326,15 +322,13 @@ class soxs_nod(_base_recipe_):
              dispersionMap=dispMap,
              sofName=self.sofName
          )
-        self.qc, self.products, merged_orders_b = optimalExtractor.extract(noddingSequence='B')    
+        self.qc, products_b, merged_orders_b = optimalExtractor.extract()    
 
         #MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGED_ORDERS_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
 
         merged_dataframe = pd.concat([merged_orders_a, merged_orders_b])
 
         groupedDataframe = merged_dataframe.groupby(by='WAVE', as_index=False).sum()
-
-        print(groupedDataframe)
 
         #WRITING THE DATA ON THE FITS FILE
         if self.sofName:
@@ -371,7 +365,10 @@ class soxs_nod(_base_recipe_):
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
-        
+
+
+        #Merging the products list in self.product
+        self.products = pd.concat([products_a, products_b])
 
         self.clean_up()
         self.report_output()

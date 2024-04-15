@@ -388,6 +388,9 @@ class _base_detect(object):
             filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
         elif "stare" in self.recipeName.lower():
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
+        elif "nod" in self.recipeName.lower():
+            #sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
+            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE_" + self.noddingSequence +  ".fits"
 
         order_table_path = f"{outDir}/{filename}"
 
@@ -478,10 +481,15 @@ class detect_continuum(_base_detect):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
         self.settings = settings
+        try:
+            self.noddingSequence  = "A" if int(pinholeFlat.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
+        except:
+            self.noddingSequence = ""
         if recipeName:
             self.recipeSettings = settings[recipeName]["detect-continuum"]
         else:
             self.recipeSettings = False
+
         self.recipeName = recipeName
         self.pinholeFlat = pinholeFlat
         self.dispersion_map = dispersion_map
@@ -887,6 +895,7 @@ class detect_continuum(_base_detect):
             - ``orderPixelTable`` -- the pixel table with residuals of fits
             - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
             - ``clippedData`` -- the sigma-clipped data
+            - ``noddingSequence`` -- the nodding sequence (if nodding)
 
         **Return:**
             - ``filePath`` -- path to the plot pdf
@@ -1108,6 +1117,8 @@ class detect_continuum(_base_detect):
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
         elif "order" in self.recipeName.lower():
             filename = self.sofName + "_residuals.pdf"
+        elif "nod" in self.recipeName.lower():
+            filename = self.sofName + "_OBJECT_TRACE_residuals_" + self.noddingSequence +  ".pdf"
         else:
             filename = self.sofName + "_OBJECT_TRACE_residuals.pdf"
 

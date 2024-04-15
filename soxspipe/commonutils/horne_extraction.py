@@ -112,6 +112,13 @@ class horne_extraction(object):
         self.qc = qcTable
         self.recipeName = recipeName
         self.sofName = sofName
+        self.noddingSequence = ""
+        #DETECTING SEQUENCE AUTOMATICALLY
+
+        try:
+            self.noddingSequence  = "A" if int(skySubtractedFrame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
+        except:
+            self.noddingSequence = ""
 
         home = expanduser("~")
         self.outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
@@ -246,8 +253,7 @@ class horne_extraction(object):
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=productPath)
 
-    def extract(
-            self, noddingSequence='A'):
+    def extract(self):
         """*extract the full spectrum order-by-order and return FITS Binary table containing order-merged spectrum*
 
         **Return:**
@@ -334,8 +340,10 @@ class horne_extraction(object):
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
         toprow.set_title(
             f"Optimally Extracted Object Spectrum ({arm.upper()})", fontsize=11)
-
-        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT.pdf")
+        if len(self.noddingSequence) > 0:
+            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT_" + str(self.noddingSequence) + ".pdf")
+        else:
+            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT.pdf")
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
         # plt.show()
@@ -386,7 +394,11 @@ class horne_extraction(object):
         hduList = fits.HDUList([priHDU, BinTableHDU])
 
         # DISCRETE ORDERS
-        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS.fits")
+        if len(self.noddingSequence) > 0:
+            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_" + str(self.noddingSequence) + ".fits")
+        else:
+
+            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS.fits")
         filePath = f"{self.outDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
@@ -403,7 +415,10 @@ class horne_extraction(object):
         }).to_frame().T], ignore_index=True)
 
         # NOW MERGED SPECTRUM
-        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED_" + str(noddingSequence) + ".fits")
+        if len(self.noddingSequence) > 0:
+            filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED_" + str(self.noddingSequence) + ".fits")
+        else:
+            filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED.fits")
         filePath = f"{self.outDir}/{filename}"
         mergedTable = Table.from_pandas(mergedSpectumDF)
         BinTableHDU = fits.table_to_hdu(mergedTable)
