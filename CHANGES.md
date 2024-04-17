@@ -1,6 +1,8 @@
 
-# Release Notes  
+# Release Notes 
 
+* **ENHANCEMENT:** adding bad-pixel maps for SOXS detectors (currently blank)
+* **ENHANCEMENT:** pipeline can select default settings for either soxs or xsh (previously there was only one default settings file)
 * **FIXED**: the scaling and stitching together of the UVB D2 and QTH lamp flats.
 * fixed issue where logs were getting duplicated.
 * added arm and lamp to QC plot titles.
