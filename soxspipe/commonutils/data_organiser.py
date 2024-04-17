@@ -1426,6 +1426,18 @@ class data_organiser(object):
 
         import re
         import shutil
+        import sqlite3 as sql
+
+        rootDbExists = os.path.exists(self.rootDbPath)
+        if rootDbExists:
+            # CREATE THE DATABASE CONNECTION
+            self.conn = sql.connect(
+                self.rootDbPath)
+            c = self.conn.cursor()
+            sqlQuery = "select distinct instrume from raw_frames"
+            c.execute(sqlQuery)
+            inst = c.fetchall()[0][0].lower()
+            c.close()
 
         # TEST SESSION DIRECTORY EXISTS
         exists = os.path.exists(self.sessionsDir)
@@ -1453,6 +1465,7 @@ class data_organiser(object):
         # SETUP SESSION SETTINGS AND LOGGING
         testPath = self.sessionPath + "/soxspipe.yaml"
         exists = os.path.exists(testPath)
+
         if not exists:
             su = tools(
                 arguments={"<workspaceDirectory>": self.sessionPath, "init": True, "settingsFile": None},
@@ -1460,7 +1473,7 @@ class data_organiser(object):
                 logLevel="WARNING",
                 options_first=False,
                 projectName="soxspipe",
-                defaultSettingsFile=True
+                defaultSettingsFile=f"{inst}_default_settings.yaml"
             )
             arguments, settings, replacedLog, dbConn = su.setup()
 
@@ -1472,7 +1485,6 @@ class data_organiser(object):
 
         # COPY THE WORKSPACE DATABASE INTO THE SESSION FOLDER
         self.sessionDB = self.sessionPath + "/soxspipe.db"
-        rootDbExists = os.path.exists(self.rootDbPath)
         sessionDbExists = os.path.exists(self.sessionDB)
         if rootDbExists and not sessionDbExists:
             shutil.copyfile(self.rootDbPath, self.sessionDB)
