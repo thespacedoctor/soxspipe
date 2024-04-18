@@ -388,6 +388,7 @@ class _base_recipe_(object):
         self.log.debug('starting the ``prepare_frames`` method')
 
         from soxspipe.commonutils.set_of_files import set_of_files
+        import numpy as np
 
         kw = self.kw
 
@@ -417,7 +418,17 @@ class _base_recipe_(object):
         except:
             pass
 
+        preframes.summary["LAMP"] = "------------"
         columns = preframes.summary.colnames
+        for i in range(7):
+            thisLamp = kw(f"LAMP{i+1}")
+            try:
+                preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)] = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
+                columns.remove(thisLamp)
+            except:
+                pass
+
+        preframes.summary["LAMP"][np.where(preframes.summary["LAMP"] == "------------")] = "--"
 
         try:
             columns.remove(kw("SLIT_NIR"))
