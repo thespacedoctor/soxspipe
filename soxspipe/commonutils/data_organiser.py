@@ -196,7 +196,7 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template', 'eso obs name']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
@@ -703,6 +703,11 @@ class data_organiser(object):
 
         rawFrames = filteredFrames.loc[mask]
 
+        # Use the groupby and transform method to fill in missing values
+        rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
+        rawFrames['lamp'] = rawFrames['lamp'].fillna(rawFrames.groupby('eso obs name')['lamp'].transform('first'))
+        rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
+
         reducedFrames = filteredFrames.loc[~mask]
         pd.options.display.float_format = '{:,.4f}'.format
 
@@ -940,7 +945,6 @@ class data_organiser(object):
             matchDict['rospeed'] = series["rospeed"]
             sofName.append(series["rospeed"])
         if series["eso dpr type"].lower() in self.typeMap:
-
             matchDict['eso dpr type'] = series["eso dpr type"]
             for i in self.typeMap[series["eso dpr type"].lower()]:
                 if i["recipe"] == seriesRecipe:
@@ -950,9 +954,17 @@ class data_organiser(object):
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
                 sofName.append("qlamp")
+        if True:
+            if series["lamp"] != "--":
+                matchDict['lamp'] = series["lamp"]
+                sofName.append(series["lamp"])
         if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and ("FLAT" in series["eso dpr type"].upper() or "DARK" in series["eso dpr type"].upper()))):
             matchDict['exptime'] = float(series["exptime"])
             sofName.append(str(series["exptime"]).replace(".", "pt"))
+
+        if series["eso obs name"] != "--":
+            matchDict["eso obs name"] = series["eso obs name"]
+
         sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
