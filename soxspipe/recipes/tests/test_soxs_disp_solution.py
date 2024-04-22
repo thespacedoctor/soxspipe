@@ -63,6 +63,35 @@ class test_soxs_disp_solution(unittest.TestCase):
 
     def test_soxs_real_disp_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs/disp-solution/sof/NIR_DISP_SOLUTION.sof"
+
+        # frame = "~/xshooter-pipeline-data/unittest_data/soxs/disp-solution/NIR/SOXS_NIR_SPH_ARC_OFF_10_002.fits"
+        # from astropy.io import fits
+        # with fits.open(frame, "readonly") as hdul:
+        #     # PRINT SUMMARY OF FITS CONTENT
+        #     print(hdul.info())
+        #     # READ HEADER INTO MEMORY
+        #     hdr = hdul[0].header + hdul[1].header
+        #     data = hdul[1].data
+        #     hdr["ESO DPR TYPE"] = "WAVE,LAMP"
+        # # WRITE OUT A NEW FITS FILE
+        # from astropy.io import fits
+        # fits.writeto(frame, data, hdr,
+        #              output_verify="fix+warn", overwrite=True, checksum=True)
+
+        # frame = "~/xshooter-pipeline-data/unittest_data/soxs/disp-solution/NIR/SOXS_NIR_SPH_ARC_ON_10_004.fits"
+        # from astropy.io import fits
+        # with fits.open(frame, "readonly") as hdul:
+        #     # PRINT SUMMARY OF FITS CONTENT
+        #     print(hdul.info())
+        #     # READ HEADER INTO MEMORY
+        #     hdr = hdul[0].header + hdul[1].header
+        #     data = hdul[1].data
+        #     hdr["ESO DPR TYPE"] = "WAVE,LAMP"
+        # # WRITE OUT A NEW FITS FILE
+        # from astropy.io import fits
+        # fits.writeto(frame, data, hdr,
+        #              output_verify="fix+warn", overwrite=True, checksum=True)
+
         from soxspipe.recipes import soxs_disp_solution
         disp_map_path = soxs_disp_solution(
             log=log2,
