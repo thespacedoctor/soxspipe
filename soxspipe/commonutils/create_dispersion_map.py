@@ -1291,6 +1291,7 @@ class create_dispersion_map(object):
             science_pixels["columns"]["start"]
         ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
         xlen, ylen
+
         if reverse:
             seedArray = np.empty((ylen, xlen))
             seedArray[:] = np.nan
@@ -1321,7 +1322,7 @@ class create_dispersion_map(object):
             axisACoord_edgeup[axisACoord_edgeup < 0] = 0
             axisACoord_edgelow[axisACoord_edgelow > axisALen] = axisALen
             axisACoord_edgelow[axisACoord_edgelow < 0] = 0
-            axisACoord_edgelow, axisACoord_edgeup, axisBcoord = zip(*[(l, u, b) for l, u, b in zip(axisACoord_edgelow, axisACoord_edgeup, axisBcoord) if l >= 0 and l <= axisALen and u >= 0 and u <= axisALen and b >= 0 and b <= axisBLen])
+            axisACoord_edgelow, axisACoord_edgeup, axisBcoord = zip(*[(l, u, b) for l, u, b in zip(axisACoord_edgelow, axisACoord_edgeup, axisBcoord) if l >= 0 and l <= axisALen and u >= 0 and u <= axisALen and b >= 0 and b < axisBLen])
             if reverse:
                 for b, u, l in zip(axisBcoord, np.ceil(axisACoord_edgeup).astype(int), np.floor(axisACoord_edgelow).astype(int)):
                     if self.axisA == "x":

@@ -1479,6 +1479,8 @@ class data_organiser(object):
         exists = os.path.exists(testPath)
 
         if not exists:
+            if "xshoo" in inst:
+                inst = "xsh"
             su = tools(
                 arguments={"<workspaceDirectory>": self.sessionPath, "init": True, "settingsFile": None},
                 docString=False,
