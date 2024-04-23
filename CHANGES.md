@@ -1,6 +1,14 @@
 
 # Release Notes  
 
+## v0.10.2 - April 23, 2024
+
+* **ENHANCEMENT:** the calibration lamp name is now added to the sof filenames, and hence the product file names
+* **ENHANCEMENT:** file summary now shows which calibration lamps are used
+* **ENHANCEMENT:** adding bad-pixel maps for SOXS detectors (currently blank)
+* **ENHANCEMENT:** pipeline can select default settings for either soxs or xsh (previously there was only one default settings file)
+* **FIXED**: SOXS VIS darks are now getting split by EXPTIME in data-organiser
+
 ## v0.10.1 - April 11, 2024
 
 * **FEATURE:** the data-organiser has been 'plumbed' to work with SOXS data (will now work with Xshooter or SOXS data).
