@@ -78,4 +78,12 @@ class test_response_function(unittest.TestCase):
 
         # x-print-testpage-for-pessto-marshall-web-object
 
+if __name__ == '__main__':
+    suite = unittest.TestSuite()
+    suite.addTest(test_response_function("test_xsh_response_function_function"))
+    runner = unittest.TextTestRunner()
+    runner.run(suite)
+
+    #unittest.main()
+
     # x-class-to-test-named-worker-function
