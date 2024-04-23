@@ -689,9 +689,18 @@ class data_organiser(object):
         filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
         filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
 
-        for i in [1, 2, 3, 4, 5, 6, 7]:
-            filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"] = filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), self.kw(f"LAMP{i}").lower()]
+        print("NEW")
+        lampLong = ["argo", "merc", "neon", "xeno", "qth", "deut", "thar"]
+        lampEle = ["Ar", "Hg", "Ne", "Xe", "QTH", "D", "ThAr"]
 
+        for i in [1, 2, 3, 4, 5, 6, 7]:
+            lamp = self.kw(f"LAMP{i}").lower()
+            if self.instrument.lower() == "soxs":
+                for l, e in zip(lampLong, lampEle):
+                    if l in lamp:
+                        lamp = e
+            filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
+            filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
         mask = []
         for i in self.proKeywords:
             keywordsTerseRaw.remove(i)
