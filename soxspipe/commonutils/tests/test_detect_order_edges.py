@@ -68,6 +68,7 @@ class test_detect_order_edges(unittest.TestCase):
             flatFrame=flatFrame,
             orderCentreTable=orderCentreTable,
             settings=settings,
+            recipeSettings=settings["soxs-mflat"]
         )
         edges.get()
 

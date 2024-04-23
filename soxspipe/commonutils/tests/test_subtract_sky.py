@@ -68,7 +68,7 @@ class test_subtract_sky(unittest.TestCase):
         ).get
 
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-        mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, slit_length=11, kw=kw)
+        mapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, slit_length=11, kw=kw)
 
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
         from astropy.nddata import CCDData
@@ -82,7 +82,7 @@ class test_subtract_sky(unittest.TestCase):
         objectFrame = CCDData.read(objectPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-        mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, slit_length=11, kw=kw)
+        mapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, slit_length=11, kw=kw)
 
         from tabulate import tabulate
         print(tabulate(mapDF.head(100), headers='keys', tablefmt='psql'))
@@ -135,6 +135,7 @@ class test_subtract_sky(unittest.TestCase):
         this = subtract_sky(
             log=log,
             settings=settings,
+            recipeSettings=settings["soxs-stare"],
             objectFrame=objectFrame,
             twoDMap=twoDMap,
             qcTable=qc,

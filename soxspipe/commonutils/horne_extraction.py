@@ -35,6 +35,7 @@ class horne_extraction(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``recipeSettings`` -- the recipe specific settings
         - ``skyModelFrame`` -- path to sky model frame
         - ``skySubtractedFrame`` -- path to sky subtracted frame
         - ``twoDMapPath`` -- path to 2D dispersion map image path
@@ -83,6 +84,7 @@ class horne_extraction(object):
             self,
             log,
             settings,
+            recipeSettings,
             skyModelFrame,
             skySubtractedFrame,
             twoDMapPath,
@@ -113,6 +115,7 @@ class horne_extraction(object):
         self.recipeName = recipeName
         self.sofName = sofName
         self.noddingSequence = ""
+        self.recipeSettings = recipeSettings
         #DETECTING SEQUENCE AUTOMATICALLY
 
         try:
@@ -124,10 +127,10 @@ class horne_extraction(object):
         self.outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
 
         # COLLECT SETTINGS FROM SETTINGS FILE
-        self.slitHalfLength = int(self.settings["soxs-stare"]["horne-extraction-slit-length"] / 2)
-        self.clippingSigma = self.settings["soxs-stare"]["horne-extraction-profile-clipping-sigma"]
-        self.clippingIterationLimit = self.settings["soxs-stare"]["horne-extraction-profile-clipping-iteration-count"]
-        self.globalClippingSigma = self.settings["soxs-stare"]["horne-extraction-profile-global-clipping-sigma"]
+        self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
+        self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
+        self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
+        self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
 
         # TODO: replace this value with true value from FITS header
         self.ron = 3.0
@@ -242,6 +245,7 @@ class horne_extraction(object):
             pinholeFlat=self.skySubtractedFrame,
             dispersion_map=self.dispersionMap,
             settings=self.settings,
+            recipeSettings=self.recipeSettings,
             sofName=self.sofName,
             recipeName=self.recipeName,
             qcTable=self.qc,

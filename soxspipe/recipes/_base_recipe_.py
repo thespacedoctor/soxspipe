@@ -64,10 +64,10 @@ class _base_recipe_(object):
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath = toolkit.predict_product_path(inputFrames, self.recipeName)
-            self.log = toolkit.add_recipe_logger(log, self.productPath)
             if os.path.exists(self.productPath) and not overwrite:
-                self.log.print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 raise FileExistsError
+            self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:
             self.sofName = False
             self.productPath = False
@@ -81,27 +81,6 @@ class _base_recipe_(object):
         self.arm = None
         self.detectorParams = None
         self.dateObs = None
-
-        # COLLECT ADVANCED SETTINGS IF AVAILABLE
-        parentDirectory = os.path.dirname(__file__)
-        advs = parentDirectory + "/advanced_settings.yaml"
-        level = 0
-        exists = False
-        count = 1
-        while not exists and len(advs) and count < 10:
-            count += 1
-            level -= 1
-            exists = os.path.exists(advs)
-            if not exists:
-                advs = "/".join(parentDirectory.split("/")
-                                [:level]) + "/advanced_settings.yaml"
-        if not exists:
-            advs = {}
-        else:
-            with open(advs, 'r') as stream:
-                advs = yaml.safe_load(stream)
-        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
-        self.settings = {**advs, **self.settings}
 
         # FIND THE CURRENT SESSION
         from os.path import expanduser
@@ -132,6 +111,27 @@ class _base_recipe_(object):
             sqlQuery = f"update product_frames set status = 'fail' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
+
+        # COLLECT ADVANCED SETTINGS IF AVAILABLE
+        parentDirectory = os.path.dirname(__file__)
+        advs = parentDirectory + "/advanced_settings.yaml"
+        level = 0
+        exists = False
+        count = 1
+        while not exists and len(advs) and count < 10:
+            count += 1
+            level -= 1
+            exists = os.path.exists(advs)
+            if not exists:
+                advs = "/".join(parentDirectory.split("/")
+                                [:level]) + "/advanced_settings.yaml"
+        if not exists:
+            advs = {}
+        else:
+            with open(advs, 'r') as stream:
+                advs = yaml.safe_load(stream)
+        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
+        self.settings = {**advs, **self.settings}
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc = pd.DataFrame({
@@ -267,6 +267,17 @@ class _base_recipe_(object):
         if not os.path.exists(bitMapPath):
             message = "the path to the bitMapPath %s does not exist on this machine" % (
                 bitMapPath,)
+
+            if True:
+                # CREATE A DUMMY BAD-PIXEL MAP
+                import numpy as np
+                from astropy.nddata import CCDData
+                frame = CCDData(np.full_like(frame.data, 0), unit="adu")
+                # WRITE CCDDATA OBJECT TO FILE
+                HDUList = frame.to_hdu()
+                HDUList.writeto(bitMapPath, output_verify='exception',
+                                overwrite=True, checksum=True)
+
             self.log.critical(message)
             raise IOError(message)
         bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
@@ -377,6 +388,7 @@ class _base_recipe_(object):
         self.log.debug('starting the ``prepare_frames`` method')
 
         from soxspipe.commonutils.set_of_files import set_of_files
+        import numpy as np
 
         kw = self.kw
 
@@ -406,7 +418,17 @@ class _base_recipe_(object):
         except:
             pass
 
+        preframes.summary["LAMP"] = "------------"
         columns = preframes.summary.colnames
+        for i in range(7):
+            thisLamp = kw(f"LAMP{i+1}")
+            try:
+                preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)] = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
+                columns.remove(thisLamp)
+            except:
+                pass
+
+        preframes.summary["LAMP"][np.where(preframes.summary["LAMP"] == "------------")] = "--"
 
         try:
             columns.remove(kw("SLIT_NIR"))
@@ -426,6 +448,9 @@ class _base_recipe_(object):
             columns.remove("filename")
             columns = ["filename"] + columns
         self.log.print(preframes.summary[columns])
+
+        # SORT RECIPE AND ARM SETTINGS
+        self.recipeSettings = self.get_recipe_settings()
 
         self.log.debug('completed the ``prepare_frames`` method')
         return preframes
@@ -876,10 +901,8 @@ class _base_recipe_(object):
         recipe = recipe.replace("soxs_", "soxs-")
 
         # UNPACK SETTINGS
-        stacked_clipping_sigma = self.settings[
-            recipe]["stacked-clipping-sigma"]
-        stacked_clipping_iterations = self.settings[
-            recipe]["stacked-clipping-iterations"]
+        stacked_clipping_sigma = self.recipeSettings["stacked-clipping-sigma"]
+        stacked_clipping_iterations = self.recipeSettings["stacked-clipping-iterations"]
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
@@ -1052,56 +1075,71 @@ class _base_recipe_(object):
         if dark != False and (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence):
             processedFrame = ccdproc.subtract_bias(processedFrame, dark)
         elif dark != False:
+            self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
             processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
 
-        if master_flat != False:
-            processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
+        doSubtraction = True
+        if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
+            doSubtraction = False
 
-        if order_table != False and 1 == 1:
+        if order_table != False and doSubtraction:
 
             background = subtract_background(
                 log=self.log,
                 frame=processedFrame,
+                sofName=self.sofName,
+                recipeName=self.recipeName,
                 orderTable=order_table,
-                settings=self.settings
+                settings=self.settings,
+                productsTable=self.products,
+                qcTable=self.qc
             )
-            backgroundFrame, processedFrame = background.subtract()
+            backgroundFrame, processedFrame, self.products = background.subtract()
+
+            from soxspipe.commonutils.toolkit import quicklook_image
+            quicklook_image(
+                log=self.log, CCDObject=backgroundFrame, show=False, ext='data', stdWindow=3, title="Background Light", surfacePlot=True)
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-            # DETERMINE WHERE TO WRITE THE FILE
-            home = expanduser("~")
+            # WRITE FITS FRAME OF BACKGROUND IMAGE ... PDF BEING GENERATED INSTEAD
+            if False:
+                # DETERMINE WHERE TO WRITE THE FILE
+                home = expanduser("~")
 
-            if self.currentSession:
-                outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
-            else:
-                outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
-            outDir = outDir.replace("//", "/")
-            # RECURSIVELY CREATE MISSING DIRECTORIES
-            if not os.path.exists(outDir):
-                os.makedirs(outDir)
+                if self.currentSession:
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
+                else:
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+                outDir = outDir.replace("//", "/")
+                # RECURSIVELY CREATE MISSING DIRECTORIES
+                if not os.path.exists(outDir):
+                    os.makedirs(outDir)
 
-            # GET THE EXTENSION (WITH DOT PREFIX)
-            filename = self.sofName + "_BKGROUND.fits"
-            filepath = f"{outDir}/{filename}"
-            header = copy.deepcopy(inputFrame.header)
-            primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
-            hdul = fits.HDUList([primary_hdu])
-            hdul.writeto(filepath, output_verify='exception',
-                         overwrite=True, checksum=True)
+                # GET THE EXTENSION (WITH DOT PREFIX)
+                filename = self.sofName + "_BKGROUND.fits"
+                filepath = f"{outDir}/{filename}"
+                header = copy.deepcopy(inputFrame.header)
+                primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
+                hdul = fits.HDUList([primary_hdu])
+                hdul.writeto(filepath, output_verify='exception',
+                             overwrite=True, checksum=True)
 
-            self.products = pd.concat([self.products, pd.Series({
-                "soxspipe_recipe": self.recipeName,
-                "product_label": "BKGROUND",
-                "file_name": filename,
-                "file_type": "FITS",
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "product_desc": f"Fitted intra-order image background",
-                "file_path": filepath,
-                "label": "QC"
-            }).to_frame().T], ignore_index=True)
+                self.products = pd.concat([self.products, pd.Series({
+                    "soxspipe_recipe": self.recipeName,
+                    "product_label": "BKGROUND",
+                    "file_name": filename,
+                    "file_type": "FITS",
+                    "obs_date_utc": self.dateObs,
+                    "reduction_date_utc": utcnow,
+                    "product_desc": f"Fitted intra-order image background",
+                    "file_path": filepath,
+                    "label": "QC"
+                }).to_frame().T], ignore_index=True)
+
+        if master_flat != False:
+            processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
 
         self.log.debug('completed the ``detrend`` method')
         return processedFrame
@@ -1347,11 +1385,9 @@ class _base_recipe_(object):
         import numpy as np
 
         # UNPACK SETTINGS
-        clipping_lower_sigma = self.settings[
-            "soxs-mbias"]["frame-clipping-sigma"]
+        clipping_lower_sigma = self.recipeSettings["frame-clipping-sigma"]
         clipping_upper_sigma = clipping_lower_sigma
-        clipping_iteration_count = self.settings[
-            "soxs-mbias"]["frame-clipping-iterations"]
+        clipping_iteration_count = self.recipeSettings["frame-clipping-iterations"]
 
         maskedFrame = sigma_clip(
             rawFrame, sigma=clipping_lower_sigma, maxiters=clipping_iteration_count, cenfunc='median', stdfunc='mad_std')
@@ -1413,6 +1449,31 @@ class _base_recipe_(object):
 
         self.log.debug('completed the ``update_fits_keywords`` method')
         return None
+
+    def get_recipe_settings(
+            self):
+        """*get the recipe and arm specific settings*
+
+        **Return:**
+            - ``recipeSettings`` -- the recipe specific settings
+
+        **Usage:**
+
+        ```python
+        usage code
+        ```
+        """
+        self.log.debug('starting the ``get_recipe_settings`` method')
+
+        recipeSettings = False
+        if self.recipeName:
+            recipeSettings = self.settings[self.recipeName]
+        if recipeSettings and self.arm and self.arm.lower() in recipeSettings:
+            for k, v in recipeSettings[self.arm.lower()].items():
+                recipeSettings[k] = v
+
+        self.log.debug('completed the ``get_recipe_settings`` method')
+        return recipeSettings
 
     # use the tab-trigger below for new method
     # xt-class-method

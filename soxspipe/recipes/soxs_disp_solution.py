@@ -72,7 +72,6 @@ class soxs_disp_solution(_base_recipe_):
         self.inputFrames = inputFrames
         self.verbose = verbose
         self.recipeName = "soxs-disp-solution"
-        self.recipeSettings = settings[self.recipeName]
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
@@ -120,6 +119,11 @@ class soxs_disp_solution(_base_recipe_):
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
         error = False
 
+        if False:
+            print(imageTypes)
+            print(imageTech)
+            print(imageCat)
+
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
             # MIXED INPUT IMAGE TYPES ARE BAD
@@ -130,7 +134,7 @@ class soxs_disp_solution(_base_recipe_):
                     error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
             if not error:
-                if imageTypes[0] != "LAMP,FMTCHK":
+                if imageTypes[0] not in ["LAMP,FMTCHK", 'WAVE,LAMP']:
                     error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
             if not error:
@@ -207,7 +211,10 @@ class soxs_disp_solution(_base_recipe_):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # NIR DARK
-        add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK', kw("DPR_TECH"): 'IMAGE'}
+        if self.inst.lower() == "soxs":
+            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP', kw("DPR_TECH"): 'IMAGE'}
+        else:
+            add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK', kw("DPR_TECH"): 'IMAGE'}
         # from tabulate import tabulate
         # self.log.print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
         # self.log.print(self.inputFrames.files_filtered(include_path=True, **add_filters))
@@ -217,8 +224,12 @@ class soxs_disp_solution(_base_recipe_):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK',
-                       kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+        if self.inst.lower() == "soxs":
+            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP',
+                           kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+        else:
+            add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK',
+                           kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -240,6 +251,7 @@ class soxs_disp_solution(_base_recipe_):
         productPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,
             settings=self.settings,
+            recipeSettings=self.recipeSettings,
             pinholeFrame=self.pinholeFrame,
             qcTable=self.qc,
             productsTable=self.products,

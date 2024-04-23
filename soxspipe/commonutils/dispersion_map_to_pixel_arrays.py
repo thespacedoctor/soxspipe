@@ -56,6 +56,7 @@ def dispersion_map_to_pixel_arrays(
     log.debug('starting the ``dispersion_map_to_pixel_arrays`` function')
 
     from astropy.table import Table
+    import math
 
     # READ THE FILE
     home = expanduser("~")
@@ -69,25 +70,28 @@ def dispersion_map_to_pixel_arrays(
     coeff = {}
     poly = {}
     check = 1
+
     for index, row in tableData.iterrows():
         axis = row["axis"].decode("utf-8")
         orderDeg = int(row["order_deg"])
         wavelengthDeg = int(row["wavelength_deg"])
         slitDeg = int(row["slit_deg"])
 
+        # print(axis, orderDeg, wavelengthDeg, slitDeg)
+
         if check:
             for i in range(0, orderDeg + 1):
-                orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+                orderPixelTable[f"order_pow_{axis}_{i}"] = orderPixelTable["order"].pow(i)
             for j in range(0, wavelengthDeg + 1):
-                orderPixelTable[f"wavelength_pow_{j}"] = orderPixelTable["wavelength"].pow(j)
+                orderPixelTable[f"wavelength_pow_{axis}_{j}"] = orderPixelTable["wavelength"].pow(j)
             for k in range(0, slitDeg + 1):
-                orderPixelTable[f"slit_position_pow_{k}"] = orderPixelTable["slit_position"].pow(k)
-            check = 0
+                orderPixelTable[f"slit_position_pow_{axis}_{k}"] = orderPixelTable["slit_position"].pow(k)
+            # check = 0
 
         coeff[axis] = [float(v) for k, v in row.items() if k not in [
-            "axis", "order_deg", "wavelength_deg", "slit_deg"]]
+            "axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)]
         poly[axis] = chebyshev_order_wavelength_polynomials(
-            log=log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True).poly
+            log=log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True, axis=axis).poly
 
     # CONVERT THE ORDER-SORTED WAVELENGTH ARRAYS INTO ARRAYS OF PIXEL TUPLES
     orderPixelTable["fit_x"] = poly['x'](orderPixelTable, *coeff['x'])

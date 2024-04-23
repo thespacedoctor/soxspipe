@@ -36,6 +36,7 @@ class subtract_sky(object):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the soxspipe settings dictionary
+        - ``recipeSettings`` -- the recipe specific settings
         - ``objectFrame`` -- the image frame in need of sky subtraction
         - ``twoDMap`` -- 2D dispersion map image path
         - ``qcTable`` -- the data frame to collect measured QC metrics
@@ -61,6 +62,7 @@ class subtract_sky(object):
     skymodel = subtract_sky(
         log=log,
         settings=settings,
+        recipeSettings=recipeSettings,
         objectFrame=objectFrame,
         twoDMap=twoDMap,
         qcTable=qc,
@@ -76,6 +78,7 @@ class subtract_sky(object):
             self,
             log,
             settings,
+            recipeSettings,
             objectFrame,
             twoDMap,
             qcTable,
@@ -94,6 +97,7 @@ class subtract_sky(object):
         self.products = productsTable
         self.sofName = sofName
         self.recipeName = recipeName
+        self.recipeSettings = recipeSettings
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -114,7 +118,7 @@ class subtract_sky(object):
 
         # UNPACK THE 2D DISP IMAGE MAP AND THE OBJECT IMAGE TO GIVE A
         # DATA FRAME CONTAINING ONE ROW FOR EACH PIXEL WITH COLUMNS X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDER
-        self.mapDF = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, associatedFrame=self.objectFrame, kw=kw)
+        self.mapDF, self.interOrderMask = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=dp["slit_length"], twoDMapPath=twoDMap, associatedFrame=self.objectFrame, kw=kw)
 
         # DETERMINE SLIT
         self.slit = objectFrame.header[kw(f"SLIT_{self.arm}".upper())]
@@ -123,7 +127,7 @@ class subtract_sky(object):
             self.mapDF = self.mapDF.loc[(self.mapDF["order"] > 12)]
 
         quicklook_image(
-            log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=0.1, title=False, surfacePlot=True, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
+            log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=0.1, title="science frame awaiting sky-subtraction", surfacePlot=False, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
 
         # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
@@ -181,10 +185,11 @@ class subtract_sky(object):
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
         # THE BSPLINE ORDER TO FIT SKY WITH
-        bspline_order = self.settings["sky-subtraction"]["bspline_order"]
+        bspline_order = self.recipeSettings["sky-subtraction"]["bspline_order"]
 
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         qcPlotOrder = int(np.median(uniqueOrders)) - 1
+        qcPlotOrder = 16
 
         allimageMapOrder = []
         allimageMapOrderWithObject = []
@@ -202,12 +207,12 @@ class subtract_sky(object):
             # SELECT ONLY A DATAFRAME CONTAINING ONLY A SINGLE ORDER
             imageMapOrder = self.mapDF[self.mapDF["order"] == o]
             # MASK OUTLYING PIXELS (imageMapOrderWithObject) AND ALSO THEN THE OBJECT PIXELS (imageMapOrderSkyOnly)
-            imageMapOrderWithObject, imageMapOrderSkyOnly = self.get_over_sampled_sky_from_order(imageMapOrder, clipBPs=True, clipSlitEdge=self.settings["sky-subtraction"]["clip-slit-edge-fraction"])
+            imageMapOrderWithObject, imageMapOrderSkyOnly = self.get_over_sampled_sky_from_order(imageMapOrder, clipBPs=True, clipSlitEdge=self.recipeSettings["sky-subtraction"]["clip-slit-edge-fraction"])
             allimageMapOrder.append(imageMapOrderSkyOnly)
             allimageMapOrderWithObject.append(imageMapOrderWithObject)
 
         # MASK OUT OBJECT PIXELS
-        allimageMapOrder = self.clip_object_slit_positions(allimageMapOrder, aggressive=self.settings["sky-subtraction"]["aggressive_object_masking"])
+        allimageMapOrder = self.clip_object_slit_positions(allimageMapOrder, aggressive=self.recipeSettings["sky-subtraction"]["aggressive_object_masking"])
 
         self.log.print(f"\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH) AND LOW-ORDER POLY (SLIT-ILLUMINATION PROFILE)\n")
 
@@ -291,12 +296,12 @@ class subtract_sky(object):
         from astropy.stats import sigma_clip, mad_std
 
         # COLLECT SETTINGS
-        median_clipping_sigma = self.settings["sky-subtraction"]["median_clipping_sigma"]
-        median_clipping_iterations = self.settings["sky-subtraction"]["median_clipping_iterations"]
-        median_rolling_window_size = self.settings["sky-subtraction"]["median_rolling_window_size"]
-        percential_clipping_sigma = self.settings["sky-subtraction"]["percential_clipping_sigma"]
-        percential_clipping_iterations = self.settings["sky-subtraction"]["percential_clipping_iterations"]
-        percential_rolling_window_size = self.settings["sky-subtraction"]["percential_rolling_window_size"]
+        median_clipping_sigma = self.recipeSettings["sky-subtraction"]["median_clipping_sigma"]
+        median_clipping_iterations = self.recipeSettings["sky-subtraction"]["median_clipping_iterations"]
+        median_rolling_window_size = self.recipeSettings["sky-subtraction"]["median_rolling_window_size"]
+        percential_clipping_sigma = self.recipeSettings["sky-subtraction"]["percential_clipping_sigma"]
+        percential_clipping_iterations = self.recipeSettings["sky-subtraction"]["percential_clipping_iterations"]
+        percential_rolling_window_size = self.recipeSettings["sky-subtraction"]["percential_rolling_window_size"]
 
         # FINDING A DYNAMIC SIZE FOR PERCENTILE FILTERING WINDOW
         windowSize = int(len(imageMapOrder.loc[imageMapOrder[self.axisB] == imageMapOrder[self.axisB].median()].index))
@@ -1351,7 +1356,7 @@ class subtract_sky(object):
         from astropy.stats import sigma_clip
         import matplotlib.pyplot as plt
 
-        slit_illumination_order = self.settings["sky-subtraction"]["slit_illumination_order"]
+        slit_illumination_order = self.recipeSettings["sky-subtraction"]["slit_illumination_order"]
 
         # 3 IMAGE DIMENSIONS - WAVELENGTH, SLIT-POSTIION AND FLUX
         mask = ((orderDF["clipped"] == False) & (orderDF["object"] == False))

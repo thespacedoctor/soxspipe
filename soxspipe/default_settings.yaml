@@ -16,6 +16,9 @@ soxs-mbias:
     stacked-clipping-iterations: 3
 
 soxs-mdark:
+    # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 1
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
     clipping-lower-sigma: 3
@@ -23,77 +26,205 @@ soxs-mdark:
     clipping-iteration-count: 5
 
 soxs-disp-solution:
-    pixel-window-size: 10
-    order-deg: 3
-    wavelength-deg: 3
-    # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
-    poly-clipping-iteration-limit: 10
-    poly-fitting-residual-clipping-sigma: 5
+    uvb:
+        pixel-window-size: 10
+        order-deg: 5
+        wavelength-deg: 4
+        # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
+        poly-clipping-iteration-limit: 10
+        poly-fitting-residual-clipping-sigma: 4
+    vis:
+        pixel-window-size: 10
+        order-deg: 4
+        wavelength-deg: 5
+        # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
+        poly-clipping-iteration-limit: 10
+        poly-fitting-residual-clipping-sigma: 4
+    nir:
+        pixel-window-size: 10
+        order-deg: 3
+        wavelength-deg: 3
+        # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
+        poly-clipping-iteration-limit: 10
+        poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
-    detect-continuum:
-        # NUMBER OF CROSS-ORDER SLICES PER ORDER
-        order-sample-count: 200
-        # LENGTH OF EACH SLICE (PIXELS)
-        slice-length: 10
-        # WIDTH OF EACH SLICE (PIXELS)
-        slice-width: 1
-        # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-        peak-sigma-limit: 1.5
-        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        disp-axis-deg: 5
-        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        order-deg: 6
-        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-fitting-residual-clipping-sigma: 5
-        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-clipping-iteration-limit: 7
+    uvb:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 70
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 10
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 1.2
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 5
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 4
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-fitting-residual-clipping-sigma: 6
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 2
+    vis:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 70
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 10
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 1.5
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 4
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 6
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-fitting-residual-clipping-sigma: 6
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 2
+    nir:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 50
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 10
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 1.5
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 4
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 6
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-fitting-residual-clipping-sigma: 5
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 3
 
 soxs-mflat:
-    centre-order-window: 20
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: True
+    # CLIPPING SETTINGS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-lower-sigma: 50
-    clipping-upper-sigma: 1000   
-    clipping-iteration-count: 1
-    slice-length-for-edge-detection: 90
-    slice-width-for-edge-detection: 5
-    min-percentage-threshold-for-edge-detection: 20
-    max-percentage-threshold-for-edge-detection: 50
-    disp-axis-deg: 2
-    order-deg: 5
-    poly-fitting-residual-clipping-sigma: 5
-    poly-clipping-iteration-limit: 5
-    low-sensitivity-clipping-sigma: 2
+    uvb:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 10
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 2
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
+        # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+        scale-d2-to-qth: True
+    vis:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 10
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 2
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
+    nir:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 10
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 2
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
 
 soxs-spatial-solution:
-    pixel-window-size: 10
-    order-deg: 4
-    wavelength-deg: 5
-    slit-deg: 2
-    # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
-    poly-clipping-iteration-limit: 9
-    poly-fitting-residual-clipping-sigma: 5
-    map_to_image_displacement_threshold: 0.01 # in pixels
-
-
-sky-subtraction:
-    # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-    median_clipping_sigma: 3
-    median_clipping_iterations: 5
-    # ROLLING WINDOW LENGTH IN DATA POINTS
-    median_rolling_window_size: 31
-    # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-    percential_clipping_sigma: 2
-    percential_clipping_iterations: 1
-    percential_rolling_window_size: 15
-    # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-    clip-slit-edge-fraction: 0.05
-    aggressive_object_masking: True
-    bspline_order: 2
-    slit_illumination_order: 3
+    use_flat: False
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: True
+    uvb:
+        pixel-window-size: 10
+        order-deg: [4,4]
+        wavelength-deg: [3,5]
+        slit-deg: [2,2]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 4
+        poly-fitting-residual-clipping-sigma: 9
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
+        map_to_image_displacement_threshold: 0.01 # in pixels
+        # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
+        mph_line_set_min: 9
+    vis:
+        pixel-window-size: 10
+        order-deg: [4,4]
+        wavelength-deg: [5,6]
+        slit-deg: [2,2]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 4
+        poly-fitting-residual-clipping-sigma: 9
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
+        map_to_image_displacement_threshold: 0.01 # in pixels
+        # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
+        mph_line_set_min: 9
+    nir:
+        pixel-window-size: 10
+        order-deg: [4,4]
+        wavelength-deg: [5,5]
+        slit-deg: [2,2]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 4
+        poly-fitting-residual-clipping-sigma: 9
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
+        map_to_image_displacement_threshold: 0.01 # in pixels
+        # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
+        mph_line_set_min: 9
+    
+bootstrap_dispersion_solution: False
 
 soxs-stare:
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: True
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
@@ -104,31 +235,131 @@ soxs-stare:
     clipping-lower-sigma: 50
     # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
     clipping-upper-sigma: 1000 
-    # the length of the 'slit' used to collect object flux (in pixels)
-    horne-extraction-slit-length: 20
-    # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
-    horne-extraction-profile-global-clipping-sigma: 25
-    # the number of σ deviations that residuals from the fitted, dispersion-direction profile need to be beyond for a pixel to be clipped
-    horne-extraction-profile-clipping-sigma: 3.0
-    # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
-    horne-extraction-profile-clipping-iteration-count: 10
-    detect-continuum:
-        # NUMBER OF CROSS-ORDER SLICES PER ORDER
-        order-sample-count: 200
-        # LENGTH OF EACH SLICE (PIXELS)
-        slice-length: 20
-        # WIDTH OF EACH SLICE (PIXELS)
-        slice-width: 5
-        # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-        peak-sigma-limit: 1.5
-        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
-        disp-axis-deg: 4
-        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
-        order-deg: 4
-        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-        poly-fitting-residual-clipping-sigma: 3.
-        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-        poly-clipping-iteration-limit: 5
+    uvb:
+        # the length of the 'slit' used to collect object flux (in pixels)
+        horne-extraction-slit-length: 20
+        # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
+        horne-extraction-profile-global-clipping-sigma: 25
+        # the number of σ deviations that residuals from the fitted, dispersion-direction profile need to be beyond for a pixel to be clipped
+        horne-extraction-profile-clipping-sigma: 3.0
+        # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
+        horne-extraction-profile-clipping-iteration-count: 10
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 200
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 20
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 1.5
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 4
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            order-deg: 4
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 3.
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 5
+        sky-subtraction:
+            # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+            median_clipping_sigma: 3
+            median_clipping_iterations: 5
+            # ROLLING WINDOW LENGTH IN DATA POINTS
+            median_rolling_window_size: 31
+            # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percential_clipping_sigma: 2
+            percential_clipping_iterations: 1
+            percential_rolling_window_size: 15
+            # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+            clip-slit-edge-fraction: 0.05
+            aggressive_object_masking: True
+            bspline_order: 2
+            slit_illumination_order: 3
+    vis:
+        # the length of the 'slit' used to collect object flux (in pixels)
+        horne-extraction-slit-length: 20
+        # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
+        horne-extraction-profile-global-clipping-sigma: 25
+        # the number of σ deviations that residuals from the fitted, dispersion-direction profile need to be beyond for a pixel to be clipped
+        horne-extraction-profile-clipping-sigma: 3.0
+        # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
+        horne-extraction-profile-clipping-iteration-count: 10
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 70
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 10
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 1.5
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 4
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 6
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-fitting-residual-clipping-sigma: 6
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 2
+        sky-subtraction:
+            # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+            median_clipping_sigma: 3
+            median_clipping_iterations: 5
+            # ROLLING WINDOW LENGTH IN DATA POINTS
+            median_rolling_window_size: 31
+            # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percential_clipping_sigma: 2
+            percential_clipping_iterations: 1
+            percential_rolling_window_size: 15
+            # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+            clip-slit-edge-fraction: 0.05
+            aggressive_object_masking: True
+            bspline_order: 2
+            slit_illumination_order: 3
+    nir:
+        # the length of the 'slit' used to collect object flux (in pixels)
+        horne-extraction-slit-length: 20
+        # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
+        horne-extraction-profile-global-clipping-sigma: 25
+        # the number of σ deviations that residuals from the fitted, dispersion-direction profile need to be beyond for a pixel to be clipped
+        horne-extraction-profile-clipping-sigma: 3.0
+        # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
+        horne-extraction-profile-clipping-iteration-count: 10
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 200
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 20
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 1.5
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 4
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            order-deg: 4
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 3.
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 5
+        sky-subtraction:
+            # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+            median_clipping_sigma: 3
+            median_clipping_iterations: 5
+            # ROLLING WINDOW LENGTH IN DATA POINTS
+            median_rolling_window_size: 31
+            # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percential_clipping_sigma: 2
+            percential_clipping_iterations: 1
+            percential_rolling_window_size: 15
+            # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+            clip-slit-edge-fraction: 0.05
+            aggressive_object_masking: True
+            bspline_order: 2
+            slit_illumination_order: 3
+
+
 
 soxs-nod:
     settings: True
@@ -137,7 +368,8 @@ soxs-nod:
 # UTILS
 background-subtraction:
     bspline-deg: 3
-    median-filter-pixels: 9
+    gaussian-blur-sigma: 35
+
 
 logging settings:
     formatters:

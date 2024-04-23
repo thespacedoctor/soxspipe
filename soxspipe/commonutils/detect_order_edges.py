@@ -11,7 +11,7 @@
 """
 from datetime import datetime, date, time
 from soxspipe.commonutils.filenamer import filenamer
-from soxspipe.commonutils.toolkit import unpack_order_table
+from soxspipe.commonutils.toolkit import unpack_order_table, get_calibration_lamp
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
@@ -33,6 +33,7 @@ class detect_order_edges(_base_detect):
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
+        - ``recipeSettings`` -- the recipe specific settings
         - ``flatFrame`` -- the flat frame to detect the order edges on
         - ``orderCentreTable`` -- the order centre table
         - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
@@ -43,7 +44,8 @@ class detect_order_edges(_base_detect):
         - ``sofName`` -- name of the originating SOF file
         - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
-        - ``extendToEdges`` -- if true, extend the order edge tracing to the edges of the frame.
+        - ``extendToEdges`` -- if true, extend the order edge tracing to the edges of the frame (Default *True*)
+        - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
 
     **Usage:**
 
@@ -60,11 +62,13 @@ class detect_order_edges(_base_detect):
         flatFrame=flatFrame,
         orderCentreTable=orderCentreTable,
         settings=settings,
+        recipeSettings=recipeSettings,
         recipeName="soxs-mflat",
         verbose=False,
         qcTable=False,
         productsTable=False,
-        extendToEdges=True
+        extendToEdges=True,
+        lampTag=False
     )
     productsTable, qcTable, orderDetectionCounts = edges.get()
     ```
@@ -76,6 +80,7 @@ class detect_order_edges(_base_detect):
             flatFrame,
             orderCentreTable,
             settings=False,
+            recipeSettings=False,
             recipeName="soxs-mflat",
             verbose=False,
             qcTable=False,
@@ -84,16 +89,14 @@ class detect_order_edges(_base_detect):
             sofName=False,
             binx=1,
             biny=1,
-            extendToEdges=True
+            extendToEdges=True,
+            lampTag=False
     ):
         self.log = log
         log.debug("instantiating a new 'detect_order_edges' object")
         self.settings = settings
         self.recipeName = recipeName
-        if recipeName:
-            self.recipeSettings = settings[recipeName]
-        else:
-            self.recipeSettings = False
+        self.recipeSettings = recipeSettings
 
         self.orderCentreTable = orderCentreTable
         self.flatFrame = flatFrame
@@ -103,6 +106,7 @@ class detect_order_edges(_base_detect):
         self.tag = tag
         self.sofName = sofName
         self.extendToEdges = extendToEdges
+        self.lampTag = lampTag
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -134,16 +138,20 @@ class detect_order_edges(_base_detect):
 
         self.inst = flatFrame.header[kw("INSTRUME")]
         # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
-            self.axisA = "y"
-            self.axisB = "x"
-            self.axisAbin = self.biny
-            self.axisBbin = self.binx
-        elif self.inst == "XSHOOTER":
+
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
             self.axisA = "x"
             self.axisB = "y"
             self.axisAbin = self.binx
             self.axisBbin = self.biny
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
+            self.axisAbin = self.biny
+            self.axisBbin = self.binx
+
+        # self.lamp = get_calibration_lamp(log=log, frame=flatFrame, kw=self.kw)
 
         home = expanduser("~")
         self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
@@ -189,7 +197,7 @@ class detect_order_edges(_base_detect):
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
 
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=self.sliceWidth)
+            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=25)
 
         # REMOVE TOP 2 ORDERS IF BLOCKING FILTER USED
         if "JH" in self.slit:
@@ -233,9 +241,9 @@ class detect_order_edges(_base_detect):
         # COUPLE THE UPPER AND LOWER EDGES FOR HOMOGENEOUS HEIGHT
         for o in uniqueOrders:
             mask = (orderPixelTable['order'] == o)
-            medianHeight = orderPixelTable.loc[mask]['order_height_upper'].median() + mad_std(orderPixelTable.loc[mask]['order_height_upper'])
+            medianHeight = orderPixelTable.loc[mask]['order_height_upper'].median() + mad_std(orderPixelTable.loc[mask]['order_height_upper'] * 3)
             orderPixelTable.loc[mask, f"{self.axisA}coord_upper"] = orderPixelTable.loc[mask, f"{self.axisA}coord_centre"] + medianHeight
-            medianHeight = orderPixelTable.loc[mask]['order_height_lower'].median() + mad_std(orderPixelTable.loc[mask]['order_height_lower'])
+            medianHeight = orderPixelTable.loc[mask]['order_height_lower'].median() + mad_std(orderPixelTable.loc[mask]['order_height_lower'] * 3)
             orderPixelTable.loc[mask, f"{self.axisA}coord_lower"] = orderPixelTable.loc[mask, f"{self.axisA}coord_centre"] - medianHeight
 
         if self.axisAbin > 1:
@@ -345,6 +353,7 @@ class detect_order_edges(_base_detect):
         # WRITE OUT THE FITS TO THE ORDER LOCATION TABLE
         orderTablePath = self.write_order_table_to_file(
             frame=self.flatFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+
         mean_res = np.mean(np.abs(allResiduals))
         min_res = np.min(np.abs(allResiduals))
         max_res = np.max(np.abs(allResiduals))
@@ -465,8 +474,17 @@ class detect_order_edges(_base_detect):
 
         arm = self.arm
 
-        # a = plt.figure(figsize=(40, 15))
-        if arm == "UVB" or self.inst == "SOXS":
+        rotateImage = self.detectorParams["rotate-qc-plot"]
+        flipImage = self.detectorParams["flip-qc-plot"]
+
+        # ROTATE THE IMAGE FOR BETTER LAYOUT
+        rotatedImg = self.flatFrame.data
+        if rotateImage:
+            rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
+        if flipImage:
+            rotatedImg = np.flipud(rotatedImg)
+
+        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
             fig = plt.figure(figsize=(5, 8))
             # CREATE THE GID OF AXES
             gs = fig.add_gridspec(4, 4)
@@ -485,11 +503,6 @@ class detect_order_edges(_base_detect):
                 bottomleft = fig.add_subplot(gs[4:, 0:2])
                 bottomright = fig.add_subplot(gs[4:, 2:])
 
-        # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = self.flatFrame.data
-        if self.axisA == "x":
-            rotatedImg = np.rot90(rotatedImg, 1)
-            rotatedImg = np.flipud(rotatedImg)
         # rotatedImg = self.flatFrame.data
         std = np.nanstd(self.flatFrame.data)
         mean = np.nanmean(self.flatFrame.data)
@@ -506,9 +519,9 @@ class detect_order_edges(_base_detect):
         # toprow.set_xticklabels([])
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        toprow.xaxis.set_label_coords(0.4, -0.08)
+        toprow.xaxis.set_label_coords(0.5, -0.1)
         toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05),
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
                       fontsize=4)
 
         midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.9)
@@ -608,10 +621,10 @@ class detect_order_edges(_base_detect):
         # midrow.set_xticklabels([])
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        midrow.xaxis.set_label_coords(0.4, -0.08)
+        midrow.xaxis.set_label_coords(0.5, -0.1)
         midrow.tick_params(axis='both', which='major', labelsize=9)
 
-        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.05),
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
                       fontsize=4)
 
         # PLOT THE FINAL RESULTS:
@@ -649,15 +662,21 @@ class detect_order_edges(_base_detect):
         mean_res = np.mean(np.abs(allResiduals))
         std_res = np.std(np.abs(allResiduals))
 
+        lamp = ""
+        if self.tag:
+            lamp = " " + self.tag.replace("_", "")
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        fig.suptitle(f"detection of order-edge locations - flat-frame\n{subtitle}", fontsize=12)
+        fig.suptitle(f"detection of order-edge locations - {arm}{lamp} flat-frame\n{subtitle}", fontsize=12)
 
-        filename = filenamer(
-            log=self.log,
-            frame=self.flatFrame,
-            settings=self.settings
-        )
-        filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
+        if self.sofName:
+            filename = self.sofName + f"_ORDER_LOCATIONS{self.tag}.pdf"
+        else:
+            filename = filenamer(
+                log=self.log,
+                frame=self.flatFrame,
+                settings=self.settings
+            )
+            filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
@@ -726,7 +745,7 @@ class detect_order_edges(_base_detect):
         orderData["maxThreshold"] = minvalue + (maxvalue - minvalue) * maxThresholdPercenage
 
         # SANITY CHECK PLOT OF CROSS-SECTION
-        if 1 == 0:
+        if False:
             import matplotlib.pyplot as plt
             # CHECK THE SLICE POINTS IF NEEDED
             self.log.print(order)
@@ -734,10 +753,12 @@ class detect_order_edges(_base_detect):
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko', alpha=0.5)
             plt.plot(x, medSlide, 'rx', alpha=0.8)
-            # plt.hlines(maxvalue, 0, len(slice), label='max')
-            # plt.hlines(minvalue, 0, len(slice), label='min')
+            plt.hlines(maxvalue, 0, len(slice), label='max')
+            plt.hlines(minvalue, 0, len(slice), label='min')
+            order = orderData["order"]
             plt.hlines(orderData["minThreshold"], 0, len(slice),
                        label=f'threshold {orderData["minThreshold"]:0.2f},  {orderData["maxThreshold"]:0.2f}', colors='red')
+            plt.title(f'Order {order}, centre = {axisBcoords[index]}')
             plt.xlabel('Position')
             plt.ylabel('Flux')
             plt.legend()
@@ -761,26 +782,29 @@ class detect_order_edges(_base_detect):
         self.log.debug(
             'starting the ``determine_lower_upper_edge_limits`` method')
 
+        minThresholdPercenage = self.minThresholdPercenage
+        maxThresholdPercenage = self.maxThresholdPercenage
+
         import numpy as np
         from scipy.signal import medfilt
         import random
         sliceWidth = self.sliceWidth
         sliceLength = self.sliceLength
         halfSlice = sliceLength / 2
-        minThreshold = orderData["minThreshold"]
-        maxThreshold = orderData["maxThreshold"]
+
+        orderData[f"{self.axisA}coord_upper"] = np.nan
+        orderData[f"{self.axisA}coord_lower"] = np.nan
 
         if self.axisA == "x":
             x = orderData["xcoord_centre"]
             y = orderData["ycoord"]
             axisACoord = x
+            axisBCoord = y
         else:
             x = orderData["xcoord"]
             y = orderData["ycoord_centre"]
             axisACoord = y
-
-        threshold = minThreshold
-        thresholdRange = maxThreshold - minThreshold
+            axisBCoord = x
 
         # CUT A MEDIAN COLLAPSED SLICE
         slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.flatFrame,
@@ -791,6 +815,18 @@ class detect_order_edges(_base_detect):
         # SMOOTH WITH A MEDIAN FILTER
         medSlide = medfilt(slice, 9)
 
+        # DETERMINE THRESHOLD FLUX VALUE
+        maxvalue = np.max(
+            medSlide[int(len(medSlide) / 2 - 8):int(len(medSlide) / 2 + 8)])
+        minvalue = np.min(medSlide)
+
+        orderData["minThreshold"] = minvalue + (maxvalue - minvalue) * minThresholdPercenage
+        orderData["maxThreshold"] = minvalue + (maxvalue - minvalue) * maxThresholdPercenage
+        minThreshold = orderData["minThreshold"]
+        maxThreshold = orderData["maxThreshold"]
+        threshold = minThreshold
+        thresholdRange = maxThreshold - minThreshold
+
         # FIND FIRST TIME VALUE DROPS BELOW THRESHOLD WORKING OUT FROM
         # MIDDLE OF SLICE
         middle = int(len(medSlide) / 2)
@@ -800,6 +836,7 @@ class detect_order_edges(_base_detect):
         # ITERATE UP TO MAX THRESHOLD
         hit = False
         while hit == False and threshold < maxThreshold:
+
             try:
                 axisAmaxguess = np.where(secondHalf < threshold)[
                     0][0] + middle
@@ -825,19 +862,40 @@ class detect_order_edges(_base_detect):
             (threshold - medSlide[axisAminguess]) / \
             (medSlide[axisAminguess + 1] - medSlide[axisAminguess]) + 2
 
-        axisAmin = axisAminguess + \
-            (threshold - medSlide[axisAminguess]) / \
-            (medSlide[axisAminguess + 1] - medSlide[axisAminguess]) + 2
-
         # IF THE WIDTH BETWEEN MIN AND MAX IS TOO SMALL THEN REJECT
         if axisAmax - axisAmin < 10:
+            # SANITY CHECK PLOT OF CROSS-SECTION
+            if False:
+                import matplotlib.pyplot as plt
+                # CHECK THE SLICE POINTS IF NEEDED
+                print(minThreshold, middle)
+                print(axisAminguess, axisAmaxguess, threshold)
+                print(axisAmin, axisAmax)
+                print(len(slice))
+                x = np.arange(0, len(slice))
+                plt.figure(figsize=(8, 5))
+                plt.plot(x, slice, 'ko', alpha=0.5)
+                plt.plot(x, medSlide, 'rx', alpha=0.8)
+                plt.plot(axisAmin, threshold, 'ro',
+                         alpha=0.8, label="order edge")
+                plt.plot(axisAmax, threshold, 'ro', alpha=0.8)
+                # plt.hlines(maxvalue, 0, len(slice), label='max')
+                # plt.hlines(minvalue, 0, len(slice), label='min')
+                plt.hlines(threshold, 0, len(slice),
+                           label='threshold', colors='red')
+                plt.xlabel('Position')
+                plt.ylabel('Flux')
+                order = orderData["order"]
+                plt.title(f'Order {order}, {self.axisB} = {axisBCoord}')
+                plt.legend()
+                plt.show()
             return orderData
         else:
-            orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice)
-            orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice)
+            orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice) + 1
+            orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice) - 1
 
         # SANITY CHECK PLOT OF CROSS-SECTION
-        if 1 == 0 and random.randint(1, 5001) < 2:
+        if False and random.randint(1, 5001) < 2000:
             import matplotlib.pyplot as plt
             # CHECK THE SLICE POINTS IF NEEDED
             x = np.arange(0, len(slice))
@@ -851,6 +909,8 @@ class detect_order_edges(_base_detect):
             # plt.hlines(minvalue, 0, len(slice), label='min')
             plt.hlines(threshold, 0, len(slice),
                        label='threshold', colors='red')
+            order = orderData["order"]
+            plt.title(f'Order {order}, {self.axisB} = {axisBCoord}')
             plt.xlabel('Position')
             plt.ylabel('Flux')
             plt.legend()

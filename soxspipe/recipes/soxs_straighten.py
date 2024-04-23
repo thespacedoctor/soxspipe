@@ -44,9 +44,7 @@ class soxs_straighten(_base_recipe_):
         log.debug("instantiating a new 'soxs_straighten' object")
         self.settings = settings
         self.inputFrames = inputFrames
-        self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
-        # xt-self-arg-tmpx
+        self.verbose = verbose        # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
