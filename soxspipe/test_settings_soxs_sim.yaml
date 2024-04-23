@@ -62,6 +62,7 @@ soxs-spatial-solution:
 
 
 soxs-mflat:
+    subtract_background: True
     centre-order-window: 20
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5

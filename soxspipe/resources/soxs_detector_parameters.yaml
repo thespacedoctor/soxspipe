@@ -6,8 +6,8 @@ VIS:
   science-pixels:
     # NAXIS1 == x-axis
     columns:
-      start: 0
-      end: 2098
+      start: 50
+      end: 2048
     # NAXIS2 == y-axis
     rows:
       start: 0
@@ -45,12 +45,12 @@ NIR:
   science-pixels: 
     # NAXIS1 == x-axis
     columns:
-      start: 0
-      end: 2048
+      start: 4
+      end: 2044
     # NAXIS2 == y-axis
     rows:
-      start: 0
-      end: 2048
+      start: 4
+      end: 2044
   # # DEFAULT BINNING [y, x]
   binning: [1, 1]
   # saturation: 2.0e5

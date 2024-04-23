@@ -148,7 +148,7 @@ class detect_order_edges(_base_detect):
         else:
             self.axisA = "y"
             self.axisB = "x"
-            elf.axisAbin = self.biny
+            self.axisAbin = self.biny
             self.axisBbin = self.binx
 
         # self.lamp = get_calibration_lamp(log=log, frame=flatFrame, kw=self.kw)

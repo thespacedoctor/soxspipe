@@ -92,6 +92,7 @@ soxs-spatial-solution:
     mph_line_set_min: 8
 
 soxs-mflat:
+    subtract_background: True
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking

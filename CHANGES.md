@@ -1,6 +1,12 @@
 
-# Release Notes  
+# Release Notes 
 
+
+the calibration lamp name is now added to the sof filenames, and hence the product file names
+file summary now shows which calibration lamps are used
+* **FIXED**: SOXS VIS darks are now getting split by EXPTIME in data-organiser
+* **ENHANCEMENT:** adding bad-pixel maps for SOXS detectors (currently blank)
+* **ENHANCEMENT:** pipeline can select default settings for either soxs or xsh (previously there was only one default settings file)
 * **FIXED**: the scaling and stitching together of the UVB D2 and QTH lamp flats.
 * fixed issue where logs were getting duplicated.
 * added arm and lamp to QC plot titles.

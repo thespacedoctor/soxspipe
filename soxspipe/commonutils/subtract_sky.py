@@ -127,7 +127,7 @@ class subtract_sky(object):
             self.mapDF = self.mapDF.loc[(self.mapDF["order"] > 12)]
 
         quicklook_image(
-            log=self.log, CCDObject=self.objectFrame, show=True, ext=False, stdWindow=0.1, title="science frame awaiting sky-subtraction", surfacePlot=False, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
+            log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=0.1, title="science frame awaiting sky-subtraction", surfacePlot=False, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
 
         # SET IMAGE ORIENTATION
         if self.inst == "SOXS":
