@@ -41,7 +41,10 @@ class ImageFileCollection(ImageFileCollection):
             summary = input_summary
             n_previous = len(summary['file'])
 
-        h = fits.getheader(file_name, self.ext)
+        try:
+            h = fits.getheader(file_name, self.ext)
+        except:
+            h = fits.getheader(file_name, 0)
 
         assert 'file' not in h
 

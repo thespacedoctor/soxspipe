@@ -196,7 +196,7 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template', 'eso obs name']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
@@ -689,9 +689,18 @@ class data_organiser(object):
         filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
         filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
 
-        for i in [1, 2, 3, 4, 5, 6, 7]:
-            filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"] = filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), self.kw(f"LAMP{i}").lower()]
+        print("NEW")
+        lampLong = ["argo", "merc", "neon", "xeno", "qth", "deut", "thar"]
+        lampEle = ["Ar", "Hg", "Ne", "Xe", "QTH", "D", "ThAr"]
 
+        for i in [1, 2, 3, 4, 5, 6, 7]:
+            lamp = self.kw(f"LAMP{i}").lower()
+            if self.instrument.lower() == "soxs":
+                for l, e in zip(lampLong, lampEle):
+                    if l in lamp:
+                        lamp = e
+            filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
+            filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
         mask = []
         for i in self.proKeywords:
             keywordsTerseRaw.remove(i)
@@ -702,6 +711,11 @@ class data_organiser(object):
                 mask = np.logical_and(mask, (filteredFrames[i] == "--"))
 
         rawFrames = filteredFrames.loc[mask]
+
+        # Use the groupby and transform method to fill in missing values
+        rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
+        rawFrames['lamp'] = rawFrames['lamp'].fillna(rawFrames.groupby('eso obs name')['lamp'].transform('first'))
+        rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
 
         reducedFrames = filteredFrames.loc[~mask]
         pd.options.display.float_format = '{:,.4f}'.format
@@ -940,7 +954,6 @@ class data_organiser(object):
             matchDict['rospeed'] = series["rospeed"]
             sofName.append(series["rospeed"])
         if series["eso dpr type"].lower() in self.typeMap:
-
             matchDict['eso dpr type'] = series["eso dpr type"]
             for i in self.typeMap[series["eso dpr type"].lower()]:
                 if i["recipe"] == seriesRecipe:
@@ -950,9 +963,17 @@ class data_organiser(object):
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
                 sofName.append("qlamp")
-        if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and "FLAT" in series["eso dpr type"].upper())):
+        if True:
+            if series["lamp"] != "--":
+                matchDict['lamp'] = series["lamp"]
+                sofName.append(series["lamp"])
+        if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and ("FLAT" in series["eso dpr type"].upper() or "DARK" in series["eso dpr type"].upper()))):
             matchDict['exptime'] = float(series["exptime"])
             sofName.append(str(series["exptime"]).replace(".", "pt"))
+
+        if series["eso obs name"] != "--":
+            matchDict["eso obs name"] = series["eso obs name"]
+
         sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
@@ -1426,6 +1447,18 @@ class data_organiser(object):
 
         import re
         import shutil
+        import sqlite3 as sql
+
+        rootDbExists = os.path.exists(self.rootDbPath)
+        if rootDbExists:
+            # CREATE THE DATABASE CONNECTION
+            self.conn = sql.connect(
+                self.rootDbPath)
+            c = self.conn.cursor()
+            sqlQuery = "select distinct instrume from raw_frames"
+            c.execute(sqlQuery)
+            inst = c.fetchall()[0][0].lower()
+            c.close()
 
         # TEST SESSION DIRECTORY EXISTS
         exists = os.path.exists(self.sessionsDir)
@@ -1453,14 +1486,17 @@ class data_organiser(object):
         # SETUP SESSION SETTINGS AND LOGGING
         testPath = self.sessionPath + "/soxspipe.yaml"
         exists = os.path.exists(testPath)
+
         if not exists:
+            if "xshoo" in inst:
+                inst = "xsh"
             su = tools(
                 arguments={"<workspaceDirectory>": self.sessionPath, "init": True, "settingsFile": None},
                 docString=False,
                 logLevel="WARNING",
                 options_first=False,
                 projectName="soxspipe",
-                defaultSettingsFile=True
+                defaultSettingsFile=f"{inst}_default_settings.yaml"
             )
             arguments, settings, replacedLog, dbConn = su.setup()
 
@@ -1472,7 +1508,6 @@ class data_organiser(object):
 
         # COPY THE WORKSPACE DATABASE INTO THE SESSION FOLDER
         self.sessionDB = self.sessionPath + "/soxspipe.db"
-        rootDbExists = os.path.exists(self.rootDbPath)
         sessionDbExists = os.path.exists(self.sessionDB)
         if rootDbExists and not sessionDbExists:
             shutil.copyfile(self.rootDbPath, self.sessionDB)
