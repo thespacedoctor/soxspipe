@@ -470,6 +470,15 @@ class create_dispersion_map(object):
         if self.inst != "SOXS":
             orderPixelTable["detector_x"] -= 1.0
             orderPixelTable["detector_y"] -= 1.0
+        elif True:
+            dp = self.detectorParams
+            science_pixels = dp["science-pixels"]
+            xlen = science_pixels["columns"]["end"] - \
+                science_pixels["columns"]["start"]
+            ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
+            orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
+            # orderPixelTable["detector_x"] -= 4.0
+            # orderPixelTable["detector_y"] -= 4.0
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -584,16 +593,14 @@ class create_dispersion_map(object):
         except Exception as e:
             sources = None
 
-        if 1 == 0:
+        if False:
             import random
-            ran = random.randint(1, 300)
-            # if ran == 200:
-            if ran:
+            ran = random.randint(1, 20)
+            if ran == 1:
                 import matplotlib.pyplot as plt
                 plt.clf()
                 plt.imshow(stamp)
-
-                # plt.show()
+                plt.show()
         old_resid = windowHalf * 4
         selectedSource = None
         observed_x = np.nan
@@ -1284,6 +1291,7 @@ class create_dispersion_map(object):
             science_pixels["columns"]["start"]
         ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
         xlen, ylen
+
         if reverse:
             seedArray = np.empty((ylen, xlen))
             seedArray[:] = np.nan
@@ -1314,7 +1322,7 @@ class create_dispersion_map(object):
             axisACoord_edgeup[axisACoord_edgeup < 0] = 0
             axisACoord_edgelow[axisACoord_edgelow > axisALen] = axisALen
             axisACoord_edgelow[axisACoord_edgelow < 0] = 0
-            axisACoord_edgelow, axisACoord_edgeup, axisBcoord = zip(*[(l, u, b) for l, u, b in zip(axisACoord_edgelow, axisACoord_edgeup, axisBcoord) if l >= 0 and l <= axisALen and u >= 0 and u <= axisALen and b >= 0 and b <= axisBLen])
+            axisACoord_edgelow, axisACoord_edgeup, axisBcoord = zip(*[(l, u, b) for l, u, b in zip(axisACoord_edgelow, axisACoord_edgeup, axisBcoord) if l >= 0 and l <= axisALen and u >= 0 and u <= axisALen and b >= 0 and b < axisBLen])
             if reverse:
                 for b, u, l in zip(axisBcoord, np.ceil(axisACoord_edgeup).astype(int), np.floor(axisACoord_edgelow).astype(int)):
                     if self.axisA == "x":

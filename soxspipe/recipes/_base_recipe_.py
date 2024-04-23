@@ -82,27 +82,6 @@ class _base_recipe_(object):
         self.detectorParams = None
         self.dateObs = None
 
-        # COLLECT ADVANCED SETTINGS IF AVAILABLE
-        parentDirectory = os.path.dirname(__file__)
-        advs = parentDirectory + "/advanced_settings.yaml"
-        level = 0
-        exists = False
-        count = 1
-        while not exists and len(advs) and count < 10:
-            count += 1
-            level -= 1
-            exists = os.path.exists(advs)
-            if not exists:
-                advs = "/".join(parentDirectory.split("/")
-                                [:level]) + "/advanced_settings.yaml"
-        if not exists:
-            advs = {}
-        else:
-            with open(advs, 'r') as stream:
-                advs = yaml.safe_load(stream)
-        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
-        self.settings = {**advs, **self.settings}
-
         # FIND THE CURRENT SESSION
         from os.path import expanduser
         home = expanduser("~")
@@ -132,6 +111,27 @@ class _base_recipe_(object):
             sqlQuery = f"update product_frames set status = 'fail' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
+
+        # COLLECT ADVANCED SETTINGS IF AVAILABLE
+        parentDirectory = os.path.dirname(__file__)
+        advs = parentDirectory + "/advanced_settings.yaml"
+        level = 0
+        exists = False
+        count = 1
+        while not exists and len(advs) and count < 10:
+            count += 1
+            level -= 1
+            exists = os.path.exists(advs)
+            if not exists:
+                advs = "/".join(parentDirectory.split("/")
+                                [:level]) + "/advanced_settings.yaml"
+        if not exists:
+            advs = {}
+        else:
+            with open(advs, 'r') as stream:
+                advs = yaml.safe_load(stream)
+        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
+        self.settings = {**advs, **self.settings}
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc = pd.DataFrame({
@@ -267,6 +267,17 @@ class _base_recipe_(object):
         if not os.path.exists(bitMapPath):
             message = "the path to the bitMapPath %s does not exist on this machine" % (
                 bitMapPath,)
+
+            if True:
+                # CREATE A DUMMY BAD-PIXEL MAP
+                import numpy as np
+                from astropy.nddata import CCDData
+                frame = CCDData(np.full_like(frame.data, 0), unit="adu")
+                # WRITE CCDDATA OBJECT TO FILE
+                HDUList = frame.to_hdu()
+                HDUList.writeto(bitMapPath, output_verify='exception',
+                                overwrite=True, checksum=True)
+
             self.log.critical(message)
             raise IOError(message)
         bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
@@ -377,6 +388,7 @@ class _base_recipe_(object):
         self.log.debug('starting the ``prepare_frames`` method')
 
         from soxspipe.commonutils.set_of_files import set_of_files
+        import numpy as np
 
         kw = self.kw
 
@@ -406,7 +418,17 @@ class _base_recipe_(object):
         except:
             pass
 
+        preframes.summary["LAMP"] = "------------"
         columns = preframes.summary.colnames
+        for i in range(7):
+            thisLamp = kw(f"LAMP{i+1}")
+            try:
+                preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)] = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
+                columns.remove(thisLamp)
+            except:
+                pass
+
+        preframes.summary["LAMP"][np.where(preframes.summary["LAMP"] == "------------")] = "--"
 
         try:
             columns.remove(kw("SLIT_NIR"))
@@ -1438,7 +1460,7 @@ class _base_recipe_(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
         """
         self.log.debug('starting the ``get_recipe_settings`` method')
