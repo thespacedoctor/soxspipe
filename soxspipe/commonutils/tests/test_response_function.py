@@ -14,7 +14,7 @@ packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + \
 #     "/git_repos/_misc_/settings/soxspipe/test_settings.yaml"
-#pip install -e . (in the repo dir)
+# pip install -e . (in the repo dir)
 
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -50,9 +50,31 @@ class test_response_function(unittest.TestCase):
 
     import pytest
 
-    def test_xsh_response_function_function(self):
-        #print(packageDirectory)
+    def test_xsh_response_function_uvb_function(self):
+        # print(packageDirectory)
         stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/uvb/2019.08.23T23.24.12.925_UVB_1X2_SLOW_STARE_XSHOOTER_EG_274_EXTRACTED_MERGED.fits"
+        from soxspipe.commonutils import response_function
+        response = response_function(
+            log=log,
+            settings=settings,
+            stdExtractionPath=stdExtractionPath
+        )
+        response.get()
+
+    def test_xsh_response_function_vis_function(self):
+        # print(packageDirectory)
+        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/vis/2019.08.23T23.10.18.163_VIS_1X2_SLOW_STARE_XSHOOTER_EG_274_EXTRACTED_MERGED.fits"
+        from soxspipe.commonutils import response_function
+        response = response_function(
+            log=log,
+            settings=settings,
+            stdExtractionPath=stdExtractionPath
+        )
+        response.get()
+
+    def test_xsh_response_function_nir_function(self):
+        # print(packageDirectory)
+        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
         from soxspipe.commonutils import response_function
         response = response_function(
             log=log,
@@ -78,12 +100,13 @@ class test_response_function(unittest.TestCase):
 
         # x-print-testpage-for-pessto-marshall-web-object
 
+
 if __name__ == '__main__':
     suite = unittest.TestSuite()
     suite.addTest(test_response_function("test_xsh_response_function_function"))
     runner = unittest.TextTestRunner()
     runner.run(suite)
 
-    #unittest.main()
+    # unittest.main()
 
     # x-class-to-test-named-worker-function

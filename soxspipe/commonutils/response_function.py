@@ -60,14 +60,16 @@ class response_function(object):
         self.stdExtractionPath = stdExtractionPath
         self.recipeSettings = settings['soxs-response']
         self.instrument = self.settings["instrument"].lower()
-        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+
+        from soxspipe.commonutils.toolkit import get_calibrations_path
+        from astropy.table import Table
+        from astropy.io import fits
 
         # CONVERTING EXTRACTION TO DATAFRAME
         self.stdExtractionDF = Table.read(self.stdExtractionPath, format='fits')
         self.stdExtractionDF = self.stdExtractionDF.to_pandas()
 
-        from astropy.table import Table
-        from astropy.io import fits
+        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
         # DAVE: Where should response_function be called? I think in stare and nodding recipes whenever reducing a standard star
 
@@ -97,7 +99,6 @@ class response_function(object):
         import numpy as np
         import matplotlib.pyplot as plt
         import pandas as pd
-        from soxspipe.commonutils.toolkit import get_calibrations_path
 
         # DAVE: DO WE NEED PARANAL FOR XSH?
         # TODO: CONVERT extinction_lasilla.dat TO FITS BINARY TABLE
@@ -107,9 +108,9 @@ class response_function(object):
         # FIRST COLUMN, WAVELENGTH (IN ANGSTROM), SECOND COLUMN MAG/AIRMASS
 
         if self.instrument == "soxs":
-            extinctionData = pd.read_csv(self.calibrationRootPath + 'extinction_lasilla.dat', sep='\t', header=0)
+            extinctionData = pd.read_csv(self.calibrationRootPath + '/extinction_lasilla.dat', sep='\t', header=0)
         else:
-            extinctionData = pd.read_csv(self.calibrationRootPath + 'extinction_lasilla.dat', sep='\t', header=0)
+            extinctionData = pd.read_csv(self.calibrationRootPath + '/extinction_lasilla.dat', sep='\t', header=0)
 
         # CONVERT ANG TO NM
         wave_ext = extinctionData['WAVE'] / 10
@@ -162,17 +163,13 @@ class response_function(object):
         wave = self.stdExtractionDF['WAVE'].values
         flux = self.stdExtractionDF['FLUX_COUNTS'].values
 
-        # DAVE: NOTHING IS COLLECTED HERE BUT CALLED AGAIN LATER - DELETE?
-        self.extinction_correction_factor(wave)
-
-        # DAVE: ADDED CORRECT PATH
         # TODO: CONVERT std.dat TO FITS BINARY TABLE
 
         # READING THE DATA FROM THE DATABASE, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
         stdData = pd.read_csv(self.calibrationRootPath + '/std.dat', sep=' ', header=0)
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
-        selected_rows = stdData[(stdData['WAVE'] > self.stdExtractionDF['WAVE'].min() - 10) & (stdData['WAVE'] < 10 + self.stdExtractionDF['WAVE']).max()]
+        selected_rows = stdData[(stdData['WAVE'] > np.min(self.stdExtractionDF['WAVE']) - 10) & (stdData['WAVE'] < 10 + np.max(self.stdExtractionDF['WAVE']))]
 
         # TODO: ADD A SEPARATE CHECK AND LOGGING FOR std_objName
 
@@ -185,13 +182,14 @@ class response_function(object):
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
 
-        # DAVE: NOTHING FOR VIS?
-
+        # TODO: ADD FOR VIS
         # TODO: ADD THIS EXCLUDED REGIONS TO STATIC CALIBRATION ... SAME FOR XSH AND SOXS
         # MIGHT BE BEST TO HAVE A SINGLE LIST ... NO NEED TO DIFFERENTIATE SOXS VS XSH ARMS
 
         if self.arm == 'UVB':
             exclude_regions = [(200, 400), (590, 600), (405, 416), (426, 440), (460, 475), (563, 574), (478, 495), (528, 538)]
+        elif self.arm == 'VIS':
+            exclude_regions = [(620, 640), (648, 666), (754, 770), (800, 810), (836, 845)]
         elif self.arm == 'NIR':
             exclude_regions = [(1100, 1190), (1300, 1500), (1800, 1900), (1850, 2700)]
         else:
@@ -298,7 +296,7 @@ class response_function(object):
         # plt.plot(np.array(selected_rows[0]),np.array(selected_rows[4])*10**17,c='red')
         plt.subplots_adjust(hspace=1.0)
         axs[4].set_title('Relative residuals')
-        if False:
+        if True:
             plt.show()
 
         # TODO: ADD THE PLOT AS A QC PRODUCT
