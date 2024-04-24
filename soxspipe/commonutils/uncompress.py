@@ -4,7 +4,7 @@
 *Uncompress ESO fits.Z frames*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     April 11, 2023

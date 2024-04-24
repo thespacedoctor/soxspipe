@@ -4,7 +4,7 @@
 *Given a standard star extracted spectrum, generate the instrument response function needed to flux calibrate science spectra*
 
 :Author:
-    David Young
+    Marco Landoni & David Young
 
 :Date Created:
     July 28, 2023

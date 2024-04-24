@@ -4,7 +4,7 @@
 *The SOXSPIPE Data Organiser*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     March  9, 2023

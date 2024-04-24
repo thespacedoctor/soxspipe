@@ -4,7 +4,7 @@
 *use a first-guess dispersion map to convert wavelengths to pixels*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     April 15, 2021

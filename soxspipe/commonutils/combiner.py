@@ -4,7 +4,7 @@
 *Sub-class of CCDProc Combiner to fix error map combination*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     October 27, 2022

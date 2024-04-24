@@ -4,7 +4,7 @@
 *small reusable functions used throughout soxspipe*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     September 18, 2020

@@ -4,7 +4,7 @@
 *definition of polynomial functions needed throughout code*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     September 10, 2020

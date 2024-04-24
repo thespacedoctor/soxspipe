@@ -4,7 +4,7 @@
 *Flux calibrate an extracted science spectrum using an instrument response function*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     July 28, 2023

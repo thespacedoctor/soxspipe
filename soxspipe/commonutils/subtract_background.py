@@ -4,7 +4,7 @@
 *fit and subtract background flux from scattered light from frame*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     June  3, 2021

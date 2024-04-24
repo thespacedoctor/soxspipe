@@ -4,7 +4,7 @@
 *Subtract the sky background using the Kelson Method*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     April 14, 2022

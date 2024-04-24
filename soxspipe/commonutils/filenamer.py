@@ -4,7 +4,7 @@
 *Given a FITS object, use the SOXS file-naming scheme to return a filename to be used to save the FITS object to disk*
 
 :Author:
-    David Young
+    David Young & Marco Landoni
 
 :Date Created:
     March  9, 2021
