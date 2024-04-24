@@ -714,11 +714,14 @@ class data_organiser(object):
 
         rawFrames = filteredFrames.loc[mask]
 
+        # MATCH OFF FRAMES TO ADD THE MISSING LAMPS
         if self.instrument.lower() == "soxs":
-            # MATCH OFF FRAMES TO ADD THE MISSING LAMPS IN SOXS
-            rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
-            rawFrames['lamp'] = rawFrames['lamp'].fillna(rawFrames.groupby('eso obs name')['lamp'].transform('first'))
-            rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
+            groupBy = 'eso obs name'
+        else:
+            groupBy = 'template'
+        rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
+        rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir"), "lamp"] = rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir"), 'lamp'].fillna(rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir")].groupby(groupBy)['lamp'].transform('first'))
+        rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
 
         reducedFrames = filteredFrames.loc[~mask]
         pd.options.display.float_format = '{:,.4f}'.format
