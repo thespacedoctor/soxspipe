@@ -391,7 +391,7 @@ class _base_detect(object):
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
         elif "nod" in self.recipeName.lower():
             #sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
-            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE_" + self.noddingSequence +  ".fits"
+            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE_" + self.noddingSequence + ".fits"
 
         if self.lampTag:
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
@@ -490,13 +490,9 @@ class detect_continuum(_base_detect):
         log.debug("instantiating a new 'detect_continuum' object")
         self.settings = settings
         try:
-            self.noddingSequence  = "A" if int(pinholeFlat.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
+            self.noddingSequence = "A" if int(pinholeFlat.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
         except:
             self.noddingSequence = ""
-        if recipeName:
-            self.recipeSettings = settings[recipeName]["detect-continuum"]
-        else:
-            self.recipeSettings = False
 
         self.recipeName = recipeName
         self.pinholeFlat = pinholeFlat
@@ -586,11 +582,11 @@ class detect_continuum(_base_detect):
             coeff_dict = {"degorder_cent": self.orderDeg,
                           "degx_cent": self.axisBDeg}
 
-        elif self.inst == "XSHOOTER":
-            self.axisA = "x"
-            self.axisB = "y"
-            coeff_dict = {"degorder_cent": self.orderDeg,
-                          "degy_cent": self.axisBDeg}
+        # REMOVE elif self.inst == "XSHOOTER":
+        #     self.axisA = "x"
+        #     self.axisB = "y"
+        #     coeff_dict = {"degorder_cent": self.orderDeg,
+        #                   "degy_cent": self.axisBDeg}
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan
@@ -913,7 +909,6 @@ class detect_continuum(_base_detect):
             - ``orderPixelTable`` -- the pixel table with residuals of fits
             - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
             - ``clippedData`` -- the sigma-clipped data
-            - ``noddingSequence`` -- the nodding sequence (if nodding)
 
         **Return:**
             - ``filePath`` -- path to the plot pdf
@@ -1146,7 +1141,7 @@ class detect_continuum(_base_detect):
         elif "order" in self.recipeName.lower():
             filename = self.sofName + "_residuals.pdf"
         elif "nod" in self.recipeName.lower():
-            filename = self.sofName + "_OBJECT_TRACE_residuals_" + self.noddingSequence +  ".pdf"
+            filename = self.sofName + "_OBJECT_TRACE_residuals_" + self.noddingSequence + ".pdf"
         else:
             filename = self.sofName + "_OBJECT_TRACE_residuals.pdf"
 

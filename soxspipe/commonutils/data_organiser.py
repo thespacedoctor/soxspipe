@@ -689,18 +689,20 @@ class data_organiser(object):
         filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
         filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
 
-        print("NEW")
         lampLong = ["argo", "merc", "neon", "xeno", "qth", "deut", "thar"]
         lampEle = ["Ar", "Hg", "Ne", "Xe", "QTH", "D", "ThAr"]
 
         for i in [1, 2, 3, 4, 5, 6, 7]:
             lamp = self.kw(f"LAMP{i}").lower()
+
             if self.instrument.lower() == "soxs":
                 for l, e in zip(lampLong, lampEle):
                     if l in lamp:
                         lamp = e
-            filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
-            filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
+                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
+                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
+            else:
+                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), "lamp"] = filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), self.kw(f"LAMP{i}").lower()]
         mask = []
         for i in self.proKeywords:
             keywordsTerseRaw.remove(i)
@@ -712,10 +714,11 @@ class data_organiser(object):
 
         rawFrames = filteredFrames.loc[mask]
 
-        # Use the groupby and transform method to fill in missing values
-        rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
-        rawFrames['lamp'] = rawFrames['lamp'].fillna(rawFrames.groupby('eso obs name')['lamp'].transform('first'))
-        rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
+        if self.instrument.lower() == "soxs":
+            # MATCH OFF FRAMES TO ADD THE MISSING LAMPS IN SOXS
+            rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
+            rawFrames['lamp'] = rawFrames['lamp'].fillna(rawFrames.groupby('eso obs name')['lamp'].transform('first'))
+            rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
 
         reducedFrames = filteredFrames.loc[~mask]
         pd.options.display.float_format = '{:,.4f}'.format
