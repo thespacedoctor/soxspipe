@@ -9,11 +9,12 @@
 :Date Created:
     July 28, 2023
 """
+import sys
 import os
 from builtins import object
 from matplotlib.pyplot import figure
 os.environ['TERM'] = 'vt100'
-import sys
+
 
 class response_function(object):
     """
@@ -26,7 +27,7 @@ class response_function(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
 
     To initiate a response_function object, use the following:
 
@@ -41,13 +42,11 @@ class response_function(object):
     ```
 
     ```python
-    usage code 
+    usage code
     ```
 
     """
     # Initialisation
-    # 1. @flagged: what are the unique attrributes for each object? Add them
-    # to __init__
 
     def __init__(
             self,
@@ -59,81 +58,76 @@ class response_function(object):
         log.debug("instansiating a new 'response_function' object")
         self.settings = settings
         self.stdExtractionPath = stdExtractionPath
+        self.recipeSettings = settings['soxs-response']
+        self.instrument = self.settings["instrument"].lower()
+        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+
+        # CONVERTING EXTRACTION TO DATAFRAME
+        self.stdExtractionDF = Table.read(self.stdExtractionPath, format='fits')
+        self.stdExtractionDF = self.stdExtractionDF.to_pandas()
+
         from astropy.table import Table
         from astropy.io import fits
 
+        # DAVE: Where should response_function be called? I think in stare and nodding recipes whenever reducing a standard star
 
-        # 2. @flagged: what are the default attrributes each object could have? Add them to variable attribute set here
-        # Variable Data Atrributes
-
-        # 3. @flagged: what variable attrributes need overriden in any baseclass(es) used
-        # Override Variable Data Atrributes
-
-        # Initial Actions
-        # OPEN EXTRACTED SPECTRUM
-        # SPEC FORMAT TO PANDAS DATAFRAME
-
-        self.stdExtractionDF = Table.read(self.stdExtractionPath, format='fits')
-
-        self.stdExtractionDF = self.stdExtractionDF.to_pandas()
-        self.recipeSettings = settings['soxs-response']
-
-        #from tabulate import tabulate
-        #print(tabulate(stdExtractionDF.head(100), headers='keys', tablefmt='psql'))
-
+        # DAVE: Why would there an issue reading the header?
+        # TODO: Use the keyword dictionary to grab header keywords
         try:
-
             hdul = fits.open(self.stdExtractionPath)
-            header =hdul[0].header
+            header = hdul[0].header
             self.texp = float(header['EXPTIME'])
-            self.std_objName =  str(header['OBJECT']).strip().upper()  #Name is in the format 'EG 274'
-            #USING THE AVERAGE AIR MASS
+            self.std_objName = str(header['OBJECT']).strip().upper()  # Name is in the format 'EG 274'
+            # USING THE AVERAGE AIR MASS
             airmass_start = float(header['HIERARCH ESO TEL AIRM START'])
             airmass_end = float(header['HIERARCH ESO TEL AIRM END'])
-            self.airmass  = (airmass_start + airmass_end)/2
-            self.arm = str(header['HIERARCH ESO SEQ ARM']).strip().upper() #KW lookup 
+            self.airmass = (airmass_start + airmass_end) / 2
+            self.arm = str(header['HIERARCH ESO SEQ ARM']).strip().upper()  # KW lookup
         except Exception as e:
             raise Exception('Error reading the FITS header')
             sys.exit(1)
-        #TEXP, OBJECT NAME
 
+        return None
 
+    def extinction_correction_factor(
+            self,
+            wave):
 
-    def extinction_correction_factor(self, wave):
         from scipy.interpolate import interp1d
         import numpy as np
         import matplotlib.pyplot as plt
         import pandas as pd
+        from soxspipe.commonutils.toolkit import get_calibrations_path
 
-        #READ THE EXTINCTION CURVE FOR THE OBSERVATORY
+        # DAVE: DO WE NEED PARANAL FOR XSH?
+        # TODO: CONVERT extinction_lasilla.dat TO FITS BINARY TABLE
 
-        extinctionData = pd.read_csv('/Users/mlandoni/Desktop/extinction_lasilla.dat', sep='\t', header=0)
+        # READ THE EXTINCTION CURVE FOR THE OBSERVATORY
+        # DATA IS ORGANIZED AS FOLLOWS:
+        # FIRST COLUMN, WAVELENGTH (IN ANGSTROM), SECOND COLUMN MAG/AIRMASS
 
-        #DATA IS ORGANIZED AS FOLLOWS:
-        #FIRST COLUMN, WAVELENGTH (IN ANGSTROM), SECOND COLUMN MAG/AIRMASS
+        if self.instrument == "soxs":
+            extinctionData = pd.read_csv(self.calibrationRootPath + 'extinction_lasilla.dat', sep='\t', header=0)
+        else:
+            extinctionData = pd.read_csv(self.calibrationRootPath + 'extinction_lasilla.dat', sep='\t', header=0)
 
-        wave_ext = extinctionData['WAVE']/10
-
-        #INTERPOLATING ON THE REQUIRED WAVE SCALE
-
+        # CONVERT ANG TO NM
+        wave_ext = extinctionData['WAVE'] / 10
+        # INTERPOLATING ON THE REQUIRED WAVE SCALE
         refitted_ext = interp1d(np.array(wave_ext),
-                                 np.array(extinctionData['MAG_AIRMASS']), kind='next',fill_value='extrapolate')
+                                np.array(extinctionData['MAG_AIRMASS']), kind='next', fill_value='extrapolate')
         if False:
             fig, ax = plt.subplots(3)
             ax[0].plot(wave, refitted_ext(wave))
             ax[0].plot(wave_ext, extinctionData['MAG_AIRMASS'])
-            ax[1].plot(wave_ext,refitted_ext(wave_ext))
-            ax[2].plot(wave, 10**(0.4*refitted_ext(wave)*self.airmass))
+            ax[1].plot(wave_ext, refitted_ext(wave_ext))
+            ax[2].plot(wave, 10**(0.4 * refitted_ext(wave) * self.airmass))
             plt.title('Extinction Correction factor')
             plt.show()
 
-        return 10**(0.4*refitted_ext(wave)*self.airmass)
+        # DAVE: IS THIS CONVERTING TO FLUX SPACE?
+        return 10**(0.4 * refitted_ext(wave) * self.airmass)
 
-
-
-        pass
-    # 4. @flagged: what actions does each object have to be able to perform? Add them here
-    # Method Attributes
     def get(self):
         """
         *get the response_function object*
@@ -153,7 +147,7 @@ class response_function(object):
         ```
 
         ```python
-        usage code 
+        usage code
         ```
         """
         self.log.debug('starting the ``get`` method')
@@ -165,40 +159,45 @@ class response_function(object):
 
         response_function = None
 
-        wave = np.array(self.stdExtractionDF['WAVE'])
-        flux = np.array(self.stdExtractionDF['FLUX_COUNTS'])
+        wave = self.stdExtractionDF['WAVE'].values
+        flux = self.stdExtractionDF['FLUX_COUNTS'].values
 
+        # DAVE: NOTHING IS COLLECTED HERE BUT CALLED AGAIN LATER - DELETE?
         self.extinction_correction_factor(wave)
 
-        # TODO: ADD CORRECT PATH
+        # DAVE: ADDED CORRECT PATH
+        # TODO: CONVERT std.dat TO FITS BINARY TABLE
+
         # READING THE DATA FROM THE DATABASE, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
-        stdData = pd.read_csv('/Users/mlandoni/Desktop/std.dat',sep=' ',header=0)
-
-
+        stdData = pd.read_csv(self.calibrationRootPath + '/std.dat', sep=' ', header=0)
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
-        selected_rows = stdData[(stdData['WAVE'] > np.min(self.stdExtractionDF['WAVE']) -10 ) & (stdData['WAVE'] < 10 + np.max(self.stdExtractionDF['WAVE']))]
+        selected_rows = stdData[(stdData['WAVE'] > self.stdExtractionDF['WAVE'].min() - 10) & (stdData['WAVE'] < 10 + self.stdExtractionDF['WAVE']).max()]
 
-        #FLUX IS CONVERTED IN ERG / CM2 / S / ANG
+        # TODO: ADD A SEPARATE CHECK AND LOGGING FOR std_objName
+
+        # FLUX IS CONVERTED IN ERG / CM2 / S / ANG
         try:
-            refitted_flux = interp1d(np.array(selected_rows['WAVE']),np.array(selected_rows[self.std_objName])*10*10**17,kind='next')
+            refitted_flux = interp1d(np.array(selected_rows['WAVE']), np.array(selected_rows[self.std_objName]) * 10 * 10**17, kind='next')
         except Exception as e:
             raise Exception("Standard star %s not found in the static calibration database" % self.std_objName)
             sys.exit(1)
 
-
         # STRONG SKY ABS REGION TO BE EXCLUDED
 
-        #exclude_regions = 
+        # DAVE: NOTHING FOR VIS?
+
+        # TODO: ADD THIS EXCLUDED REGIONS TO STATIC CALIBRATION ... SAME FOR XSH AND SOXS
+        # MIGHT BE BEST TO HAVE A SINGLE LIST ... NO NEED TO DIFFERENTIATE SOXS VS XSH ARMS
 
         if self.arm == 'UVB':
-            exclude_regions = [(200, 400), (590,600), (405, 416), (426,440),(460,475),  (563, 574), (478,495), (528,538)]
+            exclude_regions = [(200, 400), (590, 600), (405, 416), (426, 440), (460, 475), (563, 574), (478, 495), (528, 538)]
         elif self.arm == 'NIR':
-            exclude_regions = [(1100 ,1190), (1300, 1500), (1800, 1900), (1850,2700)]
-        else: 
+            exclude_regions = [(1100, 1190), (1300, 1500), (1800, 1900), (1850, 2700)]
+        else:
             exclude_regions = []
 
-        #INTEGRATING THE OBS SPECTRUM IN xx nm BIN-WIDE FILTERS
+        # INTEGRATING THE OBS SPECTRUM IN xx nm BIN-WIDE FILTERS
 
         # CONVERTING FLUX_COUNTS IN FLUX_COUNTS PER NM DIVIDING BY THE PIXEL SIZE
         dispersion = wave - np.roll(wave, 1)
@@ -206,57 +205,53 @@ class response_function(object):
 
         flux = flux / dispersion
 
-        #NOW DIVIDING FOR THE EXPOSURE TIME
-        flux = flux/self.texp
+        # NOW DIVIDING FOR THE EXPOSURE TIME
+        flux = flux / self.texp
 
-        if self.arm == 'UVB' or self.arm == 'VIS': #NOT REQUIRED FOR NIR
+        # NOT REQUIRED FOR NIR
+        if self.arm == 'UVB' or self.arm == 'VIS':
+            # TODO: CONVERT PRINT STATEMENTS TO self.log.print
             print('Applying extinction correction')
             factor = self.extinction_correction_factor(wave)
             flux = flux * factor
 
         bin_width = 3
-        bin_starts = np.arange(min(self.stdExtractionDF['WAVE']), max(self.stdExtractionDF['WAVE']), bin_width)
+        bin_starts = np.arange(self.stdExtractionDF['WAVE'].min(), self.stdExtractionDF['WAVE'].max(), bin_width)
         bin_ends = bin_starts + bin_width
 
         central_wavelengths = []
         integrated_flux = []
 
-
-
-
         for bin_start, bin_end in zip(bin_starts, bin_ends):
             central_wave = (bin_start + bin_end) / 2
+            # EXCLUDE BRIGHT SKY REGIONS
             exclude_bin = any(start <= bin_start <= end or start <= bin_end <= end for start, end in exclude_regions)
 
             if not exclude_bin:
                 mask = (wave >= bin_start) & (wave < bin_end)
                 bin_flux = flux[mask]
-                bin_integral = np.trapz(bin_flux, wave[mask])/(bin_end - bin_start)
+                bin_integral = np.trapz(bin_flux, wave[mask]) / (bin_end - bin_start)
+                # COLLECT THE WAVELENGTHS AND INTERGRATED FLUX
                 if not np.isnan(bin_integral) and bin_integral > 0:
                     central_wavelengths.append(central_wave)
                     integrated_flux.append(bin_integral)
 
         # NOW FINDING THE RESPONSE FUNCTION POINTS AND THEN FIT
 
-
-        figure(figsize = (8, 12))
+        figure(figsize=(8, 12))
         fig, axs = plt.subplots(5)
 
-        axs[0].plot(wave,refitted_flux(wave))
+        axs[0].plot(wave, refitted_flux(wave))
         axs[0].set_title('Tabulated flux')
-        axs[1].scatter(central_wavelengths,integrated_flux)
+        axs[1].scatter(central_wavelengths, integrated_flux)
         axs[1].set_title('Passband Photometry')
 
-
         # FINDING THE FUNCTION S = F/C
-        zp = np.array(refitted_flux(central_wavelengths)/integrated_flux)
+        zp = np.array(refitted_flux(central_wavelengths) / integrated_flux)
         central_wavelengths = np.array(central_wavelengths)
 
         axs[2].plot(central_wavelengths, zp)
         axs[2].set_title('Response function points vs fit')
-
-
-
 
         zp_original = zp
         central_wavelengths_original = central_wavelengths
@@ -264,16 +259,15 @@ class response_function(object):
         deletedPoints = 1
         order = int(self.recipeSettings['poly_order'])
 
-
-        #FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
+        # FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
         while (numIter < int(self.recipeSettings['max_iteration'])) and (deletedPoints > 0):
             try:
-                #FITTING THE DATA
+                # FITTING THE DATA
                 elements_to_delete = []
                 coefficients = np.polyfit(central_wavelengths, zp, order)
-                for index, (w,z, zf) in enumerate(zip(central_wavelengths, zp, np.polyval(coefficients, central_wavelengths ))):
-                    #if np.abs(np.abs(z)-np.abs(zf)) > 0.05:
-                    if np.abs(np.abs(z) - np.abs(zf))/np.abs(z) > 0.1:
+                for index, (w, z, zf) in enumerate(zip(central_wavelengths, zp, np.polyval(coefficients, central_wavelengths))):
+                    # if np.abs(np.abs(z)-np.abs(zf)) > 0.05:
+                    if np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 0.1:
                         elements_to_delete.append(index)
 
                 central_wavelengths = np.delete(central_wavelengths, elements_to_delete)
@@ -283,39 +277,34 @@ class response_function(object):
             except Exception as e:
                 raise Exception('The fitting of response function did not converge!')
                 sys.exit(1)
-        axs[2].plot(wave, np.polyval(coefficients,wave),c='red')
+        axs[2].plot(wave, np.polyval(coefficients, wave), c='red')
         axs[2].set_xlim(min(central_wavelengths), max(central_wavelengths))
         axs[2].set_ylim(min(zp), max(zp))
 
-
-
         response_function = coefficients
-        self.log.debug('completed the ``get`` method')
 
+        # TEST THE X-CALIB
 
-        #TEST THE X-CALIB
-
-        #FLUX IS ALREADY DIVIDED BY DISPERSION AND CORRECTED FOR THE EXTINCTION !!
-        #OTHERWISE, COPY LINES 192-203
-        flux_calib = flux*np.polyval(response_function, self.stdExtractionDF['WAVE'])
-
+        # FLUX IS ALREADY DIVIDED BY DISPERSION AND CORRECTED FOR THE EXTINCTION !!
+        # OTHERWISE, COPY LINES 192-203
+        flux_calib = flux * np.polyval(response_function, self.stdExtractionDF['WAVE'])
 
         axs[3].plot(self.stdExtractionDF['WAVE'], flux_calib)
         axs[3].set_title('Self calibration of std star')
-        #axs[3].set_xlim(0,np.max(flux_calib))
+        # axs[3].set_xlim(0,np.max(flux_calib))
 
-        axs[4].plot(self.stdExtractionDF['WAVE'], (flux_calib - refitted_flux(self.stdExtractionDF['WAVE']))/refitted_flux(self.stdExtractionDF['WAVE']))
+        axs[4].plot(self.stdExtractionDF['WAVE'], (flux_calib - refitted_flux(self.stdExtractionDF['WAVE'])) / refitted_flux(self.stdExtractionDF['WAVE']))
         axs[4].set_ylim(-5, 5)
-        #plt.plot(np.array(selected_rows[0]),np.array(selected_rows[4])*10**17,c='red')
+        # plt.plot(np.array(selected_rows[0]),np.array(selected_rows[4])*10**17,c='red')
         plt.subplots_adjust(hspace=1.0)
         axs[4].set_title('Relative residuals')
         if False:
             plt.show()
 
+        # TODO: ADD THE PLOT AS A QC PRODUCT
+        # TODO: ADD response_function AS A FITS BINARY TABLE PRODUCT
+        # TODO: ADD response_function AS A PRODUCT PREDICTION IN DATA-ORGANISER
+
+        # DAVE: SHOULD THE STARE & NODDING FOR SCIENCE OBJECT SOF FILES THEN CONTAIN THIS RESPONSE FUNCTION?
+
         return response_function
-
-    # xt-class-method
-
-    # 5. @flagged: what actions of the base class(es) need ammending? ammend them here
-    # Override Method Attributes
-    # method-override-tmpx
