@@ -76,16 +76,25 @@ class response_function(object):
         self.stdExtractionDF = Table.read(self.stdExtractionPath, format='fits')
 
         self.stdExtractionDF = self.stdExtractionDF.to_pandas()
+        self.recipeSettings = settings['soxs-response']
 
         #from tabulate import tabulate
         #print(tabulate(stdExtractionDF.head(100), headers='keys', tablefmt='psql'))
 
-        # TODO READING NECESSARY KEYWORDS FROM THE HEADER
-        hdul = fits.open(self.stdExtractionPath)
-        self.texp = 1.0
-        self.std_objName = 'EG 274'
-        self.airmass = 1.039
-        self.arm = 'UVB'
+        try:
+
+            hdul = fits.open(self.stdExtractionPath)
+            header =hdul[0].header
+            self.texp = float(header['EXPTIME'])
+            self.std_objName =  str(header['OBJECT']).strip().upper()  #Name is in the format 'EG 274'
+            #USING THE AVERAGE AIR MASS
+            airmass_start = float(header['HIERARCH ESO TEL AIRM START'])
+            airmass_end = float(header['HIERARCH ESO TEL AIRM END'])
+            self.airmass  = (airmass_start + airmass_end)/2
+            self.arm = str(header['HIERARCH ESO SEQ ARM']).strip().upper() #KW lookup 
+        except Exception as e:
+            raise Exception('Error reading the FITS header')
+            sys.exit(1)
         #TEXP, OBJECT NAME
 
 
@@ -110,10 +119,12 @@ class response_function(object):
         refitted_ext = interp1d(np.array(wave_ext),
                                  np.array(extinctionData['MAG_AIRMASS']), kind='next',fill_value='extrapolate')
         if False:
-            fig, ax = plt.subplots(2)
+            fig, ax = plt.subplots(3)
             ax[0].plot(wave, refitted_ext(wave))
             ax[0].plot(wave_ext, extinctionData['MAG_AIRMASS'])
             ax[1].plot(wave_ext,refitted_ext(wave_ext))
+            ax[2].plot(wave, 10**(0.4*refitted_ext(wave)*self.airmass))
+            plt.title('Extinction Correction factor')
             plt.show()
 
         return 10**(0.4*refitted_ext(wave)*self.airmass)
@@ -168,7 +179,6 @@ class response_function(object):
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
         selected_rows = stdData[(stdData['WAVE'] > np.min(self.stdExtractionDF['WAVE']) -10 ) & (stdData['WAVE'] < 10 + np.max(self.stdExtractionDF['WAVE']))]
 
-        print(selected_rows['WAVE'])
         #FLUX IS CONVERTED IN ERG / CM2 / S / ANG
         try:
             refitted_flux = interp1d(np.array(selected_rows['WAVE']),np.array(selected_rows[self.std_objName])*10*10**17,kind='next')
@@ -177,14 +187,16 @@ class response_function(object):
             sys.exit(1)
 
 
-        # STRONG SKY ABS REGION TO BE EXCLUDED - 1 TABLE PER ARM
-        #TODO Check on FITS Header for the correct arm
-        #exclude_regions = [(1100 ,1190), (1300, 1500), (1800, 1900), (1850,2700)]
+        # STRONG SKY ABS REGION TO BE EXCLUDED
 
-        exclude_regions = [(200, 400), (590,600), (405, 416), (426,440),(460,475),  (563, 574), (478,495), (528,538)]
+        #exclude_regions = 
 
-
-
+        if self.arm == 'UVB':
+            exclude_regions = [(200, 400), (590,600), (405, 416), (426,440),(460,475),  (563, 574), (478,495), (528,538)]
+        elif self.arm == 'NIR':
+            exclude_regions = [(1100 ,1190), (1300, 1500), (1800, 1900), (1850,2700)]
+        else: 
+            exclude_regions = []
 
         #INTEGRATING THE OBS SPECTRUM IN xx nm BIN-WIDE FILTERS
 
@@ -197,7 +209,7 @@ class response_function(object):
         #NOW DIVIDING FOR THE EXPOSURE TIME
         flux = flux/self.texp
 
-        if self.arm == 'UVB' or self.arm == 'VIS':
+        if self.arm == 'UVB' or self.arm == 'VIS': #NOT REQUIRED FOR NIR
             print('Applying extinction correction')
             factor = self.extinction_correction_factor(wave)
             flux = flux * factor
@@ -229,7 +241,6 @@ class response_function(object):
 
         figure(figsize = (8, 12))
         fig, axs = plt.subplots(5)
-        print(wave)
 
         axs[0].plot(wave,refitted_flux(wave))
         axs[0].set_title('Tabulated flux')
@@ -251,11 +262,11 @@ class response_function(object):
         central_wavelengths_original = central_wavelengths
         numIter = 0
         deletedPoints = 1
-        order = 7
+        order = int(self.recipeSettings['poly_order'])
 
 
         #FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
-        while (numIter < 5) and (deletedPoints > 0):
+        while (numIter < int(self.recipeSettings['max_iteration'])) and (deletedPoints > 0):
             try:
                 #FITTING THE DATA
                 elements_to_delete = []
@@ -298,7 +309,8 @@ class response_function(object):
         #plt.plot(np.array(selected_rows[0]),np.array(selected_rows[4])*10**17,c='red')
         plt.subplots_adjust(hspace=1.0)
         axs[4].set_title('Relative residuals')
-        plt.show()
+        if False:
+            plt.show()
 
         return response_function
 
