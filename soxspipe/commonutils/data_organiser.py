@@ -702,7 +702,7 @@ class data_organiser(object):
                 filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
                 filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
             else:
-                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), "lamp"] = filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), self.kw(f"LAMP{i}").lower()]
+                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), "lamp"] = filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), self.kw(f"LAMP{i}").lower().replace("_lamp", "").replace("_Lamp", "")]
         mask = []
         for i in self.proKeywords:
             keywordsTerseRaw.remove(i)
@@ -824,7 +824,11 @@ class data_organiser(object):
 
         # rawFrames.replace("LAMP,DFLAT", "LAMP,FLAT", inplace=True)
         # rawFrames.replace("LAMP,QFLAT", "LAMP,FLAT", inplace=True)
-        rawGroups = rawFrames.groupby(filterKeywordsRaw)
+
+        # HIDE OFF FRAMES FROM GROUPS
+        mask = ((rawFrames["eso dpr tech"] == "IMAGE") & (rawFrames['eso seq arm'] == "NIR") & (rawFrames['eso dpr tech'] != "DARK"))
+        rawFramesNoOffFrames = rawFrames.loc[~mask]
+        rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw)
 
         mjds = rawGroups.mean(numeric_only=True)["mjd-obs"].values
 
@@ -842,9 +846,19 @@ class data_organiser(object):
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawScienceFrames = rawScienceFrames.size().reset_index(name='counts')
 
+        # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
+        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE"]))
+        rawGroups = rawGroups.loc[~mask]
+        # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
+        rawPinholeFrames = pd.read_sql(
+            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE")', con=conn)
+        rawPinholeFrames.fillna("--", inplace=True)
+        rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
+        rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
+
         # MERGE DATAFRAMES
-        if len(rawScienceFrames.index):
-            rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+        if len(rawPinholeFrames.index):
+            rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
 
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
@@ -969,7 +983,7 @@ class data_organiser(object):
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
                 sofName.append("qlamp")
-        if True:
+        if True and "PINHOLE" in series["eso dpr tech"].upper():
             if series["lamp"] != "--":
                 matchDict['lamp'] = series["lamp"]
                 sofName.append(series["lamp"])
@@ -992,7 +1006,7 @@ class data_organiser(object):
         # INITIAL CALIBRATIONS FILTERING
         if series['eso seq arm'].upper() in ["UVB", "VIS"]:
             for k, v in matchDict.items():
-                if k in ["exptime"]:
+                if k in ["exptime", "lamp", "eso obs name"]:
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_")) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE"))
@@ -1004,7 +1018,7 @@ class data_organiser(object):
 
         elif series['eso seq arm'].upper() in ["NIR"]:
             for k, v in matchDict.items():
-                if k in ["binning", "rospeed", "exptime"]:
+                if k in ["binning", "rospeed", "exptime", "lamp", "eso obs name"]:
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_") | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
@@ -1014,7 +1028,7 @@ class data_organiser(object):
 
         # EXTRA CALIBRATION TABLES
         for k, v in matchDict.items():
-            if k in ["rospeed", "exptime"]:
+            if k in ["rospeed", "exptime", "lamp", "eso obs name"]:
                 continue
             if k in ["binning"] and seriesRecipe in ["mflat"]:
                 continue
@@ -1034,6 +1048,17 @@ class data_organiser(object):
         # YYYY.MM.DDThh.mm.xxx
         if series["night start mjd"]:
 
+            if "PINHOLE" in series["eso dpr tech"].upper():
+                if "NIR" not in series['eso seq arm'].upper():
+                    mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
+                    filteredFrames = filteredFrames.loc[mask]
+                else:
+                    # FURTHER FILTERING OF NIR ON/OFF FRAMES
+                    filteredFrames["obs-delta"] = filteredFrames['mjd-obs'] - series["mjd-obs"]
+                    filteredFrames["obs-delta"] = filteredFrames["obs-delta"].abs()
+                    filteredFrames.sort_values(['obs-delta'], inplace=True)
+                    filteredFrames = filteredFrames.head(2)
+
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
                 filteredFrames = filteredFrames.loc[mask]
@@ -1044,6 +1069,7 @@ class data_organiser(object):
                 frameMjd = filteredFrames["mjd-obs"].values[0]
             except:
                 print(series)
+
             calibrationFrames["obs-delta"] = calibrationFrames['mjd-obs'] - frameMjd
             calibrationTables["obs-delta"] = calibrationTables['mjd-obs'] - frameMjd
             # dispImages["obs-delta"] = dispImages['mjd-obs'] - frameMjd
@@ -1115,8 +1141,10 @@ class data_organiser(object):
         # CALIBRATIONS NEEDED?
         # BIAS FRAMES
         if series["recipe"] in ["disp_sol", "order_centres", "mflat", "spat_sol", "stare"]:
+
             mask = calibrationFrames['eso pro catg'].isin([f"MASTER_BIAS_{series['eso seq arm'].upper()}"])
             df = calibrationFrames.loc[mask]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 files = np.append(files, df["file"].values[0])
@@ -1127,6 +1155,7 @@ class data_organiser(object):
         if series["recipe"] in ["order_centres", "spat_sol", "stare", "nod"]:
             mask = calibrationTables['eso pro catg'].str.contains("DISP_TAB")
             df = calibrationTables.loc[mask]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 if series["recipe"] in ["stare", "nod"]:

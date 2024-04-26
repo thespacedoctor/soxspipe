@@ -295,19 +295,30 @@ class create_dispersion_map(object):
             fitFound = False
             tryCount = 0
             while not fitFound and tryCount < 5:
-                try:
-                    popt_x, popt_y, goodLinesTable, clippedLinesTable = self.fit_polynomials(
-                        orderPixelTable=orderPixelTable,
-                        wavelengthDeg=wavelengthDeg,
-                        orderDeg=orderDeg,
-                        slitDeg=slitDeg,
-                        missingLines=missingLines
-                    )
+                popt_x, popt_y, goodLinesTable, clippedLinesTable = self.fit_polynomials(
+                    orderPixelTable=orderPixelTable,
+                    wavelengthDeg=wavelengthDeg,
+                    orderDeg=orderDeg,
+                    slitDeg=slitDeg,
+                    missingLines=missingLines
+                )
+
+                if isinstance(popt_x, np.ndarray) and isinstance(popt_y, np.ndarray):
                     fitFound = True
-                except Exception as e:
-                    degList = [wavelengthDeg, orderDeg, slitDeg]
-                    degList[degList.index(max(degList))] -= 1
-                    wavelengthDeg, orderDeg, slitDeg = degList
+                else:
+                    if not isinstance(wavelengthDeg, list):
+                        degList = [wavelengthDeg, orderDeg, slitDeg]
+                        degList[degList.index(max(degList))] -= 1
+                        wavelengthDeg, orderDeg, slitDeg = degList
+                    elif popt_x == "xerror":
+                        degList = [wavelengthDeg[0], orderDeg[0], slitDeg[0]]
+                        degList[degList.index(max(degList))] -= 1
+                        wavelengthDeg[0], orderDeg[0], slitDeg[0] = degList
+                    elif popt_y == "yerror":
+                        degList = [wavelengthDeg[1], orderDeg[1], slitDeg[1]]
+                        degList[degList.index(max(degList))] -= 1
+                        wavelengthDeg[1], orderDeg[1], slitDeg[1] = degList
+
                     self.log.print(f"Wavelength, Order and Slit fitting orders reduced to {wavelengthDeg}, {orderDeg}, {slitDeg} to try and achieve a dispersion solution.")
                     tryCount += 1
                     if tryCount == 5:
@@ -1131,14 +1142,20 @@ class create_dispersion_map(object):
             # FIRST X
             self.log.info("""curvefit x""" % locals())
 
-            xcoeff, pcov_x = curve_fit(
-                polyx, xdata=orderPixelTable, ydata=observed_x, p0=xcoeff, maxfev=30000)
+            try:
+                xcoeff, pcov_x = curve_fit(
+                    polyx, xdata=orderPixelTable, ydata=observed_x, p0=xcoeff, maxfev=30000)
+            except:
+                return "xerror", None, None, None
 
             # NOW Y
             self.log.info("""curvefit y""" % locals())
 
-            ycoeff, pcov_y = curve_fit(
-                polyy, xdata=orderPixelTable, ydata=observed_y, p0=ycoeff, maxfev=30000)
+            try:
+                ycoeff, pcov_y = curve_fit(
+                    polyy, xdata=orderPixelTable, ydata=observed_y, p0=ycoeff, maxfev=30000)
+            except:
+                return None, "yerror", None, None
 
             self.log.info("""calculate_residuals""" % locals())
             mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
