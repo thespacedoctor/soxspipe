@@ -48,17 +48,6 @@ class soxs_nod(_base_recipe_):
         inputFrames=fileList
     ).produce_product()
     ```
-
-    ---
-
-    ```eval_rst
-    .. todo::
-
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``soxs_nod`` to documentation
-    ```
     """
     # Initialisation
 
@@ -81,9 +70,6 @@ class soxs_nod(_base_recipe_):
         self.verbose = verbose
         self.recipeSettings = settings[self.recipeName]
 
-        print("HERE")
-        sys.exit(0)
-
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
@@ -92,6 +78,7 @@ class soxs_nod(_base_recipe_):
             log=self.log,
             settings=self.settings,
             inputFrames=self.inputFrames,
+            recipeName=self.recipeName,
             ext=self.settings['data-extension']
         )
         self.inputFrames, self.supplementaryInput = sof.get()
@@ -115,6 +102,8 @@ class soxs_nod(_base_recipe_):
         self.inputFrames = self.prepare_frames(
             save=self.settings["save-intermediate-products"])
 
+        sys.exit(0)
+
         return None
 
     def verify_input_frames(
@@ -136,27 +125,20 @@ class soxs_nod(_base_recipe_):
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
         arm = self.arm
 
-        if self.arm == "NIR":
-            if not error:
-                for i in imageTypes:
-                    if i not in ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX"]:
-                        error = f"Found a {i} file. Input frames for soxspipe nod need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR."
+        if not error:
+            for i in imageTypes:
+                if i not in ["OBJECT", "LAMP,FLAT", "STD,FLUX", "STD,TELLURIC"]:
+                    error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
 
-            if not error:
-                for i in imageTech:
-                    if i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
-                        error = f"Input frames for soxspipe nod need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR. The sof file is missing a {i} frame."
+        if not error:
+            for i in imageTech:
+                if i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
+                    error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
 
-        else:
-            if not error:
-                for i in imageTypes:
-                    if i not in ["OBJECT", "LAMP,FLAT"]:
-                        error = f"Input frames for soxspipe nod need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
-
-            if not error:
-                for i in [f"DISP_TAB_{self.arm}"]:
-                    if i not in imageCat:
-                        error = f"Input frames for soxspipe nod need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
+        if not error:
+            for i in [f"DISP_TAB_{self.arm}", f'ORDER_TAB_{self.arm}', f'DISP_IMAGE_{self.arm}']:
+                if i not in imageCat:
+                    error = f"Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm}). The sof file is missing a {i} frame."
 
         # if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:
         #     raise TypeError(

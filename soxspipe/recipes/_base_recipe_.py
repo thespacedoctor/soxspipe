@@ -405,6 +405,7 @@ class _base_recipe_(object):
             log=self.log,
             settings=self.settings,
             inputFrames=preframes,
+            recipeName=self.recipeName,
             verbose=self.verbose
         )
         preframes, supplementaryInput = sof.get()
@@ -420,6 +421,7 @@ class _base_recipe_(object):
 
         preframes.summary["LAMP"] = "------------"
         columns = preframes.summary.colnames
+
         for i in range(7):
             thisLamp = kw(f"LAMP{i+1}")
             try:
@@ -447,7 +449,23 @@ class _base_recipe_(object):
             columns.remove("file")
             columns.remove("filename")
             columns = ["filename"] + columns
-        self.log.print(preframes.summary[columns])
+
+        # MAKE A COPY TO RENAME COLUMNS
+        this = preframes.summary.copy()
+
+        newColumns = []
+        for c in columns:
+            newC = c
+            if "ESO SEQ " in c:
+                newC = c.replace("ESO SEQ ", "")
+                this.rename_column(c, newC)
+            if "ESO DPR " in c:
+                newC = c.replace("ESO DPR ", "")
+                this.rename_column(c, newC)
+            newColumns.append(newC)
+
+        self.log.print(this[newColumns])
+        self.log.print("\n")
 
         # SORT RECIPE AND ARM SETTINGS
         self.recipeSettings = self.get_recipe_settings()
