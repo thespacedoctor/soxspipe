@@ -17,12 +17,13 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-from matplotlib import pyplot as plt  
+from matplotlib import pyplot as plt
 from soxspipe.commonutils.filenamer import filenamer
 from os.path import expanduser
 from astropy.io import fits
 from astropy.table import Table
 os.environ['TERM'] = 'vt100'
+
 
 class soxs_nod(_base_recipe_):
     """
@@ -37,7 +38,18 @@ class soxs_nod(_base_recipe_):
         - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
 
-    See `produce_product` method for usage.
+    **Usage**
+
+    ```python
+    from soxspipe.recipes import soxs_nod
+    recipe = soxs_nod(
+        log=log,
+        settings=settings,
+        inputFrames=fileList
+    ).produce_product()
+    ```
+
+    ---
 
     ```eval_rst
     .. todo::
@@ -68,7 +80,9 @@ class soxs_nod(_base_recipe_):
         self.inputFrames = inputFrames
         self.verbose = verbose
         self.recipeSettings = settings[self.recipeName]
-        # xt-self-arg-tmpx
+
+        print("HERE")
+        sys.exit(0)
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
@@ -89,7 +103,6 @@ class soxs_nod(_base_recipe_):
         sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
-
 
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
@@ -236,53 +249,47 @@ class soxs_nod(_base_recipe_):
         else:
             allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat) for f in allObjectFrames]
 
-
-            
-
-        #DIVIDING IN A AND B SEQUENCES
+        # DIVIDING IN A AND B SEQUENCES
         allFrameA = []
         allFrameB = []
 
-        #HIERARCH ESO SEQ CUMOFF Y is the offset in the Y direction of the nodding sequence. Positive A, negative B
+        # HIERARCH ESO SEQ CUMOFF Y is the offset in the Y direction of the nodding sequence. Positive A, negative B
         for frame in allObjectFrames:
-            if frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0:   
+            if frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0:
                 allFrameA.append(frame)
 
             else:
                 allFrameB.append(frame)
 
-
-
-        #STACKING A AND B SEQUENCES
+        # STACKING A AND B SEQUENCES
         masterA = self.clip_and_stack(
-                frames= allFrameA, 
-                recipe = "soxs_nod", 
-                ignore_input_masks =False, 
-                post_stack_clipping= True)
-        
-        masterB = self.clip_and_stack( 
-            frames = allFrameB, 
-            recipe = "soxs_nod", 
-            ignore_input_masks = False,
-            post_stack_clipping = True)
+            frames=allFrameA,
+            recipe="soxs_nod",
+            ignore_input_masks=False,
+            post_stack_clipping=True)
 
-        #SUBTRACTING A FROM B
+        masterB = self.clip_and_stack(
+            frames=allFrameB,
+            recipe="soxs_nod",
+            ignore_input_masks=False,
+            post_stack_clipping=True)
+
+        # SUBTRACTING A FROM B
         A_minus_B = masterA.subtract(masterB)
         B_minus_A = masterB.subtract(masterA)
 
-        #REAPPLYING HEADERS
+        # REAPPLYING HEADERS
 
         hdr_A = masterA.header
         hdr_B = masterB.header
         A_minus_B.header = hdr_A
-        B_minus_A.header = hdr_B  
-        #Write the A-B and B-A frames to disk
+        B_minus_A.header = hdr_B
+        # Write the A-B and B-A frames to disk
         A_minus_B_path = "A_minus_B.fits"
-        B_minus_A_path =  "B_minus_A.fits"
+        B_minus_A_path = "B_minus_A.fits"
 
         A_minus_B.write(A_minus_B_path, overwrite=True)
         B_minus_A.write(B_minus_A_path, overwrite=True)
-
 
         # TODO: ADD THESE CHECK WHEN WE HAVE A FINAL FRAME TO CHECK ... LIKELY A-B FRAME
         if False:
@@ -291,46 +298,46 @@ class soxs_nod(_base_recipe_):
             self.qc = spectroscopic_image_quality_checks(
                 log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
         from soxspipe.commonutils import horne_extraction
-        
-        #EXTRACT THE A MINUS B FRAME
-        
+
+        # EXTRACT THE A MINUS B FRAME
+
         optimalExtractor = horne_extraction(
-             log=self.log,
-             skyModelFrame=False,
-             skySubtractedFrame=A_minus_B,
-             twoDMapPath=twoDMap,
-             settings=self.settings,
-             recipeName=self.recipeName,
-             qcTable=self.qc,
-             productsTable=self.products,
-             dispersionMap=dispMap,
-             sofName=self.sofName
-         )
-        
+            log=self.log,
+            skyModelFrame=False,
+            skySubtractedFrame=A_minus_B,
+            twoDMapPath=twoDMap,
+            settings=self.settings,
+            recipeName=self.recipeName,
+            qcTable=self.qc,
+            productsTable=self.products,
+            dispersionMap=dispMap,
+            sofName=self.sofName
+        )
+
         self.qc, products_a, merged_orders_a = optimalExtractor.extract()
-        #EXTRACT THE B MINUS A FRAME 
+        # EXTRACT THE B MINUS A FRAME
 
         optimalExtractor = horne_extraction(
-             log=self.log,
-             skyModelFrame=False,
-             skySubtractedFrame=B_minus_A,
-             twoDMapPath=twoDMap,
-             settings=self.settings,
-             recipeName=self.recipeName,
-             qcTable=self.qc,
-             productsTable=self.products,
-             dispersionMap=dispMap,
-             sofName=self.sofName
-         )
-        self.qc, products_b, merged_orders_b = optimalExtractor.extract()    
+            log=self.log,
+            skyModelFrame=False,
+            skySubtractedFrame=B_minus_A,
+            twoDMapPath=twoDMap,
+            settings=self.settings,
+            recipeName=self.recipeName,
+            qcTable=self.qc,
+            productsTable=self.products,
+            dispersionMap=dispMap,
+            sofName=self.sofName
+        )
+        self.qc, products_b, merged_orders_b = optimalExtractor.extract()
 
-        #MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGED_ORDERS_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
+        # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGED_ORDERS_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
 
         merged_dataframe = pd.concat([merged_orders_a, merged_orders_b])
 
         groupedDataframe = merged_dataframe.groupby(by='WAVE', as_index=False).sum()
 
-        #WRITING THE DATA ON THE FITS FILE
+        # WRITING THE DATA ON THE FITS FILE
         if self.sofName:
             self.filenameTemplate = self.sofName + ".fits"
         else:
@@ -339,35 +346,34 @@ class soxs_nod(_base_recipe_):
                 frame=self.skySubtractedFrame,
                 settings=self.settings
             )
-        
-        #PREPARING THE HEADER
+
+        # PREPARING THE HEADER
         kw = keyword_lookup(
             log=self.log,
             settings=self.settings
         ).get
 
-        #SELECTING HEADER A_minus_B (is this the same?)
+        # SELECTING HEADER A_minus_B (is this the same?)
         header = A_minus_B.header
         header[kw("SEQ_ARM")] = A_minus_B.header[kw("SEQ_ARM")]
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
         header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{arm}".upper()
-        
-        #PREPARING THE HDU
+
+        # PREPARING THE HDU
         groupedDataframeTable = Table.from_pandas(groupedDataframe, index=False)
         BinTableHDU = fits.table_to_hdu(groupedDataframeTable)
 
         priHDU = fits.PrimaryHDU(header=header)
         hduList = fits.HDUList([priHDU, BinTableHDU])
 
-        #WRTIE PRODUCT TO DISK
+        # WRTIE PRODUCT TO DISK
         home = expanduser("~")
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_AB.fits")
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
-
-        #Merging the products list in self.product
+        # Merging the products list in self.product
         self.products = pd.concat([products_a, products_b])
 
         self.clean_up()

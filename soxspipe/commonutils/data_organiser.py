@@ -702,7 +702,7 @@ class data_organiser(object):
                 filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
                 filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
             else:
-                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), "lamp"] = filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), self.kw(f"LAMP{i}").lower().replace("_lamp", "").replace("_Lamp", "")]
+                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), "lamp"] = filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), self.kw(f"LAMP{i}").lower()]
         mask = []
         for i in self.proKeywords:
             keywordsTerseRaw.remove(i)
@@ -711,6 +711,9 @@ class data_organiser(object):
                 mask = (filteredFrames[i] == "--")
             else:
                 mask = np.logical_and(mask, (filteredFrames[i] == "--"))
+
+        filteredFrames["lamp"] = filteredFrames["lamp"].str.replace("_lamp", "")
+        filteredFrames["lamp"] = filteredFrames["lamp"].str.replace("_Lamp", "")
 
         rawFrames = filteredFrames.loc[mask]
 
@@ -1130,7 +1133,7 @@ class data_organiser(object):
         #         else:
         #             return series
 
-        if seriesRecipe == "stare":
+        if seriesRecipe in ("stare", "nod"):
             object = filteredFrames['object'].values[0].replace(" ", "_")
             sofName.append(object)
 

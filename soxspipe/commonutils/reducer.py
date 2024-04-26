@@ -262,6 +262,16 @@ class reducer(object):
             )
             reducedStare = recipe.produce_product()
 
+        if recipe == "nod":
+            from soxspipe.recipes import soxs_nod
+            recipe = soxs_nod(
+                log=self.log,
+                settings=self.settings,
+                inputFrames=sof,
+                overwrite=self.overwrite
+            )
+            reducedNod = recipe.produce_product()
+
         self.log.debug('completed the ``run_recipe`` method')
         return None
 
