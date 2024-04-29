@@ -482,14 +482,18 @@ class create_dispersion_map(object):
             orderPixelTable["detector_x"] -= 1.0
             orderPixelTable["detector_y"] -= 1.0
         elif True:
-            dp = self.detectorParams
-            science_pixels = dp["science-pixels"]
-            xlen = science_pixels["columns"]["end"] - \
-                science_pixels["columns"]["start"]
-            ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
-            orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
-            # orderPixelTable["detector_x"] -= 4.0
-            # orderPixelTable["detector_y"] -= 4.0
+            if arm == "NIR":
+                dp = self.detectorParams
+                science_pixels = dp["science-pixels"]
+                xlen = science_pixels["columns"]["end"] - \
+                    science_pixels["columns"]["start"]
+                ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
+                orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
+                # orderPixelTable["detector_x"] -= 4.0
+                # orderPixelTable["detector_y"] -= 4.0
+            else:
+                orderPixelTable["detector_x"] -= 52
+                # orderPixelTable["detector_y"] -= 4.0
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
