@@ -19,3 +19,4 @@ jinja2==3.0.0
 Markdown==3.3.4
 importlib-metadata==4.13.0
 ccdproc
+readthedocs-sphinx-search=0.3.2
