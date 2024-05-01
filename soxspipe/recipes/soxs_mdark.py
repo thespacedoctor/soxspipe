@@ -110,7 +110,7 @@ class soxs_mdark(_base_recipe_):
             self):
         """*verify input frame match those required by the soxs_mdark recipe*
 
-        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
+        If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 

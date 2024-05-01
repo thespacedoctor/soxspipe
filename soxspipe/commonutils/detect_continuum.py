@@ -365,7 +365,7 @@ class _base_detect(object):
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
-        if False and (self.binx > 1 or self.biny > 1):
+        if (False and (self.binx > 1 or self.biny > 1)) or (isinstance(self.products, bool) and self.products == False):
             outDir = self.settings["workspace-root-dir"] + "/tmp"
         else:
             outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
@@ -391,7 +391,7 @@ class _base_detect(object):
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
         elif "nod" in self.recipeName.lower():
             #sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
-            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE_" + self.noddingSequence + ".fits"
+            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE" + self.noddingSequence + ".fits"
 
         if self.lampTag:
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
@@ -452,7 +452,8 @@ class detect_continuum(_base_detect):
         - ``sofName`` ---- name of the originating SOF file
         - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
-        - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
+        - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
+        - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
 
     **Usage:**
 
@@ -484,13 +485,16 @@ class detect_continuum(_base_detect):
             sofName=False,
             binx=1,
             biny=1,
-            lampTag=False
+            lampTag=False,
+            locationSetIndex=False
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
         self.settings = settings
         try:
-            self.noddingSequence = "A" if int(pinholeFlat.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
+            self.noddingSequence = "_A" if int(pinholeFlat.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
+            if locationSetIndex:
+                self.noddingSequence += str(locationSetIndex)
         except:
             self.noddingSequence = ""
 
@@ -547,6 +551,7 @@ class detect_continuum(_base_detect):
 
         import numpy as np
         import pandas as pd
+        from datetime import datetime
 
         arm = self.arm
 
@@ -694,7 +699,6 @@ class detect_continuum(_base_detect):
             clippedData=clippedDataCentre
         )
 
-        from datetime import datetime
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -707,27 +711,30 @@ class detect_continuum(_base_detect):
             label = "OBJECT_TRACE_RES"
             product_desc = f"Residuals of the object trace polynomial fit"
 
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "product_label": label,
-            "file_name": basename,
-            "file_type": "PDF",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": product_desc,
-            "file_path": plotPath,
-            "label": "QC"
-        }).to_frame().T], ignore_index=True)
+        if not isinstance(self.products, bool):
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": label + self.noddingSequence,
+                "file_name": basename,
+                "file_type": "PDF",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": product_desc,
+                "file_path": plotPath,
+                "label": "QC"
+            }).to_frame().T], ignore_index=True)
+            # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
+            order_table_path = self.write_order_table_to_file(
+                frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+        else:
+            order_table_path = self.write_order_table_to_file(
+                frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
 
-        mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
-        std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
-
-        # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
-        order_table_path = self.write_order_table_to_file(
-            frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+        # mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+        # std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
         self.log.debug('completed the ``get`` method')
-        return order_table_path, self.qc, self.products
+        return order_table_path, self.qc, self.products, orderPolyTable, orderPixelTable, orderMetaTable
 
     def create_pixel_arrays(
             self):
@@ -1141,7 +1148,7 @@ class detect_continuum(_base_detect):
         elif "order" in self.recipeName.lower():
             filename = self.sofName + "_residuals.pdf"
         elif "nod" in self.recipeName.lower():
-            filename = self.sofName + "_OBJECT_TRACE_residuals_" + self.noddingSequence + ".pdf"
+            filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + ".pdf"
         else:
             filename = self.sofName + "_OBJECT_TRACE_residuals.pdf"
 

@@ -361,6 +361,11 @@ soxs-stare:
 
 
 soxs-nod:
+    use_flat: True
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: False
+    # SAVE INDIVIDUAL FRAME EXTRACTION
+    save_single_frame_extractions: False
      # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking

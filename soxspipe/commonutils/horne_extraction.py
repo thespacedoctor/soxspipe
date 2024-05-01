@@ -16,8 +16,6 @@ import sys
 import os
 
 
-
-
 os.environ['TERM'] = 'vt100'
 
 
@@ -41,9 +39,10 @@ class horne_extraction(object):
         - ``twoDMapPath`` -- path to 2D dispersion map image path
         - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
         - ``qcTable`` -- the data frame to collect measured QC metrics
-        - ``productsTable`` -- the data frame to collect output products
+        - ``productsTable`` -- the data frame to collect output products (if False no products are saved to file)
         - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
         - ``sofName`` -- the set-of-files filename
+        - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
 
     **Usage:**
 
@@ -92,7 +91,8 @@ class horne_extraction(object):
             qcTable=False,
             productsTable=False,
             dispersionMap=False,
-            sofName=False
+            sofName=False,
+            locationSetIndex=False
 
     ):
         import numpy as np
@@ -116,10 +116,13 @@ class horne_extraction(object):
         self.sofName = sofName
         self.noddingSequence = ""
         self.recipeSettings = recipeSettings
-        #DETECTING SEQUENCE AUTOMATICALLY
+
+        # DETECTING SEQUENCE AUTOMATICALLY
 
         try:
-            self.noddingSequence  = "A" if int(skySubtractedFrame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
+            self.noddingSequence = "_A" if int(skySubtractedFrame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
+            if locationSetIndex:
+                self.noddingSequence += str(locationSetIndex)
         except:
             self.noddingSequence = ""
 
@@ -143,7 +146,7 @@ class horne_extraction(object):
                                                    hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
                                                    key_uncertainty_type='UTYPE')
 
-        #CHECK SKY MODEL FRAME IS USED (ONLY IN STARE MODE)
+        # CHECK SKY MODEL FRAME IS USED (ONLY IN STARE MODE)
         if skyModelFrame == False:
             self.skyModelFrame = None
         else:
@@ -152,8 +155,8 @@ class horne_extraction(object):
                 self.skyModelFrame = skyModelFrame
             else:
                 self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
-                                                hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
-                                                key_uncertainty_type='UTYPE')
+                                                  hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
+                                                  key_uncertainty_type='UTYPE')
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -249,9 +252,10 @@ class horne_extraction(object):
             sofName=self.sofName,
             recipeName=self.recipeName,
             qcTable=self.qc,
-            productsTable=self.products
+            productsTable=self.products,
+            locationSetIndex=locationSetIndex
         )
-        productPath, self.qc, self.products = detector.get()
+        productPath, self.qc, self.products, orderPolyTable, self.orderPixelTable, orderMetaTable = detector.get()
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
@@ -313,133 +317,77 @@ class horne_extraction(object):
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
                                     inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma)
 
-        fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
-        gs = fig.add_gridspec(1, 1)
-        toprow = fig.add_subplot(gs[0:1, :])
-        addedLegend = True
-        for df, o in zip(extractions, uniqueOrders):
-            extracted_wave_spectrum = df["wavelengthMedian"]
-            extracted_spectrum = df["extractedFluxOptimal"]
-            extracted_spectrum_nonopt = df["extractedFluxBoxcarRobust"]
-            extracted_variance_spectrum = df["varianceSpectrum"]
-            extracted_snr = df["snr"]
-
-            try:
-                if addedLegend:
-                    label = "Robust Boxcar Extraction"
-                else:
-                    label = None
-                toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], color="gray", alpha=0.8, zorder=1, label=label)
-                # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
-                line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum[10:-10], zorder=2)
-
-                toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum[10:-10].mean() + 5 * extracted_spectrum[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
-                addedLegend = False
-            except:
-                self.log.warning(f"Order skipped: {o}")
-
-        toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
-                      fontsize=8)
-        toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
-        toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
-        toprow.set_title(
-            f"Optimally Extracted Object Spectrum ({arm.upper()})", fontsize=11)
-        if len(self.noddingSequence) > 0:
-            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT_" + str(self.noddingSequence) + ".pdf")
-        else:
-            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT.pdf")
-        filePath = f"{self.qcDir}/{filename}"
-        # plt.tight_layout()
-        # plt.show()
-        plt.savefig(filePath, dpi='figure')
-        plt.close()
-        # plt.show()
-
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": "EXTRACTED_ORDERS_QC_PLOT",
-            "file_name": filename,
-            "file_type": "PDF",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"QC plot of extracted source",
-            "file_path": filePath,
-            "label": "QC"
-        }).to_frame().T], ignore_index=True)
+        self.plot_extracted_spectrum_qc(extractions=extractions, uniqueOrders=uniqueOrders)
 
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
         mergedSpectumDF = self.merge_extracted_orders(extractedOrdersDF)
 
-        # CONVERT TO FITS BINARY TABLE
-        header = copy.deepcopy(self.skySubtractedFrame.header)
-        with suppress(KeyError):
-            header.pop(kw("DPR_CATG"))
-        with suppress(KeyError):
-            header.pop(kw("DPR_TYPE"))
-        with suppress(KeyError):
-            header.pop(kw("DET_READ_SPEED"))
-        with suppress(KeyError):
-            header.pop(kw("CONAD"))
-        with suppress(KeyError):
-            header.pop(kw("GAIN"))
-        with suppress(KeyError):
-            header.pop(kw("RON"))
+        if not isinstance(self.products, bool):
 
-        # header["HIERARCH " + kw("PRO_TECH")] = header.pop(kw("DPR_TECH"))
-        extractedOrdersTable = Table.from_pandas(extractedOrdersDF)
-        BinTableHDU = fits.table_to_hdu(extractedOrdersTable)
-        header[kw("SEQ_ARM")] = arm
-        header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
-        header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{arm}".upper()
-        priHDU = fits.PrimaryHDU(header=header)
-        hduList = fits.HDUList([priHDU, BinTableHDU])
+            # CONVERT TO FITS BINARY TABLE
+            header = copy.deepcopy(self.skySubtractedFrame.header)
+            with suppress(KeyError):
+                header.pop(kw("DPR_CATG"))
+            with suppress(KeyError):
+                header.pop(kw("DPR_TYPE"))
+            with suppress(KeyError):
+                header.pop(kw("DET_READ_SPEED"))
+            with suppress(KeyError):
+                header.pop(kw("CONAD"))
+            with suppress(KeyError):
+                header.pop(kw("GAIN"))
+            with suppress(KeyError):
+                header.pop(kw("RON"))
 
-        # DISCRETE ORDERS
-        if len(self.noddingSequence) > 0:
-            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_" + str(self.noddingSequence) + ".fits")
-        else:
+            # header["HIERARCH " + kw("PRO_TECH")] = header.pop(kw("DPR_TECH"))
+            extractedOrdersTable = Table.from_pandas(extractedOrdersDF)
+            BinTableHDU = fits.table_to_hdu(extractedOrdersTable)
+            header[kw("SEQ_ARM")] = arm
+            header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
+            header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{arm}".upper()
+            priHDU = fits.PrimaryHDU(header=header)
+            hduList = fits.HDUList([priHDU, BinTableHDU])
 
-            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS.fits")
-        filePath = f"{self.outDir}/{filename}"
-        hduList.writeto(filePath, checksum=True, overwrite=True)
+            # DISCRETE ORDERS
+            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS{self.noddingSequence}.fits")
+            filePath = f"{self.outDir}/{filename}"
+            hduList.writeto(filePath, checksum=True, overwrite=True)
 
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": "EXTRACTED_ORDERS_TABLE",
-            "file_name": filename,
-            "file_type": "FITS",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"Table of the extracted source in each order",
-            "file_path": filePath,
-            "label": "PROD"
-        }).to_frame().T], ignore_index=True)
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        # NOW MERGED SPECTRUM
-        if len(self.noddingSequence) > 0:
-            filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED_" + str(self.noddingSequence) + ".fits")
-        else:
-            filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED.fits")
-        filePath = f"{self.outDir}/{filename}"
-        mergedTable = Table.from_pandas(mergedSpectumDF)
-        BinTableHDU = fits.table_to_hdu(mergedTable)
-        hduList = fits.HDUList([priHDU, BinTableHDU])
-        hduList.writeto(filePath, checksum=True, overwrite=True)
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": "soxs-stare",
+                "product_label": f"EXTRACTED_ORDERS_TABLE{self.noddingSequence}",
+                "file_name": filename,
+                "file_type": "FITS",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"Table of the extracted source in each order",
+                "file_path": filePath,
+                "label": "PROD"
+            }).to_frame().T], ignore_index=True)
 
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": "EXTRACTED_MERGED_TABLE",
-            "file_name": filename,
-            "file_type": "FITS",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"Table of the extracted, order-merged",
-            "file_path": filePath,
-            "label": "PROD"
-        }).to_frame().T], ignore_index=True)
+            # NOW MERGED SPECTRUM
+            filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED{self.noddingSequence}.fits")
+            filePath = f"{self.outDir}/{filename}"
+            mergedTable = Table.from_pandas(mergedSpectumDF)
+            BinTableHDU = fits.table_to_hdu(mergedTable)
+            hduList = fits.HDUList([priHDU, BinTableHDU])
+            hduList.writeto(filePath, checksum=True, overwrite=True)
+
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": "soxs-stare",
+                "product_label": f"EXTRACTED_MERGED_TABLE{self.noddingSequence}",
+                "file_name": filename,
+                "file_type": "FITS",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"Table of the extracted, order-merged",
+                "file_path": filePath,
+                "label": "PROD"
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``extract`` method')
         return self.qc, self.products, mergedSpectumDF
@@ -536,6 +484,119 @@ class horne_extraction(object):
         merged_orders['WAVE'] = flux_resampled.spectral_axis
         merged_orders['FLUX_COUNTS'] = flux_resampled.flux
 
+        self.plot_merged_spectrum_qc(merged_orders)
+
+        return merged_orders
+
+    def plot_extracted_spectrum_qc(
+            self,
+            uniqueOrders,
+            extractions):
+        """*plot extracted spectrum QC plot*
+
+        **Key Arguments:**
+            - ``uniqueOrders`` -- the unique orders of extraction
+            - ``extractions`` -- dataframes hosting order extractions
+
+        **Usage:**
+
+        ```python
+        optimalExtractor.plot_extracted_spectrum_qc(uniqueOrders, extractions)
+        ```
+
+        """
+        self.log.debug('starting the ``plot_extracted_spectrum_qc`` method')
+
+        # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
+        if isinstance(self.products, bool) and not self.products:
+            return
+
+        import matplotlib.pyplot as plt
+        from datetime import datetime
+        import pandas as pd
+
+        fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
+        gs = fig.add_gridspec(1, 1)
+        toprow = fig.add_subplot(gs[0:1, :])
+        addedLegend = True
+        for df, o in zip(extractions, uniqueOrders):
+            extracted_wave_spectrum = df["wavelengthMedian"]
+            extracted_spectrum = df["extractedFluxOptimal"]
+            extracted_spectrum_nonopt = df["extractedFluxBoxcarRobust"]
+            extracted_variance_spectrum = df["varianceSpectrum"]
+            extracted_snr = df["snr"]
+
+            try:
+                if addedLegend:
+                    label = "Robust Boxcar Extraction"
+                else:
+                    label = None
+                toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], color="gray", alpha=0.8, zorder=1, label=label)
+                # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
+                line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum[10:-10], zorder=2)
+
+                toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum[10:-10].mean() + 5 * extracted_spectrum[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
+                addedLegend = False
+            except:
+                self.log.warning(f"Order skipped: {o}")
+
+        toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
+                      fontsize=8)
+        toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
+        toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
+        toprow.set_title(
+            f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
+        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}.pdf")
+        filePath = f"{self.qcDir}/{filename}"
+        # plt.tight_layout()
+        # plt.show()
+        plt.savefig(filePath, dpi='figure')
+        plt.close()
+        # plt.show()
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": "soxs-stare",
+            "product_label": f"EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}",
+            "file_name": filename,
+            "file_type": "PDF",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "product_desc": f"QC plot of extracted source",
+            "file_path": filePath,
+            "label": "QC"
+        }).to_frame().T], ignore_index=True)
+
+        self.log.debug('completed the ``plot_extracted_spectrum_qc`` method')
+        return None
+
+    def plot_merged_spectrum_qc(
+            self,
+            merged_orders):
+        """*plot merged spectrum QC plot*
+
+        **Key Arguments:**
+            - ``merged_orders`` -- the dataframe containing the merged order spectrum. 
+
+        **Usage:**
+
+        ```python
+        optimalExtractor.plot_merged_spectrum_qc(merged_orders)
+        ```
+        """
+        self.log.debug('starting the ``plot_merged_spectrum_qc`` method')
+
+        # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
+        if isinstance(self.products, bool) and not self.products:
+            return
+
+        import matplotlib.pyplot as plt
+        from datetime import datetime
+        import pandas as pd
+        from astropy.stats import sigma_clipped_stats
+
         fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
         gs = fig.add_gridspec(1, 1)
         toprow = fig.add_subplot(gs[0:1, :])
@@ -544,7 +605,7 @@ class horne_extraction(object):
         toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
         toprow.set_title(
-            f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
+            f"Optimally Extracted Order-Merged Object Spectrum ({self.arm.upper()})", fontsize=11)
 
         # for order in extractedOrdersDF['order'].unique():
         #     # LIMIT DATAFRAME TO JUST THIS ORDER
@@ -556,20 +617,15 @@ class horne_extraction(object):
         plt.ylim(-200, median + 20 * std)
         plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
 
-        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
+        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}.pdf")
         filePath = f"{self.qcDir}/{filename}"
-        # plt.tight_layout()
-        # plt.show()
         plt.savefig(filePath, dpi='figure')
-
-        # plt.show()
-        # self.log.debug('completed the ``merge_extracted_orders`` method')
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
         self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": "soxs-stare",
-            "product_label": "EXTRACTED_MERGED_QC_PLOT",
+            "product_label": f"EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}",
             "file_name": filename,
             "file_type": "PDF",
             "obs_date_utc": self.dateObs,
@@ -579,7 +635,8 @@ class horne_extraction(object):
             "label": "QC"
         }).to_frame().T], ignore_index=True)
 
-        return merged_orders
+        self.log.debug('completed the ``plot_merged_spectrum_qc`` method')
+        return None
 
     # use the tab-trigger below for new method
     # xt-class-method

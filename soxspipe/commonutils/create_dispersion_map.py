@@ -492,8 +492,8 @@ class create_dispersion_map(object):
                 # orderPixelTable["detector_x"] -= 4.0
                 # orderPixelTable["detector_y"] -= 4.0
             else:
-                orderPixelTable["detector_x"] -= 52
-                # orderPixelTable["detector_y"] -= 4.0
+                orderPixelTable["detector_x"] -= 56
+                orderPixelTable["detector_y"] -= 6.0
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -601,7 +601,7 @@ class create_dispersion_map(object):
         try:
             # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
             daofind = DAOStarFinder(
-                fwhm=3., threshold=2.0 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False)
+                fwhm=3., threshold=10.0 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
             sources = daofind(stamp.data, mask=stamp.mask)
@@ -1800,17 +1800,17 @@ class create_dispersion_map(object):
             alphaBoost = 1.7
 
         if isinstance(missingLines, pd.core.frame.DataFrame):
-            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='black', s=1, alpha=0.5 * alphaBoost, linewidths=0.5, label="undetected line location")
+            toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='black', s=5, alpha=0.5 * alphaBoost, linewidths=0.5, label="undetected line location")
         if len(allClippedLines.index):
             mask = (allClippedLines['dropped'] == True)
             if self.firstGuessMap:
-                toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='blue', s=1, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped multi-pinhole set")
+                toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='blue', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped multi-pinhole set")
             else:
-                toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='blue', s=1, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped pinhole")
-            toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.3 * alphaBoost, linewidths=0.5 * alphaBoost, )
-            toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"observed_{self.axisA}"], marker='x', c='red', s=1, alpha=0.3 * alphaBoost, linewidths=0.5, label="clipped during dispersion solution fitting")
+                toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='blue', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped pinhole")
+            toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.3 * alphaBoost, linewidths=0.5 * alphaBoost, )
+            toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="clipped during dispersion solution fitting")
         if len(orderPixelTable.index):
-            toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=1, alpha=0.3 * alphaBoost, linewidths=0.5 * alphaBoost, label="detected line location")
+            toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.3 * alphaBoost, linewidths=0.5 * alphaBoost, label="detected line location")
 
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
@@ -1905,7 +1905,7 @@ class create_dispersion_map(object):
         }).to_frame().T], ignore_index=True)
 
         plt.tight_layout()
-        # plt.show()
+        plt.show()
         plt.savefig(filePath, dpi=720)
         plt.close()
 

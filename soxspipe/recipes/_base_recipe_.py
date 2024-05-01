@@ -162,6 +162,9 @@ class _base_recipe_(object):
             settings=self.settings
         ).get
 
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.productDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}/"
+
         return None
 
     def _prepare_single_frame(
@@ -480,7 +483,7 @@ class _base_recipe_(object):
         **Return:**
             - None
 
-        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
+        If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug('starting the ``_verify_input_frames_basics`` method')
 

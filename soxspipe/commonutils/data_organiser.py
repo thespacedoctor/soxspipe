@@ -853,8 +853,12 @@ class data_organiser(object):
         mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE"]))
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
-        rawPinholeFrames = pd.read_sql(
-            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE")', con=conn)
+        if self.instrument.upper() == "SOXS":
+            rawPinholeFrames = pd.read_sql(
+                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE") and ("eso seq arm" = "NIR" or ("lamp" not in ("Xe", "Ar", "Hg", "Ne", "ArNeHgXe" )))', con=conn)
+        else:
+            rawPinholeFrames = pd.read_sql(
+                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE")', con=conn)
         rawPinholeFrames.fillna("--", inplace=True)
         rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
@@ -876,6 +880,8 @@ class data_organiser(object):
         for o in self.reductionOrder:
             rawGroups = rawGroups.apply(self.generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
             rawGroups = rawGroups.apply(self.populate_products_table, axis=1, reductionOrder=o)
+
+        # xpd-update-filter-dataframe-column-values
 
         # SEND TO DATABASE
         c = self.conn.cursor()

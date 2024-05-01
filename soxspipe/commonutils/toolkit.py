@@ -1010,6 +1010,8 @@ def predict_product_path(
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_SKYSUB"
+    if "_NOD_" in sofName:
+        sofName += "_EXTRACTED_MERGED"
     productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
     if "spatial" not in productPath:
         productPath = productPath.replace("spat", "spatial")
