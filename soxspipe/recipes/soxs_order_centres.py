@@ -264,7 +264,7 @@ class soxs_order_centres(_base_recipe_):
             binx=binx,
             biny=biny
         )
-        productPath, qcTable, productsTable = detector.get()
+        productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
 
         self.products = pd.concat([self.products, productsTable])
         self.qc = pd.concat([self.qc, qcTable])
