@@ -28,15 +28,15 @@ soxs-mdark:
 soxs-disp-solution:
     uvb:
         pixel-window-size: 10
-        order-deg: 5
-        wavelength-deg: 4
+        order-deg: 3
+        wavelength-deg: 3
         # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
         poly-clipping-iteration-limit: 10
         poly-fitting-residual-clipping-sigma: 4
     vis:
         pixel-window-size: 10
-        order-deg: 4
-        wavelength-deg: 5
+        order-deg: 3
+        wavelength-deg: 3
         # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
         poly-clipping-iteration-limit: 10
         poly-fitting-residual-clipping-sigma: 4
