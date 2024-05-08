@@ -97,7 +97,7 @@ def main(arguments=None):
         docString=__doc__,
         logLevel="WARNING",
         options_first=False,
-        projectName=False,
+        projectName="soxspipe",
         defaultSettingsFile=False
     )
     arguments, settings, log, dbConn = su.setup()
