@@ -33,6 +33,7 @@ class soxs_disp_solution(_base_recipe_):
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
         - ``verbose`` -- verbose. True or False. Default *False*
         - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+        - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*. 
 
     **Usage**
 
@@ -60,7 +61,8 @@ class soxs_disp_solution(_base_recipe_):
             settings=False,
             inputFrames=[],
             verbose=False,
-            overwrite=False
+            overwrite=False,
+            polyOrders=False
 
     ):
         # INHERIT INITIALISATION FROM  _base_recipe_
@@ -72,6 +74,15 @@ class soxs_disp_solution(_base_recipe_):
         self.inputFrames = inputFrames
         self.verbose = verbose
         self.recipeName = "soxs-disp-solution"
+        self.polyOrders = polyOrders
+
+        if self.polyOrders:
+            try:
+                self.polyOrders = int(self.polyOrders)
+            except:
+                pass
+            if not isinstance(self.polyOrders, int):
+                raise TypeError("THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER")
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
@@ -247,6 +258,12 @@ class soxs_disp_solution(_base_recipe_):
                 product=False
             )
             self.log.print(f"\nCalibrated single pinhole frame: {filePath}\n")
+
+        if self.polyOrders:
+            self.polyOrders = str(self.polyOrders)
+            self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+            self.recipeSettings["order-deg"] = self.polyOrders[:2]
+            self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
 
         productPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
             log=self.log,

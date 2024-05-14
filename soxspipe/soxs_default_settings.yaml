@@ -26,22 +26,17 @@ soxs-mdark:
     clipping-iteration-count: 5
 
 soxs-disp-solution:
-    uvb:
-        pixel-window-size: 10
-        order-deg: 3
-        wavelength-deg: 3
-        # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
-        poly-clipping-iteration-limit: 10
-        poly-fitting-residual-clipping-sigma: 4
     vis:
         pixel-window-size: 10
-        order-deg: 3
-        wavelength-deg: 3
+        pinhole-detection-thres-sigma: 5
+        order-deg: [3,3]
+        wavelength-deg: [4,4]
         # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
         poly-clipping-iteration-limit: 10
-        poly-fitting-residual-clipping-sigma: 4
+        poly-fitting-residual-clipping-sigma: 5
     nir:
         pixel-window-size: 10
+        pinhole-detection-thres-sigma: 5
         order-deg: 3
         wavelength-deg: 3
         # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
@@ -182,6 +177,7 @@ soxs-spatial-solution:
     subtract_background: True
     uvb:
         pixel-window-size: 10
+        pinhole-detection-thres-sigma: 5
         order-deg: [4,4]
         wavelength-deg: [3,5]
         slit-deg: [2,2]
@@ -195,6 +191,7 @@ soxs-spatial-solution:
         mph_line_set_min: 9
     vis:
         pixel-window-size: 10
+        pinhole-detection-thres-sigma: 5
         order-deg: [4,4]
         wavelength-deg: [5,6]
         slit-deg: [2,2]
@@ -208,6 +205,7 @@ soxs-spatial-solution:
         mph_line_set_min: 9
     nir:
         pixel-window-size: 10
+        pinhole-detection-thres-sigma: 5
         order-deg: [4,4]
         wavelength-deg: [5,5]
         slit-deg: [2,2]
