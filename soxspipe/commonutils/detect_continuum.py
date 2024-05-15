@@ -296,7 +296,7 @@ class _base_detect(object):
                 "qc_name": "XRESMIN",
                 "qc_value": res.min(),
                 "qc_comment": f"[px] Minimum residual in {tag} fit along x-axis",
-                "qc_unit": "pixels",
+                "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
@@ -306,7 +306,7 @@ class _base_detect(object):
                 "qc_name": "XRESMAX",
                 "qc_value": res.max(),
                 "qc_comment": f"[px] Maximum residual in {tag} fit along x-axis",
-                "qc_unit": "pixels",
+                "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
@@ -316,7 +316,7 @@ class _base_detect(object):
                 "qc_name": "XRESRMS",
                 "qc_value": res_std,
                 "qc_comment": f"[px] Std-dev of residual {tag} fit along x-axis",
-                "qc_unit": "pixels",
+                "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
@@ -518,6 +518,7 @@ class detect_continuum(_base_detect):
         self.arm = pinholeFlat.header[self.kw("SEQ_ARM")]
         self.dateObs = pinholeFlat.header[self.kw("DATE_OBS")]
         self.inst = pinholeFlat.header[self.kw("INSTRUME")]
+        self.exptime = pinholeFlat.header[self.kw("EXPTIME")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
@@ -644,7 +645,7 @@ class detect_continuum(_base_detect):
                     axisACol=f"cont_{self.axisA}",
                     axisBCol=f"cont_{self.axisB}",
                     exponentsIncluded=True,
-                    writeQCs=True
+                    writeQCs=False
                 )
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
@@ -757,10 +758,13 @@ class detect_continuum(_base_detect):
 
         orderPixelRanges = []
         for o, amin, amax in zip(orderNums, amins, amaxs):
+            print(o, amin, amax)
             arange = amax - amin
             orderPixelRanges.append(arange)
 
+        print(orderPixelRanges)
         smallestRange = min(orderPixelRanges)
+        print(smallestRange, sampleCount, smallestRange / sampleCount)
         samplePixelSep = int(smallestRange / sampleCount)
 
         # CREATE THE WAVELENGTH/ORDER ARRAYS TO BE CONVERTED TO PIXELS
@@ -926,6 +930,7 @@ class detect_continuum(_base_detect):
         import numpy as np
         import pandas as pd
         import matplotlib.pyplot as plt
+        from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
         arm = self.arm
 
@@ -942,21 +947,25 @@ class detect_continuum(_base_detect):
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
             # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(6, 4)
+            gs = fig.add_gridspec(7, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:5, 0:2])
             bottomright = fig.add_subplot(gs[4:5, 2:])
             fwhmaxis = fig.add_subplot(gs[5:6, :])
+            settingsAx = fig.add_subplot(gs[6:, 2:])
+            qcAx = fig.add_subplot(gs[6:, 0:2])
         else:
-            fig = plt.figure(figsize=(6, 12), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 19), constrained_layout=True)
             # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(7, 4)
+            gs = fig.add_gridspec(10, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
             fwhmaxis = fig.add_subplot(gs[6:7, :])
+            settingsAx = fig.add_subplot(gs[7:, 2:])
+            qcAx = fig.add_subplot(gs[7:, 0:2])
 
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
@@ -1124,6 +1133,8 @@ class detect_continuum(_base_detect):
         fwhmaxis.set_ylabel('Cross-dispersion\nFWHM (pixels)', fontsize=10)
 
         fwhmaxis.set_ylim(orderPixelTable['stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['stddev_fit'].max() * stdToFwhm * 1.2)
+
+        qc_settings_plot_tables(log=self.log, qc=self.qc, qcAx=qcAx, settings={**self.recipeSettings, **{"exptime": self.exptime}}, settingsAx=settingsAx)
 
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))

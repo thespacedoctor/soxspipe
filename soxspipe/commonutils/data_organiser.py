@@ -998,7 +998,9 @@ class data_organiser(object):
                 sofName.append(series["lamp"])
         if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and ("FLAT" in series["eso dpr type"].upper() or "DARK" in series["eso dpr type"].upper()))):
             matchDict['exptime'] = float(series["exptime"])
-            sofName.append(str(series["exptime"]).replace(".", "pt"))
+            sofName.append(str(series["exptime"]) + "S")
+        elif series["exptime"] and "BIAS" not in series["eso dpr type"].upper():
+            sofName.append(str(series["exptime"]) + "S")
 
         if series["eso obs name"] != "--":
             matchDict["eso obs name"] = series["eso obs name"]
@@ -1783,6 +1785,13 @@ class data_organiser(object):
         self.sessionDB = self.sessionPath + "/soxspipe.db"
         self.conn = sql.connect(
             self.sessionDB)
+
+        # SELECT INSTR
+        c = self.conn.cursor()
+        sqlQuery = "select instrume from raw_frames where instrume is not null limit 1"
+        c.execute(sqlQuery)
+        self.instrument = c.fetchall()[0][0]
+        c.close()
 
         # CLEAN UP FAILED FILES
         c = self.conn.cursor()

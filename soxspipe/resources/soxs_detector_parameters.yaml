@@ -23,7 +23,7 @@ VIS:
     2x2: BP_MAP_RP_VIS_2x2.fits
   predicted pinhole lines:
     single:
-      1x1: SOXS_ThAr_SING_VIS_1x1.fits
+      1x1: SOXS_SPH_TAB_VIS_ThAr_1x1.fits
       1x2: SOXS_ThAr_SING_VIS_1x2.fits
       2x2: SOXS_ThAr_SING_VIS_2x2.fits
     multi:

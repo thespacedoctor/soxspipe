@@ -98,6 +98,7 @@ class create_dispersion_map(object):
         self.arm = pinholeFrame.header[kw("SEQ_ARM")]
         self.dateObs = pinholeFrame.header[kw("DATE_OBS")]
         self.inst = pinholeFrame.header[kw("INSTRUME")]
+        self.exptime = pinholeFrame.header[kw("EXPTIME")]
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -229,8 +230,12 @@ class create_dispersion_map(object):
                     uniqueorders = orderPixelTable['order'].unique()
                     for o in uniqueorders:
                         mask = (orderPixelTable['order'] == o)
+
                         meanx, medianx, stdx = sigma_clipped_stats(orderPixelTable.loc[mask]['x_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
                         meany, mediany, stdy = sigma_clipped_stats(orderPixelTable.loc[mask]['y_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
+                        if np.isnan(medianx) or np.isnan(mediany):
+                            raise Exception("Could not find any arc lines in order {o} and therefore could not compute a dispersion solution.")
+
                         orderPixelTable.loc[mask, 'detector_x_shifted'] = orderPixelTable.loc[mask]['detector_x_shifted'] - medianx
                         orderPixelTable.loc[mask, 'detector_y_shifted'] = orderPixelTable.loc[mask]['detector_y_shifted'] - mediany
                         orderPixelTable.loc[mask, 'xy_diff'] = np.sqrt(np.square(orderPixelTable.loc[mask]["x_diff"]) + np.square(orderPixelTable.loc[mask]["y_diff"]))
@@ -297,6 +302,17 @@ class create_dispersion_map(object):
                 tag = "single"
             else:
                 tag = "multi"
+
+            self.qc = pd.concat([self.qc, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "TLINE",
+                "qc_value": totalLines,
+                "qc_comment": f"Total number of line in {tag} line-list",
+                "qc_unit": "lines",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }).to_frame().T], ignore_index=True)
 
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
@@ -385,6 +401,17 @@ class create_dispersion_map(object):
         clippedLinesTable['sigma_clipped'] = True
         clippedLinesTable['R'] = np.nan
         clippedLinesTable['pixelScaleNm'] = np.nan
+
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "CLINE",
+            "qc_value": len(clippedLinesTable.index),
+            "qc_comment": f"Total number of detected lines clipped during solution fitting",
+            "qc_unit": "lines",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
 
         if len(clippedLinesTable.index):
             goodAndClippedLines = pd.concat([clippedLinesTable[keepColumns], goodLinesTable[keepColumns]], ignore_index=True)
@@ -1787,6 +1814,7 @@ class create_dispersion_map(object):
         from astropy.visualization import hist
         import matplotlib.pyplot as plt
         import pandas as pd
+        from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
         arm = self.arm
         kw = self.kw
@@ -1834,19 +1862,23 @@ class create_dispersion_map(object):
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
             fig = plt.figure(figsize=(6, 16.5), constrained_layout=True)
             # CREATE THE GRID OF AXES
-            gs = fig.add_gridspec(5, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:, 0:2])
-            bottomright = fig.add_subplot(gs[4:, 2:])
-        else:
-            fig = plt.figure(figsize=(6, 11), constrained_layout=True)
-            # CREATE THE GRID OF AXES
             gs = fig.add_gridspec(6, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:, 0:2])
-            bottomright = fig.add_subplot(gs[4:, 2:])
+            bottomleft = fig.add_subplot(gs[4:6, 0:2])
+            bottomright = fig.add_subplot(gs[4:6, 2:])
+            settingsAx = fig.add_subplot(gs[6:, 2:])
+            qcAx = fig.add_subplot(gs[6:, 0:2])
+        else:
+            fig = plt.figure(figsize=(6, 12), constrained_layout=True)
+            # CREATE THE GRID OF AXES
+            gs = fig.add_gridspec(7, 4)
+            toprow = fig.add_subplot(gs[0:2, :])
+            midrow = fig.add_subplot(gs[2:4, :])
+            bottomleft = fig.add_subplot(gs[4:6, 0:2])
+            bottomright = fig.add_subplot(gs[4:6, 2:])
+            settingsAx = fig.add_subplot(gs[6:, 2:])
+            qcAx = fig.add_subplot(gs[6:, 0:2])
 
         std = self.std
         mean = self.mean
@@ -1973,6 +2005,8 @@ class create_dispersion_map(object):
             "file_path": filePath,
             "label": "QC"
         }).to_frame().T], ignore_index=True)
+
+        qc_settings_plot_tables(log=self.log, qc=self.qc, qcAx=qcAx, settings={**self.recipeSettings, **{"exptime": self.exptime}}, settingsAx=settingsAx)
 
         plt.tight_layout()
         # plt.show()

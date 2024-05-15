@@ -769,6 +769,10 @@ def read_spectral_format(
     dat = Table.read(spectralFormatFile, format='fits')
     specFormatTable = dat.to_pandas()
 
+    print(spectralFormatFile)
+    from tabulate import tabulate
+    print(tabulate(specFormatTable, headers='keys', tablefmt='psql'))
+
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
     if extended:
@@ -806,12 +810,12 @@ def read_spectral_format(
             header = hdul[0].header
 
         orderPixelRanges = []
-        if kw("INSTRUME") in header and header[kw("INSTRUME")] == "SOXS":
-            axis = "x"
-            rowCol = "columns"
-        else:
+        if dp["dispersion-axis"] == "x":
             axis = "y"
             rowCol = "rows"
+        else:
+            axis = "x"
+            rowCol = "columns"
 
         amins = []
         amaxs = []
@@ -1217,5 +1221,87 @@ def get_calibration_lamp(
     log.debug('completed the ``read_calibration_lamp`` function')
     return lamp
 
-# use the tab-trigger below for new function
-# xt-def-function
+
+def qc_settings_plot_tables(
+        log,
+        qc,
+        qcAx,
+        settings,
+        settingsAx):
+    """*generate a QC ans settings table to be placed at the bottom of the QC plots*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `qc` -- date frame of collected QCs
+    - `qcAx` -- the axis to add the QC table to
+    - `settings` -- settings to report in settings table
+    - `settingsAx` -- the axis to add the settings table to
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import qc_settings_plot_tables
+    qc_settings_plot_tables(log=log,qc=self.qc,qcAx=qcAx, settings=settings,settingsAx=settingsAx)
+    ```           
+    """
+    log.debug('starting the ``qc_settings_plot_tables`` function')
+
+    import matplotlib as plt
+    import numpy as np
+    import pandas as pd
+
+    tables = []
+    cols = []
+
+    qcCopy = qc.copy()
+    qcCopy["value"] = qcCopy["qc_value"].astype(str) + " " + qcCopy["qc_unit"]
+    qcCopy.loc[qcCopy['value'].isnull(), "value"] = qcCopy.loc[qcCopy['value'].isnull(), "qc_value"]
+
+    columns1 = ["value", "qc_comment"]
+    colColours = plt.cm.Greys(np.full(len(columns1), 0.1))
+    rowColours = plt.cm.Greys(np.full(len(qcCopy.index), 0.1))
+    rowLabels = qcCopy["qc_name"].values
+
+    if len(qcCopy[columns1].values):
+        qcTable = qcAx.table(cellText=qcCopy[columns1].values, colLabels=columns1, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
+        tables.append(qcTable)
+        cols.append(columns)
+    # qcAx.set_title(
+    #     "QC Table", fontsize=9)
+
+    settingsCopy = {k: v for k, v in settings.items() if k not in ['nir', 'vis', 'uvb']}
+
+    settingsCopy = {"setting": settingsCopy.keys(), "value": settingsCopy.values()}
+
+    settingsDF = pd.DataFrame(settingsCopy)
+
+    columns2 = ["value"]
+    colColours = plt.cm.Greys(np.full(len(columns2), 0.1))
+    rowColours = plt.cm.Greys(np.full(len(settingsDF.index), 0.1))
+    rowLabels = settingsDF["setting"].values
+    settingsTable = settingsAx.table(cellText=settingsDF[columns2].values, colLabels=columns2, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
+    tables.append(settingsTable)
+    cols.append(columns2)
+    # settingsAx.set_title(
+    #     "Parameters", fontsize=9, loc='left')
+    settingsAx.margins(x=0, y=0)
+
+    for t, c in zip(tables, cols):
+        t.scale(1, 1.5)
+        t.auto_set_font_size(False)
+        t.set_fontsize(4)
+        table_cells = t.properties()['children']
+        for cell in table_cells:
+            cell.set_linewidth(0.3)
+        t.auto_set_column_width(list(range(len(c))))
+
+    for a in [qcAx, settingsAx]:
+
+        # Hide axes
+        a.get_xaxis().set_visible(False)
+        a.get_yaxis().set_visible(False)
+        a.axis('off')
+
+    log.debug('completed the ``qc_settings_plot_tables`` function')
+    return None
