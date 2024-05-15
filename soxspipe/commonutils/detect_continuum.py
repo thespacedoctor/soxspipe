@@ -98,7 +98,7 @@ class _base_detect(object):
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelListFiltered, ydata=pixelListFiltered[axisACol].values, p0=coeff)
+                    poly, xdata=pixelListFiltered, ydata=pixelListFiltered[axisACol].values, p0=coeff, maxfev=30000)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 pixelList = pixelList.loc[~mask]
@@ -166,10 +166,16 @@ class _base_detect(object):
 
         poly = chebyshev_order_xy_polynomials(log=self.log, axisBCol=axisBCol, orderCol=orderCol, orderDeg=self.orderDeg, axisBDeg=self.axisBDeg, axisB=self.axisB, exponentsIncluded=exponentsIncluded).poly
 
-        clippingSigma = self.recipeSettings[
+        clippingSigmaHigh = self.recipeSettings[
             "poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.recipeSettings[
             "poly-clipping-iteration-limit"]
+
+        if axisACol == "stddev":
+            clippingSigmaLow = 12
+            clippingSigmaHigh = clippingSigmaLow * 2
+        else:
+            clippingSigmaLow = clippingSigmaHigh
 
         iteration = 0
 
@@ -187,7 +193,7 @@ class _base_detect(object):
 
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff)
+                    poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff, maxfev=30000)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 coeff = None
@@ -207,7 +213,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=1, cenfunc='median', stdfunc='mad_std')
             pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -294,7 +300,7 @@ class _base_detect(object):
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMIN",
-                "qc_value": res.min(),
+                "qc_value": f"{res.min():0.2f}",
                 "qc_comment": f"[px] Minimum residual in {tag} fit along x-axis",
                 "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
@@ -304,7 +310,7 @@ class _base_detect(object):
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESMAX",
-                "qc_value": res.max(),
+                "qc_value": f"{res.max():0.2f}",
                 "qc_comment": f"[px] Maximum residual in {tag} fit along x-axis",
                 "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
@@ -314,7 +320,7 @@ class _base_detect(object):
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": "XRESRMS",
-                "qc_value": res_std,
+                "qc_value": f"{res_std:0.2f}",
                 "qc_comment": f"[px] Std-dev of residual {tag} fit along x-axis",
                 "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
@@ -633,6 +639,7 @@ class detect_continuum(_base_detect):
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         fitFound = False
         tryCount = 0
+        backupOrderPixelTable = orderPixelTable.copy()
         while not fitFound and tryCount < 5:
             # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
             for i in range(0, self.axisBDeg + 1):
@@ -640,17 +647,19 @@ class detect_continuum(_base_detect):
             for i in range(0, self.orderDeg + 1):
                 orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
             try:
+
                 coeff, orderPixelTable, clippedDataCentre = self.fit_global_polynomial(
                     pixelList=orderPixelTable,
                     axisACol=f"cont_{self.axisA}",
                     axisBCol=f"cont_{self.axisB}",
                     exponentsIncluded=True,
-                    writeQCs=False
+                    writeQCs=True
                 )
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
                 if mean_res > 1:
                     # BAD FIT ... FORCE A FAIL
+                    orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
 
                 n_coeff = 0
@@ -667,6 +676,9 @@ class detect_continuum(_base_detect):
                     exponentsIncluded=True
                 )
                 fitFound = True
+
+                clippedData = pd.concat([clippedDataCentre, clippedData], ignore_index=True)
+
             except Exception as e:
                 degList = [self.axisBDeg, self.orderDeg]
                 degList[degList.index(max(degList))] -= 1
@@ -678,6 +690,7 @@ class detect_continuum(_base_detect):
                 if tryCount == 5:
                     self.log.print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
+                raise e
 
         # orderLocations[o] = coeff
         coeff_dict["degorder_std"] = self.orderDeg
@@ -697,7 +710,7 @@ class detect_continuum(_base_detect):
         plotPath, orderMetaTable = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
-            clippedData=clippedDataCentre
+            clippedData=clippedData
         )
 
         utcnow = datetime.utcnow()
@@ -758,13 +771,10 @@ class detect_continuum(_base_detect):
 
         orderPixelRanges = []
         for o, amin, amax in zip(orderNums, amins, amaxs):
-            print(o, amin, amax)
             arange = amax - amin
             orderPixelRanges.append(arange)
 
-        print(orderPixelRanges)
         smallestRange = min(orderPixelRanges)
-        print(smallestRange, sampleCount, smallestRange / sampleCount)
         samplePixelSep = int(smallestRange / sampleCount)
 
         # CREATE THE WAVELENGTH/ORDER ARRAYS TO BE CONVERTED TO PIXELS
@@ -1134,6 +1144,8 @@ class detect_continuum(_base_detect):
 
         fwhmaxis.set_ylim(orderPixelTable['stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['stddev_fit'].max() * stdToFwhm * 1.2)
 
+        # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
+        self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
         qc_settings_plot_tables(log=self.log, qc=self.qc, qcAx=qcAx, settings={**self.recipeSettings, **{"exptime": self.exptime}}, settingsAx=settingsAx)
 
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
@@ -1148,6 +1160,10 @@ class detect_continuum(_base_detect):
         else:
             fig.suptitle(f"{arm} object trace locations\n{subtitle}", fontsize=12)
 
+        polyOrders = [self.orderDeg, self.axisBDeg]
+        polyOrders[:] = [str(l) for l in polyOrders]
+        polyOrders = "".join(polyOrders)
+
         # plt.show()
         if not self.sofName:
             filename = filenamer(
@@ -1157,11 +1173,11 @@ class detect_continuum(_base_detect):
             )
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
         elif "order" in self.recipeName.lower():
-            filename = self.sofName + "_residuals.pdf"
+            filename = self.sofName + f"_residuals_{polyOrders}.pdf"
         elif "nod" in self.recipeName.lower():
-            filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + ".pdf"
+            filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + f"_{polyOrders}.pdf"
         else:
-            filename = self.sofName + "_OBJECT_TRACE_residuals.pdf"
+            filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()

@@ -769,10 +769,6 @@ def read_spectral_format(
     dat = Table.read(spectralFormatFile, format='fits')
     specFormatTable = dat.to_pandas()
 
-    print(spectralFormatFile)
-    from tabulate import tabulate
-    print(tabulate(specFormatTable, headers='keys', tablefmt='psql'))
-
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
     if extended:
@@ -1266,7 +1262,7 @@ def qc_settings_plot_tables(
     if len(qcCopy[columns1].values):
         qcTable = qcAx.table(cellText=qcCopy[columns1].values, colLabels=columns1, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
         tables.append(qcTable)
-        cols.append(columns)
+        cols.append(columns1)
     # qcAx.set_title(
     #     "QC Table", fontsize=9)
 

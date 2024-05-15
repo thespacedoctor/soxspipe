@@ -79,7 +79,7 @@ class soxs_order_centres(_base_recipe_):
             except:
                 pass
             if not isinstance(self.polyOrders, int):
-                raise TypeError("THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER")
+                raise TypeError("THE poly VALUE NEEDS TO BE A 2 DIGIT INTEGER")
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
@@ -263,8 +263,8 @@ class soxs_order_centres(_base_recipe_):
         if self.polyOrders:
             self.polyOrders = str(self.polyOrders)
             self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
-            self.recipeSettings["order-deg"] = self.polyOrders[:2]
-            self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
+            self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
+            self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
 
         # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
         # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
