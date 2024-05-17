@@ -996,6 +996,13 @@ class data_organiser(object):
             if series["lamp"] != "--":
                 matchDict['lamp'] = series["lamp"]
                 sofName.append(series["lamp"])
+
+        if series["instrume"] == "SOXS":
+            if True and ("FLAT" in series["eso dpr type"].upper()):
+                if series["lamp"] != "--":
+                    matchDict['lamp'] = series["lamp"]
+                    sofName.append(series["lamp"])
+                sofName.append(series["slit"])
         if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and ("FLAT" in series["eso dpr type"].upper() or "DARK" in series["eso dpr type"].upper()))):
             matchDict['exptime'] = float(series["exptime"])
             sofName.append(str(series["exptime"]) + "S")

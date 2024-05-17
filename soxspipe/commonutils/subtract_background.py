@@ -78,6 +78,8 @@ class subtract_background(object):
         self.products = productsTable
         self.lamp = lamp
 
+        from soxspipe.commonutils import detector_lookup
+
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
         self.kw = keyword_lookup(
@@ -90,13 +92,19 @@ class subtract_background(object):
 
         self.inst = frame.header[kw("INSTRUME")]
 
+        # DETECTOR PARAMETERS LOOKUP OBJECT
+        self.detectorParams = detector_lookup(
+            log=log,
+            settings=settings
+        ).get(self.arm)
+
         # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
-            self.axisA = "y"
-            self.axisB = "x"
-        elif self.inst == "XSHOOTER":
+        if self.detectorParams["dispersion-axis"] == "x":
             self.axisA = "x"
             self.axisB = "y"
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
 
         quicklook_image(
             log=self.log, CCDObject=self.frame, show=False, ext='data', stdWindow=3, surfacePlot=True, title="Initial input frame needing scattered light subtraction")

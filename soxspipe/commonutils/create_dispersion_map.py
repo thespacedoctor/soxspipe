@@ -100,6 +100,9 @@ class create_dispersion_map(object):
         self.inst = pinholeFrame.header[kw("INSTRUME")]
         self.exptime = pinholeFrame.header[kw("EXPTIME")]
 
+        if self.exptime < 100:
+            raise Exception("to low")
+
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
             self.recipeName = "soxs-spatial-solution"
@@ -367,6 +370,13 @@ class create_dispersion_map(object):
                         degList = [wavelengthDeg[1], orderDeg[1], slitDeg[1]]
                         degList[degList.index(max(degList))] -= 1
                         wavelengthDeg[1], orderDeg[1], slitDeg[1] = degList
+
+                    self.recipeSettings["order-deg"] = orderDeg
+                    self.recipeSettings["wavelength-deg"] = wavelengthDeg
+
+                    # WHICH RECIPE ARE WE WORKING WITH?
+                    if self.firstGuessMap:
+                        self.recipeSettings["slit-deg"] = slitDeg
 
                     self.log.print(f"Wavelength, Order and Slit fitting orders reduced to {wavelengthDeg}, {orderDeg}, {slitDeg} to try and achieve a dispersion solution.")
                     tryCount += 1

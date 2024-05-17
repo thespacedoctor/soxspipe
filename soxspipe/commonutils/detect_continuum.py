@@ -227,7 +227,8 @@ class _base_detect(object):
                 sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
-        allClipped = pd.concat(allClipped, ignore_index=True)
+        if len(allClipped):
+            allClipped = pd.concat(allClipped, ignore_index=True)
 
         res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
             orderPixelTable=pixelList,
@@ -396,7 +397,7 @@ class _base_detect(object):
         elif "stare" in self.recipeName.lower():
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
         elif "nod" in self.recipeName.lower():
-            #sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
+            # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE" + self.noddingSequence + ".fits"
 
         if self.lampTag:
@@ -453,7 +454,7 @@ class detect_continuum(_base_detect):
         - ``settings`` -- the settings dictionary
         - ``recipeSettings`` -- the recipe specific settings
         - ``recipeName`` -- the recipe name as given in the settings dictionary
-        - ``qcTable`` -- the data frame to collect measured QC metrics 
+        - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
         - ``sofName`` ---- name of the originating SOF file
         - ``binx`` -- binning in x-axis
@@ -525,6 +526,9 @@ class detect_continuum(_base_detect):
         self.dateObs = pinholeFlat.header[self.kw("DATE_OBS")]
         self.inst = pinholeFlat.header[self.kw("INSTRUME")]
         self.exptime = pinholeFlat.header[self.kw("EXPTIME")]
+
+        if self.exptime < 29:
+            raise Exception("too low")
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
@@ -625,6 +629,42 @@ class detect_continuum(_base_detect):
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
 
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "TSAMP",
+            "qc_value": allLines,
+            "qc_comment": "Total number of samples along orders",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "NSAMP",
+            "qc_value": foundLines,
+            "qc_comment": "Number of samples where a continuum is detected",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "PSAMP",
+            "qc_value": f"{percent/100:0.3f}",
+            "qc_comment": "Proportion of samples where a continuum is detected",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
         self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
 
         self.log.print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
@@ -675,9 +715,12 @@ class detect_continuum(_base_detect):
                     axisBCol=f"cont_{self.axisB}",
                     exponentsIncluded=True
                 )
-                fitFound = True
 
-                clippedData = pd.concat([clippedDataCentre, clippedData], ignore_index=True)
+                if len(clippedData) and len(clippedData.index):
+                    clippedData = pd.concat([clippedDataCentre, clippedData], ignore_index=True)
+                else:
+                    clippedData = clippedDataCentre
+                fitFound = True
 
             except Exception as e:
                 degList = [self.axisBDeg, self.orderDeg]
@@ -686,11 +729,28 @@ class detect_continuum(_base_detect):
                 coeff_dict["degorder_cent"] = self.orderDeg
                 coeff_dict[f"deg{self.axisB}_cent"] = self.axisBDeg
                 self.log.print(f"{self.axisB} and Order fitting orders reduced to {self.axisBDeg}, {self.orderDeg} to try and successfully fit the continuum.")
+                self.recipeSettings["disp-axis-deg"] = self.axisBDeg
+                self.recipeSettings["order-deg"] = self.orderDeg
                 tryCount += 1
                 if tryCount == 5:
                     self.log.print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
                 raise e
+
+        try:
+            CSAMP = len(clippedData.index)
+        except:
+            CSAMP = 0
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "CSAMP",
+            "qc_value": CSAMP,
+            "qc_comment": "Number of continuum sample clipped during solution fitting",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
 
         # orderLocations[o] = coeff
         coeff_dict["degorder_std"] = self.orderDeg

@@ -104,7 +104,7 @@ def cut_image_slice(
         else:
             slice = ma.median(sliceFull, axis=0)
 
-    if plot and random.randint(1, 101) < 10000:
+    if False and random.randint(1, 101) < 10000:
         import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
@@ -623,6 +623,7 @@ def spectroscopic_image_quality_checks(
     import numpy.ma as ma
     import numpy as np
     import pandas as pd
+    from soxspipe.commonutils import detector_lookup
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -643,12 +644,19 @@ def spectroscopic_image_quality_checks(
             biny = 1
 
     inst = frame.header[kw("INSTRUME")]
-    if inst == "SOXS":
-        axisA = "y"
-        axisB = "x"
-    elif inst == "XSHOOTER":
+
+    # DETECTOR PARAMETERS LOOKUP OBJECT
+    detectorParams = detector_lookup(
+        log=log,
+        settings=settings
+    ).get(arm)
+
+    if detectorParams["dispersion-axis"] == "x":
         axisA = "x"
         axisB = "y"
+    else:
+        axisA = "y"
+        axisB = "x"
 
     # UNPACK THE ORDER TABLE
     orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
@@ -885,7 +893,7 @@ def twoD_disp_map_image_to_dataframe(
     ```python
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
     mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, kw=kw)
-    ```           
+    ```
     """
     log.debug('starting the ``twoD_disp_map_image_to_dataframe`` function')
 
@@ -985,7 +993,7 @@ def predict_product_path(
     ```python
     from soxspipe.commonutils import toolkit
     productPath = toolkit.predict_product_path(sofFilePath)
-    ```           
+    ```
     """
     try:
         sofName = os.path.basename(sofName)
@@ -1116,7 +1124,7 @@ def create_dispersion_solution_grid_lines_for_plot(
     for l in range(int(gridLinePixelTable['line'].max())):
         mask = (gridLinePixelTable['line'] == l)
         ax.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
-    ```           
+    ```
     """
     log.debug('starting the ``create_dispersion_solution_grid_lines_for_plot`` function')
 
@@ -1202,7 +1210,7 @@ def get_calibration_lamp(
     ```python
     from soxspipe.commonutils.toolkit import get_calibration_lamp
     lamp = get_calibration_lamp(log=log, frame=frame, kw=kw)
-    ```           
+    ```
     """
     log.debug('starting the ``read_calibration_lamp`` function')
 
@@ -1239,7 +1247,7 @@ def qc_settings_plot_tables(
     ```python
     from soxspipe.commonutils.toolkit import qc_settings_plot_tables
     qc_settings_plot_tables(log=log,qc=self.qc,qcAx=qcAx, settings=settings,settingsAx=settingsAx)
-    ```           
+    ```
     """
     log.debug('starting the ``qc_settings_plot_tables`` function')
 

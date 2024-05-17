@@ -508,14 +508,6 @@ class _base_recipe_(object):
             inst.remove(None)
         self.inst = inst[0]
 
-        # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
-            self.axisA = "y"
-            self.axisB = "x"
-        elif self.inst == "XSHOOTER":
-            self.axisA = "x"
-            self.axisB = "y"
-
         # MIXED INPUT ARMS ARE BAD
         if None in arm:
             arm.remove(None)
@@ -536,6 +528,14 @@ class _base_recipe_(object):
             log=self.log,
             settings=self.settings
         ).get(self.arm)
+
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
+            self.axisA = "x"
+            self.axisB = "y"
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
 
         # MIXED BINNING IS BAD
         if self.arm == "NIR":
@@ -1187,6 +1187,10 @@ class _base_recipe_(object):
             # REMOVE COLUMN FROM DATA FRAME
             self.products.drop(columns=['file_path'], inplace=True)
 
+        # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
+        self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
+        # SORT BY COLUMN NAME
+        self.qc.sort_values(['qc_name'], inplace=True)
         columns = list(self.qc.columns)
         columns.remove("to_header")
         columns.remove("obs_date_utc")

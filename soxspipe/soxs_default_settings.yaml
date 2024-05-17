@@ -44,30 +44,12 @@ soxs-disp-solution:
         poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
-    uvb:
-        detect-continuum:
-            # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 70
-            # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 10
-            # WIDTH OF EACH SLICE (PIXELS)
-            slice-width: 5
-            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 1.2
-            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-            disp-axis-deg: 5
-            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-            order-deg: 4
-            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 6
-            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-clipping-iteration-limit: 2
     vis:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 70
+            order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 10
+            slice-length: 20
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -75,9 +57,9 @@ soxs-order-centre:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 4
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-            order-deg: 6
+            order-deg: 3
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 6
+            poly-fitting-residual-clipping-sigma: 10
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 2
     nir:
@@ -105,29 +87,6 @@ soxs-mflat:
     # CLIPPING SETTINGS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    uvb:
-        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
-        centre-order-window: 20
-        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
-        slice-length-for-edge-detection: 90
-        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
-        slice-width-for-edge-detection: 5
-        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
-        min-percentage-threshold-for-edge-detection: 20
-        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
-        max-percentage-threshold-for-edge-detection: 50
-        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
-        disp-axis-deg: 4
-        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
-        order-deg: 6
-        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
-        poly-fitting-residual-clipping-sigma: 10
-        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
-        poly-clipping-iteration-limit: 2
-        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
-        low-sensitivity-clipping-sigma: 2
-        # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
-        scale-d2-to-qth: True
     vis:
         # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
         centre-order-window: 20
@@ -142,7 +101,7 @@ soxs-mflat:
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
         disp-axis-deg: 4
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
-        order-deg: 6
+        order-deg: 3
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
         poly-fitting-residual-clipping-sigma: 10
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
