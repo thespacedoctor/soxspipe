@@ -30,18 +30,21 @@ soxs-disp-solution:
         pixel-window-size: 10
         pinhole-detection-thres-sigma: 5
         order-deg: [3,3]
-        wavelength-deg: [4,4]
-        # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
-        poly-clipping-iteration-limit: 10
-        poly-fitting-residual-clipping-sigma: 5
+        wavelength-deg: [4,5] 
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 7
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 3
     nir:
-        pixel-window-size: 10
+        pixel-window-size: 20
         pinhole-detection-thres-sigma: 5
         order-deg: 3
         wavelength-deg: 3
         # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
-        poly-clipping-iteration-limit: 10
-        poly-fitting-residual-clipping-sigma: 5
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 25
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 1
 
 soxs-order-centre:
     vis:

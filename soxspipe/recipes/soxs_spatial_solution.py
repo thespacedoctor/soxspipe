@@ -270,7 +270,7 @@ class soxs_spatial_solution(_base_recipe_):
 
         # GENERATE AN UPDATED DISPERSION MAP
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
             log=self.log,
             settings=self.settings,
             recipeSettings=self.recipeSettings,

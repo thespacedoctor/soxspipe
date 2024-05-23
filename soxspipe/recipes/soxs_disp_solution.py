@@ -259,21 +259,48 @@ class soxs_disp_solution(_base_recipe_):
             )
             self.log.print(f"\nCalibrated single pinhole frame: {filePath}\n")
 
-        if self.polyOrders:
-            self.polyOrders = str(self.polyOrders)
-            self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
-            self.recipeSettings["order-deg"] = self.polyOrders[:2]
-            self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
+        if self.settings["tune-pipeline"]:
+            from itertools import product
+            digits = [2, 3, 4, 5, 6]
+            perm = product(digits, repeat=4)
+            try:
+                os.remove("residuals.txt")
+            except:
+                pass
 
-        productPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
-            log=self.log,
-            settings=self.settings,
-            recipeSettings=self.recipeSettings,
-            pinholeFrame=self.pinholeFrame,
-            qcTable=self.qc,
-            productsTable=self.products,
-            sofName=self.sofName
-        ).get()
+            lineDetectionTable = False
+            for p in perm:
+
+                self.recipeSettings["order-deg"] = list(p[:2])
+                self.recipeSettings["wavelength-deg"] = list(p[2:4])
+                this = create_dispersion_map(
+                    log=self.log,
+                    settings=self.settings,
+                    recipeSettings=self.recipeSettings,
+                    pinholeFrame=self.pinholeFrame,
+                    qcTable=self.qc,
+                    productsTable=self.products,
+                    sofName=self.sofName,
+                    lineDetectionTable=lineDetectionTable
+                )
+                productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+
+        else:
+            if self.polyOrders:
+                self.polyOrders = str(self.polyOrders)
+                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+                self.recipeSettings["order-deg"] = self.polyOrders[:2]
+                self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
+
+            productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
+                log=self.log,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                pinholeFrame=self.pinholeFrame,
+                qcTable=self.qc,
+                productsTable=self.products,
+                sofName=self.sofName
+            ).get()
 
         filename = os.path.basename(productPath)
 
