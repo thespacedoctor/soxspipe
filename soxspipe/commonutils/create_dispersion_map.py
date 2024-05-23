@@ -106,8 +106,10 @@ class create_dispersion_map(object):
         from soxspipe.commonutils.toolkit import get_calibration_lamp
         self.lamp = get_calibration_lamp(log=self.log, frame=pinholeFrame, kw=kw)
 
-        # if not "xeno" in self.lamp.lower():
-        #     raise Exception("wrong lamp")
+        if not "xeno" in self.lamp.lower():
+            raise Exception("wrong lamp")
+        if self.exptime < 59:
+            raise Exception("too short")
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -179,7 +181,7 @@ class create_dispersion_map(object):
 
         self.uniqueSlitPos = orderPixelTable['slit_position'].unique()
 
-        # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME
+        # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME AASD
         windowSize = self.recipeSettings["pixel-window-size"]
 
         # MASK THE PINHOLE FRAME

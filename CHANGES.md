@@ -1,6 +1,9 @@
 
 # Release Notes  
 
+adding code to help tune the pipeline
+pipeline is now reducing soxs UVVIS data robustly.
+
 ## v0.10.2 - April 23, 2024
 
 * **ENHANCEMENT:** the calibration lamp name is now added to the sof filenames, and hence the product file names

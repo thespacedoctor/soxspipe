@@ -1011,6 +1011,7 @@ class data_organiser(object):
         sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
+
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
                 mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP"]))
             else:
@@ -1071,7 +1072,10 @@ class data_organiser(object):
                     filteredFrames["obs-delta"] = filteredFrames['mjd-obs'] - series["mjd-obs"]
                     filteredFrames["obs-delta"] = filteredFrames["obs-delta"].abs()
                     filteredFrames.sort_values(['obs-delta'], inplace=True)
-                    filteredFrames = filteredFrames.head(2)
+                    mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+                    offFrame = filteredFrames.loc[mask].head(1)
+                    onFrame = filteredFrames.loc[~mask].head(1)
+                    filteredFrames = pd.concat([onFrame, offFrame], ignore_index=True)
 
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
@@ -1094,7 +1098,8 @@ class data_organiser(object):
                 filteredFrames = Table(filteredFrames)
 
             filteredFrames.sort_values(['date-obs'], inplace=True)
-            firstDate = filteredFrames['date-obs'].values[0].replace("-", ".").replace(":", ".")
+            mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+            firstDate = filteredFrames.loc[~mask]['date-obs'].values[0].replace("-", ".").replace(":", ".")
             sofName.insert(0, firstDate)
 
         # NEED SOME FINAL FILTERING ON UVB FLATS
