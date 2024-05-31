@@ -124,6 +124,9 @@ class detect_order_edges(_base_detect):
             self.log.warning(kw(f"SLIT_{self.arm}".upper()) + " keyword not found")
             self.slit = ""
 
+        if self.exptime < 59 or self.exptime > 61:
+            raise Exception("too short")
+
         self.binx = binx
         self.biny = biny
 
@@ -490,9 +493,14 @@ class detect_order_edges(_base_detect):
             rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
         if flipImage:
             rotatedImg = np.flipud(rotatedImg)
+            if not rotateImage:
+                aLen = rotatedImg.shape[0]
+                aLen = rotatedImg.shape[0]
+                allAxisACoords = aLen - allAxisACoords
+                allAxisACoordsClipped = aLen - allAxisACoordsClipped
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
-            fig = plt.figure(figsize=(5, 8))
+            fig = plt.figure(figsize=(6, 12))
             # CREATE THE GID OF AXES
             gs = fig.add_gridspec(6, 4)
             toprow = fig.add_subplot(gs[0:2, :])
@@ -519,9 +527,10 @@ class detect_order_edges(_base_detect):
         mean = np.nanmean(self.flatFrame.data)
         vmax = mean + 2 * std
         vmin = mean - 1 * std
+
         toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=1)
-        if self.axisA == "x":
-            toprow.invert_yaxis()
+        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.9)
+
         toprow.set_title(
             "upper and lower order edge detections", fontsize=10)
         toprow.scatter(allAxisBCoords, allAxisACoords, marker='o', c='green', s=0.3, alpha=0.6, label="detected order edge location")
@@ -535,15 +544,22 @@ class detect_order_edges(_base_detect):
         toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
                       fontsize=4)
 
-        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap='gray', alpha=0.9)
+        toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
+            toprow.invert_yaxis()
+            toprow.set_ylim([rotatedImg.shape[0], 0])
             midrow.invert_yaxis()
+            midrow.set_ylim([rotatedImg.shape[0], 0])
+        else:
+            toprow.set_ylim([0, rotatedImg.shape[0]])
+            midrow.set_ylim([0, rotatedImg.shape[0]])
+
         midrow.set_title(
             "order-location fit solutions", fontsize=10)
-        if self.axisA == "x":
+        if self.axisB == "y":
             axisALength = self.flatFrame.data.shape[1]
             axisBLength = self.flatFrame.data.shape[0]
-        else:
+        elif self.axisB == "x":
             axisALength = self.flatFrame.data.shape[0]
             axisBLength = self.flatFrame.data.shape[1]
 
@@ -576,6 +592,10 @@ class detect_order_edges(_base_detect):
             df["order"] = o
             axisAfitupStart = poly(df, *coeffupper)
             axisAfitlowStart = poly(df, *coefflower)
+
+            if flipImage and not rotateImage:
+                axisAfitupStart = aLen - axisAfitupStart
+                axisAfitlowStart = aLen - axisAfitlowStart
 
             # xfit = np.ones(len(xfit)) * \
             #     self.flatFrame.data.shape[1] - xfit

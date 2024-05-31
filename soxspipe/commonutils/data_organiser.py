@@ -1097,8 +1097,10 @@ class data_organiser(object):
             if isinstance(filteredFrames, astropy.table.row.Row):
                 filteredFrames = Table(filteredFrames)
 
-            filteredFrames.sort_values(['date-obs'], inplace=True)
-            mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+            if seriesRecipe not in ["mbias"]:
+                mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+            else:
+                mask = (filteredFrames['eso dpr tech'].isin(["NONSENSE"]))
             firstDate = filteredFrames.loc[~mask]['date-obs'].values[0].replace("-", ".").replace(":", ".")
             sofName.insert(0, firstDate)
 

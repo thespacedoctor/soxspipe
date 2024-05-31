@@ -141,7 +141,11 @@ class soxs_order_centres(_base_recipe_):
                     erorr = "Input frames are a mix of %(imageTypes)s" % locals()
 
             if not error:
-                if imageTypes[0] != "LAMP,ORDERDEF":
+                if self.inst == "SOXS":
+                    good = 'FLAT,LAMP'
+                else:
+                    good = "LAMP,ORDERDEF"
+                if imageTypes[0] != good:
                     error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames and a first-guess dispersion solution table for NIR" % locals()
 
             if not error:
@@ -217,8 +221,12 @@ class soxs_order_centres(_base_recipe_):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # NIR DARK
-        add_filters = {kw("DPR_TYPE"): 'LAMP,ORDERDEF',
-                       kw("DPR_TECH"): 'IMAGE'}
+        if self.inst == "SOXS":
+            add_filters = {kw("DPR_TYPE"): 'FLAT,LAMP',
+                           kw("DPR_TECH"): 'IMAGE'}
+        else:
+            add_filters = {kw("DPR_TYPE"): 'LAMP,ORDERDEF',
+                           kw("DPR_TECH"): 'IMAGE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -260,28 +268,63 @@ class soxs_order_centres(_base_recipe_):
             binx = 1
             biny = 1
 
-        if self.polyOrders:
-            self.polyOrders = str(self.polyOrders)
-            self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
-            self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
-            self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
+        if self.settings["tune-pipeline"]:
+            from itertools import product
+            digits = [2, 3, 4, 5, 6]
+            perm = product(digits, repeat=2)
+            try:
+                os.remove("residuals.txt")
+            except:
+                pass
 
-        # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
-        # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
-        detector = detect_continuum(
-            log=self.log,
-            pinholeFlat=self.orderFrame,
-            dispersion_map=disp_map_table,
-            settings=self.settings,
-            recipeSettings=self.recipeSettings,
-            recipeName="soxs-order-centre",
-            qcTable=self.qc,
-            productsTable=self.products,
-            sofName=self.sofName,
-            binx=binx,
-            biny=biny
-        )
-        productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
+            lineDetectionTable = False
+            for p in perm:
+
+                self.recipeSettings["detect-continuum"]["order-deg"] = p[0]
+                self.recipeSettings["detect-continuum"]["disp-axis-deg"] = p[1]
+                # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+                # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
+                detector = detect_continuum(
+                    log=self.log,
+                    pinholeFlat=self.orderFrame,
+                    dispersion_map=disp_map_table,
+                    settings=self.settings,
+                    recipeSettings=self.recipeSettings,
+                    recipeName="soxs-order-centre",
+                    qcTable=self.qc,
+                    productsTable=self.products,
+                    sofName=self.sofName,
+                    binx=binx,
+                    biny=biny
+                )
+                try:
+                    productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
+                except:
+                    pass
+
+        else:
+            if self.polyOrders:
+                self.polyOrders = str(self.polyOrders)
+                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+                self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
+                self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
+
+            # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+            # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
+            detector = detect_continuum(
+                log=self.log,
+                pinholeFlat=self.orderFrame,
+                dispersion_map=disp_map_table,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                recipeName="soxs-order-centre",
+                qcTable=self.qc,
+                productsTable=self.products,
+                sofName=self.sofName,
+                binx=binx,
+                biny=biny
+            )
+            productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
 
         self.products = pd.concat([self.products, productsTable])
         self.qc = pd.concat([self.qc, qcTable])

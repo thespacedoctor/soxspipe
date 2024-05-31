@@ -427,11 +427,17 @@ class _base_recipe_(object):
 
         for i in range(7):
             thisLamp = kw(f"LAMP{i+1}")
-            try:
-                preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)] = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
-                columns.remove(thisLamp)
-            except:
-                pass
+            # FIRST FIND THE NAME OF THE LAMP
+            newLamp = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
+            if len(newLamp):
+                newLamp = newLamp[0]
+                newLamp = newLamp.replace("_Lamp", "")
+                newLamp = newLamp.replace("Argo", "Ar").replace("Neon", "Ne").replace("Merc", "Hg").replace("Xeno", "Xe")
+
+                updatedList = list(preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)].data)
+                updatedList[:] = [u.replace("-", "") + newLamp for u in updatedList]
+                preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)] = updatedList
+            columns.remove(thisLamp)
 
         preframes.summary["LAMP"][np.where(preframes.summary["LAMP"] == "------------")] = "--"
 

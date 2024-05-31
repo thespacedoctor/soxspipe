@@ -141,7 +141,7 @@ class soxs_mflat(_base_recipe_):
                         error = "Input frames are a mix of %(imageTypes)s" % locals()
 
             if not error:
-                if "LAMP,FLAT" not in imageTypes or "FLAT,LAMP" not in imageTypes:
+                if "LAMP,FLAT" not in imageTypes and "FLAT,LAMP" not in imageTypes:
                     error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR" % locals()
 
             if not error:
@@ -528,8 +528,12 @@ class soxs_mflat(_base_recipe_):
         darkCollection = self.inputFrames.filter(**filterDict)
 
         if len(darkCollection.files) == 0:
-            filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
-                          kw("DPR_TECH"): "IMAGE"}
+            if self.inst.upper() == "SOXS":
+                filterDict = {kw("DPR_TYPE"): "FLAT,LAMP",
+                              kw("DPR_TECH"): "IMAGE"}
+            else:
+                filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
+                              kw("DPR_TECH"): "IMAGE"}
             darkCollection = self.inputFrames.filter(**filterDict)
 
         # FINAL ATTEMPT -- FIND RAW DARK

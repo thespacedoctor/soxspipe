@@ -106,7 +106,7 @@ class create_dispersion_map(object):
         from soxspipe.commonutils.toolkit import get_calibration_lamp
         self.lamp = get_calibration_lamp(log=self.log, frame=pinholeFrame, kw=kw)
 
-        if not "xeno" in self.lamp.lower():
+        if self.arm.upper() == "NIR" and not "xe" == self.lamp.lower():
             raise Exception("wrong lamp")
         if self.exptime < 59:
             raise Exception("too short")
@@ -286,6 +286,9 @@ class create_dispersion_map(object):
                     #         orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y'] - mean
                     #         self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {tmpDF['x_diff'].mean():0.3f},{tmpDF['y_diff'].mean():0.3f}")
 
+            # MAKE A CLEAN COPY OF THE DETECTION TABLE ... USED FOR PIPELINE TUNING ONLY
+            lineDetectionTable = orderPixelTable.copy()
+
             # COLLECT MISSING LINES
             mask = (orderPixelTable['observed_x'].isnull())
             missingLines = orderPixelTable.loc[mask]
@@ -358,9 +361,6 @@ class create_dispersion_map(object):
             # GROUP FOUND LINES INTO SETS AND CLIP ON MEAN XY SHIFT RESIDUALS
             if True:
                 orderPixelTable = self._clip_on_measured_line_metrics(orderPixelTable)
-
-            # MAKE A CLEAN COPY OF THE DETECTION TABLE ... USED FOR PIPELINE TUNING ONLY
-            lineDetectionTable = orderPixelTable.copy()
 
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
             fitFound = False
@@ -456,7 +456,8 @@ class create_dispersion_map(object):
         # WRITE GOOD LINE LIST TO FILE
         t = Table.from_pandas(goodAndClippedLines)
         filePath = f"{self.qcDir}/{goodLinesFN}"
-        t.write(filePath, overwrite=True)
+        if not self.settings["tune-pipeline"]:
+            t.write(filePath, overwrite=True)
         self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "DISP_MAP_LINES",
@@ -475,7 +476,8 @@ class create_dispersion_map(object):
         missingLines.sort_values(['order', 'wavelength', 'slit_index'], inplace=True)
         t = Table.from_pandas(missingLines[keepColumns])
         filePath = f"{self.qcDir}/{missingLinesFN}"
-        t.write(filePath, overwrite=True)
+        if not self.settings["tune-pipeline"]:
+            t.write(filePath, overwrite=True)
         self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "product_label": "DISP_MAP_LINES_MISSING",
@@ -489,8 +491,11 @@ class create_dispersion_map(object):
         }).to_frame().T], ignore_index=True)
 
         # WRITE THE MAP TO FILE
-        mapPath = self.write_map_to_file(
-            popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
+        if not self.settings["tune-pipeline"]:
+            mapPath = self.write_map_to_file(
+                popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
+        else:
+            mapPath = None
 
         if self.firstGuessMap and self.orderTable and self.create2DMap:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath)
@@ -506,7 +511,7 @@ class create_dispersion_map(object):
                 dispMap=mapPath,
                 dispMapImage=mapImagePath
             )
-            return mapPath, mapImagePath, res_plots, self.qc, self.products
+            return mapPath, mapImagePath, res_plots, self.qc, self.products, lineDetectionTable
 
         res_plots = self._create_dispersion_map_qc_plot(
             xcoeff=popt_x,
@@ -915,7 +920,7 @@ class create_dispersion_map(object):
         with suppress(KeyError):
             header.pop(kw("RON"))
 
-        if slitDeg == 0:
+        if slitDeg == 0 or [0, 0]:
             # filename = filename.split("ARC")[0] + "DISP_MAP.fits"
             header[kw("PRO_TECH").upper()] = "ECHELLE,PINHOLE"
         else:
@@ -1372,7 +1377,10 @@ class create_dispersion_map(object):
                 sys.stdout.flush()
                 sys.stdout.write("\x1b[1A\x1b[2K")
 
-            self.log.print(f'\tITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
+            try:
+                self.log.print(f'\tITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map')
+            except:
+                pass
 
             mask = (orderPixelTable['sigma_clipped'] == True)
             orderPixelTable = orderPixelTable.loc[~mask]
@@ -1658,6 +1666,7 @@ class create_dispersion_map(object):
         remainingPixels = 1
         iterationLimit = 20
         remainingCount = 1
+
         while remainingPixels and remainingCount and iteration < iterationLimit:
             iteration += 1
 
@@ -1779,7 +1788,10 @@ class create_dispersion_map(object):
         sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
         percentageFound = (1 - (np.count_nonzero(np.isnan(wlMap.data)) / np.count_nonzero(wlMap.data))) * 100
-        self.log.print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted.")
+        try:
+            self.log.print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted.")
+        except:
+            pass
         # print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
 
         if plots:
@@ -1899,6 +1911,8 @@ class create_dispersion_map(object):
                 allClippedLines[f"detector_{self.axisA}"] = aLen - allClippedLines[f"detector_{self.axisA}"]
                 missingLines[f"detector_{self.axisA}"] = aLen - missingLines[f"detector_{self.axisA}"]
                 orderPixelTable[f"fit_{self.axisA}"] = aLen - orderPixelTable[f"fit_{self.axisA}"]
+                if not isinstance(gridLinePixelTable, bool):
+                    gridLinePixelTable[f"fit_{self.axisA}"] = aLen - gridLinePixelTable[f"fit_{self.axisA}"]
                 # orderPixelTable[f"observed_{self.axisA}"] = aLen - orderPixelTable[f"observed_{self.axisA}"]
                 # orderPixelTable[f"observed_{self.axisA}"] = aLen - orderPixelTable[f"observed_{self.axisA}"]
 
@@ -1978,9 +1992,9 @@ class create_dispersion_map(object):
             for l in range(int(gridLinePixelTable['line'].max())):
                 mask = (gridLinePixelTable['line'] == l)
                 if l == 1:
-                    midrow.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue", label="dispersion solution")
+                    midrow.plot(gridLinePixelTable.loc[mask][f"fit_{self.axisB}"], gridLinePixelTable.loc[mask][f"fit_{self.axisA}"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue", label="dispersion solution")
                 else:
-                    midrow.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue")
+                    midrow.plot(gridLinePixelTable.loc[mask][f"fit_{self.axisB}"], gridLinePixelTable.loc[mask][f"fit_{self.axisA}"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue")
         else:
             midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
                            orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1 * alphaBoost, label="fitted line (size proportional to line-fit residual)")
@@ -2057,6 +2071,7 @@ class create_dispersion_map(object):
         # plt.show()
         if not self.settings["tune-pipeline"]:
             plt.savefig(filePath, dpi=720)
+
         plt.clf()
         plt.close(fig)
 

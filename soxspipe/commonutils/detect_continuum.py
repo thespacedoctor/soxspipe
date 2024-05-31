@@ -107,7 +107,7 @@ class _base_detect(object):
             except Exception as e:
                 raise e
 
-            res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
+            res, res_mean, res_std, res_median, xfit, poly = self.calculate_residuals(
                 orderPixelTable=pixelListFiltered,
                 coeff=coeff,
                 axisACol=axisACol,
@@ -278,9 +278,9 @@ class _base_detect(object):
 
         # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        xfit = poly(
+        thisFit = poly(
             orderPixelTable, *coeff)
-        res = xfit - orderPixelTable[axisACol].values
+        res = thisFit - orderPixelTable[axisACol].values
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueorders = len(orderPixelTable['order'].unique())
@@ -300,9 +300,9 @@ class _base_detect(object):
 
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "XRESMIN",
+                "qc_name": f"{self.axisA.upper()}RESMIN",
                 "qc_value": f"{res.min():0.2f}",
-                "qc_comment": f"[px] Minimum residual in {tag} fit along x-axis",
+                "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
                 "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -310,9 +310,9 @@ class _base_detect(object):
             }).to_frame().T], ignore_index=True)
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "XRESMAX",
+                "qc_name": f"{self.axisA.upper()}RESMAX",
                 "qc_value": f"{res.max():0.2f}",
-                "qc_comment": f"[px] Maximum residual in {tag} fit along x-axis",
+                "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
                 "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -320,9 +320,9 @@ class _base_detect(object):
             }).to_frame().T], ignore_index=True)
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "XRESRMS",
+                "qc_name": f"{self.axisA.upper()}RESRMS",
                 "qc_value": f"{res_std:0.2f}",
-                "qc_comment": f"[px] Std-dev of residual {tag} fit along x-axis",
+                "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
                 "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
@@ -346,7 +346,7 @@ class _base_detect(object):
             }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``calculate_residuals`` method')
-        return res, res_mean, res_std, res_median, xfit
+        return res, res_mean, res_std, res_median, thisFit
 
     def write_order_table_to_file(
             self,
@@ -527,7 +527,7 @@ class detect_continuum(_base_detect):
         self.inst = pinholeFlat.header[self.kw("INSTRUME")]
         self.exptime = pinholeFlat.header[self.kw("EXPTIME")]
 
-        if self.exptime < 29:
+        if self.exptime < 59:
             raise Exception("too low")
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
@@ -578,6 +578,7 @@ class detect_continuum(_base_detect):
         except:
             pass
 
+        # FIT_X AND FIT_Y FROM DISP-SOLUTION
         orderPixelTable['fit_x'] = orderPixelTable['fit_x'] / binx
         orderPixelTable['fit_y'] = orderPixelTable['fit_y'] / biny
 
@@ -654,10 +655,11 @@ class detect_continuum(_base_detect):
             "to_header": True
         }).to_frame().T], ignore_index=True)
 
+        self.psamp = percent / 100
         self.qc = pd.concat([self.qc, pd.Series({
             "soxspipe_recipe": self.recipeName,
             "qc_name": "PSAMP",
-            "qc_value": f"{percent/100:0.3f}",
+            "qc_value": f"{self.psamp:0.3f}",
             "qc_comment": "Proportion of samples where a continuum is detected",
             "qc_unit": None,
             "obs_date_utc": self.dateObs,
@@ -735,7 +737,8 @@ class detect_continuum(_base_detect):
                 if tryCount == 5:
                     self.log.print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
-                raise e
+                if setttings["tune-pipeline"]:
+                    raise e
 
         try:
             CSAMP = len(clippedData.index)
@@ -934,6 +937,7 @@ class detect_continuum(_base_detect):
         if peaks is None or len(peaks) <= 0:
             # CHECK THE SLICE POINTS IF NEEDED
             if 1 == 0:
+                import matplotlib.pyplot as plt
                 x = np.arange(0, len(slice))
                 plt.figure(figsize=(8, 5))
                 plt.plot(x, slice, 'ko')
@@ -964,8 +968,9 @@ class detect_continuum(_base_detect):
         pixelPostion["amplitude"] = g.amplitude.value
         pixelPostion["stddev"] = g.stddev.value
 
-        # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAYED
-        if 1 == 0 and random() < 0.02 and pixelPostion["order"] == 11:
+        # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAID
+        if False and random() < 0.02:
+            import matplotlib.pyplot as plt
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
@@ -1007,12 +1012,17 @@ class detect_continuum(_base_detect):
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotateImage = self.detectorParams["rotate-qc-plot"]
         flipImage = self.detectorParams["flip-qc-plot"]
+
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = self.pinholeFlat.data
         if rotateImage:
             rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
         if flipImage:
             rotatedImg = np.flipud(rotatedImg)
+            if not rotateImage:
+                aLen = rotatedImg.shape[0]
+                orderPixelTable[f"cont_{self.axisA}"] = aLen - orderPixelTable[f"cont_{self.axisA}"]
+                clippedData[f"cont_{self.axisA}"] = aLen - clippedData[f"cont_{self.axisA}"]
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
@@ -1038,6 +1048,7 @@ class detect_continuum(_base_detect):
             qcAx = fig.add_subplot(gs[7:, 0:2])
 
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
+        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
         toprow.scatter(orderPixelTable[f"cont_{self.axisB}"], orderPixelTable[f"cont_{self.axisA}"], marker='o', c='green', s=0.3, alpha=0.6, label="cross-dispersion 1D gaussian peak-position")
@@ -1057,11 +1068,13 @@ class detect_continuum(_base_detect):
 
         if self.axisA == "x":
             toprow.invert_yaxis()
-            toprow.set_ylim([0, rotatedImg.shape[0]])
-        else:
             toprow.set_ylim([rotatedImg.shape[0], 0])
+            midrow.invert_yaxis()
+            midrow.set_ylim([rotatedImg.shape[0], 0])
+        else:
+            toprow.set_ylim([0, rotatedImg.shape[0]])
+            midrow.set_ylim([0, rotatedImg.shape[0]])
 
-        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         if "order" in self.recipeName.lower():
             midrow.set_title(
                 "order-location fit solutions", fontsize=10)
@@ -1074,6 +1087,7 @@ class detect_continuum(_base_detect):
         elif self.axisB == "x":
             axisALength = self.pinholeFlat.data.shape[0]
             axisBLength = self.pinholeFlat.data.shape[1]
+
         axisBlinelist = np.arange(0, axisBLength, 3)
 
         poly = chebyshev_order_xy_polynomials(
@@ -1081,6 +1095,7 @@ class detect_continuum(_base_detect):
         for index, row in orderPolyTable.iterrows():
             cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
             std_coeff = [float(v) for k, v in row.items() if "std_" in k]
+
         uniqueOrders = orderPixelTable['order'].unique()
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {f"{self.axisB}": axisBlinelist}
@@ -1092,12 +1107,18 @@ class detect_continuum(_base_detect):
         foundOrders = []
         colors = []
         labelAdded = None
+
         for o in uniqueOrders:
             df["order"] = o
             xfit = poly(df, *cent_coeff)
             stdfit = poly(df, *std_coeff)
+
             xfit, yfit, stdfit, lower, upper = zip(
                 *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
+            if flipImage and not rotateImage:
+                xfit = aLen - np.array(xfit)
+                lower = aLen - np.array(lower)
+                upper = aLen - np.array(upper)
             foundOrders.append(o)
             # lower = xfit - 3 * stdfit
             # upper = xfit + 3 * stdfit
@@ -1139,10 +1160,6 @@ class detect_continuum(_base_detect):
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
-
-        if self.axisA == "x":
-            midrow.invert_yaxis()
-            midrow.set_ylim(0, axisALength)
 
         midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
                       fontsize=4)
@@ -1209,7 +1226,10 @@ class detect_continuum(_base_detect):
         qc_settings_plot_tables(log=self.log, qc=self.qc, qcAx=qcAx, settings={**self.recipeSettings, **{"exptime": self.exptime}}, settingsAx=settingsAx)
 
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
-        std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+        std_res = np.std(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
+        res_min = np.min(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
+        res_max = np.max(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
+        res_range = res_max - res_min
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         lamp = ""
@@ -1243,6 +1263,16 @@ class detect_continuum(_base_detect):
         plt.tight_layout()
         plt.savefig(filePath, dpi=720)
         plt.close()
+
+        if self.settings["tune-pipeline"]:
+            import codecs
+            filePath = f"residuals.txt"
+            exists = os.path.exists(filePath)
+            if not exists:
+                with codecs.open(filePath, encoding='utf-8', mode='w') as writeFile:
+                    writeFile.write(f"polyOrders,psamp,mean_res,std_res,res_min,res_max,res_range \n")
+            with codecs.open(filePath, encoding='utf-8', mode='a') as writeFile:
+                writeFile.write(f"{polyOrders},{self.psamp:0.2f},{mean_res:2.4f},{std_res:2.4f},{res_min:2.4f},{res_max:2.4f},{res_range:2.4f}\n")
 
         self.log.debug('completed the ``plot_results`` method')
         return filePath, orderMetaTable
