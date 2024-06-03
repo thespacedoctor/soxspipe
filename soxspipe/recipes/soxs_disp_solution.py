@@ -119,10 +119,11 @@ class soxs_disp_solution(_base_recipe_):
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
         error = False
 
-        if False:
+        if True:
             print(imageTypes)
             print(imageTech)
             print(imageCat)
+            print(imageTypes[0])
 
         if self.arm == "NIR":
             # WANT ON AND OFF PINHOLE FRAMES
