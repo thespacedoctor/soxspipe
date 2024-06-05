@@ -44,12 +44,12 @@ soxs-disp-solution:
         pixel-window-size: 10
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
         pinhole-detection-thres-sigma: 5
-        order-deg: [5,4]
-        wavelength-deg: [4,4] 
+        order-deg: [5,3]
+        wavelength-deg: [4,5] 
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
-        poly-fitting-residual-clipping-sigma: 7
+        poly-fitting-residual-clipping-sigma: 5
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 3
+        poly-clipping-iteration-limit: 7
 
 soxs-order-centre:
     # VIS is TUNED
@@ -167,9 +167,10 @@ soxs-spatial-solution:
         order-deg: [4,4]
         wavelength-deg: [5,5]
         slit-deg: [5,4]
-        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 4
-        poly-fitting-residual-clipping-sigma: 9
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 5
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 7
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
         map_to_image_displacement_threshold: 0.01 # in pixels
