@@ -108,8 +108,8 @@ class create_dispersion_map(object):
 
         # if self.arm.upper() == "NIR" and not "xe" == self.lamp.lower():
         #     raise Exception("wrong lamp")
-        # if self.exptime < 59:
-        #     raise Exception("too short")
+        if self.exptime < 14:
+            raise Exception("too short")
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
