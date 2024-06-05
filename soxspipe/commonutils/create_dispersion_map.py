@@ -180,7 +180,7 @@ class create_dispersion_map(object):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=pinholeFrame, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         boost = True
         while boost:
@@ -295,6 +295,7 @@ class create_dispersion_map(object):
             fitFound = False
             tryCount = 0
             while not fitFound and tryCount < 5:
+                
                 popt_x, popt_y, goodLinesTable, clippedLinesTable = self.fit_polynomials(
                     orderPixelTable=orderPixelTable,
                     wavelengthDeg=wavelengthDeg,
@@ -323,7 +324,7 @@ class create_dispersion_map(object):
                     tryCount += 1
                     if tryCount == 5:
                         self.log.print(f"Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
-                        raise e
+                        raise Exception(f"Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
 
                 if bootstrap_dispersion_solution:
                     # WRITE THE MAP TO FILE
@@ -482,15 +483,17 @@ class create_dispersion_map(object):
             orderPixelTable["detector_x"] -= 1.0
             orderPixelTable["detector_y"] -= 1.0
         elif True:
+            
             if arm == "NIR":
                 dp = self.detectorParams
                 science_pixels = dp["science-pixels"]
                 xlen = science_pixels["columns"]["end"] - \
                     science_pixels["columns"]["start"]
                 ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
-                orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
-                # orderPixelTable["detector_x"] -= 4.0
-                # orderPixelTable["detector_y"] -= 4.0
+                orderPixelTable["detector_x"] -= 4.0
+                orderPixelTable["detector_y"] -= 4.0
+                # orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
+            
             else:
                 orderPixelTable["detector_x"] -= 56
                 orderPixelTable["detector_y"] -= 6.0
@@ -601,7 +604,7 @@ class create_dispersion_map(object):
         try:
             # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
             daofind = DAOStarFinder(
-                fwhm=3., threshold=10.0 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False)
+                fwhm=3., threshold=3.0 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE
             # sources = daofind(stamp - median)
             sources = daofind(stamp.data, mask=stamp.mask)
