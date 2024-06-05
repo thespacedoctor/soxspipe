@@ -1,6 +1,12 @@
 
 # Release Notes  
 
+
+
+* **FEATURE:** pipeline is now reducing soxs UVVIS data robustly.
+* **FEATURE:** adding code to help tune the pipeline. Add the setting `tune-pipeline: True` to the setttings file and run a recipe command.
+* **ENHANCEMENT:** pipeline parameters (in default settings file) are now optimally tuned from UVVIS up to flats and NIR up to spatial solution.
+
 ## v0.10.2 - April 23, 2024
 
 * **ENHANCEMENT:** the calibration lamp name is now added to the sof filenames, and hence the product file names

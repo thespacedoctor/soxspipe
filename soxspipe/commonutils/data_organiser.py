@@ -689,18 +689,20 @@ class data_organiser(object):
         filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
         filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
 
-        print("NEW")
         lampLong = ["argo", "merc", "neon", "xeno", "qth", "deut", "thar"]
         lampEle = ["Ar", "Hg", "Ne", "Xe", "QTH", "D", "ThAr"]
 
         for i in [1, 2, 3, 4, 5, 6, 7]:
             lamp = self.kw(f"LAMP{i}").lower()
+
             if self.instrument.lower() == "soxs":
                 for l, e in zip(lampLong, lampEle):
                     if l in lamp:
                         lamp = e
-            filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
-            filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
+                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
+                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
+            else:
+                filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), "lamp"] = filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), self.kw(f"LAMP{i}").lower()]
         mask = []
         for i in self.proKeywords:
             keywordsTerseRaw.remove(i)
@@ -710,11 +712,18 @@ class data_organiser(object):
             else:
                 mask = np.logical_and(mask, (filteredFrames[i] == "--"))
 
+        filteredFrames["lamp"] = filteredFrames["lamp"].str.replace("_lamp", "")
+        filteredFrames["lamp"] = filteredFrames["lamp"].str.replace("_Lamp", "")
+
         rawFrames = filteredFrames.loc[mask]
 
-        # Use the groupby and transform method to fill in missing values
+        # MATCH OFF FRAMES TO ADD THE MISSING LAMPS
+        if self.instrument.lower() == "soxs":
+            groupBy = 'eso obs name'
+        else:
+            groupBy = 'template'
         rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
-        rawFrames['lamp'] = rawFrames['lamp'].fillna(rawFrames.groupby('eso obs name')['lamp'].transform('first'))
+        rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir"), "lamp"] = rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir"), 'lamp'].fillna(rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir")].groupby(groupBy)['lamp'].transform('first'))
         rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
 
         reducedFrames = filteredFrames.loc[~mask]
@@ -818,7 +827,11 @@ class data_organiser(object):
 
         # rawFrames.replace("LAMP,DFLAT", "LAMP,FLAT", inplace=True)
         # rawFrames.replace("LAMP,QFLAT", "LAMP,FLAT", inplace=True)
-        rawGroups = rawFrames.groupby(filterKeywordsRaw)
+
+        # HIDE OFF FRAMES FROM GROUPS
+        mask = ((rawFrames["eso dpr tech"] == "IMAGE") & (rawFrames['eso seq arm'] == "NIR") & (rawFrames['eso dpr tech'] != "DARK"))
+        rawFramesNoOffFrames = rawFrames.loc[~mask]
+        rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw)
 
         mjds = rawGroups.mean(numeric_only=True)["mjd-obs"].values
 
@@ -836,9 +849,23 @@ class data_organiser(object):
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawScienceFrames = rawScienceFrames.size().reset_index(name='counts')
 
+        # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
+        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE"]))
+        rawGroups = rawGroups.loc[~mask]
+        # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
+        if self.instrument.upper() == "SOXS":
+            rawPinholeFrames = pd.read_sql(
+                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE") and ("eso seq arm" = "NIR" or ("lamp" not in ("Xe", "Ar", "Hg", "Ne", "ArNeHgXe" )))', con=conn)
+        else:
+            rawPinholeFrames = pd.read_sql(
+                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE")', con=conn)
+        rawPinholeFrames.fillna("--", inplace=True)
+        rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
+        rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
+
         # MERGE DATAFRAMES
-        if len(rawScienceFrames.index):
-            rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+        if len(rawPinholeFrames.index):
+            rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
 
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
@@ -853,6 +880,8 @@ class data_organiser(object):
         for o in self.reductionOrder:
             rawGroups = rawGroups.apply(self.generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
             rawGroups = rawGroups.apply(self.populate_products_table, axis=1, reductionOrder=o)
+
+        # xpd-update-filter-dataframe-column-values
 
         # SEND TO DATABASE
         c = self.conn.cursor()
@@ -963,13 +992,18 @@ class data_organiser(object):
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
                 sofName.append("qlamp")
-        if True:
+        if True and ("PINHOLE" in series["eso dpr tech"].upper() or (series["instrume"] == "SOXS" and "FLAT" in series["eso dpr type"].upper())):
             if series["lamp"] != "--":
                 matchDict['lamp'] = series["lamp"]
                 sofName.append(series["lamp"])
+
+        if series["instrume"] == "SOXS":
+            sofName.append(series["slit"])
         if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and ("FLAT" in series["eso dpr type"].upper() or "DARK" in series["eso dpr type"].upper()))):
             matchDict['exptime'] = float(series["exptime"])
-            sofName.append(str(series["exptime"]).replace(".", "pt"))
+            sofName.append(str(series["exptime"]) + "S")
+        elif series["exptime"] and "BIAS" not in series["eso dpr type"].upper():
+            sofName.append(str(series["exptime"]) + "S")
 
         if series["eso obs name"] != "--":
             matchDict["eso obs name"] = series["eso obs name"]
@@ -977,6 +1011,7 @@ class data_organiser(object):
         sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
+
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
                 mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP"]))
             else:
@@ -986,7 +1021,7 @@ class data_organiser(object):
         # INITIAL CALIBRATIONS FILTERING
         if series['eso seq arm'].upper() in ["UVB", "VIS"]:
             for k, v in matchDict.items():
-                if k in ["exptime"]:
+                if k in ["exptime", "lamp", "eso obs name"]:
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_")) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE"))
@@ -998,7 +1033,7 @@ class data_organiser(object):
 
         elif series['eso seq arm'].upper() in ["NIR"]:
             for k, v in matchDict.items():
-                if k in ["binning", "rospeed", "exptime"]:
+                if k in ["binning", "rospeed", "exptime", "lamp", "eso obs name"]:
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_") | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
@@ -1008,7 +1043,7 @@ class data_organiser(object):
 
         # EXTRA CALIBRATION TABLES
         for k, v in matchDict.items():
-            if k in ["rospeed", "exptime"]:
+            if k in ["rospeed", "exptime", "lamp", "eso obs name"]:
                 continue
             if k in ["binning"] and seriesRecipe in ["mflat"]:
                 continue
@@ -1028,6 +1063,20 @@ class data_organiser(object):
         # YYYY.MM.DDThh.mm.xxx
         if series["night start mjd"]:
 
+            if "PINHOLE" in series["eso dpr tech"].upper():
+                if "NIR" not in series['eso seq arm'].upper():
+                    mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
+                    filteredFrames = filteredFrames.loc[mask]
+                else:
+                    # FURTHER FILTERING OF NIR ON/OFF FRAMES
+                    filteredFrames["obs-delta"] = filteredFrames['mjd-obs'] - series["mjd-obs"]
+                    filteredFrames["obs-delta"] = filteredFrames["obs-delta"].abs()
+                    filteredFrames.sort_values(['obs-delta'], inplace=True)
+                    mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+                    offFrame = filteredFrames.loc[mask].head(1)
+                    onFrame = filteredFrames.loc[~mask].head(1)
+                    filteredFrames = pd.concat([onFrame, offFrame], ignore_index=True)
+
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
                 filteredFrames = filteredFrames.loc[mask]
@@ -1038,6 +1087,7 @@ class data_organiser(object):
                 frameMjd = filteredFrames["mjd-obs"].values[0]
             except:
                 print(series)
+
             calibrationFrames["obs-delta"] = calibrationFrames['mjd-obs'] - frameMjd
             calibrationTables["obs-delta"] = calibrationTables['mjd-obs'] - frameMjd
             # dispImages["obs-delta"] = dispImages['mjd-obs'] - frameMjd
@@ -1047,8 +1097,11 @@ class data_organiser(object):
             if isinstance(filteredFrames, astropy.table.row.Row):
                 filteredFrames = Table(filteredFrames)
 
-            filteredFrames.sort_values(['date-obs'], inplace=True)
-            firstDate = filteredFrames['date-obs'].values[0].replace("-", ".").replace(":", ".")
+            if seriesRecipe not in ["mbias"]:
+                mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+            else:
+                mask = (filteredFrames['eso dpr tech'].isin(["NONSENSE"]))
+            firstDate = filteredFrames.loc[~mask]['date-obs'].values[0].replace("-", ".").replace(":", ".")
             sofName.insert(0, firstDate)
 
         # NEED SOME FINAL FILTERING ON UVB FLATS
@@ -1098,7 +1151,7 @@ class data_organiser(object):
         #         else:
         #             return series
 
-        if seriesRecipe == "stare":
+        if seriesRecipe in ("stare", "nod"):
             object = filteredFrames['object'].values[0].replace(" ", "_")
             sofName.append(object)
 
@@ -1109,8 +1162,10 @@ class data_organiser(object):
         # CALIBRATIONS NEEDED?
         # BIAS FRAMES
         if series["recipe"] in ["disp_sol", "order_centres", "mflat", "spat_sol", "stare"]:
+
             mask = calibrationFrames['eso pro catg'].isin([f"MASTER_BIAS_{series['eso seq arm'].upper()}"])
             df = calibrationFrames.loc[mask]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 files = np.append(files, df["file"].values[0])
@@ -1121,6 +1176,7 @@ class data_organiser(object):
         if series["recipe"] in ["order_centres", "spat_sol", "stare", "nod"]:
             mask = calibrationTables['eso pro catg'].str.contains("DISP_TAB")
             df = calibrationTables.loc[mask]
+
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
                 if series["recipe"] in ["stare", "nod"]:
@@ -1739,6 +1795,13 @@ class data_organiser(object):
         self.sessionDB = self.sessionPath + "/soxspipe.db"
         self.conn = sql.connect(
             self.sessionDB)
+
+        # SELECT INSTR
+        c = self.conn.cursor()
+        sqlQuery = "select instrume from raw_frames where instrume is not null limit 1"
+        c.execute(sqlQuery)
+        self.instrument = c.fetchall()[0][0]
+        c.close()
 
         # CLEAN UP FAILED FILES
         c = self.conn.cursor()

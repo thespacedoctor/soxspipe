@@ -23,6 +23,7 @@ soxs-mdark:
 
 soxs-disp-solution:
     pixel-window-size: 10
+    pinhole-detection-thres-sigma: 5
     order-deg: 3
     wavelength-deg: 3
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
@@ -51,6 +52,7 @@ soxs-order-centre:
 soxs-spatial-solution:
     use_flat: False
     pixel-window-size: 10
+    pinhole-detection-thres-sigma: 5
     order-deg: 4
     wavelength-deg: 5
     slit-deg: 2
@@ -128,9 +130,9 @@ soxs-stare:
         # ROLLING WINDOW LENGTH IN DATA POINTS
         median_rolling_window_size: 31
         # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-        percential_clipping_sigma: 2
-        percential_clipping_iterations: 1
-        percential_rolling_window_size: 15
+        percentile_clipping_sigma: 2
+        percentile_clipping_iterations: 1
+        percentile_rolling_window_size: 15
         # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
         clip-slit-edge-fraction: 0.05
         aggressive_object_masking: True

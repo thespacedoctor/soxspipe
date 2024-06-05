@@ -130,6 +130,7 @@ class set_of_files(object):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
         - ``verbose`` -- verbose. True or False. Default *True*
+        - ``recipeName`` -- the name of the recipe. Default *False*
         - ``ext`` -- the data extension for the frame. Default 0.
 
     **Usage**
@@ -159,6 +160,7 @@ class set_of_files(object):
             settings=False,
             inputFrames=[],
             verbose=True,
+            recipeName=False,
             ext=0,
             session=None
     ):
@@ -167,6 +169,7 @@ class set_of_files(object):
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
+        self.recipeName = recipeName
         self.ext = ext
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -180,6 +183,9 @@ class set_of_files(object):
             keys = self.settings['summary-keys']['verbose']
         else:
             keys = self.settings['summary-keys']['default']
+
+        if recipeName and recipeName == "soxs-nod":
+            keys += self.settings['summary-keys']['nodding_extras']
 
         keys = kw(keys)
         self.keys = []

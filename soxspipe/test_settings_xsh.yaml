@@ -51,6 +51,7 @@ soxs-mdark:
 
 soxs-disp-solution:
     pixel-window-size: 10
+    pinhole-detection-thres-sigma: 5
     order-deg: 3
     wavelength-deg: 3
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
@@ -80,6 +81,7 @@ soxs-order-centre:
 soxs-spatial-solution:
     use_flat: False
     pixel-window-size: 10
+    pinhole-detection-thres-sigma: 5
     order-deg: 3
     wavelength-deg: 3
     slit-deg: 3
@@ -174,15 +176,54 @@ soxs-stare:
         # ROLLING WINDOW LENGTH IN DATA POINTS
         median_rolling_window_size: 31
         # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-        percential_clipping_sigma: 2
-        percential_clipping_iterations: 1
-        percential_rolling_window_size: 15
+        percentile_clipping_sigma: 2
+        percentile_clipping_iterations: 1
+        percentile_rolling_window_size: 15
         # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
         clip-slit-edge-fraction: 0.05
         aggressive_object_masking: True
         bspline_order: 3
         slit_illumination_order: 3
     
+        
+soxs-nod:
+     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
+    stacked-clipping-sigma: 5
+    # number of σ-clipping iterations to perform before stacking
+    stacked-clipping-iterations: 5
+    # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
+    clipping-lower-simga: 10
+    # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
+    clipping-upper-simga: 10 
+    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
+    clipping-iteration-count: 0
+    clipping-lower-sigma: 10
+    clipping-upper-sigma: 10 
+    # the length of the 'slit' used to collect object flux (in pixels)
+    horne-extraction-slit-length: 20
+    # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
+    horne-extraction-profile-global-clipping-sigma: 25
+    # the number of σ deviations that residuals from the fitted, dispersion-direction profile need to be beyond for a pixel to be clipped
+    horne-extraction-profile-clipping-sigma: 3.0
+    # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
+    horne-extraction-profile-clipping-iteration-count: 10
+    detect-continuum:
+        # NUMBER OF CROSS-ORDER SLICES PER ORDER
+        order-sample-count: 200
+        # LENGTH OF EACH SLICE (PIXELS)
+        slice-length: 30
+        # WIDTH OF EACH SLICE (PIXELS)
+        slice-width: 5
+        # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+        peak-sigma-limit: 1.5
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        disp-axis-deg: 4
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+        order-deg: 4
+        # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-fitting-residual-clipping-sigma: 3.
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+        poly-clipping-iteration-limit: 5
         
 soxs-straighten:
     asdasd: 1

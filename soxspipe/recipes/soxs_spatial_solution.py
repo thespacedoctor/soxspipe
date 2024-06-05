@@ -29,7 +29,7 @@ class soxs_spatial_solution(_base_recipe_):
         - ``settings`` -- the settings dictionary
         - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths
         - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+        - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
         - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
         - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345435 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4, slit_x=3 ,slit_y=5. Default *False*. 
 
@@ -112,7 +112,7 @@ class soxs_spatial_solution(_base_recipe_):
             self):
         """*verify input frames match those required by the `soxs_spatial_solution` recipe*
 
-        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
+        If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
@@ -127,7 +127,7 @@ class soxs_spatial_solution(_base_recipe_):
             # WANT ON AND OFF PINHOLE FRAMES
             if not error:
                 for i in imageTypes:
-                    if i not in ["LAMP,WAVE", "LAMP,FLAT"]:
+                    if i not in ["LAMP,WAVE", "LAMP,FLAT", "FLAT,LAMP", "WAVE,LAMP"]:
                         error = f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR."
 
             if not error:
@@ -136,7 +136,7 @@ class soxs_spatial_solution(_base_recipe_):
                         error = f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
 
             if not error:
-                if "LAMP,WAVE" not in imageTypes:
+                if "LAMP,WAVE" not in imageTypes and "WAVE,LAMP" not in imageTypes:
                     error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
 
             if not error:
@@ -196,6 +196,7 @@ class soxs_spatial_solution(_base_recipe_):
         from astropy import units as u
         import pandas as pd
         from soxspipe.commonutils.toolkit import quicklook_image
+        from soxspipe.commonutils import create_dispersion_map
 
         arm = self.arm
         kw = self.kw
@@ -221,8 +222,12 @@ class soxs_spatial_solution(_base_recipe_):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # NIR DARK
-        add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
-                       kw("DPR_TECH"): 'IMAGE'}
+        if self.inst.upper() == "SOXS":
+            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP',
+                           kw("DPR_TECH"): 'IMAGE'}
+        else:
+            add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
+                           kw("DPR_TECH"): 'IMAGE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -234,8 +239,12 @@ class soxs_spatial_solution(_base_recipe_):
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # MULTIPINHOLE IMAGE
-        add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
-                       kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}
+        if self.inst.upper() == "SOXS":
+            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP',
+                           kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}
+        else:
+            add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
+                           kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             multi_pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
@@ -261,27 +270,63 @@ class soxs_spatial_solution(_base_recipe_):
                 self.multiPinholeFrame, fileDir, filename=False, overwrite=True, product=False)
             self.log.print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
 
-        if self.polyOrders:
-            self.polyOrders = str(self.polyOrders)
-            self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
-            self.recipeSettings["order-deg"] = self.polyOrders[:2]
-            self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
-            self.recipeSettings["slit-deg"] = self.polyOrders[4:]
+        if self.settings["tune-pipeline"]:
+            from itertools import product
+            order = [3, 4, 5, 6]
+            wavelength = [3, 4, 5, 6]
+            slit = [2, 3, 4, 5, 6]
+            perm = product(order, order, wavelength, wavelength, slit, slit)
+            try:
+                os.remove("residuals.txt")
+            except:
+                pass
 
-        # GENERATE AN UPDATED DISPERSION MAP
-        from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
-            log=self.log,
-            settings=self.settings,
-            recipeSettings=self.recipeSettings,
-            pinholeFrame=self.multiPinholeFrame,
-            firstGuessMap=disp_map_table,
-            orderTable=order_table,
-            qcTable=self.qc,
-            productsTable=self.products,
-            sofName=self.sofName,
-            create2DMap=self.create2DMap
-        ).get()
+            # GET THE LINE DETECTION LIST BEFORE JUMPING TO PERMUTATIONS
+            mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
+                log=self.log,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                pinholeFrame=self.multiPinholeFrame,
+                firstGuessMap=disp_map_table,
+                orderTable=order_table,
+                qcTable=self.qc,
+                productsTable=self.products,
+                sofName=self.sofName,
+                create2DMap=False
+            ).get()
+
+            print("\n\nTUNING SOXSPIPE\n")
+
+            # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
+            import matplotlib
+            matplotlib.pyplot.switch_backend('Agg')
+            from fundamentals import fmultiprocess
+            # DEFINE AN INPUT ARRAY
+            results = fmultiprocess(log=self.log, function=parameterTuning,
+                                    inputArray=list(perm), poolSize=False, timeout=36000, recipeSettings=self.recipeSettings, settings=self.settings, multiPinholeFrame=self.multiPinholeFrame, disp_map_table=disp_map_table, order_table=order_table, qc=self.qc, products=self.products, sofName=self.sofName, lineDetectionTable=lineDetectionTable, turnOffMP=False, mute=True, progressBar=True)
+            return None, None, None
+        else:
+            if self.polyOrders:
+                self.polyOrders = str(self.polyOrders)
+                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+                self.recipeSettings["order-deg"] = self.polyOrders[:2]
+                self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
+                self.recipeSettings["slit-deg"] = self.polyOrders[4:]
+
+            # GENERATE AN UPDATED DISPERSION MAP
+            self.create2DMap = False
+            mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
+                log=self.log,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                pinholeFrame=self.multiPinholeFrame,
+                firstGuessMap=disp_map_table,
+                orderTable=order_table,
+                qcTable=self.qc,
+                productsTable=self.products,
+                sofName=self.sofName,
+                create2DMap=self.create2DMap
+            ).get()
 
         from datetime import datetime
         filename = os.path.basename(mapPath)
@@ -329,8 +374,29 @@ class soxs_spatial_solution(_base_recipe_):
         self.log.debug('completed the ``produce_product`` method')
         return mapPath, mapImagePath, res_plots
 
-    # use the tab-trigger below for new method
-    # xt-class-method
 
-    # Override Method Attributes
-    # method-override-tmpx
+def parameterTuning(p, log, recipeSettings, settings, multiPinholeFrame, disp_map_table, order_table, qc, products, sofName, lineDetectionTable):
+    """*tuning the spatial solution*        
+    """
+
+    recipeSettings["order-deg"] = list(p[:2])
+    recipeSettings["wavelength-deg"] = list(p[2:4])
+    recipeSettings["slit-deg"] = list(p[4:6])
+
+    from soxspipe.commonutils import create_dispersion_map
+    this = create_dispersion_map(
+        log=log,
+        settings=settings,
+        recipeSettings=recipeSettings,
+        pinholeFrame=multiPinholeFrame,
+        firstGuessMap=disp_map_table,
+        orderTable=order_table,
+        qcTable=qc,
+        productsTable=products,
+        sofName=sofName,
+        create2DMap=False,
+        lineDetectionTable=lineDetectionTable
+    )
+    productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+
+    return None
