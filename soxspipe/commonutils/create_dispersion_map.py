@@ -106,9 +106,9 @@ class create_dispersion_map(object):
         from soxspipe.commonutils.toolkit import get_calibration_lamp
         self.lamp = get_calibration_lamp(log=self.log, frame=pinholeFrame, kw=kw)
 
-        # if self.arm.upper() == "NIR" and not "xe" == self.lamp.lower():
-        #     raise Exception("wrong lamp")
-        if self.exptime < 14:
+        if self.arm.upper() == "NIR" and not ("ar" in self.lamp.lower() and "hg" in self.lamp.lower()):
+            raise Exception("wrong lamp")
+        if self.exptime < 59:
             raise Exception("too short")
 
         # WHICH RECIPE ARE WE WORKING WITH?

@@ -60,6 +60,8 @@ class data_organiser(object):
         import codecs
         from fundamentals.logs import emptyLogger
 
+        self.PAE = True
+
         log.debug("instantiating a new 'data_organiser' object")
 
         self.log = log
@@ -322,6 +324,7 @@ class data_organiser(object):
 
         import sqlite3 as sql
         import shutil
+        import pandas as pd
 
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
         filteredFrames, fitsPaths, fitsNames = self.create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
@@ -330,11 +333,21 @@ class data_organiser(object):
             # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
             rawFrames, reducedFramesPixels, reducedFramesTables = self.categorise_frames(filteredFrames)
 
+            # FILTER DATA FRAME
+            if self.PAE and self.instrument.upper() == "SOXS":
+                mask = ((rawFrames["eso dpr tech"] == "ECHELLE,PINHOLE") & (rawFrames["eso dpr type"] == "FLAT,LAMP"))
+                filteredDf = rawFrames.loc[mask]
+                filteredDf["eso dpr tech"] = "ECHELLE,SLIT,STARE"
+                filteredDf["eso dpr type"] = "OBJECT"
+                rawFrames = pd.concat([rawFrames, filteredDf], ignore_index=True)
+
+            # xpd-update-filter-dataframe-column-values
+
             if len(rawFrames.index):
                 rawFrames["filepath"] = "./raw_frames/" + rawFrames['file']
                 rawFrames.to_sql('raw_frames', con=self.conn,
                                  index=False, if_exists='append')
-                filepaths = rawFrames['file'].values
+                filepaths = rawFrames['file'].unique()
                 for f in filepaths:
                     shutil.move(self.rootDir + "/" + f, self.rawDir)
 
@@ -849,6 +862,10 @@ class data_organiser(object):
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawScienceFrames = rawScienceFrames.size().reset_index(name='counts')
 
+        # MERGE DATAFRAMES
+        if len(rawScienceFrames.index):
+            rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+
         # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
         mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE"]))
         rawGroups = rawGroups.loc[~mask]
@@ -1249,8 +1266,12 @@ class data_organiser(object):
 
             if series["recipe"] in ["stare", "nod"]:
                 from tabulate import tabulate
+
                 if len(filteredFrames["slit"].values):
-                    df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]
+                    if self.PAE and self.instrument.upper() == "SOXS":
+                        pass
+                    else:
+                        df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]
 
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)

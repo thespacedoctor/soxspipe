@@ -7,6 +7,8 @@ save-intermediate-products: False
 instrument: soxs
 data-extension: 0
 
+PAE: True
+
 soxs-mbias:
     # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
     frame-clipping-sigma: 3 
