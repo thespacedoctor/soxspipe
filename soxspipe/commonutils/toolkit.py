@@ -779,7 +779,8 @@ def read_spectral_format(
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
-    if extended:
+
+    if extended or "WLMIN" not in specFormatTable.columns:
         waveLengthMin = specFormatTable["WLMINFUL"].values
         waveLengthMax = specFormatTable["WLMAXFUL"].values
     else:

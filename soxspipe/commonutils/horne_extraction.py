@@ -104,6 +104,7 @@ class horne_extraction(object):
         from soxspipe.commonutils import keyword_lookup
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import unpack_order_table
+        from soxspipe.commonutils import detector_lookup
 
         self.log = log
         log.debug("instantiating a new 'horne_extraction' object")
@@ -118,7 +119,6 @@ class horne_extraction(object):
         self.recipeSettings = recipeSettings
 
         # DETECTING SEQUENCE AUTOMATICALLY
-
         try:
             self.noddingSequence = "_A" if int(skySubtractedFrame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
             if locationSetIndex:
@@ -167,6 +167,20 @@ class horne_extraction(object):
         kw = self.kw
         self.arm = self.skySubtractedFrame.header[kw("SEQ_ARM")]
         self.dateObs = self.skySubtractedFrame.header[kw("DATE_OBS")]
+
+        # DETECTOR PARAMETERS LOOKUP OBJECT
+        self.detectorParams = detector_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get(self.arm)
+
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
+            self.axisA = "x"
+            self.axisB = "y"
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
 
         # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
         if self.sofName:
@@ -301,21 +315,21 @@ class horne_extraction(object):
         for order, amin, amax in zip(orderNums, amins, amaxs):
 
             if order in uniqueOrders:
-                orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin) & (self.orderPixelTable["ycoord"] < amax)]
-                xstart = orderTable["xcoord_centre"].astype(int) - self.slitHalfLength
-                xstop = orderTable["xcoord_centre"].astype(int) + self.slitHalfLength
-                ycoord = orderTable["ycoord"].astype(int)
-                xcoords = list(map(lambda x: list(range(x[0], x[1])), zip(xstart, xstop)))
-                ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
-                orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
-                orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
-                orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords]) if self.skyModelFrame else [0] * len(ycoords)
-                orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
+                orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable[f"{self.axisB}coord"] > amin) & (self.orderPixelTable[f"{self.axisB}coord"] < amax)]
+                self.axisAstart = orderTable[f"{self.axisA}coord_centre"].astype(int) - self.slitHalfLength
+                self.axisAstop = orderTable[f"{self.axisA}coord_centre"].astype(int) + self.slitHalfLength
+                self.axisBcoord = orderTable[f"{self.axisB}coord"].astype(int)
+                self.axisAcoords = list(map(lambda x: list(range(x[0], x[1])), zip(self.axisAstart, self.axisAstop)))
+                self.axisBcoords = list(map(lambda x: [x] * self.slitHalfLength * 2, self.axisBcoord))
+                orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[self.axisBcoords, self.axisAcoords])
+                orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[self.axisBcoords, self.axisAcoords])
+                orderTable["sliceSky"] = list(self.skyModelFrame.data[self.axisBcoords, self.axisAcoords]) if self.skyModelFrame else [0] * len(self.axisBcoords)
+                orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[self.axisBcoords, self.axisAcoords])
                 orderSlices.append(orderTable)
 
         from fundamentals import fmultiprocess
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
-                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma)
+                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB)
 
         self.plot_extracted_spectrum_qc(extractions=extractions, uniqueOrders=uniqueOrders)
 
@@ -642,7 +656,7 @@ class horne_extraction(object):
     # xt-class-method
 
 
-def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma):
+def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB):
     """
     *extract the object spectrum for a single order*
 
@@ -701,7 +715,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
         clipped_count = 1
 
         fractions = fluxNormalisedImage[:, slitPixelIndex]
-        wave_px = crossDispersionSlices["ycoord"]
+        wave_px = crossDispersionSlices[f"{axisB}coord"]
         weights = weightImage[:, slitPixelIndex]
         mask = maskImage[:, slitPixelIndex]
 
@@ -731,7 +745,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
             #     sys.stdout.write("\x1b[1A\x1b[2K")
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
-        profile = np.polyval(coeff, crossDispersionSlices["ycoord"])
+        profile = np.polyval(coeff, crossDispersionSlices[f"{axisB}coord"])
         # REMOVE -VE VALUE
         profile[profile < 0] = 0
         crossSlitProfiles.append(profile)
@@ -839,7 +853,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     log.debug('completed the ``extract_single_order`` method')
 
-    return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
+    return crossDispersionSlices[['order', f'{axisA}coord_centre', f'{axisB}coord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
 
 def create_cross_dispersion_slice(
