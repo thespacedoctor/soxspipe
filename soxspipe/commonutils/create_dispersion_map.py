@@ -1901,6 +1901,8 @@ class create_dispersion_map(object):
         ```
         """
         self.log.debug('starting the ``create_dispersion_map_qc_plot`` method')
+        #print('Creating the QC plot:')
+        #print(orderPixelTable)
 
         import numpy as np
         from astropy.visualization import hist
@@ -1966,25 +1968,27 @@ class create_dispersion_map(object):
         # a = plt.figure(figsize=(40, 15))
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
-            fig = plt.figure(figsize=(6, 16.5), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 17.5), constrained_layout=True)
             # CREATE THE GRID OF AXES
-            gs = fig.add_gridspec(8, 4)
+            gs = fig.add_gridspec(10, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
-            settingsAx = fig.add_subplot(gs[6:, 2:])
-            qcAx = fig.add_subplot(gs[6:, 0:2])
+            resAx = fig.add_subplot(gs[6:8, :])
+            settingsAx = fig.add_subplot(gs[8:, 2:])
+            qcAx = fig.add_subplot(gs[8:, 0:2])
         else:
-            fig = plt.figure(figsize=(6, 12), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 17.5), constrained_layout=True)
             # CREATE THE GRID OF AXES
-            gs = fig.add_gridspec(7, 4)
+            gs = fig.add_gridspec(10, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
-            settingsAx = fig.add_subplot(gs[6:, 2:])
-            qcAx = fig.add_subplot(gs[6:, 0:2])
+            resAx = fig.add_subplot(gs[6:8, :])
+            settingsAx = fig.add_subplot(gs[8:, 2:])
+            qcAx = fig.add_subplot(gs[8:, 0:2])
 
         std = self.std
         mean = self.mean
@@ -2068,11 +2072,27 @@ class create_dispersion_map(object):
         bottomright.set_xlabel('xy residual')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
 
-        subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        if self.firstGuessMap:
-            fig.suptitle(f"residuals of global dispersion solution fitting - {arm} multi-pinhole\n{subtitle}", fontsize=12)
-        else:
-            fig.suptitle(f"residuals of global dispersion solution fitting - {arm} single pinhole\n{subtitle}", fontsize=12)
+        
+
+        
+        orderPixelTable_groups = orderPixelTable.groupby([ 'order'])
+        for name, group in orderPixelTable_groups:
+            resAx.scatter(group["wavelength"], group["R"], alpha=0.1)
+            #CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
+            mean_res = group["R"].mean()
+            std_res = group["R"].std()
+
+            mean_wavelength = group["wavelength"].mean()
+            #ADD THIS POINT TO THE PLOT USING STD_RES AS ERROR BAR
+            #make marker big
+
+            #ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
+            resAx.errorbar(mean_wavelength, mean_res, yerr=std_res, fmt='o', color='black', alpha=1.0)
+
+
+        #resAx.scatter(orderPixelTable["wavelength"], orderPixelTable["R"], alpha=0.1)
+        resAx.set_xlabel("Wavelenght (nm)", fontsize=10)
+        resAx.set_ylabel("Resolution", fontsize=10)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
