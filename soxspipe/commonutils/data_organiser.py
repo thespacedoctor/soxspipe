@@ -718,6 +718,8 @@ class data_organiser(object):
         rawFrames = filteredFrames.loc[mask]
 
         # MATCH OFF FRAMES TO ADD THE MISSING LAMPS
+        mask = (rawFrames["eso obs name"] == "Maintenance")
+        rawFrames.loc[mask, "eso obs name"] = rawFrames.loc[mask, "eso obs name"] + rawFrames.loc[mask, "eso dpr type"]
         if self.instrument.lower() == "soxs":
             groupBy = 'eso obs name'
         else:

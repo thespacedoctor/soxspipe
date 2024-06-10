@@ -124,8 +124,8 @@ class detect_order_edges(_base_detect):
             self.log.warning(kw(f"SLIT_{self.arm}".upper()) + " keyword not found")
             self.slit = ""
 
-        # if self.exptime < 59 or self.exptime > 61:
-        #     raise Exception("too short")
+        if self.exptime < 59 or self.exptime > 61:
+            raise Exception("too short")
 
         self.binx = binx
         self.biny = biny
