@@ -1969,7 +1969,7 @@ class create_dispersion_map(object):
         # a = plt.figure(figsize=(40, 15))
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
-            fig = plt.figure(figsize=(6, 17.5), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 19.7), constrained_layout=True)
             # CREATE THE GRID OF AXES
             gs = fig.add_gridspec(10, 4)
             toprow = fig.add_subplot(gs[0:2, :])
@@ -1980,7 +1980,7 @@ class create_dispersion_map(object):
             settingsAx = fig.add_subplot(gs[8:, 2:])
             qcAx = fig.add_subplot(gs[8:, 0:2])
         else:
-            fig = plt.figure(figsize=(6, 17.5), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 19.7), constrained_layout=True)
             # CREATE THE GRID OF AXES
             gs = fig.add_gridspec(10, 4)
             toprow = fig.add_subplot(gs[0:2, :])
@@ -2073,19 +2073,29 @@ class create_dispersion_map(object):
         bottomright.set_xlabel('xy residual')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
 
+        subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
+        if self.firstGuessMap:
+            fig.suptitle(f"residuals of global dispersion solution fitting - {arm} multi-pinhole\n{subtitle}", fontsize=10)
+        else:
+            fig.suptitle(f"residuals of global dispersion solution fitting - {arm} single pinhole\n{subtitle}", fontsize=10)
+
+        
+
+        
         orderPixelTable_groups = orderPixelTable.groupby(['order'])
         for name, group in orderPixelTable_groups:
             resAx.scatter(group["wavelength"], group["R"], alpha=0.1)
-            # CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
-            mean_res = group["R"].mean()
-            std_res = group["R"].std()
+            #CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
+            mean_resol = group["R"].mean()
+            std_resol = group["R"].std()
 
             mean_wavelength = group["wavelength"].mean()
             # ADD THIS POINT TO THE PLOT USING STD_RES AS ERROR BAR
             # make marker big
 
-            # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
-            resAx.errorbar(mean_wavelength, mean_res, yerr=std_res, fmt='o', color='black', alpha=1.0)
+            #ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
+            resAx.errorbar(mean_wavelength, mean_resol, yerr=std_resol, fmt='o', color='black', alpha=1.0)
+
 
         #resAx.scatter(orderPixelTable["wavelength"], orderPixelTable["R"], alpha=0.1)
         resAx.set_xlabel("Wavelenght (nm)", fontsize=10)
