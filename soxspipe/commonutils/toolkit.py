@@ -1073,7 +1073,7 @@ def add_recipe_logger(
     recipeErr = logging.FileHandler(loggingErrorPath, mode='a', encoding=None, delay=True)
     recipeErrFormatter = logging.Formatter('%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', '%Y-%m-%d %H:%M:%S')
     recipeErr.set_name("recipeErr")
-    recipeErr.setLevel(logging.WARNING)
+    recipeErr.setLevel(logging.ERROR)
     recipeErr.setFormatter(recipeErrFormatter)
     log.addHandler(recipeErr)
 

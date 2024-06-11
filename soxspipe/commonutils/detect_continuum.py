@@ -497,6 +497,9 @@ class detect_continuum(_base_detect):
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
+
+        import copy
+
         self.settings = settings
         try:
             self.noddingSequence = "_A" if int(pinholeFlat.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
@@ -513,7 +516,7 @@ class detect_continuum(_base_detect):
         self.sofName = sofName
         self.binx = binx
         self.biny = biny
-        self.recipeSettings = recipeSettings["detect-continuum"]
+        self.recipeSettings = copy.deepcopy(recipeSettings["detect-continuum"])
         self.lampTag = lampTag
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -738,7 +741,7 @@ class detect_continuum(_base_detect):
                 if tryCount == 5:
                     self.log.print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
-                if setttings["tune-pipeline"]:
+                if self.settings["tune-pipeline"]:
                     raise e
 
         try:

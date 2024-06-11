@@ -844,7 +844,7 @@ class data_organiser(object):
         # rawFrames.replace("LAMP,QFLAT", "LAMP,FLAT", inplace=True)
 
         # HIDE OFF FRAMES FROM GROUPS
-        mask = ((rawFrames["eso dpr tech"] == "IMAGE") & (rawFrames['eso seq arm'] == "NIR") & (rawFrames['eso dpr tech'] != "DARK"))
+        mask = ((rawFrames["eso dpr tech"] == "IMAGE") & (rawFrames['eso seq arm'] == "NIR") & (rawFrames['eso dpr type'] != "DARK"))
         rawFramesNoOffFrames = rawFrames.loc[~mask]
         rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw)
 
@@ -1116,7 +1116,7 @@ class data_organiser(object):
             if isinstance(filteredFrames, astropy.table.row.Row):
                 filteredFrames = Table(filteredFrames)
 
-            if seriesRecipe not in ["mbias"]:
+            if seriesRecipe not in ["mbias", "mdark"]:
                 mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
             else:
                 mask = (filteredFrames['eso dpr tech'].isin(["NONSENSE"]))

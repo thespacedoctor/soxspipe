@@ -79,6 +79,7 @@ class create_dispersion_map(object):
         log.debug("instantiating a new 'create_dispersion_map' object")
 
         import warnings
+        import copy
 
         self.settings = settings
         self.pinholeFrame = pinholeFrame
@@ -88,7 +89,7 @@ class create_dispersion_map(object):
         self.products = productsTable
         self.sofName = sofName
         self.create2DMap = create2DMap
-        self.recipeSettings = recipeSettings
+        self.recipeSettings = copy.deepcopy(recipeSettings)
         self.lineDetectionTable = lineDetectionTable
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -1902,7 +1903,7 @@ class create_dispersion_map(object):
         """
         self.log.debug('starting the ``create_dispersion_map_qc_plot`` method')
         #print('Creating the QC plot:')
-        #print(orderPixelTable)
+        # print(orderPixelTable)
 
         import numpy as np
         from astropy.visualization import hist
@@ -2072,23 +2073,19 @@ class create_dispersion_map(object):
         bottomright.set_xlabel('xy residual')
         bottomright.tick_params(axis='both', which='major', labelsize=9)
 
-        
-
-        
-        orderPixelTable_groups = orderPixelTable.groupby([ 'order'])
+        orderPixelTable_groups = orderPixelTable.groupby(['order'])
         for name, group in orderPixelTable_groups:
             resAx.scatter(group["wavelength"], group["R"], alpha=0.1)
-            #CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
+            # CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
             mean_res = group["R"].mean()
             std_res = group["R"].std()
 
             mean_wavelength = group["wavelength"].mean()
-            #ADD THIS POINT TO THE PLOT USING STD_RES AS ERROR BAR
-            #make marker big
+            # ADD THIS POINT TO THE PLOT USING STD_RES AS ERROR BAR
+            # make marker big
 
-            #ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
+            # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
             resAx.errorbar(mean_wavelength, mean_res, yerr=std_res, fmt='o', color='black', alpha=1.0)
-
 
         #resAx.scatter(orderPixelTable["wavelength"], orderPixelTable["R"], alpha=0.1)
         resAx.set_xlabel("Wavelenght (nm)", fontsize=10)
