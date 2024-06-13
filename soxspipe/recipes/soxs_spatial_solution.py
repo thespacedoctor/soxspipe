@@ -314,7 +314,6 @@ class soxs_spatial_solution(_base_recipe_):
                 self.recipeSettings["slit-deg"] = self.polyOrders[4:]
 
             # GENERATE AN UPDATED DISPERSION MAP
-            self.create2DMap = False
             mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
                 log=self.log,
                 settings=self.settings,
