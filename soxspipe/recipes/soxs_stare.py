@@ -257,18 +257,26 @@ class soxs_stare(_base_recipe_):
             master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        # UVB/VIS DARK
+        # MASTER DARK
         add_filters = {kw("PRO_CATG"): 'MASTER_DARK_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
-        # NIR DARK
-        add_filters = {kw("DPR_TYPE"): 'OBJECT',
-                       kw("DPR_TECH"): 'IMAGE'}
-        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
-                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+        if not dark:
+            # NIR DARK
+            add_filters = {kw("DPR_TYPE"): 'OBJECT',
+                           kw("DPR_TECH"): 'IMAGE'}
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                    hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        if "PAE" in self.settings and self.settings["PAE"]:
+            add_filters = {kw("DPR_TYPE"): 'FLAT,LAMP',
+                           kw("DPR_TECH"): 'IMAGE'}
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                    hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
@@ -290,6 +298,7 @@ class soxs_stare(_base_recipe_):
 
         if not self.recipeSettings["use_flat"]:
             master_flat = False
+
         combined_object = self.detrend(
             inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
 

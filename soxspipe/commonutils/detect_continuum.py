@@ -530,9 +530,8 @@ class detect_continuum(_base_detect):
         self.inst = pinholeFlat.header[self.kw("INSTRUME")]
         self.exptime = pinholeFlat.header[self.kw("EXPTIME")]
 
-        if self.exptime < 59 and recipeName != "soxs-stare":
-            print(recipeName)
-            raise Exception("too low")
+        # if self.exptime < 59 and recipeName != "soxs-stare":
+        #     raise Exception("too low")
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
