@@ -641,7 +641,7 @@ class subtract_sky(object):
 
         filePath = f"{self.qcDir}/{filename}"
 
-        # plt.show()
+        plt.show()
         plt.savefig(filePath, dpi='figure')
         plt.close()
 
@@ -777,11 +777,12 @@ class subtract_sky(object):
         # FOR WEIGHTED BSPLINES WE ONLY NEED *INTERIOR* KNOTS (DON'T GO BEYOND RANGE OF DATA)
         # CAN'T HAVE MORE KNOTS THAN DATA POINTS
         # NUMBER OF 'DEFAULT' KNOTS
-        defaultPointsPerKnot = 25
+        defaultPointsPerKnot = 500
         n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
         # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONGS WAVELENGTH RANGE
         qs = np.linspace(0, 1, n_interior_knots + 2)[1: -1]
         allKnots = np.quantile(goodWl, qs)
+        print(f"START KNOTS: {len(allKnots)}")
         extraKnots = np.array([])
         iterationCount = 0
         residualFloor = False
@@ -809,6 +810,7 @@ class subtract_sky(object):
                 ind = np.digitize(df, allKnots)
                 group = imageMapOrder.loc[imageMapOrder["clipped"] == False].groupby(ind)
                 meanResiduals = group["sky_subtracted_flux_error_ratio_abs"].mean()
+
                 counts = group.size()
                 potentialNewKnots = group["wavelength"].mean()
                 mask = counts < bspline_order
@@ -822,6 +824,8 @@ class subtract_sky(object):
                 extraKnots = np.ma.compressed(np.ma.masked_array(potentialNewKnots, mask))
                 meanResiduals = np.ma.compressed(np.ma.masked_array(meanResiduals, mask))
                 allKnots = np.sort(np.concatenate((extraKnots, allKnots)))
+
+                print(f"KNOTS: {len(allKnots)}")
 
             tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=allKnots, k=bspline_order, w=goodWeights, full_output=True)
             t, c, k = tck
@@ -843,8 +847,14 @@ class subtract_sky(object):
                 # RECALUATE THE RESIDUAL FLOOR WE ARE CONVERGING TO
                 allResiduals = np.absolute(imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_subtracted_flux_error_ratio"])
                 meanResidual = np.mean(allResiduals[1000:-1000])
-                std = np.mean(allResiduals[1000:-1000])
-                residualFloor = meanResidual
+                medianResidual = np.median(allResiduals[1000:-1000])
+                std = np.std(allResiduals[1000:-1000])
+
+                from astropy.stats import mad_std
+                mstd = mad_std(allResiduals)
+
+                residualFloor = meanResidual + 0.2 * mstd
+
             else:
                 residuals = imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_subtracted_flux_error_ratio"]
                 # SIGMA-CLIP THE DATA
