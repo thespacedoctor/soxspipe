@@ -268,9 +268,9 @@ soxs-stare:
             # ROLLING WINDOW LENGTH IN DATA POINTS
             median_rolling_window_size: 31
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percential_clipping_sigma: 2
-            percential_clipping_iterations: 1
-            percential_rolling_window_size: 15
+            percentile_clipping_sigma: 2
+            percentile_clipping_iterations: 1
+            percentile_rolling_window_size: 15
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
             clip-slit-edge-fraction: 0.05
             aggressive_object_masking: True
@@ -309,9 +309,9 @@ soxs-stare:
             # ROLLING WINDOW LENGTH IN DATA POINTS
             median_rolling_window_size: 31
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percential_clipping_sigma: 2
-            percential_clipping_iterations: 1
-            percential_rolling_window_size: 15
+            percentile_clipping_sigma: 2
+            percentile_clipping_iterations: 1
+            percentile_rolling_window_size: 15
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
             clip-slit-edge-fraction: 0.05
             aggressive_object_masking: True
@@ -350,9 +350,9 @@ soxs-stare:
             # ROLLING WINDOW LENGTH IN DATA POINTS
             median_rolling_window_size: 31
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percential_clipping_sigma: 2
-            percential_clipping_iterations: 1
-            percential_rolling_window_size: 15
+            percentile_clipping_sigma: 2
+            percentile_clipping_iterations: 1
+            percentile_rolling_window_size: 15
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
             clip-slit-edge-fraction: 0.05
             aggressive_object_masking: True

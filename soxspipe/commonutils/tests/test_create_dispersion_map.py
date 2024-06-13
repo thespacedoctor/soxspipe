@@ -116,7 +116,7 @@ class test_create_dispersion_map(unittest.TestCase):
         })
 
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
             log=log,
             settings=settings2,
             recipeSettings=settings2['soxs-disp-solution'],
@@ -160,7 +160,7 @@ class test_create_dispersion_map(unittest.TestCase):
         })
 
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
             log=log,
             settings=settings,
             recipeSettings=settings['soxs-disp-solution'],
@@ -204,7 +204,7 @@ class test_create_dispersion_map(unittest.TestCase):
         })
 
         from soxspipe.commonutils import create_dispersion_map
-        mapPath, mapImagePath, res_plots, qcTable, productsTable = create_dispersion_map(
+        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
             log=log,
             settings=settings,
             recipeSettings=settings['soxs-spatial-solution'],

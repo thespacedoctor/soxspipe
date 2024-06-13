@@ -195,43 +195,43 @@ class reducer(object):
 
         sof = self.sessionPath + "/sof/" + sof
 
-        if recipe == "mbias":
-            from soxspipe.recipes import soxs_mbias
-            recipe = soxs_mbias(
-                log=self.log,
-                settings=self.settings,
-                inputFrames=sof,
-                overwrite=self.overwrite
-            )
-            mbiasFrame = recipe.produce_product()
+        # if recipe == "mbias":
+        #     from soxspipe.recipes import soxs_mbias
+        #     recipe = soxs_mbias(
+        #         log=self.log,
+        #         settings=self.settings,
+        #         inputFrames=sof,
+        #         overwrite=self.overwrite
+        #     )
+        #     mbiasFrame = recipe.produce_product()
 
-        if recipe == "mdark":
-            from soxspipe.recipes import soxs_mdark
-            recipe = soxs_mdark(
-                log=self.log,
-                settings=self.settings,
-                inputFrames=sof,
-                overwrite=self.overwrite
-            )
-            mdarkFrame = recipe.produce_product()
+        # if recipe == "mdark":
+        #     from soxspipe.recipes import soxs_mdark
+        #     recipe = soxs_mdark(
+        #         log=self.log,
+        #         settings=self.settings,
+        #         inputFrames=sof,
+        #         overwrite=self.overwrite
+        #     )
+        #     mdarkFrame = recipe.produce_product()
 
-        if recipe == "disp_sol":
-            from soxspipe.recipes import soxs_disp_solution
-            disp_map = soxs_disp_solution(
-                log=self.log,
-                settings=self.settings,
-                inputFrames=sof,
-                overwrite=self.overwrite
-            ).produce_product()
+        # if recipe == "disp_sol":
+        #     from soxspipe.recipes import soxs_disp_solution
+        #     disp_map = soxs_disp_solution(
+        #         log=self.log,
+        #         settings=self.settings,
+        #         inputFrames=sof,
+        #         overwrite=self.overwrite
+        #     ).produce_product()
 
-        if recipe == "order_centres":
-            from soxspipe.recipes import soxs_order_centres
-            order_table = soxs_order_centres(
-                log=self.log,
-                settings=self.settings,
-                inputFrames=sof,
-                overwrite=self.overwrite
-            ).produce_product()
+        # if recipe == "order_centres":
+        #     from soxspipe.recipes import soxs_order_centres
+        #     order_table = soxs_order_centres(
+        #         log=self.log,
+        #         settings=self.settings,
+        #         inputFrames=sof,
+        #         overwrite=self.overwrite
+        #     ).produce_product()
 
         if recipe == "mflat":
             from soxspipe.recipes import soxs_mflat
@@ -252,25 +252,25 @@ class reducer(object):
                 overwrite=self.overwrite
             ).produce_product()
 
-        if recipe == "stare":
-            from soxspipe.recipes import soxs_stare
-            recipe = soxs_stare(
-                log=self.log,
-                settings=self.settings,
-                inputFrames=sof,
-                overwrite=self.overwrite
-            )
-            reducedStare = recipe.produce_product()
+        # if recipe == "stare":
+        #     from soxspipe.recipes import soxs_stare
+        #     recipe = soxs_stare(
+        #         log=self.log,
+        #         settings=self.settings,
+        #         inputFrames=sof,
+        #         overwrite=self.overwrite
+        #     )
+        #     reducedStare = recipe.produce_product()
 
-        if recipe == "nod":
-            from soxspipe.recipes import soxs_nod
-            recipe = soxs_nod(
-                log=self.log,
-                settings=self.settings,
-                inputFrames=sof,
-                overwrite=self.overwrite
-            )
-            reducedNod = recipe.produce_product()
+        # if recipe == "nod":
+        #     from soxspipe.recipes import soxs_nod
+        #     recipe = soxs_nod(
+        #         log=self.log,
+        #         settings=self.settings,
+        #         inputFrames=sof,
+        #         overwrite=self.overwrite
+        #     )
+        #     reducedNod = recipe.produce_product()
 
         self.log.debug('completed the ``run_recipe`` method')
         return None

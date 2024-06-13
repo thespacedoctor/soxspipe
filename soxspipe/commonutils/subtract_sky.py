@@ -299,9 +299,9 @@ class subtract_sky(object):
         median_clipping_sigma = self.recipeSettings["sky-subtraction"]["median_clipping_sigma"]
         median_clipping_iterations = self.recipeSettings["sky-subtraction"]["median_clipping_iterations"]
         median_rolling_window_size = self.recipeSettings["sky-subtraction"]["median_rolling_window_size"]
-        percential_clipping_sigma = self.recipeSettings["sky-subtraction"]["percential_clipping_sigma"]
-        percential_clipping_iterations = self.recipeSettings["sky-subtraction"]["percential_clipping_iterations"]
-        percential_rolling_window_size = self.recipeSettings["sky-subtraction"]["percential_rolling_window_size"]
+        percentile_clipping_sigma = self.recipeSettings["sky-subtraction"]["percentile_clipping_sigma"]
+        percentile_clipping_iterations = self.recipeSettings["sky-subtraction"]["percentile_clipping_iterations"]
+        percentile_rolling_window_size = self.recipeSettings["sky-subtraction"]["percentile_rolling_window_size"]
 
         # FINDING A DYNAMIC SIZE FOR PERCENTILE FILTERING WINDOW
         windowSize = int(len(imageMapOrder.loc[imageMapOrder[self.axisB] == imageMapOrder[self.axisB].median()].index))
@@ -327,7 +327,7 @@ class subtract_sky(object):
 
         # NOW SOME MORE ROBUST CLIPPING WITHIN A WAVELENGTH ROLLING WINDOW TO ALSO REMOVE OBJECT(S)
         imageMapOrder["residual_global_sigma_old"] = imageMapOrder["residual_global_sigma"]
-        imageMapOrder = self.rolling_window_clipping(imageMapOrderDF=imageMapOrder, windowSize=int(percential_rolling_window_size), sigma_clip_limit=percential_clipping_sigma, max_iterations=percential_clipping_iterations)
+        imageMapOrder = self.rolling_window_clipping(imageMapOrderDF=imageMapOrder, windowSize=int(percentile_rolling_window_size), sigma_clip_limit=percentile_clipping_sigma, max_iterations=percentile_clipping_iterations)
 
         self.log.debug('completed the ``get_over_sampled_sky_from_order`` method')
         return imageMapOrderWithObject, imageMapOrder

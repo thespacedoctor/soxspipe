@@ -718,6 +718,8 @@ class data_organiser(object):
         rawFrames = filteredFrames.loc[mask]
 
         # MATCH OFF FRAMES TO ADD THE MISSING LAMPS
+        mask = (rawFrames["eso obs name"] == "Maintenance")
+        rawFrames.loc[mask, "eso obs name"] = rawFrames.loc[mask, "eso obs name"] + rawFrames.loc[mask, "eso dpr type"]
         if self.instrument.lower() == "soxs":
             groupBy = 'eso obs name'
         else:
@@ -992,13 +994,18 @@ class data_organiser(object):
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
                 sofName.append("qlamp")
-        if True and "PINHOLE" in series["eso dpr tech"].upper():
+        if True and ("PINHOLE" in series["eso dpr tech"].upper() or (series["instrume"] == "SOXS" and "FLAT" in series["eso dpr type"].upper())):
             if series["lamp"] != "--":
                 matchDict['lamp'] = series["lamp"]
                 sofName.append(series["lamp"])
+
+        if series["instrume"] == "SOXS":
+            sofName.append(series["slit"])
         if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and ("FLAT" in series["eso dpr type"].upper() or "DARK" in series["eso dpr type"].upper()))):
             matchDict['exptime'] = float(series["exptime"])
-            sofName.append(str(series["exptime"]).replace(".", "pt"))
+            sofName.append(str(series["exptime"]) + "S")
+        elif series["exptime"] and "BIAS" not in series["eso dpr type"].upper():
+            sofName.append(str(series["exptime"]) + "S")
 
         if series["eso obs name"] != "--":
             matchDict["eso obs name"] = series["eso obs name"]
@@ -1006,6 +1013,7 @@ class data_organiser(object):
         sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
+
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
                 mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP"]))
             else:
@@ -1066,7 +1074,10 @@ class data_organiser(object):
                     filteredFrames["obs-delta"] = filteredFrames['mjd-obs'] - series["mjd-obs"]
                     filteredFrames["obs-delta"] = filteredFrames["obs-delta"].abs()
                     filteredFrames.sort_values(['obs-delta'], inplace=True)
-                    filteredFrames = filteredFrames.head(2)
+                    mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+                    offFrame = filteredFrames.loc[mask].head(1)
+                    onFrame = filteredFrames.loc[~mask].head(1)
+                    filteredFrames = pd.concat([onFrame, offFrame], ignore_index=True)
 
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
@@ -1088,8 +1099,11 @@ class data_organiser(object):
             if isinstance(filteredFrames, astropy.table.row.Row):
                 filteredFrames = Table(filteredFrames)
 
-            filteredFrames.sort_values(['date-obs'], inplace=True)
-            firstDate = filteredFrames['date-obs'].values[0].replace("-", ".").replace(":", ".")
+            if seriesRecipe not in ["mbias"]:
+                mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+            else:
+                mask = (filteredFrames['eso dpr tech'].isin(["NONSENSE"]))
+            firstDate = filteredFrames.loc[~mask]['date-obs'].values[0].replace("-", ".").replace(":", ".")
             sofName.insert(0, firstDate)
 
         # NEED SOME FINAL FILTERING ON UVB FLATS
@@ -1783,6 +1797,13 @@ class data_organiser(object):
         self.sessionDB = self.sessionPath + "/soxspipe.db"
         self.conn = sql.connect(
             self.sessionDB)
+
+        # SELECT INSTR
+        c = self.conn.cursor()
+        sqlQuery = "select instrume from raw_frames where instrume is not null limit 1"
+        c.execute(sqlQuery)
+        self.instrument = c.fetchall()[0][0]
+        c.close()
 
         # CLEAN UP FAILED FILES
         c = self.conn.cursor()

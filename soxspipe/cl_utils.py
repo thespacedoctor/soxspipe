@@ -10,8 +10,8 @@ Usage:
     soxspipe [-q] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<od>]
+    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
     soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
     soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -41,7 +41,7 @@ Options:
     -s, --settings <pathToSettingsFile>    the settings file
     -V, --verbose                          more verbose output
     -x, --overwrite                        more verbose output
-    --poly=<oowwss>                        polynomial degrees in this sequence: order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435 (overrides parameters found in setting file)
+    --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
 """
 ################# GLOBAL IMPORTS ####################
 import os
@@ -198,7 +198,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                polyOrders=a["polyFlag"]
             ).produce_product()
 
         if a["order_centres"]:
@@ -208,7 +209,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                polyOrders=a["polyFlag"]
             ).produce_product()
 
         if a["spat_sol"]:

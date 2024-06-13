@@ -86,9 +86,9 @@ class chebyshev_order_wavelength_polynomials():
         # FOR LOOPS ARE THE RIGHT TOOL TO PERFORM COMPUTATIONS OR RUN FUNCTIONS. LIST COMPREHENSION IS SLOW IN THESE CASES
 
         if self.exponentsIncluded == False:
-            orderVals = orderPixelTable["order"].values
-            wlVals = orderPixelTable["wavelength"].values
-            spVals = orderPixelTable["slit_position"].values
+            orderVals = orderPixelTable["order"].values.astype("float")
+            wlVals = orderPixelTable["wavelength"].values.astype("float")
+            spVals = orderPixelTable["slit_position"].values.astype("float")
 
             for i in range(0, orderDeg + 1):
                 for j in range(0, wavelengthDeg + 1):
@@ -101,7 +101,7 @@ class chebyshev_order_wavelength_polynomials():
             for i in range(0, orderDeg + 1):
                 for j in range(0, wavelengthDeg + 1):
                     for k in range(0, slitDeg + 1):
-                        lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{self.axis}{i}"].values * orderPixelTable[f"wavelength_pow_{self.axis}{j}"].values * orderPixelTable[f"slit_position_pow_{self.axis}{k}"].values
+                        lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{self.axis}{i}"].values.astype("float") * orderPixelTable[f"wavelength_pow_{self.axis}{j}"].values.astype("float") * orderPixelTable[f"slit_position_pow_{self.axis}{k}"].values.astype("float")
                         n_coeff += 1
 
         self.log.debug('completed the ``poly`` method')
@@ -158,10 +158,10 @@ class chebyshev_xy_polynomial():
 
         n_coeff = 0
         if not isinstance(orderPixelTable, pd.core.frame.DataFrame):
-            yarray = orderPixelTable
+            yarray = np.array(orderPixelTable).astype('float')
             lhsVals = np.zeros(len(orderPixelTable))
         else:
-            yarray = orderPixelTable[self.yCol].values
+            yarray = orderPixelTable[self.yCol].values.astype('float')
             lhsVals = np.zeros(len(orderPixelTable.index))
 
         if not self.exponentsIncluded:
@@ -171,7 +171,7 @@ class chebyshev_xy_polynomial():
                 n_coeff += 1
         else:
             for i in range(0, self.y_deg + 1):
-                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values
+                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype('float')
                 n_coeff += 1
 
         self.log.info('completed the ``poly`` method')
@@ -245,8 +245,8 @@ class chebyshev_order_xy_polynomials():
         # FOR LOOPS ARE THE RIGHT TOOL TO PERFORM COMPUTATIONS OR RUN FUNCTIONS. LIST COMPREHENSION IS SLOW IN THESE CASES
 
         if self.exponentsIncluded == False:
-            orderVals = orderPixelTable[self.orderCol].values
-            bVals = orderPixelTable[self.axisBCol].values
+            orderVals = orderPixelTable[self.orderCol].values.astype('float')
+            bVals = orderPixelTable[self.axisBCol].values.astype('float')
 
             for i in range(0, orderDeg + 1):
                 for j in range(0, axisBDeg + 1):
@@ -256,7 +256,7 @@ class chebyshev_order_xy_polynomials():
         else:
             for i in range(0, orderDeg + 1):
                 for j in range(0, axisBDeg + 1):
-                    lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{i}"].values * orderPixelTable[f"{axisB}_pow_{j}"].values
+                    lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{i}"].values.astype('float') * orderPixelTable[f"{axisB}_pow_{j}"].values.astype('float')
                     n_coeff += 1
 
         self.log.debug('completed the ``poly`` method')
