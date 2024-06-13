@@ -196,7 +196,7 @@ class create_dispersion_map(object):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=pinholeFrame, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         boost = True
         while boost:
@@ -367,6 +367,7 @@ class create_dispersion_map(object):
             fitFound = False
             tryCount = 0
             while not fitFound and tryCount < 5:
+                
                 popt_x, popt_y, goodLinesTable, clippedLinesTable = self.fit_polynomials(
                     orderPixelTable=orderPixelTable,
                     wavelengthDeg=wavelengthDeg,
@@ -615,13 +616,18 @@ class create_dispersion_map(object):
             orderPixelTable["detector_x"] -= 1.0
             orderPixelTable["detector_y"] -= 1.0
         elif True:
+            
             if arm == "NIR" or arm == "VIS":
                 dp = self.detectorParams
                 science_pixels = dp["science-pixels"]
                 xlen = science_pixels["columns"]["end"] - \
                     science_pixels["columns"]["start"]
                 ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
+                orderPixelTable["detector_x"] -= 4.0
+                orderPixelTable["detector_y"] -= 4.0
                 # orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
+            
+            else:
                 orderPixelTable["detector_x"] -= science_pixels["columns"]["start"]
                 orderPixelTable["detector_y"] -= science_pixels["rows"]["start"]
             if arm == "VIS":

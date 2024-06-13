@@ -242,32 +242,68 @@ class soxs_nod(_base_recipe_):
             s = ""
         self.log.print(f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS")
 
-        # TODO: MARCO TO ADD LOGIC TO HANDLE MORE THAN ONE AB CYCLE
+ 
         if len(allFrameAOffsets) > 1 and len(uniqueOffsets) > 1:
+            allSpectrumA = []
+            allSpectrumB = []
+            sequenceCount = 1
+            # SORT frameA and frameB looing at their MJDOBS keyword in the header in order to the closest A and B frames in time
+            allFrameA.sort(key=lambda x: x.header["MJD-OBS"])
+            allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
+
+            for frameA, frameB in zip(allFrameA, allFrameB):
+                self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
+                if False:
+                    quicklook_image(   log=self.log, CCDObject=frameA, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
+                    quicklook_image(   log=self.log, CCDObject=frameB, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
+                    #Save frameA and frameB to disk in temporary file
+                    home = expanduser("~")
+                    filenameA = self.sofName + f"_A_{sequenceCount}.fits"
+                    filenameB = self.sofName + f"_B_{sequenceCount}.fits"
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+                    filePathA = f"{outDir}/{filenameA}"
+                    filePathB = f"{outDir}/{filenameB}"
+                    frameA.write(filePathA, overwrite=True)
+                    frameB.write(filePathB, overwrite=True)
+                
+                #PROCESSING SINGLE SEQUENCE
+                mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=frameA, bFrame=frameB, locationSetIndex=sequenceCount)
+                if sequenceCount == 1:
+                    allSpectrumA = mergedSpectrumDF_A
+                    allSpectrumB = mergedSpectrumDF_B
+                else:
+                    allSpectrumA = pd.concat([allSpectrumA, mergedSpectrumDF_A])
+                    allSpectrumB = pd.concat([allSpectrumB, mergedSpectrumDF_B])
+
+                sequenceCount += 1
+            stackedSpectrum = self.stack_extractions([allSpectrumA, allSpectrumB])
+            self.plot_stacked_spectrum_qc(stackedSpectrum)
+            self.clean_up()
+            self.report_output()
             self.log.print(f"MARCO TO ADD LOGIC\n\n")
-            sys.exit(0)
+            #sys.exit(0)
+        else:
+            # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
+            aFrame = self.clip_and_stack(
+                frames=allFrameA,
+                recipe="soxs_nod",
+                ignore_input_masks=False,
+                post_stack_clipping=True)
 
-        # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
-        aFrame = self.clip_and_stack(
-            frames=allFrameA,
-            recipe="soxs_nod",
-            ignore_input_masks=False,
-            post_stack_clipping=True)
+            bFrame = self.clip_and_stack(
+                frames=allFrameB,
+                recipe="soxs_nod",
+                ignore_input_masks=False,
+                post_stack_clipping=True)
 
-        bFrame = self.clip_and_stack(
-            frames=allFrameB,
-            recipe="soxs_nod",
-            ignore_input_masks=False,
-            post_stack_clipping=True)
+            mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1)
+            stackedSpectrum = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
+            self.plot_stacked_spectrum_qc(stackedSpectrum)
 
-        mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1)
-        stackedSpectrum = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
-        self.plot_stacked_spectrum_qc(stackedSpectrum)
+            self.clean_up()
+            self.report_output()
 
-        self.clean_up()
-        self.report_output()
-
-        self.log.debug('completed the ``produce_product`` method')
+            self.log.debug('completed the ``produce_product`` method')
         return productPath
 
     def process_single_ab_nodding_cycle(
@@ -306,6 +342,23 @@ class soxs_nod(_base_recipe_):
         hdr_B = bFrame.header
         A_minus_B.header = hdr_A
         B_minus_A.header = hdr_B
+
+        #Write in a fits file the A-B and B-A frames
+        home = expanduser("~")
+        filename = self.sofName + f"_AB_{locationSetIndex}.fits"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+        filePath = f"{outDir}/{filename}"
+        A_minus_B.write(filePath, overwrite=True)
+
+
+
+        if False:
+            from soxspipe.commonutils.toolkit import quicklook_image
+            quicklook_image(
+                log=self.log, CCDObject=A_minus_B, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
+            quicklook_image(
+                log=self.log, CCDObject=B_minus_A, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
+        
 
         # TODO: ADD THESE CHECKS .... LIKELY FOR EACH AB CYCLE INDEX
         if False:
@@ -384,7 +437,7 @@ class soxs_nod(_base_recipe_):
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND mergedSpectrumDF_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
         merged_dataframe = pd.concat(dataFrameList)
-        groupedDataframe = merged_dataframe.groupby(by='WAVE', as_index=False).sum()
+        groupedDataframe = merged_dataframe.groupby(by='WAVE', as_index=False).median()
 
         self.filenameTemplate = self.sofName + ".fits"
 
