@@ -104,6 +104,7 @@ class horne_extraction(object):
         from soxspipe.commonutils import keyword_lookup
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import unpack_order_table
+        from soxspipe.commonutils import detector_lookup
 
         self.log = log
         log.debug("instantiating a new 'horne_extraction' object")
@@ -118,7 +119,6 @@ class horne_extraction(object):
         self.recipeSettings = recipeSettings
 
         # DETECTING SEQUENCE AUTOMATICALLY
-
         try:
             self.noddingSequence = "_A" if int(skySubtractedFrame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
             if locationSetIndex:
@@ -158,6 +158,10 @@ class horne_extraction(object):
                                                   hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
                                                   key_uncertainty_type='UTYPE')
 
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=self.skySubtractedFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
+
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
         self.kw = keyword_lookup(
@@ -167,6 +171,20 @@ class horne_extraction(object):
         kw = self.kw
         self.arm = self.skySubtractedFrame.header[kw("SEQ_ARM")]
         self.dateObs = self.skySubtractedFrame.header[kw("DATE_OBS")]
+
+        # DETECTOR PARAMETERS LOOKUP OBJECT
+        self.detectorParams = detector_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get(self.arm)
+
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
+            self.axisA = "x"
+            self.axisB = "y"
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
 
         # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
         if self.sofName:
@@ -242,6 +260,12 @@ class horne_extraction(object):
                 })
                 self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
+        # REMOVE ZEROS
+        mask = (self.imageMap['wavelength'] == 0) & (self.imageMap['slit_position'] == 0)
+        self.imageMap = self.imageMap.loc[~mask]
+
+        # xpd-update-filter-dataframe-column-values
+
         # FIND THE OBJECT TRACE IN EACH ORDER
         detector = detect_continuum(
             log=self.log,
@@ -301,21 +325,29 @@ class horne_extraction(object):
         for order, amin, amax in zip(orderNums, amins, amaxs):
 
             if order in uniqueOrders:
-                orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable["ycoord"] > amin) & (self.orderPixelTable["ycoord"] < amax)]
-                xstart = orderTable["xcoord_centre"].astype(int) - self.slitHalfLength
-                xstop = orderTable["xcoord_centre"].astype(int) + self.slitHalfLength
-                ycoord = orderTable["ycoord"].astype(int)
-                xcoords = list(map(lambda x: list(range(x[0], x[1])), zip(xstart, xstop)))
-                ycoords = list(map(lambda x: [x] * self.slitHalfLength * 2, ycoord))
-                orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[ycoords, xcoords])
-                orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[ycoords, xcoords])
-                orderTable["sliceSky"] = list(self.skyModelFrame.data[ycoords, xcoords]) if self.skyModelFrame else [0] * len(ycoords)
-                orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[ycoords, xcoords])
+                orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable[f"{self.axisB}coord"] > amin) & (self.orderPixelTable[f"{self.axisB}coord"] < amax)]
+
+                self.axisAstart = orderTable[f"{self.axisA}coord_centre"].astype(int) - self.slitHalfLength
+                self.axisAstop = orderTable[f"{self.axisA}coord_centre"].astype(int) + self.slitHalfLength
+                self.axisBcoord = orderTable[f"{self.axisB}coord"].astype(int)
+                self.axisAcoords = list(map(lambda x: list(range(x[0], x[1])), zip(self.axisAstart, self.axisAstop)))
+                self.axisBcoords = list(map(lambda x: [x] * self.slitHalfLength * 2, self.axisBcoord))
+                if self.detectorParams["dispersion-axis"] == "x":
+                    orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[self.axisBcoords, self.axisAcoords])
+                    orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[self.axisBcoords, self.axisAcoords])
+                    orderTable["sliceSky"] = list(self.skyModelFrame.data[self.axisBcoords, self.axisAcoords]) if self.skyModelFrame else [0] * len(self.axisBcoords)
+                    orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[self.axisBcoords, self.axisAcoords])
+                else:
+                    orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[self.axisAcoords, self.axisBcoords])
+                    orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[self.axisAcoords, self.axisBcoords])
+                    orderTable["sliceSky"] = list(self.skyModelFrame.data[self.axisAcoords, self.axisBcoords]) if self.skyModelFrame else [0] * len(self.axisAcoords)
+                    orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[self.axisAcoords, self.axisBcoords])
+
                 orderSlices.append(orderTable)
 
         from fundamentals import fmultiprocess
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
-                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma)
+                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, turnOffMP=False)
 
         self.plot_extracted_spectrum_qc(extractions=extractions, uniqueOrders=uniqueOrders)
 
@@ -514,12 +546,15 @@ class horne_extraction(object):
         import matplotlib.pyplot as plt
         from datetime import datetime
         import pandas as pd
+        from astropy.stats import sigma_clipped_stats
 
-        fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
+        fig = plt.figure(figsize=(10, 2), constrained_layout=True, dpi=320)
         gs = fig.add_gridspec(1, 1)
         toprow = fig.add_subplot(gs[0:1, :])
         addedLegend = True
+
         for df, o in zip(extractions, uniqueOrders):
+
             extracted_wave_spectrum = df["wavelengthMedian"]
             extracted_spectrum = df["extractedFluxOptimal"]
             extracted_spectrum_nonopt = df["extractedFluxBoxcarRobust"]
@@ -527,16 +562,21 @@ class horne_extraction(object):
             extracted_snr = df["snr"]
 
             try:
-                if addedLegend:
-                    label = "Robust Boxcar Extraction"
-                else:
-                    label = None
-                toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], color="gray", alpha=0.8, zorder=1, label=label)
-                # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
-                line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum[10:-10], zorder=2)
+                if "PAE" in self.settings and self.settings["PAE"] and True:
+                    line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], zorder=2, linewidth=0.5)
+                    toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum_nonopt[10:-10].mean() + 1.4 * extracted_spectrum_nonopt[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
 
-                toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum[10:-10].mean() + 5 * extracted_spectrum[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
-                addedLegend = False
+                else:
+                    if addedLegend:
+                        label = "Robust Boxcar Extraction"
+                    else:
+                        label = None
+                    toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], color="gray", alpha=0.8, zorder=1, label=label, linewidth=0.5)
+                    # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
+                    line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum[10:-10], zorder=2, linewidth=0.5)
+
+                    toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
+                    addedLegend = False
             except:
                 self.log.warning(f"Order skipped: {o}")
 
@@ -544,8 +584,11 @@ class horne_extraction(object):
                       fontsize=8)
         toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
-        toprow.set_title(
-            f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
+        allExtractions = pd.concat(extractions, ignore_index=True)
+        mean, median, std = sigma_clipped_stats(allExtractions["extractedFluxBoxcarRobust"], sigma=5., stdfunc="mad_std", cenfunc="median", maxiters=3)
+        plt.ylim(-200, allExtractions["extractedFluxBoxcarRobust"].max() + std)
+        # toprow.set_title(
+        #     f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}.pdf")
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
@@ -642,7 +685,7 @@ class horne_extraction(object):
     # xt-class-method
 
 
-def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma):
+def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB):
     """
     *extract the object spectrum for a single order*
 
@@ -690,6 +733,17 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     maskImage = np.vstack(crossDispersionSlices["sliceMask"])
     errorImage = np.vstack(crossDispersionSlices["sliceError"])
 
+    if False:
+        fig = plt.figure(
+            num=None,
+            figsize=(8, 3),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        plt.imshow(fluxNormalisedImage.T, interpolation='none', aspect='auto')
+        plt.show()
+
     # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
     sys.stdout.flush()
@@ -701,7 +755,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
         clipped_count = 1
 
         fractions = fluxNormalisedImage[:, slitPixelIndex]
-        wave_px = crossDispersionSlices["ycoord"]
+        wave_px = crossDispersionSlices[f"{axisB}coord"]
         weights = weightImage[:, slitPixelIndex]
         mask = maskImage[:, slitPixelIndex]
 
@@ -713,7 +767,10 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
         startCount = len(fractions)
         while (iteration < clippingIterationLimit) and (clipped_count > 0):
 
-            coeff = np.polyfit(wave_px, fractions, deg=2)
+            if len(wave_px):
+                coeff = np.polyfit(wave_px, fractions, deg=2)
+            else:
+                break
             residuals = fractions - np.polyval(coeff, wave_px)
 
             # REMOVE REMAINING OUTLIERS
@@ -731,7 +788,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
             #     sys.stdout.write("\x1b[1A\x1b[2K")
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
-        profile = np.polyval(coeff, crossDispersionSlices["ycoord"])
+        profile = np.polyval(coeff, crossDispersionSlices[f"{axisB}coord"])
         # REMOVE -VE VALUE
         profile[profile < 0] = 0
         crossSlitProfiles.append(profile)
@@ -839,7 +896,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     log.debug('completed the ``extract_single_order`` method')
 
-    return crossDispersionSlices[['order', 'xcoord_centre', 'ycoord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
+    return crossDispersionSlices[['order', f'{axisA}coord_centre', f'{axisB}coord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
 
 def create_cross_dispersion_slice(
@@ -852,6 +909,6 @@ def create_cross_dispersion_slice(
 
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
-        series["sliceRawFlux"], sigma_lower=7, sigma_upper=50, maxiters=1, cenfunc='median', stdfunc="mad_std")
+        series["sliceRawFlux"], sigma_lower=7, sigma_upper=150, maxiters=1, cenfunc='median', stdfunc="mad_std")
 
     return series

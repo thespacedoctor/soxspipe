@@ -79,6 +79,7 @@ class create_dispersion_map(object):
         log.debug("instantiating a new 'create_dispersion_map' object")
 
         import warnings
+        import copy
 
         self.settings = settings
         self.pinholeFrame = pinholeFrame
@@ -88,7 +89,7 @@ class create_dispersion_map(object):
         self.products = productsTable
         self.sofName = sofName
         self.create2DMap = create2DMap
-        self.recipeSettings = recipeSettings
+        self.recipeSettings = copy.deepcopy(recipeSettings)
         self.lineDetectionTable = lineDetectionTable
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -106,10 +107,8 @@ class create_dispersion_map(object):
         from soxspipe.commonutils.toolkit import get_calibration_lamp
         self.lamp = get_calibration_lamp(log=self.log, frame=pinholeFrame, kw=kw)
 
-        # if self.arm.upper() == "NIR" and not "xe" == self.lamp.lower():
-        #     raise Exception("wrong lamp")
-        if self.exptime < 14:
-            raise Exception("too short")
+        if self.arm.upper() == "NIR" and not ("ar" in self.lamp.lower() and "hg" in self.lamp.lower()):
+            raise Exception("wrong lamp")
 
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
@@ -690,6 +689,20 @@ class create_dispersion_map(object):
             # DROP HELPER COLUMNS
             orderPixelTable.drop(columns=['fit_x', 'fit_y',
                                           'shift_x', 'shift_y'], inplace=True)
+
+            # DROP MPH SETS THAT DON'T CONTAIN AlL SLIT-POSITIONS
+            lineGroups = orderPixelTable.groupby(['wavelength', 'order'])
+            lineGroups = lineGroups.size().to_frame(name='count').reset_index()
+            fullSet = lineGroups['count'].max()
+            mask = (lineGroups['count'] < fullSet)
+            lineGroups = lineGroups.loc[mask]
+            setsToDrop = lineGroups[['wavelength', 'order']]
+            s = orderPixelTable[['wavelength', 'order']].merge(setsToDrop, indicator=True, how='left')
+            s["dropped"] = False
+            s.loc[(s["_merge"] == "both"), "dropped"] = True
+            orderPixelTable["droppedOnMissing"] = s["dropped"].values
+            orderPixelTable = orderPixelTable.loc[(orderPixelTable["droppedOnMissing"] == False)]
+            orderPixelTable.drop(columns=['droppedOnMissing'], inplace=True)
 
         self.log.debug('completed the ``get_predicted_line_list`` method')
         return orderPixelTable
@@ -1363,8 +1376,7 @@ class create_dispersion_map(object):
                 masked_residuals = sigma_clip(
                     lineGroups["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY, maxiters=1, cenfunc='median', stdfunc='mad_std')
                 lineGroups["sigma_clipped_y"] = masked_residuals.mask
-                # lineGroups.loc[((lineGroups["sigma_clipped_y"] == True) | (lineGroups["sigma_clipped_x"] == True)), "sigma_clipped"] = True
-                lineGroups.loc[((lineGroups["sigma_clipped_x"] == True)), "sigma_clipped"] = True
+                lineGroups.loc[((lineGroups["sigma_clipped_y"] == True) | (lineGroups["sigma_clipped_x"] == True)), "sigma_clipped"] = True
 
                 if False:
                     # CLIP ALSO ON COMBINED RESIDUALS
@@ -1380,7 +1392,21 @@ class create_dispersion_map(object):
                 s = orderPixelTable[['wavelength', 'order']].merge(clippedGroups, indicator=True, how='left')
                 s["clipped"] = False
                 s.loc[(s["_merge"] == "both"), "clipped"] = True
+
                 orderPixelTable["sigma_clipped"] = s["clipped"].values
+
+                # CLIP THE MOST DEVIATE SINGLE PINHOLES
+                if iteration == 1:
+                    masked_residuals = sigma_clip(
+                        orderPixelTable["residuals_x"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaX * 3, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                    orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
+                    masked_residuals = sigma_clip(
+                        orderPixelTable["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY * 3, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                    orderPixelTable["sigma_clipped_y"] = masked_residuals.mask
+                    masked_residuals = sigma_clip(
+                        orderPixelTable["R"], sigma_lower=3000, sigma_upper=10, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                    orderPixelTable["sigma_clipped_R"] = masked_residuals.mask
+                    orderPixelTable.loc[((orderPixelTable["sigma_clipped_y"] == True) | (orderPixelTable["sigma_clipped_x"] == True) | (orderPixelTable["sigma_clipped_R"] == True)), "sigma_clipped"] = True
 
             else:
                 masked_residuals = sigma_clip(
@@ -1491,7 +1517,7 @@ class create_dispersion_map(object):
         uniqueOrders = orderPixelTable['order'].unique()
         expandEdges = 0
 
-        if self.axisA == "x":
+        if self.detectorParams["dispersion-axis"] == "x":
             axisALen = wlMap.data.shape[1]
             axisBLen = wlMap.data.shape[0]
         else:
@@ -1515,25 +1541,25 @@ class create_dispersion_map(object):
             if reverse:
                 for b, u, l in zip(axisBcoord, np.ceil(axisACoord_edgeup).astype(int), np.floor(axisACoord_edgelow).astype(int)):
                     if self.axisA == "x":
-                        wlMap.data[b, l:u] = 0
-                        orderMap.data[b, l:u] = o
+                        wlMap.data[b, l: u] = 0
+                        orderMap.data[b, l: u] = o
                     else:
-                        wlMap.data[l:u, b] = 0
-                        orderMap.data[l:u, b] = o
+                        wlMap.data[l: u, b] = 0
+                        orderMap.data[l: u, b] = o
             else:
                 for b, u, l in zip(axisBcoord, np.ceil(axisACoord_edgeup).astype(int), np.floor(axisACoord_edgelow).astype(int)):
                     if self.axisA == "x":
-                        wlMap.data[b, l:u] = np.NaN
-                        orderMap.data[b, l:u] = np.NaN
+                        wlMap.data[b, l: u] = np.NaN
+                        orderMap.data[b, l: u] = np.NaN
                     else:
-                        wlMap.data[l:u, b] = np.NaN
-                        orderMap.data[l:u, b] = np.NaN
+                        wlMap.data[l: u, b] = np.NaN
+                        orderMap.data[l: u, b] = np.NaN
 
         # SLIT MAP PLACEHOLDER SAME AS WAVELENGTH MAP PLACEHOLDER
         slitMap = wlMap.copy()
 
         # PLOT CCDDATA OBJECT
-        if plot:
+        if False:
             import matplotlib.pyplot as plt
             rotatedImg = np.rot90(slitMap.data, 1)
             std = np.nanstd(slitMap.data)
@@ -1901,6 +1927,8 @@ class create_dispersion_map(object):
         ```
         """
         self.log.debug('starting the ``create_dispersion_map_qc_plot`` method')
+        # print('Creating the QC plot:')
+        # print(orderPixelTable)
 
         import numpy as np
         from astropy.visualization import hist
@@ -1942,6 +1970,8 @@ class create_dispersion_map(object):
         mean_x_res = abs(orderPixelTable["residuals_x"]).mean()
         mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
 
+        print(abs(orderPixelTable["residuals_y"]).max(), abs(orderPixelTable["residuals_x"]).max())
+
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = np.ma.array(self.pinholeFrameMasked.data, mask=self.pinholeFrameMasked.mask, fill_value=0).filled()
         if rotateImage:
@@ -1966,25 +1996,27 @@ class create_dispersion_map(object):
         # a = plt.figure(figsize=(40, 15))
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
-            fig = plt.figure(figsize=(6, 16.5), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 20), constrained_layout=True)
             # CREATE THE GRID OF AXES
-            gs = fig.add_gridspec(8, 4)
+            gs = fig.add_gridspec(10, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
-            settingsAx = fig.add_subplot(gs[6:, 2:])
-            qcAx = fig.add_subplot(gs[6:, 0:2])
+            resAx = fig.add_subplot(gs[6:8, :])
+            settingsAx = fig.add_subplot(gs[8:, 2:])
+            qcAx = fig.add_subplot(gs[8:, 0:2])
         else:
-            fig = plt.figure(figsize=(6, 12), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 20), constrained_layout=True)
             # CREATE THE GRID OF AXES
-            gs = fig.add_gridspec(7, 4)
+            gs = fig.add_gridspec(10, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
-            settingsAx = fig.add_subplot(gs[6:, 2:])
-            qcAx = fig.add_subplot(gs[6:, 0:2])
+            resAx = fig.add_subplot(gs[6:8, :])
+            settingsAx = fig.add_subplot(gs[8:, 2:])
+            qcAx = fig.add_subplot(gs[8:, 0:2])
 
         std = self.std
         mean = self.mean
@@ -2070,9 +2102,26 @@ class create_dispersion_map(object):
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         if self.firstGuessMap:
-            fig.suptitle(f"residuals of global dispersion solution fitting - {arm} multi-pinhole\n{subtitle}", fontsize=12)
+            fig.suptitle(f"residuals of global dispersion solution fitting - {arm} multi-pinhole\n{subtitle}", fontsize=10, y=0.99)
         else:
-            fig.suptitle(f"residuals of global dispersion solution fitting - {arm} single pinhole\n{subtitle}", fontsize=12)
+            fig.suptitle(f"residuals of global dispersion solution fitting - {arm} single pinhole\n{subtitle}", fontsize=10, y=0.99)
+        orderPixelTable_groups = orderPixelTable.groupby(['order'])
+        for name, group in orderPixelTable_groups:
+            resAx.scatter(group["wavelength"], group["R"], alpha=0.1)
+            # CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
+            mean_resol = group["R"].mean()
+            std_resol = group["R"].std()
+
+            mean_wavelength = group["wavelength"].mean()
+            # ADD THIS POINT TO THE PLOT USING STD_RES AS ERROR BAR
+            # make marker big
+
+            # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
+            resAx.errorbar(mean_wavelength, mean_resol, yerr=std_resol, fmt='o', color='black', alpha=1.0)
+
+        # resAx.scatter(orderPixelTable["wavelength"], orderPixelTable["R"], alpha=0.1)
+        resAx.set_xlabel("Wavelength (nm)", fontsize=10)
+        resAx.set_ylabel("Resolution", fontsize=10)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -2410,10 +2459,10 @@ class create_dispersion_map(object):
 
         print(len(lineAtlas.index))
 
-        #mask = (lineAtlas['ion'].isin(["XeI", 'UNK']))
+        # mask = (lineAtlas['ion'].isin(["XeI", 'UNK']))
         mask = (lineAtlas['ion'].isin(["HgI", 'UNK']))
-        #mask = (lineAtlas['ion'].isin(["NeI", "NeII", 'UNK']))
-        #mask = (lineAtlas['ion'].isin(["Ar", "ArI", "ArII", "ArIII", 'UNK']))
+        # mask = (lineAtlas['ion'].isin(["NeI", "NeII", 'UNK']))
+        # mask = (lineAtlas['ion'].isin(["Ar", "ArI", "ArII", "ArIII", 'UNK']))
         lineAtlas = lineAtlas.loc[mask]
 
         print(len(lineAtlas.index))
@@ -2474,10 +2523,10 @@ class create_dispersion_map(object):
 
         from astropy.table import Table
         t = Table.from_pandas(newPredictedLineList)
-        #t.write("Xe.fits", overwrite=True)
+        # t.write("Xe.fits", overwrite=True)
         t.write("Hg.fits", overwrite=True)
-        #t.write("Ne.fits", overwrite=True)
-        #t.write("Ar.fits", overwrite=True)
+        # t.write("Ne.fits", overwrite=True)
+        # t.write("Ar.fits", overwrite=True)
 
         sys.exit(0)
 
