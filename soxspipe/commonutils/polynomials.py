@@ -235,8 +235,8 @@ class chebyshev_order_xy_polynomials():
         import numpy as np
 
         # UNPACK TUPLE INPUT
-        orderDeg = self.orderDeg
-        axisBDeg = self.axisBDeg
+        orderDeg = int(self.orderDeg)
+        axisBDeg = int(self.axisBDeg)
         axisB = self.axisB
 
         n_coeff = 0
@@ -256,7 +256,7 @@ class chebyshev_order_xy_polynomials():
         else:
             for i in range(0, orderDeg + 1):
                 for j in range(0, axisBDeg + 1):
-                    lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{i}"].values.astype('float') * orderPixelTable[f"{axisB}_pow_{j}"].values.astype('float')
+                    lhsVals += float(coeff[n_coeff]) * orderPixelTable[f"order_pow_{i}"].values.astype('float') * orderPixelTable[f"{axisB}_pow_{j}"].values.astype('float')
                     n_coeff += 1
 
         self.log.debug('completed the ``poly`` method')

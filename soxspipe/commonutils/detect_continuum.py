@@ -192,7 +192,7 @@ class _base_detect(object):
                 coeff = None
                 return coeff, pixelList, pixelList
 
-            if False and iteration < 3:
+            if iteration < 3:
                 coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
 
             try:
@@ -465,6 +465,7 @@ class detect_continuum(_base_detect):
         - ``biny`` -- binning in y-axis
         - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
         - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
+        - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
 
     **Usage:**
 
@@ -497,7 +498,8 @@ class detect_continuum(_base_detect):
             binx=1,
             biny=1,
             lampTag=False,
-            locationSetIndex=False
+            locationSetIndex=False,
+            orderPixelTable=False
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -522,6 +524,7 @@ class detect_continuum(_base_detect):
         self.biny = biny
         self.recipeSettings = copy.deepcopy(recipeSettings["detect-continuum"])
         self.lampTag = lampTag
+        self.orderPixelTable = orderPixelTable
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -556,6 +559,18 @@ class detect_continuum(_base_detect):
         if not os.path.exists(self.qcDir):
             os.makedirs(self.qcDir)
 
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
+            self.axisA = "x"
+            self.axisB = "y"
+            self.coeff_dict = {"degorder_cent": self.orderDeg,
+                               "degy_cent": self.axisBDeg}
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
+            self.coeff_dict = {"degorder_cent": self.orderDeg,
+                               "degx_cent": self.axisBDeg}
+
         return None
 
     def get(self):
@@ -572,109 +587,12 @@ class detect_continuum(_base_detect):
         from datetime import datetime
 
         arm = self.arm
+        coeff_dict = self.coeff_dict
 
-        # CONVERT WAVELENGTH TO PIXEL POSITIONS AND RETURN ARRAY OF POSITIONS TO
-        # SAMPLE THE TRACES
-        orderPixelTable = self.create_pixel_arrays()
-
-        binx = 1
-        biny = 1
-        try:
-            binx = self.pinholeFlat.header[self.kw("WIN_BINX")]
-            biny = self.pinholeFlat.header[self.kw("WIN_BINY")]
-        except:
-            pass
-
-        # FIT_X AND FIT_Y FROM DISP-SOLUTION
-        orderPixelTable['fit_x'] = orderPixelTable['fit_x'] / binx
-        orderPixelTable['fit_y'] = orderPixelTable['fit_y'] / biny
-
-        # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
-        self.sliceLength = self.recipeSettings["slice-length"]
-        self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
-        self.sliceWidth = self.recipeSettings["slice-width"]
-
-        # SET IMAGE ORIENTATION
-        if self.detectorParams["dispersion-axis"] == "x":
-            self.axisA = "x"
-            self.axisB = "y"
-            coeff_dict = {"degorder_cent": self.orderDeg,
-                          "degy_cent": self.axisBDeg}
+        if isinstance(self.orderPixelTable, bool):
+            orderPixelTable = self.sample_trace()
         else:
-            self.axisA = "y"
-            self.axisB = "x"
-            coeff_dict = {"degorder_cent": self.orderDeg,
-                          "degx_cent": self.axisBDeg}
-
-        # REMOVE elif self.inst == "XSHOOTER":
-        #     self.axisA = "x"
-        #     self.axisB = "y"
-        #     coeff_dict = {"degorder_cent": self.orderDeg,
-        #                   "degy_cent": self.axisBDeg}
-
-        # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
-        orderPixelTable[f'cont_{self.axisA}'] = np.nan
-        orderPixelTable[f'cont_{self.axisB}'] = np.nan
-
-        # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
-        # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
-        from soxspipe.commonutils.toolkit import quicklook_image
-        quicklook_image(
-            log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
-
-        if "order" in self.recipeName.lower():
-            self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
-        else:
-            self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
-
-        orderPixelTable = orderPixelTable.apply(
-            self.fit_1d_gaussian_to_slice, axis=1)
-        allLines = len(orderPixelTable.index)
-        # DROP ROWS WITH NAN VALUES
-        orderPixelTable.dropna(axis='index', how='any',
-                               subset=['cont_x'], inplace=True)
-
-        foundLines = len(orderPixelTable.index)
-        percent = 100 * foundLines / allLines
-
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "TSAMP",
-            "qc_value": allLines,
-            "qc_comment": "Total number of samples along orders",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
-
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "NSAMP",
-            "qc_value": foundLines,
-            "qc_comment": "Number of samples where a continuum is detected",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
-
-        self.psamp = percent / 100
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "PSAMP",
-            "qc_value": f"{self.psamp:0.3f}",
-            "qc_comment": "Proportion of samples where a continuum is detected",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
-
-        self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
+            orderPixelTable = self.orderPixelTable
 
         self.log.print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
@@ -746,6 +664,9 @@ class detect_continuum(_base_detect):
                     raise e
                 if self.settings["tune-pipeline"]:
                     raise e
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
         try:
             CSAMP = len(clippedData.index)
@@ -1240,7 +1161,7 @@ class detect_continuum(_base_detect):
         if self.lamp:
             lamp = f" {self.lamp} lamp"
         if "order" in self.recipeName.lower():
-            fig.suptitle(f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}", fontsize=12)
+            fig.suptitle(f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}", fontsize=12, y=0.99)
         else:
             fig.suptitle(f"{arm} object trace locations\n{subtitle}", fontsize=12)
 
@@ -1265,7 +1186,8 @@ class detect_continuum(_base_detect):
 
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
-        plt.savefig(filePath, dpi=720)
+        if not self.settings["tune-pipeline"]:
+            plt.savefig(filePath, dpi=720)
         plt.close()
 
         if self.settings["tune-pipeline"]:
@@ -1274,12 +1196,119 @@ class detect_continuum(_base_detect):
             exists = os.path.exists(filePath)
             if not exists:
                 with codecs.open(filePath, encoding='utf-8', mode='w') as writeFile:
-                    writeFile.write(f"polyOrders,psamp,mean_res,std_res,res_min,res_max,res_range \n")
+                    writeFile.write(f"polyOrders,mean_res,std_res,res_min,res_max,res_range \n")
             with codecs.open(filePath, encoding='utf-8', mode='a') as writeFile:
-                writeFile.write(f"{polyOrders},{self.psamp:0.2f},{mean_res:2.4f},{std_res:2.4f},{res_min:2.4f},{res_max:2.4f},{res_range:2.4f}\n")
+                writeFile.write(f"{polyOrders},{mean_res:2.4f},{std_res:2.4f},{res_min:2.4f},{res_max:2.4f},{res_range:2.4f}\n")
 
         self.log.debug('completed the ``plot_results`` method')
         return filePath, orderMetaTable
+
+    def sample_trace(
+            self):
+        """*take many cross-dispersion samples across each order to try and find an object trace*
+
+
+        **Return:**
+            - ``orderPixelTable`` -- the detector locations at which a trace was found
+        """
+        self.log.debug('starting the ``sample_trace`` method')
+
+        import pandas as pd
+        import numpy as np
+
+        # CONVERT WAVELENGTH TO PIXEL POSITIONS AND RETURN ARRAY OF POSITIONS TO
+        # SAMPLE THE TRACES
+        orderPixelTable = self.create_pixel_arrays()
+
+        binx = 1
+        biny = 1
+        try:
+            binx = self.pinholeFlat.header[self.kw("WIN_BINX")]
+            biny = self.pinholeFlat.header[self.kw("WIN_BINY")]
+        except:
+            pass
+
+        # FIT_X AND FIT_Y FROM DISP-SOLUTION
+        orderPixelTable['fit_x'] = orderPixelTable['fit_x'] / binx
+        orderPixelTable['fit_y'] = orderPixelTable['fit_y'] / biny
+
+        # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
+        self.sliceLength = self.recipeSettings["slice-length"]
+        self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
+        self.sliceWidth = self.recipeSettings["slice-width"]
+
+        # REMOVE elif self.inst == "XSHOOTER":
+        #     self.axisA = "x"
+        #     self.axisB = "y"
+        #     coeff_dict = {"degorder_cent": self.orderDeg,
+        #                   "degy_cent": self.axisBDeg}
+
+        # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
+        orderPixelTable[f'cont_{self.axisA}'] = np.nan
+        orderPixelTable[f'cont_{self.axisB}'] = np.nan
+
+        # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
+        # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+
+        if "order" in self.recipeName.lower():
+            self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
+        else:
+            self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
+
+        orderPixelTable = orderPixelTable.apply(
+            self.fit_1d_gaussian_to_slice, axis=1)
+        allLines = len(orderPixelTable.index)
+        # DROP ROWS WITH NAN VALUES
+        orderPixelTable.dropna(axis='index', how='any',
+                               subset=['cont_x'], inplace=True)
+
+        foundLines = len(orderPixelTable.index)
+        percent = 100 * foundLines / allLines
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "TSAMP",
+            "qc_value": allLines,
+            "qc_comment": "Total number of samples along orders",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "NSAMP",
+            "qc_value": foundLines,
+            "qc_comment": "Number of samples where a continuum is detected",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
+        self.psamp = percent / 100
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "PSAMP",
+            "qc_value": f"{self.psamp:0.3f}",
+            "qc_comment": "Proportion of samples where a continuum is detected",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
+        self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
+
+        self.log.debug('completed the ``sample_trace`` method')
+        return orderPixelTable
 
     # use the tab-trigger below for new method
     # xt-class-method

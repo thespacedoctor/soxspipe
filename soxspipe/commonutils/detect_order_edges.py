@@ -547,12 +547,10 @@ class detect_order_edges(_base_detect):
         toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
             toprow.invert_yaxis()
-            toprow.set_ylim([rotatedImg.shape[0], 0])
             midrow.invert_yaxis()
-            midrow.set_ylim([rotatedImg.shape[0], 0])
-        else:
-            toprow.set_ylim([0, rotatedImg.shape[0]])
-            midrow.set_ylim([0, rotatedImg.shape[0]])
+
+        toprow.set_ylim([0, rotatedImg.shape[0]])
+        midrow.set_ylim([0, rotatedImg.shape[0]])
 
         midrow.set_title(
             "order-location fit solutions", fontsize=10)

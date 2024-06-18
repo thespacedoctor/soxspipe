@@ -277,30 +277,29 @@ class soxs_order_centres(_base_recipe_):
             except:
                 pass
 
-            lineDetectionTable = False
-            for p in perm:
+            # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+            # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
+            detector = detect_continuum(
+                log=self.log,
+                pinholeFlat=self.orderFrame,
+                dispersion_map=disp_map_table,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                recipeName="soxs-order-centre",
+                qcTable=self.qc,
+                productsTable=self.products,
+                sofName=self.sofName,
+                binx=binx,
+                biny=biny
+            )
+            orderPixelTable = detector.sample_trace()
 
-                self.recipeSettings["detect-continuum"]["order-deg"] = p[0]
-                self.recipeSettings["detect-continuum"]["disp-axis-deg"] = p[1]
-                # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
-                # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
-                detector = detect_continuum(
-                    log=self.log,
-                    pinholeFlat=self.orderFrame,
-                    dispersion_map=disp_map_table,
-                    settings=self.settings,
-                    recipeSettings=self.recipeSettings,
-                    recipeName="soxs-order-centre",
-                    qcTable=self.qc,
-                    productsTable=self.products,
-                    sofName=self.sofName,
-                    binx=binx,
-                    biny=biny
-                )
-                try:
-                    productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
-                except:
-                    pass
+            # DEFINE AN INPUT ARRAY
+            from fundamentals import fmultiprocess
+            # NOTE TO SELF: if having issue with multiprocessing stalling, try and import required modules into the mthod/function running this fmultiprocess function instead of at the module level
+            results = fmultiprocess(log=self.log, function=parameterTuning,
+                                    inputArray=list(perm), poolSize=False, timeout=360000, recipeSettings=self.recipeSettings, settings=self.settings, orderFrame=self.orderFrame, disp_map_table=disp_map_table, orderPixelTable=orderPixelTable, qc=self.qc, products=self.products, sofName=self.sofName, binx=binx, biny=biny, turnOffMP=False, mute=True, progressBar=True)
+            return None
 
         else:
             if self.polyOrders:
@@ -352,6 +351,36 @@ class soxs_order_centres(_base_recipe_):
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
+
+
+def parameterTuning(p, log, recipeSettings, settings, orderFrame, disp_map_table, orderPixelTable, qc, products, sofName, binx, biny):
+    """*tuning the spatial solution*        
+    """
+
+    recipeSettings["detect-continuum"]["order-deg"] = p[0]
+    recipeSettings["detect-continuum"]["disp-axis-deg"] = p[1]
+
+    from soxspipe.commonutils import create_dispersion_map
+    detector = detect_continuum(
+        log=log,
+        pinholeFlat=orderFrame,
+        dispersion_map=disp_map_table,
+        settings=settings,
+        recipeSettings=recipeSettings,
+        recipeName="soxs-order-centre",
+        qcTable=qc,
+        productsTable=products,
+        sofName=sofName,
+        binx=binx,
+        biny=biny,
+        orderPixelTable=orderPixelTable
+    )
+    try:
+        productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
+    except:
+        pass
+
+    return None
 
     # use the tab-trigger below for new method
     # xt-class-method
