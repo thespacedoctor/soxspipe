@@ -332,6 +332,7 @@ class horne_extraction(object):
                 self.axisBcoord = orderTable[f"{self.axisB}coord"].astype(int)
                 self.axisAcoords = list(map(lambda x: list(range(x[0], x[1])), zip(self.axisAstart, self.axisAstop)))
                 self.axisBcoords = list(map(lambda x: [x] * self.slitHalfLength * 2, self.axisBcoord))
+
                 if self.detectorParams["dispersion-axis"] == "x":
                     orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[self.axisBcoords, self.axisAcoords])
                     orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[self.axisBcoords, self.axisAcoords])

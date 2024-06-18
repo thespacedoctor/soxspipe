@@ -303,7 +303,7 @@ class soxs_spatial_solution(_base_recipe_):
             from fundamentals import fmultiprocess
             # DEFINE AN INPUT ARRAY
             results = fmultiprocess(log=self.log, function=parameterTuning,
-                                    inputArray=list(perm), poolSize=False, timeout=36000, recipeSettings=self.recipeSettings, settings=self.settings, multiPinholeFrame=self.multiPinholeFrame, disp_map_table=disp_map_table, order_table=order_table, qc=self.qc, products=self.products, sofName=self.sofName, lineDetectionTable=lineDetectionTable, turnOffMP=False, mute=True, progressBar=True)
+                                    inputArray=list(perm), poolSize=False, timeout=360000, recipeSettings=self.recipeSettings, settings=self.settings, multiPinholeFrame=self.multiPinholeFrame, disp_map_table=disp_map_table, order_table=order_table, qc=self.qc, products=self.products, sofName=self.sofName, lineDetectionTable=lineDetectionTable, turnOffMP=False, mute=True, progressBar=True)
             return None, None, None
         else:
             if self.polyOrders:
@@ -396,6 +396,9 @@ def parameterTuning(p, log, recipeSettings, settings, multiPinholeFrame, disp_ma
         create2DMap=False,
         lineDetectionTable=lineDetectionTable
     )
-    productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+    try:
+        productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+    except:
+        pass
 
     return None

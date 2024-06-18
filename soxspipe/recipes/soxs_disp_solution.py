@@ -130,7 +130,7 @@ class soxs_disp_solution(_base_recipe_):
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
         error = False
 
-        if True:
+        if False:
             print(imageTypes)
             print(imageTech)
             print(imageCat)

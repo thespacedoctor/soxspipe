@@ -196,7 +196,7 @@ class create_dispersion_map(object):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=pinholeFrame, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         boost = True
         while boost:
@@ -242,50 +242,23 @@ class create_dispersion_map(object):
                     orderPixelTable['x_diff'] = orderPixelTable['detector_x_shifted'] - orderPixelTable['observed_x']
                     orderPixelTable['y_diff'] = orderPixelTable['detector_y_shifted'] - orderPixelTable['observed_y']
 
-                    if self.inst.upper() == 'SOXS':
-                        uniqueorders = orderPixelTable['order'].unique()
+                    # FIND THE GLOBAL SHIFT SEEN BETWEEN PREDICTED AND OBSERVED PIXEL POSITIONS IN EACH ORDER ... THE MOVE TO A NEW SET OF PREDICTED LINE POSITIONS USING THAT SHIFT
+                    uniqueorders = orderPixelTable['order'].unique()
+                    for o in uniqueorders:
+                        mask = (orderPixelTable['order'] == o)
 
-                        for o in uniqueorders:
-                            mask = (orderPixelTable['order'] == o)
+                        meanx, medianx, stdx = sigma_clipped_stats(orderPixelTable.loc[mask]['x_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
+                        meany, mediany, stdy = sigma_clipped_stats(orderPixelTable.loc[mask]['y_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
+                        if np.isnan(medianx) or np.isnan(mediany):
+                            self.log.warning(f"Could not find any arc lines in order {o}.")
+                            continue
 
-                            meanx, medianx, stdx = sigma_clipped_stats(orderPixelTable.loc[mask]['x_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                            meany, mediany, stdy = sigma_clipped_stats(orderPixelTable.loc[mask]['y_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                            if np.isnan(medianx) or np.isnan(mediany):
-                                self.log.warning(f"Could not find any arc lines in order {o}.")
-                                continue
-
-                            orderPixelTable.loc[mask, 'detector_x_shifted'] = orderPixelTable.loc[mask]['detector_x_shifted'] - medianx
-                            orderPixelTable.loc[mask, 'detector_y_shifted'] = orderPixelTable.loc[mask]['detector_y_shifted'] - mediany
-                            orderPixelTable.loc[mask, 'xy_diff'] = np.sqrt(np.square(orderPixelTable.loc[mask]["x_diff"]) + np.square(orderPixelTable.loc[mask]["y_diff"]))
-                            sys.stdout.flush()
-                            sys.stdout.write("\x1b[1A\x1b[2K")
-                            self.log.print(f"\t ITERATION {iteration}: Median X Y difference between predicted and measured positions: {medianx:0.5f},{mediany:0.5f} (order {o})")
-                    else:
-                        meanx, medianx, stdx = sigma_clipped_stats(orderPixelTable['x_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                        orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x_shifted'] - medianx
-                        meany, mediany, stdy = sigma_clipped_stats(orderPixelTable['y_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                        orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y_shifted'] - mediany
-                        self.log.print(f"\t ITERATION {iteration}: Median X Y difference between predicted and measured positions: {medianx:0.5f},{mediany:0.5f}")
-                        orderPixelTable['xy_diff'] = np.sqrt(np.square(orderPixelTable["x_diff"]) + np.square(orderPixelTable["y_diff"]))
-                    # else:
-                    #     tmpDF['x_diff'] = tmpDF['detector_x'] - tmpDF['observed_x']
-                    #     tmpDF['y_diff'] = tmpDF['detector_y'] - tmpDF['observed_y']
-                    #     if self.inst.upper() == 'SOXS' and self.arm.upper() == "VIS":
-                    #         uniqueorders = tmpDF['order'].unique()
-                    #         for o in uniqueorders:
-                    #             mask = (tmpDF['order'] == o)
-                    #             meanx, medianx, stdx = sigma_clipped_stats(tmpDF.loc[mask]['x_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                    #             meany, mediany, stdy = sigma_clipped_stats(tmpDF.loc[mask]['y_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                    #             mask2 = (orderPixelTable['order'] == o)
-                    #             orderPixelTable.loc[mask2, 'detector_x_shifted'] = orderPixelTable.loc[mask2]['detector_x'] - meanx
-                    #             orderPixelTable.loc[mask2, 'detector_y_shifted'] = orderPixelTable.loc[mask2]['detector_y'] - meany
-                    #             self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {meanx:0.3f},{meany:0.3f} (order {o})")
-                    #     else:
-                    #         mean, median, std = sigma_clipped_stats(tmpDF['x_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                    #         orderPixelTable['detector_x_shifted'] = orderPixelTable['detector_x'] - mean
-                    #         mean, median, std = sigma_clipped_stats(tmpDF['y_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                    #         orderPixelTable['detector_y_shifted'] = orderPixelTable['detector_y'] - mean
-                    #         self.log.print(f"\t ITERATION {iteration}: Mean X Y difference between predicted and measured positions: {tmpDF['x_diff'].mean():0.3f},{tmpDF['y_diff'].mean():0.3f}")
+                        orderPixelTable.loc[mask, 'detector_x_shifted'] = orderPixelTable.loc[mask]['detector_x_shifted'] - medianx
+                        orderPixelTable.loc[mask, 'detector_y_shifted'] = orderPixelTable.loc[mask]['detector_y_shifted'] - mediany
+                        orderPixelTable.loc[mask, 'xy_diff'] = np.sqrt(np.square(orderPixelTable.loc[mask]["x_diff"]) + np.square(orderPixelTable.loc[mask]["y_diff"]))
+                        sys.stdout.flush()
+                        sys.stdout.write("\x1b[1A\x1b[2K")
+                        self.log.print(f"\t ITERATION {iteration}: Median X Y difference between predicted and measured positions: {medianx:0.5f},{mediany:0.5f} (order {o})")
 
             # MAKE A CLEAN COPY OF THE DETECTION TABLE ... USED FOR PIPELINE TUNING ONLY
             lineDetectionTable = orderPixelTable.copy()
@@ -367,7 +340,7 @@ class create_dispersion_map(object):
             fitFound = False
             tryCount = 0
             while not fitFound and tryCount < 5:
-                
+
                 popt_x, popt_y, goodLinesTable, clippedLinesTable = self.fit_polynomials(
                     orderPixelTable=orderPixelTable,
                     wavelengthDeg=wavelengthDeg,
@@ -379,6 +352,9 @@ class create_dispersion_map(object):
                 if isinstance(popt_x, np.ndarray) and isinstance(popt_y, np.ndarray):
                     fitFound = True
                 else:
+                    if self.settings["tune-pipeline"]:
+                        raise ArithmeticError("Could not converge on a good fit to the dispersion solution. Please check the quality of your data or adjust your fitting parameters.")
+
                     if not isinstance(wavelengthDeg, list):
                         degList = [wavelengthDeg, orderDeg, slitDeg]
                         degList[degList.index(max(degList))] -= 1
@@ -510,6 +486,7 @@ class create_dispersion_map(object):
                 popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
         else:
             mapPath = None
+            self.create2DMap = False
 
         if self.firstGuessMap and self.orderTable and self.create2DMap:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath, orders=list(goodLinesTable['order'].unique()))
@@ -609,6 +586,9 @@ class create_dispersion_map(object):
             except:
                 pass
 
+        # THERE ARE DUPLICATES IN XSHOOTER LINE LIST
+        orderPixelTable.drop_duplicates(inplace=True)
+
         # FITS TO PYTHON INDEXING
         # PHOTUTILS CENTRE OF BOTTOM LEFT PIXEL IS (0,0) BUT FOR WCS IT IS (1,1)
         # AND FOR PYTHON IT IS ALSO (0,0)
@@ -616,7 +596,7 @@ class create_dispersion_map(object):
             orderPixelTable["detector_x"] -= 1.0
             orderPixelTable["detector_y"] -= 1.0
         elif True:
-            
+
             if arm == "NIR" or arm == "VIS":
                 dp = self.detectorParams
                 science_pixels = dp["science-pixels"]
@@ -626,7 +606,7 @@ class create_dispersion_map(object):
                 orderPixelTable["detector_x"] -= 4.0
                 orderPixelTable["detector_y"] -= 4.0
                 # orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
-            
+
             else:
                 orderPixelTable["detector_x"] -= science_pixels["columns"]["start"]
                 orderPixelTable["detector_y"] -= science_pixels["rows"]["start"]
@@ -972,7 +952,7 @@ class create_dispersion_map(object):
         with suppress(KeyError):
             header.pop(kw("RON"))
 
-        if slitDeg == 0 or [0, 0]:
+        if slitDeg == 0 or slitDeg == [0, 0]:
             # filename = filename.split("ARC")[0] + "DISP_MAP.fits"
             header[kw("PRO_TECH").upper()] = "ECHELLE,PINHOLE"
         else:
@@ -1314,7 +1294,7 @@ class create_dispersion_map(object):
             observed_x = orderPixelTable["observed_x"].to_numpy()
             observed_y = orderPixelTable["observed_y"].to_numpy()
 
-            if False:
+            if True:
                 xcoeff = np.ones((orderDegx + 1) *
                                  (wavelengthDegx + 1) * (slitDegx + 1))
                 ycoeff = np.ones((orderDegy + 1) *
@@ -1975,8 +1955,6 @@ class create_dispersion_map(object):
 
         mean_x_res = abs(orderPixelTable["residuals_x"]).mean()
         mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
-
-        print(abs(orderPixelTable["residuals_y"]).max(), abs(orderPixelTable["residuals_x"]).max())
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = np.ma.array(self.pinholeFrameMasked.data, mask=self.pinholeFrameMasked.mask, fill_value=0).filled()

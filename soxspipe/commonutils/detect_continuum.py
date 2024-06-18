@@ -184,12 +184,16 @@ class _base_detect(object):
         while clippedCount > 0 and iteration < clippingIterationLimit:
             startCount = len(pixelList.index)
             iteration += 1
+
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
 
             if len(pixelList.index) == 0:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 coeff = None
                 return coeff, pixelList, pixelList
+
+            if False and iteration < 3:
+                coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
 
             try:
                 coeff, pcov_x = curve_fit(
@@ -1069,14 +1073,11 @@ class detect_continuum(_base_detect):
         toprow.tick_params(axis='both', which='major', labelsize=9)
         toprow.set_xlim([0, rotatedImg.shape[1]])
 
-        if self.axisA == "x":
+        if self.detectorParams["dispersion-axis"] == "x":
             toprow.invert_yaxis()
-            toprow.set_ylim([rotatedImg.shape[0], 0])
             midrow.invert_yaxis()
-            midrow.set_ylim([rotatedImg.shape[0], 0])
-        else:
-            toprow.set_ylim([0, rotatedImg.shape[0]])
-            midrow.set_ylim([0, rotatedImg.shape[0]])
+        toprow.set_ylim([0, rotatedImg.shape[0]])
+        midrow.set_ylim([0, rotatedImg.shape[0]])
 
         if "order" in self.recipeName.lower():
             midrow.set_title(

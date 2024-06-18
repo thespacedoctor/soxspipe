@@ -233,24 +233,24 @@ class reducer(object):
                 overwrite=self.overwrite
             ).produce_product()
 
-        if recipe == "mflat":
-            from soxspipe.recipes import soxs_mflat
-            recipe = soxs_mflat(
-                log=self.log,
-                settings=self.settings,
-                inputFrames=sof,
-                overwrite=self.overwrite
-            )
-            mflatFrame = recipe.produce_product()
+        # if recipe == "mflat":
+        #     from soxspipe.recipes import soxs_mflat
+        #     recipe = soxs_mflat(
+        #         log=self.log,
+        #         settings=self.settings,
+        #         inputFrames=sof,
+        #         overwrite=self.overwrite
+        #     )
+        #     mflatFrame = recipe.produce_product()
 
-        if recipe == "spat_sol":
-            from soxspipe.recipes import soxs_spatial_solution
-            disp_map, mapImage2D, res_plots = soxs_spatial_solution(
-                log=self.log,
-                settings=self.settings,
-                inputFrames=sof,
-                overwrite=self.overwrite
-            ).produce_product()
+        # if recipe == "spat_sol":
+        #     from soxspipe.recipes import soxs_spatial_solution
+        #     disp_map, mapImage2D, res_plots = soxs_spatial_solution(
+        #         log=self.log,
+        #         settings=self.settings,
+        #         inputFrames=sof,
+        #         overwrite=self.overwrite
+        #     ).produce_product()
 
         # if recipe == "stare":
         #     from soxspipe.recipes import soxs_stare

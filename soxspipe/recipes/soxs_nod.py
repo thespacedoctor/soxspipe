@@ -242,7 +242,6 @@ class soxs_nod(_base_recipe_):
             s = ""
         self.log.print(f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS")
 
- 
         if len(allFrameAOffsets) > 1 and len(uniqueOffsets) > 1:
             allSpectrumA = []
             allSpectrumB = []
@@ -254,9 +253,9 @@ class soxs_nod(_base_recipe_):
             for frameA, frameB in zip(allFrameA, allFrameB):
                 self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
                 if False:
-                    quicklook_image(   log=self.log, CCDObject=frameA, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
-                    quicklook_image(   log=self.log, CCDObject=frameB, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
-                    #Save frameA and frameB to disk in temporary file
+                    quicklook_image(log=self.log, CCDObject=frameA, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
+                    quicklook_image(log=self.log, CCDObject=frameB, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
+                    # Save frameA and frameB to disk in temporary file
                     home = expanduser("~")
                     filenameA = self.sofName + f"_A_{sequenceCount}.fits"
                     filenameB = self.sofName + f"_B_{sequenceCount}.fits"
@@ -265,8 +264,8 @@ class soxs_nod(_base_recipe_):
                     filePathB = f"{outDir}/{filenameB}"
                     frameA.write(filePathA, overwrite=True)
                     frameB.write(filePathB, overwrite=True)
-                
-                #PROCESSING SINGLE SEQUENCE
+
+                # PROCESSING SINGLE SEQUENCE
                 mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=frameA, bFrame=frameB, locationSetIndex=sequenceCount)
                 if sequenceCount == 1:
                     allSpectrumA = mergedSpectrumDF_A
@@ -281,7 +280,7 @@ class soxs_nod(_base_recipe_):
             self.clean_up()
             self.report_output()
             self.log.print(f"MARCO TO ADD LOGIC\n\n")
-            #sys.exit(0)
+            # sys.exit(0)
         else:
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
@@ -337,20 +336,32 @@ class soxs_nod(_base_recipe_):
         A_minus_B = aFrame.subtract(bFrame)
         B_minus_A = bFrame.subtract(aFrame)
 
+        # WRITE CCDDATA OBJECT TO FILE
+        HDUList = A_minus_B.to_hdu(
+            hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
+        HDUList[0].name = "FLUX"
+        HDUList.writeto("/Users/Dave/Desktop/tmp.fits", output_verify='exception',
+                        overwrite=True, checksum=True)
+
+        # WRITE CCDDATA OBJECT TO FILE
+        HDUList = A_minus_B.to_hdu(
+            hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
+        HDUList[0].name = "FLUX"
+        HDUList.writeto("/Users/Dave/Desktop/tmp2.fits", output_verify='exception',
+                        overwrite=True, checksum=True)
+
         # REAPPLYING HEADERS
         hdr_A = aFrame.header
         hdr_B = bFrame.header
         A_minus_B.header = hdr_A
         B_minus_A.header = hdr_B
 
-        #Write in a fits file the A-B and B-A frames
+        # Write in a fits file the A-B and B-A frames
         home = expanduser("~")
         filename = self.sofName + f"_AB_{locationSetIndex}.fits"
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
         A_minus_B.write(filePath, overwrite=True)
-
-
 
         if False:
             from soxspipe.commonutils.toolkit import quicklook_image
@@ -358,7 +369,6 @@ class soxs_nod(_base_recipe_):
                 log=self.log, CCDObject=A_minus_B, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
             quicklook_image(
                 log=self.log, CCDObject=B_minus_A, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
-        
 
         # TODO: ADD THESE CHECKS .... LIKELY FOR EACH AB CYCLE INDEX
         if False:
