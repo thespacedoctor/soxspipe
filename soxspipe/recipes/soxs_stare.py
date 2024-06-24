@@ -295,8 +295,10 @@ class soxs_stare(_base_recipe_):
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
-
-        if not self.recipeSettings["use_flat"]:
+        try:
+            if not self.recipeSettings["use_flat"]:
+                master_flat = False
+        except:
             master_flat = False
 
         combined_object = self.detrend(
