@@ -59,3 +59,5 @@ soxspipe/recipes/tests/sessions/None/product/soxs-nod/2010.09.14T23.39.32.2932_N
 .vscode/launch.json
 nirMerate.py
 
+soxspipe/resources/static_calibrations/soxs/SOXS_MPH_TAB_NIR_Xe_ORIG.fits
+soxspipe/resources/static_calibrations/soxs/SOXS_SPH_TAB_NIR_Xe_ORIG.fits

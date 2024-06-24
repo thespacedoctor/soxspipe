@@ -410,6 +410,15 @@ class horne_extraction(object):
             hduList = fits.HDUList([priHDU, BinTableHDU])
             hduList.writeto(filePath, checksum=True, overwrite=True)
 
+            #EXPORTING SPECTRUM IN ASCII FORMAT
+            
+            #CHECKING IF WE ARE IN A NODDING SEQUENCE
+            if self.noddingSequence or len(self.noddingSequence) > 0:
+                pass
+            else:
+                #SAVE THE MERGED SPECTRUM TO AN ASCII FILE
+                mergedSpectumDF.to_csv(filePath.replace(".fits", ".csv"), index=False, header=False, sep=" ")
+
             self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": "soxs-stare",
                 "product_label": f"EXTRACTED_MERGED_TABLE{self.noddingSequence}",
