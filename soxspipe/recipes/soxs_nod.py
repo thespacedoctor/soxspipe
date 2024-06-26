@@ -279,7 +279,6 @@ class soxs_nod(_base_recipe_):
             self.plot_stacked_spectrum_qc(stackedSpectrum)
             self.clean_up()
             self.report_output()
-            self.log.print(f"MARCO TO ADD LOGIC\n\n")
             # sys.exit(0)
         else:
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
@@ -336,19 +335,6 @@ class soxs_nod(_base_recipe_):
         A_minus_B = aFrame.subtract(bFrame)
         B_minus_A = bFrame.subtract(aFrame)
 
-        # WRITE CCDDATA OBJECT TO FILE
-        HDUList = A_minus_B.to_hdu(
-            hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
-        HDUList[0].name = "FLUX"
-        HDUList.writeto("/Users/Dave/Desktop/tmp.fits", output_verify='exception',
-                        overwrite=True, checksum=True)
-
-        # WRITE CCDDATA OBJECT TO FILE
-        HDUList = A_minus_B.to_hdu(
-            hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
-        HDUList[0].name = "FLUX"
-        HDUList.writeto("/Users/Dave/Desktop/tmp2.fits", output_verify='exception',
-                        overwrite=True, checksum=True)
 
         # REAPPLYING HEADERS
         hdr_A = aFrame.header
@@ -362,6 +348,9 @@ class soxs_nod(_base_recipe_):
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
         A_minus_B.write(filePath, overwrite=True)
+
+        filename = self.sofName + f"_BA_{locationSetIndex}.fits"
+        B_minus_A.write(filePath, overwrite=True)
 
         if False:
             from soxspipe.commonutils.toolkit import quicklook_image
@@ -446,7 +435,12 @@ class soxs_nod(_base_recipe_):
         from datetime import datetime
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND mergedSpectrumDF_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
+
+
+        
         merged_dataframe = pd.concat(dataFrameList)
+        #BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGHT TO THE 4 DIGITS
+        merged_dataframe['WAVE'] = merged_dataframe['WAVE'].apply(lambda x: round(float(x.value), 4))
         groupedDataframe = merged_dataframe.groupby(by='WAVE', as_index=False).median()
 
         self.filenameTemplate = self.sofName + ".fits"
@@ -474,6 +468,12 @@ class soxs_nod(_base_recipe_):
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
+
+        #SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
+        asciiFilename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.txt")
+        asciiFilePath = f"{outDir}/{asciiFilename}"
+        stackedSpectrum.write(asciiFilePath, format='ascii', overwrite=True)
+
 
         utcnow = datetime.utcnow()
         self.utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")

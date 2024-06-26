@@ -134,3 +134,6 @@ class test_soxs_stare(unittest.TestCase):
         # x-print-testpage-for-pessto-marshall-web-object
 
     # x-class-to-test-named-worker-function
+#ADD A MAIN HERE TO RUN THOSE TESTS
+if __name__ == "__main__":
+    unittest.main()

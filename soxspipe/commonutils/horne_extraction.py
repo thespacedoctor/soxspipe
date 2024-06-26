@@ -410,6 +410,23 @@ class horne_extraction(object):
             hduList = fits.HDUList([priHDU, BinTableHDU])
             hduList.writeto(filePath, checksum=True, overwrite=True)
 
+            #EXPORTING SPECTRUM IN ASCII FORMAT
+
+            #CHECKING IF WE ARE IN A NODDING SEQUENCE
+            if self.noddingSequence or len(self.noddingSequence) > 0:
+                pass
+            else:
+                #SAVE THE MERGED ASTROPY TABLE TO TXT FILE 
+                        #SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
+                asciiFilename = filePath.replace(".fits", f".txt")
+                mergedTable.write(asciiFilename, format='ascii', overwrite=True)
+
+
+
+
+
+                
+
             self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": "soxs-stare",
                 "product_label": f"EXTRACTED_MERGED_TABLE{self.noddingSequence}",
