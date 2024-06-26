@@ -275,7 +275,8 @@ class soxs_spatial_solution(_base_recipe_):
             order = [3, 4, 5, 6]
             wavelength = [3, 4, 5, 6]
             slit = [2, 3, 4, 5, 6]
-            perm = product(order, order, wavelength, wavelength, slit, slit)
+            perm = product([self.recipeSettings["order-deg"][0]], [self.recipeSettings["order-deg"][1]], [self.recipeSettings["wavelength-deg"][0]], [self.recipeSettings["wavelength-deg"][1]], slit, slit)
+            # perm = product(order, order, wavelength, wavelength, slit, slit)
             try:
                 os.remove("residuals.txt")
             except:

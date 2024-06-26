@@ -272,11 +272,16 @@ class detect_order_edges(_base_detect):
                 orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"] = np.nanmin(orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values)
                 orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"] = np.nanmax(orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values)
 
+        # CONVERT COLUMN TYPE
+        orderPixelTable[f"{self.axisB}coord"] = orderPixelTable[f"{self.axisB}coord"].astype(float)
+        orderPixelTable[f"{self.axisA}coord_upper"] = orderPixelTable[f"{self.axisA}coord_upper"].astype(float)
+        orderPixelTable[f"{self.axisA}coord_lower"] = orderPixelTable[f"{self.axisA}coord_lower"].astype(float)
+
         # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
         for i in range(0, self.axisBDeg + 1):
-            orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"{self.axisB}coord"].pow(i)
+            orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"{self.axisB}coord"].values.astype('float')**i
         for i in range(0, self.orderDeg + 1):
-            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].values.astype('float')**i
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
@@ -310,14 +315,14 @@ class detect_order_edges(_base_detect):
             exponentsIncluded=True
         )
 
-        if isinstance(lowerCoeff, type(None)) or isinstance(upperCoeff, type(None)):
-            raise Exception("Pipeline failed to determine the edges of the orders in this lamp-flat")
-
         # RENAME SOME INDIVIDUALLY
         orderPixelTableLower.rename(columns={
             f"{self.axisA}_fit": f"{self.axisA}coord_lower_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_lower_fit_res"}, inplace=True)
         clippedLower.rename(columns={
             f"{self.axisA}_fit": f"{self.axisA}coord_lower_fit", f"{self.axisA}_fit_res": f"{self.axisA}coord_lower_fit_res"}, inplace=True)
+
+        if isinstance(lowerCoeff, type(None)) or isinstance(upperCoeff, type(None)):
+            raise Exception("Pipeline failed to determine the edges of the orders in this lamp-flat")
 
         # orderLocations[o] = coeff
         coeff_dict = {
@@ -539,9 +544,12 @@ class detect_order_edges(_base_detect):
         # toprow.set_xticklabels([])
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        toprow.xaxis.set_label_coords(0.5, -0.1)
+        if arm.upper() == "UVB":
+            toprow.xaxis.set_label_coords(0.2, -0.13)
+        else:
+            toprow.xaxis.set_label_coords(0.4, -0.13)
         toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.13),
                       fontsize=4)
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
@@ -650,10 +658,10 @@ class detect_order_edges(_base_detect):
         # midrow.set_xticklabels([])
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        midrow.xaxis.set_label_coords(0.5, -0.1)
+        midrow.xaxis.set_label_coords(0.5, -0.12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
 
-        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.12),
                       fontsize=4)
 
         # PLOT THE FINAL RESULTS:
@@ -698,7 +706,10 @@ class detect_order_edges(_base_detect):
         if self.tag:
             lamp = " " + self.tag.replace("_", "")
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
-        fig.suptitle(f"detection of order-edge locations - {arm}{lamp} flat-frame\n{subtitle}", fontsize=12)
+        slitWidth = ""
+        if self.slit:
+            slitWidth = f" {self.slit.replace('x11','')}\""
+        fig.suptitle(f"detection of order-edge locations - {arm}{lamp}{slitWidth} flat-frame\n{subtitle}", fontsize=12)
 
         if self.sofName:
             filename = self.sofName + f"_ORDER_LOCATIONS{self.tag}.pdf"

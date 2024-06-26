@@ -659,7 +659,7 @@ class horne_extraction(object):
         mean, median, std = sigma_clipped_stats(merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
         plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
         plt.ylim(-200, median + 20 * std)
-        plt.xlim(merged_orders['WAVE'].min().value, merged_orders['WAVE'].max().value)
+        plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
 
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}.pdf")
         filePath = f"{self.qcDir}/{filename}"
@@ -910,6 +910,6 @@ def create_cross_dispersion_slice(
 
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
-        series["sliceRawFlux"], sigma_lower=7, sigma_upper=150, maxiters=1, cenfunc='median', stdfunc="mad_std")
+        series["sliceRawFlux"], sigma_lower=7, sigma_upper=50, maxiters=1, cenfunc='median', stdfunc="mad_std")
 
     return series

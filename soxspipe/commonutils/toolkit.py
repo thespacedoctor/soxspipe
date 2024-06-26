@@ -920,6 +920,10 @@ def twoD_disp_map_image_to_dataframe(
 
     hdul = fits.open(twoDMapPath)
 
+    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float")
+    hdul["SLIT"].data = hdul["SLIT"].data.astype("float")
+    hdul["ORDER"].data = hdul["ORDER"].data.astype("float")
+
     if binx > 1 or biny > 1:
         from astropy.nddata import block_reduce
         hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)

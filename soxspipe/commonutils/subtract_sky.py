@@ -130,12 +130,12 @@ class subtract_sky(object):
             log=self.log, CCDObject=self.objectFrame, show=False, ext=False, stdWindow=0.1, title="science frame awaiting sky-subtraction", surfacePlot=False, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=True)
 
         # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
-            self.axisA = "y"
-            self.axisB = "x"
-        elif self.inst == "XSHOOTER":
+        if self.detectorParams["dispersion-axis"] == "x":
             self.axisA = "x"
             self.axisB = "y"
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
 
         self.dateObs = objectFrame.header[kw("DATE_OBS")]
 
@@ -189,7 +189,7 @@ class subtract_sky(object):
 
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         qcPlotOrder = int(np.median(uniqueOrders)) - 1
-        qcPlotOrder = 16
+        # qcPlotOrder = 16
 
         allimageMapOrder = []
         allimageMapOrderWithObject = []
@@ -456,11 +456,11 @@ class subtract_sky(object):
         # ROBUSTLY CLIPPED
         tworow.scatter(
             imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "flux"].values, label='clipped', s=percentileMS, marker="x", c=red, zorder=percentileZ, alpha=.9)
+            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "flux"].values, label='clipped', s=percentileMS, marker="x", c=red, zorder=percentileZ, alpha=.05)
         # MEDIAN CLIPPED
         tworow.scatter(
             imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == True, "wavelength"].values,
-            imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == True, "flux"].values, label=None, s=medianMS, marker="x", c=red, zorder=medianZ, alpha=.9)
+            imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == True, "flux"].values, label=None, s=medianMS, marker="x", c=red, zorder=medianZ, alpha=.05)
         # PERCENTILE LINE
         tworow.plot(
             imageMapOrderWithObjectDF.loc[(imageMapOrderWithObjectDF["clipped"] == False) & (imageMapOrderWithObjectDF["object"] == False), "wavelength"].values,
@@ -472,12 +472,15 @@ class subtract_sky(object):
         ylimmin = -imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == False, "residual_windowed_std"].max() * 1.3
         if ylimmin < -3000:
             ylimmin = -300
-        tworow.set_ylim(ylimmin, imageMapOrderWithObjectDF["flux_smoothed"].max() * 1.2)
+
+        tworow.set_ylim(ylimmin, imageMapOrderWithObjectDF["flux"].max())
 
         tworow.set_ylabel(
             "flux ($e^{-}$)", fontsize=10)
+        tworow.set_xlabel(
+            "wavelength", fontsize=10)
         tworow.legend(loc=2, fontsize=8, bbox_to_anchor=(1.05, 1), borderaxespad=0.)
-        tworow.set_xticks([], [])
+        # tworow.set_xticks([], [])
 
         # SLIT-POSITION RESIDUAL PANEL (SHOWING OBJECT)
         std = imageMapOrderWithObjectDF.loc[imageMapOrderWithObjectDF["clipped"] == False, "residual_global_sigma"].std()
@@ -782,7 +785,7 @@ class subtract_sky(object):
         # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONGS WAVELENGTH RANGE
         qs = np.linspace(0, 1, n_interior_knots + 2)[1: -1]
         allKnots = np.quantile(goodWl, qs)
-        print(f"START KNOTS: {len(allKnots)}")
+        # print(f"START KNOTS: {len(allKnots)}")
         extraKnots = np.array([])
         iterationCount = 0
         residualFloor = False
@@ -825,7 +828,7 @@ class subtract_sky(object):
                 meanResiduals = np.ma.compressed(np.ma.masked_array(meanResiduals, mask))
                 allKnots = np.sort(np.concatenate((extraKnots, allKnots)))
 
-                print(f"KNOTS: {len(allKnots)}")
+                # print(f"KNOTS: {len(allKnots)}")
 
             tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=allKnots, k=bspline_order, w=goodWeights, full_output=True)
             t, c, k = tck
