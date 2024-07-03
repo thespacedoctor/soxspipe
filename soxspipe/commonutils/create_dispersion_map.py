@@ -197,6 +197,18 @@ class create_dispersion_map(object):
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
             log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+        
+        if True:
+            import matplotlib.pyplot as plt
+            from matplotlib.patches import Rectangle
+            fig, ax = plt.subplots()
+            ax.imshow(pinholeFrameMasked, cmap='gray', origin='lower', vmin=300, vmax=1000)
+            for index, row in orderPixelTable.iterrows():
+                x = row['detector_x']
+                y = row['detector_y']
+                ax.add_patch(Rectangle((x - 5, y - 5), 10, 10, fill=None, edgecolor='red'))
+            plt.show()
+
 
         boost = True
         while boost:
@@ -246,6 +258,7 @@ class create_dispersion_map(object):
                     uniqueorders = orderPixelTable['order'].unique()
                     for o in uniqueorders:
                         mask = (orderPixelTable['order'] == o)
+                        print(orderPixelTable.loc[mask]['x_diff'])
 
                         meanx, medianx, stdx = sigma_clipped_stats(orderPixelTable.loc[mask]['x_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
                         meany, mediany, stdy = sigma_clipped_stats(orderPixelTable.loc[mask]['y_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
@@ -555,8 +568,9 @@ class create_dispersion_map(object):
         home = expanduser("~")
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+        
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
-
+        print(predictedLinesFile)
         # LINE LIST TO PANDAS DATAFRAME
         dat = Table.read(predictedLinesFile, format='fits')
         orderPixelTable = dat.to_pandas()
@@ -611,6 +625,7 @@ class create_dispersion_map(object):
                 orderPixelTable["detector_x"] -= science_pixels["columns"]["start"]
                 orderPixelTable["detector_y"] -= science_pixels["rows"]["start"]
             if arm == "VIS":
+                pass
                 # THIS IS TEMPORARALLY NEEDED TO ADJUST OLD LINE LIST
                 mask = (orderPixelTable['order'] == 1)
                 orderPixelTable.loc[mask, "detector_x"] -= 10
@@ -806,7 +821,8 @@ class create_dispersion_map(object):
                 import random
                 ran = random.randint(1, 3)
                 # if int(wl) == 7125:
-                if True or order == 2.:
+                #if True or order == 2.:
+                if True:
                     print(x, y)
                     # if ran == 1:
                     import matplotlib.pyplot as plt
