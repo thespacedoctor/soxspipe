@@ -715,10 +715,10 @@ class _base_recipe_(object):
 
         outDir = self.workspaceRootPath + "/tmp"
 
-        try:
-            shutil.rmtree(outDir)
-        except:
-            pass
+        # try:
+        #     shutil.rmtree(outDir)
+        # except:
+        #     pass
 
         self.log.debug('completed the ``clean_up`` method')
         return None

@@ -335,7 +335,6 @@ class soxs_nod(_base_recipe_):
         A_minus_B = aFrame.subtract(bFrame)
         B_minus_A = bFrame.subtract(aFrame)
 
-
         # REAPPLYING HEADERS
         hdr_A = aFrame.header
         hdr_B = bFrame.header
@@ -436,10 +435,8 @@ class soxs_nod(_base_recipe_):
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND mergedSpectrumDF_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
 
-
-        
         merged_dataframe = pd.concat(dataFrameList)
-        #BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGHT TO THE 4 DIGITS
+        # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGHT TO THE 4 DIGITS
         merged_dataframe['WAVE'] = merged_dataframe['WAVE'].apply(lambda x: round(float(x.value), 4))
         groupedDataframe = merged_dataframe.groupby(by='WAVE', as_index=False).median()
 
@@ -469,11 +466,10 @@ class soxs_nod(_base_recipe_):
         filePath = f"{outDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
-        #SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
+        # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
         asciiFilename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.txt")
         asciiFilePath = f"{outDir}/{asciiFilename}"
         stackedSpectrum.write(asciiFilePath, format='ascii', overwrite=True)
-
 
         utcnow = datetime.utcnow()
         self.utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -487,6 +483,18 @@ class soxs_nod(_base_recipe_):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": self.utcnow,
             "product_desc": f"Table of the extracted source in each order. All nodding cycles combined.",
+            "file_path": filePath,
+            "label": "PROD"
+        }).to_frame().T], ignore_index=True)
+
+        self.products = pd.concat([self.products, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "product_label": "EXTRACTED_MERGED_ASCII",
+            "file_name": asciiFilename,
+            "file_type": "TXT",
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": self.utcnow,
+            "product_desc": f"Ascii version of extracted source spectrum",
             "file_path": filePath,
             "label": "PROD"
         }).to_frame().T], ignore_index=True)
