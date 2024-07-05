@@ -411,6 +411,12 @@ class soxs_mflat(_base_recipe_):
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
             basename = os.path.basename(productPath)
+
+            if len(tag):
+                product_desc = f"{self.arm} master spectroscopic flat frame ({tag.replace('_','')})"
+            else:
+                product_desc = f"{self.arm} master spectroscopic flat frame"
+
             self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "product_label": f"MFLAT{tag}",
@@ -418,7 +424,7 @@ class soxs_mflat(_base_recipe_):
                 "file_type": "FITS",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "product_desc": f"{self.arm} master spectroscopic flat frame ({tag.replace('_','')})",
+                "product_desc": product_desc,
                 "file_path": productPath,
                 "label": "PROD"
             }).to_frame().T], ignore_index=True)

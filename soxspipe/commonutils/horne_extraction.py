@@ -410,22 +410,28 @@ class horne_extraction(object):
             hduList = fits.HDUList([priHDU, BinTableHDU])
             hduList.writeto(filePath, checksum=True, overwrite=True)
 
-            #EXPORTING SPECTRUM IN ASCII FORMAT
+            # EXPORTING SPECTRUM IN ASCII FORMAT
 
-            #CHECKING IF WE ARE IN A NODDING SEQUENCE
+            # CHECKING IF WE ARE IN A NODDING SEQUENCE
             if self.noddingSequence or len(self.noddingSequence) > 0:
                 pass
             else:
-                #SAVE THE MERGED ASTROPY TABLE TO TXT FILE 
-                        #SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
-                asciiFilename = filePath.replace(".fits", f".txt")
-                mergedTable.write(asciiFilename, format='ascii', overwrite=True)
-
-
-
-
-
-                
+                # SAVE THE MERGED ASTROPY TABLE TO TXT FILE
+                # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
+                asciiFilepath = filePath.replace(".fits", f".txt")
+                asciiFilename = filename.replace(".fits", f".txt")
+                mergedTable.write(asciiFilepath, format='ascii', overwrite=True)
+                self.products = pd.concat([self.products, pd.Series({
+                    "soxspipe_recipe": self.recipeName,
+                    "product_label": "EXTRACTED_MERGED_ASCII",
+                    "file_name": asciiFilename,
+                    "file_type": "TXT",
+                    "obs_date_utc": self.dateObs,
+                    "reduction_date_utc": utcnow,
+                    "product_desc": f"Ascii version of extracted source spectrum",
+                    "file_path": filePath,
+                    "label": "PROD"
+                }).to_frame().T], ignore_index=True)
 
             self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": "soxs-stare",
@@ -529,7 +535,7 @@ class horne_extraction(object):
         spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values * u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"]))
         resampler = FluxConservingResampler()
         flux_resampled = resampler(spectrum_orig, wave_resample_grid)
-        flux_resampled = median_smooth(flux_resampled, width=3)
+        # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
         merged_orders['WAVE'] = flux_resampled.spectral_axis
         merged_orders['FLUX_COUNTS'] = flux_resampled.flux
@@ -566,7 +572,7 @@ class horne_extraction(object):
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
 
-        fig = plt.figure(figsize=(10, 2), constrained_layout=True, dpi=320)
+        fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=320)
         gs = fig.add_gridspec(1, 1)
         toprow = fig.add_subplot(gs[0:1, :])
         addedLegend = True
@@ -598,8 +604,10 @@ class horne_extraction(object):
             except:
                 self.log.warning(f"Order skipped: {o}")
 
-        toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
-                      fontsize=8)
+        # toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
+        #               fontsize=8)
+        toprow.set_title(
+            f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
         toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
         allExtractions = pd.concat(extractions, ignore_index=True)
@@ -611,7 +619,7 @@ class horne_extraction(object):
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
         # plt.show()
-        plt.savefig(filePath, dpi='figure')
+        plt.savefig(filePath, dpi='figure', bbox_inches='tight')
         plt.close()
         # plt.show()
 
@@ -658,11 +666,11 @@ class horne_extraction(object):
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
 
-        fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
+        fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=320)
         gs = fig.add_gridspec(1, 1)
         toprow = fig.add_subplot(gs[0:1, :])
-        toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
-                      fontsize=8)
+        # toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
+        #               fontsize=8)
         toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
         toprow.set_title(
@@ -676,11 +684,11 @@ class horne_extraction(object):
         mean, median, std = sigma_clipped_stats(merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
         plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
         plt.ylim(-200, median + 20 * std)
-        plt.xlim(merged_orders['WAVE'].min().value, merged_orders['WAVE'].max().value)
+        plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
 
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}.pdf")
         filePath = f"{self.qcDir}/{filename}"
-        plt.savefig(filePath, dpi='figure')
+        plt.savefig(filePath, dpi='figure', bbox_inches='tight')
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -927,6 +935,6 @@ def create_cross_dispersion_slice(
 
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
-        series["sliceRawFlux"], sigma_lower=7, sigma_upper=150, maxiters=1, cenfunc='median', stdfunc="mad_std")
+        series["sliceRawFlux"], sigma_lower=7, sigma_upper=50, maxiters=1, cenfunc='median', stdfunc="mad_std")
 
     return series

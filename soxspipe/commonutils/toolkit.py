@@ -373,6 +373,7 @@ def quicklook_image(
         plt.savefig(saveToPath, dpi='figure', bbox_inches='tight')
         plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
+    plt.close()
 
     log.debug('completed the ``quicklook_image`` function')
     return None
@@ -920,11 +921,20 @@ def twoD_disp_map_image_to_dataframe(
 
     hdul = fits.open(twoDMapPath)
 
+    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float")
+    hdul["SLIT"].data = hdul["SLIT"].data.astype("float")
+    hdul["ORDER"].data = hdul["ORDER"].data.astype("float")
+
+    binned = False
     if binx > 1 or biny > 1:
+        binned = True
         from astropy.nddata import block_reduce
+        minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
         hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
         hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
         hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
+        minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
+        minimumBinnedPixelValue = minimumBinnedPixelValue.flatten().byteswap().newbyteorder()
 
     # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
     xdim = hdul[0].data.shape[1]
@@ -932,12 +942,16 @@ def twoD_disp_map_image_to_dataframe(
     xarray = np.tile(np.arange(0, xdim), ydim)
     yarray = np.repeat(np.arange(0, ydim), xdim)
 
+    if not binned:
+        minimumBinnedPixelValue = np.ones_like(yarray)
+
     thisDict = {
         "x": xarray,
         "y": yarray,
         "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
         "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
         "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+        "min": minimumBinnedPixelValue
     }
 
     try:
@@ -969,6 +983,8 @@ def twoD_disp_map_image_to_dataframe(
 
     # REMOVE FILTERED ROWS FROM DATA FRAME
     mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
+    mapDF = mapDF.loc[~mask]
+    mask = (mapDF['min'] == 0)
     mapDF = mapDF.loc[~mask]
 
     # SORT BY COLUMN NAME

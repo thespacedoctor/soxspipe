@@ -1004,6 +1004,22 @@ class create_dispersion_map(object):
         hduList = fits.HDUList([priHDU, BinTableHDU])
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
+        cache = self.settings["workspace-root-dir"].replace("~", home) + "/.cache"
+        # Recursively create missing directories
+        if not os.path.exists(cache):
+            os.makedirs(cache)
+        polyOrders = [orderDeg, wavelengthDeg, slitDeg]
+        if isinstance(orderDeg, list):
+            merged_list = []
+            for sublist in polyOrders:
+                merged_list.extend(sublist)
+            polyOrders = merged_list
+        polyOrders[:] = [str(l) for l in polyOrders]
+        polyOrders = "".join(polyOrders)
+        filename = f"{self.recipeName}_{self.arm}_{polyOrders}.fits"
+        cacheFilePath = f"{cache}/{filename}"
+        hduList.writeto(cacheFilePath, checksum=True, overwrite=True)
+
         self.log.debug('completed the ``write_map_to_file`` method')
         return filePath
 
@@ -1244,6 +1260,7 @@ class create_dispersion_map(object):
         from astropy.stats import sigma_clip
         from scipy.optimize import curve_fit
         import pandas as pd
+        from soxspipe.commonutils import get_cached_coeffs
 
         arm = self.arm
         dp = self.detectorParams
@@ -1299,10 +1316,7 @@ class create_dispersion_map(object):
 
         # CREATE A QUICK FIRST GUESS AT COEFFS ... SPEEDS UP FIRST ITERATION OF FULL SET
         tmpDF = orderPixelTable.copy()
-        xcoeff = np.ones((orderDegx + 1) *
-                         (wavelengthDegx + 1) * (slitDegx + 1))
-        ycoeff = np.ones((orderDegy + 1) *
-                         (wavelengthDegy + 1) * (slitDegy + 1))
+        mean_res = 100.
 
         orderPixelTable['sigma_clipped'] = False
         while clippedCount > 0 and iteration < clippingIterationLimit:
@@ -1310,11 +1324,17 @@ class create_dispersion_map(object):
             observed_x = orderPixelTable["observed_x"].to_numpy()
             observed_y = orderPixelTable["observed_y"].to_numpy()
 
-            if True:
-                xcoeff = np.ones((orderDegx + 1) *
-                                 (wavelengthDegx + 1) * (slitDegx + 1))
-                ycoeff = np.ones((orderDegy + 1) *
-                                 (wavelengthDegy + 1) * (slitDegy + 1))
+            if True and mean_res > 10:
+                # FIND CACHED COEFF ELSE RETURN ARRAYS OF 1s
+                xcoeff, ycoeff = get_cached_coeffs(
+                    log=self.log,
+                    arm=arm,
+                    settings=self.settings,
+                    recipeName=self.recipeName,
+                    orderDeg=orderDeg,
+                    wavelengthDeg=wavelengthDeg,
+                    slitDeg=slitDeg
+                )
 
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
             # FIRST X
@@ -2287,7 +2307,7 @@ class create_dispersion_map(object):
         lineGroups = orderPixelTable.loc[(orderPixelTable["dropped"] == False)][columnsNoStrings].groupby(['wavelength', 'order']).mean()
         lineGroups = lineGroups.reset_index()
         masked_residuals = sigma_clip(
-            lineGroups["fwhm_px"], sigma_lower=2.5, sigma_upper=3, maxiters=3, cenfunc='median', stdfunc='mad_std')
+            lineGroups["fwhm_px"], sigma_lower=2.5, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
         lineGroups["sigma_clipped_fwhm"] = masked_residuals.mask
         lineGroups["sigma_clipped"] = masked_residuals.mask
 
