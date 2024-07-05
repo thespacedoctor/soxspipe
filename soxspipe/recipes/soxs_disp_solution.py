@@ -287,7 +287,7 @@ class soxs_disp_solution(_base_recipe_):
 
             permList = list(perm)
 
-            # DEFINE AN INPUT ARRAY
+            # DEFINE AN INPUT ARRAY 
 
             print("TUNING SOXSPIPE\n")
 
