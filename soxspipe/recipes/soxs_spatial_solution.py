@@ -151,7 +151,7 @@ class soxs_spatial_solution(_base_recipe_):
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["LAMP,WAVE", "LAMP,FLAT"]:
+                    if i not in ["LAMP,WAVE", "LAMP,FLAT" , "WAVE,LAMP"]:
                         error = f"Found a {i} frame. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
 
             if not error:
