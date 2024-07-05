@@ -172,7 +172,7 @@ class _base_detect(object):
             "poly-clipping-iteration-limit"]
 
         if axisACol == "stddev":
-            clippingSigmaLow = 12
+            clippingSigmaLow = clippingSigmaHigh
             clippingSigmaHigh = clippingSigmaLow * 2
         else:
             clippingSigmaLow = clippingSigmaHigh
