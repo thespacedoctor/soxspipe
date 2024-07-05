@@ -425,21 +425,6 @@ class subtract_sky(object):
         ninerow = fig.add_subplot(gs[9:10:, :])
         tenrow = fig.add_subplot(gs[10:11:, :])
 
-        import sqlite3 as sql
-
-        # REGISTER SQL CONVERTERS
-        sql.register_adapter(list, lambda arr: str(arr.tolist()))
-        sql.register_adapter(np.array, lambda arr: str(arr.tolist()))
-        sql.register_adapter(np.ndarray, lambda arr: str(arr.tolist()))
-        sql.register_adapter(np.float64, lambda this: this.item())
-        sql.register_adapter(np.ma.core.MaskedArray, lambda arr: str(arr.tolist()))
-
-        # CONNECT TO THE DATABASE
-        conn = sql.connect("pandas_export.db")
-        # SEND TO DATABASE
-        imageMapOrderDF.to_sql('my_export_table', con=conn,
-                               index=False, if_exists='append')
-
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(frame.data)
         for x, y in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB]):
@@ -593,10 +578,10 @@ class subtract_sky(object):
         sixrow.set_title("STEP 2. Fit a univariate bspline to sky-flux as a function of wavelength", fontsize=10)
         sixrow.scatter(
             imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].values, s=medianMS, c=black, alpha=0.5, zorder=unclippedZ, label="unclipped")
+            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].values, s=medianMS, c=black, alpha=0.2, zorder=unclippedZ, label="unclipped")
         sixrow.scatter(
             imageMapOrderDF.loc[imageMapOrderDF["bspline_clipped"] == True, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["bspline_clipped"] == True, "flux"].values, s=percentileMS, c=red, marker="x", alpha=1., zorder=unclippedZ, label="clipped")
+            imageMapOrderDF.loc[imageMapOrderDF["bspline_clipped"] == True, "flux"].values, s=percentileMS, c=violet, marker="x", alpha=1., zorder=unclippedZ, label="clipped")
 
         print(imageMapOrderDF.loc[imageMapOrderDF["bspline_clipped"] == True, "wavelength"].values.shape)
 
@@ -606,7 +591,7 @@ class subtract_sky(object):
             knotSky = ip.splev(knotLocations, tck)
             skymodel = sixrow.plot(
                 wl, sky, label='sky model', c=blue, zorder=skyZ)
-            sixrow.scatter(knotLocations, knotSky, marker=7, s=10, alpha=0.05, c=red, zorder=percentileZ, label='knots')
+            sixrow.scatter(knotLocations, knotSky, marker=7, s=15, alpha=0.7, c=red, zorder=percentileZ, label='knots')
         else:
             skymodel = sixrow.plot(
                 imageMapOrderDF["wavelength"].values,
@@ -667,9 +652,9 @@ class subtract_sky(object):
         eightrow.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
 
         # SUBTRACTED SKY RESIDUAL PANEL
-        ninerow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=10, alpha=0.05, c=red, zorder=percentileZ, label="knots")
         ninerow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "sky_subtracted_flux"].values, s=3, alpha=0.2, c="orange", zorder=unclippedZ, label="slit position > 0")
         ninerow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "sky_subtracted_flux"].values, s=3, alpha=0.2, c=blue, zorder=unclippedZ, label="slit position < 0")
+        ninerow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=15, alpha=0.7, c=red, zorder=percentileZ, label="knots")
         ninerow.legend(loc=2, fontsize=8, bbox_to_anchor=(1.05, 1), borderaxespad=0.)
 
         mean = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"]).mean()
@@ -681,9 +666,9 @@ class subtract_sky(object):
         ninerow.set_ylabel("residual", fontsize=10)
 
         # SUBTRACTED SKY RESIDUAL/ERROR PANEL
-        tenrow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=10, alpha=0.05, c=red, zorder=percentileZ)
         tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=0.2, c="orange", zorder=unclippedZ)
         tenrow.scatter(imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values, imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "sky_subtracted_flux_error_ratio"].values, s=3, alpha=0.2, c=blue, zorder=unclippedZ)
+        tenrow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=15, alpha=0.7, c=red, zorder=percentileZ)
 
         mean = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_error_ratio"])[100:-100].mean()
         std = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_error_ratio"])[100:-100].std()
@@ -755,7 +740,6 @@ class subtract_sky(object):
 
             notClippedOrObjectMask = ((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False))
             imageMapOrderDF.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux"] - imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"]
-            imageMapOrderDF["residual_windowed_std"] = np.nan
             imageMapOrderDF.loc[notClippedOrObjectMask, "residual_windowed_std"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"].rolling(windowSize, center=True).std()
             imageMapOrderDF.loc[notClippedOrObjectMask, "residual_windowed_sigma"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"] / imageMapOrderDF.loc[notClippedOrObjectMask, "residual_windowed_std"]
 
@@ -785,7 +769,6 @@ class subtract_sky(object):
             i += 1
 
         notClippedOrObjectMask = ((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False))
-        imageMapOrderDF["residual_windowed_std"] = np.nan
         imageMapOrderDF.loc[notClippedOrObjectMask, "residual_windowed_std"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"].rolling(windowSize, center=True).std()
         imageMapOrderDF.loc[notClippedOrObjectMask, "residual_windowed_sigma"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"] / imageMapOrderDF.loc[notClippedOrObjectMask, "residual_windowed_std"]
 
@@ -863,7 +846,7 @@ class subtract_sky(object):
         extraKnots = np.array([])
         iterationCount = 0
         residualFloor = False
-        residualFloorIterationLimit = 3
+        residualFloorIterationLimit = bsplineIterations - 3
         slitIlluminationCorrectionIteration = 3
 
         while iterationCount < bsplineIterations:
@@ -915,7 +898,7 @@ class subtract_sky(object):
             # GENERATE SKY-MODEL FROM BSPLINE
             imageMapOrder["sky_model"] = ip.splev(imageMapOrder["wavelength"].values, tck)
             imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"] * imageMapOrder['flux_normaliser']
-            imageMapOrder["sky_subtracted_flux_error_ratio"] = imageMapOrder["sky_subtracted_flux"] / imageMapOrder["error"]
+            imageMapOrder["sky_subtracted_flux_error_ratio"] = imageMapOrder["sky_subtracted_flux"] / imageMapOrder["residual_windowed_std"]
             imageMapOrder["sky_subtracted_flux_error_ratio_abs"] = imageMapOrder["sky_subtracted_flux_error_ratio"].abs()
 
             if iterationCount <= residualFloorIterationLimit:
@@ -923,7 +906,7 @@ class subtract_sky(object):
                 allResiduals = np.absolute(imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_subtracted_flux_error_ratio"])
                 meanResidual = np.mean(allResiduals[1000:-1000])
                 medianResidual = np.median(allResiduals[1000:-1000])
-                p90Residual = np.nanpercentile(allResiduals[1000:-1000], 90)
+                p90Residual = np.nanpercentile(allResiduals[1000:-1000], 85)
                 std = np.std(allResiduals[1000:-1000])
 
                 from astropy.stats import mad_std
@@ -1423,6 +1406,7 @@ class subtract_sky(object):
                     df.loc[(df['slit_position'].between(object[0], object[1])), "object"] = True
                 else:
                     df.loc[((df['slit_position'].between(object[0], object[1])) & (df['object'] == True)), "clipped"] = True
+            df.loc[((df['clipped'] == False) & (df['object'] == True)), "object"] = False
 
         self.log.debug('completed the ``clip_object_slit_positions`` method')
         return order_dataframes
