@@ -298,16 +298,24 @@ soxs-stare:
             median_clipping_sigma: 3
             median_clipping_iterations: 5
             # ROLLING WINDOW LENGTH IN DATA POINTS
-            median_rolling_window_size: 31
+            median_rolling_window_size: 35
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 2
-            percentile_clipping_iterations: 1
-            percentile_rolling_window_size: 15
+            percentile_clipping_sigma: 3
+            percentile_clipping_iterations: 7
+            percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.05
-            aggressive_object_masking: True
+            clip-slit-edge-fraction: 0.01
+            aggressive_object_masking: False
             bspline_order: 2
             slit_illumination_order: 3
+            # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
+            starting_points_per_knot: 100
+            # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
+            min_points_per_knot: 6
+            # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING
+            bspline_fitting_residual_clipping_sigma: 5
+            # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+            bspline_iteration_limit: 25
     vis:
         # the length of the 'slit' used to collect object flux (in pixels)
         horne-extraction-slit-length: 20
