@@ -624,7 +624,7 @@ class detect_continuum(_base_detect):
                 )
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
-                if mean_res > 1:
+                if mean_res > 10:
                     # BAD FIT ... FORCE A FAIL
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
@@ -810,6 +810,8 @@ class detect_continuum(_base_detect):
             - ``pixelPostion`` -- now including gaussian fit peak xy position
         """
         self.log.debug('starting the ``fit_1d_gaussian_to_slice`` method')
+        #print(pixelPostion)
+        #sys.exit(0)
 
         import numpy as np
         from astropy.stats import mad_std
@@ -817,7 +819,9 @@ class detect_continuum(_base_detect):
         from scipy.signal import find_peaks
 
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
-        halfSlice = self.sliceLength / 2
+        
+        halfSlice = int(self.sliceLength) / 2
+        
 
         # SET IMAGE ORIENTATION
         if self.detectorParams["dispersion-axis"] == "x":
@@ -836,7 +840,7 @@ class detect_continuum(_base_detect):
             return pixelPostion
 
         # CHECK THE SLICE POINTS IF NEEDED
-        if 1 == 0:
+        if False:
             import matplotlib.pyplot as plt
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
@@ -1251,7 +1255,7 @@ class detect_continuum(_base_detect):
         # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=self.pinholeFlat, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         if "order" in self.recipeName.lower():
             self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
@@ -1260,6 +1264,10 @@ class detect_continuum(_base_detect):
 
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
+        from matplotlib import pyplot as plt
+        plt.imshow(self.pinholeFlat.data, cmap='gray', alpha=0.5)
+        plt.scatter(orderPixelTable["fit_x"], orderPixelTable["fit_y"], marker='x', c='red', s=15)
+        plt.show()
         allLines = len(orderPixelTable.index)
         # DROP ROWS WITH NAN VALUES
         orderPixelTable.dropna(axis='index', how='any',
