@@ -577,6 +577,13 @@ class horne_extraction(object):
         toprow = fig.add_subplot(gs[0:1, :])
         addedLegend = True
 
+        allExtractions = pd.concat(extractions, ignore_index=True)
+        mean, median, std = sigma_clipped_stats(allExtractions["extractedFluxBoxcarRobust"], sigma=5., stdfunc="mad_std", cenfunc="median", maxiters=3)
+
+        maxFlux = allExtractions['extractedFluxBoxcarRobust'].max() + std
+        if maxFlux > median + 5 * std:
+            maxFlux = median + 5 * std
+
         for df, o in zip(extractions, uniqueOrders):
 
             extracted_wave_spectrum = df["wavelengthMedian"]
@@ -598,8 +605,8 @@ class horne_extraction(object):
                     toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], color="gray", alpha=0.8, zorder=1, label=label, linewidth=0.5)
                     # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
                     line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum[10:-10], zorder=2, linewidth=0.5)
-
-                    toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
+                    if extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std() < maxFlux:
+                        toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
                     addedLegend = False
             except:
                 self.log.warning(f"Order skipped: {o}")
@@ -610,9 +617,8 @@ class horne_extraction(object):
             f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
         toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
-        allExtractions = pd.concat(extractions, ignore_index=True)
-        mean, median, std = sigma_clipped_stats(allExtractions["extractedFluxBoxcarRobust"], sigma=5., stdfunc="mad_std", cenfunc="median", maxiters=3)
-        plt.ylim(-200, allExtractions["extractedFluxBoxcarRobust"].max() + std)
+
+        plt.ylim(-200, maxFlux)
         # toprow.set_title(
         #     f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}.pdf")
@@ -683,7 +689,12 @@ class horne_extraction(object):
 
         mean, median, std = sigma_clipped_stats(merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
         plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
-        plt.ylim(-200, median + 20 * std)
+
+        maxFlux = merged_orders['FLUX_COUNTS'].max() + std
+        if maxFlux > median + 5 * std:
+            maxFlux = median + 5 * std
+
+        plt.ylim(-200, maxFlux)
         plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
 
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}.pdf")

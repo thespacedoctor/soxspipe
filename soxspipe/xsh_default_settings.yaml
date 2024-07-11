@@ -280,7 +280,7 @@ soxs-stare:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 20
+            slice-length: 30
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -294,22 +294,17 @@ soxs-stare:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 3
         sky-subtraction:
-            # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-            median_clipping_sigma: 3
-            median_clipping_iterations: 5
-            # ROLLING WINDOW LENGTH IN DATA POINTS
-            median_rolling_window_size: 35
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 3
-            percentile_clipping_iterations: 7
+            percentile_clipping_sigma: 4
+            percentile_clipping_iterations: 3
             percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
             clip-slit-edge-fraction: 0.01
             aggressive_object_masking: False
-            bspline_order: 2
-            slit_illumination_order: 3
+            bspline_order: 3
+            slit_illumination_order: 1
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
-            starting_points_per_knot: 100
+            starting_points_per_knot: 400
             # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
             min_points_per_knot: 6
             # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING
@@ -329,7 +324,7 @@ soxs-stare:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 20
+            slice-length: 30
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -343,20 +338,23 @@ soxs-stare:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 3
         sky-subtraction:
-            # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-            median_clipping_sigma: 3
-            median_clipping_iterations: 5
-            # ROLLING WINDOW LENGTH IN DATA POINTS
-            median_rolling_window_size: 31
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 2
-            percentile_clipping_iterations: 1
-            percentile_rolling_window_size: 15
+            percentile_clipping_sigma: 4
+            percentile_clipping_iterations: 3
+            percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.05
-            aggressive_object_masking: True
-            bspline_order: 2
-            slit_illumination_order: 3
+            clip-slit-edge-fraction: 0.01
+            aggressive_object_masking: False
+            bspline_order: 3
+            slit_illumination_order: 1
+            # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
+            starting_points_per_knot: 500
+            # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
+            min_points_per_knot: 6
+            # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING
+            bspline_fitting_residual_clipping_sigma: 5
+            # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+            bspline_iteration_limit: 25
     nir:
         # the length of the 'slit' used to collect object flux (in pixels)
         horne-extraction-slit-length: 20
@@ -370,7 +368,7 @@ soxs-stare:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 20
+            slice-length: 30
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -384,20 +382,23 @@ soxs-stare:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 3
         sky-subtraction:
-            # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-            median_clipping_sigma: 3
-            median_clipping_iterations: 5
-            # ROLLING WINDOW LENGTH IN DATA POINTS
-            median_rolling_window_size: 31
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 2
-            percentile_clipping_iterations: 1
-            percentile_rolling_window_size: 15
+            percentile_clipping_sigma: 4
+            percentile_clipping_iterations: 3
+            percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.05
-            aggressive_object_masking: True
-            bspline_order: 2
-            slit_illumination_order: 3
+            clip-slit-edge-fraction: 0.01
+            aggressive_object_masking: False
+            bspline_order: 3
+            slit_illumination_order: 1
+            # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
+            starting_points_per_knot: 500
+            # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
+            min_points_per_knot: 6
+            # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING
+            bspline_fitting_residual_clipping_sigma: 5
+            # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+            bspline_iteration_limit: 25
 
 
 soxs-nod:
@@ -429,7 +430,7 @@ soxs-nod:
     uvb:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 100
+            order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
             slice-length: 50
             # WIDTH OF EACH SLICE (PIXELS)
@@ -447,7 +448,7 @@ soxs-nod:
     vis:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 100
+            order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
             slice-length: 50
             # WIDTH OF EACH SLICE (PIXELS)

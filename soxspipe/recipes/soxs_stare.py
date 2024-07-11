@@ -322,7 +322,7 @@ class soxs_stare(_base_recipe_):
                 sofName=self.sofName,
                 recipeName=self.recipeName
             )
-            skymodelCCDData, skySubtractedCCDData, self.qc, self.products = skymodel.subtract()
+            skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, self.qc, self.products = skymodel.subtract()
 
             # WRITE SKY-SUBTRACTON TO DISK
             filename = self.filenameTemplate.replace(".fits", "_SKYSUB.fits")
@@ -368,6 +368,28 @@ class soxs_stare(_base_recipe_):
                 "file_path": productPath,
                 "label": "PROD"
             }).to_frame().T], ignore_index=True)
+
+            if True:
+                # WRITE SKY-MODEL TO DISK
+                filename = self.filenameTemplate.replace(".fits", "_SKYSUB_RESIDUALS.fits")
+                productPath = self._write(
+                    frame=skySubtractedResidualsCCDData,
+                    filedir=self.workspaceRootPath,
+                    filename=filename,
+                    overwrite=True
+                )
+                filename = os.path.basename(productPath)
+                self.products = pd.concat([self.products, pd.Series({
+                    "soxspipe_recipe": "soxs-stare",
+                    "product_label": "SKY_SUB_RESIDUALS",
+                    "file_name": filename,
+                    "file_type": "FITS",
+                    "obs_date_utc": self.dateObs,
+                    "reduction_date_utc": utcnow,
+                    "product_desc": f"The sky subtraction residuals",
+                    "file_path": productPath,
+                    "label": "PROD"
+                }).to_frame().T], ignore_index=True)
 
             # ADD QUALITY CHECKS
             self.qc = generic_quality_checks(

@@ -104,7 +104,7 @@ def cut_image_slice(
         else:
             slice = ma.median(sliceFull, axis=0)
 
-    if False and random.randint(1, 101) < 10000:
+    if False and random.randint(1, 101) < 5:
         import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
@@ -934,7 +934,7 @@ def twoD_disp_map_image_to_dataframe(
         hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
         hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
         minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
-        minimumBinnedPixelValue = minimumBinnedPixelValue.flatten().byteswap().newbyteorder()
+        minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
 
     # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
     xdim = hdul[0].data.shape[1]
@@ -948,9 +948,9 @@ def twoD_disp_map_image_to_dataframe(
     thisDict = {
         "x": xarray,
         "y": yarray,
-        "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-        "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
-        "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+        "wavelength": hdul["WAVELENGTH"].data.flatten(),
+        "slit_position": hdul["SLIT"].data.flatten(),
+        "order": hdul["ORDER"].data.flatten(),
         "min": minimumBinnedPixelValue
     }
 
@@ -958,9 +958,21 @@ def twoD_disp_map_image_to_dataframe(
         if associatedFrame:
             thisDict["flux"] = associatedFrame.data.flatten()
             thisDict["mask"] = associatedFrame.mask.flatten()
-            thisDict["error"] = associatedFrame.uncertainty.flatten()
+            thisDict["error"] = associatedFrame.uncertainty.array.flatten()
 
-    except:
+    except Exception as e:
+
+        if binned:
+            minimumBinnedPixelValue = minimumBinnedPixelValue.byteswap().newbyteorder()
+
+        thisDict = {
+            "x": xarray,
+            "y": yarray,
+            "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+            "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
+            "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+            "min": minimumBinnedPixelValue
+        }
         if associatedFrame:
             thisDict["flux"] = associatedFrame.data.flatten().byteswap().newbyteorder()
             thisDict["mask"] = associatedFrame.mask.flatten().byteswap().newbyteorder()
