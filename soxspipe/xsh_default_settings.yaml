@@ -383,22 +383,24 @@ soxs-stare:
             poly-clipping-iteration-limit: 3
         sky-subtraction:
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 4
-            percentile_clipping_iterations: 3
-            percentile_rolling_window_size: 35
+            percentile_clipping_sigma: 9
+            percentile_clipping_iterations: 2
+            percentile_rolling_window_size: 9
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.01
+            clip-slit-edge-fraction: 0.03
             aggressive_object_masking: False
-            bspline_order: 3
+            bspline_order: 2
             slit_illumination_order: 1
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
-            starting_points_per_knot: 500
+            starting_points_per_knot: 25
             # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
-            min_points_per_knot: 6
+            min_points_per_knot: 7
             # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING
             bspline_fitting_residual_clipping_sigma: 5
             # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
             bspline_iteration_limit: 25
+            # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
+            residual_floor_percentile: 70
 
 
 soxs-nod:
