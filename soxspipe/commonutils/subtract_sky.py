@@ -195,7 +195,7 @@ class subtract_sky(object):
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         #print("FIX ME")
         self.qcPlotOrder = int(np.median(uniqueOrders)) - 1
-        #self.qcPlotOrder = 15
+        #self.qcPlotOrder = 16
         # uniqueOrders = [qcPlotOrder]
 
         allimageMapOrder = []

@@ -222,11 +222,11 @@ soxs-spatial-solution:
         # DEGREE OF ORDER TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
         order-deg: [4,4]
         # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
-        wavelength-deg: [5,5]
+        wavelength-deg: [5,4]
         # DEGREE OF SLIT TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
-        slit-deg: [3,4]
+        slit-deg: [3,2]
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTLING ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 9
+        poly-clipping-iteration-limit: 4
         poly-fitting-residual-clipping-sigma: 3
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
@@ -342,7 +342,7 @@ soxs-stare:
         sky-subtraction:
             # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
-            percentile_clipping_iterations: 4
+            percentile_clipping_iterations: 5
             percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
             clip-slit-edge-fraction: 0.01
@@ -352,13 +352,13 @@ soxs-stare:
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
             starting_points_per_knot: 100
             # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
-            min_points_per_knot: 15
+            min_points_per_knot: 11
             # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING
             bspline_fitting_residual_clipping_sigma: 20
             # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
             bspline_iteration_limit: 7
             # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
-            residual_floor_percentile: 70
+            residual_floor_percentile: 90
     nir:
         # the length of the 'slit' used to collect object flux (in pixels)
         horne-extraction-slit-length: 20
