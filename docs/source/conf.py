@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+
 from soxspipe import cl_utils
 from builtins import str
 import sys
@@ -128,7 +129,7 @@ markdown_parser_config = {
         'pymdownx.mark',
         'pymdownx.betterem',
         'pymdownx.caret',
-        'legacy_attrs'
+        'legacy_attrs',
     ],
     'extension_configs': {
         'toc': {
@@ -143,7 +144,7 @@ markdown_parser_config = {
             "base_path": moduleDirectory,
             "syntax_left": "\{\{",
             "syntax_right": "\}\}",
-        }
+        },
     },
 }
 
