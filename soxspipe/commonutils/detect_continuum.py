@@ -98,7 +98,7 @@ class _base_detect(object):
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelListFiltered, ydata=pixelListFiltered[axisACol].values, p0=coeff)
+                    poly, xdata=pixelListFiltered, ydata=pixelListFiltered[axisACol].values, p0=coeff, maxfev=30000)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 pixelList = pixelList.loc[~mask]
@@ -107,7 +107,7 @@ class _base_detect(object):
             except Exception as e:
                 raise e
 
-            res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
+            res, res_mean, res_std, res_median, xfit, poly = self.calculate_residuals(
                 orderPixelTable=pixelListFiltered,
                 coeff=coeff,
                 axisACol=axisACol,
@@ -166,10 +166,16 @@ class _base_detect(object):
 
         poly = chebyshev_order_xy_polynomials(log=self.log, axisBCol=axisBCol, orderCol=orderCol, orderDeg=self.orderDeg, axisBDeg=self.axisBDeg, axisB=self.axisB, exponentsIncluded=exponentsIncluded).poly
 
-        clippingSigma = self.recipeSettings[
+        clippingSigmaHigh = self.recipeSettings[
             "poly-fitting-residual-clipping-sigma"]
         clippingIterationLimit = self.recipeSettings[
             "poly-clipping-iteration-limit"]
+
+        if axisACol == "stddev":
+            clippingSigmaLow = clippingSigmaHigh
+            clippingSigmaHigh = clippingSigmaLow * 2
+        else:
+            clippingSigmaLow = clippingSigmaHigh
 
         iteration = 0
 
@@ -178,6 +184,7 @@ class _base_detect(object):
         while clippedCount > 0 and iteration < clippingIterationLimit:
             startCount = len(pixelList.index)
             iteration += 1
+
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
 
             if len(pixelList.index) == 0:
@@ -185,9 +192,12 @@ class _base_detect(object):
                 coeff = None
                 return coeff, pixelList, pixelList
 
+            if iteration < 3:
+                coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
+
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff)
+                    poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff, maxfev=30000)
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 coeff = None
@@ -207,7 +217,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=1, cenfunc='median', stdfunc='mad_std')
             pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -221,7 +231,8 @@ class _base_detect(object):
                 sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
 
-        allClipped = pd.concat(allClipped, ignore_index=True)
+        if len(allClipped):
+            allClipped = pd.concat(allClipped, ignore_index=True)
 
         res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
             orderPixelTable=pixelList,
@@ -271,9 +282,9 @@ class _base_detect(object):
 
         # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        xfit = poly(
+        thisFit = poly(
             orderPixelTable, *coeff)
-        res = xfit - orderPixelTable[axisACol].values
+        res = thisFit - orderPixelTable[axisACol].values
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueorders = len(orderPixelTable['order'].unique())
@@ -293,30 +304,30 @@ class _base_detect(object):
 
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "XRESMIN",
-                "qc_value": res.min(),
-                "qc_comment": f"[px] Minimum residual in {tag} fit along x-axis",
-                "qc_unit": "pixels",
+                "qc_name": f"{self.axisA.upper()}RESMIN",
+                "qc_value": f"{res.min():0.2f}",
+                "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
+                "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
             }).to_frame().T], ignore_index=True)
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "XRESMAX",
-                "qc_value": res.max(),
-                "qc_comment": f"[px] Maximum residual in {tag} fit along x-axis",
-                "qc_unit": "pixels",
+                "qc_name": f"{self.axisA.upper()}RESMAX",
+                "qc_value": f"{res.max():0.2f}",
+                "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
+                "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
             }).to_frame().T], ignore_index=True)
             self.qc = pd.concat([self.qc, pd.Series({
                 "soxspipe_recipe": self.recipeName,
-                "qc_name": "XRESRMS",
-                "qc_value": res_std,
-                "qc_comment": f"[px] Std-dev of residual {tag} fit along x-axis",
-                "qc_unit": "pixels",
+                "qc_name": f"{self.axisA.upper()}RESRMS",
+                "qc_value": f"{res_std:0.2f}",
+                "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
+                "qc_unit": "px",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True
@@ -339,7 +350,7 @@ class _base_detect(object):
             }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``calculate_residuals`` method')
-        return res, res_mean, res_std, res_median, xfit
+        return res, res_mean, res_std, res_median, thisFit
 
     def write_order_table_to_file(
             self,
@@ -365,7 +376,7 @@ class _base_detect(object):
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
-        if False and (self.binx > 1 or self.biny > 1):
+        if (False and (self.binx > 1 or self.biny > 1)) or (isinstance(self.products, bool) and self.products == False):
             outDir = self.settings["workspace-root-dir"] + "/tmp"
         else:
             outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
@@ -389,6 +400,9 @@ class _base_detect(object):
             filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
         elif "stare" in self.recipeName.lower():
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
+        elif "nod" in self.recipeName.lower():
+            # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
+            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE" + self.noddingSequence + ".fits"
 
         if self.lampTag:
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
@@ -444,12 +458,14 @@ class detect_continuum(_base_detect):
         - ``settings`` -- the settings dictionary
         - ``recipeSettings`` -- the recipe specific settings
         - ``recipeName`` -- the recipe name as given in the settings dictionary
-        - ``qcTable`` -- the data frame to collect measured QC metrics 
+        - ``qcTable`` -- the data frame to collect measured QC metrics
         - ``productsTable`` -- the data frame to collect output products
         - ``sofName`` ---- name of the originating SOF file
         - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
-        - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
+        - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
+        - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
+        - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
 
     **Usage:**
 
@@ -481,11 +497,23 @@ class detect_continuum(_base_detect):
             sofName=False,
             binx=1,
             biny=1,
-            lampTag=False
+            lampTag=False,
+            locationSetIndex=False,
+            orderPixelTable=False
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
+
+        import copy
+
         self.settings = settings
+        try:
+            self.noddingSequence = "_A" if int(pinholeFlat.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
+            if locationSetIndex:
+                self.noddingSequence += str(locationSetIndex)
+        except:
+            self.noddingSequence = ""
+
         self.recipeName = recipeName
         self.pinholeFlat = pinholeFlat
         self.dispersion_map = dispersion_map
@@ -494,8 +522,9 @@ class detect_continuum(_base_detect):
         self.sofName = sofName
         self.binx = binx
         self.biny = biny
-        self.recipeSettings = recipeSettings["detect-continuum"]
+        self.recipeSettings = copy.deepcopy(recipeSettings["detect-continuum"])
         self.lampTag = lampTag
+        self.orderPixelTable = orderPixelTable
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -506,6 +535,10 @@ class detect_continuum(_base_detect):
         self.arm = pinholeFlat.header[self.kw("SEQ_ARM")]
         self.dateObs = pinholeFlat.header[self.kw("DATE_OBS")]
         self.inst = pinholeFlat.header[self.kw("INSTRUME")]
+        self.exptime = pinholeFlat.header[self.kw("EXPTIME")]
+
+        # if self.exptime < 59 and recipeName != "soxs-stare":
+        #     raise Exception("too low")
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(
@@ -526,6 +559,18 @@ class detect_continuum(_base_detect):
         if not os.path.exists(self.qcDir):
             os.makedirs(self.qcDir)
 
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
+            self.axisA = "x"
+            self.axisB = "y"
+            self.coeff_dict = {"degorder_cent": self.orderDeg,
+                               "degy_cent": self.axisBDeg}
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
+            self.coeff_dict = {"degorder_cent": self.orderDeg,
+                               "degx_cent": self.axisBDeg}
+
         return None
 
     def get(self):
@@ -539,67 +584,15 @@ class detect_continuum(_base_detect):
 
         import numpy as np
         import pandas as pd
+        from datetime import datetime
 
         arm = self.arm
+        coeff_dict = self.coeff_dict
 
-        # CONVERT WAVELENGTH TO PIXEL POSITIONS AND RETURN ARRAY OF POSITIONS TO
-        # SAMPLE THE TRACES
-        orderPixelTable = self.create_pixel_arrays()
-
-        binx = 1
-        biny = 1
-        try:
-            binx = self.pinholeFlat.header[self.kw("WIN_BINX")]
-            biny = self.pinholeFlat.header[self.kw("WIN_BINY")]
-        except:
-            pass
-
-        orderPixelTable['fit_x'] = orderPixelTable['fit_x'] / binx
-        orderPixelTable['fit_y'] = orderPixelTable['fit_y'] / biny
-
-        # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
-        self.sliceLength = self.recipeSettings["slice-length"]
-        self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
-        self.sliceWidth = self.recipeSettings["slice-width"]
-
-        # SET IMAGE ORIENTATION
-        if self.detectorParams["dispersion-axis"] == "x":
-            self.axisA = "x"
-            self.axisB = "y"
-            coeff_dict = {"degorder_cent": self.orderDeg,
-                          "degy_cent": self.axisBDeg}
+        if isinstance(self.orderPixelTable, bool):
+            orderPixelTable = self.sample_trace()
         else:
-            self.axisA = "y"
-            self.axisB = "x"
-            coeff_dict = {"degorder_cent": self.orderDeg,
-                          "degx_cent": self.axisBDeg}
-
-        # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
-        orderPixelTable[f'cont_{self.axisA}'] = np.nan
-        orderPixelTable[f'cont_{self.axisB}'] = np.nan
-
-        # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
-        # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
-        from soxspipe.commonutils.toolkit import quicklook_image
-        quicklook_image(
-            log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
-
-        if "order" in self.recipeName.lower():
-            self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
-        else:
-            self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
-
-        orderPixelTable = orderPixelTable.apply(
-            self.fit_1d_gaussian_to_slice, axis=1)
-        allLines = len(orderPixelTable.index)
-        # DROP ROWS WITH NAN VALUES
-        orderPixelTable.dropna(axis='index', how='any',
-                               subset=['cont_x'], inplace=True)
-
-        foundLines = len(orderPixelTable.index)
-        percent = 100 * foundLines / allLines
-
-        self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
+            orderPixelTable = self.orderPixelTable
 
         self.log.print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
@@ -613,6 +606,7 @@ class detect_continuum(_base_detect):
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         fitFound = False
         tryCount = 0
+        backupOrderPixelTable = orderPixelTable.copy()
         while not fitFound and tryCount < 5:
             # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
             for i in range(0, self.axisBDeg + 1):
@@ -620,6 +614,7 @@ class detect_continuum(_base_detect):
             for i in range(0, self.orderDeg + 1):
                 orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
             try:
+
                 coeff, orderPixelTable, clippedDataCentre = self.fit_global_polynomial(
                     pixelList=orderPixelTable,
                     axisACol=f"cont_{self.axisA}",
@@ -629,8 +624,9 @@ class detect_continuum(_base_detect):
                 )
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
-                if mean_res > 1:
+                if "order" in self.recipeName.lower() and mean_res > 1:
                     # BAD FIT ... FORCE A FAIL
+                    orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
 
                 n_coeff = 0
@@ -646,7 +642,13 @@ class detect_continuum(_base_detect):
                     axisBCol=f"cont_{self.axisB}",
                     exponentsIncluded=True
                 )
+
+                if len(clippedData) and len(clippedData.index):
+                    clippedData = pd.concat([clippedDataCentre, clippedData], ignore_index=True)
+                else:
+                    clippedData = clippedDataCentre
                 fitFound = True
+
             except Exception as e:
                 degList = [self.axisBDeg, self.orderDeg]
                 degList[degList.index(max(degList))] -= 1
@@ -654,10 +656,32 @@ class detect_continuum(_base_detect):
                 coeff_dict["degorder_cent"] = self.orderDeg
                 coeff_dict[f"deg{self.axisB}_cent"] = self.axisBDeg
                 self.log.print(f"{self.axisB} and Order fitting orders reduced to {self.axisBDeg}, {self.orderDeg} to try and successfully fit the continuum.")
+                self.recipeSettings["disp-axis-deg"] = self.axisBDeg
+                self.recipeSettings["order-deg"] = self.orderDeg
                 tryCount += 1
                 if tryCount == 5:
                     self.log.print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
                     raise e
+                if self.settings["tune-pipeline"]:
+                    raise e
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        try:
+            CSAMP = len(clippedData.index)
+        except:
+            CSAMP = 0
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "CSAMP",
+            "qc_value": CSAMP,
+            "qc_comment": "Number of continuum sample clipped during solution fitting",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
 
         # orderLocations[o] = coeff
         coeff_dict["degorder_std"] = self.orderDeg
@@ -677,10 +701,9 @@ class detect_continuum(_base_detect):
         plotPath, orderMetaTable = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
-            clippedData=clippedDataCentre
+            clippedData=clippedData
         )
 
-        from datetime import datetime
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -693,27 +716,30 @@ class detect_continuum(_base_detect):
             label = "OBJECT_TRACE_RES"
             product_desc = f"Residuals of the object trace polynomial fit"
 
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "product_label": label,
-            "file_name": basename,
-            "file_type": "PDF",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": product_desc,
-            "file_path": plotPath,
-            "label": "QC"
-        }).to_frame().T], ignore_index=True)
+        if not isinstance(self.products, bool):
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "product_label": label + self.noddingSequence,
+                "file_name": basename,
+                "file_type": "PDF",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": product_desc,
+                "file_path": plotPath,
+                "label": "QC"
+            }).to_frame().T], ignore_index=True)
+            # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
+            order_table_path = self.write_order_table_to_file(
+                frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+        else:
+            order_table_path = self.write_order_table_to_file(
+                frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
 
-        mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
-        std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
-
-        # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
-        order_table_path = self.write_order_table_to_file(
-            frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+        # mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+        # std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
         self.log.debug('completed the ``get`` method')
-        return order_table_path, self.qc, self.products
+        return order_table_path, self.qc, self.products, orderPolyTable, orderPixelTable, orderMetaTable
 
     def create_pixel_arrays(
             self):
@@ -839,6 +865,7 @@ class detect_continuum(_base_detect):
         if peaks is None or len(peaks) <= 0:
             # CHECK THE SLICE POINTS IF NEEDED
             if 1 == 0:
+                import matplotlib.pyplot as plt
                 x = np.arange(0, len(slice))
                 plt.figure(figsize=(8, 5))
                 plt.plot(x, slice, 'ko')
@@ -869,8 +896,9 @@ class detect_continuum(_base_detect):
         pixelPostion["amplitude"] = g.amplitude.value
         pixelPostion["stddev"] = g.stddev.value
 
-        # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAYED
-        if 1 == 0 and random() < 0.02 and pixelPostion["order"] == 11:
+        # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAID
+        if False and random() < 0.02:
+            import matplotlib.pyplot as plt
             x = np.arange(0, len(slice))
             plt.figure(figsize=(8, 5))
             plt.plot(x, slice, 'ko')
@@ -905,39 +933,50 @@ class detect_continuum(_base_detect):
         import numpy as np
         import pandas as pd
         import matplotlib.pyplot as plt
+        from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
         arm = self.arm
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotateImage = self.detectorParams["rotate-qc-plot"]
         flipImage = self.detectorParams["flip-qc-plot"]
+
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = self.pinholeFlat.data
         if rotateImage:
             rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
         if flipImage:
             rotatedImg = np.flipud(rotatedImg)
+            if not rotateImage:
+                aLen = rotatedImg.shape[0]
+                orderPixelTable[f"cont_{self.axisA}"] = aLen - orderPixelTable[f"cont_{self.axisA}"]
+                clippedData[f"cont_{self.axisA}"] = aLen - clippedData[f"cont_{self.axisA}"]
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
             # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(6, 4)
+            gs = fig.add_gridspec(7, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:5, 0:2])
             bottomright = fig.add_subplot(gs[4:5, 2:])
             fwhmaxis = fig.add_subplot(gs[5:6, :])
+            settingsAx = fig.add_subplot(gs[6:, 2:])
+            qcAx = fig.add_subplot(gs[6:, 0:2])
         else:
-            fig = plt.figure(figsize=(6, 12), constrained_layout=True)
+            fig = plt.figure(figsize=(6, 19), constrained_layout=True)
             # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(7, 4)
+            gs = fig.add_gridspec(10, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
             fwhmaxis = fig.add_subplot(gs[6:7, :])
+            settingsAx = fig.add_subplot(gs[7:, 2:])
+            qcAx = fig.add_subplot(gs[7:, 0:2])
 
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
+        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
             "1D guassian peak positions (post-clipping)", fontsize=10)
         toprow.scatter(orderPixelTable[f"cont_{self.axisB}"], orderPixelTable[f"cont_{self.axisA}"], marker='o', c='green', s=0.3, alpha=0.6, label="cross-dispersion 1D gaussian peak-position")
@@ -955,13 +994,12 @@ class detect_continuum(_base_detect):
         toprow.tick_params(axis='both', which='major', labelsize=9)
         toprow.set_xlim([0, rotatedImg.shape[1]])
 
-        if self.axisA == "x":
+        if self.detectorParams["dispersion-axis"] == "x":
             toprow.invert_yaxis()
-            toprow.set_ylim([0, rotatedImg.shape[0]])
-        else:
-            toprow.set_ylim([rotatedImg.shape[0], 0])
+            midrow.invert_yaxis()
+        toprow.set_ylim([0, rotatedImg.shape[0]])
+        midrow.set_ylim([0, rotatedImg.shape[0]])
 
-        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         if "order" in self.recipeName.lower():
             midrow.set_title(
                 "order-location fit solutions", fontsize=10)
@@ -974,6 +1012,7 @@ class detect_continuum(_base_detect):
         elif self.axisB == "x":
             axisALength = self.pinholeFlat.data.shape[0]
             axisBLength = self.pinholeFlat.data.shape[1]
+
         axisBlinelist = np.arange(0, axisBLength, 3)
 
         poly = chebyshev_order_xy_polynomials(
@@ -981,6 +1020,7 @@ class detect_continuum(_base_detect):
         for index, row in orderPolyTable.iterrows():
             cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
             std_coeff = [float(v) for k, v in row.items() if "std_" in k]
+
         uniqueOrders = orderPixelTable['order'].unique()
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {f"{self.axisB}": axisBlinelist}
@@ -992,12 +1032,21 @@ class detect_continuum(_base_detect):
         foundOrders = []
         colors = []
         labelAdded = None
+
         for o in uniqueOrders:
             df["order"] = o
             xfit = poly(df, *cent_coeff)
             stdfit = poly(df, *std_coeff)
-            xfit, yfit, stdfit, lower, upper = zip(
-                *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
+
+            try:
+                xfit, yfit, stdfit, lower, upper = zip(
+                    *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
+            except:
+                continue
+            if flipImage and not rotateImage:
+                xfit = aLen - np.array(xfit)
+                lower = aLen - np.array(lower)
+                upper = aLen - np.array(upper)
             foundOrders.append(o)
             # lower = xfit - 3 * stdfit
             # upper = xfit + 3 * stdfit
@@ -1039,10 +1088,6 @@ class detect_continuum(_base_detect):
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis='both', which='major', labelsize=9)
-
-        if self.axisA == "x":
-            midrow.invert_yaxis()
-            midrow.set_ylim(0, axisALength)
 
         midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
                       fontsize=4)
@@ -1104,17 +1149,28 @@ class detect_continuum(_base_detect):
 
         fwhmaxis.set_ylim(orderPixelTable['stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['stddev_fit'].max() * stdToFwhm * 1.2)
 
+        # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
+        self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
+        qc_settings_plot_tables(log=self.log, qc=self.qc, qcAx=qcAx, settings={**self.recipeSettings, **{"exptime": self.exptime}}, settingsAx=settingsAx)
+
         mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
-        std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+        std_res = np.std(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
+        res_min = np.min(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
+        res_max = np.max(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
+        res_range = res_max - res_min
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         lamp = ""
         if self.lamp:
             lamp = f" {self.lamp} lamp"
         if "order" in self.recipeName.lower():
-            fig.suptitle(f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}", fontsize=12)
+            fig.suptitle(f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}", fontsize=12, y=0.99)
         else:
             fig.suptitle(f"{arm} object trace locations\n{subtitle}", fontsize=12)
+
+        polyOrders = [self.orderDeg, self.axisBDeg]
+        polyOrders[:] = [str(l) for l in polyOrders]
+        polyOrders = "".join(polyOrders)
 
         # plt.show()
         if not self.sofName:
@@ -1125,17 +1181,137 @@ class detect_continuum(_base_detect):
             )
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
         elif "order" in self.recipeName.lower():
-            filename = self.sofName + "_residuals.pdf"
+            filename = self.sofName + f"_residuals_{polyOrders}.pdf"
+        elif "nod" in self.recipeName.lower():
+            filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + f"_{polyOrders}.pdf"
         else:
-            filename = self.sofName + "_OBJECT_TRACE_residuals.pdf"
+            filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
-        plt.savefig(filePath, dpi=720)
+        if not self.settings["tune-pipeline"]:
+            plt.savefig(filePath, dpi=720)
         plt.close()
+
+        if self.settings["tune-pipeline"]:
+            import codecs
+            filePath = f"residuals.txt"
+            exists = os.path.exists(filePath)
+            if not exists:
+                with codecs.open(filePath, encoding='utf-8', mode='w') as writeFile:
+                    writeFile.write(f"polyOrders,mean_res,std_res,res_min,res_max,res_range \n")
+            with codecs.open(filePath, encoding='utf-8', mode='a') as writeFile:
+                writeFile.write(f"{polyOrders},{mean_res:2.4f},{std_res:2.4f},{res_min:2.4f},{res_max:2.4f},{res_range:2.4f}\n")
 
         self.log.debug('completed the ``plot_results`` method')
         return filePath, orderMetaTable
+
+    def sample_trace(
+            self):
+        """*take many cross-dispersion samples across each order to try and find an object trace*
+
+
+        **Return:**
+            - ``orderPixelTable`` -- the detector locations at which a trace was found
+        """
+        self.log.debug('starting the ``sample_trace`` method')
+
+        import pandas as pd
+        import numpy as np
+
+        # CONVERT WAVELENGTH TO PIXEL POSITIONS AND RETURN ARRAY OF POSITIONS TO
+        # SAMPLE THE TRACES
+        orderPixelTable = self.create_pixel_arrays()
+
+        binx = 1
+        biny = 1
+        try:
+            binx = self.pinholeFlat.header[self.kw("WIN_BINX")]
+            biny = self.pinholeFlat.header[self.kw("WIN_BINY")]
+        except:
+            pass
+
+        # FIT_X AND FIT_Y FROM DISP-SOLUTION
+        orderPixelTable['fit_x'] = orderPixelTable['fit_x'] / binx
+        orderPixelTable['fit_y'] = orderPixelTable['fit_y'] / biny
+
+        # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
+        self.sliceLength = self.recipeSettings["slice-length"]
+        self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
+        self.sliceWidth = self.recipeSettings["slice-width"]
+
+        # REMOVE elif self.inst == "XSHOOTER":
+        #     self.axisA = "x"
+        #     self.axisB = "y"
+        #     coeff_dict = {"degorder_cent": self.orderDeg,
+        #                   "degy_cent": self.axisBDeg}
+
+        # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
+        orderPixelTable[f'cont_{self.axisA}'] = np.nan
+        orderPixelTable[f'cont_{self.axisB}'] = np.nan
+
+        # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
+        # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+
+        if "order" in self.recipeName.lower():
+            self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
+        else:
+            self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
+
+        orderPixelTable = orderPixelTable.apply(
+            self.fit_1d_gaussian_to_slice, axis=1)
+        allLines = len(orderPixelTable.index)
+        # DROP ROWS WITH NAN VALUES
+        orderPixelTable.dropna(axis='index', how='any',
+                               subset=['cont_x'], inplace=True)
+
+        foundLines = len(orderPixelTable.index)
+        percent = 100 * foundLines / allLines
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "TSAMP",
+            "qc_value": allLines,
+            "qc_comment": "Total number of samples along orders",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "NSAMP",
+            "qc_value": foundLines,
+            "qc_comment": "Number of samples where a continuum is detected",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
+        self.psamp = percent / 100
+        self.qc = pd.concat([self.qc, pd.Series({
+            "soxspipe_recipe": self.recipeName,
+            "qc_name": "PSAMP",
+            "qc_value": f"{self.psamp:0.3f}",
+            "qc_comment": "Proportion of samples where a continuum is detected",
+            "qc_unit": None,
+            "obs_date_utc": self.dateObs,
+            "reduction_date_utc": utcnow,
+            "to_header": True
+        }).to_frame().T], ignore_index=True)
+
+        self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
+
+        self.log.debug('completed the ``sample_trace`` method')
+        return orderPixelTable
 
     # use the tab-trigger below for new method
     # xt-class-method

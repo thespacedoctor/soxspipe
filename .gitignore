@@ -55,3 +55,9 @@ data-organiser.log
 /setup.cfg
 /A_minus_B.fits
 /B_minus_A.fits
+soxspipe/recipes/tests/sessions/None/product/soxs-nod/2010.09.14T23.39.32.2932_NIR_NOD_20PT0_XSHOOTER.log
+.vscode/launch.json
+nirMerate.py
+
+soxspipe/resources/static_calibrations/soxs/SOXS_MPH_TAB_NIR_Xe_ORIG.fits
+soxspipe/resources/static_calibrations/soxs/SOXS_SPH_TAB_NIR_Xe_ORIG.fits

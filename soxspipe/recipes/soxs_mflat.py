@@ -141,23 +141,23 @@ class soxs_mflat(_base_recipe_):
                         error = "Input frames are a mix of %(imageTypes)s" % locals()
 
             if not error:
-                if "LAMP,FLAT" not in imageTypes:
+                if "LAMP,FLAT" not in imageTypes and "FLAT,LAMP" not in imageTypes:
                     error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR" % locals()
 
             if not error:
                 for i in imageTech:
                     if i not in ['ECHELLE,SLIT', 'IMAGE']:
-                        error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. You have provided {imageTech}" % locals()
+                        error = f"Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. You have provided {i}" % locals()
 
             if not error:
                 for i in ['ECHELLE,SLIT', 'IMAGE']:
                     if i not in imageTech:
-                        error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. You have provided {imageTech}" % locals()
+                        error = f"Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. You have are missing TECH={i}" % locals()
 
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT"]:
+                    if i not in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT", "FLAT,LAMP"]:
                         error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
 
             if not error:
@@ -167,7 +167,7 @@ class soxs_mflat(_base_recipe_):
 
             if not error:
                 found = False
-                for i in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT"]:
+                for i in ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT", "FLAT,LAMP"]:
                     if i in imageTypes:
                         found = True
                 if not found:
@@ -309,7 +309,7 @@ class soxs_mflat(_base_recipe_):
                 orderCentreTable=orderTablePath,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
-                qcTable=qcTable,
+                qcTable=self.qc,
                 productsTable=self.products,
                 tag=tag,
                 sofName=self.sofName,
@@ -411,6 +411,12 @@ class soxs_mflat(_base_recipe_):
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
             basename = os.path.basename(productPath)
+
+            if len(tag):
+                product_desc = f"{self.arm} master spectroscopic flat frame ({tag.replace('_','')})"
+            else:
+                product_desc = f"{self.arm} master spectroscopic flat frame"
+
             self.products = pd.concat([self.products, pd.Series({
                 "soxspipe_recipe": self.recipeName,
                 "product_label": f"MFLAT{tag}",
@@ -418,7 +424,7 @@ class soxs_mflat(_base_recipe_):
                 "file_type": "FITS",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "product_desc": f"{self.arm} master spectroscopic flat frame ({tag.replace('_','')})",
+                "product_desc": product_desc,
                 "file_path": productPath,
                 "label": "PROD"
             }).to_frame().T], ignore_index=True)
@@ -436,7 +442,7 @@ class soxs_mflat(_base_recipe_):
         if len(self.detectionCountSet) > 1:
             mflat = self.stitch_uv_mflats(medianOrderFluxDF, orderTablePath=thisPath)
         else:
-            self.qc = qcTable
+            self.qc = pd.concat([self.qc, qcTable], ignore_index=True)
 
         quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title="Final master flat frame")
 
@@ -528,8 +534,12 @@ class soxs_mflat(_base_recipe_):
         darkCollection = self.inputFrames.filter(**filterDict)
 
         if len(darkCollection.files) == 0:
-            filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
-                          kw("DPR_TECH"): "IMAGE"}
+            if self.inst.upper() == "SOXS":
+                filterDict = {kw("DPR_TYPE"): "FLAT,LAMP",
+                              kw("DPR_TECH"): "IMAGE"}
+            else:
+                filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
+                              kw("DPR_TECH"): "IMAGE"}
             darkCollection = self.inputFrames.filter(**filterDict)
 
         # FINAL ATTEMPT -- FIND RAW DARK
@@ -541,8 +551,12 @@ class soxs_mflat(_base_recipe_):
                 darkCollection = None
 
         # FIND THE FLAT FRAMES
-        filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
-                      kw("DPR_TECH"): "ECHELLE,SLIT"}
+        if self.inst.upper() == "SOXS":
+            filterDict = {kw("DPR_TYPE"): "FLAT,LAMP",
+                          kw("DPR_TECH"): "ECHELLE,SLIT"}
+        else:
+            filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
+                          kw("DPR_TECH"): "ECHELLE,SLIT"}
         flatCollection = self.inputFrames.filter(**filterDict)
 
         filterDict = {kw("DPR_TYPE"): "LAMP,DFLAT",
@@ -668,20 +682,67 @@ class soxs_mflat(_base_recipe_):
 
         if not firstPassMasterFlat:
             self.log.print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL - FIRST PASS")
+            ORDEXP10list = []
+            ORDEXP50list = []
+            ORDEXP90list = []
             for frame in inputFlats:
                 maskedFrame = ma.array(frame.data, mask=mask)
                 maskedData = np.ma.filled(maskedFrame, np.nan)
                 exposureLevel = np.nanpercentile(maskedData, 97)
+                exptime = frame.header[self.kw("EXPTIME")]
+                ORDEXP10list.append(np.nanpercentile(maskedData, 10))
+                ORDEXP50list.append(np.nanpercentile(maskedData, 50))
+                ORDEXP90list.append(np.nanpercentile(maskedData, 90))
                 # print(f"THE {lamp} FLAT EXPOSURE LEVEL IS {exposureLevel}")
-
                 normalisedFrame = frame.divide(exposureLevel)
                 normalisedFrame.header = frame.header
                 normalisedFrames.append(normalisedFrame)
+            ORDEXP10 = np.median(ORDEXP10list)
+            ORDEXP50 = np.median(ORDEXP50list)
+            ORDEXP90 = np.median(ORDEXP90list)
+
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+            self.qc = pd.concat([self.qc, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "ORDEXP10",
+                "qc_value": f"{ORDEXP10:0.2f}",
+                "qc_comment": "[e-] 10th percentile inter-order flux",
+                "qc_unit": "electrons",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "ORDEXP50",
+                "qc_value": f"{ORDEXP50:0.2f}",
+                "qc_comment": "[e-] 50th percentile inter-order flux",
+                "qc_unit": "electrons",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat([self.qc, pd.Series({
+                "soxspipe_recipe": self.recipeName,
+                "qc_name": "ORDEXP90",
+                "qc_value": f"{ORDEXP90:0.2f}",
+                "qc_comment": "[e-] 90th percentile inter-order flux",
+                "qc_unit": "electrons",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "to_header": True
+            }).to_frame().T], ignore_index=True)
+
         else:
             self.log.print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL - SECOND PASS")
             for frame in inputFlats:
+
                 exposureFrame = frame.divide(firstPassMasterFlat)
-                maskedFrame = ma.array(exposureFrame.data, mask=mask)
+                newMask = np.ma.masked_where(np.isnan(exposureFrame.data), exposureFrame.data)
+                newMask = (mask == 1) | (newMask.mask == 1)
+                maskedFrame = ma.array(exposureFrame.data, mask=newMask)
                 exposureLevel = np.ma.median(maskedFrame)
                 # print(f"THE {lamp} FLAT EXPOSURE LEVEL IS {exposureLevel}")
                 normalisedFrame = frame.divide(exposureLevel)

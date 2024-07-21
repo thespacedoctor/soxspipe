@@ -104,7 +104,7 @@ def cut_image_slice(
         else:
             slice = ma.median(sliceFull, axis=0)
 
-    if plot and random.randint(1, 101) < 10000:
+    if False and random.randint(1, 101) < 5:
         import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
@@ -373,6 +373,7 @@ def quicklook_image(
         plt.savefig(saveToPath, dpi='figure', bbox_inches='tight')
         plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
+    plt.close()
 
     log.debug('completed the ``quicklook_image`` function')
     return None
@@ -623,6 +624,7 @@ def spectroscopic_image_quality_checks(
     import numpy.ma as ma
     import numpy as np
     import pandas as pd
+    from soxspipe.commonutils import detector_lookup
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -643,12 +645,19 @@ def spectroscopic_image_quality_checks(
             biny = 1
 
     inst = frame.header[kw("INSTRUME")]
-    if inst == "SOXS":
-        axisA = "y"
-        axisB = "x"
-    elif inst == "XSHOOTER":
+
+    # DETECTOR PARAMETERS LOOKUP OBJECT
+    detectorParams = detector_lookup(
+        log=log,
+        settings=settings
+    ).get(arm)
+
+    if detectorParams["dispersion-axis"] == "x":
         axisA = "x"
         axisB = "y"
+    else:
+        axisA = "y"
+        axisB = "x"
 
     # UNPACK THE ORDER TABLE
     orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
@@ -771,7 +780,8 @@ def read_spectral_format(
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
-    if extended:
+
+    if extended or "WLMIN" not in specFormatTable.columns:
         waveLengthMin = specFormatTable["WLMINFUL"].values
         waveLengthMax = specFormatTable["WLMAXFUL"].values
     else:
@@ -806,12 +816,12 @@ def read_spectral_format(
             header = hdul[0].header
 
         orderPixelRanges = []
-        if kw("INSTRUME") in header and header[kw("INSTRUME")] == "SOXS":
-            axis = "x"
-            rowCol = "columns"
-        else:
+        if dp["dispersion-axis"] == "x":
             axis = "y"
             rowCol = "rows"
+        else:
+            axis = "x"
+            rowCol = "columns"
 
         amins = []
         amaxs = []
@@ -869,7 +879,8 @@ def twoD_disp_map_image_to_dataframe(
         twoDMapPath,
         kw=False,
         associatedFrame=False,
-        removeMaskedPixels=False):
+        removeMaskedPixels=False,
+        dispAxis="y"):
     """*convert the 2D dispersion image map to a pandas dataframe*
 
     **Key Arguments:**
@@ -877,15 +888,16 @@ def twoD_disp_map_image_to_dataframe(
     - `log` -- logger
     - `twoDMapPath` -- 2D dispersion map image path
     - `kw` -- fits keyword lookup dictionary
-    - `associatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
-    - `removeMaskedPixels` -- remove the masked pixels from the assosicated image? Default *False*
+    - `associatedFrame` -- include a flux column in returned dataframe from a frame associated with the dispersion map. Default *False*
+    - `removeMaskedPixels` -- remove the masked pixels from the associated image? Default *False*
+    - `dispAxis` -- x or y. Needed for pixel scale calculation
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
     mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, kw=kw)
-    ```           
+    ```
     """
     log.debug('starting the ``twoD_disp_map_image_to_dataframe`` function')
 
@@ -911,11 +923,20 @@ def twoD_disp_map_image_to_dataframe(
 
     hdul = fits.open(twoDMapPath)
 
+    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float")
+    hdul["SLIT"].data = hdul["SLIT"].data.astype("float")
+    hdul["ORDER"].data = hdul["ORDER"].data.astype("float")
+
+    binned = False
     if binx > 1 or biny > 1:
+        binned = True
         from astropy.nddata import block_reduce
+        minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
         hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
         hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
         hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
+        minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
+        minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
 
     # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
     xdim = hdul[0].data.shape[1]
@@ -923,21 +944,37 @@ def twoD_disp_map_image_to_dataframe(
     xarray = np.tile(np.arange(0, xdim), ydim)
     yarray = np.repeat(np.arange(0, ydim), xdim)
 
+    if not binned:
+        minimumBinnedPixelValue = np.ones_like(yarray)
+
     thisDict = {
         "x": xarray,
         "y": yarray,
-        "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-        "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
-        "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+        "wavelength": hdul["WAVELENGTH"].data.flatten(),
+        "slit_position": hdul["SLIT"].data.flatten(),
+        "order": hdul["ORDER"].data.flatten(),
+        "min": minimumBinnedPixelValue
     }
 
     try:
         if associatedFrame:
             thisDict["flux"] = associatedFrame.data.flatten()
             thisDict["mask"] = associatedFrame.mask.flatten()
-            thisDict["error"] = associatedFrame.uncertainty.flatten()
+            thisDict["error"] = associatedFrame.uncertainty.array.flatten()
 
-    except:
+    except Exception as e:
+
+        if binned:
+            minimumBinnedPixelValue = minimumBinnedPixelValue.byteswap().newbyteorder()
+
+        thisDict = {
+            "x": xarray,
+            "y": yarray,
+            "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+            "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
+            "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+            "min": minimumBinnedPixelValue
+        }
         if associatedFrame:
             thisDict["flux"] = associatedFrame.data.flatten().byteswap().newbyteorder()
             thisDict["mask"] = associatedFrame.mask.flatten().byteswap().newbyteorder()
@@ -961,6 +998,23 @@ def twoD_disp_map_image_to_dataframe(
     # REMOVE FILTERED ROWS FROM DATA FRAME
     mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
     mapDF = mapDF.loc[~mask]
+    mask = (mapDF['min'] == 0)
+    mapDF = mapDF.loc[~mask]
+
+    # SORT BY COLUMN NAME
+    mapDF.sort_values(['wavelength'], inplace=True)
+
+    # CALCULATE PIXEL SCALE
+    if dispAxis == "y":
+        mapDF.sort_values(['x', 'y'], inplace=True)
+    else:
+        mapDF.sort_values(['y', 'x'], inplace=True)
+    shiftedWlArray = list(mapDF["wavelength"].values)[1:]
+    shiftedWlArray.append(np.nan)
+    mapDF["pixelScale"] = mapDF["wavelength"] - shiftedWlArray
+    mask = (mapDF['pixelScale'] > 2) | (mapDF['pixelScale'] < -2)
+    mapDF.loc[mask, 'pixelScale'] = 0.
+    mapDF['pixelScale'] = mapDF['pixelScale'].abs()
 
     # SORT BY COLUMN NAME
     mapDF.sort_values(['wavelength'], inplace=True)
@@ -985,7 +1039,7 @@ def predict_product_path(
     ```python
     from soxspipe.commonutils import toolkit
     productPath = toolkit.predict_product_path(sofFilePath)
-    ```           
+    ```
     """
     try:
         sofName = os.path.basename(sofName)
@@ -1010,6 +1064,8 @@ def predict_product_path(
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_SKYSUB"
+    if "_NOD_" in sofName:
+        sofName += "_EXTRACTED_MERGED"
     productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
     if "spatial" not in productPath:
         productPath = productPath.replace("spat", "spatial")
@@ -1062,7 +1118,7 @@ def add_recipe_logger(
     recipeErr = logging.FileHandler(loggingErrorPath, mode='a', encoding=None, delay=True)
     recipeErrFormatter = logging.Formatter('%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', '%Y-%m-%d %H:%M:%S')
     recipeErr.set_name("recipeErr")
-    recipeErr.setLevel(logging.WARNING)
+    recipeErr.setLevel(logging.ERROR)
     recipeErr.setFormatter(recipeErrFormatter)
     log.addHandler(recipeErr)
 
@@ -1114,7 +1170,7 @@ def create_dispersion_solution_grid_lines_for_plot(
     for l in range(int(gridLinePixelTable['line'].max())):
         mask = (gridLinePixelTable['line'] == l)
         ax.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
-    ```           
+    ```
     """
     log.debug('starting the ``create_dispersion_solution_grid_lines_for_plot`` function')
 
@@ -1200,7 +1256,7 @@ def get_calibration_lamp(
     ```python
     from soxspipe.commonutils.toolkit import get_calibration_lamp
     lamp = get_calibration_lamp(log=log, frame=frame, kw=kw)
-    ```           
+    ```
     """
     log.debug('starting the ``read_calibration_lamp`` function')
 
@@ -1209,11 +1265,97 @@ def get_calibration_lamp(
 
     for l in [kw("LAMP1"), kw("LAMP2"), kw("LAMP3"), kw("LAMP4"), kw("LAMP5"), kw("LAMP6"), kw("LAMP7")]:
         if l in frame.header:
-            lamp = frame.header[l]
-            lamp = lamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("VIS_", "").replace("UVB_", "").replace("_lamp", "")
+            newLamp = frame.header[l]
+            newLamp = newLamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("VIS_", "").replace("UVB_", "").replace("_lamp", "").replace("_Lamp", "").replace("Argo", "Ar").replace("Neon", "Ne").replace("Merc", "Hg").replace("Xeno", "Xe")
+            if lamp:
+                lamp += newLamp
+            else:
+                lamp = newLamp
 
     log.debug('completed the ``read_calibration_lamp`` function')
     return lamp
 
-# use the tab-trigger below for new function
-# xt-def-function
+
+def qc_settings_plot_tables(
+        log,
+        qc,
+        qcAx,
+        settings,
+        settingsAx):
+    """*generate a QC ans settings table to be placed at the bottom of the QC plots*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `qc` -- date frame of collected QCs
+    - `qcAx` -- the axis to add the QC table to
+    - `settings` -- settings to report in settings table
+    - `settingsAx` -- the axis to add the settings table to
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import qc_settings_plot_tables
+    qc_settings_plot_tables(log=log,qc=self.qc,qcAx=qcAx, settings=settings,settingsAx=settingsAx)
+    ```
+    """
+    log.debug('starting the ``qc_settings_plot_tables`` function')
+
+    import matplotlib as plt
+    import numpy as np
+    import pandas as pd
+
+    tables = []
+    cols = []
+
+    qcCopy = qc.copy()
+    qcCopy["value"] = qcCopy["qc_value"].astype(str) + " " + qcCopy["qc_unit"]
+    qcCopy.loc[qcCopy['value'].isnull(), "value"] = qcCopy.loc[qcCopy['value'].isnull(), "qc_value"]
+
+    columns1 = ["value", "qc_comment"]
+    colColours = plt.cm.Greys(np.full(len(columns1), 0.1))
+    rowColours = plt.cm.Greys(np.full(len(qcCopy.index), 0.1))
+    rowLabels = qcCopy["qc_name"].values
+
+    if len(qcCopy[columns1].values):
+        qcTable = qcAx.table(cellText=qcCopy[columns1].values, colLabels=columns1, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
+        tables.append(qcTable)
+        cols.append(columns1)
+    # qcAx.set_title(
+    #     "QC Table", fontsize=9)
+
+    settingsCopy = {k: v for k, v in settings.items() if k not in ['nir', 'vis', 'uvb']}
+
+    settingsCopy = {"setting": settingsCopy.keys(), "value": settingsCopy.values()}
+
+    settingsDF = pd.DataFrame(settingsCopy)
+
+    columns2 = ["value"]
+    colColours = plt.cm.Greys(np.full(len(columns2), 0.1))
+    rowColours = plt.cm.Greys(np.full(len(settingsDF.index), 0.1))
+    rowLabels = settingsDF["setting"].values
+    settingsTable = settingsAx.table(cellText=settingsDF[columns2].values, colLabels=columns2, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
+    tables.append(settingsTable)
+    cols.append(columns2)
+    # settingsAx.set_title(
+    #     "Parameters", fontsize=9, loc='left')
+    settingsAx.margins(x=0, y=0)
+
+    for t, c in zip(tables, cols):
+        t.scale(1, 1.5)
+        t.auto_set_font_size(False)
+        t.set_fontsize(4)
+        table_cells = t.properties()['children']
+        for cell in table_cells:
+            cell.set_linewidth(0.3)
+        t.auto_set_column_width(list(range(len(c))))
+
+    for a in [qcAx, settingsAx]:
+
+        # Hide axes
+        a.get_xaxis().set_visible(False)
+        a.get_yaxis().set_visible(False)
+        a.axis('off')
+
+    log.debug('completed the ``qc_settings_plot_tables`` function')
+    return None

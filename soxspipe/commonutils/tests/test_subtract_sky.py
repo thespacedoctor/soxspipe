@@ -142,7 +142,7 @@ class test_subtract_sky(unittest.TestCase):
             productsTable=products,
             dispMap=dispMap
         )
-        skymodelCCDData, skySubtractedCCDData, qcTable, productsTable = this.subtract()
+        skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, qcTable, productsTable = this.subtract()
 
         from tabulate import tabulate
         print(tabulate(productsTable, headers='keys', tablefmt='psql'))

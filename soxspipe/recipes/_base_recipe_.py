@@ -162,6 +162,9 @@ class _base_recipe_(object):
             settings=self.settings
         ).get
 
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.productDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}/"
+
         return None
 
     def _prepare_single_frame(
@@ -405,6 +408,7 @@ class _base_recipe_(object):
             log=self.log,
             settings=self.settings,
             inputFrames=preframes,
+            recipeName=self.recipeName,
             verbose=self.verbose
         )
         preframes, supplementaryInput = sof.get()
@@ -420,13 +424,20 @@ class _base_recipe_(object):
 
         preframes.summary["LAMP"] = "------------"
         columns = preframes.summary.colnames
+
         for i in range(7):
             thisLamp = kw(f"LAMP{i+1}")
-            try:
-                preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)] = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
-                columns.remove(thisLamp)
-            except:
-                pass
+            # FIRST FIND THE NAME OF THE LAMP
+            newLamp = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
+            if len(newLamp):
+                newLamp = newLamp[0]
+                newLamp = newLamp.replace("_Lamp", "")
+                newLamp = newLamp.replace("Argo", "Ar").replace("Neon", "Ne").replace("Merc", "Hg").replace("Xeno", "Xe")
+
+                updatedList = list(preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)].data)
+                updatedList[:] = [u.replace("-", "") + newLamp for u in updatedList]
+                preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)] = updatedList
+            columns.remove(thisLamp)
 
         preframes.summary["LAMP"][np.where(preframes.summary["LAMP"] == "------------")] = "--"
 
@@ -447,7 +458,23 @@ class _base_recipe_(object):
             columns.remove("file")
             columns.remove("filename")
             columns = ["filename"] + columns
-        self.log.print(preframes.summary[columns])
+
+        # MAKE A COPY TO RENAME COLUMNS
+        this = preframes.summary.copy()
+
+        newColumns = []
+        for c in columns:
+            newC = c
+            if "ESO SEQ " in c:
+                newC = c.replace("ESO SEQ ", "")
+                this.rename_column(c, newC)
+            if "ESO DPR " in c:
+                newC = c.replace("ESO DPR ", "")
+                this.rename_column(c, newC)
+            newColumns.append(newC)
+
+        self.log.print(this[newColumns])
+        self.log.print("\n")
 
         # SORT RECIPE AND ARM SETTINGS
         self.recipeSettings = self.get_recipe_settings()
@@ -462,7 +489,7 @@ class _base_recipe_(object):
         **Return:**
             - None
 
-        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
+        If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug('starting the ``_verify_input_frames_basics`` method')
 
@@ -487,14 +514,6 @@ class _base_recipe_(object):
             inst.remove(None)
         self.inst = inst[0]
 
-        # SET IMAGE ORIENTATION
-        if self.inst == "SOXS":
-            self.axisA = "y"
-            self.axisB = "x"
-        elif self.inst == "XSHOOTER":
-            self.axisA = "x"
-            self.axisB = "y"
-
         # MIXED INPUT ARMS ARE BAD
         if None in arm:
             arm.remove(None)
@@ -515,6 +534,14 @@ class _base_recipe_(object):
             log=self.log,
             settings=self.settings
         ).get(self.arm)
+
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
+            self.axisA = "x"
+            self.axisB = "y"
+        else:
+            self.axisA = "y"
+            self.axisB = "x"
 
         # MIXED BINNING IS BAD
         if self.arm == "NIR":
@@ -677,14 +704,14 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``clean_up`` method')
 
+        import shutil
+
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
             c = self.conn.cursor()
             sqlQuery = f"update product_frames set status = 'pass' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
-
-        import shutil
 
         outDir = self.workspaceRootPath + "/tmp"
 
@@ -1056,10 +1083,10 @@ class _base_recipe_(object):
             dark = False
 
         # VERIFY DATA IS IN ORDER
-        if master_bias == False and dark == False:
+        if master_bias == False and dark == False and master_flat == False:
             raise TypeError(
-                "detrend method needs at least a master-bias frame and/or a dark frame to subtract")
-        if master_bias == False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
+                "detrend method needs at least a master-bias frame, a dark frame or a master flat frame")
+        if master_bias == False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             self.log.warning("Dark and science/calibration frame have differing exposure-times.")
         if master_bias != False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             raise AttributeError(
@@ -1166,6 +1193,10 @@ class _base_recipe_(object):
             # REMOVE COLUMN FROM DATA FRAME
             self.products.drop(columns=['file_path'], inplace=True)
 
+        # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
+        self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
+        # SORT BY COLUMN NAME
+        self.qc.sort_values(['qc_name'], inplace=True)
         columns = list(self.qc.columns)
         columns.remove("to_header")
         columns.remove("obs_date_utc")

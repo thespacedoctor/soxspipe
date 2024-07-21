@@ -6,15 +6,16 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe prep <workspaceDirectory>
-    soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe [-q] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
-    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<od>]
+    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
     soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
     soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 
 Options:
     prep                                   prepare a folder of raw data (workspace) for data reduction
@@ -30,6 +31,7 @@ Options:
     order_centres                          the order centres recipe
     spat_sol                               the spatial solution recipe
     stare                                  reduce stare mode science frames
+    nod                                    reduce nodding mode science frames
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -39,7 +41,7 @@ Options:
     -s, --settings <pathToSettingsFile>    the settings file
     -V, --verbose                          more verbose output
     -x, --overwrite                        more verbose output
-    --poly=<oowwss>                        polynomial degrees in this sequence: order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435 (overrides parameters found in setting file)
+    --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
 """
 ################# GLOBAL IMPORTS ####################
 import os
@@ -95,7 +97,7 @@ def main(arguments=None):
         docString=__doc__,
         logLevel="WARNING",
         options_first=False,
-        projectName=False,
+        projectName="soxspipe",
         defaultSettingsFile=False
     )
     arguments, settings, log, dbConn = su.setup()
@@ -196,7 +198,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                polyOrders=a["polyFlag"]
             ).produce_product()
 
         if a["order_centres"]:
@@ -206,7 +209,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                polyOrders=a["polyFlag"]
             ).produce_product()
 
         if a["spat_sol"]:
@@ -241,6 +245,17 @@ def main(arguments=None):
                 overwrite=a["overwriteFlag"]
             )
             reducedStare = recipe.produce_product()
+
+        if a["nod"]:
+            from soxspipe.recipes import soxs_nod
+            recipe = soxs_nod(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            )
+            reducedNod = recipe.produce_product()
 
         if a['prep']:
             from soxspipe.commonutils import data_organiser

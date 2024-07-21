@@ -23,7 +23,7 @@ VIS:
     2x2: BP_MAP_RP_VIS_2x2.fits
   predicted pinhole lines:
     single:
-      1x1: SOXS_ThAr_SING_VIS_1x1.fits
+      1x1: SOXS_SPH_TAB_VIS_ThAr_1x1.fits
       1x2: SOXS_ThAr_SING_VIS_1x2.fits
       2x2: SOXS_ThAr_SING_VIS_2x2.fits
     multi:
@@ -32,7 +32,7 @@ VIS:
       2x2: SOXS_ThAr_MULT_VIS_2x2.fits
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_VIS.fits
-  slit_length: 11 #arcsec
+  slit_length: 12 #arcsec
   line-atlas: ThAr.fits
   dispersion-axis: x
   rotate-qc-plot: 90
@@ -60,12 +60,15 @@ NIR:
     1x1: BP_MAP_RP_NIR.fits
   predicted pinhole lines:
     single:
-      1x1: SOXS_SPH_TAB_NIR_Xe.fits
+      #1x1: SOXS_SPH_TAB_NIR_Xe.fits
+      1x1: ArHgNeXe_clean_within_2.0pixel.fits
     multi:
-      1x1: SOXS_MPH_TAB_NIR_Xe.fits
+      # 1x1: SOXS_MPH_TAB_NIR_Xe.fits
+      #1x1: Hg.fits
+      1x1: ArHgNeXe_clean_within_2.0pixel.fits
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_NIR.fits
-  slit_length: 11 #arcsec
+  slit_length: 12 #arcsec
   line-atlas: ArHgNeXe.fits
   dispersion-axis: y
   rotate-qc-plot: 0
