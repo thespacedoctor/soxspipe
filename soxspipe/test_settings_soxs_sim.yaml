@@ -61,6 +61,23 @@ soxs-spatial-solution:
     pinhole_fwhm_px_max: 2.5
     pinhole_fwhm_px_min: 1.0
     mph_line_set_min: 8
+    uvb:
+        pixel-window-size: 10
+        pinhole-detection-thres-sigma: 5
+        # DEGREE OF ORDER TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
+        order-deg: [4,4]
+        # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
+        wavelength-deg: [4,5]
+        # DEGREE OF SLIT TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
+        slit-deg: [5,2]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTLING ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 4
+        poly-fitting-residual-clipping-sigma: 9
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
+        map_to_image_displacement_threshold: 0.01 # in pixels
+        # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
+        mph_line_set_min: 9
 
 
 soxs-mflat:

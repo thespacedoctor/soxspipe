@@ -1398,7 +1398,7 @@ class create_dispersion_map(object):
                 lineGroups["sigma_clipped_y"] = masked_residuals.mask
                 lineGroups.loc[((lineGroups["sigma_clipped_y"] == True) | (lineGroups["sigma_clipped_x"] == True)), "sigma_clipped"] = True
 
-                if False:
+                if True:
                     # CLIP ALSO ON COMBINED RESIDUALS
                     masked_residuals = sigma_clip(
                         lineGroups["residuals_xy"], sigma_lower=5000, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
@@ -1416,7 +1416,7 @@ class create_dispersion_map(object):
                 orderPixelTable["sigma_clipped"] = s["clipped"].values
 
                 # CLIP THE MOST DEVIATE SINGLE PINHOLES
-                if iteration == 1:
+                if iteration == 1 and True:
                     masked_residuals = sigma_clip(
                         orderPixelTable["residuals_x"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaX * 3, maxiters=1, cenfunc='median', stdfunc='mad_std')
                     orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
@@ -1746,7 +1746,7 @@ class create_dispersion_map(object):
         halfGrid = (slitLength / 2) * 1.2
         slitArray = np.arange(-halfGrid, halfGrid +
                               grid_res_slit, grid_res_slit)
-        wlArray = np.arange(minWl - int(wlRange / 10), maxWl + int(wlRange / 10), grid_res_wavelength)
+        wlArray = np.arange(minWl, maxWl, grid_res_wavelength)
 
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
         bigSlitArray = np.concatenate(
@@ -1987,8 +1987,13 @@ class create_dispersion_map(object):
         std_res = np.std(orderPixelTable["residuals_xy"])
         median_res = np.median(orderPixelTable["residuals_xy"])
 
+        # mean_x_res = abs(orderPixelTable["residuals_x"]).mean()
+        # mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
+
         mean_x_res = abs(orderPixelTable["residuals_x"]).mean()
         mean_y_res = abs(orderPixelTable["residuals_y"]).mean()
+        median_x_res = np.median(abs(orderPixelTable["residuals_x"]))
+        median_y_res = np.median(abs(orderPixelTable["residuals_y"]))
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
         rotatedImg = np.ma.array(self.pinholeFrameMasked.data, mask=self.pinholeFrameMasked.mask, fill_value=0).filled()
@@ -2195,9 +2200,9 @@ class create_dispersion_map(object):
             exists = os.path.exists(filePath)
             if not exists:
                 with codecs.open(filePath, encoding='utf-8', mode='w') as writeFile:
-                    writeFile.write(f"polyOrders,mean_x_res,mean_y_res,mean_res,std_res,CLINE \n")
+                    writeFile.write(f"polyOrders,mean_x_res,mean_y_res,mean_res,std_res,median_res,median_x_res,median_y_res,CLINE \n")
             with codecs.open(filePath, encoding='utf-8', mode='a') as writeFile:
-                writeFile.write(f"{polyOrders},{mean_x_res:0.4f},{mean_y_res:0.4f},{mean_res:2.4f},{std_res:2.4f},{self.CLINE}\n")
+                writeFile.write(f"{polyOrders},{mean_x_res:0.4f},{mean_y_res:0.4f},{mean_res:2.4f},{std_res:2.4f},{median_res:2.4f},{median_x_res:2.4f},{median_y_res:2.4f},{self.CLINE}\n")
 
         self.log.debug('completed the ``create_dispersion_map_qc_plot`` method')
         return res_plots
@@ -2477,11 +2482,11 @@ class create_dispersion_map(object):
 
         print(len(lineAtlas.index))
 
-        # mask = (lineAtlas['ion'].isin(["XeI", 'UNK']))
-        mask = (lineAtlas['ion'].isin(["HgI", 'UNK']))
-        # mask = (lineAtlas['ion'].isin(["NeI", "NeII", 'UNK']))
-        # mask = (lineAtlas['ion'].isin(["Ar", "ArI", "ArII", "ArIII", 'UNK']))
-        lineAtlas = lineAtlas.loc[mask]
+        # # mask = (lineAtlas['ion'].isin(["XeI", 'UNK']))
+        # mask = (lineAtlas['ion'].isin(["HgI", 'UNK']))
+        # # mask = (lineAtlas['ion'].isin(["NeI", "NeII", 'UNK']))
+        # # mask = (lineAtlas['ion'].isin(["Ar", "ArI", "ArII", "ArIII", 'UNK']))
+        # lineAtlas = lineAtlas.loc[mask]
 
         print(len(lineAtlas.index))
 
@@ -2546,7 +2551,7 @@ class create_dispersion_map(object):
         # t.write("Ne.fits", overwrite=True)
         # t.write("Ar.fits", overwrite=True)
 
-        sys.exit(0)
+        # sys.exit(0)
 
         self.log.debug('completed the ``create_new_static_line_list`` method')
         return newPredictedLineList

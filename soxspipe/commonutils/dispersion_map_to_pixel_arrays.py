@@ -181,10 +181,16 @@ def get_cached_coeffs(
             coeff[axis] = [float(v) for k, v in row.items() if k not in [
                 "axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)]
     else:
-        coeff['x'] = np.ones((orderDeg[0] + 1) *
-                             (wavelengthDeg[0] + 1) * (slitDeg[0] + 1))
-        coeff['y'] = np.ones((orderDeg[1] + 1) *
-                             (wavelengthDeg[1] + 1) * (slitDeg[1] + 1))
+        if isinstance(orderDeg, list):
+            coeff['x'] = np.ones((orderDeg[0] + 1) *
+                                 (wavelengthDeg[0] + 1) * (slitDeg[0] + 1))
+            coeff['y'] = np.ones((orderDeg[1] + 1) *
+                                 (wavelengthDeg[1] + 1) * (slitDeg[1] + 1))
+        else:
+            coeff['x'] = np.ones((orderDeg + 1) *
+                                 (wavelengthDeg + 1) * (slitDeg + 1))
+            coeff['y'] = np.ones((orderDeg + 1) *
+                                 (wavelengthDeg + 1) * (slitDeg + 1))
 
     log.debug('completed the ``get_cached_coeffs`` function')
     return coeff['x'], coeff['y']

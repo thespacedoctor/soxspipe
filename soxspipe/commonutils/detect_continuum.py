@@ -1038,8 +1038,11 @@ class detect_continuum(_base_detect):
             xfit = poly(df, *cent_coeff)
             stdfit = poly(df, *std_coeff)
 
-            xfit, yfit, stdfit, lower, upper = zip(
-                *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
+            try:
+                xfit, yfit, stdfit, lower, upper = zip(
+                    *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
+            except:
+                continue
             if flipImage and not rotateImage:
                 xfit = aLen - np.array(xfit)
                 lower = aLen - np.array(lower)

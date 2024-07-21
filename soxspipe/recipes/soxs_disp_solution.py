@@ -262,7 +262,7 @@ class soxs_disp_solution(_base_recipe_):
 
         if self.settings["tune-pipeline"]:
             from itertools import product
-            digits = [1, 2, 3, 4, 5, 6, 7]
+            digits = [2, 3, 4, 5, 6]
             perm = product(digits, repeat=4)
             try:
                 os.remove("residuals.txt")
@@ -287,7 +287,7 @@ class soxs_disp_solution(_base_recipe_):
 
             permList = list(perm)
 
-            # DEFINE AN INPUT ARRAY 
+            # DEFINE AN INPUT ARRAY
 
             print("TUNING SOXSPIPE\n")
 

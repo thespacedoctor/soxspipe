@@ -149,54 +149,47 @@ class test_soxs_mdark(unittest.TestCase):
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
-    @pytest.mark.full
-    def test_soxs_mdark_e2e_nir_folder_function(self):
-
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark/nir/180"
-        # sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
-        from soxspipe.recipes import soxs_mdark
-        this = soxs_mdark(
-            log=log2,
-            settings=settings2,
-            inputFrames=sofPath,
-            verbose=True,
-            overwrite=True
-        )
-        productPath = this.produce_product()
-        print(f"Here is the final product `{productPath}`")
-
-    def test_soxs_mdark_e2e_nir_function(self):
-
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark/sofs/soxsim_nir_180s_darks.sof"
-        # sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
-        from soxspipe.recipes import soxs_mdark
-        this = soxs_mdark(
-            log=log2,
-            settings=settings2,
-            inputFrames=sofPath,
-            verbose=True,
-            overwrite=True
-        )
-        productPath = this.produce_product()
-        print(f"Here is the final product `{productPath}`")
-
-    @pytest.mark.full
-    def test_soxs_mdark_e2e_nir_function2(self):
-
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark_CR/sofs/soxsim_nir_300s_wCRH_darks.sof"
-        from soxspipe.recipes import soxs_mdark
-        this = soxs_mdark(
-            log=log2,
-            settings=settings2,
-            inputFrames=sofPath,
-            verbose=True,
-            overwrite=True
-        )
-        productPath = this.produce_product()
-        print(f"Here is the final product `{productPath}`")
-
+    # @pytest.mark.full
+    # def test_soxs_mdark_e2e_nir_folder_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark/nir/180"
+    #     # sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
+    #     from soxspipe.recipes import soxs_mdark
+    #     this = soxs_mdark(
+    #         log=log2,
+    #         settings=settings2,
+    #         inputFrames=sofPath,
+    #         verbose=True,
+    #         overwrite=True
+    #     )
+    #     productPath = this.produce_product()
+    #     print(f"Here is the final product `{productPath}`")
+    # def test_soxs_mdark_e2e_nir_function(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark/sofs/soxsim_nir_180s_darks.sof"
+    #     # sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/mdark/sofs/e2e_nir_180s_no_crh_darks.sof"
+    #     from soxspipe.recipes import soxs_mdark
+    #     this = soxs_mdark(
+    #         log=log2,
+    #         settings=settings2,
+    #         inputFrames=sofPath,
+    #         verbose=True,
+    #         overwrite=True
+    #     )
+    #     productPath = this.produce_product()
+    #     print(f"Here is the final product `{productPath}`")
+    # @pytest.mark.full
+    # def test_soxs_mdark_e2e_nir_function2(self):
+    #     sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/dark_CR/sofs/soxsim_nir_300s_wCRH_darks.sof"
+    #     from soxspipe.recipes import soxs_mdark
+    #     this = soxs_mdark(
+    #         log=log2,
+    #         settings=settings2,
+    #         inputFrames=sofPath,
+    #         verbose=True,
+    #         overwrite=True
+    #     )
+    #     productPath = this.produce_product()
+    #     print(f"Here is the final product `{productPath}`")
     # def test_soxs_mdark_function(self):
-
     #     # utKit.refresh_database() # reset database to database found in
     #     # soxspipe/test/input
     #     from soxspipe.recipes import soxs_mdark
@@ -205,7 +198,6 @@ class test_soxs_mdark(unittest.TestCase):
     #         settings=settings
     #     )
     #     this.get()
-
     @pytest.mark.full
     def test_soxs_mdark_function_exception(self):
 

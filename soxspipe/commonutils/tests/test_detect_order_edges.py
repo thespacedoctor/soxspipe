@@ -62,13 +62,38 @@ class test_detect_order_edges(unittest.TestCase):
         flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                  hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
+        import pandas as pd
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": [],
+            "label": []
+        })
+
         from soxspipe.commonutils import detect_order_edges
         edges = detect_order_edges(
             log=log,
             flatFrame=flatFrame,
             orderCentreTable=orderCentreTable,
             settings=settings,
-            recipeSettings=settings["soxs-mflat"]
+            recipeSettings=settings["soxs-mflat"],
+            qcTable=qc,
+            productsTable=products,
         )
         edges.get()
 

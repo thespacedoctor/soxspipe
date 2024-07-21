@@ -704,6 +704,8 @@ class _base_recipe_(object):
         """
         self.log.debug('starting the ``clean_up`` method')
 
+        import shutil
+
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
             c = self.conn.cursor()
@@ -711,14 +713,12 @@ class _base_recipe_(object):
             c.execute(sqlQuery)
             c.close()
 
-        import shutil
-
         outDir = self.workspaceRootPath + "/tmp"
 
-        # try:
-        #     shutil.rmtree(outDir)
-        # except:
-        #     pass
+        try:
+            shutil.rmtree(outDir)
+        except:
+            pass
 
         self.log.debug('completed the ``clean_up`` method')
         return None

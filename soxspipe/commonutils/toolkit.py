@@ -879,7 +879,8 @@ def twoD_disp_map_image_to_dataframe(
         twoDMapPath,
         kw=False,
         associatedFrame=False,
-        removeMaskedPixels=False):
+        removeMaskedPixels=False,
+        dispAxis="y"):
     """*convert the 2D dispersion image map to a pandas dataframe*
 
     **Key Arguments:**
@@ -887,8 +888,9 @@ def twoD_disp_map_image_to_dataframe(
     - `log` -- logger
     - `twoDMapPath` -- 2D dispersion map image path
     - `kw` -- fits keyword lookup dictionary
-    - `associatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
-    - `removeMaskedPixels` -- remove the masked pixels from the assosicated image? Default *False*
+    - `associatedFrame` -- include a flux column in returned dataframe from a frame associated with the dispersion map. Default *False*
+    - `removeMaskedPixels` -- remove the masked pixels from the associated image? Default *False*
+    - `dispAxis` -- x or y. Needed for pixel scale calculation
 
     **Usage:**
 
@@ -998,6 +1000,21 @@ def twoD_disp_map_image_to_dataframe(
     mapDF = mapDF.loc[~mask]
     mask = (mapDF['min'] == 0)
     mapDF = mapDF.loc[~mask]
+
+    # SORT BY COLUMN NAME
+    mapDF.sort_values(['wavelength'], inplace=True)
+
+    # CALCULATE PIXEL SCALE
+    if dispAxis == "y":
+        mapDF.sort_values(['x', 'y'], inplace=True)
+    else:
+        mapDF.sort_values(['y', 'x'], inplace=True)
+    shiftedWlArray = list(mapDF["wavelength"].values)[1:]
+    shiftedWlArray.append(np.nan)
+    mapDF["pixelScale"] = mapDF["wavelength"] - shiftedWlArray
+    mask = (mapDF['pixelScale'] > 2) | (mapDF['pixelScale'] < -2)
+    mapDF.loc[mask, 'pixelScale'] = 0.
+    mapDF['pixelScale'] = mapDF['pixelScale'].abs()
 
     # SORT BY COLUMN NAME
     mapDF.sort_values(['wavelength'], inplace=True)

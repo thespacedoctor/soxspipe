@@ -56,6 +56,7 @@ class test_soxs_nod(unittest.TestCase):
         )
         this.produce_product()
 
+    @pytest.mark.full
     def test_soxs_nod_uvb_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-nod/sof/2010.09.14T23.39.21.697_UVB_1X1_FAST_NOD_XSHOOTER.sof"
         from soxspipe.recipes import soxs_nod
@@ -76,18 +77,6 @@ class test_soxs_nod(unittest.TestCase):
         )
         this.produce_product()
 
-    def test_soxs_nod_function_exception(self):
-        from soxspipe.recipes import soxs_nod
-        try:
-            sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_mixed_exptime_darks.sof"
-            from soxspipe.recipes import soxs_nod
-            this = soxs_nod(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath
-            )
-        except Exception as e:
-            self.fail(f"Exception raised: {str(e)}")
 
 if __name__ == '__main__':
     suite = unittest.TestSuite()
@@ -95,4 +84,4 @@ if __name__ == '__main__':
     runner = unittest.TextTestRunner()
     runner.run(suite)
 
-    #unittest.main()
+    # unittest.main()

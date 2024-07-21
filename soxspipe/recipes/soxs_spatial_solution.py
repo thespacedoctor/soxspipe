@@ -151,7 +151,7 @@ class soxs_spatial_solution(_base_recipe_):
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["LAMP,WAVE", "LAMP,FLAT" , "WAVE,LAMP"]:
+                    if i not in ["LAMP,WAVE", "LAMP,FLAT", "WAVE,LAMP"]:
                         error = f"Found a {i} frame. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
 
             if not error:
@@ -272,11 +272,11 @@ class soxs_spatial_solution(_base_recipe_):
 
         if self.settings["tune-pipeline"]:
             from itertools import product
-            order = [3, 4, 5, 6]
-            wavelength = [3, 4, 5, 6]
-            slit = [2, 3, 4, 5, 6]
-            perm = product([self.recipeSettings["order-deg"][0]], [self.recipeSettings["order-deg"][1]], [self.recipeSettings["wavelength-deg"][0]], [self.recipeSettings["wavelength-deg"][1]], slit, slit)
-            # perm = product(order, order, wavelength, wavelength, slit, slit)
+            order = [2, 3, 4, 5]
+            wavelength = [2, 3, 4, 5]
+            slit = [2, 3, 4, 5]
+            # perm = product([self.recipeSettings["order-deg"][0]], [self.recipeSettings["order-deg"][1]], [self.recipeSettings["wavelength-deg"][0]], [self.recipeSettings["wavelength-deg"][1]], slit, slit)
+            perm = product(order, order, wavelength, wavelength, slit, slit)
             try:
                 os.remove("residuals.txt")
             except:
