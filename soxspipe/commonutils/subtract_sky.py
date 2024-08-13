@@ -1030,6 +1030,7 @@ class subtract_sky(object):
 
         for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_subtracted_flux"]):
             skySubtractedCCDData.data[y][x] = skypixel
+
         for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_subtracted_flux"] / imageMapOrderDF["error"]):
             skySubtractedResidualsCCDData.data[y][x] = skypixel
 

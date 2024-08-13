@@ -305,13 +305,15 @@ class horne_extraction(object):
         from soxspipe.commonutils.toolkit import read_spectral_format
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
         import numpy as np
+        import scipy.ndimage
 
         kw = self.kw
         arm = self.arm
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = self.orderPixelTable['order'].unique()
-        # uniqueOrders = uniqueOrders[3:5]
+        print("FIX ME")
+        uniqueOrders = [15]
         extractions = []
 
         self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
@@ -320,6 +322,23 @@ class horne_extraction(object):
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
             log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap, extended=False)
 
+        zoomFactor = 25
+        if self.detectorParams["dispersion-axis"] == "x":
+            zoomTuple = (1, zoomFactor)
+        else:
+            zoomTuple = (zoomFactor, 1)
+        wlZoom = scipy.ndimage.zoom(self.twoDMap["WAVELENGTH"].data, zoomTuple, order=0)
+        rawFluxZoom = scipy.ndimage.zoom(self.skySubtractedFrame.data, zoomTuple, order=0)
+        if self.skyModelFrame:
+            skyZoom = scipy.ndimage.zoom(self.skyModelFrame.data, zoomTuple, order=0)
+        errorZoom = scipy.ndimage.zoom(self.skySubtractedFrame.uncertainty.array, zoomTuple, order=0)
+
+        def rebin(arr, binx, biny):
+            """Rebin 2D array arr to shape new_shape by averaging."""
+            new_shape = (arr.shape[0] // binx, arr.shape[1] // biny)
+            shape = (new_shape[0], arr.shape[0] // new_shape[0], new_shape[1], arr.shape[1] // new_shape[1])
+            return arr.reshape(shape).mean(-1).mean(1)
+
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
         for order, amin, amax in zip(orderNums, amins, amaxs):
@@ -327,33 +346,41 @@ class horne_extraction(object):
             if order in uniqueOrders:
                 orderTable = self.orderPixelTable.loc[(self.orderPixelTable['order'] == order) & (self.orderPixelTable[f"{self.axisB}coord"] > amin) & (self.orderPixelTable[f"{self.axisB}coord"] < amax)]
 
-                self.axisAstart = orderTable[f"{self.axisA}coord_centre"].astype(int) - self.slitHalfLength
-                self.axisAstop = orderTable[f"{self.axisA}coord_centre"].astype(int) + self.slitHalfLength
-                self.axisBcoord = orderTable[f"{self.axisB}coord"].astype(int)
+                self.axisAstart = np.round((orderTable[f"{self.axisA}coord_centre"] * zoomFactor)).astype(int) - self.slitHalfLength * zoomFactor
+                self.axisAstop = np.round((orderTable[f"{self.axisA}coord_centre"] * zoomFactor)).astype(int) + self.slitHalfLength * zoomFactor
+                self.axisBcoord = orderTable[f"{self.axisB}coord"].round().astype(int)
                 self.axisAcoords = list(map(lambda x: list(range(x[0], x[1])), zip(self.axisAstart, self.axisAstop)))
-                self.axisBcoords = list(map(lambda x: [x] * self.slitHalfLength * 2, self.axisBcoord))
+                self.axisBcoords = list(map(lambda x: [x] * self.slitHalfLength * 2 * zoomFactor, self.axisBcoord))
 
                 if self.detectorParams["dispersion-axis"] == "x":
-                    orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[self.axisBcoords, self.axisAcoords])
-                    orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[self.axisBcoords, self.axisAcoords])
-                    orderTable["sliceSky"] = list(self.skyModelFrame.data[self.axisBcoords, self.axisAcoords]) if self.skyModelFrame else [0] * len(self.axisBcoords)
-                    orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[self.axisBcoords, self.axisAcoords])
+                    this = rebin(wlZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1])
+                    orderTable["wavelength"] = list(rebin(wlZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
+                    orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
+                    if self.skyModelFrame:
+                        orderTable["sliceSky"] = list(rebin(skyZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
+                    else:
+                        orderTable["sliceSky"] = list([0] * len(self.axisBcoords) / zoomFactor)
+                    orderTable["sliceError"] = list(rebin(errorZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
                 else:
-                    orderTable["wavelength"] = list(self.twoDMap["WAVELENGTH"].data[self.axisAcoords, self.axisBcoords])
-                    orderTable["sliceRawFlux"] = list(self.skySubtractedFrame.data[self.axisAcoords, self.axisBcoords])
-                    orderTable["sliceSky"] = list(self.skyModelFrame.data[self.axisAcoords, self.axisBcoords]) if self.skyModelFrame else [0] * len(self.axisAcoords)
-                    orderTable["sliceError"] = list(self.skySubtractedFrame.uncertainty[self.axisAcoords, self.axisBcoords])
+                    orderTable["wavelength"] = list(rebin(wlZoom[self.axisAcoords, self.axisBcoords], zoomTuple[0], zoomTuple[1]))
+                    orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisAcoords, self.axisBcoords], zoomTuple[0], zoomTuple[1]))
+                    if self.skyModelFrame:
+                        orderTable["sliceSky"] = list(rebin(skyZoom[self.axisAcoords, self.axisBcoords], zoomTuple[0], zoomTuple[1]))
+                    else:
+                        orderTable["sliceSky"] = list([0] * len(self.axisAcoords) / zoomFactor)
+                    orderTable["sliceError"] = list(rebin(errorZoom[self.axisAcoords, self.axisBcoords], zoomTuple[0], zoomTuple[1]))
 
                 orderSlices.append(orderTable)
 
         from fundamentals import fmultiprocess
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
-                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, turnOffMP=False)
+                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, turnOffMP=True)
 
         self.plot_extracted_spectrum_qc(extractions=extractions, uniqueOrders=uniqueOrders)
 
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
+
         mergedSpectumDF = self.merge_extracted_orders(extractedOrdersDF)
 
         if not isinstance(self.products, bool):
@@ -444,6 +471,8 @@ class horne_extraction(object):
                 "file_path": filePath,
                 "label": "PROD"
             }).to_frame().T], ignore_index=True)
+        else:
+            mergedSpectumDF = None
 
         self.log.debug('completed the ``extract`` method')
         return self.qc, self.products, mergedSpectumDF
@@ -653,7 +682,7 @@ class horne_extraction(object):
         """*plot merged spectrum QC plot*
 
         **Key Arguments:**
-            - ``merged_orders`` -- the dataframe containing the merged order spectrum. 
+            - ``merged_orders`` -- the dataframe containing the merged order spectrum.
 
         **Usage:**
 
@@ -753,6 +782,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     crossDispersionSlices["sliceRawFlux"] = [np.nan if np.isnan(x).all() else x for x in crossDispersionSlices["sliceRawFlux"]]
     crossDispersionSlices.dropna(axis='index', how='any', subset=["sliceRawFlux"], inplace=True)
 
+    # MASK THE MOST DEVIANT PIXELS IN EACH SLICE
     crossDispersionSlices = crossDispersionSlices.apply(lambda x: create_cross_dispersion_slice(x), axis=1)
     crossDispersionSlices["sliceMask"] = [x.mask for x in crossDispersionSlices["sliceRawFluxMasked"]]
     crossDispersionSlices["sliceRawFluxMaskedSum"] = [x.sum() for x in crossDispersionSlices["sliceRawFluxMasked"]]
@@ -761,10 +791,11 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     crossDispersionSlices["sliceWeights"] = ron + np.abs(crossDispersionSlices["sliceRawFlux"]) / (crossDispersionSlices["sliceRawFluxMaskedSum"].pow(2))
 
     # NORMALISE THE FLUX
-    crossDispersionSlices["sliceFluxNormalised"] = crossDispersionSlices["sliceRawFlux"] / crossDispersionSlices["sliceRawFluxMaskedSum"]
+    crossDispersionSlices["sliceFluxNormalised"] = crossDispersionSlices["sliceRawFluxMasked"] / crossDispersionSlices["sliceRawFluxMaskedSum"]
     crossDispersionSlices["sliceFluxNormalisedSum"] = [x.sum() for x in crossDispersionSlices["sliceFluxNormalised"]]
 
     # VERTICALLY STACK THE SLICES INTO PSEDUO-RECTIFIED IMAGE
+    fluxRawImage = np.vstack(crossDispersionSlices["sliceRawFlux"])
     fluxNormalisedImage = np.vstack(crossDispersionSlices["sliceFluxNormalised"])
     weightImage = np.vstack(crossDispersionSlices["sliceWeights"])
     maskImage = np.vstack(crossDispersionSlices["sliceMask"])
@@ -773,7 +804,17 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     if False:
         fig = plt.figure(
             num=None,
-            figsize=(8, 3),
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
+        plt.show()
+
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
             dpi=None,
             facecolor=None,
             edgecolor=None,
@@ -879,6 +920,12 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     crossDispersionSlices['horneDenominatorSum'] = [x.sum() for x in crossDispersionSlices["horneDenominator"]]
     crossDispersionSlices["wavelengthMedian"] = [np.median(x) for x in crossDispersionSlices["wavelengthGood"]]
     crossDispersionSlices["fudged"] = False
+
+    if False:
+        # print("FIX ME")
+        crossDispersionSlices['sliceRawFluxGoodSum'] = [x.sum() for x in crossDispersionSlices["sliceRawFluxGood"]]
+        crossDispersionSlices['sliceFittedProfileNormalisedGoodSum'] = [x.sum() for x in crossDispersionSlices["sliceFittedProfileNormalisedGood"]]
+        crossDispersionSlices["sliceVarianceGoodSum"] = [x.sum() for x in crossDispersionSlices["sliceVarianceGood"]]
 
     # TODO: IF ALL ABOVE sliceVarianceRejectLimit  ... what?
     mask = (crossDispersionSlices["horneDenominatorSum"] == 0)
