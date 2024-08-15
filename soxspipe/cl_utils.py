@@ -92,8 +92,13 @@ def main(arguments=None):
         sys.argv.append("-s")
         sys.argv.append(settingsFile)
 
+    if "prep" in sys.argv:
+        arguments = docopt(__doc__)
+        if "--settings" in arguments.keys():
+            del arguments["--settings"]
+
     su = tools(
-        arguments=None,
+        arguments=arguments,
         docString=__doc__,
         logLevel="WARNING",
         options_first=False,

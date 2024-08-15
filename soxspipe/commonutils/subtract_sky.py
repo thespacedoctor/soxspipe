@@ -862,6 +862,7 @@ class subtract_sky(object):
 
             if slitCorrectIterations < slitCorrectIterationLimit:
 
+                # SLIT CORRECT ACTUALLY HELPS
                 if iterationCount == slitIlluminationCorrectionIteration and True:
                     # FIT SLIT-ILUMINATION PROFILE
                     imageMapOrder = self.cross_dispersion_flux_normaliser(imageMapOrder)
@@ -870,7 +871,8 @@ class subtract_sky(object):
                     slitIlluminationCorrectionIteration = -99
                     tiltAdjustmentIteration = 4
 
-                if iterationCount == tiltAdjustmentIteration and self.arm.upper() in ["NIR"] and True:
+                # FLUX SHUFFLING MAKE EXTRACTION WORSE
+                if iterationCount == tiltAdjustmentIteration and self.arm.upper() in ["NIR"] and False:
                     # FIT SLIT-ILUMINATION PROFILE
                     imageMapOrder = self.adjust_tilt(imageMapOrder, tck)
                     extraKnots = np.array([])

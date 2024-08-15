@@ -1,6 +1,13 @@
 
 # Release Notes  
 
+## v0.11.1 - August 15, 2024
+
+* **REFACTOR:** interpolated wavelength resolutions set to match that of the Xshooter pipeline in order-merged spectra (NIR were the same, but now UVB and VIS arms also match Xshooter).
+* **FIXED:** bug in the Horne extraction causing artificial 'undulations' in the extracted spectra.
+* **FIXED:** bad pixel treatment in Horne extraction (was severely affecting NIR extraction in particular)
+* **FIXED:** filename case-sensitivity issue when working on a case-sensitive file system
+* **FIXED:** issue where the prep command was looking for a settings file in "~/.config/soxspipe"
 
 ## v0.11.0 - July 21, 2024
 

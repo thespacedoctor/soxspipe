@@ -156,7 +156,7 @@ class keyword_lookup(object):
 
         # GENERATE PATH TO YAML DICTIONARY
         yamlFilePath = os.path.dirname(os.path.dirname(
-            __file__)) + "/resources/" + self.instrument + "_keywords.yaml"
+            __file__)) + "/resources/" + self.instrument.lower() + "_keywords.yaml"
 
         # YAML CONTENT TO DICTIONARY
         import yaml
