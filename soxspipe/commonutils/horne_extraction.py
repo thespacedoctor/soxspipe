@@ -312,8 +312,8 @@ class horne_extraction(object):
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = self.orderPixelTable['order'].unique()
-        #print("FIX ME")
-        #uniqueOrders = [15]
+        # print("FIX ME")
+        # uniqueOrders = [20]
         extractions = []
 
         self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
@@ -322,7 +322,7 @@ class horne_extraction(object):
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
             log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap, extended=False)
 
-        zoomFactor = 25
+        zoomFactor = 35
         if self.detectorParams["dispersion-axis"] == "x":
             zoomTuple = (1, zoomFactor)
         else:
@@ -613,6 +613,7 @@ class horne_extraction(object):
         addedLegend = True
 
         allExtractions = pd.concat(extractions, ignore_index=True)
+
         mean, median, std = sigma_clipped_stats(allExtractions["extractedFluxBoxcarRobust"], sigma=5., stdfunc="mad_std", cenfunc="median", maxiters=3)
 
         maxFlux = allExtractions['extractedFluxBoxcarRobust'].max() + std
@@ -792,11 +793,6 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     crossDispersionSlices = crossDispersionSlices.apply(lambda x: create_cross_dispersion_slice(x), axis=1)
     crossDispersionSlices["sliceMask"] = [x.mask for x in crossDispersionSlices["sliceRawFluxMasked"]]
 
-    print(type(crossDispersionSlices["sliceRawFluxMasked"].values[862]))
-    print(crossDispersionSlices["sliceRawFluxMasked"].values[862].data)
-    print(crossDispersionSlices["sliceRawFluxMasked"].values[862].mask)
-    print(crossDispersionSlices["sliceRawFluxMasked"].values[862].sum(), crossDispersionSlices["sliceRawFluxMasked"].values[862].data.sum())
-
     crossDispersionSlices["sliceRawFluxMaskedSum"] = [x.sum() for x in crossDispersionSlices["sliceRawFluxMasked"]]
 
     # WEIGHTS ARE NOT YET USED
@@ -804,11 +800,6 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     # NORMALISE THE FLUX
     crossDispersionSlices["sliceFluxNormalised"] = crossDispersionSlices["sliceRawFluxMasked"] / crossDispersionSlices["sliceRawFluxMaskedSum"]
-
-    print(type(crossDispersionSlices["sliceFluxNormalised"].values[862]))
-    print(crossDispersionSlices["sliceFluxNormalised"].values[862].data)
-    print(crossDispersionSlices["sliceFluxNormalised"].values[862].mask)
-    print(crossDispersionSlices["sliceFluxNormalised"].values[862].sum(), crossDispersionSlices["sliceFluxNormalised"].values[862].data.sum())
 
     crossDispersionSlices["sliceFluxNormalisedSum"] = [x.sum() for x in crossDispersionSlices["sliceFluxNormalised"]]
 
@@ -819,8 +810,20 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     maskImage = np.vstack(crossDispersionSlices["sliceMask"])
     errorImage = np.vstack(crossDispersionSlices["sliceError"])
     bpMaskImage = np.vstack(crossDispersionSlices["bpMask"])
+    wavelengthImage = np.vstack(crossDispersionSlices["wavelength"])
 
-    if True:
+    if False:
+
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        plt.imshow(wavelengthImage.T, interpolation='none', aspect='auto')
+        plt.show()
+
         fig = plt.figure(
             num=None,
             figsize=(135, 1),
@@ -831,15 +834,15 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
         plt.imshow(maskImage.T, interpolation='none', aspect='auto')
         plt.show()
 
-        # fig = plt.figure(
-        #     num=None,
-        #     figsize=(135, 1),
-        #     dpi=None,
-        #     facecolor=None,
-        #     edgecolor=None,
-        #     frameon=True)
-        # plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
-        # plt.show()
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
+        plt.show()
 
         fig = plt.figure(
             num=None,
@@ -1005,7 +1008,14 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     this = np.append(this, np.nan)
     crossDispersionSlices['pixelScaleNm'] = this
 
-    crossDispersionSlices.dropna(how="any", subset=["pixelScaleNm", "wavelengthMedian", "extractedFluxOptimal", "snr", "varianceSpectrum"], inplace=True)
+    crossDispersionSlices['extractedFluxBoxcarRobust'] = crossDispersionSlices['extractedFluxBoxcarRobust'].astype(float)
+    crossDispersionSlices.dropna(how="any", subset=["pixelScaleNm", "wavelengthMedian", "extractedFluxOptimal", "snr", "varianceSpectrum", "extractedFluxBoxcarRobust"], inplace=True)
+    # CONVERT COLUMN TYPE
+
+    # FILTER DATA FRAME
+    # FIRST CREATE THE MASK
+    mask = (crossDispersionSlices["fullColumnMask"] == False)
+    crossDispersionSlices = crossDispersionSlices.loc[mask]
 
     log.debug('completed the ``extract_single_order`` method')
 
@@ -1026,5 +1036,13 @@ def create_cross_dispersion_slice(
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
         maskedArray, sigma_lower=100, sigma_upper=100, maxiters=1, cenfunc='median', stdfunc="mad_std")
+
+    # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
+    series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0
+
+    series["fullColumnMask"] = False
+    if np.ma.count_masked(series["sliceRawFluxMasked"]) > 1:
+        series["sliceRawFluxMasked"].mask = True
+        series["fullColumnMask"] = True
 
     return series
