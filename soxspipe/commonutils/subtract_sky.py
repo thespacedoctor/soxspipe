@@ -870,7 +870,7 @@ class subtract_sky(object):
                     slitIlluminationCorrectionIteration = -99
                     tiltAdjustmentIteration = 4
 
-                if iterationCount == tiltAdjustmentIteration and self.arm.upper() in ["NIR"] and True:
+                if iterationCount == tiltAdjustmentIteration and self.arm.upper() in ["NIR"] and False:
                     # FIT SLIT-ILUMINATION PROFILE
                     imageMapOrder = self.adjust_tilt(imageMapOrder, tck)
                     extraKnots = np.array([])
