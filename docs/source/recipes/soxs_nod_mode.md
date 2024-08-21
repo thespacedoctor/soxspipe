@@ -1,8 +1,8 @@
 ## `soxs_nod_mode` - PLANNED
 
-The purpose of the [`soxs_nod`](../_api/soxspipe.recipes.soxs_nod_mode.html) recipe is to reduced the science frames produced by the NTT and SOXS from a nodding mode observation block.
+The purpose of the [`soxs_nod`](#soxspipe.recipes.soxs_nod_mode) recipe is to reduced the science frames produced by the NTT and SOXS from a nodding mode observation block.
 
-### Input
+## Input
 
 <!-- FIND OBs HERE : https://docs.google.com/spreadsheets/d/1-3VXkIWcydvpawwVl_C3pNTU3HgnElJaYFAKow65Fl8/edit#gid=0 -->
 
@@ -10,34 +10,32 @@ The purpose of the [`soxs_nod`](../_api/soxspipe.recipes.soxs_nod_mode.html) rec
 |:----|:----|:---|
 | | |
 
-### Parameters
+## Parameters
 
 | Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
 | ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
 |   |   |   |   |
 
-### Method
+## Method
 
 <!-- METHOD TEXT HERE, FOLLOWED BY WORKFLOW DIAGRAM -->
 
 ![](soxs_nod_mode.png)
 
-### Output
+## Output
  
 | Data Type | Content |
 |:----|:----|
 | |
 
-### QC Metrics
+## QC Metrics
 
 | Metric  | Description |
 | :------------ | :----------- |
 | TBC     | ...  |
 
-### Recipe API
+## Recipe API
 
-<!-- ```eval_rst
-.. autoclass:: soxspipe.recipes.soxs_nod_mode
-    :members:
-```
+<!-- :::{autodoc2-object} soxspipe.recipes.soxs_nod_mode.soxs_nod_mode
+:::
  -->

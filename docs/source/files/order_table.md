@@ -13,9 +13,8 @@ order,degy,CENT_c0,CENT_c1,CENT_c2,CENT_c3
 
 ---
 
-```eval_rst
-.. todo::
+:::{todo}
 
-    - add order table example after soxs_mflat
+- add order table example after soxs_mflat
 
-```
+:::

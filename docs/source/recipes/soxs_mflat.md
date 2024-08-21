@@ -1,10 +1,10 @@
 # `soxs_mflat`
 
-The purpose of the [`soxs_mflat`](../_api/soxspipe.recipes.soxs_mflat.html) recipe is to create a single normalised [master-flat frame](../files/master_flat.md) used to correct for non-uniformity in response to light across the detector plain.
+The purpose of the [`soxs_mflat`](#soxspipe.recipes.soxs_mflat) recipe is to create a single normalised [master-flat frame](../files/master_flat.md) used to correct for non-uniformity in response to light across the detector plain.
  
 Sources of this non-uniformity include varying pixel sensitivities, obstructions in the optical path (e.g. dust or pollen grains), vignetting at the edges of the detector. A flat-frame is ideally an image taken where the illumination is uniform across the light collecting pixels of the detector. This evenly exposed image can be used to identify irregularities in the response in the detector.
 
-### Input
+## Input
 
 <!-- FIND OBs HERE : https://docs.google.com/spreadsheets/d/1-3VXkIWcydvpawwVl_C3pNTU3HgnElJaYFAKow65Fl8/edit#gid=0 -->
 
@@ -14,7 +14,7 @@ Sources of this non-uniformity include varying pixel sensitivities, obstructions
 | FITS Image | Master Bias Frame (UV-VIS only) | - |
 | FITS Table | [order table](../files/order_table.md) containing coefficients to the polynomial fits describing the order centre locations. UV-VIS requires separate tables for D-Lamp and QTH-Lamp. | |
 
-### Parameters
+## Parameters
 
 | Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
 | ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
@@ -34,7 +34,7 @@ Sources of this non-uniformity include varying pixel sensitivities, obstructions
 | low-sensitivity-clipping-sigma | number of σ deviations below the median flux of a master-flat frame beyond which a pixel is added to the bad-pixel mask | int | settings file | - |
 
 
-### Method
+## Method
 
 ![](soxs_mflat.png)
 
@@ -93,21 +93,19 @@ From the upper order-edge polynomial for the D-Lamp we define a curved, intra-or
 Finally, the combined normalised frames for both the D and QTH-Lamps are stacked to obtain a good level of flux in each order. This stacked frame is used to re-detect the order edges (the resulting order table is used going forward).
 
 
-### Output
+## Output
  
 | Data Type | Content |
 |:----|:----|
 | master flat frame |  frame used correct for non-uniformity in response to light across the detector plain (including blaze) |
 
-### QC Metrics
+## QC Metrics
 
 | Metric  | Description |
 | :------------ | :----------- |
 | TBC     | ...  |
 
-### Recipe API
+## Recipe API
 
-```eval_rst
-.. autoclass:: soxspipe.recipes.soxs_mflat
-    :members:
-```
+:::{autodoc2-object} soxspipe.recipes.soxs_mflat.soxs_mflat
+:::

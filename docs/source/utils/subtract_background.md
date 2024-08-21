@@ -1,6 +1,6 @@
 # `subtract_background` 
 
-The purpose of the [`subtract_background`](../_api/soxspipe.commonutils.subtract_background.html) utility is to model the topology of the scattered background light within an image and then remove it.
+The purpose of the [`subtract_background`](#soxspipe.commonutils.subtract_background) utility is to model the topology of the scattered background light within an image and then remove it.
 
 Here's the workflow for subtracting a frame's background:
 

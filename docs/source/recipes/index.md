@@ -4,14 +4,13 @@ SOXSPIPE borrows the informative concept of `recipes' employed by ESO's data red
 
 ## Standard Calibrations
 
-```eval_rst
-.. toctree::
-   :maxdepth: 1
+:::{toctree}
+:maxdepth: 1
 
-   soxs_mbias
-   soxs_mdark
-   soxs_mflat
-```
+soxs_mbias
+soxs_mdark
+soxs_mflat
+:::
 
 ## Dispersion and Spatial Solutions
 
@@ -23,12 +22,11 @@ There is a strong curvature in the traces of the NIR orders and spectral-lines d
 
 This 2D mapping function is determined incrementally via the `soxs_disp_solution`, `soxs_order_centres` and `soxs_spatial_solution` recipes. The `soxs_straighten` recipe can then be used to transform spectral images from detector pixel-space to wavelength and slit-position space 
 
-```eval_rst
-.. toctree::
-   :maxdepth: 1
+:::{toctree}
+:maxdepth: 1
 
-   soxs_disp_solution
-   soxs_order_centres
-   soxs_spatial_solution
-   soxs_straighten
-```
+soxs_disp_solution
+soxs_order_centres
+soxs_spatial_solution
+soxs_straighten
+:::

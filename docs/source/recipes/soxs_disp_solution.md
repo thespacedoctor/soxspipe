@@ -1,8 +1,8 @@
 # `soxs_disp_solution`
 
-The purpose of the [`soxs_disp_solution`](../_api/soxspipe.recipes.soxs_disp_solution.html) is to use a single-pinhole arc-lamp frame (example image above) to generate a first guess dispersion solution.
+The purpose of the [`soxs_disp_solution`](#soxspipe.recipes.soxs_disp_solution) is to use a single-pinhole arc-lamp frame (example image above) to generate a first guess dispersion solution.
 
-### Input
+## Input
 
 As input this recipes accepts the [Pinhole Map](../files/pinhole_map.md) file.
 
@@ -19,7 +19,7 @@ As input this recipes accepts the [Pinhole Map](../files/pinhole_map.md) file.
 | FITS Image | Dark frame (Lamp-Off) of equal exposure length as single pinhole frame (Lamp-On) (NIR only) | `SOXS_slt_cal_NIRArcsPinhole` |
 | CSV File | [Pinhole Map](../files/pinhole_map.md) |
 
-### Parameters
+## Parameters
 
 | Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
 | ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
@@ -29,7 +29,7 @@ As input this recipes accepts the [Pinhole Map](../files/pinhole_map.md) file.
 | poly-fitting-residual-clipping-sigma  | sigma distance limit, where distance is the difference between the detected and polynomial fitted positions of an arc-line, outside of which to remove lines from the fit   | float   | settings file |  [`create_dispersion_map`](../utils/create_dispersion_map.md) | 
 |  poly-clipping-iteration-limit  |  number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution  |  int   | settings file | [`create_dispersion_map`](../utils/create_dispersion_map.md) |
 
-### Method
+## Method
 
 After preparing and calibrating the single-pinhole arc-lamp frame (using the [`detrend`](../utils/detrend.md)), the [`create_dispersion_map`](../utils/create_dispersion_map.md)) util is employed to detect and measure the positions of the arc lines on the frame. Below you can see the bright arc-lines outshining the traces of the order-centres and the detection of one of these lines during the [`create_dispersion_map`](../utils/create_dispersion_map.md)) util.
 
@@ -39,13 +39,13 @@ Once the line positions have been measured, a dispersion solution is generated b
 
 ![](soxs_disp_solution.png)
 
-### Output
+## Output
  
 | Data Type | Content |
 |:----|:----|
 | CSV file (subject to change)  |  First guess [Dispersion Map](../files/dispersion_map.md) | 
 
-### QC Metrics
+## QC Metrics
 
 The typical solution for the `soxs_disp_solution` recipe has sub-pixel residuals.
 
@@ -56,9 +56,7 @@ The typical solution for the `soxs_disp_solution` recipe has sub-pixel residuals
 | :------------ | :----------- |
 | TBC     | ...  |
 
-### Recipe API
+## Recipe API
 
-```eval_rst
-.. autoclass:: soxspipe.recipes.soxs_disp_solution
-    :members:
-```
+:::{autodoc2-object} soxspipe.recipes.soxs_disp_solution.soxs_disp_solution
+:::

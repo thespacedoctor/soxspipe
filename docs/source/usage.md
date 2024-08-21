@@ -6,15 +6,16 @@
     
     Usage:
         soxspipe prep <workspaceDirectory>
-        soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
         soxspipe [-q] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
-        soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
         soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-        soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-        soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<od>]
+        soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
         soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
         soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-Vx] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     
     Options:
         prep                                   prepare a folder of raw data (workspace) for data reduction
@@ -30,6 +31,7 @@
         order_centres                          the order centres recipe
         spat_sol                               the spatial solution recipe
         stare                                  reduce stare mode science frames
+        nod                                    reduce nodding mode science frames
     
         inputFrames                            path to a directory of frames or a set-of-files file
     
@@ -39,7 +41,7 @@
         -s, --settings <pathToSettingsFile>    the settings file
         -V, --verbose                          more verbose output
         -x, --overwrite                        more verbose output
-        --poly=<oowwss>                        polynomial degrees in this sequence: order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435 (overrides parameters found in setting file)
+        --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
     
 
 ```

@@ -1,41 +1,39 @@
 
 
-{{../../README.md}}
+:::{include} ../../README.md
+:::
 
 
-```eval_rst
-.. toctree::
-   :hidden:
-   :maxdepth: 4
+:::{toctree}
+:hidden:
+:maxdepth: 4
 
-   Install <index>
-   quickstart
-   logging
-   sessions
-   reduce
-   primer_on_soxs_obs_modes
-   recipes/index
-   utils/index
-   files/index
-   changes_link
-```
+Install <index>
+quickstart
+logging
+sessions
+reduce
+primer_on_soxs_obs_modes
+recipes/index
+utils/index
+files/index
+changes_link
+:::
 
 
-```eval_rst
-.. toctree::
-   :hidden:
-   :maxdepth: 30
-   :caption: API reference
+:::{toctree}
+:hidden:
+:maxdepth: 30
+:caption: API reference
 
-   autosummary
-```
+autosummary
+:::
 
-```eval_rst
-.. toctree::
-   :hidden:
+:::{toctree}
+:hidden:
 
-   genindex
-```
+genindex
+:::
 
 
 ## Acknowledgements

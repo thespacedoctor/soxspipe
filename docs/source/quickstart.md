@@ -1,9 +1,8 @@
 # Quickstart Guide
 
-```eval_rst
-.. warning::
-    This quickstart guide is subject to (much) change during the development of the pipeline. New features and ways of operating the pipeline are still being added. Current data taken in stare mode can be reduced to the point of sky subtraction. 
-```
+:::{warning}
+This quickstart guide is subject to (much) change during the development of the pipeline. New features and ways of operating the pipeline are still being added. Current data taken in stare mode can be reduced to the point of sky subtraction. 
+:::
 
 ## Install
 
@@ -48,11 +47,11 @@ soxspipe prep .
 
 Once the workspace has been prepared, you should find it contains the following files and folders:
 
-   - `misc/`: a lost-and-found archive of non-fits files
-   - `raw_frames/`: all raw-frames to be reduced
-   - `sessions/`: directory of data-reduction sessions
-   - `sof/`: the set-of-files (sof) files required for each reduction step
-   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete
+- `misc/`: a lost-and-found archive of non-fits files
+- `raw_frames/`: all raw-frames to be reduced
+- `sessions/`: directory of data-reduction sessions
+- `sof/`: the set-of-files (sof) files required for each reduction step
+- `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete
 
 soxspipe reduces data within a [`reduction session`](./sessions.md) and an initial `base` session is automatically created when running the `prep` command. 
 
