@@ -37,7 +37,7 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
-    'sphinx.ext.imgconverter',
+    'sphinxcontrib.inkscapeconverter',
     # External stuff
     "sphinxext.opengraph",
     "myst_parser",
@@ -50,7 +50,7 @@ extensions = [
     'sphinx.ext.coverage',
     'sphinx.ext.linkcode',
     'sphinx_search.extension',
-    'sphinx_tippy',
+    'sphinx_tippy'
 ]
 myst_enable_extensions = [
     "tasklist",
