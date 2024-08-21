@@ -17,11 +17,9 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-from matplotlib import pyplot as plt
 from soxspipe.commonutils.filenamer import filenamer
 from os.path import expanduser
-from astropy.io import fits
-from astropy.table import Table
+
 os.environ['TERM'] = 'vt100'
 
 # TODO: When combining spectra at the end, we use a simple sum. If we use sigma-clipping followed by a mean combine, we can remove CRHs for data sets with more than 1 AB cycle.
@@ -437,6 +435,8 @@ class soxs_nod(base_recipe):
 
         import pandas as pd
         from datetime import datetime
+        from astropy.io import fits
+        from astropy.table import Table
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND mergedSpectrumDF_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
 
