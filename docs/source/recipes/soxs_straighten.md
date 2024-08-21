@@ -1,4 +1,4 @@
-## `soxs_straighten ` - PLANNED
+# `soxs_straighten ` - PLANNED
 
 This recipe takes the full dispersion map given by `soxs_spatial_solution` and uses it to map images from their original representation of the detector surface to one that presents the signal in a wavelength by slit-position coordinate system.
 
@@ -32,7 +32,7 @@ To begin we want to create a full wavelength and slit-position map; a 2D grid of
 
 The error and bad-pixel extensions go through the same mapping process.
 
-![](soxs_straighten.png)
+<!-- ![](soxs_straighten.png) -->
 
 ## Output
  
@@ -48,5 +48,5 @@ The error and bad-pixel extensions go through the same mapping process.
 
 ## Recipe API
 
-:::{autodoc2-object} soxspipe.recipes..
+:::{autodoc2-object} soxspipe.recipes.soxs_straighten.soxs_straighten
 :::

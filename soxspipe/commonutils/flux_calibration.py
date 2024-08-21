@@ -3,11 +3,11 @@
 """
 *Flux calibrate an extracted science spectrum using an instrument response function*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    July 28, 2023
+Date Created
+: July 28, 2023
 """
 from fundamentals import tools
 from builtins import object
@@ -24,26 +24,25 @@ class flux_calibration(object):
     *The worker class for the flux_calibration module*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``responseFunction`` -- the instrument response function.
-        - ``extractedSpectrum`` -- the extracted science spectrum
-        - ``settings`` -- the settings dictionary
+
+    - ``log`` -- logger
+    - ``responseFunction`` -- the instrument response function.
+    - ``extractedSpectrum`` -- the extracted science spectrum
+    - ``settings`` -- the settings dictionary
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html). 
 
     To initiate a flux_calibration object, use the following:
 
-    ```eval_rst
-    .. todo::
-
+    :::{todo}
         - add usage info
         - create a sublime snippet for usage
         - create cl-util for this class
         - add a tutorial about ``flux_calibration`` to documentation
         - create a blog post about what ``flux_calibration`` does
-    ```
+    :::
 
     ```python
     usage code 
@@ -84,18 +83,17 @@ class flux_calibration(object):
         *flux calibrate the science spectrum*
 
         **Return:**
-            - ``flux_calibration``
+
+        - ``flux_calibration``
 
         **Usage:**
 
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - create cl-util for this method
             - update the package tutorial if needed
-        ```
+        :::
 
         ```python
         usage code 

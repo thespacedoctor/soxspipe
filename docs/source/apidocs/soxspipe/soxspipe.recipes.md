@@ -13,6 +13,7 @@
 :titlesonly:
 :maxdepth: 1
 
+soxspipe.recipes.base_recipe
 soxspipe.recipes.soxs_disp_solution
 soxspipe.recipes.soxs_mbias
 soxspipe.recipes.soxs_mdark

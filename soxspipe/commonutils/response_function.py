@@ -3,11 +3,11 @@
 """
 *Given a standard star extracted spectrum, generate the instrument response function needed to flux calibrate science spectra*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    July 28, 2023
+Date Created
+: July 28, 2023
 """
 from fundamentals import tools
 from builtins import object
@@ -21,25 +21,24 @@ class response_function(object):
     *The worker class for the response_function module*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``stdExtractionPath`` -- fits binary table containing the extracted standard spectrum
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``stdExtractionPath`` -- fits binary table containing the extracted standard spectrum
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_). 
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html). 
 
     To initiate a response_function object, use the following:
 
-    ```eval_rst
-    .. todo::
-
+    :::{todo}
         - add usage info
         - create a sublime snippet for usage
         - create cl-util for this class
         - add a tutorial about ``response_function`` to documentation
         - create a blog post about what ``response_function`` does
-    ```
+    :::
 
     ```python
     usage code 
@@ -86,18 +85,17 @@ class response_function(object):
         *get the response_function object*
 
         **Return:**
-            - ``response_function``
+
+        - ``response_function``
 
         **Usage:**
 
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - create cl-util for this method
             - update the package tutorial if needed
-        ```
+        :::
 
         ```python
         usage code 

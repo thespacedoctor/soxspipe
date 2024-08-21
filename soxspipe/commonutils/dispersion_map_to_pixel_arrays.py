@@ -3,11 +3,11 @@
 """
 *use a first-guess dispersion map to convert wavelengths to pixels*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    April 15, 2021
+Date Created
+: April 15, 2021
 """
 
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials

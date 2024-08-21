@@ -1,4 +1,4 @@
-## `set_of_files`
+# `set_of_files`
 
 The [`set_of_files`](#soxspipe.commonutils.set_of_files) utility helps to translate and homogenise various recipe input-frame lists. This allows recipes to accept any of the following inputs:
 

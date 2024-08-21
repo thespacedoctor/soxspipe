@@ -16,11 +16,13 @@ def docsting_test(self):
         - ``marshall`` -- connection to the PESSTO Marshall database
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
 
     **Return:**
-        - ``dbConns`` -- a dictionary of the database connections required by sherlock
+
+    - ``dbConns`` -- a dictionary of the database connections required by sherlock
 
     **Usage**
 

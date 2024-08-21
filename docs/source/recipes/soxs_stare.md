@@ -1,4 +1,4 @@
-## `soxs_stare` - PLANNED
+# `soxs_stare` - PLANNED
 
 <!-- PURPOSE TEXT -->
 
@@ -22,7 +22,7 @@
 
 <!-- METHOD TEXT HERE, FOLLOWED BY WORKFLOW DIAGRAM -->
 
-![](soxs_stare.png)
+<!-- ![](soxs_stare.png) -->
 
 ## Output
  

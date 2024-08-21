@@ -3,11 +3,11 @@
 """
 *return a dictionary of detector characteristics and parameters*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    August 13, 2020
+Date Created
+: August 13, 2020
 """
 ################# GLOBAL IMPORTS ####################
 from fundamentals import tools
@@ -22,8 +22,9 @@ class detector_lookup(object):
     *return a dictionary of detector characteristics and parameters*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
 
     **Usage:**
 
@@ -65,7 +66,8 @@ class detector_lookup(object):
         *return a dictionary of detector characteristics and parameters*
 
         **Key Arguments:**
-            - ``arm`` -- the detector parameters to return
+
+        - ``arm`` -- the detector parameters to return
         """
         self.log.debug('starting the ``get`` method')
 
@@ -82,7 +84,8 @@ class detector_lookup(object):
         """*select the detector parameter dictionary based on the instrument passed via the settings*
 
         **Return:**
-            - ``dectDict`` -- the python dictionary of detector parameters
+
+        - ``dectDict`` -- the python dictionary of detector parameters
 
         **Usage**
 

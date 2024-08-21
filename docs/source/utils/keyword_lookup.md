@@ -1,4 +1,4 @@
-## `keyword_lookup`
+# `keyword_lookup`
 
 
 The purpose of the [`keyword_lookup`](#soxspipe.commonutils.keyword_lookup) utility is to act as a lookup-reference in the code for specific SOXS FITS Header keywords.

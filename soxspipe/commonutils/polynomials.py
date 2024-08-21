@@ -3,11 +3,11 @@
 """
 *definition of polynomial functions needed throughout code*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    September 10, 2020
+Date Created
+: September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
 
@@ -23,12 +23,13 @@ class chebyshev_order_wavelength_polynomials():
     """*the chebyshev polynomial fits for the single frames; to be iteratively fitted to minimise errors*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``orderDeg`` -- degree of the order polynomial components
-        - ``wavelengthDeg`` -- degree of wavelength polynomial components
-        - ``slitDeg`` -- degree of the slit polynomial components
-        - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
-        - ``axis`` -- x, y or False. Default *False*.
+
+    - ``log`` -- logger
+    - ``orderDeg`` -- degree of the order polynomial components
+    - ``wavelengthDeg`` -- degree of wavelength polynomial components
+    - ``slitDeg`` -- degree of the slit polynomial components
+    - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+    - ``axis`` -- x, y or False. Default *False*.
 
     **Usage:**
 
@@ -65,10 +66,12 @@ class chebyshev_order_wavelength_polynomials():
         """the polynomial definition
 
         **Key Arguments:**
+
         - ``orderPixelTable`` -- a pandas dataframe containing wavelengths, orders and slit positions
         - ``*coeff`` -- a list of the initial coefficients
 
         **Return:**
+
         - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
         """
         self.log.debug('starting the ``poly`` method')
@@ -113,10 +116,11 @@ class chebyshev_xy_polynomial():
     """*the chebyshev polynomial fits for the pinhole flat frame order tracing; to be iteratively fitted to minimise errors*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``yCol`` -- name of the yCol
-        - ``y_deg`` -- y degree of the polynomial components
-        - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+
+    - ``log`` -- logger
+    - ``yCol`` -- name of the yCol
+    - ``y_deg`` -- y degree of the polynomial components
+    - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
 
     **Usage:**
 
@@ -145,10 +149,12 @@ class chebyshev_xy_polynomial():
         """the polynomial definition
 
         **Key Arguments:**
+
         - ``orderPixelTable`` -- data frame with all pixel data arrays
         - ``*coeff`` -- a list of the initial coefficients
 
         **Return:**
+
         - ``xvals`` -- the x values of the fitted polynomial
         """
         self.log.info('starting the ``poly`` method')
@@ -183,13 +189,14 @@ class chebyshev_order_xy_polynomials():
     """*the chebyshev polynomial fits FIX ME*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``orderDeg`` -- degree of the order polynomial components
-        - ``axisBDeg`` -- degree for polynomial to fit free axis-values
-        - ``axisB`` -- the free axis related to `axisBDeg`. Default *'y'*. ['x'|'y']
-        - ``axisBCol`` -- name of the free axis column (if needed). Default *False*
-        - ``orderCol`` -- name of the order column (if needed). Default *False*
-        - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+
+    - ``log`` -- logger
+    - ``orderDeg`` -- degree of the order polynomial components
+    - ``axisBDeg`` -- degree for polynomial to fit free axis-values
+    - ``axisB`` -- the free axis related to `axisBDeg`. Default *'y'*. ['x'|'y']
+    - ``axisBCol`` -- name of the free axis column (if needed). Default *False*
+    - ``orderCol`` -- name of the order column (if needed). Default *False*
+    - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
 
     **Usage:**
 
@@ -224,10 +231,12 @@ class chebyshev_order_xy_polynomials():
         """the polynomial definition
 
         **Key Arguments:**
+
         - ``orderPixelTable`` -- a pandas dataframe containing x, y, order
         - ``*coeff`` -- a list of the initial coefficients
 
         **Return:**
+
         - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
         """
         self.log.debug('starting the ``poly`` method')

@@ -3,11 +3,11 @@
 """
 *The SOXSPIPE Data Organiser*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    March  9, 2023
+Date Created
+: March  9, 2023
 """
 from fundamentals import tools
 from builtins import object
@@ -23,22 +23,21 @@ class data_organiser(object):
     *The worker class for the data_organiser module*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``rootDir`` -- the root directory of the data to process
+
+    - ``log`` -- logger
+    - ``rootDir`` -- the root directory of the data to process
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html).
 
     To initiate a data_organiser object, use the following:
 
-    ```eval_rst
-    .. todo::
-
-        - create cl-util for this class
-        - add a tutorial about ``data_organiser`` to documentation
-        - create a blog post about what ``data_organiser`` does
-    ```
+    :::{todo}
+    - create cl-util for this class
+    - add a tutorial about ``data_organiser`` to documentation
+    - create a blog post about what ``data_organiser`` does
+    :::
 
     ```python
     from soxspipe.commonutils import data_organiser
@@ -304,10 +303,12 @@ class data_organiser(object):
         """*sync the raw frames between the project folder and the database *
 
         **Key Arguments:**
-            - ``skipSqlSync`` -- skip the SQL db sync (used only in secondary clean-up scan)
+
+        - ``skipSqlSync`` -- skip the SQL db sync (used only in secondary clean-up scan)
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -597,12 +598,14 @@ class data_organiser(object):
         """*sync sql table content to files in a directory (add and delete from table as appropriate)*
 
         **Key Arguments:**
-            - ``directory`` -- the directory of fits file to inspect.
-            - ``tableName`` -- the sqlite table to sync.
-            - ``recursive`` -- recursively dig into the directory to find FITS files? Default *False*.
+
+        - ``directory`` -- the directory of fits file to inspect.
+        - ``tableName`` -- the sqlite table to sync.
+        - ``recursive`` -- recursively dig into the directory to find FITS files? Default *False*.
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -660,13 +663,15 @@ class data_organiser(object):
         """*given a dataframe of frame, categorise frames into raw, reduced pixels, reduced tables*
 
         **Key Arguments:**
-            - ``filteredFrames`` -- the dataframe from which to split frames into categorise.
-            - ``verbose`` -- print results to stdout.
+
+        - ``filteredFrames`` -- the dataframe from which to split frames into categorise.
+        - ``verbose`` -- print results to stdout.
 
         **Return:**
-            - ``rawFrames`` -- dataframe of raw frames only
-            - ``reducedFramesPixels`` -- dataframe of reduced images only
-            - ``reducedFramesTables`` -- dataframe of reduced tables only
+
+        - ``rawFrames`` -- dataframe of raw frames only
+        - ``reducedFramesPixels`` -- dataframe of reduced images only
+        - ``reducedFramesTables`` -- dataframe of reduced tables only
 
         **Usage:**
 
@@ -807,7 +812,8 @@ class data_organiser(object):
             # -
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -815,16 +821,12 @@ class data_organiser(object):
         usage code
         ```
 
-        ---
-
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - write a command-line tool for this method
             - update package tutorial with command-line tool info if needed
-        ```
+        :::
         """
         self.log.debug('starting the ``_populate_product_frames_db_table`` method')
 
@@ -928,11 +930,9 @@ class data_organiser(object):
 
         **Usage:**
 
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
-        ```
+        :::
 
         ```python
         usage code
@@ -1312,11 +1312,13 @@ class data_organiser(object):
         """*determine what the products should be for a given recipe and SOF file and ppulate the products table*
 
         **Key Arguments:**
-            - ``recipeName`` -- the name of the recipe.
-            - ``sofName`` -- the name of the sof file.
+
+        - ``recipeName`` -- the name of the recipe.
+        - ``sofName`` -- the name of the sof file.
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -1324,16 +1326,12 @@ class data_organiser(object):
         usage code
         ```
 
-        ---
-
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - write a command-line tool for this method
             - update package tutorial with command-line tool info if needed
-        ```
+        :::
         """
         self.log.debug('starting the ``populate_products_table`` method')
 
@@ -1404,7 +1402,8 @@ class data_organiser(object):
             # -
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -1412,16 +1411,12 @@ class data_organiser(object):
         usage code
         ```
 
-        ---
-
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - write a command-line tool for this method
             - update package tutorial with command-line tool info if needed
-        ```
+        :::
         """
         self.log.debug('starting the ``_write_sof_files`` method')
 
@@ -1460,7 +1455,8 @@ class data_organiser(object):
             # -
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -1468,16 +1464,12 @@ class data_organiser(object):
         usage code
         ```
 
-        ---
-
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - write a command-line tool for this method
             - update package tutorial with command-line tool info if needed
-        ```
+        :::
         """
         self.log.debug('starting the ``_write_reduction_shell_scripts`` method')
 
@@ -1507,10 +1499,12 @@ class data_organiser(object):
         """*create a data-reduction session with accompanying settings file and required directories*
 
         **Key Arguments:**
-            - ``sessionId`` -- optionally provide a sessionId (A-Z, a-z 0-9 and/or _- allowed, 16 character limit)
+
+        - ``sessionId`` -- optionally provide a sessionId (A-Z, a-z 0-9 and/or _- allowed, 16 character limit)
 
         **Return:**
-            - ``sessionId`` -- the unique ID of the data-reduction session
+
+        - ``sessionId`` -- the unique ID of the data-reduction session
 
         **Usage:**
 
@@ -1617,11 +1611,13 @@ class data_organiser(object):
         """*list the sessions available to the user*
 
         **Key Arguments:**
-            - ``silent`` -- don't print listings if True
+
+        - ``silent`` -- don't print listings if True
 
         **Return:**
-            - ``currentSession`` -- the single ID of the currently used session
-            - ``allSessions`` -- the IDs of the other sessions
+
+        - ``currentSession`` -- the single ID of the currently used session
+        - ``allSessions`` -- the IDs of the other sessions
 
         **Usage:**
 
@@ -1669,7 +1665,8 @@ class data_organiser(object):
         """*switch to an existing workspace data-reduction session*
 
         **Key Arguments:**
-            - ``sessionId`` -- the sessionId to switch to
+
+        - ``sessionId`` -- the sessionId to switch to
 
         **Usage:**
 
@@ -1713,7 +1710,8 @@ class data_organiser(object):
             # -
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -1721,16 +1719,12 @@ class data_organiser(object):
         usage code
         ```
 
-        ---
-
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - write a command-line tool for this method
             - update package tutorial with command-line tool info if needed
-        ```
+        :::
         """
         self.log.debug('starting the ``symlink_session_assets_to_workspace_root`` method')
 
@@ -1777,7 +1771,8 @@ class data_organiser(object):
             # -
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -1785,16 +1780,12 @@ class data_organiser(object):
         usage code
         ```
 
-        ---
-
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - write a command-line tool for this method
             - update package tutorial with command-line tool info if needed
-        ```
+        :::
         """
         self.log.debug('starting the ``session_refresh`` method')
 

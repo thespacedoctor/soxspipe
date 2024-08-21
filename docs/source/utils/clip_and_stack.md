@@ -1,6 +1,6 @@
-## `clip_and_stack`
+# `clip_and_stack`
 
-[`clip_and_stack`](#soxspipe.recipes._base_recipe_._base_recipe_.clip_and_stack) mean combines input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function.
+[`clip_and_stack`](#soxspipe.recipes.base_recipe.base_recipe.clip_and_stack) mean combines input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function.
 
 Before combining the frames we want to 'clip' any outlying pixel values found in the individual frames that are to be stacked. We isolate and remove pixels from any averaging calculation (mean or median) that have a value that strays too far from the 'typical' pixel value.
 
@@ -17,5 +17,5 @@ After the clipping has been completed individual frames are mean-combined, ignor
 ![](clip_and_stack.png)
 
 
-:::{autodoc2-object} soxspipe.recipes._base_recipe_.clip_and_stack
+:::{autodoc2-object} soxspipe.recipes.base_recipe.base_recipe.clip_and_stack
 :::

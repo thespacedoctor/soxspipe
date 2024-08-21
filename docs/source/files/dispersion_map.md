@@ -1,4 +1,4 @@
-## Dispersion Map
+# Dispersion Map
 
 In the case of [`soxs_disp_solution`](../recipes/soxs_disp_solution.md) the output dispersion map hosts the coefficients ($c_{ij}$) to two polynomials that describe the global dispersion solution for the entire detector frame:
 

@@ -1,4 +1,4 @@
-## `soxs_offset_mode` - PLANNED
+# `soxs_offset_mode` - PLANNED
 
 <!-- PURPOSE TEXT -->
 
@@ -20,7 +20,7 @@
 
 <!-- METHOD TEXT HERE, FOLLOWED BY WORKFLOW DIAGRAM -->
 
-![](soxs_offset_mode.png)
+<!-- ![](soxs_offset_mode.png) -->
 
 ## Output
  

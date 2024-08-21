@@ -8,7 +8,6 @@
 :hidden:
 :maxdepth: 4
 
-Install <index>
 quickstart
 logging
 sessions
@@ -23,16 +22,8 @@ changes_link
 
 :::{toctree}
 :hidden:
-:maxdepth: 30
-:caption: API reference
 
-autosummary
-:::
-
-:::{toctree}
-:hidden:
-
-genindex
+apidocs/index
 :::
 
 

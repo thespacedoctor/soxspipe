@@ -42,7 +42,7 @@ The individual flat field frames need to have bias and dark signatures removed b
 
 [![](https://live.staticflickr.com/65535/51237891523_cc24b22ba7_b.jpg)](https://live.staticflickr.com/65535/51237891523_cc24b22ba7_b.jpg)
 
-#### Normalising Exposure Levels in Individual Flat Frames
+### Normalising Exposure Levels in Individual Flat Frames
 
 Once calibrated, exposure-levels in the individual flat frames need to be normalised as *total* illumination will vary from frame-to-frame. The individual frame exposure levels are calculated in two stages.
 
@@ -54,7 +54,7 @@ Individual frames are then divided through by their mean inner-order pixel value
 
 [![](https://live.staticflickr.com/65535/51238466119_6844cce08b_b.jpg)](https://live.staticflickr.com/65535/51238466119_6844cce08b_b.jpg)
 
-The normalised flat-frames are then combined using the [`clip_and_stack`](../utils/clip_and_stack/.md) utility into a first-pass master-flat frame:
+The normalised flat-frames are then combined using the [`clip_and_stack`](../utils/clip_and_stack.md) utility into a first-pass master-flat frame:
 
 [![](https://live.staticflickr.com/65535/51237081792_6090fe56df_b.jpg)](https://live.staticflickr.com/65535/51237081792_6090fe56df_b.jpg)
 
@@ -66,7 +66,7 @@ The mean inner-order pixel-value is calculated again on this frame and the origi
 
 [![](https://live.staticflickr.com/65535/51237233602_c3c96b3503_b.jpg)](https://live.staticflickr.com/65535/51237233602_c3c96b3503_b.jpg)
 
-#### Building a Final Master-Flat Frame
+### Building a Final Master-Flat Frame
 
 These re-normalised flats are then combined for a second time into a master-flat frame.
 
@@ -78,7 +78,7 @@ Low-sensitivity pixels are flagged and added to the bad-pixel map and a final ma
 
 [![](https://live.staticflickr.com/65535/51239008475_b7c0aa33c7_b.jpg)](https://live.staticflickr.com/65535/51239008475_b7c0aa33c7_b.jpg)
 
-#### UV Master Flat Frame Stitching
+### UV Master Flat Frame Stitching
 
 ![](stitch_uv_mflats.png)
 

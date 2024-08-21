@@ -1,4 +1,4 @@
-## `detector_lookup`
+# `detector_lookup`
 
 The purpose of the [`detector_lookup`](#soxspipe.commonutils.detector_lookup) utility is to act as reference in the code for the various characteristics of the soxs detectors. 
 

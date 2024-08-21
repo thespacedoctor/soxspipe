@@ -1,4 +1,4 @@
-## `soxs_spatial_solution` - PLANNED
+# `soxs_spatial_solution` - PLANNED
 
 The purpose of this recipe is to further enhance the wavelength solution achieved with `soxs_disp_solution` by expanding the solution into the spatial dimension (along the slit). This 2-dimensional solution will then account for any tilt in the spectral lines.[^20210305045943]
 

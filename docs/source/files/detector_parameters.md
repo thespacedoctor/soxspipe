@@ -1,4 +1,4 @@
-## Detector Parameters
+# Detector Parameters
 
 This is a [yaml](https://yaml.org/) file hosting the fixed characteristics of the soxs detectors such as gain, science-pixel indexes and image orientations.
 

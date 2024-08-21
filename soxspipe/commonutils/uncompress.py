@@ -3,11 +3,11 @@
 """
 *Uncompress ESO fits.Z frames*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    April 11, 2023
+Date Created
+: April 11, 2023
 """
 from fundamentals import tools
 from builtins import object
@@ -22,8 +22,9 @@ def uncompress(
     """uncompress ESO fits.Z frames
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``directory`` -- directory containing .Z file to uncompress
+
+    - ``log`` -- logger
+    - ``directory`` -- directory containing .Z file to uncompress
 
     ```python
     from soxspipe.commonutils import uncompress

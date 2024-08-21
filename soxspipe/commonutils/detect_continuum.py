@@ -3,11 +3,11 @@
 """
 *find and fit the continuum in a pinhole flat frame with low-order polynomials. These polynominals are the central loctions of the orders*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    September 10, 2020
+Date Created
+: September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
 
@@ -53,16 +53,18 @@ class _base_detect(object):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
-            - ``pixelList`` -- data-frame group containing x,y pixel array
-            - ``order`` -- the order to fit
-            - ``axisBDeg`` -- degree for polynomial to fit
-            - ``axisACol`` -- name of columns containing axis to be fitted
-            - ``axisBCol`` -- name of columns containing free axis (values known)
-            - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+
+        - ``pixelList`` -- data-frame group containing x,y pixel array
+        - ``order`` -- the order to fit
+        - ``axisBDeg`` -- degree for polynomial to fit
+        - ``axisACol`` -- name of columns containing axis to be fitted
+        - ``axisBCol`` -- name of columns containing free axis (values known)
+        - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
 
         **Return:**
-            - ``coeffs`` -- the coefficients of the polynomial fit
-            - ``pixelList`` -- the pixel list but now with fits and residuals included
+
+        - ``coeffs`` -- the coefficients of the polynomial fit
+        - ``pixelList`` -- the pixel list but now with fits and residuals included
         """
         self.log.debug('starting the ``fit_order_polynomial`` method')
 
@@ -145,13 +147,15 @@ class _base_detect(object):
         """*iteratively fit the global polynomial to the data, fitting axisA as a function of axisB, clipping residuals with each iteration*
 
         **Key Arguments:**
-            - ``pixelList`` -- data-frame group containing x,y pixel array
-            - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
+
+        - ``pixelList`` -- data-frame group containing x,y pixel array
+        - ``exponentsIncluded`` -- the exponents have already been calculated in the dataframe so no need to regenerate. Default *False*
 
         **Return:**
-            - ``coeffs`` -- the coefficients of the polynomial fit
-            - ``pixelList`` -- the pixel list but now with fits and residuals included
-            - ``allClipped`` -- data that was sigma-clipped
+
+        - ``coeffs`` -- the coefficients of the polynomial fit
+        - ``pixelList`` -- the pixel list but now with fits and residuals included
+        - ``allClipped`` -- data that was sigma-clipped
         """
         self.log.debug('starting the ``fit_global_polynomial`` method')
 
@@ -256,19 +260,21 @@ class _base_detect(object):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
-            - ``orderPixelTable`` -- data-frame containing pixel list for given order
-            - ``coeff`` -- the coefficients of the fitted polynomial
-            - ``axisACol`` -- name of x-pixel column
-            - ``axisBCol`` -- name of y-pixel column
-            - ``orderCol`` -- name of the order column (global fits only)
-            - ``writeQCs`` -- write the QCs to dataframe? Default *False*
+
+        - ``orderPixelTable`` -- data-frame containing pixel list for given order
+        - ``coeff`` -- the coefficients of the fitted polynomial
+        - ``axisACol`` -- name of x-pixel column
+        - ``axisBCol`` -- name of y-pixel column
+        - ``orderCol`` -- name of the order column (global fits only)
+        - ``writeQCs`` -- write the QCs to dataframe? Default *False*
 
         **Return:**
-            - ``res`` -- x residuals
-            - ``mean`` -- the mean of the residuals
-            - ``std`` -- the stdev of the residuals
-            - ``median`` -- the median of the residuals
-            - ``xfit`` -- fitted x values
+
+        - ``res`` -- x residuals
+        - ``mean`` -- the mean of the residuals
+        - ``std`` -- the stdev of the residuals
+        - ``median`` -- the median of the residuals
+        - ``xfit`` -- fitted x values
         """
         self.log.debug('starting the ``calculate_residuals`` method')
 
@@ -360,12 +366,14 @@ class _base_detect(object):
         """*write out the fitted polynomial solution coefficients to file*
 
         **Key Arguments:**
-            - ``frame`` -- the calibration frame used to generate order location data
-            - ``orderPolyTable`` -- data-frames containing centre location coefficients (and possibly also order edge coeffs)
-            - ``orderMetaTable`` -- extra order meta data to be added in an extra FITS extension
+
+        - ``frame`` -- the calibration frame used to generate order location data
+        - ``orderPolyTable`` -- data-frames containing centre location coefficients (and possibly also order edge coeffs)
+        - ``orderMetaTable`` -- extra order meta data to be added in an extra FITS extension
 
         **Return:**
-            - ``order_table_path`` -- path to the order table file
+
+        - ``order_table_path`` -- path to the order table file
         """
         from astropy.table import Table
         from astropy.io import fits
@@ -452,16 +460,17 @@ class detect_continuum(_base_detect):
     *find and fit the continuum in a pinhole flat frame with low-order polynomials. These polynominals are the central loctions of the orders*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``pinholeFlat`` -- calibrationed pinhole flat frame (CCDObject)
-        - ``dispersion_map`` -- path to dispersion map csv file containing polynomial fits of the dispersion solution for the frame
-        - ``settings`` -- the settings dictionary
-        - ``recipeSettings`` -- the recipe specific settings
-        - ``recipeName`` -- the recipe name as given in the settings dictionary
-        - ``qcTable`` -- the data frame to collect measured QC metrics
-        - ``productsTable`` -- the data frame to collect output products
-        - ``sofName`` ---- name of the originating SOF file
-        - ``binx`` -- binning in x-axis
+
+    - ``log`` -- logger
+    - ``pinholeFlat`` -- calibrationed pinhole flat frame (CCDObject)
+    - ``dispersion_map`` -- path to dispersion map csv file containing polynomial fits of the dispersion solution for the frame
+    - ``settings`` -- the settings dictionary
+    - ``recipeSettings`` -- the recipe specific settings
+    - ``recipeName`` -- the recipe name as given in the settings dictionary
+    - ``qcTable`` -- the data frame to collect measured QC metrics
+    - ``productsTable`` -- the data frame to collect output products
+    - ``sofName`` ---- name of the originating SOF file
+    - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
         - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
         - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
@@ -578,7 +587,8 @@ class detect_continuum(_base_detect):
         *return the order centre table filepath*
 
         **Return:**
-            - ``order_table_path`` -- file path to the order centre table giving polynomial coeffs to each order fit
+
+        - ``order_table_path`` -- file path to the order centre table giving polynomial coeffs to each order fit
         """
         self.log.debug('starting the ``get`` method')
 
@@ -746,7 +756,8 @@ class detect_continuum(_base_detect):
         """*create a pixel array for the approximate centre of each order*
 
         **Return:**
-            - ``orderPixelTable`` -- a data-frame containing lines and associated pixel locations
+
+        - ``orderPixelTable`` -- a data-frame containing lines and associated pixel locations
         """
         self.log.debug('starting the ``create_pixel_arrays`` method')
 
@@ -804,10 +815,12 @@ class detect_continuum(_base_detect):
         """*cut a slice from the pinhole flat along the cross-dispersion direction centred on pixel position, fit 1D gaussian and return the peak pixel position*
 
         **Key Arguments:**
-            - ``pixelPostion`` -- the x,y pixel coordinate from orderPixelTable data-frame (series)
+
+        - ``pixelPostion`` -- the x,y pixel coordinate from orderPixelTable data-frame (series)
 
         **Return:**
-            - ``pixelPostion`` -- now including gaussian fit peak xy position
+
+        - ``pixelPostion`` -- now including gaussian fit peak xy position
         """
         self.log.debug('starting the ``fit_1d_gaussian_to_slice`` method')
 
@@ -920,13 +933,15 @@ class detect_continuum(_base_detect):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
-            - ``orderPixelTable`` -- the pixel table with residuals of fits
-            - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
-            - ``clippedData`` -- the sigma-clipped data
+
+        - ``orderPixelTable`` -- the pixel table with residuals of fits
+        - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+        - ``clippedData`` -- the sigma-clipped data
 
         **Return:**
-            - ``filePath`` -- path to the plot pdf
-            - ``orderMetaTable`` -- dataframe of useful order fit metadata
+
+        - ``filePath`` -- path to the plot pdf
+        - ``orderMetaTable`` -- dataframe of useful order fit metadata
         """
         self.log.debug('starting the ``plot_results`` method')
 
@@ -1212,7 +1227,8 @@ class detect_continuum(_base_detect):
 
 
         **Return:**
-            - ``orderPixelTable`` -- the detector locations at which a trace was found
+
+        - ``orderPixelTable`` -- the detector locations at which a trace was found
         """
         self.log.debug('starting the ``sample_trace`` method')
 

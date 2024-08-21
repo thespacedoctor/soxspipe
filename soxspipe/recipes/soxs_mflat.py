@@ -3,11 +3,11 @@
 """
 *generate a single normalised master flat-field frame*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    September 16, 2020
+Date Created
+: September 16, 2020
 """
 from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 from datetime import datetime
@@ -19,7 +19,7 @@ from soxspipe.commonutils import detect_order_edges
 from soxspipe.commonutils.toolkit import quicklook_image
 from soxspipe.commonutils.toolkit import unpack_order_table
 from soxspipe.commonutils import keyword_lookup
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 from fundamentals import tools
 from builtins import object
 import sys
@@ -27,17 +27,17 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_mflat(_base_recipe_):
+class soxs_mflat(base_recipe):
     """
     *The soxs_mflat recipe*
 
     **Key Arguments**
 
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
 
     **Usage**
 
@@ -51,13 +51,9 @@ class soxs_mflat(_base_recipe_):
     mflatFrame = recipe.produce_product()
     ```
 
-    ---
-
-    ```eval_rst
-    .. todo::
-
+    :::{todo}
         - add a tutorial about ``soxs_mflat`` to documentation
-    ```
+    :::
     """
 
     def __init__(
@@ -69,7 +65,7 @@ class soxs_mflat(_base_recipe_):
             overwrite=False
 
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_mflat, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mflat")
         self.log = log
@@ -219,7 +215,8 @@ class soxs_mflat(_base_recipe_):
         """*generate the master flat frames updated order location table (with egde detection)*
 
         **Return:**
-            - ``productPath`` -- the path to the master flat frame
+
+        - ``productPath`` -- the path to the master flat frame
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -508,7 +505,8 @@ class soxs_mflat(_base_recipe_):
         """*given all of the input data calibrate the frames by subtracting bias and/or dark*
 
         **Return:**
-            - ``calibratedFlats`` -- the calibrated frames
+
+        - ``calibratedFlats`` -- the calibrated frames
         """
         self.log.debug('starting the ``calibrate_frame_set`` method')
 
@@ -636,13 +634,15 @@ class soxs_mflat(_base_recipe_):
         """*determine the median exposure for each flat frame and normalise the flux to that level*
 
         **Key Arguments:**
-            - ``inputFlats`` -- the input flat field frames
-            - ``orderTablePath`` -- path to the order table
-            - ``firstPassMasterFlat`` -- the first pass of the master flat. Default *False*
-            - `lamp` -- a lamp tag for QL plots
+
+        - ``inputFlats`` -- the input flat field frames
+        - ``orderTablePath`` -- path to the order table
+        - ``firstPassMasterFlat`` -- the first pass of the master flat. Default *False*
+        - `lamp` -- a lamp tag for QL plots
 
         **Return:**
-            - ``normalisedFrames`` -- the normalised flat-field frames (CCDData array)
+
+        - ``normalisedFrames`` -- the normalised flat-field frames (CCDData array)
         """
         self.log.debug('starting the ``normalise_flats`` method')
 
@@ -765,14 +765,16 @@ class soxs_mflat(_base_recipe_):
         """*add low-sensitivity pixels to bad-pixel mask*
 
         **Key Arguments:**
-            - ``frame`` -- the frame to work on
-            - ``orderTablePath`` -- path to the order table
-            - ``returnMedianOrderFlux`` -- return a table of the median order fluxes. Default *False*.
-            - ``writeQC`` -- add the QCs to the QC table?
+
+        - ``frame`` -- the frame to work on
+        - ``orderTablePath`` -- path to the order table
+        - ``returnMedianOrderFlux`` -- return a table of the median order fluxes. Default *False*.
+        - ``writeQC`` -- add the QCs to the QC table?
 
         **Return:**
-            - ``frame`` -- with BPM updated with low-sensitivity pixels
-            - ``medianOrderFluxDF`` -- data-frame of the median order fluxes (if ``returnMedianOrderFlux`` is True)
+
+        - ``frame`` -- with BPM updated with low-sensitivity pixels
+        - ``medianOrderFluxDF`` -- data-frame of the median order fluxes (if ``returnMedianOrderFlux`` is True)
         """
         self.log.debug(
             'starting the ``mask_low_sens_pixels`` method')
@@ -890,11 +892,13 @@ class soxs_mflat(_base_recipe_):
         """*return a master UV-VIS flat frame after slicing and stitch the UV-VIS D-Lamp and QTH-Lamp flat frames*
 
         **Key Arguments:**
-            - ``medianOrderFluxDF`` -- data frame containing median order fluxes for D and QTH frames
-            - ``orderTablePath`` -- the original order table paths from order-centre tracing
+
+        - ``medianOrderFluxDF`` -- data frame containing median order fluxes for D and QTH frames
+        - ``orderTablePath`` -- the original order table paths from order-centre tracing
 
         **Return:**
-            - ``stitchedFlat`` -- the stitch D and QTH-Lamp master flat frame
+
+        - ``stitchedFlat`` -- the stitch D and QTH-Lamp master flat frame
 
         **Usage:**
 
@@ -993,11 +997,13 @@ class soxs_mflat(_base_recipe_):
         """*find uvb order where both lamps produce a similar flux. This is the order at which the 2 lamp flats will be scaled and stitched together*
 
         **Key Arguments:**
-            - ``qcalibratedFlats`` -- the QTH lamp calibration flats.
-            - ``dcalibratedFlats`` -- D2 lamp calibration flats
+
+        - ``qcalibratedFlats`` -- the QTH lamp calibration flats.
+        - ``dcalibratedFlats`` -- D2 lamp calibration flats
 
         **Return:**
-            - ``order`` -- the order number where the lamp fluxes are similar
+
+        - ``order`` -- the order number where the lamp fluxes are similar
 
         **Usage:**
 

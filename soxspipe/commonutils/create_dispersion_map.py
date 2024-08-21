@@ -3,11 +3,11 @@
 """
 *detect arc-lines on a pinhole frame to generate a dispersion solution*
 
-:Author:
-    Marco Landoni & David Young
+Author
+: Marco Landoni & David Young
 
-:Date Created:
-    September  1, 2020
+Date Created
+: September  1, 2020
 """
 ################# GLOBAL IMPORTS ####################
 from fundamentals import fmultiprocess
@@ -34,16 +34,17 @@ class create_dispersion_map(object):
     *detect arc-lines on a pinhole frame to generate a dispersion solution*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``recipeSettings`` -- the recipe specific settings
-        - ``pinholeFrame`` -- the calibrated pinhole frame (single or multi)
-        - ``firstGuessMap`` -- the first guess dispersion map from the `soxs_disp_solution` recipe (needed in `soxs_spat_solution` recipe). Default *False*.
-        - ``orderTable`` -- the order geometry table
-        - ``qcTable`` -- the data frame to collect measured QC metrics
-        - ``productsTable`` -- the data frame to collect output products
-        - ``sofName`` -- name of the originating SOF file
-        - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``recipeSettings`` -- the recipe specific settings
+    - ``pinholeFrame`` -- the calibrated pinhole frame (single or multi)
+    - ``firstGuessMap`` -- the first guess dispersion map from the `soxs_disp_solution` recipe (needed in `soxs_spat_solution` recipe). Default *False*.
+    - ``orderTable`` -- the order geometry table
+    - ``qcTable`` -- the data frame to collect measured QC metrics
+    - ``productsTable`` -- the data frame to collect output products
+    - ``sofName`` -- name of the originating SOF file
+    - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
         - ``lineDetectionTable`` -- the list of arc-lines detected on the pinhole frame (used only for pipeline tuning)
 
     **Usage:**
@@ -150,7 +151,8 @@ class create_dispersion_map(object):
         *generate the dispersion map*
 
         **Return:**
-            - ``mapPath`` -- path to the file containing the coefficients of the x,y polynomials of the global dispersion map fit
+
+        - ``mapPath`` -- path to the file containing the coefficients of the x,y polynomials of the global dispersion map fit
         """
         self.log.debug('starting the ``get`` method')
 
@@ -534,7 +536,8 @@ class create_dispersion_map(object):
         """*lift the predicted line list from the static calibrations*
 
         **Return:**
-            - ``orderPixelTable`` -- a panda's data-frame containing wavelength,order,slit_index,slit_position,detector_x,detector_y
+
+        - ``orderPixelTable`` -- a panda's data-frame containing wavelength,order,slit_index,slit_position,detector_x,detector_y
         """
         self.log.debug('starting the ``get_predicted_line_list`` method')
 
@@ -715,13 +718,15 @@ class create_dispersion_map(object):
         """*detect the observed position of an arc-line given the predicted pixel positions*
 
         **Key Arguments:**
-            - ``predictedLine`` -- single predicted line coordinates from predicted line-list
-            - ``iraf`` -- use IRAF star finder to generate a FWHM
-            - ``sigmaLimit`` -- the lower sigma limit for arc line to be considered detected
-            - ``iteration`` -- which detect and shift iteration are we on?
+
+        - ``predictedLine`` -- single predicted line coordinates from predicted line-list
+        - ``iraf`` -- use IRAF star finder to generate a FWHM
+        - ``sigmaLimit`` -- the lower sigma limit for arc line to be considered detected
+        - ``iteration`` -- which detect and shift iteration are we on?
 
         **Return:**
-            - ``predictedLine`` -- the line with the observed pixel coordinates appended (if detected, otherwise nan)
+
+        - ``predictedLine`` -- the line with the observed pixel coordinates appended (if detected, otherwise nan)
         """
         self.log.debug('starting the ``detect_pinhole_arc_line`` method')
 
@@ -862,14 +867,16 @@ class create_dispersion_map(object):
         """*write out the fitted polynomial solution coefficients to file*
 
         **Key Arguments:**
-            - ``xcoeff`` -- the x-coefficients
-            - ``ycoeff`` -- the y-coefficients
-            - ``orderDeg`` -- degree of the order fitting
-            - ``wavelengthDeg`` -- degree of wavelength fitting
-            - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
+
+        - ``xcoeff`` -- the x-coefficients
+        - ``ycoeff`` -- the y-coefficients
+        - ``orderDeg`` -- degree of the order fitting
+        - ``wavelengthDeg`` -- degree of wavelength fitting
+        - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
 
         **Return:**
-            - ``disp_map_path`` -- path to the saved file
+
+        - ``disp_map_path`` -- path to the saved file
         """
         self.log.debug('starting the ``write_map_to_file`` method')
 
@@ -1035,20 +1042,21 @@ class create_dispersion_map(object):
 
         **Key Arguments:**
 
-            - ``orderPixelTable`` -- the predicted line list as a data frame
-            - ``xcoeff`` -- the x-coefficients
-            - ``ycoeff`` -- the y-coefficients
-            - ``orderDeg`` -- degree of the order fitting
-            - ``wavelengthDeg`` -- degree of wavelength fitting
-            - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
-            - ``writeQCs`` -- write the QCs to dataframe? Default *False*
-            - ``pixelRange`` -- return centre pixel *and* +- 2nm from the centre pixel (to measure the pixel scale)
+        - ``orderPixelTable`` -- the predicted line list as a data frame
+        - ``xcoeff`` -- the x-coefficients
+        - ``ycoeff`` -- the y-coefficients
+        - ``orderDeg`` -- degree of the order fitting
+        - ``wavelengthDeg`` -- degree of wavelength fitting
+        - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
+        - ``writeQCs`` -- write the QCs to dataframe? Default *False*
+        - ``pixelRange`` -- return centre pixel *and* +- 2nm from the centre pixel (to measure the pixel scale)
 
         **Return:**
-            - ``residuals`` -- combined x-y residuals
-            - ``mean`` -- the mean of the combine residuals
-            - ``std`` -- the stdev of the combine residuals
-            - ``median`` -- the median of the combine residuals
+
+        - ``residuals`` -- combined x-y residuals
+        - ``mean`` -- the mean of the combine residuals
+        - ``std`` -- the stdev of the combine residuals
+        - ``median`` -- the median of the combine residuals
         """
         self.log.debug('starting the ``calculate_residuals`` method')
 
@@ -1234,17 +1242,19 @@ class create_dispersion_map(object):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
-            - ``orderPixelTable`` -- data frame containing order, wavelengths, slit positions and observed pixel positions
-            - ``wavelengthDeg`` -- degree of wavelength fitting
-            - ``orderDeg`` -- degree of the order fitting
-            - ``slitDeg`` -- degree of the slit fitting (0 for single pinhole)
-            - ``missingLines`` -- lines not detected on the image
+
+        - ``orderPixelTable`` -- data frame containing order, wavelengths, slit positions and observed pixel positions
+        - ``wavelengthDeg`` -- degree of wavelength fitting
+        - ``orderDeg`` -- degree of the order fitting
+        - ``slitDeg`` -- degree of the slit fitting (0 for single pinhole)
+        - ``missingLines`` -- lines not detected on the image
 
         **Return:**
-            - ``xcoeff`` -- the x-coefficients post clipping
-            - ``ycoeff`` -- the y-coefficients post clipping
-            - ``goodLinesTable`` -- the fitted line-list with metrics
-            - ``clippedLinesTable`` -- the lines that were sigma-clipped during polynomial fitting
+
+        - ``xcoeff`` -- the x-coefficients post clipping
+        - ``ycoeff`` -- the y-coefficients post clipping
+        - ``goodLinesTable`` -- the fitted line-list with metrics
+        - ``clippedLinesTable`` -- the lines that were sigma-clipped during polynomial fitting
         """
         self.log.debug('starting the ``fit_polynomials`` method')
 
@@ -1494,13 +1504,15 @@ class create_dispersion_map(object):
         """*create CCDData objects as placeholders to host the 2D images of the wavelength and spatial solutions from dispersion solution map*
 
         **Key Arguments:**
-            - ``order`` -- specific order to generate the placeholder pixels for. Inner-order pixels set to NaN, else set to 0. Default *False* (generate all orders)
-            - ``plot`` -- generate plots of placeholder images (for debugging). Default *False*.
-            - ``reverse`` -- Inner-order pixels set to 0, else set to NaN (reverse of default output).
+
+        - ``order`` -- specific order to generate the placeholder pixels for. Inner-order pixels set to NaN, else set to 0. Default *False* (generate all orders)
+        - ``plot`` -- generate plots of placeholder images (for debugging). Default *False*.
+        - ``reverse`` -- Inner-order pixels set to 0, else set to NaN (reverse of default output).
 
         **Return:**
-            - ``slitMap`` -- placeholder image to add pixel slit positions to
-            - ``wlMap`` -- placeholder image to add pixel wavelength values to
+
+        - ``slitMap`` -- placeholder image to add pixel slit positions to
+        - ``wlMap`` -- placeholder image to add pixel wavelength values to
 
         **Usage:**
 
@@ -1607,11 +1619,13 @@ class create_dispersion_map(object):
         """*convert the dispersion map to images in the detector format showing pixel wavelength values and slit positions*
 
         **Key Arguments:**
-            - ``dispersionMapPath`` -- path to the full dispersion map to convert to images
-            - ``orders`` -- orders to add to the image map. List. Default *False* (add all orders)
+
+        - ``dispersionMapPath`` -- path to the full dispersion map to convert to images
+        - ``orders`` -- orders to add to the image map. List. Default *False* (add all orders)
 
         **Return:**
-            - ``dispersion_image_filePath`` -- path to the FITS image with an extension for wavelength values and another for slit positions
+
+        - ``dispersion_image_filePath`` -- path to the FITS image with an extension for wavelength values and another for slit positions
 
         **Usage:**
 
@@ -1711,11 +1725,13 @@ class create_dispersion_map(object):
         """*convert a single order in the dispersion map to wavelength and slit position images*
 
         **Key Arguments:**
-            - ``orderInfo`` -- tuple containing the order number to generate the images for, the minimum wavelength to consider (from format table) and maximum wavelength to consider (from format table).
+
+        - ``orderInfo`` -- tuple containing the order number to generate the images for, the minimum wavelength to consider (from format table) and maximum wavelength to consider (from format table).
 
         **Return:**
-            - ``slitMap`` -- the slit map with order values filled
-            - ``wlMap`` -- the wavelengths map with order values filled
+
+        - ``slitMap`` -- the slit map with order values filled
+        - ``wlMap`` -- the wavelengths map with order values filled
 
         **Usage:**
 
@@ -1794,17 +1810,19 @@ class create_dispersion_map(object):
         """*convert wavelength and slit position grids to pixels*
 
         **Key Arguments:**
-            - ``order`` -- the order being considered
-            - ``bigWlArray`` -- 1D array of all wavelengths to be converted
-            - ``bigSlitArray`` -- 1D array of all split-positions to be converted (same length as `bigWlArray`)
-            - ``slitMap`` -- place-holder image hosting fitted pixel slit-position values
-            - ``wlMap`` -- place-holder image hosting fitted pixel wavelength values
-            - ``iteration`` -- the iteration index (used for CL reporting)
-            - ``plots`` -- show plot of the slit-map
+
+        - ``order`` -- the order being considered
+        - ``bigWlArray`` -- 1D array of all wavelengths to be converted
+        - ``bigSlitArray`` -- 1D array of all split-positions to be converted (same length as `bigWlArray`)
+        - ``slitMap`` -- place-holder image hosting fitted pixel slit-position values
+        - ``wlMap`` -- place-holder image hosting fitted pixel wavelength values
+        - ``iteration`` -- the iteration index (used for CL reporting)
+        - ``plots`` -- show plot of the slit-map
 
         **Return:**
-            - ``orderPixelTable`` -- dataframe containing unfitted pixel info
-            - ``remainingCount`` -- number of remaining pixels in orderTable
+
+        - ``orderPixelTable`` -- dataframe containing unfitted pixel info
+        - ``remainingCount`` -- number of remaining pixels in orderTable
 
         **Usage:**
 
@@ -1931,19 +1949,21 @@ class create_dispersion_map(object):
         """*create the QC plot for the dispersion map solution*
 
         **Key Arguments:**
-            - ``xcoeff`` -- the x-coefficients
-            - ``ycoeff`` -- the y-coefficients
-            - ``orderDeg`` -- degree of the order fitting
-            - ``wavelengthDeg`` -- degree of wavelength fitting
-            - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
-            - ``orderPixelTable`` -- a panda's data-frame containing wavelength,order,slit_index,slit_position,detector_x,detector_y
-            - ``missingLines`` -- lines not detected on the image
-            - `allClippedLines` -- lines clipped during dispersion solution fitting
-            - `dispMap` -- path to dispersion map. Default *False*
-            - `dispMapImage` -- the 2D dispersion map image
+
+        - ``xcoeff`` -- the x-coefficients
+        - ``ycoeff`` -- the y-coefficients
+        - ``orderDeg`` -- degree of the order fitting
+        - ``wavelengthDeg`` -- degree of wavelength fitting
+        - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
+        - ``orderPixelTable`` -- a panda's data-frame containing wavelength,order,slit_index,slit_position,detector_x,detector_y
+        - ``missingLines`` -- lines not detected on the image
+        - `allClippedLines` -- lines clipped during dispersion solution fitting
+        - `dispMap` -- path to dispersion map. Default *False*
+        - `dispMapImage` -- the 2D dispersion map image
 
         **Return:**
-            - ``res_plots`` -- path the the output QC plot
+
+        - ``res_plots`` -- path the the output QC plot
         ```
         """
         self.log.debug('starting the ``create_dispersion_map_qc_plot`` method')
@@ -2213,10 +2233,12 @@ class create_dispersion_map(object):
         """*clip lines & sets of lines based on measured line metrics (from daostarfinder etc)*
 
         **Key Arguments:**
-            - `orderPixelTable` -- panda's data-frame containing measure line metrics
+
+        - `orderPixelTable` -- panda's data-frame containing measure line metrics
 
         **Return:**
-            - `orderPixelTable` -- the data-frame with clipped lines indicated in the "sigma_clipped" column
+
+        - `orderPixelTable` -- the data-frame with clipped lines indicated in the "sigma_clipped" column
         """
         self.log.debug('starting the ``_clip_on_measured_line_metrics`` method')
 
@@ -2442,10 +2464,12 @@ class create_dispersion_map(object):
         """*using a first pass dispersion solution, use a line atlas to generate a more accurate and more complete static line list*
 
         **Key Arguments:**
-            - `dispersionMapPath` -- path to the first pass dispersion solution
+
+        - `dispersionMapPath` -- path to the first pass dispersion solution
 
         **Return:**
-            - `newPredictedLineList` -- a new predicted line list (to replace the static calibration line-list)
+
+        - `newPredictedLineList` -- a new predicted line list (to replace the static calibration line-list)
         """
         self.log.debug('starting the ``create_new_static_line_list`` method')
 

@@ -3,15 +3,15 @@
 """
 *Reduce SOXS data taken in nodding mode*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    February 27, 2024
+Date Created
+: February 27, 2024
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 from fundamentals import tools
 from builtins import object
@@ -27,17 +27,17 @@ os.environ['TERM'] = 'vt100'
 # TODO: When combining spectra at the end, we use a simple sum. If we use sigma-clipping followed by a mean combine, we can remove CRHs for data sets with more than 1 AB cycle.
 
 
-class soxs_nod(_base_recipe_):
+class soxs_nod(base_recipe):
     """
     *The soxs_nod recipe*
 
     **Key Arguments**
 
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
 
     **Usage**
@@ -61,7 +61,7 @@ class soxs_nod(_base_recipe_):
             overwrite=False
 
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_nod, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-nod")
         self.log = log
@@ -153,7 +153,8 @@ class soxs_nod(_base_recipe_):
         """*The code to generate the product of the soxs_nod recipe*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+
+        - ``productPath`` -- the path to the final product
 
         **Usage**
 
@@ -312,13 +313,15 @@ class soxs_nod(_base_recipe_):
         """*process a single AB nodding cycle*
 
         **Key Arguments:**
-            - ``aFrame`` -- the frame taken at the A location. CCDData object.
-            - ``bFrame`` -- the frame taken at the B location. CCDDate object.
-            - ``locationSetIndex`` -- the index of the AB cycle
+
+        - ``aFrame`` -- the frame taken at the A location. CCDData object.
+        - ``bFrame`` -- the frame taken at the B location. CCDDate object.
+        - ``locationSetIndex`` -- the index of the AB cycle
 
         **Return:**
-            - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe)
-            - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B (dataframe)
+
+        - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe)
+        - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B (dataframe)
 
         **Usage:**
 
@@ -417,10 +420,12 @@ class soxs_nod(_base_recipe_):
         """*merge individual AB cycles into a master extraction*
 
         **Key Arguments:**
-            - ``dataFrameList`` -- a list of order-merged spectrum dataframes
+
+        - ``dataFrameList`` -- a list of order-merged spectrum dataframes
 
         **Return:**
-            - ``stackedSpectrum`` -- the combined spectrum in a dataframe
+
+        - ``stackedSpectrum`` -- the combined spectrum in a dataframe
 
         **Usage:**
 
@@ -508,7 +513,8 @@ class soxs_nod(_base_recipe_):
         """*plot stacked spectrum as a QC plot*
 
         **Key Arguments:**
-            - ``stackedSpectrum`` -- the combined spectrum in a dataframe
+
+        - ``stackedSpectrum`` -- the combined spectrum in a dataframe
 
         **Usage:**
 

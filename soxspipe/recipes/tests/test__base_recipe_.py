@@ -43,18 +43,18 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 
 
-class test__base_recipe_(unittest.TestCase):
+class test_base_recipe(unittest.TestCase):
 
     import pytest
 
     @pytest.mark.full
-    def test_xsh_base_recipe__function(self):
+    def test_xshbase_recipe_function(self):
 
         framePath = settings["test-data-root"] + \
             "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
         interMediatePath = settings["workspace-root-dir"]
-        from soxspipe.recipes import _base_recipe_
-        recipe = _base_recipe_(
+        from soxspipe.recipes import base_recipe
+        recipe = base_recipe(
             log=log,
             settings=settings
         )
@@ -78,11 +78,11 @@ class test__base_recipe_(unittest.TestCase):
         recipe.clean_up()
 
     @pytest.mark.full
-    def test_soxs_base_recipe__function_exception(self):
+    def test_soxsbase_recipe_function_exception(self):
 
-        from soxspipe.recipes import _base_recipe_
+        from soxspipe.recipes import base_recipe
         try:
-            this = _base_recipe_(
+            this = base_recipe(
                 log=log,
                 settings=settings,
                 fakeKey="break the code"

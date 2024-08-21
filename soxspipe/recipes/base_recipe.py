@@ -3,11 +3,11 @@
 """
 *The base recipe class which all other recipes inherit*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    January 22, 2020
+Date Created
+: January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
 
@@ -23,17 +23,18 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class _base_recipe_(object):
+class base_recipe(object):
     """
     The base recipe class which all other recipes inherit
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
-        - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
 
     **Usage**
 
@@ -174,16 +175,16 @@ class _base_recipe_(object):
         """*prepare a single raw frame by converting pixel data from ADU to electrons and adding mask and uncertainty extensions*
 
         **Key Arguments:**
-            - ``frame`` -- the path to the frame to prepare, of a CCDData object
+
+        - ``frame`` -- the path to the frame to prepare, of a CCDData object
 
         **Return:**
-            - ``frame`` -- the prepared frame with mask and uncertainty extensions (CCDData object)
 
-        ```eval_rst
-        .. todo::
+        - ``frame`` -- the prepared frame with mask and uncertainty extensions (CCDData object)
 
+        :::{todo}
             - write a command-line tool for this method
-        ```
+        :::
         """
         self.log.debug('starting the ``_prepare_single_frame`` method')
 
@@ -349,10 +350,12 @@ class _base_recipe_(object):
         """*convert paths from home directories to absolute paths*
 
         **Key Arguments:**
-            - ``path`` -- path possibly relative to home directory
+
+        - ``path`` -- path possibly relative to home directory
 
         **Return:**
-            - ``absolutePath`` -- absolute path
+
+        - ``absolutePath`` -- absolute path
 
         **Usage**
 
@@ -374,10 +377,12 @@ class _base_recipe_(object):
         """*prepare raw frames by converting pixel data from ADU to electrons and adding mask and uncertainty extensions*
 
         **Key Arguments:**
-            - ``save`` -- save out the prepared frame to the intermediate products directory. Default False.
+
+        - ``save`` -- save out the prepared frame to the intermediate products directory. Default False.
 
         **Return:**
-            - ``preframes`` -- the new image collection containing the prepared frames
+
+        - ``preframes`` -- the new image collection containing the prepared frames
 
         **Usage**
 
@@ -487,7 +492,8 @@ class _base_recipe_(object):
         """*the basic verifications that needs done for all recipes*
 
         **Return:**
-            - None
+
+        - None
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
@@ -729,10 +735,12 @@ class _base_recipe_(object):
         """*perform some massaging of the xshooter data so it more closely resembles soxs data -  this function can be removed once code is production ready*
 
         **Key Arguments:**
-            - ``frame`` -- the CCDDate frame to manipulate
+
+        - ``frame`` -- the CCDDate frame to manipulate
 
         **Return:**
-            - ``frame`` -- the manipulated soxspipe-ready frame
+
+        - ``frame`` -- the manipulated soxspipe-ready frame
 
         **Usage:**
 
@@ -761,7 +769,8 @@ class _base_recipe_(object):
         """*return frame with pre-scan and overscan regions removed*
 
         **Key Arguments:**
-            - ``frame`` -- the CCDData frame to be trimmed
+
+        - ``frame`` -- the CCDData frame to be trimmed
         """
         self.log.debug('starting the ``_trim_frame`` method')
 
@@ -798,12 +807,13 @@ class _base_recipe_(object):
         """*write frame to disk at the specified location*
 
         **Key Arguments:**
-            - ``frame`` -- the frame to save to disk (CCDData object)
-            - ``filedir`` -- the location to save the frame
-            - ``filename`` -- the filename to save the file as. Default: **False** (standardised filename generated in code)
-            - ``overwrite`` -- if a file exists at the filepath then choose to overwrite the file. Default: True
-            - ``product`` -- is this a recipe product?
-            - ``maskToZero`` -- set masked pixels to zero before writing to file?
+
+        - ``frame`` -- the frame to save to disk (CCDData object)
+        - ``filedir`` -- the location to save the frame
+        - ``filename`` -- the filename to save the file as. Default: **False** (standardised filename generated in code)
+        - ``overwrite`` -- if a file exists at the filepath then choose to overwrite the file. Default: True
+        - ``product`` -- is this a recipe product?
+        - ``maskToZero`` -- set masked pixels to zero before writing to file?
 
         **Usage:**
 
@@ -891,13 +901,15 @@ class _base_recipe_(object):
         """*mean combine input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function*
 
         **Key Arguments:**
-            - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
-            - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
-            - ``ignore_input_masks`` -- ignore the input masks during clip and stacking?
-            - ``post_stack_clipping`` -- allow cross-plane clipping on combined frame. Clipping settings in setting file. Default *True*.
+
+        - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
+        - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
+        - ``ignore_input_masks`` -- ignore the input masks during clip and stacking?
+        - ``post_stack_clipping`` -- allow cross-plane clipping on combined frame. Clipping settings in setting file. Default *True*.
 
         **Return:**
-            - ``combined_frame`` -- the combined master frame (with updated bad-pixel and uncertainty maps)
+
+        - ``combined_frame`` -- the combined master frame (with updated bad-pixel and uncertainty maps)
 
         **Usage:**
 
@@ -1037,14 +1049,16 @@ class _base_recipe_(object):
         """*subtract calibration frames from an input frame*
 
         **Key Arguments:**
-            - ``inputFrame`` -- the input frame to have calibrations subtracted. CCDData object.
-            - ``master_bias`` -- the master bias frame to be subtracted. CCDData object. Default *False*.
-            - ``dark`` -- a dark frame to be subtracted. CCDData object. Default *False*.
-            - ``master_flat`` -- divided input frame by this master flat frame. CCDData object. Default *False*.
-            - ``order_table`` -- order table with order edges defined. Used to subtract scattered light background from frames. Default *False*.
+
+        - ``inputFrame`` -- the input frame to have calibrations subtracted. CCDData object.
+        - ``master_bias`` -- the master bias frame to be subtracted. CCDData object. Default *False*.
+        - ``dark`` -- a dark frame to be subtracted. CCDData object. Default *False*.
+        - ``master_flat`` -- divided input frame by this master flat frame. CCDData object. Default *False*.
+        - ``order_table`` -- order table with order edges defined. Used to subtract scattered light background from frames. Default *False*.
 
         **Return:**
-            - ``calibration_subtracted_frame`` -- the input frame with the calibration frame(s) subtracted. CCDData object.
+
+        - ``calibration_subtracted_frame`` -- the input frame with the calibration frame(s) subtracted. CCDData object.
 
         **Usage:**
 
@@ -1055,13 +1069,9 @@ class _base_recipe_(object):
             inputFrame=inputFrameCCDObject, master_bias=masterBiasCCDObject, dark=darkCCDObject)
         ```
 
-        ---
-
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - code needs written to scale dark frame to exposure time of science/calibration frame
-        ```
+        :::
         """
         self.log.debug('starting the ``detrend`` method')
 
@@ -1177,7 +1187,8 @@ class _base_recipe_(object):
         """*a method to report QC values alongside intermediate and final products*
 
         **Key Arguments:**
-            - ``rformat`` -- the format to outout reports as. Default *stdout*. [stdout|....]
+
+        - ``rformat`` -- the format to outout reports as. Default *stdout*. [stdout|....]
 
         **Usage:**
 
@@ -1237,15 +1248,17 @@ class _base_recipe_(object):
         """*calculate the read-out-noise from bias/dark frames*
 
         **Key Arguments:**
-            - ``frameType`` -- the type of the frame for reporting QC values. Default *False*
-            - ``frameName`` -- the name of the frame in human readable words. Default *False*
-            - ``masterFrame`` -- the master frame (only makes sense to measure RON on master bias). Default *False*
-            - ``rawRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
-            - ``masterRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
+
+        - ``frameType`` -- the type of the frame for reporting QC values. Default *False*
+        - ``frameName`` -- the name of the frame in human readable words. Default *False*
+        - ``masterFrame`` -- the master frame (only makes sense to measure RON on master bias). Default *False*
+        - ``rawRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
+        - ``masterRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
 
         **Return:**
-            - ``rawRon`` -- raw read-out-noise in electrons
-            - ``masterRon`` -- combined read-out-noise in mbias
+
+        - ``rawRon`` -- raw read-out-noise in electrons
+        - ``masterRon`` -- combined read-out-noise in mbias
 
         **Usage:**
 
@@ -1345,13 +1358,15 @@ class _base_recipe_(object):
         """*calculate the median flux level in the frame, excluding masked pixels*
 
         **Key Arguments:**
-            - ``frame`` -- the frame (CCDData object) to determine the median level.
-            - ``frameType`` -- the type of the frame for reporting QC values Default "MBIAS"
-            - ``frameName`` -- the name of the frame in human readable words. Default "master bias"
-            - ``medianFlux`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
+
+        - ``frame`` -- the frame (CCDData object) to determine the median level.
+        - ``frameType`` -- the type of the frame for reporting QC values Default "MBIAS"
+        - ``frameName`` -- the name of the frame in human readable words. Default "master bias"
+        - ``medianFlux`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
 
         **Return:**
-            - ``medianFlux`` -- median flux level in electrons
+
+        - ``medianFlux`` -- median flux level in electrons
 
         **Usage:**
 
@@ -1397,12 +1412,14 @@ class _base_recipe_(object):
         """*iteratively median sigma-clip raw bias data frames before calculating and removing the mean bias level*
 
         **Key Arguments:**
-            - ``rawFrame`` -- the raw bias frame
+
+        - ``rawFrame`` -- the raw bias frame
 
         **Return:**
-            - `meanFluxLevel` -- the frame mean bias level
-            - `fluxStd` -- the standard deviation of the flux distribution (RON)
-            - `noiseFrame` -- the raw bias frame with mean bias level removed
+
+        - `meanFluxLevel` -- the frame mean bias level
+        - `fluxStd` -- the standard deviation of the flux distribution (RON)
+        - `noiseFrame` -- the raw bias frame with mean bias level removed
 
         **Usage:**
 
@@ -1439,10 +1456,12 @@ class _base_recipe_(object):
         """*update fits keywords to comply with ESO Phase 3 standards*
 
         **Key Arguments:**
-            - ``frame`` -- the frame to update
+
+        - ``frame`` -- the frame to update
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
@@ -1450,16 +1469,12 @@ class _base_recipe_(object):
         usage code
         ```
 
-        ---
-
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - write a command-line tool for this method
             - update package tutorial with command-line tool info if needed
-        ```
+        :::
         """
         self.log.debug('starting the ``update_fits_keywords`` method')
 
@@ -1486,7 +1501,8 @@ class _base_recipe_(object):
         """*get the recipe and arm specific settings*
 
         **Return:**
-            - ``recipeSettings`` -- the recipe specific settings
+
+        - ``recipeSettings`` -- the recipe specific settings
 
         **Usage:**
 

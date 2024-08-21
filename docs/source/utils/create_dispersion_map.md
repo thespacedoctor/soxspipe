@@ -1,4 +1,4 @@
-## `create_dispersion_map`
+# `create_dispersion_map`
 
 The [`create_dispersion_map`](#soxspipe.commonutils.create_dispersion_map) utility is used to search for arc-lines in the single/multi-pinhole arc-lamp frames and then iteratively fit a global polynomial dispersion solution (and spatial-solution in the case of multi-pinhole frame) with the observed line-positions. It is used by both the [`soxs_disp_solution`](../recipes/soxs_disp_solution.md)) and [`soxs_spatial_solution`](../recipes/soxs_spatial_solution.md)) solution recipes.
 
@@ -30,7 +30,7 @@ $$Y = \sum\limits_{ijk} c_{ijk} \times n^i \times \lambda^j \times s^k$$
 
 Upon each iteration the residuals between the fits and the measured pixel-positions are calculated and sigma-clipping is employed to eliminate measurements that stray to far from the fit. Once the maximum number of iterations is reach, or all outlying lines have been clipped, the coefficients of the polynomials are written to a [Dispersion Map](../files/dispersion_map.md) file.
 
-### 2D Image Map
+## 2D Image Map
 
 [![](https://live.staticflickr.com/65535/51862169299_f6773a5b0f_b.jpg)](https://live.staticflickr.com/65535/51862169299_f6773a5b0f_b.jpg)
 

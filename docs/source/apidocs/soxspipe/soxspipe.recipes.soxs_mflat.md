@@ -45,7 +45,7 @@
 `````{py:class} soxs_mflat(log, settings=False, inputFrames=[], verbose=False, overwrite=False)
 :canonical: soxspipe.recipes.soxs_mflat.soxs_mflat
 
-Bases: {py:obj}`soxspipe.recipes._base_recipe_._base_recipe_`
+Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ```{autodoc2-docstring} soxspipe.recipes.soxs_mflat.soxs_mflat
 ```

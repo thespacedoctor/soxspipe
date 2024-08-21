@@ -3,11 +3,11 @@
 """
 *small reusable functions used throughout soxspipe*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    September 18, 2020
+Date Created
+: September 18, 2020
 """
 
 
@@ -514,12 +514,10 @@ def generic_quality_checks(
 
     **Usage:**
 
-    ```eval_rst
-    .. todo::
-
+    :::{todo}
             add usage info
             create a sublime snippet for usage
-    ```
+    :::
 
     ```python
     usage code
@@ -608,12 +606,10 @@ def spectroscopic_image_quality_checks(
 
     **Usage:**
 
-    ```eval_rst
-    .. todo::
-
+    :::{todo}
             add usage info
             create a sublime snippet for usage
-    ```
+    :::
 
     ```python
     usage code
@@ -732,9 +728,10 @@ def read_spectral_format(
     - `extended` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL (extended=True)
 
     **Return:**
-        - ``orderNums`` -- a list of the order numbers
-        - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
-        - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
+
+    - ``orderNums`` -- a list of the order numbers
+    - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
+    - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
 
     **Usage:**
 

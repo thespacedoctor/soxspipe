@@ -3,15 +3,15 @@
 """
 *Recipe to generate a first approximation of the dispersion solution from single pinhole frames*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    August 25, 2020
+Date Created
+: August 25, 2020
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 
 from fundamentals import tools
 from builtins import object
@@ -22,18 +22,18 @@ from soxspipe.commonutils import create_dispersion_map
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_disp_solution(_base_recipe_):
+class soxs_disp_solution(base_recipe):
     """
     *generate a first approximation of the dispersion solution from single pinhole frames*
 
     **Key Arguments**
 
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
-        - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*.
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*.
 
     **Usage**
 
@@ -46,13 +46,9 @@ class soxs_disp_solution(_base_recipe_):
     ).produce_product()
     ```
 
-    ---
-
-    ```eval_rst
-    .. todo::
-
+    :::{todo}
         - add a tutorial about ``soxs_disp_solution`` to documentation
-    ```
+    :::
     """
 
     def __init__(
@@ -65,7 +61,7 @@ class soxs_disp_solution(_base_recipe_):
             polyOrders=False
 
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_disp_solution, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-disp-solution")
         self.log = log
@@ -192,7 +188,8 @@ class soxs_disp_solution(_base_recipe_):
         """*generate a fisrt guess of the dispersion solution*
 
         **Return:**
-            - ``productPath`` -- the path to the first guess dispersion map
+
+        - ``productPath`` -- the path to the first guess dispersion map
         """
         self.log.debug('starting the ``produce_product`` method')
 

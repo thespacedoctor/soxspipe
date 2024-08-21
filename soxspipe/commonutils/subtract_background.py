@@ -3,11 +3,11 @@
 """
 *fit and subtract background flux from scattered light from frame*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    June  3, 2021
+Date Created
+: June  3, 2021
 """
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
@@ -25,19 +25,20 @@ class subtract_background(object):
     *fit and subtract background flux from scattered light from frame*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``frame`` -- the frame to subtract background light from
-        - ``recipeName`` -- name of the parent recipe
-        - ``sofName`` -- the sof file name given to the parent recipe
-        - ``orderTable`` -- the order geometry table
-        - ``qcTable`` -- the data frame to collect measured QC metrics
-        - ``productsTable`` -- the data frame to collect output products
-        - ``lamp`` -- needed for UVB flats
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``frame`` -- the frame to subtract background light from
+    - ``recipeName`` -- name of the parent recipe
+    - ``sofName`` -- the sof file name given to the parent recipe
+    - ``orderTable`` -- the order geometry table
+    - ``qcTable`` -- the data frame to collect measured QC metrics
+    - ``productsTable`` -- the data frame to collect output products
+    - ``lamp`` -- needed for UVB flats
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html).
 
     To fit and subtract the background from an image:
 
@@ -116,7 +117,8 @@ class subtract_background(object):
         *fit and subtract background light from frame*
 
         **Return:**
-            - ``backgroundSubtractedFrame`` -- a CCDData object of the original input frame with fitted background light subtracted
+
+        - ``backgroundSubtractedFrame`` -- a CCDData object of the original input frame with fitted background light subtracted
         """
         self.log.debug('starting the ``subtract`` method')
 
@@ -202,7 +204,8 @@ class subtract_background(object):
         """*mask the order locations and return the masked frame*
 
         **Key Arguments:**
-            - ``orderPixelTable`` -- the order location in a pandas datafrmae.
+
+        - ``orderPixelTable`` -- the order location in a pandas datafrmae.
         """
         self.log.debug('starting the ``mask_order_locations`` method')
 
@@ -291,8 +294,9 @@ class subtract_background(object):
         """*model the background image from intra-order flux detected*
 
         **Key Arguments:**
-            - ``rowFitOrder`` -- order of the polynomial fit to flux in each row
-            - ``gaussianSigma`` -- the sigma of the gaussian used to blur the final image
+
+        - ``rowFitOrder`` -- order of the polynomial fit to flux in each row
+        - ``gaussianSigma`` -- the sigma of the gaussian used to blur the final image
         """
         self.log.debug('starting the ``create_background_image`` method')
 

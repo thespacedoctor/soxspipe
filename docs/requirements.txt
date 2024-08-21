@@ -12,3 +12,4 @@ sphinx_copybutton
 sphinx_tippy
 git+https://github.com/harshil21/furo-sphinx-search
 sphinx_design
+pygments-csv-lexer

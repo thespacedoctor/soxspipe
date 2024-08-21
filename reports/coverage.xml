@@ -1403,7 +1403,7 @@
 						<line hits="1" number="8"/>
 					</lines>
 				</class>
-				<class branch-rate="0" complexity="0" filename="soxspipe/recipes/_base_recipe_.py" line-rate="0.9198" name="_base_recipe_.py">
+				<class branch-rate="0" complexity="0" filename="soxspipe/recipes/base_recipe.py" line-rate="0.9198" name="base_recipe.py">
 					<methods/>
 					<lines>
 						<line hits="1" number="3"/>
@@ -1996,7 +1996,7 @@
 					<methods/>
 					<lines/>
 				</class>
-				<class branch-rate="0" complexity="0" filename="soxspipe/recipes/tests/test__base_recipe_.py" line-rate="0.9388" name="test__base_recipe_.py">
+				<class branch-rate="0" complexity="0" filename="soxspipe/recipes/tests/test_base_recipe.py" line-rate="0.9388" name="test_base_recipe.py">
 					<methods/>
 					<lines>
 						<line hits="1" number="1"/>

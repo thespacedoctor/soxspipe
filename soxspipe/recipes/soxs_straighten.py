@@ -3,16 +3,16 @@
 """
 *transform spectral image from detector pixel space to wavelength and slit-position space*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    May 17, 2021
+Date Created
+: May 17, 2021
 """
 ################# GLOBAL IMPORTS ####################
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 from fundamentals import tools
 from builtins import object
 import sys
@@ -20,7 +20,7 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_straighten(_base_recipe_):
+class soxs_straighten(base_recipe):
     """
     *The soxs_straighten recipe*
 
@@ -37,7 +37,7 @@ class soxs_straighten(_base_recipe_):
             overwrite=False
 
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_straighten, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-straighten")
         self.log = log
@@ -84,7 +84,8 @@ class soxs_straighten(_base_recipe_):
         """*verify the input frame match those required by the soxs_straighten recipe*
 
         **Return:**
-            - ``None``
+
+        - ``None``
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
@@ -146,7 +147,8 @@ class soxs_straighten(_base_recipe_):
         """*The code to generate the product of the soxs_straighten recipe*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+
+        - ``productPath`` -- the path to the final product
 
         **Usage**
 

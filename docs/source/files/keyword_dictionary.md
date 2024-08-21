@@ -1,4 +1,4 @@
-## Keyword Dictionary
+# Keyword Dictionary
 
 This is a [yaml](https://yaml.org/) file hosting a dictionary of the SOXS FITS Header keywords.
 

@@ -3,11 +3,11 @@
 """
 *reduce all the data in a workspace, or target specific obs and files for reduction*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    January 17, 2024
+Date Created
+: January 17, 2024
 """
 from fundamentals import tools
 from builtins import object
@@ -21,12 +21,13 @@ class reducer(object):
     *reduce all the data in a workspace, or target specific obs and files for reduction*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``workspaceDirectory`` -- path to the root of the workspace
-        - ``settings`` -- the settings dictionary
-        - ``pathToSettings`` -- path to the settings file.
-        - ``quitOnFail`` -- quit the pipeline on any recipe failure
-        - ``overwrite`` -- overwrite existing reductions. Default *False*.
+
+    - ``log`` -- logger
+    - ``workspaceDirectory`` -- path to the root of the workspace
+    - ``settings`` -- the settings dictionary
+    - ``pathToSettings`` -- path to the settings file.
+    - ``quitOnFail`` -- quit the pipeline on any recipe failure
+    - ``overwrite`` -- overwrite existing reductions. Default *False*.
 
     **Usage:**
 
@@ -78,18 +79,17 @@ class reducer(object):
         *reduce the selected data*
 
         **Return:**
-            - ``reducer``
+
+        - ``reducer``
 
         **Usage:**
 
-        ```eval_rst
-        .. todo::
-
+        :::{todo}
             - add usage info
             - create a sublime snippet for usage
             - create cl-util for this method
             - update the package tutorial if needed
-        ```
+        :::
 
         ```python
         usage code 
@@ -149,7 +149,8 @@ class reducer(object):
             # -
 
         **Return:**
-            - `rawGroups` -- a dataframe of the containing a list of recipes and sof file paths
+
+        - `rawGroups` -- a dataframe of the containing a list of recipes and sof file paths
 
         **Usage:**
 
@@ -182,8 +183,9 @@ class reducer(object):
         """*execute a pipeline recipe*
 
         **Key Arguments:**
-            - ``recipe`` -- the name of the recipe tp execute
-            - ``sof`` -- path to the sof file containing the files the recipe requires
+
+        - ``recipe`` -- the name of the recipe tp execute
+        - ``sof`` -- path to the sof file containing the files the recipe requires
 
         **Usage:**
 
