@@ -114,6 +114,7 @@ markdown_parser_config = {
     'enable_inline_math': True,
     'enable_math': True,
     'extensions': [
+        'myst_parser',
         'extra',
         'nl2br',
         'sane_lists',
