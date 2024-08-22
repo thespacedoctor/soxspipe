@@ -12,7 +12,10 @@ This utility, according to the prescrption of Horne+86, follows those basic step
 
 Starting from the order_table computed by the detect_continumm utility, the horne_extraction utility runs along the spectral direction and takes, for each wavelenght centered in the position measured by the detect_continuum utility, a window of 1xhorne-extraction-slit-length. Then, the pixels are summed and each pixel in the slice is normalized as 
 
-$pixel_i = \frac{Flux_{pixel_i}}{\sum_{j=0}^{N}{Flux_{pixel_j}}}$. 
+$$
+pixel_i = \frac{Flux_{pixel_i}}{\sum_{j=0}^{N}{Flux_{pixel_j}}}
+$$ 
+
 where N = horne-extraction-slit-length.
 
 
@@ -23,6 +26,6 @@ When the procedure above is completed, the actual extraction takes place as foll
 **2 Extraction of the spectrum for each wavelength
 
 Using the polynomials computed above, the extracted integrated flux for each wavelenght in the order is computed as:
-$
+$$
 \text{extractedFlux}_{\lambda} = \frac{\sum_{i=0}^{N} \left( P_{i}^{\lambda} \times \left( D_{i}^{\lambda} - S_{i}^{\lambda} \right) \right)}{X}
-$
+$$
