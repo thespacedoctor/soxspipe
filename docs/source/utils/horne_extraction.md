@@ -12,7 +12,9 @@ This utility, according to the prescrption of Horne+86, follows those basic step
 
 Starting from the order_table computed by the detect_continumm utility, the horne_extraction utility runs along the spectral direction and takes, for each wavelenght centered in the position measured by the detect_continuum utility, a window of 1xhorne-extraction-slit-length. Then, the pixels are summed and each pixel in the slice is normalized as 
 
-$pixel_i = \frac{Flux_{pixel_i}}{\sum_{j=0}^{horne-extraction-slit-length}{Flux_{pixel_j}}}$. 
+$pixel_i = \frac{Flux_{pixel_i}}{\sum_{j=0}^{N}{Flux_{pixel_j}}}$. 
+where N = horne-extraction-slit-length.
+
 
 Then, for each pixel in the slice along the dispersion a low order polynomial is fitted. This polynomial models the value of the fractional flux received in this pixel by the object along the dispersion. The full set of horne-extraction-slit-length represent the profile of the object along the spatial direction for each wavelenght.
 
