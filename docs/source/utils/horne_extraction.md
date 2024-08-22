@@ -8,7 +8,7 @@ The typical execution workflow is the following:
 
 This utility, according to the prescrption of Horne+86, follows those basic steps:
 
-**1 Determination of the spatial profile
+## 1 Determination of the spatial profile
 
 Starting from the order_table computed by the `detect_continumm` utility, the horne_extraction utility runs along the spectral direction and takes, for each wavelenght centered in the position measured by the detect_continuum utility, a window of 1x`horne-extraction-slit-length`. Then, the pixels are summed and each pixel in the slice is normalized as 
 
@@ -25,7 +25,7 @@ Polynomials are fitted with subsequent iterations. Pixels for which they residua
 
 When the procedure above is completed, the actual extraction takes place as follows:
 
-**2 Extraction of the spectrum for each wavelength for each order
+##  2 Extraction of the spectrum for each wavelength for each order
 
 Using the polynomials computed above, the extracted integrated flux for each wavelenght in the order is computed as
 
@@ -49,7 +49,7 @@ $$
 
 is computed. Pixels for which this quantity exceeds the `horne-extraction-profile-global-clipping-sigma` are not included in the extraction.
 
-**3 Merging of spectral orders
+## 3 Merging of spectral orders
 
 The extraction of the spectrum is performed on each single order separately. When all orders are extrated they will be merged togheter in a single spectrum. Since regions of different orders overlap in the wavelenght space, they are first rectified on a common, equally spaced, wavelenght grid in order to merge then togheter. Flux during resampling is conserved. 
  
