@@ -25,7 +25,8 @@ When the procedure above is completed, the actual extraction takes place as foll
 
 **2 Extraction of the spectrum for each wavelength
 
-Using the polynomials computed above, the extracted integrated flux for each wavelenght in the order is computed as:
+Using the polynomials computed above, the extracted integrated flux for each wavelenght in the order is computed as
+
 $$
-\text{extractedFlux}_{\lambda} = \frac{\sum_{i=0}^{N} \left( P_{i}^{\lambda} \times \left( D_{i}^{\lambda} - S_{i}^{\lambda} \right) \right)}{X}
+extractedFlux_{\lambda} = \frac{\sum_{i = 0}^{N}{{P_{i}^{\lambda} \times (D_{i}^{\lambda} - S_{i}^{\lambda})}}{X}
 $$
