@@ -89,7 +89,6 @@ autodoc2_hidden_objects = ["private"]
 autodoc2_sort_names = True
 link_resolver_url = "https://github.com/thespacedoctor/soxspipe/blob/master"
 
-image_converter = "magick"
 
 # OpenGraph metadata
 ogp_site_url = "https://soxspipe.readthedocs.io/en"
@@ -120,7 +119,7 @@ html_add_permalinks = u"  ∞"
 
 # -- LaTeX output -------------------------------------------------
 
-latex_engine = "xelatex"
+latex_engine = 'xelatex'
 
 
 def linkcode_resolve(domain, info):
