@@ -24,5 +24,5 @@ When the procedure above is completed, the actual extraction takes place as foll
 
 Using the polynomials computed above, the extracted integrated flux for each wavelenght in the order is computed as:
 $
-extractedFlux_{\lambda} = \frac {\sum_{i = 0}^{N}{P_{i}^{\lambda} \times (D_{i}^{\lambda} - S_{i}^{\lambda})}}{X}
+extractedFlux_{\lambda} = \frac{\sum_{i = 0}^{N}{P_{i}^{\lambda} \times (D_{i}^{\lambda} - S_{i}^{\lambda})}}{X}
 $
