@@ -1,6 +1,6 @@
 # `horne_extraction` 
 
-The purpose of the [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility is to perform optimal extraction on each spectral order applying the algorithms reported in Horne+86.
+The purpose of the [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility is to perform optimal extraction order applying the algorithms reported in Horne+86.
 
 The typical execution workflow is the following:
 
@@ -25,7 +25,7 @@ Polynomials are fitted with subsequent iterations. Pixels for which they residua
 
 When the procedure above is completed, the actual extraction takes place as follows:
 
-**2 Extraction of the spectrum for each wavelength
+**2 Extraction of the spectrum for each wavelength for each order
 
 Using the polynomials computed above, the extracted integrated flux for each wavelenght in the order is computed as
 
@@ -36,7 +36,7 @@ $$
 where $P_{i}^{\lambda}$ is the value of the polynomial for the pixel $i^{th}$ evaluated at wavelength $\lambda$, $D_{i}^{\lambda}$ is the raw pixel value on the 2D image, detrended and sky subtracted, of the science object and $S_{i}^{\lambda}$ is the estimated value, at the same pixel position, of the 2D image of the sky model computed in stare mode. When this utility is applied on nodding or offset mode images, this value is chosen to be zero. $V_{i}^{\lambda}$ is the so called variance image and it computed as 
 
 $$
-V_{i}^{\lambda} = V_{0} + \frac{|P_{i}{\lambda} f_{\lambda} +  S_{i}{\lambda}|{Q}
+V_{i}^{\lambda} = V_{0} + \frac{|P_{i}{\lambda} f_{\lambda} +  S_{i}{\lambda}}|{Q}
 $$
 where $V_{0}$ is the square of the readout noise of the detector, $f_\{lambda}$ is the sum of the pixels within the extraction window at each wavelength and Q is the detector gain. 
 
@@ -47,4 +47,8 @@ $$
 $$
 
 is computed. Pixels for which this quantity exceeds the `horne-extraction-profile-global-clipping-sigma` are not included in the extraction.
+
+**3 Merging of spectral orders
+
+The extraction of the spectrum is performed on each single order separately. When all orders are extrated they will be merged togheter in a single spectrum. Since regions of different orders overlap in the wavelenght space, they are first rectified on a common, equally spaced, wavelenght grid in order to merge then togheter. Flux during resampling is conserved. 
  
