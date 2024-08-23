@@ -2,6 +2,24 @@
 
 The purpose of the [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility is to perform optimal extraction order applying the algorithms reported in Horne+86.
 
+## Input
+| Frame.                   | Description                                   | 
+| ------------------------ | --------------------------------------------- |
+|  Detrended  2D spectrum | Frame containing the 2D spectrum (any observing mode)  |  
+| Dispersion map | FITS table containing the computed dispersion map for the ARM|
+| Order table | FITS table containing the spectral format computed for the ARM|
+
+## Parameters
+
+| Parameter                | Description                                   | Type  |
+| ------------------------ | --------------------------------------------- | ----- |
+|  horne-extraction-slit-length | size of the extraction box in the spatial direction  | int  |
+| horne-extraction-profile-clipping-sigma | Sigma-clipping threshold for refining the fitting of polynomials used for detemining the object profile  | int|
+| horne-extraction-profile-clipping-iteration-count| Maximum number of iteration allowed to refine fitting of polynomials of the object profile |int |
+| horne-extraction-profile-global-clipping-sigma| Sigma-clipping threshold used to exclude deviant pixels and cosmic rays during the extraction| int |
+
+## Methods
+
 The typical execution workflow is the following:
 
 ![](horne_extraction.png)
@@ -52,4 +70,10 @@ is computed. Pixels for which this quantity exceeds the `horne-extraction-profil
 ## 3 Merging of spectral orders
 
 The extraction of the spectrum is performed on each single order separately. When all orders are extrated they will be merged togheter in a single spectrum. Since regions of different orders overlap in the wavelenght space, they are first rectified on a common, equally spaced, wavelenght grid in order to merge then togheter. Flux during resampling is conserved. 
+
+## Output
+
+| Data Type | Content |
+|FITS table |Extracted spectrum and merged orders|
+
  

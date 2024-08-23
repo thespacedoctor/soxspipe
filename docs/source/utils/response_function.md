@@ -1,6 +1,6 @@
 # `response_function` 
 
-The purpose of the [`response_function`](#soxspipe.commonutils.response_function) utility is to compute the response function of the SOXS spectrograph, starting from observation of a suitable bright standard star. The function computed by this utility is used to flux calibrate the scientific spectra, converting from ADU to $erg$ $cm^{-2} s^{-1} \A^{-1}$.
+The purpose of the [`response_function`](#soxspipe.commonutils.response_function) utility is to compute the response function of the SOXS spectrograph, starting from observation of a suitable bright standard star. The function computed by this utility is used to flux calibrate the scientific spectra, converting from ADU to $erg$ $cm^{-2} s^{-1} A^{-1}$.
 
 The general algorithm and steps performed by [`response_function`](#soxspipe.commonutils.response_function) are the following reported in the flow chart below:
 
@@ -19,9 +19,7 @@ The $fluxCorrected_{\lambda}$ values are then converted in $ADU {A}^{-1} s^{-1}$
 The observed standard star spectrum is then averaged in narrow bins of about 10 $A$ in order to increase the signal-to-noise ratio (a sort-of narrow band photometry). Then, from the tabulated value of the standard star catalogue (reinterpolated on a suitable grid), the function
 
 $$
-
 S(\lambda) = \frac{C(\lambda)}{F(\lambda)}
-
 $$    
 
 where $C(\lambda)$ is the tablued value of the standard star flux in catalogue (in $erg$ $cm^{-2} s^{-1} \A^{-1}$) and $F(\lambda)$ is the flux (in ADU) measured on the standard star.
