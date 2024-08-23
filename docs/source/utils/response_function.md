@@ -19,7 +19,7 @@ The purpose of the [`response_function`](#soxspipe.commonutils.response_function
 
 ## Method
 
-The general algorithm and steps performed by [`response_function`](#soxspipe.commonutils.response_function) are the following reported in the flow chart below:
+The general algorithm and steps performed by [`response_function`](#soxspipe.commonutils.response_function) are the one reported in the flow chart below:
 
 ![](response_function.png)
 
