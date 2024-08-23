@@ -40,7 +40,6 @@ where $F(\lambda)$ is the desired 1D scientific spectrum flux calibrated in $erg
 
 ## Output
 
-
 | Data Type | Content |
 | ------------------------ | --------------------------------------------- |
 |FITS table |FITS table containing the flux calibrated input spectrum|
