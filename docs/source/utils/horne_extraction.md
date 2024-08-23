@@ -74,6 +74,7 @@ The extraction of the spectrum is performed on each single order separately. Whe
 ## Output
 
 | Data Type | Content |
+| ------------------------ | --------------------------------------------- |
 |FITS table |Extracted spectrum and merged orders|
 
  
