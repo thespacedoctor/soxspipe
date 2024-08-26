@@ -1,0 +1,1 @@
+## SOXS Acquisition Camera

@@ -3,26 +3,47 @@
 :::{include} ../../README.md
 :::
 
-
 :::{toctree}
 :hidden:
 :maxdepth: 4
 
-quickstart
-logging
-sessions
-reduce
-primer_on_soxs_obs_modes
-recipes/index
-utils/index
-files/index
-changes_link
+Introduction <soxspipe_introduction/index>
 :::
 
 
 :::{toctree}
 :hidden:
+:maxdepth: 4
+:caption: User Manual
 
+quickstart
+logging
+sessions
+reduce
+:::
+
+
+:::{toctree}
+:hidden:
+:maxdepth: 2
+:caption: Design Manual
+
+instruments/index
+observing_modes/index
+data_reduction_cascades/index
+data_organiser/index
+recipes/index
+utils/index
+files/index
+
+:::
+
+
+:::{toctree}
+:hidden:
+:caption: " "
+
+changes_link
 apidocs/index
 :::
 

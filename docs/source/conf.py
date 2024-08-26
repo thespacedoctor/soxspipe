@@ -121,6 +121,16 @@ html_add_permalinks = u"  ∞"
 
 latex_engine = 'xelatex'
 
+latex_documents = [
+    ('recipes/index', 'recipes.tex', u'soxs mbias',
+     u'David R. Young & Marco Landoni', 'howto', False),
+    ('overleaf/instruments', 'instruments.tex', u'instruments',
+     u'David R. Young & Marco Landoni', 'howto', False)
+]
+
+latex_toplevel_sectioning = "section"
+latex_show_urls = 'footnote'
+
 
 def linkcode_resolve(domain, info):
     if domain != 'py':
