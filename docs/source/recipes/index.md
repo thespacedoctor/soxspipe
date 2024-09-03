@@ -28,5 +28,14 @@ This 2D mapping function is determined incrementally via the `soxs_disp_solution
 soxs_disp_solution
 soxs_order_centres
 soxs_spatial_solution
-soxs_straighten
+:::
+
+## Observation Mode Specific Extractions
+
+:::{toctree}
+:maxdepth: 1
+
+soxs_stare
+soxs_nod
+soxs_offset
 :::

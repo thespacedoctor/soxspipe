@@ -1,1 +1,0 @@
-## Spectroscopic Observing Mode

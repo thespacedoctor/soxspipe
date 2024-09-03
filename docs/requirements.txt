@@ -14,3 +14,5 @@ git+https://github.com/harshil21/furo-sphinx-search
 sphinx_design
 pygments-csv-lexer
 sphinxcontrib-svg2pdfconverter
+sphinx-remove-toctrees
+sphinxcontrib.bibtex

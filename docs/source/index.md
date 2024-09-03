@@ -1,5 +1,4 @@
 
-
 :::{include} ../../README.md
 :::
 
@@ -8,6 +7,7 @@
 :maxdepth: 4
 
 Introduction <soxspipe_introduction/index>
+user_manual/quickstart
 :::
 
 
@@ -16,10 +16,15 @@ Introduction <soxspipe_introduction/index>
 :maxdepth: 4
 :caption: User Manual
 
-quickstart
-logging
-sessions
-reduce
+
+user_manual/installation
+Preparing a Workspace <user_manual/preparing_a_workspace>
+user_manual/reductions/index
+user_manual/logging
+user_manual/pipeline_settings
+user_manual/sessions
+support
+
 :::
 
 
@@ -28,12 +33,12 @@ reduce
 :maxdepth: 2
 :caption: Design Manual
 
-instruments/index
+SOXS Instruments <instruments/index>
 observing_modes/index
 data_reduction_cascades/index
 data_organiser/index
 recipes/index
-utils/index
+utils/_index
 files/index
 
 :::
@@ -43,9 +48,23 @@ files/index
 :hidden:
 :caption: " "
 
+faq
 changes_link
 apidocs/index
 :::
+
+:::{toctree}
+:hidden:
+:caption: " "
+:::
+
+:::{toctree}
+:hidden:
+:caption: " "
+
+todolist
+:::
+
 
 
 ## Acknowledgements

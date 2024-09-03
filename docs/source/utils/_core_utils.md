@@ -1,0 +1,22 @@
+# Core Utilities
+
+:::{toctree}
+:maxdepth: 1
+
+clip_and_stack
+create_dispersion_map
+data_organiser
+detect_continuum
+detect_order_edges
+detrend
+generic_quality_checks
+horne_extraction
+prepare_frames
+reducer
+response_function
+set_of_files
+spectroscopic_image_quality_checks
+subtract_background
+subtract_sky
+twoD_disp_map_image_to_dataframe
+:::

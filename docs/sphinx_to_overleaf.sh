@@ -13,6 +13,9 @@ fd \\.sty   --exec perl -0777 -pi -e 's/\\input\{(sphinx[^\/].*?.sty)}/\\input\{
 fd \\.sty   --exec perl -0777 -pi -e 's/\\RequirePackage\{(sphinx[^\/].*?)}/\\RequirePackage\{sphinx\/$1\}/gs'
 fd \\.tex   --exec perl -0777 -pi -e 's/\\sphinxtableofcontents//gs'
 fd \\.tex   --exec perl -0777 -pi -e 's/\\sphinxmaketitle//gs'
+fd \\.tex   --exec perl -0777 -pi -e 's/\\sphinxtableofcontents//gs'    
+fd \\.tex   --exec perl -0777 -pi -e 's/\\sphinxincludegraphics(.*?)\{\{([^\}]*)\}(\.png)\}/\\sphinxincludegraphics$1\{\{sphinx\/$2\}$3\}/gs'
 # rm -rf ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx
 # mkdir ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx
 cp -r latex/* ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx/
+cp -r latex/* ~/Dropbox/Apps/Overleaf/SOXS-MAN-0006-Pipeline-User-Manual/sphinx/

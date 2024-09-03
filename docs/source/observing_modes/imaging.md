@@ -1,1 +1,0 @@
-## Imaging Observing Mode

@@ -1,0 +1,5 @@
+## Purpose
+
+The purpose of the SOXS Data Reduction pipeline (`soxspipe`) is to remove all instrument signatures from SOXS scientific data frames using the appropriate calibration data. `soxspipe` supports reducing data taken in each available observation mode, converting this data into physical units, and delivering them with their associated error bars to the [ESO SAF](http://archive.eso.org/cms.html). The pipeline also generates QC metrics to monitor telescope, instrument, and detector health.
+
+Running at the summit in La Silla, `soxspipe` delivers science-ready, fully reduced data products immediately after an exposure completes. The target users of `soxspipe` are the ESO Data Products and Quality Control Group (DPQC), the La Silla Science Operators (to be used as a quick look tool), the SOXS consortium and the general user community that may want to perform tailored processing of SOXS data.

@@ -23,6 +23,7 @@ from builtins import object
 import sys
 import os
 
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -49,10 +50,6 @@ class detect_order_edges(_base_detect):
         - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
 
     **Usage:**
-
-    :::{todo}
-        - add a tutorial about ``detect_order_edges`` to documentation
-    :::
 
     ```python
     from soxspipe.commonutils import detect_order_edges
