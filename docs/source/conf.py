@@ -7,7 +7,8 @@ import time
 import os
 import sys
 from datetime import datetime, date
-
+# Check if we are on Read the Docs
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 # WHERE DOES THIS conf.py FILE LIVE?
 moduleDirectory = os.path.dirname(os.path.realpath(__file__))
@@ -183,40 +184,41 @@ html_add_permalinks = u"  ∞"
 
 latex_engine = 'xelatex'
 
-latex_documents = [
-    ('overleaf/introduction', 'introduction.tex', u'introduction',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/recipes', 'recipes.tex', u'recipes',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/utils', 'utils.tex', u'utils',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/instruments', 'instruments.tex', u'instruments',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/data_organiser', 'data_organiser.tex', u'data organiser',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/data_reduction_cascades', 'data_reduction_cascades.tex', u'data reduction cascades',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/observing_modes', 'observing_modes.tex', u'observing modes',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/files', 'files.tex', u'files',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/quickstart_guide', 'quickstart_guide.tex', u'quickstart guide',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/installation', 'installation.tex', u'installation',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/preparing_a_workspace', 'preparing_a_workspace.tex', u'preparing a workspace',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/reductions', 'reductions.tex', u'reductions',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/pipeline_settings', 'pipeline_settings.tex', u'pipeline settings',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/logging', 'logging.tex', u'logging',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/sessions', 'sessions.tex', u'sessions',
-     u'David R. Young & Marco Landoni', 'howto', False),
-    ('overleaf/support', 'support.tex', u'sessions',
-     u'David R. Young & Marco Landoni', 'howto', False),
-]
+if not on_rtd:
+    latex_documents = [
+        ('overleaf/introduction', 'introduction.tex', u'introduction',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/recipes', 'recipes.tex', u'recipes',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/utils', 'utils.tex', u'utils',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/instruments', 'instruments.tex', u'instruments',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/data_organiser', 'data_organiser.tex', u'data organiser',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/data_reduction_cascades', 'data_reduction_cascades.tex', u'data reduction cascades',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/observing_modes', 'observing_modes.tex', u'observing modes',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/files', 'files.tex', u'files',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/quickstart_guide', 'quickstart_guide.tex', u'quickstart guide',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/installation', 'installation.tex', u'installation',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/preparing_a_workspace', 'preparing_a_workspace.tex', u'preparing a workspace',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/reductions', 'reductions.tex', u'reductions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/pipeline_settings', 'pipeline_settings.tex', u'pipeline settings',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/logging', 'logging.tex', u'logging',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/sessions', 'sessions.tex', u'sessions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/support', 'support.tex', u'sessions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+    ]
 
 latex_toplevel_sectioning = "section"
 latex_show_urls = 'footnote'
