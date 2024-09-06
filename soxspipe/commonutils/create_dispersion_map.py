@@ -1505,9 +1505,9 @@ class create_dispersion_map(object):
 
         **Key Arguments:**
 
-        - ``order`` -- specific order to generate the placeholder pixels for. Inner-order pixels set to NaN, else set to 0. Default *False* (generate all orders)
+        - ``order`` -- specific order to generate the placeholder pixels for. Inner-order pixels set to nan, else set to 0. Default *False* (generate all orders)
         - ``plot`` -- generate plots of placeholder images (for debugging). Default *False*.
-        - ``reverse`` -- Inner-order pixels set to 0, else set to NaN (reverse of default output).
+        - ``reverse`` -- Inner-order pixels set to 0, else set to nan (reverse of default output).
 
         **Return:**
 
@@ -1581,11 +1581,11 @@ class create_dispersion_map(object):
             else:
                 for b, u, l in zip(axisBcoord, np.ceil(axisACoord_edgeup).astype(int), np.floor(axisACoord_edgelow).astype(int)):
                     if self.axisA == "x":
-                        wlMap.data[b, l: u] = np.NaN
-                        orderMap.data[b, l: u] = np.NaN
+                        wlMap.data[b, l: u] = np.nan
+                        orderMap.data[b, l: u] = np.nan
                     else:
-                        wlMap.data[l: u, b] = np.NaN
-                        orderMap.data[l: u, b] = np.NaN
+                        wlMap.data[l: u, b] = np.nan
+                        orderMap.data[l: u, b] = np.nan
 
         # SLIT MAP PLACEHOLDER SAME AS WAVELENGTH MAP PLACEHOLDER
         slitMap = wlMap.copy()

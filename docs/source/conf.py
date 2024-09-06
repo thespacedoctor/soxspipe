@@ -42,6 +42,7 @@ extensions = [
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     'sphinxcontrib.inkscapeconverter',
+    'sphinx.ext.autosectionlabel',
     # External stuff
     "sphinxext.opengraph",
     "myst_parser",
@@ -77,7 +78,7 @@ myst_enable_extensions = [
 
 ]
 suppress_warnings = ["myst.strikethrough"]
-
+autosectionlabel_prefix_document = True
 
 numfig = True
 
