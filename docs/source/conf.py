@@ -57,7 +57,8 @@ extensions = [
     'sphinx_search.extension',
     'sphinx_tippy',
     "sphinx_remove_toctrees",
-    'sphinxcontrib.bibtex'
+    'sphinxcontrib.bibtex',
+    'sphinxcontrib.images'
 ]
 myst_enable_extensions = [
     "tasklist",
@@ -89,6 +90,7 @@ numfig_format = {
     'table': 'Table %s',
 }
 
+
 # EXTENSION SETTINGS
 myst_enable_checkboxes = True
 myst_heading_anchors = 3
@@ -102,6 +104,11 @@ remove_from_toctrees = ["utils/[!_]*"]
 # BIBTEX STUFF
 bibtex_bibfiles = ['dry-bookends-references.bib']
 bibtex_reference_style = 'author_year'
+
+images_config = {
+    'override_image_directive': True,
+    'download': False
+}
 
 
 # AUTODOC2 AND BIBTEX PLUGS CLASH DUE TO THIS ISSUE: https://github.com/pylint-dev/astroid/issues/2191

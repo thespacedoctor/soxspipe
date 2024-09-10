@@ -4,7 +4,9 @@ The purpose of [`prepare_frames`](#soxspipe.recipes.base_recipe.base_recipe.prep
 
 Here's the typical workflow for preparing the raw frames:
 
+
 :::{figure-md} prepare_frame_util
+:target: prepare_frame.png
 ![](prepare_frame.png){width=600px}
 
 The algorithm used to prepare raw frames for data-reduction.
@@ -41,10 +43,15 @@ Finally the prepared frames are saved out into the intermediate frames location 
 Viewing the image in DS9 (using the command `ds9 -multiframe -tile columns pre_filename.fits` to show all extensions as tiled frames) we can see the 'FLUX', 'QUAL' and 'ERR' extensions are now all present.
 
 :::{figure-md} image_extensions
+:target: ../_images/image-20240910102057203.png
 ![image-20240910102057203](../_images/image-20240910102057203.png){width=600px} 
 
 Each prepared frame has data (FLUX), bad-pixel mask (QUAL) and uncertainty map (ERR) extensions. 
 :::
+
+
+
+![image-20240910102057203](../_images/image-20240910102057203.png)
 
 :::{autodoc2-object} soxspipe.recipes.base_recipe.base_recipe.prepare_frames
 :::
