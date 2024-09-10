@@ -25,7 +25,7 @@ os.environ['TERM'] = 'vt100'
 
 class soxs_mdark(base_recipe):
     """
-    *The soxs_mdark recipe*
+    *The `soxs_mdark` recipe generates a master-dark frame used to remove flux attributed to the dark current from other frames.*
 
     **Key Arguments**
 
@@ -33,7 +33,7 @@ class soxs_mdark(base_recipe):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
-    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
     **Usage**
 
@@ -42,13 +42,11 @@ class soxs_mdark(base_recipe):
     mdarkFrame = soxs_mdark(
         log=log,
         settings=settings,
-        inputFrames=fileList
-    )..produce_product()
+        inputFrames=fileList,
+        verbose=False,
+        overwrite=False
+    ).produce_product()
     ```
-
-    :::{todo}
-        - add a tutorial about ``soxs_mdark`` to documentation
-    :::
     """
 
     def __init__(

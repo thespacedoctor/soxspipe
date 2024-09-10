@@ -21,9 +21,6 @@ soxs-mdark:
     frame-clipping-iterations: 1
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-lower-sigma: 3
-    clipping-upper-sigma: 3   
-    clipping-iteration-count: 5
 
 soxs-disp-solution:
     uvb:
@@ -261,12 +258,6 @@ soxs-stare:
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
-    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-iteration-count: 1
-     # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-sigma: 50
-    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-upper-sigma: 1000 
     uvb:
         # the length of the 'slit' used to collect object flux (in pixels)
         horne-extraction-slit-length: 20
@@ -418,14 +409,6 @@ soxs-nod:
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
-    # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-simga: 10
-    # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-simga: 10 
-    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-iteration-count: 0
-    clipping-lower-sigma: 10
-    clipping-upper-sigma: 10 
     # the length of the 'slit' used to collect object flux (in pixels)
     horne-extraction-slit-length: 20
     # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)

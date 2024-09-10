@@ -19,11 +19,9 @@ soxs-mdark:
     # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
     frame-clipping-sigma: 3 
     frame-clipping-iterations: 1
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
     stacked-clipping-sigma: 5
-    stacked-clipping-iterations: 5
-    clipping-lower-sigma: 3
-    clipping-upper-sigma: 3   
-    clipping-iteration-count: 5
+    stacked-clipping-iterations: 3
 
 soxs-disp-solution:
     uvb:
@@ -229,12 +227,6 @@ soxs-stare:
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
-    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-iteration-count: 1
-     # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-sigma: 50
-    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-upper-sigma: 1000 
     uvb:
         # the length of the 'slit' used to collect object flux (in pixels)
         horne-extraction-slit-length: 20

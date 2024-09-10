@@ -110,7 +110,7 @@ runAutodoc2 = os.getenv("AUTODOC2")
 
 print(runAutodoc2)
 
-if runAutodoc2 and runAutodoc2 != "None":
+if True or (runAutodoc2 and runAutodoc2 != "None"):
     print("RUNNING AUTODOC2")
     autodoc2_packages = [
         {
@@ -123,7 +123,11 @@ if runAutodoc2 and runAutodoc2 != "None":
     autodoc2_skip_module_regexes = [r".*test.*"]
     autodoc2_hidden_objects = ["private"]
     autodoc2_sort_names = True
-else:
+# else:
+
+if False:
+    # THIS BUG NEEDS FIXED TO BE ABLE TO USE AUTODOC2 AND ROUND BRACKETS
+    # https://github.com/pylint-dev/astroid/issues/2191
     print("RUNNING A SPHINX BUILD")
     import dataclasses
     from sphinxcontrib.bibtex.style.referencing.author_year import AuthorYearReferenceStyle

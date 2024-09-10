@@ -1,10 +1,14 @@
 # `prepare_frames`
 
-The purpose of [`prepare_frames`](#soxspipe.recipes.base_recipe.base_recipe.prepare_frames) is to prepare the raw SOXS frames for data reduction. 
+The purpose of [`prepare_frames`](#soxspipe.recipes.base_recipe.base_recipe.prepare_frames) is to prepare the raw SOXS frames for data reduction by trimming the overscan regions, converting the data count unit to electrons amd assigning an initial error map and bad-pixel maps.
 
 Here's the typical workflow for preparing the raw frames:
 
-![](prepare_frame.png)
+:::{figure-md} prepare_frame_util
+![](prepare_frame.png){width=600px}
+
+The algorithm used to prepare raw frames for data-reduction.
+:::
 
 **1. Trim Overscan**
 
@@ -36,9 +40,12 @@ Finally the prepared frames are saved out into the intermediate frames location 
 
 Viewing the image in DS9 (using the command `ds9 -multiframe -tile columns pre_filename.fits` to show all extensions as tiled frames) we can see the 'FLUX', 'QUAL' and 'ERR' extensions are now all present.
 
-[![](https://live.staticflickr.com/65535/50237008782_5bb148baaf_b.png)](https://live.staticflickr.com/65535/50237008782_5bb148baaf_o.png)
+:::{figure-md} image_extensions
+![image-20240910102057203](../_images/image-20240910102057203.png){width=600px} 
+
+Each prepared frame has data (FLUX), bad-pixel mask (QUAL) and uncertainty map (ERR) extensions. 
+:::
 
 :::{autodoc2-object} soxspipe.recipes.base_recipe.base_recipe.prepare_frames
 :::
-
 

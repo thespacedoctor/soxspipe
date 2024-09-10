@@ -33,7 +33,7 @@ class base_recipe(object):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
-    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
 
     **Usage**

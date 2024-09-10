@@ -12,9 +12,7 @@ instrument: soxs
 #     stacked-clipping-iterations: 3
 
 # soxs-mdark:
-#     clipping-lower-sigma: 5
-#     clipping-upper-sigma: 5   
-#     clipping-iteration-count: 5
+
 
 # soxs-disp-solution:
 #     pixel-window-size: 10
@@ -45,11 +43,8 @@ instrument: soxs
 
 # soxs-mflat:
 #     centre-order-window: 20
-#     clipping-lower-sigma: 50
 #     # NUMBER OF CROSS-ORDER SLICES PER ORDER
 #     order-sample-count: 50
-#     clipping-upper-sigma: 50   
-#     clipping-iteration-count: 5
 #     slice-length-for-edge-detection: 90
 #     slice-width-for-edge-detection: 5
 #     min-percentage-threshold-for-edge-detection: 20
