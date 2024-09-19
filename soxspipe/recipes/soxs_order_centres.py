@@ -279,7 +279,7 @@ class soxs_order_centres(base_recipe):
             # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
             detector = detect_continuum(
                 log=self.log,
-                pinholeFlat=self.orderFrame,
+                traceFrame=self.orderFrame,
                 dispersion_map=disp_map_table,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -310,7 +310,7 @@ class soxs_order_centres(base_recipe):
             # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
             detector = detect_continuum(
                 log=self.log,
-                pinholeFlat=self.orderFrame,
+                traceFrame=self.orderFrame,
                 dispersion_map=disp_map_table,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -361,7 +361,7 @@ def parameterTuning(p, log, recipeSettings, settings, orderFrame, disp_map_table
     from soxspipe.commonutils import create_dispersion_map
     detector = detect_continuum(
         log=log,
-        pinholeFlat=orderFrame,
+        traceFrame=orderFrame,
         dispersion_map=disp_map_table,
         settings=settings,
         recipeSettings=recipeSettings,

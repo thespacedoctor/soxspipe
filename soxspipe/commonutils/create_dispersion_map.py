@@ -117,7 +117,7 @@ class create_dispersion_map(object):
         else:
             self.recipeName = "soxs-disp-solution"
 
-        # DETECTOR PARAMETERS LOOKUP OBJECT
+        # DETECTOR PARAMETERS LOOKUP OBJECToff
         self.detectorParams = detector_lookup(
             log=log,
             settings=settings
@@ -182,7 +182,7 @@ class create_dispersion_map(object):
 
         self.uniqueSlitPos = orderPixelTable['slit_position'].unique()
 
-        # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME AASD
+        # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME
         windowSize = self.recipeSettings["pixel-window-size"]
 
         # MASK THE PINHOLE FRAME
@@ -1332,6 +1332,7 @@ class create_dispersion_map(object):
             observed_x = orderPixelTable["observed_x"].to_numpy()
             observed_y = orderPixelTable["observed_y"].to_numpy()
 
+            # IF mean_res < 10 WE WANT TO START FROM SCRATCH AGAIN SO NOT TO INFLUENCE THE FINAL RESULT
             if True and mean_res > 10:
                 # FIND CACHED COEFF ELSE RETURN ARRAYS OF 1s
                 xcoeff, ycoeff = get_cached_coeffs(
@@ -1594,6 +1595,7 @@ class create_dispersion_map(object):
         if False:
             import matplotlib.pyplot as plt
             rotatedImg = np.rot90(slitMap.data, 1)
+            rotatedImg = slitMap.data
             std = np.nanstd(slitMap.data)
             mean = np.nanmean(slitMap.data)
             vmax = mean + 3 * std
@@ -1647,7 +1649,7 @@ class create_dispersion_map(object):
         dp = self.detectorParams
         arm = self.arm
 
-        self.map_to_image_displacement_threshold = 0.0001
+        self.map_to_image_displacement_threshold = self.recipeSettings["map_to_image_displacement_threshold"]
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
             log=self.log, settings=self.settings, arm=self.arm)
@@ -1669,6 +1671,7 @@ class create_dispersion_map(object):
         os.environ['OPENBLAS_NUM_THREADS'] = numThreads
         os.environ['OMP_NUM_THREADS'] = numThreads
         os.environ['BLAS_NUM_THREADS'] = numThreads
+
         results = fmultiprocess(log=self.log, function=self.order_to_image,
                                 inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=False)
         del os.environ['OPENBLAS_NUM_THREADS']
@@ -1750,14 +1753,14 @@ class create_dispersion_map(object):
         if np.count_nonzero(wlMap.data) == 0:
             return slitMap, wlMap
 
-        # FIRST GENERATE A WAVELENGTH SURFACE - FINE WL, CHUNKY SLIT-POSTION
+        # FIRST GENERATE A WAVELENGTH SURFACE - FINE WL, CHUNKY SLIT-POSITION
         wlRange = maxWl - minWl
         if self.arm.lower == "nir":
-            grid_res_wavelength = wlRange / 3500
+            grid_res_wavelength = wlRange / 200
         else:
-            grid_res_wavelength = wlRange / 6000
+            grid_res_wavelength = wlRange / 200
         slitLength = self.detectorParams["slit_length"]
-        grid_res_slit = slitLength / 100
+        grid_res_slit = slitLength / 20
 
         halfGrid = (slitLength / 2) * 1.2
         slitArray = np.arange(-halfGrid, halfGrid +
@@ -1775,10 +1778,14 @@ class create_dispersion_map(object):
         iterationLimit = 20
         remainingCount = 1
 
+        # GET A COMPLETE LIST OF THE PIXEL WE NEED
+        nan_indexes = np.argwhere(np.isnan(slitMap.data))
+        ally, allx = nan_indexes[:, 0], nan_indexes[:, 1]
+
         while remainingPixels and remainingCount and iteration < iterationLimit:
             iteration += 1
 
-            # GENERATE THE ORDERPIXEL TABLE FROM WL AND SLIT-POSTION GRID .. IF WITHIN THRESHOLD OF CENTRE OF DETECTOR PIXEL THEN INJECT INTO MAPS
+            # GENERATE THE ORDER PIXEL TABLE FROM WL AND SLIT-POSITION GRID .. IF WITHIN THRESHOLD OF CENTRE OF DETECTOR PIXEL THEN INJECT INTO MAPS
             orderPixelTable, remainingCount = self.convert_and_fit(
                 order=order, bigWlArray=bigWlArray, bigSlitArray=bigSlitArray, slitMap=slitMap, wlMap=wlMap, iteration=iteration, plots=False)
 
@@ -1791,9 +1798,17 @@ class create_dispersion_map(object):
             train_wl = orderPixelTable["wavelength"].values
             train_sp = orderPixelTable["slit_position"].values
 
-            # USE CUBIC SPLINE NEIGHEST NEIGHBOUR TO SEED RESULTS
-            bigWlArray = griddata((train_wlx, train_wly), train_wl, (orderPixelTable['pixel_x'].values, orderPixelTable['pixel_y'].values), method="cubic")
-            bigSlitArray = griddata((train_wlx, train_wly), train_sp, (orderPixelTable['pixel_x'].values, orderPixelTable['pixel_y'].values), method="cubic")
+            targetX = orderPixelTable['pixel_x'].values
+            targetY = orderPixelTable['pixel_y'].values
+
+            if iteration == 1:
+                # ADD MISSING PIXELS
+                targetX = np.concatenate([targetX, allx])
+                targetY = np.concatenate([targetY, ally])
+
+            # USE CUBIC SPLINE NEAREST NEIGHBOUR TO SEED RESULTS
+            bigWlArray = griddata((train_wlx, train_wly), train_wl, (targetX, targetY), method="cubic")
+            bigSlitArray = griddata((train_wlx, train_wly), train_sp, (targetX, targetY), method="cubic")
 
         self.log.debug('completed the ``order_to_image`` method')
         return slitMap, wlMap
@@ -1874,9 +1889,11 @@ class create_dispersion_map(object):
         # FILTER TO WL/SLIT POSITION CLOSE ENOUGH TO CENTRE OF PIXEL
         mask = (orderPixelTable['residual_xy'] <
                 self.map_to_image_displacement_threshold)
+
         # KEEP ONLY VALUES CLOSEST TO CENTRE OF PIXEL
         newPixelValue = orderPixelTable.loc[mask].drop_duplicates(
             subset=['pixel_x', 'pixel_y'], keep="first")
+
         # REMOVE PIXELS FOUND IN newPixelValue FROM orderPixelTable
         orderPixelTable = newPixelValue[['pixel_x', 'pixel_y']].merge(orderPixelTable, on=[
             'pixel_x', 'pixel_y'], how='right', indicator=True).query('_merge == "right_only"').drop(columns=['_merge'])

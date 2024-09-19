@@ -1,4 +1,4 @@
-# `subtract_background` 
+# subtract_background
 
 The purpose of the [`subtract_background`](#soxspipe.commonutils.subtract_background) utility is to model the topology of the scattered background light within an image and then remove it.
 

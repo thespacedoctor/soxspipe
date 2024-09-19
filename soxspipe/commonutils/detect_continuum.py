@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-*find and fit the continuum in a pinhole flat frame with low-order polynomials. These polynominals are the central loctions of the orders*
+*find and fit the continuum trace across all echelle orders with low-order polynomials.*
 
 Author
 : David Young & Marco Landoni
@@ -16,18 +16,13 @@ from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
 from soxspipe.commonutils.toolkit import get_calibration_lamp
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
-import collections
-
-
-from random import random
-
-
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
-
-from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
+import collections
+from random import random
+from os.path import expanduser
 from fundamentals import tools
 from builtins import object
 import sys
@@ -457,13 +452,13 @@ class _base_detect(object):
 
 class detect_continuum(_base_detect):
     """
-    *find and fit the continuum in a pinhole flat frame with low-order polynomials. These polynominals are the central loctions of the orders*
+    *find and fit the continuum trace across all echelle orders with low-order polynomials.*
 
     **Key Arguments:**
 
     - ``log`` -- logger
-    - ``pinholeFlat`` -- calibrationed pinhole flat frame (CCDObject)
-    - ``dispersion_map`` -- path to dispersion map csv file containing polynomial fits of the dispersion solution for the frame
+    - ``traceFrame`` -- calibrated frame containing a source trace (CCDObject)
+    - ``dispersion_map`` -- path to dispersion map file containing polynomial fits of the dispersion solution for the frame
     - ``settings`` -- the settings dictionary
     - ``recipeSettings`` -- the recipe specific settings
     - ``recipeName`` -- the recipe name as given in the settings dictionary
@@ -471,10 +466,10 @@ class detect_continuum(_base_detect):
     - ``productsTable`` -- the data frame to collect output products
     - ``sofName`` ---- name of the originating SOF file
     - ``binx`` -- binning in x-axis
-        - ``biny`` -- binning in y-axis
-        - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
-        - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
-        - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
+    - ``biny`` -- binning in y-axis
+    - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
+    - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
+    - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
 
     **Usage:**
 
@@ -484,7 +479,7 @@ class detect_continuum(_base_detect):
     from soxspipe.commonutils import detect_continuum
     detector = detect_continuum(
         log=log,
-        pinholeFlat=pinholeFlat,
+        traceFrame=traceFrame,
         dispersion_map=dispersion_map,
         settings=settings,
         recipeName="soxs-order-centre"
@@ -496,7 +491,7 @@ class detect_continuum(_base_detect):
     def __init__(
             self,
             log,
-            pinholeFlat,
+            traceFrame,
             dispersion_map,
             settings=False,
             recipeSettings=False,
@@ -517,14 +512,14 @@ class detect_continuum(_base_detect):
 
         self.settings = settings
         try:
-            self.noddingSequence = "_A" if int(pinholeFlat.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
+            self.noddingSequence = "_A" if int(traceFrame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
             if locationSetIndex:
                 self.noddingSequence += str(locationSetIndex)
         except:
             self.noddingSequence = ""
 
         self.recipeName = recipeName
-        self.pinholeFlat = pinholeFlat
+        self.traceFrame = traceFrame
         self.dispersion_map = dispersion_map
         self.qc = qcTable
         self.products = productsTable
@@ -541,10 +536,10 @@ class detect_continuum(_base_detect):
             log=self.log,
             settings=self.settings
         ).get
-        self.arm = pinholeFlat.header[self.kw("SEQ_ARM")]
-        self.dateObs = pinholeFlat.header[self.kw("DATE_OBS")]
-        self.inst = pinholeFlat.header[self.kw("INSTRUME")]
-        self.exptime = pinholeFlat.header[self.kw("EXPTIME")]
+        self.arm = traceFrame.header[self.kw("SEQ_ARM")]
+        self.dateObs = traceFrame.header[self.kw("DATE_OBS")]
+        self.inst = traceFrame.header[self.kw("INSTRUME")]
+        self.exptime = traceFrame.header[self.kw("EXPTIME")]
 
         # if self.exptime < 59 and recipeName != "soxs-stare":
         #     raise Exception("too low")
@@ -559,7 +554,7 @@ class detect_continuum(_base_detect):
         self.axisBDeg = self.recipeSettings["disp-axis-deg"]
         self.orderDeg = self.recipeSettings["order-deg"]
 
-        self.lamp = get_calibration_lamp(log=log, frame=pinholeFlat, kw=self.kw)
+        self.lamp = get_calibration_lamp(log=log, frame=traceFrame, kw=self.kw)
 
         home = expanduser("~")
         self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
@@ -740,10 +735,10 @@ class detect_continuum(_base_detect):
             }).to_frame().T], ignore_index=True)
             # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
             order_table_path = self.write_order_table_to_file(
-                frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+                frame=self.traceFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
         else:
             order_table_path = self.write_order_table_to_file(
-                frame=self.pinholeFlat, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+                frame=self.traceFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
 
         # mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         # std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
@@ -840,7 +835,7 @@ class detect_continuum(_base_detect):
             sliceAxis = "y"
             sliceAntiAxis = "x"
 
-        slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.pinholeFlat,
+        slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.traceFrame,
                                                                          width=self.sliceWidth, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
 
         if slice is None:
@@ -957,7 +952,7 @@ class detect_continuum(_base_detect):
         flipImage = self.detectorParams["flip-qc-plot"]
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = self.pinholeFlat.data
+        rotatedImg = self.traceFrame.data
         if rotateImage:
             rotatedImg = np.rot90(rotatedImg, rotateImage / 90)
         if flipImage:
@@ -1022,11 +1017,11 @@ class detect_continuum(_base_detect):
             midrow.set_title(
                 "global polynomal fit of order-centres", fontsize=10)
         if self.axisB == "y":
-            axisALength = self.pinholeFlat.data.shape[1]
-            axisBLength = self.pinholeFlat.data.shape[0]
+            axisALength = self.traceFrame.data.shape[1]
+            axisBLength = self.traceFrame.data.shape[0]
         elif self.axisB == "x":
-            axisALength = self.pinholeFlat.data.shape[0]
-            axisBLength = self.pinholeFlat.data.shape[1]
+            axisALength = self.traceFrame.data.shape[0]
+            axisBLength = self.traceFrame.data.shape[1]
 
         axisBlinelist = np.arange(0, axisBLength, 3)
 
@@ -1191,7 +1186,7 @@ class detect_continuum(_base_detect):
         if not self.sofName:
             filename = filenamer(
                 log=self.log,
-                frame=self.pinholeFlat,
+                frame=self.traceFrame,
                 settings=self.settings
             )
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
@@ -1225,7 +1220,6 @@ class detect_continuum(_base_detect):
             self):
         """*take many cross-dispersion samples across each order to try and find an object trace*
 
-
         **Return:**
 
         - ``orderPixelTable`` -- the detector locations at which a trace was found
@@ -1242,8 +1236,8 @@ class detect_continuum(_base_detect):
         binx = 1
         biny = 1
         try:
-            binx = self.pinholeFlat.header[self.kw("WIN_BINX")]
-            biny = self.pinholeFlat.header[self.kw("WIN_BINY")]
+            binx = self.traceFrame.header[self.kw("WIN_BINX")]
+            biny = self.traceFrame.header[self.kw("WIN_BINY")]
         except:
             pass
 
@@ -1256,21 +1250,15 @@ class detect_continuum(_base_detect):
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
         self.sliceWidth = self.recipeSettings["slice-width"]
 
-        # REMOVE elif self.inst == "XSHOOTER":
-        #     self.axisA = "x"
-        #     self.axisB = "y"
-        #     coeff_dict = {"degorder_cent": self.orderDeg,
-        #                   "degy_cent": self.axisBDeg}
-
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan
         orderPixelTable[f'cont_{self.axisB}'] = np.nan
 
         # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
-        # CROSS-DISPERSION DIRECTTION. RETURN PEAK POSTIONS
+        # CROSS-DISPERSION DIRECTION. RETURN PEAK POSITIONS
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=self.pinholeFlat, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=self.traceFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         if "order" in self.recipeName.lower():
             self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")

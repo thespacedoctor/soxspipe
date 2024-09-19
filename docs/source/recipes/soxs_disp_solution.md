@@ -1,4 +1,4 @@
-# `soxs_disp_solution`
+# soxs_disp_solution
 
 The purpose of the [`soxs_disp_solution`](#soxspipe.recipes.soxs_disp_solution) is to use a single-pinhole arc-lamp frame (example image above) to generate a first guess dispersion solution.
 

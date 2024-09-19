@@ -109,7 +109,6 @@ bibtex_reference_style = 'author_year'
 # UNTIL THIS IS FIXED SWITCH BETWEEN THE TWO
 runAutodoc2 = os.getenv("AUTODOC2")
 
-print(runAutodoc2)
 
 if True or (runAutodoc2 and runAutodoc2 != "None"):
     print("RUNNING AUTODOC2")

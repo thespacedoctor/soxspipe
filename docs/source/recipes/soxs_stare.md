@@ -1,4 +1,4 @@
-# `soxs_stare` - PLANNED
+# soxs_stare
 
 <!-- PURPOSE TEXT -->
 

@@ -25,7 +25,7 @@ def dispersion_map_to_pixel_arrays(
         dispersionMapPath,
         orderPixelTable,
         removeOffDetectorLocation=True):
-    """*use a first-guess dispersion map to append x,y fits to line-list data frame.* 
+    """*Use a dispersion solution to convert wavelength, slit-position and echelle order numbers to X,Y pixel positions.* 
 
     Return a line-list with x,y fits given a first guess dispersion map.*
 
@@ -114,7 +114,8 @@ def get_cached_coeffs(
         recipeName,
         orderDeg,
         wavelengthDeg,
-        slitDeg):
+        slitDeg,
+        reset=False):
     """*find cached coefficients (if they exist)* 
 
     Return a line-list with x,y fits given a first guess dispersion map.*
@@ -128,6 +129,7 @@ def get_cached_coeffs(
     - ``orderDeg`` -- the order deg
     - ``wavelengthDeg`` -- wavelength degree
     - ``slitDeg`` -- slit degree
+    - ``reset`` -- always reset the coeffs. Don't use cached. Default *False*
 
     **Usage:**
 
@@ -166,7 +168,7 @@ def get_cached_coeffs(
 
     coeff = {}
 
-    if os.path.exists(filePath):
+    if os.path.exists(filePath) and reset == False:
         dispersion_map = filePath
         # SPEC FORMAT TO PANDAS DATAFRAME
         dat = Table.read(dispersion_map, format='fits')

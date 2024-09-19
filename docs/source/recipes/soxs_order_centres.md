@@ -1,4 +1,4 @@
-# `soxs_order_centres`
+# soxs_order_centres
 
 The purpose of the [`soxs_order_centres`](#soxspipe.recipes.soxs_order_centres) recipe is to find and fit the order centres with low-level polynomials.
 

@@ -1,4 +1,4 @@
-# `soxs_offset_mode` - PLANNED
+# soxs_offset_mode
 
 <!-- PURPOSE TEXT -->
 

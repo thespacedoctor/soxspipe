@@ -1,4 +1,4 @@
-# `soxs_mflat`
+# soxs_mflat
 
 The purpose of the [`soxs_mflat`](#soxspipe.recipes.soxs_mflat) recipe is to create a single normalised [master-flat frame](../files/master_flat.md) used to correct for non-uniformity in response to light across the detector plain.
  

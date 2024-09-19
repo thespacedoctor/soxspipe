@@ -389,7 +389,7 @@ def unpack_order_table(
         prebinned=False,
         order=False,
         limitToDetectorFormat=False):
-    """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
+    """*Unpack an order location table and return an `orderPolyTable` dataframe containing the polynomial coefficients for the order centres and edges, an `orderPixelTable` dataframe containing the pixel-coordinates for each order centre and edges, and finally, an `orderMetaTable` dataframe giving metadata about the frame binning and format.*
 
     **Key Arguments:**
 
@@ -947,35 +947,41 @@ def twoD_disp_map_image_to_dataframe(
     thisDict = {
         "x": xarray,
         "y": yarray,
-        "wavelength": hdul["WAVELENGTH"].data.flatten(),
-        "slit_position": hdul["SLIT"].data.flatten(),
-        "order": hdul["ORDER"].data.flatten(),
-        "min": minimumBinnedPixelValue
+        "wavelength": hdul["WAVELENGTH"].data.flatten().astype(float),
+        "slit_position": hdul["SLIT"].data.flatten().astype(float),
+        "order": hdul["ORDER"].data.flatten().astype(float),
+        "min": minimumBinnedPixelValue.astype(float)
     }
 
-    try:
-        if associatedFrame:
-            thisDict["flux"] = associatedFrame.data.flatten()
-            thisDict["mask"] = associatedFrame.mask.flatten()
-            thisDict["error"] = associatedFrame.uncertainty.array.flatten()
+    if associatedFrame:
+        thisDict["flux"] = associatedFrame.data.flatten().astype(float)
+        thisDict["mask"] = associatedFrame.mask.flatten().astype(bool)
+        thisDict["error"] = associatedFrame.uncertainty.array.flatten().astype(float)
 
-    except Exception as e:
+    # REMOVE IF ABOVE .astype(float) IS WORKING
+    # try:
+    #     if associatedFrame:
+    #         thisDict["flux"] = associatedFrame.data.flatten()
+    #         thisDict["mask"] = associatedFrame.mask.flatten()
+    #         thisDict["error"] = associatedFrame.uncertainty.array.flatten()
 
-        if binned:
-            minimumBinnedPixelValue = minimumBinnedPixelValue.byteswap().newbyteorder()
+    # except Exception as e:
 
-        thisDict = {
-            "x": xarray,
-            "y": yarray,
-            "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-            "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
-            "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
-            "min": minimumBinnedPixelValue
-        }
-        if associatedFrame:
-            thisDict["flux"] = associatedFrame.data.flatten().byteswap().newbyteorder()
-            thisDict["mask"] = associatedFrame.mask.flatten().byteswap().newbyteorder()
-            thisDict["error"] = associatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
+    #     if binned:
+    #         minimumBinnedPixelValue = minimumBinnedPixelValue.byteswap().newbyteorder()
+
+    #     thisDict = {
+    #         "x": xarray,
+    #         "y": yarray,
+    #         "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+    #         "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
+    #         "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+    #         "min": minimumBinnedPixelValue
+    #     }
+    #     if associatedFrame:
+    #         thisDict["flux"] = associatedFrame.data.flatten().byteswap().newbyteorder()
+    #         thisDict["mask"] = associatedFrame.mask.flatten().byteswap().newbyteorder()
+    #         thisDict["error"] = associatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
 
     mapDF = pd.DataFrame.from_dict(thisDict)
     if removeMaskedPixels:
@@ -1077,6 +1083,19 @@ def add_recipe_logger(
         log,
         productPath):
     """*add a recipe-specific handler to the default logger that writes the recipe's logs adjacent to the recipe project*
+
+    **Key Arguments:**
+
+    - `log` -- original logger
+    - `productPath` -- path to the recipe product 
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import add_recipe_logger
+    log = add_recipe_logger(log, productPath="/path/to/product")
+    ```
+
     """
     import logging
     import os
@@ -1139,7 +1158,7 @@ def create_dispersion_solution_grid_lines_for_plot(
         kw,
         skylines=False,
         slitPositions=False):
-    """*give a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
+    """*given a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
 
     **Key Arguments:**
 
@@ -1279,7 +1298,7 @@ def qc_settings_plot_tables(
         qcAx,
         settings,
         settingsAx):
-    """*generate a QC ans settings table to be placed at the bottom of the QC plots*
+    """*generate QC and settings table to be placed at the bottom of the QC plots*
 
     **Key Arguments:**
 

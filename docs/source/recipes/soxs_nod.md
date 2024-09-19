@@ -1,4 +1,4 @@
-# `soxs_nod` - PLANNED
+# soxs_nod
 
 The purpose of the [`soxs_nod`](#soxspipe.recipes.soxs_nod) recipe is to reduced the science frames produced by the NTT and SOXS from a nodding mode observation block.
 

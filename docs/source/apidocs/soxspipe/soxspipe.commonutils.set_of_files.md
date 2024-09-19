@@ -131,10 +131,10 @@ Bases: {py:obj}`object`
 ```{autodoc2-docstring} soxspipe.commonutils.set_of_files.set_of_files.__init__
 ```
 
-````{py:method} create_supplimentary_file_dictionary(supplementaryFilepaths)
-:canonical: soxspipe.commonutils.set_of_files.set_of_files.create_supplimentary_file_dictionary
+````{py:method} create_supplementary_file_dictionary(supplementaryFilepaths)
+:canonical: soxspipe.commonutils.set_of_files.set_of_files.create_supplementary_file_dictionary
 
-```{autodoc2-docstring} soxspipe.commonutils.set_of_files.set_of_files.create_supplimentary_file_dictionary
+```{autodoc2-docstring} soxspipe.commonutils.set_of_files.set_of_files.create_supplementary_file_dictionary
 ```
 
 ````

@@ -18,5 +18,4 @@ set_of_files
 spectroscopic_image_quality_checks
 subtract_background
 subtract_sky
-twoD_disp_map_image_to_dataframe
 :::

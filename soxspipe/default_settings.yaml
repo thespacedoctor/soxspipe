@@ -188,7 +188,7 @@ soxs-spatial-solution:
         poly-fitting-residual-clipping-sigma: 9
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
-        map_to_image_displacement_threshold: 0.01 # in pixels
+        map_to_image_displacement_threshold: 0.0001 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 9
     vis:
@@ -201,7 +201,7 @@ soxs-spatial-solution:
         poly-fitting-residual-clipping-sigma: 9
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
-        map_to_image_displacement_threshold: 0.01 # in pixels
+        map_to_image_displacement_threshold: 0.0001 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 9
     nir:
@@ -214,7 +214,7 @@ soxs-spatial-solution:
         poly-fitting-residual-clipping-sigma: 9
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
-        map_to_image_displacement_threshold: 0.01 # in pixels
+        map_to_image_displacement_threshold: 0.0001 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 9
     

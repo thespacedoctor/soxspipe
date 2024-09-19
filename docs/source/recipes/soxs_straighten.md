@@ -1,4 +1,4 @@
-# `soxs_straighten ` - PLANNED
+# soxs_straighten
 
 This recipe takes the full dispersion map given by `soxs_spatial_solution` and uses it to map images from their original representation of the detector surface to one that presents the signal in a wavelength by slit-position coordinate system.
 

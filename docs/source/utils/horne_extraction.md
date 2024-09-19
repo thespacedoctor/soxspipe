@@ -1,4 +1,4 @@
-# `horne_extraction` 
+# horne_extraction
 
 The purpose of the [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility is to perform optimal extraction order applying the algorithms reported in Horne+86.
 

@@ -1,4 +1,4 @@
-# `flux_calibration` 
+# flux_calibration
 
 The purpose of the [`flux_calibration`](#soxspipe.commonutils.flux_calibration) utility is to flux calibrate a scientific spectrum applying the response function computed by [`response_function`](#soxspipe.commonutils.response_function) utility.
 
