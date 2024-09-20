@@ -1,8 +1,9 @@
 # horne_extraction
 
-The purpose of the [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility is to perform optimal extraction order applying the algorithms reported in Horne+86.
+The [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility performs an optimal extraction of a source's flux from an echelle order using the algorithms reported in {cite:t}`horne1986`.
 
 ## Input
+
 | Frame.                   | Description                                   | 
 | ------------------------ | --------------------------------------------- |
 |  Detrended  2D spectrum | Frame containing the 2D spectrum (any observing mode)  |  
@@ -32,7 +33,7 @@ Starting from the order_table computed by the `detect_continumm` utility, the ho
 
 $$
 pixel_i = \frac{Flux_{pixel_i}}{\sum_{j=0}^{N}{Flux_{pixel_j}}}
-$$ 
+$$
 
 where N = `horne-extraction-slit-length`.
 
@@ -78,3 +79,16 @@ The extraction of the spectrum is performed on each single order separately. Whe
 |FITS table |Extracted spectrum and merged orders|
 
  
+
+:::{bibliography}
+:filter: docname in docnames
+:::
+
+
+
+## Utility API
+
+
+
+:::{autodoc2-object} soxspipe.commonutils.horne_extraction.horne_extraction
+:::

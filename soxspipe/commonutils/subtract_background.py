@@ -54,7 +54,6 @@ class subtract_background(object):
     ```
 
     """
-    # Initialisation
 
     def __init__(
             self,
