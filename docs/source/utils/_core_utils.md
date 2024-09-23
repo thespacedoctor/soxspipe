@@ -9,13 +9,12 @@ data_organiser
 detect_continuum
 detect_order_edges
 detrend
-generic_quality_checks
+flux_calibration
 horne_extraction
 prepare_frames
 reducer
 response_function
 set_of_files
-spectroscopic_image_quality_checks
 subtract_background
 subtract_sky
 :::

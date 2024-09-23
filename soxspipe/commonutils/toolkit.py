@@ -514,13 +514,9 @@ def generic_quality_checks(
 
     **Usage:**
 
-    :::{todo}
-            add usage info
-            create a sublime snippet for usage
-    :::
-
     ```python
-    usage code
+    from soxspipe.commonutils.toolkit import generic_quality_checks
+    qcTable = generic_quality_checks(log=log, frame=myFrame, settings=settings, recipeName="my recipe", qcTable=qcTable)
     ```
     """
     log.debug('starting the ``functionName`` function')
@@ -606,13 +602,10 @@ def spectroscopic_image_quality_checks(
 
     **Usage:**
 
-    :::{todo}
-            add usage info
-            create a sublime snippet for usage
-    :::
-
     ```python
-    usage code
+    from soxspipe.commonutils.toolkit import spectroscopic_image_quality_checks
+    qcTable = spectroscopic_image_quality_checks(
+            log=log, frame=myFrame, settings=settings, recipeName="this recipe", qcTable=qcTable, orderTablePath=orderTablePath)
     ```
     """
     log.debug('starting the ``functionName`` function')

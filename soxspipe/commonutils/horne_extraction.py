@@ -51,14 +51,6 @@ class horne_extraction(object):
 
     To initiate a horne_extraction object, use the following:
 
-    :::{todo}
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``horne_extraction`` to documentation
-        - create a blog post about what ``horne_extraction`` does
-    :::
-
     ```python
     from soxspipe.commonutils import horne_extraction
     optimalExtractor = horne_extraction(
@@ -300,7 +292,9 @@ class horne_extraction(object):
 
         **Return:**
 
-        - None
+        - ``qcTable`` -- the data frame to collect measured QC metrics
+        - ``productsTable`` -- the data frame to collect output products
+        - ``mergedSpectumDF`` -- path to the FITS binary table containing the merged spectrum
         """
         self.log.debug('starting the ``extract`` method')
 

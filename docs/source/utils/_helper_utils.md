@@ -42,6 +42,13 @@ Given a FITS object (HDU list and header), use the SOXS file-naming scheme to re
 :::{autodoc2-object} soxspipe.commonutils.filenamer.filenamer
 :::
 
+## generic_quality_checks
+
+Measure some very basic quality checks on a frame and return the QC table with results appended
+
+:::{autodoc2-object} soxspipe.commonutils.toolkit.generic_quality_checks
+:::
+
 ## get_calibration_lamp
 
 Given a frame (CCDObject), determine which calibration lamp is used.
@@ -96,6 +103,13 @@ Return a spectral format table for your selected instrument containing key param
 Uncompress ESO `fits.Z` frames before processing them with the data-organiser.
 
 :::{autodoc2-object} soxspipe.commonutils.uncompress.uncompress
+:::
+
+## spectroscopic_image_quality_checks
+
+Perform some generic image quality checks and add to the QC output of the recipe.
+
+:::{autodoc2-object} soxspipe.commonutils.toolkit.spectroscopic_image_quality_checks
 :::
 
 ## twoD_disp_map_image_to_dataframe

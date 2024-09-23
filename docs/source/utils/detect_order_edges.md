@@ -27,7 +27,7 @@ For each slice along each order, the pixel-locations xmin (lower edge) and xmax 
 
 :::{figure-md} order-edge-slice
 :target: ../_images/image-20240911115628697.png
-![image-20240911115628697](../_images/image-20240911115628697.png)
+![image-20240911115628697](../_images/image-20240911115628697.png){width=600px}
 
 A single slice cut across the cross-dispersion axis of an echelle order. The grey dots represent the median flux from the width-collapsed 1D slice. The red dots show where a pre-determined flux threshold is reached, and the pixel positions at these locations are registered as the lower and upper edges of the order as measured in this slice.
 :::
@@ -44,7 +44,7 @@ where $X$ and $Y$ are the pixel positions and $n$ is the echelle order number. $
 
 :::{figure-md} order-edge-fits
 :target: ../_images/image-20240911121836550.png
-![image-20240911121836550](../_images/image-20240911121836550.png)
+![image-20240911121836550](../_images/image-20240911121836550.png){width=600px}
 
 The top panel shows the upper and lower-order edge detections registered in the individual cross-dispersion slices in an Xshooter VIS flat frame. The bottom panel shows the global polynomial fits to the upper and lower-order edges, with the area between the fits filled with different colours to reveal the unique echelle orders across the detector plane.
 :::

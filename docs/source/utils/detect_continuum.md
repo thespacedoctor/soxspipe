@@ -28,9 +28,7 @@ Centred on each pixel position, an N-pixel long (`slice-length` recipe parameter
 
 :::{figure-md} gaussian-fitting
 :target: ../_images/image-20240910165703002.png_
-
-
-![image-20240910165703002](../_images/image-20240910165703002.png)
+![image-20240910165703002](../_images/image-20240910165703002.png){width=600px}
 
 An attempt is made to fit a Gaussian to the flux in each slice. The pixel position is stored if a peak is registered with more than a `peak-sigma-limit` sigma significance.
 :::
@@ -41,9 +39,7 @@ An attempt is made to fit a Gaussian to the flux in each slice. The pixel positi
 
 :::{figure-md} peak-fits
 :target: ../_images/image-20240910170025287.png
-
-
-![image-20240910170025287](../_images/image-20240910170025287.png)
+![image-20240910170025287](../_images/image-20240910170025287.png){width=600px}
 
 The green circles represent the location on the cross-dispersion slice where a flux peak was detected. The red crosses show the centre of the slices where a peak failed to be detected.
 :::
@@ -59,9 +55,7 @@ where $X$ and $Y$ are the pixel positions and $n$ is the echelle order number. $
 
 :::{figure-md} trace_fit_image
 :target: ../_images/image-20240911101450222.png
-
-
-![image-20240911101450222](../_images/image-20240911101450222.png)
+![image-20240911101450222](../_images/image-20240911101450222.png){width=600px}
 
 The top panel show the global polynomial fitted to the detected source trace with the different colours representing individual echelle orders. The middle panels show the fit residuals in the X and Y axes. The bottom panel shows the FWHM of the trace fits (in pixels) with respect to echelle order and wavelength.
 :::

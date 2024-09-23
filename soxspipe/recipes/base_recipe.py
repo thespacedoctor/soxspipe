@@ -1059,10 +1059,6 @@ class base_recipe(object):
         myCalibratedFrame = self.detrend(
             inputFrame=inputFrameCCDObject, master_bias=masterBiasCCDObject, dark=darkCCDObject)
         ```
-
-        :::{todo}
-            - code needs written to scale dark frame to exposure time of science/calibration frame
-        :::
         """
         self.log.debug('starting the ``detrend`` method')
 

@@ -19,7 +19,7 @@ An iterative rolling-window percentile smoothing with 𝜎-clipping flags pixels
 
 :::{figure-md} percentile_smoothing
 :target: ../_images/image-20240919131037029.png
-![image-20240919131037029](../_images/image-20240919131037029.png)
+![image-20240919131037029](../_images/image-20240919131037029.png){width=600px}
 
 The narrow spikes seen in the original data (grey) represent the cosmic ray hits and other bad-pixel values contaminating our measurements of the background night sky. The blue line is the percentile smoothed data (a close approximation to the sky spectrum), and the faint blue crosses are pixels flagged as containing flux other than just the sky.
 :::
@@ -27,14 +27,14 @@ The narrow spikes seen in the original data (grey) represent the cosmic ray hits
 
 :::{figure-md} percentile_smoothing_zoom
 :target: ../_images/image-20240919131221006.png
-![image-20240919131221006](../_images/image-20240919131221006.png)
+![image-20240919131221006](../_images/image-20240919131221006.png){width=600px}
 
 A zoom of the figure above. Pixels containing object flux are seen to contain flux above the background sky.
 :::
 
 :::{figure-md} object_clipped_image
 :target: ../_images/image-20240919134124789.png
-![image-20240919134124789](../_images/image-20240919134124789.png)
+![image-20240919134124789](../_images/image-20240919134124789.png){width=600px}
 
 
 The original echelle order with pixels flagged as containing object flux or cosmic-ray hits marked in blue.
@@ -52,7 +52,7 @@ A final round of iterative bspline fitting is performed, each time adding new kn
 
 :::{figure-md} bspline_fit
 :target: ../_images/image-20240920100928141.png
-![image-20240920100928141](../_images/image-20240920100928141.png)
+![image-20240920100928141](../_images/image-20240920100928141.png){width=600px}
 
 A bspline fit of the sky spectrum. The black dots are the sky flux values coming from individual pixels, the red diamonds are the strategically placed knot, and the blue line is the final bspline fit to the data (the sky model).
 :::
@@ -61,7 +61,7 @@ Finally, this bspline fit is used to generate an estimation of the sky flux leve
 
 :::{figure-md} sky_model_image
 :target: ../_images/image-20240920101017782.png
-![image-20240920101017782](../_images/image-20240920101017782.png)
+![image-20240920101017782](../_images/image-20240920101017782.png){width=600px}
 
 The bspline fit is used to estimate the sky flux level in every pixel in the original detector space (top panel), which is then subtracted from the original image to produce a frame with the sky removed (bottom panel). The object trace can be clearly seen now the skylines have been removed.
 :::

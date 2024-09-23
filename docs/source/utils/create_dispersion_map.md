@@ -69,7 +69,7 @@ This is the algorithm used to transform the dispersion solution into a 2D image 
 
 :::{figure-md} dispersion_map_image
 :target: ../_images/image-20240913143247873.png
-![image-20240913143247873](../_images/image-20240913143247873.png)
+![image-20240913143247873](../_images/image-20240913143247873.png){width=600px}
 
 A 2D dispersion solution image map; a triple-extension FITS file with each extension image exactly matching the dimensions of the detector. The first extension contains the wavelength value at the centre of each pixel location, the second the slit position, and the third the order number.
 :::

@@ -27,7 +27,7 @@ The extracted scientific spectrum is then corrected for airmass, for each weavel
 
 $$
 fluxCorrected_{\lambda} = fluxObserved_{\lambda} \times 10^{AM \times mag_{airmass}}
-$$ 
+$$
 
 Then, the value (in counts) for each wavelenght is divided by the dispersion of the spectrograph and by the exposure time reported in the `EXPTIME` keyword. At this stage, the 1D spectrum of the scientific object has units of $ADU$ $s^{-1}$ $A^{-1}$. In order to finalize the flux calibration, the utility loads the FITS table that contains the fit parameters for the response function given in input at compute the flux calibrated spectrum, for each wavelenght, appyning the formula
 
@@ -43,3 +43,9 @@ where $F(\lambda)$ is the desired 1D scientific spectrum flux calibrated in $erg
 | Data Type | Content |
 | ------------------------ | --------------------------------------------- |
 |FITS table |FITS table containing the flux calibrated input spectrum|
+
+## Utility API
+
+
+:::{autodoc2-object} soxspipe.commonutils.flux_calibration.flux_calibration
+:::

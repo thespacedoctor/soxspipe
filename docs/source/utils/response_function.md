@@ -23,8 +23,7 @@ The general algorithm and steps performed by [`response_function`](#soxspipe.com
 
 :::{figure-md} response_function_util
 :target: response_function.png
-
-![](response_function.png)
+![](response_function.png){width=600px}
 
 The algorithm used to compute the response function of the spectrograph
 :::
