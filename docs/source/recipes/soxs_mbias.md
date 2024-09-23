@@ -8,13 +8,7 @@ The purpose of the [`soxs_mbias`](#soxspipe.recipes.soxs_mbias) recipe is to pro
 
 ## Input
 
-:::{table} Input files for the `soxs_mbias` recipe.
-:name: soxs_mbias_input
-
-| Data Type | Content | Related OB |
-|:----|:----|:---|
-| FITS images | raw bias frames (UV-VIS/AC exposures with exptime = 0) | `SOXS_img_cal_Bias`, `SOXS_gen_cal_VISBias` |
-
+:::{include} inputs/soxs_mbias.md
 :::
 
 ## Parameters
@@ -35,35 +29,15 @@ The `soxs-mbias` recipe algorithm.
 
 ## Output
 
-:::{table} Output files for the `soxs_mbias` recipe.
-:name: soxs_mbias_output
-
-| Label   | Content                                                                           | Data Type  |
-| ------- | :-------------------------------------------------------------------------------- | ---------- |
-| `MBIAS` | Master bias frame (frame containing typical bias-voltage applied to the detector) | FITS image |
-
+:::{include} output/soxs_mbias.md
 :::
+
 
 ## QC Metrics
 
-:::{table} Quality Control metrics calculated in the `soxs_mbias` recipe.
-:name: soxs_mbias_qc
-
-| Label | Description | Unit |
-| :------------ | :----------- | ------------- |
-| `FRAC BAD PIXELS` |                Fraction of bad pixels |   -       | 
-| `MBIAS MEDIAN` | Median flux level of master bias |electrons | 
-| `N BAD PIXELS` | Number of bad pixels |  -        | 
-| `N NAN PIXELS` | Number of NaN pixels |   -       | 
-| `PPNMAX` | Maximum periodic pattern noise ratio in raw bias frames | - |
-| `RON DETECTOR` | RON in single BIAS |electrons | 
-| `RON MASTER` | Combined RON in MBIAS |electrons | 
-| `STRUCTX` | Slope of BIAS in X direction | - |
-| `STRUCTY` | Slope of BIAS in Y direction | - |
-
-
-
+:::{include} qcs/soxs_mbias.md
 :::
+
 
 ## Recipe API
 

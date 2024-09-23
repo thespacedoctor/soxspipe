@@ -7,16 +7,7 @@ The purpose of the [`soxs_mdark`](#soxspipe.recipes.soxs_mdark) recipe is to gen
 ## Input
 
 
-
-:::{table} Input files for the soxs_mdark recipe.
-:name: soxs_dark_input
-
-
-
-| Data Type   | Content                                                      | Related OB                                                   |
-| :---------- | :----------------------------------------------------------- | :----------------------------------------------------------- |
-| FITS images | raw dark frames (exposures with identical exposure time and detectors readout parameters). | `SOXS_gen_cal_VISDark`, `SOXS_gen_cal_NIRDark`, `SOXS_img_cal_Dark` |
-
+:::{include} inputs/soxs_mdark.md
 :::
 
 ## Parameters
@@ -38,13 +29,7 @@ The soxs-mdark recipe algorithm.
 
 ## Output
 
-:::{table} Output files for the `soxs_mdark` recipe.
-:name: soxs_mdark_output
-
-| Label | Content                                                      | Data Type  |
-| ----- | :----------------------------------------------------------- | ---------- |
-| MDARK | Master dark frame (frame containing typical dark-current flux accumulated over the exposure time of the input frames) | FITS image |
-
+:::{include} output/soxs_mdark.md
 :::
 
 
@@ -52,22 +37,9 @@ The soxs-mdark recipe algorithm.
 ## QC Metrics
 
 
-
-:::{table} Quality Control metrics calculated in the `soxs_mdark` recipe. 
-:name: soxs_mdark_qc
-
-
-
-| Label             | Description            | Unit |
-| :---------------- | :--------------------- | ---- |
-| `FRAC BAD PIXELS` |                Fraction of bad pixels | -           |
-| `MDARK MEDIAN` | Median flux level of master dark | electrons |
-| `N BAD PIXELS` |                  Number of bad pixels | -           |
-| `N NAN PIXELS` |                  Number of NaN pixels | -           |
-
-
-
+:::{include} qcs/soxs_mdark.md
 :::
+
 
 ## Recipe API
 

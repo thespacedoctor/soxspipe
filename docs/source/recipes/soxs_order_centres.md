@@ -4,36 +4,36 @@ The purpose of the [`soxs_order_centres`](#soxspipe.recipes.soxs_order_centres) 
 
 ## Input
 
-| Data Type | Content | Related OB |
-|:----|:----|:---|
-| FITS Image | Flat lamp through a single-pinhole mask | `SOXS_slt_cal_VISLampFlatPinhole`, `SOXS_slt_cal_NIRLampFlatPinhole` |
-| FITS Image | Master Dark Frame (VIS only) | - |
-| FITS Image | Master Bias Frame (VIS only) | - |
-| FITS Image | Dark frame (Lamp-Off) of equal exposure length as single-pinhole frame (Lamp-On) (NIR only) | `SOXS_slt_cal_NIRLampFlatPinhole` |
-| CSV File | First guess dispersion solution | - |
+:::{include} inputs/soxs_order_centres.md
+:::
+
 
 ## Parameters
 
-| Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
-| ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
-| order-sample-count  | number of times along the order in the dispersion direction to measure the order-centre trace  |  int | settings file |  [detect_continuum utility](../utils/detect_continuum.md) |
-| peak-sigma-limit  |  minimum value a peak must be above the median value of pixel to be considered for order-trace fitting  | int | settings file  |  [detect_continuum utility](../utils/detect_continuum.md) |
-| disp-axis-deg | degree of dispersion axis component of polynomal fit to order-centre traces |   | int | settings file  |  [detect_continuum utility](../utils/detect_continuum.md) |
-| order-deg | degree of order component of polynomal fit to order-centre traces |   | int | settings file  |  [detect_continuum utility](../utils/detect_continuum.md) |
-| poly-fitting-residual-clipping-sigma  | sigma distance limit, where distance is the difference between the detected and polynomial fitted positions of the order-trace, outside of which to remove lines from the fit   | float   | settings file |  [detect_continuum utility](../utils/detect_continuum.md) | 
-|  poly-clipping-iteration-limit  |  number of sigma-clipping iterations to perform before settings on a polynomial fit for the order-centre traces  |  int   | settings file | [detect_continuum utility](../utils/detect_continuum.md) |
+
+:::{include} parameters/soxs_order_centres.md
+:::
+
+
 
 ## Method
 
 Once the single-pinhole flat-lamp frame has had the bias, dark and background subtracted it is passed to the [detect_continuum utility](../utils/detect_continuum.md) to fit the order centres.
 
-![](soxs_order_centres.png)
+
+:::{figure-md} soxs_order_centres_diagram
+:target: soxs_order_centres.png
+![](soxs_order_centres.png){width=600px}
+
+The `soxs_order_centres` recipe algorithm.
+:::
 
 ## Output
  
-| Data Type | Content |
-|:----|:----|
-| CSV File | [order table](../files/order_table.md) containing coefficients to the polynomial fits describing the order centre locations |
+
+:::{include} output/soxs_order_centres.md
+:::
+
 
 ## QC Metrics
 
@@ -41,9 +41,8 @@ Plots similar to the one below are generated after each execution of [`soxs_orde
 
 [![](https://live.staticflickr.com/65535/50345130012_4e869a6a7f_b.png)](https://live.staticflickr.com/65535/50345130012_4e869a6a7f_o.png)
 
-| Metric  | Description |
-| :------------ | :----------- |
-| TBC     | ...  |
+:::{include} qcs/soxs_order_centres.md
+:::
 
 ## Recipe API
 

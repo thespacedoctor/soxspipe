@@ -45,10 +45,6 @@ class soxs_disp_solution(base_recipe):
         inputFrames=sofPath
     ).produce_product()
     ```
-
-    :::{todo}
-        - add a tutorial about ``soxs_disp_solution`` to documentation
-    :::
     """
 
     def __init__(
