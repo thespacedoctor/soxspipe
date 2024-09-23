@@ -18,12 +18,13 @@ os.environ['TERM'] = 'vt100'
 
 class response_function(object):
     """
-    *The worker class for the response_function module*
+    *Given a standard star extracted spectrum, generate the instrument response function needed to flux calibrate science spectra*
 
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary
         - ``stdExtractionPath`` -- fits binary table containing the extracted standard spectrum
+        - ``settings`` --  the pipeline settings
 
     **Usage:**
 
@@ -31,22 +32,17 @@ class response_function(object):
 
     To initiate a response_function object, use the following:
 
-    ```eval_rst
-    .. todo::
-
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``response_function`` to documentation
-        - create a blog post about what ``response_function`` does
-    ```
 
     ```python
-    usage code
+    from soxspipe.commonutils import response_function
+    response = response_function(
+        log=log,
+        settings=settings,
+        stdExtractionPath=stdExtractionPath
+    )
+    response_function = response.get()
     ```
-
     """
-    # Initialisation
 
     def __init__(
             self,
@@ -134,22 +130,8 @@ class response_function(object):
         *get the response_function object*
 
         **Return:**
-            - ``response_function``
+            - ``response_function`` -- a set of polynomial coefficients
 
-        **Usage:**
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - create cl-util for this method
-            - update the package tutorial if needed
-        ```
-
-        ```python
-        usage code
-        ```
         """
         self.log.debug('starting the ``get`` method')
 
