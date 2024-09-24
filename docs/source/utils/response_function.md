@@ -8,6 +8,7 @@ The purpose of the [`response_function`](#soxspipe.commonutils.response_function
 | ------------------------ | --------------------------------------------- |
 |  Extracted  1D spectrum | FITS table containing the 1D spectrum (any observing mode) of the standard star to be used to compute the response function |  
 | Standard stars catalogue | FITS table containing the tabulated value of standard stars to be used as a reference.|
+| Extinction curve | FITS table containing the tabulated value of the extinction curve (wavelenght, mag per airmass) of the observing site.|
 
 ## Parameters
 
