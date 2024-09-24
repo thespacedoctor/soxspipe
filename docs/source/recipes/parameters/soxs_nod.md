@@ -5,7 +5,7 @@
 | --------------------------- | ------------------------------------------------------------ | ----- | ------------- | ---------------------------------------------- |
 use_flat | If True, flat field correction if applied. If false, it will skipped | Boolean | Settings File | soxs_nod |
 subtract_background | If True, background light subtraction is applied. If false, it will skipped | Boolean | Settings File | soxs_nod |
-save_single_frame_extractions | If True, each A and B stacked frame for each offset iaresaved as 2D image | Boolean | Settings fFile | soxs_nod |
+save_single_frame_extractions | If True, each A and B stacked frame for each offset iaresaved as 2D image | Boolean | Settings File | soxs_nod |
 stacked-clipping-sigma | number of $\sigma$ deviations from the median *pixel* flux beyond which pixel is excluded from stack | Boolean | Setting File | [`clip_and_stack`](../utils/clip_and_stack.md)
 stacked-clipping-iterations | number of $\sigma$-clipping iterations to perform before stacking | int | Setting File | [`clip_and_stack`](../utils/clip_and_stack.md)
 horne-extraction-slit-length | the length of the 'slit' used to collect object flux (in pixels) | int | Setting File | [`horne_extraction`](../utils/horne_extraction.md)
