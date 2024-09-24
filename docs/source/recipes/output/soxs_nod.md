@@ -3,8 +3,7 @@
 
 | Label   | Content                                                                           | Data Type  |
 | ------- | :-------------------------------------------------------------------------------- | ---------- |
-
-
+| Extracted Spectrum | Merged, wavelength calibrated 1D spectrum  |FITS Table |
 :::
 
 
