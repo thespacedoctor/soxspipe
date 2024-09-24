@@ -21,7 +21,7 @@ os.environ['TERM'] = 'vt100'
 
 class soxs_spatial_solution(base_recipe):
     """
-    *The soxs_spatial_solution recipe*
+    *Enhance the wavelength solution achieved with `soxs_disp_solution` by expanding the solution into the spatial dimension (along the slit)*
 
     **Key Arguments**
 
@@ -35,9 +35,6 @@ class soxs_spatial_solution(base_recipe):
 
     See `produce_product` method for usage.
 
-    :::{todo}
-        - add a tutorial about ``soxs_spatial_solution`` to documentation
-    :::
     """
     # Initialisation
 

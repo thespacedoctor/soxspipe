@@ -29,7 +29,7 @@ os.environ['TERM'] = 'vt100'
 
 class soxs_mflat(base_recipe):
     """
-    *The soxs_mflat recipe*
+    *generate a single normalised master flat-field frame*
 
     **Key Arguments**
 
@@ -50,10 +50,6 @@ class soxs_mflat(base_recipe):
     )
     mflatFrame = recipe.produce_product()
     ```
-
-    :::{todo}
-        - add a tutorial about ``soxs_mflat`` to documentation
-    :::
     """
 
     def __init__(
