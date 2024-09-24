@@ -51,14 +51,6 @@ class horne_extraction(object):
 
     To initiate a horne_extraction object, use the following:
 
-    :::{todo}
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``horne_extraction`` to documentation
-        - create a blog post about what ``horne_extraction`` does
-    :::
-
     ```python
     from soxspipe.commonutils import horne_extraction
     optimalExtractor = horne_extraction(
@@ -227,37 +219,48 @@ class horne_extraction(object):
             self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (biny, binx), func=np.mean)
             self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (biny, binx), func=np.mean)
 
-        try:
-            self.imageMap = pd.DataFrame.from_dict({
-                "x": xarray,
-                "y": yarray,
-                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-                "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
-                "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
-                "flux": self.skySubtractedFrame.data.flatten()
-            })
-            self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-        except:
-            try:
-                self.imageMap = pd.DataFrame.from_dict({
-                    "x": xarray,
-                    "y": yarray,
-                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-                    "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
-                    "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
-                    "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
-                })
-                self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-            except:
-                self.imageMap = pd.DataFrame.from_dict({
-                    "x": xarray,
-                    "y": yarray,
-                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten(),
-                    "slit_position": self.twoDMap["SLIT"].data.flatten(),
-                    "order": self.twoDMap["ORDER"].data.flatten(),
-                    "flux": self.skySubtractedFrame.data.flatten()
-                })
-                self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        self.imageMap = pd.DataFrame.from_dict({
+            "x": xarray,
+            "y": yarray,
+            "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(float),
+            "slit_position": self.twoDMap["SLIT"].data.flatten().astype(float),
+            "order": self.twoDMap["ORDER"].data.flatten().astype(float),
+            "flux": self.skySubtractedFrame.data.flatten().astype(float)
+        })
+        self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+
+        # REMOVE IF THE ABOVE .astype(float) CONVERSION IS WORKING
+        # try:
+        #     self.imageMap = pd.DataFrame.from_dict({
+        #         "x": xarray,
+        #         "y": yarray,
+        #         "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(float),
+        #         "slit_position": self.twoDMap["SLIT"].data.flatten().astype(float),
+        #         "order": self.twoDMap["ORDER"].data.flatten().astype(int),
+        #         "flux": self.skySubtractedFrame.data.flatten().astype(float)
+        #     })
+        #     self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        # except:
+        #     try:
+        #         self.imageMap = pd.DataFrame.from_dict({
+        #             "x": xarray,
+        #             "y": yarray,
+        #             "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+        #             "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
+        #             "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
+        #             "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
+        #         })
+        #         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        #     except:
+        #         self.imageMap = pd.DataFrame.from_dict({
+        #             "x": xarray,
+        #             "y": yarray,
+        #             "wavelength": self.twoDMap["WAVELENGTH"].data.flatten(),
+        #             "slit_position": self.twoDMap["SLIT"].data.flatten(),
+        #             "order": self.twoDMap["ORDER"].data.flatten(),
+        #             "flux": self.skySubtractedFrame.data.flatten()
+        #         })
+        #         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
         # REMOVE ZEROS
         mask = (self.imageMap['wavelength'] == 0) & (self.imageMap['slit_position'] == 0)
@@ -268,7 +271,7 @@ class horne_extraction(object):
         # FIND THE OBJECT TRACE IN EACH ORDER
         detector = detect_continuum(
             log=self.log,
-            pinholeFlat=self.skySubtractedFrame,
+            traceFrame=self.skySubtractedFrame,
             dispersion_map=self.dispersionMap,
             settings=self.settings,
             recipeSettings=self.recipeSettings,
@@ -289,7 +292,9 @@ class horne_extraction(object):
 
         **Return:**
 
-        - None
+        - ``qcTable`` -- the data frame to collect measured QC metrics
+        - ``productsTable`` -- the data frame to collect output products
+        - ``mergedSpectumDF`` -- path to the FITS binary table containing the merged spectrum
         """
         self.log.debug('starting the ``extract`` method')
 

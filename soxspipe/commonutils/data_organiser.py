@@ -33,12 +33,6 @@ class data_organiser(object):
 
     To initiate a data_organiser object, use the following:
 
-    :::{todo}
-    - create cl-util for this class
-    - add a tutorial about ``data_organiser`` to documentation
-    - create a blog post about what ``data_organiser`` does
-    :::
-
     ```python
     from soxspipe.commonutils import data_organiser
     do = data_organiser(

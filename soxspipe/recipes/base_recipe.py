@@ -33,7 +33,7 @@ class base_recipe(object):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
-    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
 
     **Usage**
@@ -256,7 +256,7 @@ class base_recipe(object):
                 frame, readnoise=dp["ron"], disregard_nan=True)
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
-        # NOTE FLAGS NOTE YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
+        # NOTE FLAGS NOT YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
         # AS AN EXTENSION
         arm = self.arm
         if arm != "NIR" and kw('WIN_BINX') in frame.header:
@@ -285,15 +285,6 @@ class base_recipe(object):
             self.log.critical(message)
             raise IOError(message)
         bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
-
-        # BIAS FRAMES HAVE NO 'FLUX', JUST READNOISE, SO ADD AN EMPTY BAD-PIXEL
-        # MAP
-        # if frame.header[kw("DPR_TYPE")] == "BIAS":
-        #     bitMap.data = np.zeros_like(bitMap.data)
-
-        # self.log.print(bitMap.data.shape)
-        # self.log.print(frame.data.shape)
-
         frame.flags = bitMap.data
 
         # FLATTEN BAD-PIXEL BITMAP TO BOOLEAN FALSE (GOOD) OR TRUE (BAD) AND
@@ -1068,10 +1059,6 @@ class base_recipe(object):
         myCalibratedFrame = self.detrend(
             inputFrame=inputFrameCCDObject, master_bias=masterBiasCCDObject, dark=darkCCDObject)
         ```
-
-        :::{todo}
-            - code needs written to scale dark frame to exposure time of science/calibration frame
-        :::
         """
         self.log.debug('starting the ``detrend`` method')
 

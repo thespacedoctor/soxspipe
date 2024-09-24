@@ -1,3 +1,4 @@
+(recipes-section)=
 # Recipes
 
 SOXSPIPE borrows the informative concept of `recipes' employed by ESO's data reduction pipelines to define the modular components of the pipeline. These recipes can be strung together to create an end-to-end workflow that takes as input the raw and calibration frames from the instrument and telescope and processes them all the way through to fully reduced, calibrated, ESO Phase III compliant science products.
@@ -28,5 +29,14 @@ This 2D mapping function is determined incrementally via the `soxs_disp_solution
 soxs_disp_solution
 soxs_order_centres
 soxs_spatial_solution
-soxs_straighten
+:::
+
+## Observation Mode Specific Extractions
+
+:::{toctree}
+:maxdepth: 1
+
+soxs_stare
+soxs_nod
+soxs_offset
 :::

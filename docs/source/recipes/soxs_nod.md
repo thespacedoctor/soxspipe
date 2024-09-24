@@ -1,4 +1,4 @@
-# `soxs_nod` - PLANNED
+# soxs_nod
 
 The purpose of the [`soxs_nod`](#soxspipe.recipes.soxs_nod) recipe is to reduced the science frames produced by the NTT and SOXS from a nodding mode observation block.
 
@@ -6,33 +6,39 @@ The purpose of the [`soxs_nod`](#soxspipe.recipes.soxs_nod) recipe is to reduced
 
 <!-- FIND OBs HERE : https://docs.google.com/spreadsheets/d/1-3VXkIWcydvpawwVl_C3pNTU3HgnElJaYFAKow65Fl8/edit#gid=0 -->
 
-| Data Type | Content | Related OB |
-|:----|:----|:---|
-| | |
+
+:::{include} inputs/soxs_nod.md
+:::
 
 ## Parameters
 
-| Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
-| ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
-|   |   |   |   |
+## Parameters
+
+:::{include} parameters/soxs_nod.md
+:::
+
 
 ## Method
 
 <!-- METHOD TEXT HERE, FOLLOWED BY WORKFLOW DIAGRAM -->
 
-![](soxs_nod.png)
+:::{figure-md} soxs_nod_diagram
+:target: soxs_nod.png
+![](soxs_nod.png){width=600px}
+
+The `soxs_nod` recipe algorithm.
+:::
 
 ## Output
  
-| Data Type | Content |
-|:----|:----|
-| |
+:::{include} output/soxs_nod.md
+:::
 
 ## QC Metrics
 
-| Metric  | Description |
-| :------------ | :----------- |
-| TBC     | ...  |
+
+:::{include} qcs/soxs_nod.md
+:::
 
 ## Recipe API
 

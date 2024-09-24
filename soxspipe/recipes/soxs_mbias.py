@@ -26,7 +26,7 @@ os.environ['TERM'] = 'vt100'
 
 class soxs_mbias(base_recipe):
     """
-    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
+    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have bias (and dark current) removed by subtracting an off-frame of equal exposure length.*
 
     **Key Arguments**
 
@@ -34,7 +34,7 @@ class soxs_mbias(base_recipe):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
-    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
     **Usage**
 
@@ -46,10 +46,6 @@ class soxs_mbias(base_recipe):
         inputFrames=fileList
     ).produce_product()
     ```
-
-    :::{todo}
-        - add a tutorial about ``soxs_mbias`` to documentation
-    :::
     """
     # Initialisation
 
@@ -67,7 +63,6 @@ class soxs_mbias(base_recipe):
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
@@ -89,10 +84,8 @@ class soxs_mbias(base_recipe):
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        # self.log.print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
-        # self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS

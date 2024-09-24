@@ -2,9 +2,13 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
+
+import time
 import os
 import sys
-from datetime import datetime, date, time
+from datetime import datetime, date
+# Check if we are on Read the Docs
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 # WHERE DOES THIS conf.py FILE LIVE?
 moduleDirectory = os.path.dirname(os.path.realpath(__file__))
@@ -38,6 +42,7 @@ extensions = [
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
     'sphinxcontrib.inkscapeconverter',
+    'sphinx.ext.autosectionlabel',
     # External stuff
     "sphinxext.opengraph",
     "myst_parser",
@@ -50,7 +55,9 @@ extensions = [
     'sphinx.ext.coverage',
     'sphinx.ext.linkcode',
     'sphinx_search.extension',
-    'sphinx_tippy'
+    'sphinx_tippy',
+    "sphinx_remove_toctrees",
+    'sphinxcontrib.bibtex'
 ]
 myst_enable_extensions = [
     "tasklist",
@@ -71,23 +78,84 @@ myst_enable_extensions = [
 
 ]
 suppress_warnings = ["myst.strikethrough"]
+autosectionlabel_prefix_document = True
+
+numfig = True
+
+numfig_format = {
+    'code-block': 'Listing %s',
+    'figure': 'Fig. %s',
+    'section': 'Section',
+    'table': 'Table %s',
+}
 
 
 # EXTENSION SETTINGS
 myst_enable_checkboxes = True
 myst_heading_anchors = 3
 todo_include_todos = True
-autodoc2_packages = [
-    {
-        "path": "../../soxspipe",
-        "exclude_files": ["*test_*.py"],
-    }
-]
-autodoc2_render_plugin = "myst"
-autodoc2_skip_module_regexes = [r".*test.*"]
-autodoc2_hidden_objects = ["private"]
-autodoc2_sort_names = True
+
 link_resolver_url = "https://github.com/thespacedoctor/soxspipe/blob/master"
+
+remove_from_toctrees = ["utils/[!_]*"]
+
+
+# BIBTEX STUFF
+bibtex_bibfiles = ['dry-bookends-references.bib']
+bibtex_reference_style = 'author_year'
+
+
+# AUTODOC2 AND BIBTEX PLUGS CLASH DUE TO THIS ISSUE: https://github.com/pylint-dev/astroid/issues/2191
+# UNTIL THIS IS FIXED SWITCH BETWEEN THE TWO
+runAutodoc2 = os.getenv("AUTODOC2")
+
+
+if True or (runAutodoc2 and runAutodoc2 != "None"):
+    print("RUNNING AUTODOC2")
+    autodoc2_packages = [
+        {
+            "path": "../../soxspipe",
+            "exclude_files": ["*test_*.py"],
+
+        }
+    ]
+    autodoc2_render_plugin = "myst"
+    autodoc2_skip_module_regexes = [r".*test.*"]
+    autodoc2_hidden_objects = ["private"]
+    autodoc2_sort_names = True
+# else:
+
+if False:
+    # THIS BUG NEEDS FIXED TO BE ABLE TO USE AUTODOC2 AND ROUND BRACKETS
+    # https://github.com/pylint-dev/astroid/issues/2191
+    print("RUNNING A SPHINX BUILD")
+    import dataclasses
+    from sphinxcontrib.bibtex.style.referencing.author_year import AuthorYearReferenceStyle
+    from sphinxcontrib.bibtex.style.referencing import BracketStyle
+    import sphinxcontrib.bibtex.plugin
+
+    def bracket_style() -> BracketStyle:
+        return BracketStyle(
+            left='(',
+            right=')',
+        )
+
+    @dataclasses.dataclass
+    class MyReferenceStyle(AuthorYearReferenceStyle):
+        bracket_parenthetical: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_textual: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_author: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_label: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_year: BracketStyle = dataclasses.field(default_factory=bracket_style)
+
+    sphinxcontrib.bibtex.plugin.register_plugin(
+        'sphinxcontrib.bibtex.style.referencing',
+        'author_year_round', MyReferenceStyle)
+    bibtex_reference_style = 'author_year_round'
+
+
+# use the tab-trigger below for new function
+# xt-def-function
 
 
 # OpenGraph metadata
@@ -120,6 +188,45 @@ html_add_permalinks = u"  ∞"
 # -- LaTeX output -------------------------------------------------
 
 latex_engine = 'xelatex'
+
+if not on_rtd:
+    latex_documents = [
+        ('overleaf/introduction', 'introduction.tex', u'introduction',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/recipes', 'recipes.tex', u'recipes',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/utils', 'utils.tex', u'utils',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/instruments', 'instruments.tex', u'instruments',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/data_organiser', 'data_organiser.tex', u'data organiser',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/data_reduction_cascades', 'data_reduction_cascades.tex', u'data reduction cascades',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/observing_modes', 'observing_modes.tex', u'observing modes',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/files', 'files.tex', u'files',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/quickstart_guide', 'quickstart_guide.tex', u'quickstart guide',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/installation', 'installation.tex', u'installation',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/preparing_a_workspace', 'preparing_a_workspace.tex', u'preparing a workspace',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/reductions', 'reductions.tex', u'reductions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/pipeline_settings', 'pipeline_settings.tex', u'pipeline settings',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/logging', 'logging.tex', u'logging',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/sessions', 'sessions.tex', u'sessions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/support', 'support.tex', u'sessions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+    ]
+
+latex_toplevel_sectioning = "section"
+latex_show_urls = 'footnote'
 
 
 def linkcode_resolve(domain, info):

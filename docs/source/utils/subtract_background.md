@@ -1,33 +1,59 @@
-# `subtract_background` 
+# subtract_background
 
-The purpose of the [`subtract_background`](#soxspipe.commonutils.subtract_background) utility is to model the topology of the scattered background light within an image and then remove it.
+The [`subtract_background`](#soxspipe.commonutils.subtract_background) utility fits, models and removes the background scattered light within an image.
 
 Here's the workflow for subtracting a frame's background:
 
-![](subtract_background.png)
+:::{figure-md} subtract_background_util
+:target: subtract_background.png
+![](subtract_background.png){width=600px}
 
-Here's an example frame requiring the background scattered light to be fitted and removed:
+The algorithm fits, models, and subtracts the scattered background light from an image.
+:::
 
-[![](https://live.staticflickr.com/65535/51236661920_a034db6805_b.jpg)](https://live.staticflickr.com/65535/51236661920_a034db6805_b.jpg)
 
-Having unpacked the order location table, a mask is created containing pixels lying within the order-locations. The mask is extended in either direction along the y-axis by a given fraction (recipe parameter) of its original length to make sure all inner-order flux is masked.
+{numref}`raw_frame_with_background_light` shows an example frame with background scattered light present. The first task of the utility is to use the order location table to mask pixels within the echelle orders and the locations of bad pixels (see {numref}`raw_frame_with_background_light_masked`).
 
-[![](https://live.staticflickr.com/65535/51235592981_e42aafbe63_b.jpg)](https://live.staticflickr.com/65535/51235592981_e42aafbe63_b.jpg)
 
-The bad-pixel mask is merged with this inner-order mask. For each row in the masked frame, a bspline is fitted to the unmasked pixel fluxes to model the shape of the scattered background light along the row.
+:::{figure-md} raw_frame_with_background_light
+:target: ../_images/image-20240920135732439.png
+![image-20240920135732439](../_images/image-20240920135732439.png){width=600px}
 
-[![](https://live.staticflickr.com/65535/51234447259_1e10610df3_b.jpg)](https://live.staticflickr.com/65535/51234447259_1e10610df3_b.jpg)
+An example NIR lamp flat frame containing scattered background light.
+:::
 
-For each row, flux-values are generated for all pixels in the row using the bspline fit and added to a first pass model background image. 
+:::{figure-md} raw_frame_with_background_light_masked
+:target: ../_images/image-20240920140302799.png
+![image-20240920140302799](../_images/image-20240920140302799.png){width=600px}
 
-[![](https://live.staticflickr.com/65535/51236365319_8578f5f4f9_b.jpg)](https://live.staticflickr.com/65535/51236365319_8578f5f4f9_b.jpg)
+The NIR lamp flat now with inter-order and bad pixels masked.
+:::
 
-It's essential that background fitting is accurate within the order locations, but not outside of these areas, so there is no cause for concern if the fit is poor at the edges and corners of the image.
+For each column in the masked frame, a bspline is fitted to the unmasked fluxes to model the shape of the scattered background light along the entire column length (including the masked regions). See {numref}`background_spline`.
 
-A median-filter is applied to the image to remove the structure resulting from a bad row fits (light and dark lines along the x-axis).
+:::{figure-md} background_spline
+:target: ../_images/image-20240920140729800.png
+![image-20240920140729800](../_images/image-20240920140729800.png){width=600px}
 
-[![](https://live.staticflickr.com/65535/51234884582_5fd181c063_b.jpg)](https://live.staticflickr.com/65535/51234884582_5fd181c063_b.jpg)
+The red points are the unmasked data located along a single column in the masked frame. The blue line is the bspline fitted to the data, providing a model for the scattered background light contaminating the inter-order regions.
+:::
 
-Finally, the modelled background image is subtracted from the original frame:
 
-[![](https://live.staticflickr.com/65535/51236665480_2e269e7049_b.jpg)](https://live.staticflickr.com/65535/51236665480_2e269e7049_b.jpg)
+A Gaussian filter is applied to the image to remove the structure resulting from bad row fits, and finally, the modelled background image is subtracted from the original frame. 
+
+
+:::{figure-md} background_iamge_blurred
+:target: ../_images/image-20240920135302518.png
+![image-20240920135302518](../_images/image-20240920135302518.png){width=600px}
+
+The final image of the model background scattered light, which is then subtracted from the original data frame.
+:::
+
+
+
+## Utility API
+
+
+
+	:::{autodoc2-object} soxspipe.commonutils.subtract_background.subtract_background
+	:::

@@ -29,7 +29,7 @@ class soxs_order_centres(base_recipe):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
-    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*. 
 
     **Usage**
@@ -279,7 +279,7 @@ class soxs_order_centres(base_recipe):
             # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
             detector = detect_continuum(
                 log=self.log,
-                pinholeFlat=self.orderFrame,
+                traceFrame=self.orderFrame,
                 dispersion_map=disp_map_table,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -310,7 +310,7 @@ class soxs_order_centres(base_recipe):
             # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
             detector = detect_continuum(
                 log=self.log,
-                pinholeFlat=self.orderFrame,
+                traceFrame=self.orderFrame,
                 dispersion_map=disp_map_table,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -361,7 +361,7 @@ def parameterTuning(p, log, recipeSettings, settings, orderFrame, disp_map_table
     from soxspipe.commonutils import create_dispersion_map
     detector = detect_continuum(
         log=log,
-        pinholeFlat=orderFrame,
+        traceFrame=orderFrame,
         dispersion_map=disp_map_table,
         settings=settings,
         recipeSettings=recipeSettings,

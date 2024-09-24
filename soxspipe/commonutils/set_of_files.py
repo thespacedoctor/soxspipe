@@ -123,7 +123,7 @@ os.environ['TERM'] = 'vt100'
 
 class set_of_files(object):
     """
-    *The worker class for the sof module used to homogenise various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
+    *The worker class for the sof module used to homogenize various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
 
     **Key Arguments:**
 
@@ -447,27 +447,27 @@ class set_of_files(object):
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths")
 
-        supplementary_sof = self.create_supplimentary_file_dictionary(
+        supplementary_sof = self.create_supplementary_file_dictionary(
             supplementaryFilepaths)
 
         self.log.debug('completed the ``get`` method')
         return sof, supplementary_sof
 
-    def create_supplimentary_file_dictionary(
+    def create_supplementary_file_dictionary(
             self,
             supplementaryFilepaths):
-        """*create supplimentary file dictionary*
+        """*create supplementary file dictionary*
 
         **Key Arguments:**
 
-        - ``supplementaryFilepaths`` -- the list of filepaths to genereate the dictionary for
+        - ``supplementaryFilepaths`` -- the list of filepaths to generate the dictionary for
 
         **Return:**
 
         - ``supplementary_sof`` -- a dictionary of non-fits files needed for recipe
         """
         self.log.debug(
-            'starting the ``create_supplimentary_file_dictionary`` method')
+            'starting the ``create_supplementary_file_dictionary`` method')
 
         supplementary_sof = {}
         for f in supplementaryFilepaths:
@@ -490,7 +490,7 @@ class set_of_files(object):
                         supplementary_sof[a]["2D_MAP"] = f
 
         self.log.debug(
-            'completed the ``create_supplimentary_file_dictionary`` method')
+            'completed the ``create_supplementary_file_dictionary`` method')
         return supplementary_sof
 
     # use the tab-trigger below for new method

@@ -52,10 +52,6 @@ class subtract_sky(object):
 
     To initiate a `subtract_sky` object, use the following:
 
-    :::{todo}
-        - add a tutorial about ``subtract_sky`` to documentation
-    :::
-
     ```python
     from soxspipe.commonutils import subtract_sky
     skymodel = subtract_sky(
@@ -170,7 +166,7 @@ class subtract_sky(object):
         **Return:**
 
         - ``skymodelCCDData`` -- CCDData object containing the model sky frame
-        - ``skySubtractedCCDData`` -- CCDData object containing the sky-subtacted frame
+        - ``skySubtractedCCDData`` -- CCDData object containing the sky-subtracted frame
         - ``qcTable`` -- the data frame containing measured QC metrics
         - ``productsTable`` -- the data frame containing collected output products
         """
@@ -298,7 +294,7 @@ class subtract_sky(object):
         **Key Arguments:**
 
         - ``imageMapOrder`` -- single order dataframe from object image and 2D map
-        - ``clipBPs`` -- clip bad-pixels? Deafult *True*
+        - ``clipBPs`` -- clip bad-pixels? Default *True*
         - ``clipSlitEdge`` -- clip the slit edges. Percentage of slit width to clip. Default *False*
 
         **Return:**
@@ -405,7 +401,7 @@ class subtract_sky(object):
             fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=320)
         else:
             # REMOVE ME
-            fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=100)
+            fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=150)
 
         gs = fig.add_gridspec(11, 4)
         # CREATE THE GID OF AXES
@@ -574,6 +570,11 @@ class subtract_sky(object):
         fiverow.scatter(
             imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values,
             imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "flux"].values, s=3, c=blue, alpha=1, zorder=1, label="unclipped slit position < 0")
+
+        # fiverow.scatter(
+        #     imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False), "wavelength"].values,
+        #     imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False), "flux"].values, s=1, c=black, alpha=0.5, zorder=1, label="unclipped pixels")
+
         if False:
             fiverow.scatter(
                 imageMapOrderDF.loc[imageMapOrderDF["bspline_clipped"] == True, "wavelength"].values,
@@ -1156,13 +1157,13 @@ class subtract_sky(object):
         self.log.debug('completed the ``plot_results`` method')
         return filePath
 
-    def rectify_order(
+    def _rectify_order(
             self,
             order,
             imageMapOrder,
             remove_clipped=False,
             conserve_flux=False):
-        """*rectify order on a fine slit-postion, wavelength grid*
+        """*rectify order on a fine slit-position, wavelength grid*
 
         **Key Arguments:**
 
@@ -1179,13 +1180,6 @@ class subtract_sky(object):
         ```python
         usage code
         ```
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        :::
         """
         self.log.debug('starting the ``rectify_order`` method')
 
@@ -1685,24 +1679,19 @@ class subtract_sky(object):
         """*determine residual floor and flag sky-lines*
 
         **Key Arguments:**
-            # -
+            - ``imageMapOrderDF`` --  dataframe with various processed data for a given order
+            - ``tck`` -- the fitted bspline components. t for knots, c of coefficients, k for order
 
         **Return:**
 
-        - None
+        - `imageMapOrder` -- same dataframe but now with sky-line locations flagged
+        - `residualFloor` -- the residual floor determined within regions containing no skylines.
 
         **Usage:**
 
         ```python
-        usage code
+        imageMapOrder, residualFloor = self.determine_residual_floor(imageMapOrder, tck)
         ```
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        :::
         """
         self.log.debug('starting the ``determine_residual_floor`` method')
 

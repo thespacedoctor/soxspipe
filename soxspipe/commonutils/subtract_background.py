@@ -54,7 +54,6 @@ class subtract_background(object):
     ```
 
     """
-    # Initialisation
 
     def __init__(
             self,
@@ -369,7 +368,8 @@ class subtract_background(object):
             try:
                 rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
             except:
-                rowmasked = rowmasked.byteswap().newbyteorder()
+                rowmasked = rowmasked.astype(float)
+                # rowmasked = rowmasked.byteswap().newbyteorder() ## REMOVE IF ABOVE .astype(float) WORKS
                 rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
             rowmaskedSmoothed[:hw] = rowmaskedSmoothed.iloc[hw + 1]
             rowmaskedSmoothed[-hw:] = rowmaskedSmoothed.iloc[-hw - 1]
