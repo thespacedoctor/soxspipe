@@ -4,10 +4,10 @@
 | Data Type | Content | Related OB |
 |:----|:----|:---|
 | FITS Image | Flat lamp through a single-pinhole mask | `SOXS_slt_cal_VISLampFlatPinhole`, `SOXS_slt_cal_NIRLampFlatPinhole` |
-| FITS Image | Master Dark Frame (VIS only) | - |
+| FITS Image | Master Dark Frame (VIS only, optional) | - |
 | FITS Image | Master Bias Frame (VIS only) | - |
 | FITS Image | Dark frame (Lamp-Off) of equal exposure length as single-pinhole frame (Lamp-On) (NIR only) | `SOXS_slt_cal_NIRLampFlatPinhole` |
-| CSV File | First guess dispersion solution | - |
+| FITS Table | First guess dispersion solution | - |
 
 
 :::

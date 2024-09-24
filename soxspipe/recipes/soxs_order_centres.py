@@ -21,7 +21,7 @@ os.environ['TERM'] = 'vt100'
 
 class soxs_order_centres(base_recipe):
     """
-    *The soxs_order_centres recipe*
+    *further constrain the first guess locations of the order centres derived in `soxs_disp_solution`*
 
     **Key Arguments**
 
@@ -42,10 +42,6 @@ class soxs_order_centres(base_recipe):
         inputFrames=a["inputFrames"]
     ).produce_product()
     ```
-
-    :::{todo}
-        - add a tutorial about ``soxs_order_centres`` to documentation
-    :::
     """
     # Initialisation
 
