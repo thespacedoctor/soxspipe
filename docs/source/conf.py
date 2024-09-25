@@ -187,9 +187,9 @@ html_add_permalinks = u"  ∞"
 
 # -- LaTeX output -------------------------------------------------
 
-print(f"READTHEDOCS = {on_rtd}")
+latex_engine = 'xelatex'
+
 if not on_rtd:
-    latex_engine = 'xelatex'
     latex_documents = [
         ('overleaf/introduction', 'introduction.tex', u'introduction',
          u'David R. Young & Marco Landoni', 'howto', False),
@@ -224,6 +224,7 @@ if not on_rtd:
         ('overleaf/support', 'support.tex', u'sessions',
          u'David R. Young & Marco Landoni', 'howto', False),
     ]
+
 
 latex_toplevel_sectioning = "section"
 latex_show_urls = 'footnote'
