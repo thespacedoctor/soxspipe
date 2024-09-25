@@ -6,7 +6,6 @@ The [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility perform
 
 
 :::{figure-md} horne_extraction_util
-:target: horne_extraction.png
 ![](horne_extraction.png){width=600px}
 
 The algorithm used to optimally extract an object spectrum.

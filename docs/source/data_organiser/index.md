@@ -5,7 +5,6 @@ The data organiser (DO) is the backbone of the pipeline. It is required to sort 
 The algorithm the DO uses to prepare a workspace is shown in {numref}`data_organiser_util`.
 
 :::{figure-md} data_organiser_util
-:target: soxs_data_organiser.png
 ![](soxs_data_organiser.png){width=600px}
 
 The algorithm used by the soxspipe data-organiser to prepare a workspace for data-reduction.

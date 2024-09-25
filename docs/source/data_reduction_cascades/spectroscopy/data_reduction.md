@@ -21,7 +21,6 @@ Here is a brief overview of the individual reduction steps performed by the pipe
 End-to-end error propagation is carried out throughout the cascade to produce the final variance spectrum, which contains all noise sources. For more details on the individual reduction stages, see the [recipes](#recipes-section) section.
 
 :::{figure-md} spectroscopic_cascade_map
-:target: ../../_images/image-20240906114727315.png
 ![image-20240906114727315](../../_images/image-20240906114727315.png){width=600px}
 
 The SOXS spectroscopic data reduction cascade. The input data, calibration products required and the output frames are shown for each pipeline recipe implemented in the pipeline. Vertical lines in the map depict a raw data frame, the specific recipe to be applied to that frame and the data product(s) output by that recipe. Horizontal lines show how subsequent pipeline recipes use those output data products. Time loosely proceeds from left to right (recipe order) and top to bottom (recipe processing steps) on the map. To the right of the grey dashed line are input calibration products generated from a separate pipeline processing cascade. 

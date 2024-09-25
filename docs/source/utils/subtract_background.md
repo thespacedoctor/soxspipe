@@ -5,7 +5,6 @@ The [`subtract_background`](#soxspipe.commonutils.subtract_background) utility f
 Here's the workflow for subtracting a frame's background:
 
 :::{figure-md} subtract_background_util
-:target: subtract_background.png
 ![](subtract_background.png){width=600px}
 
 The algorithm fits, models, and subtracts the scattered background light from an image.
@@ -16,14 +15,12 @@ The algorithm fits, models, and subtracts the scattered background light from an
 
 
 :::{figure-md} raw_frame_with_background_light
-:target: ../_images/image-20240920135732439.png
 ![image-20240920135732439](../_images/image-20240920135732439.png){width=600px}
 
 An example NIR lamp flat frame containing scattered background light.
 :::
 
 :::{figure-md} raw_frame_with_background_light_masked
-:target: ../_images/image-20240920140302799.png
 ![image-20240920140302799](../_images/image-20240920140302799.png){width=600px}
 
 The NIR lamp flat now with inter-order and bad pixels masked.
@@ -32,7 +29,6 @@ The NIR lamp flat now with inter-order and bad pixels masked.
 For each column in the masked frame, a bspline is fitted to the unmasked fluxes to model the shape of the scattered background light along the entire column length (including the masked regions). See {numref}`background_spline`.
 
 :::{figure-md} background_spline
-:target: ../_images/image-20240920140729800.png
 ![image-20240920140729800](../_images/image-20240920140729800.png){width=600px}
 
 The red points are the unmasked data located along a single column in the masked frame. The blue line is the bspline fitted to the data, providing a model for the scattered background light contaminating the inter-order regions.
@@ -43,7 +39,6 @@ A Gaussian filter is applied to the image to remove the structure resulting from
 
 
 :::{figure-md} background_iamge_blurred
-:target: ../_images/image-20240920135302518.png
 ![image-20240920135302518](../_images/image-20240920135302518.png){width=600px}
 
 The final image of the model background scattered light, which is then subtracted from the original data frame.

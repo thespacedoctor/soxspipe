@@ -7,7 +7,6 @@ This logic is all housed within the [`detrend`](#soxspipe.recipes.base_recipe.ba
 
 
 :::{figure-md} detrend
-:target: detrend.png
 ![](detrend.png){width=600px}
 
 The algorithm used to detrend raw images.

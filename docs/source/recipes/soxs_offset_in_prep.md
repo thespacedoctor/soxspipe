@@ -22,7 +22,6 @@ The purpose of the [`soxs_offset`](#soxspipe.recipes.soxs_offset) recipe is to r
 <!-- METHOD TEXT HERE, FOLLOWED BY WORKFLOW DIAGRAM -->
 
 :::{figure-md} soxs_offset_diagram
-:target: soxs_offset.png
 ![](soxs_offset.png){width=600px}
 
 The `soxs_offset` recipe algorithm.

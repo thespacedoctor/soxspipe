@@ -19,7 +19,6 @@ The [`soxs_nod`](#soxspipe.recipes.soxs_nod) recipe reduces the science frames p
 The algorithm used in the `soxs_nod` recipe is shown in {numref}`soxs_nod_diagram`.
 
 :::{figure-md} soxs_nod_diagram
-:target: soxs_nod.png
 ![](soxs_nod.png){width=600px}
 
 The `soxs_nod` recipe reduced SOXS data acquired in nodding mode with one or multiple ABBA (jitter offsets) sequences. 

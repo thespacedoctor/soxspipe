@@ -3,7 +3,6 @@
 The [`flux_calibration`](#soxspipe.commonutils.flux_calibration) utility flux calibrates a scientific spectrum by applying the response function computed by the [`response_function`](#soxspipe.commonutils.response_function) utility.
 
 :::{figure-md} flux_calibration_util
-:target: flux_calibration.png
 ![](flux_calibration.png){width=600px}
 
 The algorithm used flux to calibrate a scientific spectrum by applying a response function.

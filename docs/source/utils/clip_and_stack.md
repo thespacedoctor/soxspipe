@@ -16,7 +16,6 @@ After the clipping has been completed individual frames are mean-combined, ignor
 
 
 :::{figure-md} clip_and_stack_util
-:target: clip_and_stack.png
 ![](clip_and_stack.png){width=600px}
 
 The algorithm used whenever a set of images is to be combined into a single master frame. This utility is used repeatedly throughout the pipeline.

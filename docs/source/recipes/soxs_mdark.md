@@ -21,7 +21,6 @@ The purpose of the [`soxs_mdark`](#soxspipe.recipes.soxs_mdark) recipe is to gen
 The raw dark frames are stacked together (using the [`clip_and_stack`](../utils/clip_and_stack.md) utility) into master-dark frames and, in the process, clipping rogue pixels from the individual raw frames and reducing the read-noise contribution. The algorithm used in the `soxs_mdark` recipe is shown in {numref}`soxs_mdark_diagram`.
 
 :::{figure-md} soxs_mdark_diagram
-:target: ../_images/soxs_mdark.png
 ![](../_images/soxs_mdark.png){width=600px}
 
 The soxs-mdark recipe algorithm.

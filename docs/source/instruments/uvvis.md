@@ -32,7 +32,6 @@ As shown in {numref}`uvis_format`, the SOXS UV-VIS arm has four dispersing eleme
 
 
 :::{figure-md} uvis_format
-:target: ../_images/image-20240902153453725.png
 ![image-20240902153453725](../_images/image-20240902153453725.png){width=600px}
 
 SOXS UV-VIS spectral format, Figure 4 of {cite:t}`sanchez2018a` modified to show the dispersion direction for each pseudo-order.
@@ -48,7 +47,6 @@ The full UV-VIS wavelength range is 350 – 850nm (providing a 50nm overlap with
 
 
 :::{figure-md} uvis_xenon
-:target: ../_images/image-20240903112402170.png
 ![image-20240903112402170](../_images/image-20240903112402170.png){width=600px}
 
 A SOXS UV-VIS Xenon arc lamp frame. The arc lines are not perpendicular to the dispersion axis, but tilted in the cross-dispersion direction.

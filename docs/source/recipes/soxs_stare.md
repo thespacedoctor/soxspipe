@@ -23,7 +23,6 @@ The algorithm used in the `soxs_stare` recipe is shown in {numref}`soxs_stare_di
 
 
 :::{figure-md} soxs_stare_diagram
-:target: soxs_stare.png
 ![](soxs_stare.png){width=600px}
 
 The `soxs_stare` recipe algorithm.

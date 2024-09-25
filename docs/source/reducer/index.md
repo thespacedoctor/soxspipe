@@ -5,7 +5,6 @@ The `reducer` utility is designed to interact with the data organiser to reduce 
 The algorithm used by the `reducer` util is shown in {numref}`reducer_util`.
 
 :::{figure-md} reducer_util
-:target: reducer.png
 ![](reducer.png){width=600px}
 
 The algorithm used by the reducer utility to process data through the entire data-reduction cascade.

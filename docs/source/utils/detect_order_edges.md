@@ -3,7 +3,6 @@
 The [`detect_order_edges`](#soxspipe.commonutils.detect_order_edges) utility uses a fully-illuminated slit flat-lamp frame to detect and fit the edges of each echelle order across the detector plane.
 
 :::{figure-md} detect_order_edges_util
-:target: detect_order_edges.png
 ![](detect_order_edges.png){width=600px}
 
 This algorithm detects and fits the edges of the echelle orders across the detector plane.
@@ -26,7 +25,6 @@ For each slice along each order, the pixel-locations xmin (lower edge) and xmax 
 
 
 :::{figure-md} order-edge-slice
-:target: ../_images/image-20240911115628697.png
 ![image-20240911115628697](../_images/image-20240911115628697.png){width=600px}
 
 A single slice cut across the cross-dispersion axis of an echelle order. The grey dots represent the median flux from the width-collapsed 1D slice. The red dots show where a pre-determined flux threshold is reached, and the pixel positions at these locations are registered as the lower and upper edges of the order as measured in this slice.
@@ -43,7 +41,6 @@ $$
 where $X$ and $Y$ are the pixel positions and $n$ is the echelle order number. $i$ and $j$ are the polynomial degree orders for the echelle order (`order-deg`) and $Y$ pixel position (`disp-axis-deg`) respectively. $c_{ij}$ are the polynomial coefficients to be fitted. The polynomial is iteratively fitted while sigma-clipping pixel-positions with outlying residuals (see {numref}`order-edge-fits`). The new order location table is written to file and now includes the upper and lower-edge locations alongside the central location for each order.
 
 :::{figure-md} order-edge-fits
-:target: ../_images/image-20240911121836550.png
 ![image-20240911121836550](../_images/image-20240911121836550.png){width=600px}
 
 The top panel shows the upper and lower-order edge detections registered in the individual cross-dispersion slices in an Xshooter VIS flat frame. The bottom panel shows the global polynomial fits to the upper and lower-order edges, with the area between the fits filled with different colours to reveal the unique echelle orders across the detector plane.

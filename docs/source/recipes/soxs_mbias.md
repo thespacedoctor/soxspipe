@@ -21,7 +21,6 @@ The purpose of the [`soxs_mbias`](#soxspipe.recipes.soxs_mbias) recipe is to pro
 The purpose of the [`soxs_mbias`](#soxspipe.recipes.soxs_mbias) recipe is to stack raw bias frames together (using the [`clip_and_stack`](../utils/clip_and_stack.md) utility) into master-bias frames, clipping rogue pixels from the individual raw frames and reducing the read-noise contribution. The algorithm used in the [`soxs_mbias`](#soxspipe.recipes.soxs_mbias) recipe is shown in {numref}`soxs_mbias_diagram`.
 
 :::{figure-md} soxs_mbias_diagram
-:target: soxs_mbias.png
 ![](soxs_mbias.png){width=600px}
 
 The `soxs-mbias` recipe algorithm.

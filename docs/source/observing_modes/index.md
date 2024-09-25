@@ -19,7 +19,6 @@ The driving motivation for observing with nodding or offset mode over stare mode
 To ensure a clean subtraction, we need a spectral image of the night sky closely resembling the profile of the sky, contributing to flux in the target image. As sky flux varies on a timescale of minutes, ideally, we would observe a relatively empty area of the night sky as close as possible to our target source in both space and time. The 'nodding' observational technique was designed to fulfil these criteria.
 
 :::{figure-md} nodding_diagram
-:target: ../_images/image-20240903164622917.png
 ![image-20240903164622917](../_images/image-20240903164622917.png){width=600px}
 
 The nodding method of sky-subtraction. Offset mode works in much the same way, except the sky and source are observed in separate frames.

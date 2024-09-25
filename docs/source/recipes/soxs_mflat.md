@@ -28,7 +28,6 @@ A flat frame is ideally an image taken with uniform illumination across the dete
 The algorithm used in the `soxs_mflat` recipe is shown in {numref}`soxs_mflat_diagram`.
 
 :::{figure-md} soxs_mflat_diagram
-:target: soxs_mflat.png
 ![](soxs_mflat.png){width=600px}
 
 The `soxs_mflat` recipe algorithm.
@@ -43,7 +42,6 @@ Once calibrated, exposure levels in the individual flat frames are normalised, a
 In the first stage, the mean inner-order pixel value across the frame is used as a first approximation of an individual frame's exposure level. To calculate this mean value, the order locations identify a curved slice N pixels wide centred on each order centre, and bad pixels are masked (see {numref}`soxs_mflat_normalise_1`). The collected inner-order pixel values are then sigma-clipped to exclude outlying values, and a mean value is calculated.
 
 :::{figure-md} soxs_mflat_normalise_1
-:target: ../_images/image-20240924114204481.png
 ![image-20240924114204481](../_images/image-20240924114204481.png){width=600px}
 
 The inner regions of the echelle orders are used to calculate a mean exposure level for the individual flats.
@@ -54,7 +52,6 @@ In a first attempt to normalise the exposure levels of individual frames, they a
 The second stage divides each original dark and bias-subtracted flat frame by this first-pass master flat (see {numref}`soxs_mflat_normalise_2`). This removes the typical cross-plane illumination. So now, the mean inner-order pixel value across the frame will better estimate each frame's intrinsic exposure level.
 
 :::{figure-md} soxs_mflat_normalise_2
-:target: ../_images/image-20240924114517126.png
 ![image-20240924114517126](../_images/image-20240924114517126.png){width=600px}
 
 An individual flat frame divided by the first-pass master flat.
@@ -67,7 +64,6 @@ On this frame, the mean inner-order pixel value is calculated again, and the ori
 These re-normalised flats are then combined for a second time into a master-flat frame.
 
 :::{figure-md} soxs_mflat_master
-:target: ../_images/image-20240924114854412.png
 ![image-20240924114854412](../_images/image-20240924114854412.png){width=600px}
 
 A master-flat frame for Xshooter NIR.
@@ -82,7 +78,6 @@ Low-sensitivity pixels are flagged and added to the bad-pixel map, and the final
 As the UV-VIS uses a combination of D-lamp and QTH-lamp flat sets, a further step is required to stitch the best orders from each of these master flats together into a dual-lamp master flat (see {numref}`soxs_mflat_ubv_stitching`).
 
 :::{figure-md} soxs_mflat_ubv_stitching
-:target: stitch_uv_mflats.png
 ![](stitch_uv_mflats.png){width=600px}
 
 The algorithm used to stitch together master flat frames from the UVB D- and QTH lamps to form a single flat frame covering the entire UVB wavelength range.
@@ -107,7 +102,6 @@ Finally, the combined normalised frames for the D and QTH lamps are stacked to o
 ## QC Metrics
 
 :::{figure-md} soxs_mflat_qc
-:target: ../_images/image-20240924120759673.png
 ![image-20240924120759673](../_images/image-20240924120759673.png){width=600px}
 
 A QC plot resulting from the `soxs_mflat` recipe (Xshooter NIR). The top panel shows the upper and lower-order edge detections registered in the individual cross-dispersion slices in an Xshooter NIR flat frame. The bottom panel shows the global polynomial fits to the upper and lower-order edges, with the area between the fits filled with different colours to reveal the unique echelle orders across the detector plane.
