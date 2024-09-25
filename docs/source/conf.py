@@ -187,9 +187,9 @@ html_add_permalinks = u"  ∞"
 
 # -- LaTeX output -------------------------------------------------
 
-latex_engine = 'xelatex'
 
 if not on_rtd:
+    latex_engine = 'xelatex'
     latex_documents = [
         ('overleaf/introduction', 'introduction.tex', u'introduction',
          u'David R. Young & Marco Landoni', 'howto', False),
