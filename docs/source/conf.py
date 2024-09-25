@@ -187,7 +187,7 @@ html_add_permalinks = u"  ∞"
 
 # -- LaTeX output -------------------------------------------------
 
-
+print(f"READTHEDOCS = {on_rtd}")
 if not on_rtd:
     latex_engine = 'xelatex'
     latex_documents = [
