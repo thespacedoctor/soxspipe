@@ -77,23 +77,6 @@ class reducer(object):
     def reduce(self):
         """
         *reduce the selected data*
-
-        **Return:**
-
-        - ``reducer``
-
-        **Usage:**
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - create cl-util for this method
-            - update the package tutorial if needed
-        :::
-
-        ```python
-        usage code 
-        ```
         """
         self.log.debug('starting the ``reduce`` method')
 
@@ -139,7 +122,7 @@ class reducer(object):
             print(f"{'='*70}\n")
 
         self.log.debug('completed the ``reduce`` method')
-        return reducer
+        return None
 
     def select_sof_files_to_process(
             self):

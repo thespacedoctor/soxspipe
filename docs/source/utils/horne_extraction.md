@@ -4,30 +4,15 @@ DAVE WAS HERE
 
 The [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility performs an optimal extraction of a source's flux from an echelle order using the algorithms reported in {cite:t}`horne1986`.
 
-## Input
 
-| Frame.                   | Description                                   | 
-| ------------------------ | --------------------------------------------- |
-|  Detrended  2D spectrum | Frame containing the 2D spectrum (any observing mode)  |  
-| Dispersion map | FITS table containing the computed dispersion map for the ARM|
-| Order table | FITS table containing the spectral format computed for the ARM|
+:::{figure-md} horne_extraction_util
+:target: horne_extraction.png
+![](horne_extraction.png){width=600px}
 
-## Parameters
+The algorithm used to optimally extract an object spectrum.
+:::
 
-| Parameter                | Description                                   | Type  |
-| ------------------------ | --------------------------------------------- | ----- |
-|  horne-extraction-slit-length | size of the extraction box in the spatial direction  | int  |
-| horne-extraction-profile-clipping-sigma | Sigma-clipping threshold for refining the fitting of polynomials used for determining the object profile  | int|
-| horne-extraction-profile-clipping-iteration-count| Maximum number of iterations allowed to refine fitting of polynomials of the object profile |int |
-| horne-extraction-profile-global-clipping-sigma| Sigma-clipping threshold used to exclude deviant pixels and cosmic rays during the extraction| int |
-
-## Methods
-
-The typical execution workflow is the following:
-
-![](horne_extraction.png)
-
-This utility, according to the prescription of Horne+86, follows those basic steps:
+This utility, according to the prescription of {cite:t}`horne1986`, follows those basic steps:
 
 ### 1 Determination of the spatial profile
 
@@ -74,13 +59,7 @@ is computed. The extraction does not include pixels for which this quantity exce
 
 The spectrum is extracted on each order separately. When all orders are extracted, they are merged together in a single spectrum. Since regions of different orders overlap in the wavelength space, they are first rectified on a common, equally spaced wavelength grid in order to merge together. Flux during resampling is conserved. 
 
-## Output
 
-| Data Type | Content |
-| ------------------------ | --------------------------------------------- |
-|FITS table |Extracted spectrum and merged orders|
-
- 
 
 :::{bibliography}
 :filter: docname in docnames

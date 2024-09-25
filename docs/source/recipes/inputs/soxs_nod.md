@@ -3,10 +3,12 @@
 
 | Data Type | Content | Related OB |
 |:----|:----|:---|
-|FITS images|Raw science frames of targets observed in nodding mode |`SOXS_nod`|
-| FITS Image | Master Bias (UVVIS only) | - |
-| FITS Table | [order table](../files/order_table.md) containing coefficients to the polynomial fits describing the order centre locations. | |
-| FITS Table | [Dispersion Map](../files/dispersion_map.md) table giving coefficients of polynomials describing 2D dispersion/spatial solution | |
+| FITS Image | Raw science frames of targets observed in nodding mode |`SOXS_slt_obs_AutoNodOnSlit`, `SOXS_slt_cal_TelluricStdNod`, `SOXS_slt_cal_SpecphotNod`|
+| FITS Image | Master flat frame (optional) | - |
+| FITS Table | order location table containing coefficients to the polynomial fits describing the order locations. | - |
+| FITS Table | Dispersion map table giving coefficients of polynomials describing 2D dispersion/spatial solution | - |
+| FITS Image | Dispersion map FITS image with 3-extensions (wavelength, slit-position and echelle order number) | - |
+
 
 :::
 

@@ -6,8 +6,9 @@
 | FITS Image | Arc Lamp through multi-pinhole mask | `SOXS_slt_cal_VISArcsMultiplePinhole`, `SOXS_slt_cal_NIRArcsMultiplePinhole` |
 | FITS Image | Master Dark Frame (VIS only, optional) | - |
 | FITS Image | Master Bias Frame (VIS only) | - |
+| FITS Image | Master Flat Frame (optional) | - |
 | FITS Image | Dark frame (Lamp-Off) of equal exposure length as multi-pinhole frame (Lamp-On) (NIR only) | `SOXS_slt_cal_NIRArcsMultiplePinhole` |
-| FITS Table | First-guess [Dispersion Map](../files/dispersion_map.md) table |
+| FITS Table | First-guess Dispersion map table |
 
 :::
 

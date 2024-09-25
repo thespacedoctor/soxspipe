@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-*Reduce SOXS data taken in nodding mode*
+*Reduce SOXS/Xshooter data taken in nodding mode*
 
 Author
 : David Young & Marco Landoni
@@ -27,7 +27,7 @@ os.environ['TERM'] = 'vt100'
 
 class soxs_nod(base_recipe):
     """
-    *The soxs_nod recipe*
+    *Reduce SOXS/Xshooter data taken in nodding mode*
 
     **Key Arguments**
 

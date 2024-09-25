@@ -40,7 +40,7 @@ $$
 X = \sum\limits_{ij} c_{ij} \times n^i \times Y^j
 $$
 
-where $X$ and $Y$ are the pixel positions and $n$ is the echelle order number. $i$ and $j$ are the polynomial degree orders for the echelle order (`order-deg`) and $Y$ pixel position (`disp-axis-deg`) respectively. $c_{ij}$ are the polynomial coefficients to be fitted. The polynomial is iteratively fitted while sigma-clipping pixel-positions with outlying residuals (see {numref}`order-edge-fits`). The new [order table](../files/order_table.md) is written to file and now includes the upper and lower-edge locations alongside the central location for each order.
+where $X$ and $Y$ are the pixel positions and $n$ is the echelle order number. $i$ and $j$ are the polynomial degree orders for the echelle order (`order-deg`) and $Y$ pixel position (`disp-axis-deg`) respectively. $c_{ij}$ are the polynomial coefficients to be fitted. The polynomial is iteratively fitted while sigma-clipping pixel-positions with outlying residuals (see {numref}`order-edge-fits`). The new order location table is written to file and now includes the upper and lower-edge locations alongside the central location for each order.
 
 :::{figure-md} order-edge-fits
 :target: ../_images/image-20240911121836550.png

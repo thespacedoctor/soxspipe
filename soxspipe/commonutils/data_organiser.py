@@ -20,7 +20,7 @@ os.environ['TERM'] = 'vt100'
 
 class data_organiser(object):
     """
-    *The worker class for the data_organiser module*
+    *The `soxspipe` Data Organiser*
 
     **Key Arguments:**
 
@@ -322,11 +322,11 @@ class data_organiser(object):
         import pandas as pd
 
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
-        filteredFrames, fitsPaths, fitsNames = self.create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
+        filteredFrames, fitsPaths, fitsNames = self._create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
 
         if fitsPaths:
             # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
-            rawFrames, reducedFramesPixels, reducedFramesTables = self.categorise_frames(filteredFrames)
+            rawFrames, reducedFramesPixels, reducedFramesTables = self._categorise_frames(filteredFrames)
 
             # FILTER DATA FRAME
             if self.PAE and self.instrument.upper() == "SOXS":
@@ -347,12 +347,12 @@ class data_organiser(object):
                     shutil.move(self.rootDir + "/" + f, self.rawDir)
 
         if not skipSqlSync:
-            self.sync_sql_table_to_directory(self.rawDir, 'raw_frames', recursive=False)
+            self._sync_sql_table_to_directory(self.rawDir, 'raw_frames', recursive=False)
 
         self.log.debug('completed the ``_sync_raw_frames`` method')
         return None
 
-    def create_directory_table(
+    def _create_directory_table(
             self,
             pathToDirectory,
             filterKeys):
@@ -374,7 +374,7 @@ class data_organiser(object):
 
         ```python
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
-        masterTable, fitsPaths, fitsNames = create_directory_table(
+        masterTable, fitsPaths, fitsNames = _create_directory_table(
             log=log,
             pathToDirectory="/my/directory/path",
             keys=["file","mjd-obs", "exptime","cdelt1", "cdelt2"],
@@ -382,7 +382,7 @@ class data_organiser(object):
         )
         ```
         """
-        self.log.debug('starting the ``create_directory_table`` function')
+        self.log.debug('starting the ``_create_directory_table`` function')
 
         from ccdproc import ImageFileCollection
         from astropy.time import Time, TimeDelta
@@ -581,10 +581,10 @@ class data_organiser(object):
 
         masterTable['night start date'] = Time(masterTable['night start mjd'], format='mjd').to_value('iso', subfmt='date')
 
-        self.log.debug('completed the ``create_directory_table`` function')
+        self.log.debug('completed the ``_create_directory_table`` function')
         return masterTable, fitsPaths, fitsNames
 
-    def sync_sql_table_to_directory(
+    def _sync_sql_table_to_directory(
             self,
             directory,
             tableName,
@@ -604,10 +604,10 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        do.sync_sql_table_to_directory('/raw/directory/', 'raw_frames', recursive=False)
+        do._sync_sql_table_to_directory('/raw/directory/', 'raw_frames', recursive=False)
         ```
         """
-        self.log.debug('starting the ``sync_sql_table_to_directory`` method')
+        self.log.debug('starting the ``_sync_sql_table_to_directory`` method')
 
         import sqlite3 as sql
         import shutil
@@ -647,10 +647,10 @@ class data_organiser(object):
 
         c.close()
 
-        self.log.debug('completed the ``sync_sql_table_to_directory`` method')
+        self.log.debug('completed the ``_sync_sql_table_to_directory`` method')
         return None
 
-    def categorise_frames(
+    def _categorise_frames(
             self,
             filteredFrames,
             verbose=False):
@@ -670,7 +670,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        rawFrames, reducedFramesPixels, reducedFramesTables = self.categorise_frames(filteredFrames)
+        rawFrames, reducedFramesPixels, reducedFramesTables = self._categorise_frames(filteredFrames)
         ```
         """
         self.log.debug('starting the ``catagorise_frames`` method')
@@ -814,13 +814,6 @@ class data_organiser(object):
         ```python
         usage code
         ```
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        :::
         """
         self.log.debug('starting the ``_populate_product_frames_db_table`` method')
 
@@ -891,10 +884,10 @@ class data_organiser(object):
         calibrationTables = pd.read_sql('SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%" and (status != "fail" or status is null)', con=conn)
         calibrationTables.fillna("--", inplace=True)
 
-        # generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
+        # _generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
         for o in self.reductionOrder:
-            rawGroups = rawGroups.apply(self.generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
-            rawGroups = rawGroups.apply(self.populate_products_table, axis=1, reductionOrder=o)
+            rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
+            rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
 
         # xpd-update-filter-dataframe-column-values
 
@@ -909,7 +902,7 @@ class data_organiser(object):
         self.log.debug('completed the ``_populate_product_frames_db_table`` method')
         return None
 
-    def generate_sof_and_product_names(
+    def _generate_sof_and_product_names(
             self,
             series,
             reductionOrder,
@@ -921,16 +914,6 @@ class data_organiser(object):
         **Key Arguments:**
 
         - ``series`` -- the dataframe row/series to apply work on
-
-        **Usage:**
-
-        :::{todo}
-            - add usage info
-        :::
-
-        ```python
-        usage code
-        ```
         """
 
         import pandas as pd
@@ -1299,11 +1282,11 @@ class data_organiser(object):
 
         return series
 
-    def populate_products_table(
+    def _populate_products_table(
             self,
             series,
             reductionOrder):
-        """*determine what the products should be for a given recipe and SOF file and ppulate the products table*
+        """*determine what the products should be for a given recipe and SOF file and populate the products table*
 
         **Key Arguments:**
 
@@ -1314,20 +1297,8 @@ class data_organiser(object):
 
         - None
 
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        :::
         """
-        self.log.debug('starting the ``populate_products_table`` method')
+        self.log.debug('starting the ``_populate_products_table`` method')
 
         import pandas as pd
 
@@ -1362,7 +1333,7 @@ class data_organiser(object):
                 products.to_sql('product_frames', con=self.conn,
                                 index=False, if_exists='append')
 
-        self.log.debug('completed the ``populate_products_table`` method')
+        self.log.debug('completed the ``_populate_products_table`` method')
         return series
 
     def _move_misc_files(
@@ -1399,18 +1370,6 @@ class data_organiser(object):
 
         - None
 
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        :::
         """
         self.log.debug('starting the ``_write_sof_files`` method')
 
@@ -1452,18 +1411,6 @@ class data_organiser(object):
 
         - None
 
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        :::
         """
         self.log.debug('starting the ``_write_reduction_shell_scripts`` method')
 
@@ -1584,7 +1531,7 @@ class data_organiser(object):
         # _reduce_all.sh HAS BEEN REPLACED WITH THE `SOXSPIPE REDUCE` COMMAND
         # self._write_reduction_shell_scripts()
 
-        self.symlink_session_assets_to_workspace_root()
+        self._symlink_session_assets_to_workspace_root()
 
         # WRITE THE SESSION ID FILE
         import codecs
@@ -1690,13 +1637,13 @@ class data_organiser(object):
             return None
 
         self.sessionPath = self.sessionsDir + "/" + sessionId
-        self.symlink_session_assets_to_workspace_root()
+        self._symlink_session_assets_to_workspace_root()
         print(f"Session successfully switched to '{sessionId}'.")
 
         self.log.debug('completed the ``session_switch`` method')
         return None
 
-    def symlink_session_assets_to_workspace_root(
+    def _symlink_session_assets_to_workspace_root(
             self):
         """*symlink session QC, product, SOF directories, database and scripts to workspace root*
 
@@ -1707,20 +1654,8 @@ class data_organiser(object):
 
         - None
 
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        :::
         """
-        self.log.debug('starting the ``symlink_session_assets_to_workspace_root`` method')
+        self.log.debug('starting the ``_symlink_session_assets_to_workspace_root`` method')
 
         import shutil
         import os
@@ -1754,32 +1689,23 @@ class data_organiser(object):
                     os.unlink(dest)
                     os.symlink(src, dest)
 
-        self.log.debug('completed the ``symlink_session_assets_to_workspace_root`` method')
+        self.log.debug('completed the ``_symlink_session_assets_to_workspace_root`` method')
         return None
 
     def session_refresh(
             self):
-        """*refresh a session's SOF file (needed if a recipe fails)*
-
-        **Key Arguments:**
-            # -
-
-        **Return:**
-
-        - None
+        """*refresh a session's SOF files (needed if a recipe fails)*
 
         **Usage:**
 
         ```python
-        usage code
+        from soxspipe.commonutils import data_organiser
+        do = data_organiser(
+            log=log,
+            rootDir="." 
+        )
+        do.session_refresh()
         ```
-
-        :::{todo}
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
-        :::
         """
         self.log.debug('starting the ``session_refresh`` method')
 

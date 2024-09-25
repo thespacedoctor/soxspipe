@@ -12,7 +12,6 @@ detrend
 flux_calibration
 horne_extraction
 prepare_frames
-reducer
 response_function
 set_of_files
 subtract_background

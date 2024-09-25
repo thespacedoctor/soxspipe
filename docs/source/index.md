@@ -37,9 +37,9 @@ SOXS Instruments <instruments/index>
 observing_modes/index
 data_reduction_cascades/index
 data_organiser/index
+reducer/index
 recipes/index
 utils/_index
-files/index
 
 :::
 

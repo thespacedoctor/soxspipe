@@ -27,7 +27,7 @@ today_fmt = '%Y'
 
 # -- General configuration ---------------------------------------------------
 templates_path = ['_templates']
-exclude_patterns = []
+exclude_patterns = ['**xxx**']
 source_suffix = {
     '.rst': 'restructuredtext',
     '.md': 'markdown',

@@ -1,10 +1,12 @@
 # soxs_stare
 
-<!-- PURPOSE TEXT -->
+The `soxs_stare` recipe reduces object frames taken in stare mode. It models and removes the on-frame sky contribution to the flux. The object trace is then fitted and extracted using an optimal extraction routine.
+
+
 
 ## Input
 
-<!-- FIND OBs HERE : https://docs.google.com/spreadsheets/d/1-3VXkIWcydvpawwVl_C3pNTU3HgnElJaYFAKow65Fl8/edit#gid=0 -->
+
 
 :::{include} inputs/soxs_stare.md
 :::
@@ -17,7 +19,7 @@
 
 ## Method
 
-<!-- METHOD TEXT HERE, FOLLOWED BY WORKFLOW DIAGRAM -->
+The algorithm used in the `soxs_stare` recipe is shown in {numref}`soxs_stare_diagram`.
 
 
 :::{figure-md} soxs_stare_diagram
@@ -26,6 +28,8 @@
 
 The `soxs_stare` recipe algorithm.
 :::
+
+If more than one stare mode frame is passed to the `soxs_stare` recipe, there is a call to [`clip_and_stack`](../utils/clip_and_stack.md) to combine the data into a single frame. The single stare-mode frame is detrended using the [`detrend`](../utils/detrend.md), optionally dividing by a master flat field and fitting and removing the background scattered light. The sky-flux is modelled and removed using the `subtract_sky` util, and finally, the object is optimally extracted using the [`horne_extraction`](../utils/horne_extraction.md) utility.
 
 ## Output
 

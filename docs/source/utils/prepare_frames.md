@@ -11,7 +11,7 @@ This is the algorithm used to prepare raw frames for data reduction.
 
 **1. Trim Overscan**
 
-The first thing we need to do is trim off the overscan area of the image. The science-pixel regions for the detectors are read from the [Detector Parameters](../files/detector_parameters.md) file.
+The first thing we need to do is trim off the overscan area of the image. The science-pixel regions for the detectors are read from the detector parameters file.
 
 **2. ADU to Electrons**
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-*Reduce SOXS data taken in stare mode*
+*Reduce SOXS/Xshooter data taken in stare mode*
 
 Author
 : David Young & Marco Landoni
@@ -23,7 +23,7 @@ os.environ['TERM'] = 'vt100'
 
 class soxs_stare(base_recipe):
     """
-    *The soxs_stare recipe*
+    *Reduce SOXS/Xshooter data taken in stare mode*
 
     **Key Arguments**
 
@@ -35,13 +35,6 @@ class soxs_stare(base_recipe):
 
 
     See `produce_product` method for usage.
-
-    :::{todo}
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``soxs_stare`` to documentation
-    :::
     """
     # Initialisation
 

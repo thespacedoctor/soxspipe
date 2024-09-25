@@ -2,21 +2,6 @@
 
 The [`flux_calibration`](#soxspipe.commonutils.flux_calibration) utility flux calibrates a scientific spectrum by applying the response function computed by the [`response_function`](#soxspipe.commonutils.response_function) utility.
 
-## Input
-
-| Frame.                   | Description                                   | 
-| ------------------------ | --------------------------------------------- |
-| Extracted  1D scientific spectrum | FITS table containing the 1D spectrum (any observing mode) of the object to be flux calibrated |  
-| Extinction curve | FITS table containing the tabulated value of the observing site's extinction curve (wavelength, mag per airmass).|
-| Response function | FITS table containing the fit parameters modelling the response function calculated by [`response_function`](#soxspipe.commonutils.response_function) utility |
-
-## Parameters
-
-N/A
-
-## Method
-The general algorithm and steps performed by [`flux_calibration`](#soxspipe.commonutils.flux_calibration) are the one reported in the flow chart below:
-
 :::{figure-md} flux_calibration_util
 :target: flux_calibration.png
 ![](flux_calibration.png){width=600px}
@@ -41,12 +26,6 @@ $$
 
 where $F(\lambda)$ is the desired 1D scientific spectrum flux calibrated in $erg$ $cm^{-2}$ $s^{-1}$ ${A^{-1}}$, $C(\lambda)$ is the scientific spectrum in counts and $S(\lambda)$ is the response function.
 
-
-## Output
-
-| Data Type | Content |
-| ------------------------ | --------------------------------------------- |
-|FITS table |FITS table containing the flux calibrated input spectrum|
 
 <!-- ## Utility API
 
