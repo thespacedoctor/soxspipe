@@ -12,7 +12,7 @@
 import sys
 import os
 from builtins import object
-from matplotlib.pyplot import figure
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -139,6 +139,7 @@ class response_function(object):
         from scipy.interpolate import interp1d
         import numpy as np
         import matplotlib.pyplot as plt
+        from matplotlib.pyplot import figure
 
         response_function = None
 
