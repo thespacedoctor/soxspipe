@@ -37,14 +37,6 @@ Bases: {py:obj}`object`
 ```{autodoc2-docstring} soxspipe.commonutils.response_function.response_function.__init__
 ```
 
-````{py:method} extinction_correction_factor(wave)
-:canonical: soxspipe.commonutils.response_function.response_function.extinction_correction_factor
-
-```{autodoc2-docstring} soxspipe.commonutils.response_function.response_function.extinction_correction_factor
-```
-
-````
-
 ````{py:method} get()
 :canonical: soxspipe.commonutils.response_function.response_function.get
 

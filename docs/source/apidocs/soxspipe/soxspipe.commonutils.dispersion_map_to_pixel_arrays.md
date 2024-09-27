@@ -34,7 +34,7 @@
 ```
 ````
 
-````{py:function} get_cached_coeffs(log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg, reset=False)
+````{py:function} get_cached_coeffs(log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg)
 :canonical: soxspipe.commonutils.dispersion_map_to_pixel_arrays.get_cached_coeffs
 
 ```{autodoc2-docstring} soxspipe.commonutils.dispersion_map_to_pixel_arrays.get_cached_coeffs
