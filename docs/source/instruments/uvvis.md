@@ -53,6 +53,3 @@ A SOXS UV-VIS Xenon arc lamp frame. The arc lines are not perpendicular to the d
 
 :::
 
-:::{bibliography}
-:filter: docname in docnames
-:::

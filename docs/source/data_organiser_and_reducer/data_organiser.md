@@ -23,7 +23,7 @@ The initial set of SOF files in the `sof_map` table is used to predict the produ
 Finally, all SOF files from the `sof_map`  table are written in a `sof` directory in the workspace root and ready to be used by the various soxspipe recipes during a data-reduction session.
 
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.data_organiser.data_organiser
 :::

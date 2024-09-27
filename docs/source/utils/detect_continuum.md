@@ -55,7 +55,7 @@ where $X$ and $Y$ are the pixel positions and $n$ is the echelle order number. $
 The top panel show the global polynomial fitted to the detected source trace with the different colours representing individual echelle orders. The middle panels show the fit residuals in the X and Y axes. The bottom panel shows the FWHM of the trace fits (in pixels) with respect to echelle order and wavelength.
 :::
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.detect_continuum.detect_continuum
 :::

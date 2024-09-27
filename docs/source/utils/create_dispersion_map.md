@@ -70,7 +70,7 @@ A 2D dispersion solution image map; a triple-extension FITS file with each exten
 :::
 
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.create_dispersion_map.create_dispersion_map
 :::

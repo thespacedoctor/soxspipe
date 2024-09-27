@@ -5,7 +5,6 @@
 
 clip_and_stack
 create_dispersion_map
-data_organiser
 detect_continuum
 detect_order_edges
 detrend

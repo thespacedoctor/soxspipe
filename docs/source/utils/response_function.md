@@ -32,7 +32,7 @@ The different values of $S(\lambda)$ are fitted with a polynomial of 4th order (
 
 If the fit does not converge, `response_function` raises an exception; otherwise, a FITS table containing the fit's parameters is saved.
 
-## Utility API
+### Utility API
 
 
 

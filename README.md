@@ -46,7 +46,7 @@ If you use `soxspipe` in your work, please cite using the following BibTeX entry
 
 ```bibtex
 @software{Young_soxspipe,
-    author = {Young, David R.},
+    author = {Young, David R. & Landoni, Marco},
     doi = {10.5281/zenodo.8038264},
     license = {GPL-3.0-only},
     title = {{soxspipe. The SOXS data-reduction pipeline}},

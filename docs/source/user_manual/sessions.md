@@ -1,6 +1,6 @@
-# Data Reduction Sessions
+## Data Reduction Sessions
 
-soxspipe reduces data within a 'reduction session'. These sessions are designed to be self-contained and isolated from other sessions, allowing a user to reduce the same set of raw data with multiple different pipeline settings. When a workspace is first prepared (using the `soxspipe prep` command), an initial `base` session is automatically created. Sessions are stored in the `sessions` directory of the workspace and contain their own settings file, products and QC directories. soxspipe will remember and use the latest session you were working with unless you create a new session or switch to another one. 
+soxspipe reduces data within a 'reduction session'. These sessions are designed to be self-contained and isolated from other sessions, allowing users to reduce the same set of raw data with multiple different pipeline settings. An initial ' base ' session is automatically created when a workspace is first prepared (using the `soxspipe prep` command). Sessions are stored in the `sessions` directory of the workspace and contain their own settings file, products and QC directories. soxspipe will remember and use the latest session you were working with unless you create a new session or switch to another one. 
 
 To see which reduction session you are working within and all other sessions available, run the command:
 
@@ -26,7 +26,7 @@ Or to switch to an existing session, run the command:
 soxspipe session <sessionId>
 ```
 
-For user convenience, when you switch to a new session, the symbolic links found within the workspace root folder are automatically switched to point to the current session assets (`products`, `qc`, `sof`, `soxspipe.yaml`,`soxspipe.db` etc). If you run `ls -lrt` within your workspace root directory you will see these symlinks reported:
+For user convenience, when you switch to a new session, the symbolic links found within the workspace root folder are automatically switched to point to the current session assets (`products`, `qc`, `sof`, `soxspipe.yaml`,`soxspipe.db` etc). If you run `ls -lrt` within your workspace root directory, you will see these symlinks reported:
 
 ```bash
 products -> ./sessions/base/products

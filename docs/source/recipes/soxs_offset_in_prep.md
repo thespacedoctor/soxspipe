@@ -11,8 +11,6 @@ The purpose of the [`soxs_offset`](#soxspipe.recipes.soxs_offset) recipe is to r
 
 ## Parameters
 
-## Parameters
-
 :::{include} parameters/soxs_offset.md
 :::
 

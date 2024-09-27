@@ -102,8 +102,8 @@ remove_from_toctrees = ["utils/[!_]*"]
 
 # BIBTEX STUFF
 bibtex_bibfiles = ['dry-bookends-references.bib']
-bibtex_reference_style = 'author_year'
-
+# bibtex_reference_style = 'author_year'
+# bibtex_default_style = 'unsrtalpha'
 
 # AUTODOC2 AND BIBTEX PLUGS CLASH DUE TO THIS ISSUE: https://github.com/pylint-dev/astroid/issues/2191
 # UNTIL THIS IS FIXED SWITCH BETWEEN THE TWO
@@ -199,7 +199,7 @@ if not on_rtd:
          u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/instruments', 'instruments.tex', u'instruments',
          u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/data_organiser', 'data_organiser.tex', u'data organiser',
+        ('overleaf/data_organiser_and_reducer', 'data_organiser_and_reducer.tex', u'data organiser and reducer',
          u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/data_reduction_cascades', 'data_reduction_cascades.tex', u'data reduction cascades',
          u'David R. Young & Marco Landoni', 'howto', False),
@@ -223,6 +223,12 @@ if not on_rtd:
          u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/support', 'support.tex', u'sessions',
          u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/references', 'references.tex', u'references',
+         u'David R. Young & Marco Landoni', 'howto', False),
+    ]
+else:
+    latex_documents = [
+        (master_doc, 'soxspipe.tex', 'soxspipe Documentation', u'David R. Young & Marco Landoni', 'manual'),
     ]
 
 

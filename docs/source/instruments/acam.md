@@ -20,6 +20,3 @@ Although the SOXS acquisition and guiding camera will mainly be used for the acq
 
 
 
-:::{bibliography}
-:filter: docname in docnames
-:::

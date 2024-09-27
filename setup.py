@@ -11,7 +11,7 @@ def readme():
 
 
 install_requires = [
-    'pyyaml==5.4.1',
+    'pyyaml==5.3.1',
     'soxspipe',
     'fundamentals',
     'astropy',

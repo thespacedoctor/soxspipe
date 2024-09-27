@@ -14,7 +14,7 @@ The primary purpose of the [`set_of_files`](#soxspipe.commonutils.set_of_files) 
 
 Lines in a sof file beginning with a `#` are considered comments and, therefore, ignored by the pipeline. This is helpful to quickly remove a file from the recipe input by commenting out its line in the sof file or for adding user notes to the sof file.
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.set_of_files.set_of_files
 :::

@@ -1,4 +1,4 @@
-# reducer
+# Reducer
 
 The `reducer` utility is designed to interact with the data organiser to reduce all of the data found within a workspace, starting from the most basic calibration frames (bias, darks) through the [data-reduction cascade](../data_reduction_cascades/index.md) to a final wavelength and flux calibrated object spectrum. Using the `reducer` utility and its command-line counterpart (`soxspipe reduce`) allows typical users to run the pipeline at a high level without worrying about individual recipe commands. Of course, those individual recipe commands are still available for 'power-users' to run with their own customised settings.
 
@@ -14,7 +14,7 @@ The reducer utility first selects from the `soxspipe.db` database, all SOF files
 
 
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.reducer.reducer
 :::

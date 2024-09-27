@@ -50,6 +50,3 @@ The SOXS NIR spectral format, Figure 5 of {cite:t}`vitali2018b`. The inter-order
 
 
 
-:::{bibliography}
-:filter: docname in docnames
-:::

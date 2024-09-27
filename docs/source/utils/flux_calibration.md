@@ -26,7 +26,7 @@ $$
 where $F(\lambda)$ is the desired 1D scientific spectrum flux calibrated in $erg$ $cm^{-2}$ $s^{-1}$ ${A^{-1}}$, $C(\lambda)$ is the scientific spectrum in counts and $S(\lambda)$ is the response function.
 
 
-<!-- ## Utility API
+<!-- ### Utility API
 
 
 :::{autodoc2-object} soxspipe.commonutils.flux_calibration.flux_calibration

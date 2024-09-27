@@ -22,7 +22,6 @@ Preparing a Workspace <user_manual/preparing_a_workspace>
 user_manual/reductions/index
 user_manual/logging
 user_manual/pipeline_settings
-user_manual/sessions
 support
 
 :::
@@ -36,8 +35,7 @@ support
 SOXS Instruments <instruments/index>
 observing_modes/index
 data_reduction_cascades/index
-data_organiser/index
-reducer/index
+data_organiser_and_reducer/index
 recipes/index
 utils/_index
 
@@ -50,6 +48,7 @@ utils/_index
 
 faq
 changes_link
+references
 apidocs/index
 :::
 

@@ -13,7 +13,7 @@ soxs_mdark
 soxs_mflat
 :::
 
-## Dispersion and Spatial Solutions
+## Dispersion Solutions
 
 There is a strong curvature in the traces of the NIR orders and spectral-lines do not run perpendicular to the dispersion direction, but are highly tilted. Therefore wavelength cannot be expressed as simply a function of pixel position, but instead detector pixel positions ($X, Y$) much be mapped as a function of:
 
@@ -31,7 +31,7 @@ soxs_order_centres
 soxs_spatial_solution
 :::
 
-## Observation Mode Specific Extractions
+## Source Extraction
 
 :::{toctree}
 :maxdepth: 1

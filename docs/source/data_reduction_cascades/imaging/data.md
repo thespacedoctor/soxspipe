@@ -21,5 +21,4 @@
 
 | Product                   | Description                                                  |
 | ------------------------- | ------------------------------------------------------------ |
-| Acquisition Camera Images | *ugrizy* astrometrically and photometrically (*griz* only) calibrated to Refcat2 (Tonry et al.  2018). |
-|                           |                                                              |
+| Acquisition Camera Images | *ugrizy* astrometrically and photometrically (*griz* only) calibrated to Refcat2 {cite:p}`tonry2018a`. |

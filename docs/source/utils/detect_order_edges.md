@@ -46,7 +46,7 @@ where $X$ and $Y$ are the pixel positions and $n$ is the echelle order number. $
 The top panel shows the upper and lower-order edge detections registered in the individual cross-dispersion slices in an Xshooter VIS flat frame. The bottom panel shows the global polynomial fits to the upper and lower-order edges, with the area between the fits filled with different colours to reveal the unique echelle orders across the detector plane.
 :::
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.detect_order_edges.detect_order_edges
 :::

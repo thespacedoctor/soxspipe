@@ -22,7 +22,7 @@ The algorithm used whenever a set of images is to be combined into a single mast
 :::
 
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.recipes.base_recipe.base_recipe.clip_and_stack
 :::

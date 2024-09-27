@@ -4,5 +4,5 @@
 :::{toctree}
 :maxdepth: 4
 
-../user_manual/sessions
+../data_organiser_and_reducer/index
 :::

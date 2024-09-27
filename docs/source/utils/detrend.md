@@ -13,7 +13,7 @@ The algorithm used to detrend raw images.
 :::
 
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.recipes.base_recipe.base_recipe.detrend
 :::

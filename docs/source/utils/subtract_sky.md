@@ -63,13 +63,10 @@ The bspline fit is used to estimate the sky flux level in every pixel in the ori
 
 
 
-:::{bibliography}
-:filter: docname in docnames
-:::
 
 
 
-## Utility API
+### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.subtract_sky.subtract_sky
 :::

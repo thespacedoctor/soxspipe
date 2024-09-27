@@ -60,13 +60,10 @@ The spectrum is extracted on each order separately. When all orders are extracte
 
 
 
-:::{bibliography}
-:filter: docname in docnames
-:::
 
 
 
-## Utility API
+### Utility API
 
 
 
