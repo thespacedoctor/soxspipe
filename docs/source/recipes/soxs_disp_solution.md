@@ -36,9 +36,9 @@ The typical solution for the `soxs_disp_solution` recipe has sub-pixel residuals
 
 
 :::{figure-md} soxs_disp_solution_qc
-![image-20240924082128619](../_images/image-20240924082128619.png){width=600px}
+![image-20240924082128619](../_images/image-20240924082128619.png){width=601px}
 
-A QC plot resulting from the `soxs_disp_solution` recipe as run on an Xshooter VIS single pinhole arc lamp frame. A 'good' dispersion solution will have sub-pixel residuals (mean residuals < 0.5 pixels). The top panel shows an Xshooter VIS arc-lamp frame, taken with a single pinhole mask. The green circles represent arc lines detected in the image, and the blue circles and red crosses were detected but dropped due to poor DAOStarFinder fitting or clipped during the polynomial fitting, respectively. The grey circles represent arc lines reported in the static calibration table that failed to be detected on the image.  The second panel shows the same arc-lamp frame with the dispersion solution overlaid at the pixel locations modelled for the original lines in the line list. The third panel shows the residuals of the dispersion solution fit, and the final panel shows the resolution measured for each line (as projected through the pinhole mask) with different colours for each echelle order and the mean order resolution in black.
+A QC plot resulting from the `soxs_disp_solution` recipe as run on an Xshooter VIS single pinhole arc lamp frame. A 'good' dispersion solution will have sub-pixel residuals (mean residuals $<$ 0.5 pixels). The top panel shows an Xshooter VIS arc-lamp frame, taken with a single pinhole mask. The green circles represent arc lines detected in the image, and the blue circles and red crosses were detected but dropped due to poor DAOStarFinder fitting or clipped during the polynomial fitting, respectively. The grey circles represent arc lines reported in the static calibration table that failed to be detected on the image.  The second panel shows the same arc-lamp frame with the dispersion solution overlaid at the pixel locations modelled for the original lines in the line list. The third panel shows the residuals of the dispersion solution fit, and the final panel shows the resolution measured for each line (as projected through the pinhole mask) with different colours for each echelle order and the mean order resolution in black.
 
 :::
 

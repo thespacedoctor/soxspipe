@@ -23,7 +23,7 @@ Product files are written in the `products/soxs_spatial_solution`, and QC plots 
 :::
 
 :::{figure-md} soxs_spatial_solution_qc_fig
-![image-20240924143842700](../../../_images/image-20240924143842700.png){width=600px}
+![image-20240924143842700](../../../_images/image-20240924143842700.png){width=601px}
 
 A QC plot resulting from the `soxs_spatial_solution` recipe. The top panel shows an Xshooter VIS arc-lamp frame, taken with a multi-pinhole mask. The green circles represent arc lines detected in the image, and the blue circles and red crosses are lines that were detected but dropped as other pinholes of the same arc line failed to be detected or the lines were clipped during the polynomial fitting. The grey circles represent arc lines reported in the static calibration table that failed to be detected on the image. The second panel shows the same arc-lamp frame with the dispersion solution overlaid as a blue grid. Lines travelling along the dispersion axis (left to right) are lines of equal slit position, and lines travelling in the cross-dispersion direction (top to bottom) are lines of equal wavelength. The third panel shows the residuals of the dispersion solution fit, and the final panel shows the resolution measured for each line (as projected through the pinhole mask) with different colours for each echelle order and the mean order resolution in black.
 :::

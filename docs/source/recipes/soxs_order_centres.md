@@ -43,7 +43,7 @@ Plots similar to the one below are generated after each execution of [`soxs_orde
 
 
 :::{figure-md} soxs_order_centres_qc
-![image-20240924101027298](../_images/image-20240924101027298.png){width=600px}
+![image-20240924101027298](../_images/image-20240924101027298.png){width=601px}
 
 A QC plot resulting from the `soxs_order_centres` recipe as run on an SOXS NIR single pinhole QTH flat lamp frame. The top panel show the frame with green circles represent the locations on the cross-dispersion slices where a flux peak was detected. The red crosses show the centre of the slices where a peak failed to be detected. The second panel show the global polynomial fitted to the detected order-centre trace with the different colours representing individual echelle orders. The third row of panels show the fit residuals in the X and Y axes. The bottom panel shows the FWHM of the trace fits (in pixels) with respect to echelle order and wavelength.
 :::

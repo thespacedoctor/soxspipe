@@ -228,7 +228,7 @@ if not on_rtd:
     ]
 else:
     latex_documents = [
-        (master_doc, 'soxspipe.tex', 'soxspipe Documentation', u'David R. Young & Marco Landoni', 'manual'),
+        ("index", 'soxspipe.tex', 'soxspipe Documentation', u'David R. Young & Marco Landoni', 'manual'),
     ]
 
 

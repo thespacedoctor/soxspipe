@@ -21,8 +21,8 @@ fd \\.tex   --exec perl -0777 -pi -e 's/\n*\\subsection\{Utility API\}/\\\\ \n\n
 fd \\.tex   --exec perl -0777 -pi -e 's/\\pagestyle\{empty\}//gs'
 fd \\.tex   --exec perl -0777 -pi -e 's/\\pagestyle\{plain\}//gs'
 fd \\.tex   --exec perl -0777 -pi -e 's/\\pagestyle\{normal\}//gs'
-fd \\.tex   --exec perl -0777 -pi -e 's/\[width\=\d*\\sphinxpxdimen\]//gs'
-
+# fd \\.tex   --exec perl -0777 -pi -e 's/\[width\=\d*\\sphinxpxdimen\]//gs'
+fd \\.tex   --exec perl -0777 -pi -e 's/\[width\=601\\sphinxpxdimen\]/\[width\=200\\sphinxpxdimen\]/gs'
 
 
 # rm -rf ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx
