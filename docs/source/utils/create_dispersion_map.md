@@ -44,7 +44,7 @@ Upon each iteration, the residuals between the fits and the measured pixel posit
 
 
 :::{figure-md} spat_solu_qc
-![image-20240913113842172](../_images/image-20240913113842172.png){width=600px}
+![image-20240913113842172](../_images/image-20240913113842172.png){width=601px}
 
 A QC plot resulting from the `soxs_spatial_solution` recipe. The top panel shows an Xshooter UVB arc-lamp frame, taken with a multi-pinhole mask. The green circles represent arc lines detected in the image, and the blue circles and red crosses are lines that were detected but dropped as other pinholes of the same arc line failed to be detected or the lines were clipped during the polynomial fitting. The grey circles represent arc lines reported in the static calibration table that failed to be detected on the image. The bottom panel shows the same arc-lamp frame with the dispersion solution overlaid as a blue grid. Lines travelling along the dispersion axis (left to right) are lines of equal slit position, and lines travelling in the cross-dispersion direction (top to bottom) are lines of equal wavelength.
 :::
