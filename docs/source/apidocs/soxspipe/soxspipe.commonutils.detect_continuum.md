@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} detect_continuum(log, pinholeFlat, dispersion_map, settings=False, recipeSettings=False, recipeName=False, qcTable=False, productsTable=False, sofName=False, binx=1, biny=1, lampTag=False, locationSetIndex=False, orderPixelTable=False)
+`````{py:class} detect_continuum(log, traceFrame, dispersion_map, settings=False, recipeSettings=False, recipeName=False, qcTable=False, productsTable=False, sofName=False, binx=1, biny=1, lampTag=False, locationSetIndex=False, orderPixelTable=False)
 :canonical: soxspipe.commonutils.detect_continuum.detect_continuum
 
 Bases: {py:obj}`soxspipe.commonutils.detect_continuum._base_detect`

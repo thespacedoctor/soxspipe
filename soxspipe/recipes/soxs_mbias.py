@@ -3,18 +3,18 @@
 """
 *The recipe for creating master-bias frames *
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    January 22, 2020
+Date Created
+: January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
 
 from soxspipe.commonutils.toolkit import generic_quality_checks
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 from fundamentals import tools
 from builtins import object
 import sys
@@ -24,9 +24,9 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_mbias(_base_recipe_):
+class soxs_mbias(base_recipe):
     """
-    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
+    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have bias (and dark current) removed by subtracting an off-frame of equal exposure length.*
 
     **Key Arguments**
 
@@ -34,7 +34,7 @@ class soxs_mbias(_base_recipe_):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
-    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
     **Usage**
 
@@ -45,13 +45,6 @@ class soxs_mbias(_base_recipe_):
         settings=settings,
         inputFrames=fileList
     ).produce_product()
-    ```
-
-    ---
-
-    ```eval_rst
-    .. todo::
-        - add a tutorial about ``soxs_mbias`` to documentation
     ```
     """
     # Initialisation
@@ -64,13 +57,12 @@ class soxs_mbias(_base_recipe_):
             verbose=False,
             overwrite=False
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         this = super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
         log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
@@ -92,10 +84,8 @@ class soxs_mbias(_base_recipe_):
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        # self.log.print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
-        # self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -144,7 +134,8 @@ class soxs_mbias(_base_recipe_):
         """*generate a master bias frame*
 
         **Return:**
-            - ``productPath`` -- the path to the master bias frame
+
+        - ``productPath`` -- the path to the master bias frame
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -239,11 +230,13 @@ class soxs_mbias(_base_recipe_):
         """*calculate the structure of the bias*
 
         **Key Arguments:**
-            - ``combined_bias_mean`` -- the mbias frame
+
+        - ``combined_bias_mean`` -- the mbias frame
 
         **Return:**
-            - ``structx`` -- slope of BIAS in X direction
-            - ``structx`` -- slope of BIAS in Y direction
+
+        - ``structx`` -- slope of BIAS in X direction
+        - ``structx`` -- slope of BIAS in Y direction
 
         **Usage:**
 
@@ -317,10 +310,12 @@ class soxs_mbias(_base_recipe_):
         A 2D FFT is applied to each of the raw bias frames and the standard deviation and median absolute deviation calcualted for each result. The maximum std/mad is then added as the ppnmax QC in the master bias frame header.
 
         **Key Arguments:**
-            - ``frames`` -- the raw bias frames (imageFileCollection)
+
+        - ``frames`` -- the raw bias frames (imageFileCollection)
 
         **Return:**
-            - ``ppnmax``
+
+        - ``ppnmax``
 
         **Usage:**
 

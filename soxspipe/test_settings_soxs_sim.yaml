@@ -16,10 +16,8 @@ soxs-mdark:
     frame-clipping-sigma: 3 
     frame-clipping-iterations: 1
     stacked-clipping-sigma: 5
-    stacked-clipping-iterations: 5
-    clipping-lower-sigma: 5
-    clipping-upper-sigma: 5   
-    clipping-iteration-count: 5
+    stacked-clipping-iterations: 5 
+
 
 soxs-disp-solution:
     pixel-window-size: 10
@@ -87,9 +85,6 @@ soxs-mflat:
     stacked-clipping-iterations: 5
     # NUMBER OF CROSS-ORDER SLICES PER ORDER
     order-sample-count: 70
-    clipping-lower-sigma: 50
-    clipping-upper-sigma: 1000   
-    clipping-iteration-count: 1
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20
@@ -107,14 +102,6 @@ soxs-stare:
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
-    # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-simga: 10
-    # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-simga: 10 
-    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-iteration-count: 0
-    clipping-lower-sigma: 10
-    clipping-upper-sigma: 10 
     # the length of the 'slit' used to collect object flux (in pixels)
     horne-extraction-slit-length: 20
     # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)

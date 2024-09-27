@@ -3,11 +3,11 @@
 """
 *Subtract the sky background using the Kelson Method*
 
-:Author:
-    David Young
+Author
+: David Young
 
-:Date Created:
-    April 14, 2022
+Date Created
+: April 14, 2022
 """
 
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
@@ -34,28 +34,23 @@ class subtract_sky(object):
     A model of the sky-background is created using a method similar to that described in Kelson, D. (2003), *Optimal Techniques in Two-dimensional Spectroscopy: Background Subtraction for the 21st Century* (http://dx.doi.org/10.1086/375502). This model-background is then subtracted from the original science image to leave only non-sky flux.
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the soxspipe settings dictionary
-        - ``recipeSettings`` -- the recipe specific settings
-        - ``objectFrame`` -- the image frame in need of sky subtraction
-        - ``twoDMap`` -- 2D dispersion map image path
-        - ``qcTable`` -- the data frame to collect measured QC metrics
-        - ``productsTable`` -- the data frame to collect output products
-        - ``dispMap`` -- path to dispersion map. Default *False*
-        - ``sofName`` -- name of the originating SOF file. Default *False*
-        - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *soxs-stare*
+
+    - ``log`` -- logger
+    - ``settings`` -- the soxspipe settings dictionary
+    - ``recipeSettings`` -- the recipe specific settings
+    - ``objectFrame`` -- the image frame in need of sky subtraction
+    - ``twoDMap`` -- 2D dispersion map image path
+    - ``qcTable`` -- the data frame to collect measured QC metrics
+    - ``productsTable`` -- the data frame to collect output products
+    - ``dispMap`` -- path to dispersion map. Default *False*
+    - ``sofName`` -- name of the originating SOF file. Default *False*
+    - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *soxs-stare*
 
     **Usage:**
 
-    To setup your logger and settings, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
+    To setup your logger and settings, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html).
 
     To initiate a `subtract_sky` object, use the following:
-
-    ```eval_rst
-    .. todo::
-
-        - add a tutorial about ``subtract_sky`` to documentation
-    ```
 
     ```python
     from soxspipe.commonutils import subtract_sky
@@ -169,10 +164,11 @@ class subtract_sky(object):
         *generate and subtract a sky-model from the input frame*
 
         **Return:**
-            - ``skymodelCCDData`` -- CCDData object containing the model sky frame
-            - ``skySubtractedCCDData`` -- CCDData object containing the sky-subtacted frame
-            - ``qcTable`` -- the data frame containing measured QC metrics
-            - ``productsTable`` -- the data frame containing collected output products
+
+        - ``skymodelCCDData`` -- CCDData object containing the model sky frame
+        - ``skySubtractedCCDData`` -- CCDData object containing the sky-subtracted frame
+        - ``qcTable`` -- the data frame containing measured QC metrics
+        - ``productsTable`` -- the data frame containing collected output products
         """
         self.log.debug('starting the ``get`` method')
 
@@ -296,12 +292,14 @@ class subtract_sky(object):
         """*unpack the over sampled sky from an order*
 
         **Key Arguments:**
-            - ``imageMapOrder`` -- single order dataframe from object image and 2D map
-            - ``clipBPs`` -- clip bad-pixels? Deafult *True*
-            - ``clipSlitEdge`` -- clip the slit edges. Percentage of slit width to clip. Default *False*
+
+        - ``imageMapOrder`` -- single order dataframe from object image and 2D map
+        - ``clipBPs`` -- clip bad-pixels? Default *True*
+        - ``clipSlitEdge`` -- clip the slit edges. Percentage of slit width to clip. Default *False*
 
         **Return:**
-            - `imageMapOrder` -- input order dataframe with outlying pixels masked AND object pixels masked
+
+        - `imageMapOrder` -- input order dataframe with outlying pixels masked AND object pixels masked
 
         **Usage:**
 
@@ -354,13 +352,15 @@ class subtract_sky(object):
         """*generate a plot of sky sampling*
 
         **Key Arguments:**
-            - ``order`` -- the order number.
-            - ``imageMapOrderDF`` -- dataframe with various processed data for order
-            - ``tck`` -- spline parameters to replot
-            - ``knotLocations`` -- wavelength locations of all knots used in the fit
+
+        - ``order`` -- the order number.
+        - ``imageMapOrderDF`` -- dataframe with various processed data for order
+        - ``tck`` -- spline parameters to replot
+        - ``knotLocations`` -- wavelength locations of all knots used in the fit
 
         **Return:**
-            - ``filePath`` -- path to the generated QC plots PDF
+
+        - ``filePath`` -- path to the generated QC plots PDF
 
         **Usage:**
 
@@ -401,7 +401,7 @@ class subtract_sky(object):
             fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=320)
         else:
             # REMOVE ME
-            fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=100)
+            fig = plt.figure(figsize=(8, 9), constrained_layout=True, dpi=150)
 
         gs = fig.add_gridspec(11, 4)
         # CREATE THE GID OF AXES
@@ -570,6 +570,11 @@ class subtract_sky(object):
         fiverow.scatter(
             imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"].values,
             imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "flux"].values, s=3, c=blue, alpha=1, zorder=1, label="unclipped slit position < 0")
+
+        # fiverow.scatter(
+        #     imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False), "wavelength"].values,
+        #     imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False), "flux"].values, s=1, c=black, alpha=0.5, zorder=1, label="unclipped pixels")
+
         if False:
             fiverow.scatter(
                 imageMapOrderDF.loc[imageMapOrderDF["bspline_clipped"] == True, "wavelength"].values,
@@ -692,13 +697,15 @@ class subtract_sky(object):
         """*clip pixels in a rolling wavelength window*
 
         **Key Arguments:**
-            - ``imageMapOrderDF`` --  dataframe with various processed data for a given order
-            - ``windowSize`` -- the window-size used to perform rolling window clipping (number of data-points)
-            - ``sigma_clip_limit`` -- clip data values straying beyond this sigma limit. Default *5*
-            - ``max_iterations`` -- maximum number of iterations when clipping
+
+        - ``imageMapOrderDF`` --  dataframe with various processed data for a given order
+        - ``windowSize`` -- the window-size used to perform rolling window clipping (number of data-points)
+        - ``sigma_clip_limit`` -- clip data values straying beyond this sigma limit. Default *5*
+        - ``max_iterations`` -- maximum number of iterations when clipping
 
         **Return:**
-            - ``imageMapOrderDF`` -- image order dataframe with 'clipped' == True for those pixels that have been clipped via rolling window clipping
+
+        - ``imageMapOrderDF`` -- image order dataframe with 'clipped' == True for those pixels that have been clipped via rolling window clipping
 
         **Usage:**
 
@@ -755,12 +762,14 @@ class subtract_sky(object):
         """*fit a single-order univariate bspline to the unclipped sky pixels (wavelength vs flux)*
 
         **Key Arguments:**
-            - ``imageMapOrder`` -- single order dataframe, containing sky flux with object(s) and CRHs removed
-            - ``order`` -- the order number
+
+        - ``imageMapOrder`` -- single order dataframe, containing sky flux with object(s) and CRHs removed
+        - ``order`` -- the order number
 
         **Return:**
-            - ``imageMapOrder`` -- same `imageMapOrder` as input but now with `sky_model` (bspline fit of the sky) and `sky_subtracted_flux` columns
-            - ``tck`` -- the fitted bspline components. t for knots, c of coefficients, k for order
+
+        - ``imageMapOrder`` -- same `imageMapOrder` as input but now with `sky_model` (bspline fit of the sky) and `sky_subtracted_flux` columns
+        - ``tck`` -- the fitted bspline components. t for knots, c of coefficients, k for order
 
         **Usage:**
 
@@ -984,8 +993,9 @@ class subtract_sky(object):
         """*create placeholder images for the sky model and sky-subtracted frame*
 
         **Return:**
-            - ``skymodelCCDData`` -- placeholder for sky model image
-            - ``skySubtractedCCDData`` -- placeholder for sky-subtracted image
+
+        - ``skymodelCCDData`` -- placeholder for sky model image
+        - ``skySubtractedCCDData`` -- placeholder for sky-subtracted image
 
         **Usage:**
 
@@ -1015,9 +1025,10 @@ class subtract_sky(object):
         """*add sky-model and sky-subtracted data to placeholder images*
 
         **Key Arguments:**
-            - ``imageMapOrderDF`` -- single order dataframe from object image and 2D map
-            - ``skymodelCCDData`` -- the sky model
-            - ``skySubtractedCCDData`` -- the sky-subtracted data
+
+        - ``imageMapOrderDF`` -- single order dataframe from object image and 2D map
+        - ``skymodelCCDData`` -- the sky model
+        - ``skySubtractedCCDData`` -- the sky-subtracted data
 
         **Usage:**
 
@@ -1047,12 +1058,14 @@ class subtract_sky(object):
         """*generate a plot of original image, sky-model and sky-subtraction image*
 
         **Key Arguments:**
-            - ``objectFrame`` -- object frame
-            - ``skyModelFrame`` -- sky model frame
-            - ``skySubFrame`` -- sky subtracted frame
+
+        - ``objectFrame`` -- object frame
+        - ``skyModelFrame`` -- sky model frame
+        - ``skySubFrame`` -- sky subtracted frame
 
         **Return:**
-            - ``filePath`` -- path to the plot pdf
+
+        - ``filePath`` -- path to the plot pdf
         """
         self.log.debug('starting the ``plot_results`` method')
 
@@ -1144,37 +1157,28 @@ class subtract_sky(object):
         self.log.debug('completed the ``plot_results`` method')
         return filePath
 
-    def rectify_order(
+    def _rectify_order(
             self,
             order,
             imageMapOrder,
             remove_clipped=False,
             conserve_flux=False):
-        """*rectify order on a fine slit-postion, wavelength grid*
+        """*rectify order on a fine slit-position, wavelength grid*
 
         **Key Arguments:**
-            - ``order`` -- order to be rectified
-            - ``imageMapOrder`` -- the image map for this order (wavelength, slit-position and flux for each physical pixel
-            - ``conserve_flux`` -- conserve the flux budget across the entire image
+
+        - ``order`` -- order to be rectified
+        - ``imageMapOrder`` -- the image map for this order (wavelength, slit-position and flux for each physical pixel
+        - ``conserve_flux`` -- conserve the flux budget across the entire image
 
         **Return:**
-            - None
+
+        - None
 
         **Usage:**
 
         ```python
         usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
         ```
         """
         self.log.debug('starting the ``rectify_order`` method')
@@ -1320,18 +1324,19 @@ class subtract_sky(object):
 
         **Key Arguments:**
 
-            - ``skyPixelsDF`` -- the predicted line list as a data frame
-            - ``fluxcoeff`` -- the flux-coefficients
-            - ``orderDeg`` -- degree of the order fitting
-            - ``wavelengthDeg`` -- degree of wavelength fitting
-            - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
-            - ``writeQCs`` -- write the QCs to dataframe? Default *False*
+        - ``skyPixelsDF`` -- the predicted line list as a data frame
+        - ``fluxcoeff`` -- the flux-coefficients
+        - ``orderDeg`` -- degree of the order fitting
+        - ``wavelengthDeg`` -- degree of wavelength fitting
+        - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
+        - ``writeQCs`` -- write the QCs to dataframe? Default *False*
 
         **Return:**
-            - ``residuals`` -- combined x-y residuals
-            - ``mean`` -- the mean of the combine residuals
-            - ``std`` -- the stdev of the combine residuals
-            - ``median`` -- the median of the combine residuals
+
+        - ``residuals`` -- combined x-y residuals
+        - ``mean`` -- the mean of the combine residuals
+        - ``std`` -- the stdev of the combine residuals
+        - ``median`` -- the median of the combine residuals
         """
         self.log.debug('starting the ``calculate_residuals`` method')
 
@@ -1367,11 +1372,13 @@ class subtract_sky(object):
         """*clip out pixels flagged as an object*
 
         **Key Arguments:**
-            - ``order_dataframes`` -- a list of order data-frames with pixels potentially containing the object flagged.
+
+        - ``order_dataframes`` -- a list of order data-frames with pixels potentially containing the object flagged.
 
         **Return:**
-            - ``order_dataframes`` -- the order dataframes with the object(s) slit-ranges clipped
-            - ``sky_only_dataframes`` -- dataframes with object removed
+
+        - ``order_dataframes`` -- the order dataframes with the object(s) slit-ranges clipped
+        - ``sky_only_dataframes`` -- dataframes with object removed
 
         **Usage:**
 
@@ -1465,10 +1472,12 @@ class subtract_sky(object):
         """*measure and normalise the flux in the cross-dispersion direction*
 
         **Key Arguments:**
-            - ``orderDF`` -- a single order dataframe containing sky-subtraction flux residuals used to determine and remove a slit-illumination correction
+
+        - ``orderDF`` -- a single order dataframe containing sky-subtraction flux residuals used to determine and remove a slit-illumination correction
 
         **Return:**
-            - `correctedOrderDF` -- dataframe with slit-illumination correction factor added (flux-normaliser)
+
+        - `correctedOrderDF` -- dataframe with slit-illumination correction factor added (flux-normaliser)
 
         **Usage:**
 
@@ -1580,11 +1589,13 @@ class subtract_sky(object):
         """*correct the tilt of the slit by attempting to minimise the residuals of the bspline fit while shifting the tilt angle*
 
         **Key Arguments:**
-            - ``orderDF`` -- a single order dataframe containing sky-subtraction flux residuals used to determine and remove a slit-illumination correction
-            - ``tck`` -- spline parameters to replot
+
+        - ``orderDF`` -- a single order dataframe containing sky-subtraction flux residuals used to determine and remove a slit-illumination correction
+        - ``tck`` -- spline parameters to replot
 
         **Return:**
-            - `orderDF` -- dataframe with wavelengths adjusted for a corrected tilt
+
+        - `orderDF` -- dataframe with wavelengths adjusted for a corrected tilt
 
         **Usage:**
 
@@ -1668,26 +1679,18 @@ class subtract_sky(object):
         """*determine residual floor and flag sky-lines*
 
         **Key Arguments:**
-            # -
+            - ``imageMapOrderDF`` --  dataframe with various processed data for a given order
+            - ``tck`` -- the fitted bspline components. t for knots, c of coefficients, k for order
 
         **Return:**
-            - None
+
+        - `imageMapOrder` -- same dataframe but now with sky-line locations flagged
+        - `residualFloor` -- the residual floor determined within regions containing no skylines.
 
         **Usage:**
 
         ```python
-        usage code
-        ```
-
-        ---
-
-        ```eval_rst
-        .. todo::
-
-            - add usage info
-            - create a sublime snippet for usage
-            - write a command-line tool for this method
-            - update package tutorial with command-line tool info if needed
+        imageMapOrder, residualFloor = self.determine_residual_floor(imageMapOrder, tck)
         ```
         """
         self.log.debug('starting the ``determine_residual_floor`` method')

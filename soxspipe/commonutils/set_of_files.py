@@ -3,11 +3,11 @@
 """
 *Tools for working with 'set-of-files' (sof) files*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    January 22, 2020
+Date Created
+: January 22, 2020
 """
 from os import listdir, path
 from ccdproc import ImageFileCollection
@@ -123,15 +123,16 @@ os.environ['TERM'] = 'vt100'
 
 class set_of_files(object):
     """
-    *The worker class for the sof module used to homogenise various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
+    *The worker class for the sof module used to homogenize various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
-        - ``verbose`` -- verbose. True or False. Default *True*
-        - ``recipeName`` -- the name of the recipe. Default *False*
-        - ``ext`` -- the data extension for the frame. Default 0.
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- can be a directory, a set-of-files (SOF) file or a list of fits frame paths. Default []
+    - ``verbose`` -- verbose. True or False. Default *True*
+    - ``recipeName`` -- the name of the recipe. Default *False*
+    - ``ext`` -- the data extension for the frame. Default 0.
 
     **Usage**
 
@@ -215,11 +216,13 @@ class set_of_files(object):
         """*generate an sof file from a directory of FITS frames*
 
         **Key Arguments:**
-            - ``directory`` -- the path to the directory to containing the FITS files.
-            - ``sofPath`` -- the path to generate the sof file to
+
+        - ``directory`` -- the path to the directory to containing the FITS files.
+        - ``sofPath`` -- the path to generate the sof file to
 
         **Return:**
-            - ``sofPath`` -- the path to the sof file
+
+        - ``sofPath`` -- the path to the sof file
 
         **Usage**
 
@@ -294,7 +297,8 @@ class set_of_files(object):
         """*return the set-of-files as a CCDProc ImageFileCollection*
 
         **Return:**
-            - ``sof`` -- a ccdproc ImageFileCollection of the frames
+
+        - ``sof`` -- a ccdproc ImageFileCollection of the frames
 
         **Usage**
 
@@ -443,25 +447,27 @@ class set_of_files(object):
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths")
 
-        supplementary_sof = self.create_supplimentary_file_dictionary(
+        supplementary_sof = self.create_supplementary_file_dictionary(
             supplementaryFilepaths)
 
         self.log.debug('completed the ``get`` method')
         return sof, supplementary_sof
 
-    def create_supplimentary_file_dictionary(
+    def create_supplementary_file_dictionary(
             self,
             supplementaryFilepaths):
-        """*create supplimentary file dictionary*
+        """*create supplementary file dictionary*
 
         **Key Arguments:**
-            - ``supplementaryFilepaths`` -- the list of filepaths to genereate the dictionary for
+
+        - ``supplementaryFilepaths`` -- the list of filepaths to generate the dictionary for
 
         **Return:**
-            - ``supplementary_sof`` -- a dictionary of non-fits files needed for recipe
+
+        - ``supplementary_sof`` -- a dictionary of non-fits files needed for recipe
         """
         self.log.debug(
-            'starting the ``create_supplimentary_file_dictionary`` method')
+            'starting the ``create_supplementary_file_dictionary`` method')
 
         supplementary_sof = {}
         for f in supplementaryFilepaths:
@@ -484,7 +490,7 @@ class set_of_files(object):
                         supplementary_sof[a]["2D_MAP"] = f
 
         self.log.debug(
-            'completed the ``create_supplimentary_file_dictionary`` method')
+            'completed the ``create_supplementary_file_dictionary`` method')
         return supplementary_sof
 
     # use the tab-trigger below for new method

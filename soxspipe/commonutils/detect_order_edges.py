@@ -3,11 +3,11 @@
 """
 *using a fully-illuminated slit flat frame detect and record the order-edges*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    September 18, 2020
+Date Created
+: September 18, 2020
 """
 from datetime import datetime, date, time
 from soxspipe.commonutils.filenamer import filenamer
@@ -23,6 +23,7 @@ from builtins import object
 import sys
 import os
 
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -31,16 +32,17 @@ class detect_order_edges(_base_detect):
     *using a fully-illuminated slit flat frame detect and record the order-edges*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``recipeSettings`` -- the recipe specific settings
-        - ``flatFrame`` -- the flat frame to detect the order edges on
-        - ``orderCentreTable`` -- the order centre table
-        - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``qcTable`` -- the data frame to collect measured QC metrics
-        - ``productsTable`` -- the data frame to collect output products
-        - ``tag`` -- e.g. '_DLAMP' to differentiate between UV-VIS lamps
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``recipeSettings`` -- the recipe specific settings
+    - ``flatFrame`` -- the flat frame to detect the order edges on
+    - ``orderCentreTable`` -- the order centre table
+    - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``qcTable`` -- the data frame to collect measured QC metrics
+    - ``productsTable`` -- the data frame to collect output products
+    - ``tag`` -- e.g. '_DLAMP' to differentiate between UV-VIS lamps
         - ``sofName`` -- name of the originating SOF file
         - ``binx`` -- binning in x-axis
         - ``biny`` -- binning in y-axis
@@ -48,12 +50,6 @@ class detect_order_edges(_base_detect):
         - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
 
     **Usage:**
-
-    ```eval_rst
-    .. todo::
-
-        - add a tutorial about ``detect_order_edges`` to documentation
-    ```
 
     ```python
     from soxspipe.commonutils import detect_order_edges
@@ -175,7 +171,8 @@ class detect_order_edges(_base_detect):
         *get the detect_order_edges object*
 
         **Return:**
-            - ``orderTablePath`` -- path to the new order table
+
+        - ``orderTablePath`` -- path to the new order table
         """
         self.log.debug('starting the ``get`` method')
 
@@ -453,15 +450,17 @@ class detect_order_edges(_base_detect):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
-            - ``orderPixelTableUpper`` -- the pixel table with residuals of fits for the upper edges
-            - ``orderPixelTableLower`` -- the pixel table with residuals of fits for the lower edges
-            - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
-            - ``orderMetaTable`` -- data-frame containing the limits of the fit
-            - ``clippedDataUpper`` -- the sigma-clipped data from upper edge
-            - ``clippedDataLower`` -- the sigma-clipped data from lower edge
+
+        - ``orderPixelTableUpper`` -- the pixel table with residuals of fits for the upper edges
+        - ``orderPixelTableLower`` -- the pixel table with residuals of fits for the lower edges
+        - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+        - ``orderMetaTable`` -- data-frame containing the limits of the fit
+        - ``clippedDataUpper`` -- the sigma-clipped data from upper edge
+        - ``clippedDataLower`` -- the sigma-clipped data from lower edge
 
         **Return:**
-            - ``filePath`` -- path to the plot pdf
+
+        - ``filePath`` -- path to the plot pdf
         """
         self.log.debug('starting the ``plot_results`` method')
 
@@ -737,11 +736,13 @@ class detect_order_edges(_base_detect):
         """*determine the flux threshold at the central column of each order*
 
         **Key Arguments:**
-            - ``orderData`` -- one row in the orderTable
-            - ``orderPixelTable`` the order table containing pixel arrays
+
+        - ``orderData`` -- one row in the orderTable
+        - ``orderPixelTable`` the order table containing pixel arrays
 
         **Return:**
-            - ``orderData`` -- orderData with min and max flux thresholds added
+
+        - ``orderData`` -- orderData with min and max flux thresholds added
         """
         self.log.debug(
             'starting the ``determine_order_flux_threshold`` method')
@@ -817,10 +818,12 @@ class detect_order_edges(_base_detect):
         """*from a pixel postion somewhere on the trace of the order centre, return the lower and upper edges of the order*
 
         **Key Arguments:**
-            - ``orderData`` -- one row in the orderTable
+
+        - ``orderData`` -- one row in the orderTable
 
         **Return:**
-            - ``orderData`` -- orderData with upper and lower edge xcoord arrays added
+
+        - ``orderData`` -- orderData with upper and lower edge xcoord arrays added
         """
         self.log.debug(
             'starting the ``determine_lower_upper_edge_limits`` method')

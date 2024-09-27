@@ -3,16 +3,16 @@
 """
 *The recipe to generate a master dark frame*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    January 27, 2020
+Date Created
+: January 27, 2020
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
 
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 
 from fundamentals import tools
 from builtins import object
@@ -23,17 +23,17 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_mdark(_base_recipe_):
+class soxs_mdark(base_recipe):
     """
-    *The soxs_mdark recipe*
+    *The `soxs_mdark` recipe generates a master-dark frame used to remove flux attributed to the dark current from other frames.*
 
     **Key Arguments**
 
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
     **Usage**
 
@@ -42,16 +42,10 @@ class soxs_mdark(_base_recipe_):
     mdarkFrame = soxs_mdark(
         log=log,
         settings=settings,
-        inputFrames=fileList
-    )..produce_product()
-    ```
-
-    ---
-
-    ```eval_rst
-    .. todo::
-
-        - add a tutorial about ``soxs_mdark`` to documentation
+        inputFrames=fileList,
+        verbose=False,
+        overwrite=False
+    ).produce_product()
     ```
     """
 
@@ -64,7 +58,7 @@ class soxs_mdark(_base_recipe_):
             overwrite=False
 
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_mdark, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mdark")
         self.log = log
         log.debug("instantiating a new 'soxs_mdark' object")
@@ -156,7 +150,8 @@ class soxs_mdark(_base_recipe_):
         """*generate a master dark frame*
 
         **Return:**
-            - ``productPath`` -- the path to master dark frame
+
+        - ``productPath`` -- the path to master dark frame
         """
         self.log.debug('starting the ``produce_product`` method')
 

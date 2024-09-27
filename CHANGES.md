@@ -1,5 +1,8 @@
 
-# Release Notes  
+# Release Notes
+
+Fixed numpy 2.0 compatibility issues so soxspipe can now run with numpy v2.0 and greater
+Made big speed gains in the `order_to_image` method. This speeds up the `soxs_spatial_solution` dramatically.
 
 ## v0.11.1 - August 15, 2024
 
@@ -133,7 +136,7 @@
 * **REFACTOR:** changed quickstart guide compress to gzipped tar  
 * **REFACTOR:** updated default settings to be more robust  
 
-## v0.7.1 - November 4, 2022  
+## v0.7.1 - November 4, 2022
 
 * **FEATURE:** UV D-Lamp and QTH-Lamp master flats now being stitched together  
 * **FEATURE:** errors in error maps now being treated correctly and propagating to combined images  

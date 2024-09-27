@@ -125,14 +125,6 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} rectify_order(order, imageMapOrder, remove_clipped=False, conserve_flux=False)
-:canonical: soxspipe.commonutils.subtract_sky.subtract_sky.rectify_order
-
-```{autodoc2-docstring} soxspipe.commonutils.subtract_sky.subtract_sky.rectify_order
-```
-
-````
-
 ````{py:method} rolling_window_clipping(imageMapOrderDF, windowSize, sigma_clip_limit=5, max_iterations=10)
 :canonical: soxspipe.commonutils.subtract_sky.subtract_sky.rolling_window_clipping
 

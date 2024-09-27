@@ -1,22 +1,22 @@
-## `soxs_straighten ` - PLANNED
+# soxs_straighten
 
 This recipe takes the full dispersion map given by `soxs_spatial_solution` and uses it to map images from their original representation of the detector surface to one that presents the signal in a wavelength by slit-position coordinate system.
 
-### Input
+## Input
 
 | Data Type | Content | Related OB |
 |:----|:----|:---|
 | CSV File | Coefficients of polynomials providing a full dispersion-spatial solution | |
 | FITS Image | An associated spectral image requiring rectification | Many |
 
-### Parameters
+## Parameters
 
 | Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
 | ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
 | `straighten_grid_res_wavelength`  |  size of the grid cell in wavelength dimension (nm)  |  float  |  settings file  | | 
 | `straighten_grid_res_split` |  size of the grid cell in slit dimension (arcsec)  |  float  |  settings file  | | 
 
-### Method
+## Method
 
 We now have a pair of polynomials that can be used to give the exact pixel on the detector containing flux resulting from a specific order, with a given wavelength and slit position.
 
@@ -32,23 +32,21 @@ To begin we want to create a full wavelength and slit-position map; a 2D grid of
 
 The error and bad-pixel extensions go through the same mapping process.
 
-![](soxs_straighten.png)
+<!-- ![](soxs_straighten.png) -->
 
-### Output
+## Output
  
 | Data Type | Content |
 |:----|:----|
 | FITS Images | The straightened images containing flux represented in wavelength space; one for each order | 
 
-### QC Metrics
+## QC Metrics
 
 | Metric  | Description |
 | :------------ | :----------- |
 | TBC     | ...  |
 
-### Recipe API
+## Recipe API
 
-```eval_rst
-.. autoclass:: soxspipe.recipes. soxs_straighten
-    :members:
-```
+:::{autodoc2-object} soxspipe.recipes.soxs_straighten.soxs_straighten
+:::

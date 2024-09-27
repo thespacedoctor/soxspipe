@@ -3,15 +3,15 @@
 """
 *enhance the wavelength solution achieved with `soxs_disp_solution` by expanding the solution into the spatial dimension (along the slit)*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    March 17, 2021
+Date Created
+: March 17, 2021
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 from fundamentals import tools
 from builtins import object
 import sys
@@ -19,28 +19,22 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_spatial_solution(_base_recipe_):
+class soxs_spatial_solution(base_recipe):
     """
-    *The soxs_spatial_solution recipe*
+    *Enhance the wavelength solution achieved with `soxs_disp_solution` by expanding the solution into the spatial dimension (along the slit)*
 
     **Key Arguments**
 
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
-        - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
-        - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345435 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4, slit_x=3 ,slit_y=5. Default *False*. 
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
+    - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345435 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4, slit_x=3 ,slit_y=5. Default *False*. 
 
     See `produce_product` method for usage.
 
-    ```eval_rst
-    .. todo::
-
-        - add a tutorial about ``soxs_spatial_solution`` to documentation
-
-    ```
     """
     # Initialisation
 
@@ -54,7 +48,7 @@ class soxs_spatial_solution(_base_recipe_):
             create2DMap=True,
             polyOrders=False
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_spatial_solution, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-spatial-solution")
         self.log = log
@@ -176,7 +170,8 @@ class soxs_spatial_solution(_base_recipe_):
         """*generate the 2D dispersion map*
 
         **Return:**
-            - ``productPath`` -- the path to the 2D dispersion map
+
+        - ``productPath`` -- the path to the 2D dispersion map
 
         **Usage**
 

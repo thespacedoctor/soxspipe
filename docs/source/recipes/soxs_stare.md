@@ -1,44 +1,49 @@
-## `soxs_stare` - PLANNED
+# soxs_stare
 
-<!-- PURPOSE TEXT -->
+The `soxs_stare` recipe reduces object frames taken in stare mode. It models and removes the on-frame sky contribution to the flux. The object trace is then fitted and extracted using an optimal extraction routine.
 
-### Input
 
-<!-- FIND OBs HERE : https://docs.google.com/spreadsheets/d/1-3VXkIWcydvpawwVl_C3pNTU3HgnElJaYFAKow65Fl8/edit#gid=0 -->
 
-| Data Type | Content | Related OB |
-|:----|:----|:---|
-| | |
+## Input
 
-### Parameters
 
-| Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
-| ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
-| stacked-clipping-sigma | number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
-| stacked-clipping-iterations | number of σ-clipping iterations to perform before stacking | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
-|   |   |   |   |
 
-### Method
+:::{include} inputs/soxs_stare.md
+:::
 
-<!-- METHOD TEXT HERE, FOLLOWED BY WORKFLOW DIAGRAM -->
 
-![](soxs_stare.png)
+## Parameters
 
-### Output
- 
-| Data Type | Content |
-|:----|:----|
-| |
+:::{include} parameters/soxs_stare.md
+:::
 
-### QC Metrics
+## Method
 
-| Metric  | Description |
-| :------------ | :----------- |
-| TBC     | ...  |
+The algorithm used in the `soxs_stare` recipe is shown in {numref}`soxs_stare_diagram`.
 
-### Recipe API
 
-```eval_rst
-.. autoclass:: soxspipe.recipes.soxs_stare
-    :members:
-```
+:::{figure-md} soxs_stare_diagram
+![](soxs_stare.png){width=600px}
+
+The `soxs_stare` recipe algorithm.
+:::
+
+If more than one stare mode frame is passed to the `soxs_stare` recipe, there is a call to [`clip_and_stack`](../utils/clip_and_stack.md) to combine the data into a single frame. The single stare-mode frame is detrended using the [`detrend`](../utils/detrend.md), optionally dividing by a master flat field and fitting and removing the background scattered light. The sky-flux is modelled and removed using the `subtract_sky` util, and finally, the object is optimally extracted using the [`horne_extraction`](../utils/horne_extraction.md) utility.
+
+## Output
+
+:::{include} output/soxs_stare.md
+:::
+
+
+## QC Metrics
+
+
+:::{include} qcs/soxs_stare.md
+:::
+
+
+## Recipe API
+
+:::{autodoc2-object} soxspipe.recipes.soxs_stare.soxs_stare
+:::

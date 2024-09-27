@@ -3,11 +3,11 @@
 """
 *perform optimal source extraction using the Horne method (Horne 1986)*
 
-:Author:
-    Marco Landoni & David Young
+Author
+: Marco Landoni & David Young
 
-:Date Created:
-    May 17, 2023
+Date Created
+: May 17, 2023
 """
 
 from fundamentals import tools
@@ -31,34 +31,25 @@ class horne_extraction(object):
     *perform optimal source extraction using the Horne method (Horne 1986)*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``recipeSettings`` -- the recipe specific settings
-        - ``skyModelFrame`` -- path to sky model frame
-        - ``skySubtractedFrame`` -- path to sky subtracted frame
-        - ``twoDMapPath`` -- path to 2D dispersion map image path
-        - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
-        - ``qcTable`` -- the data frame to collect measured QC metrics
-        - ``productsTable`` -- the data frame to collect output products (if False no products are saved to file)
-        - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``recipeSettings`` -- the recipe specific settings
+    - ``skyModelFrame`` -- path to sky model frame
+    - ``skySubtractedFrame`` -- path to sky subtracted frame
+    - ``twoDMapPath`` -- path to 2D dispersion map image path
+    - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
+    - ``qcTable`` -- the data frame to collect measured QC metrics
+    - ``productsTable`` -- the data frame to collect output products (if False no products are saved to file)
+    - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
         - ``sofName`` -- the set-of-files filename
         - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (`see tutorial here <http://fundamentals.readthedocs.io/en/latest/#tutorial>`_).
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html).
 
     To initiate a horne_extraction object, use the following:
-
-    ```eval_rst
-    .. todo::
-
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``horne_extraction`` to documentation
-        - create a blog post about what ``horne_extraction`` does
-    ```
 
     ```python
     from soxspipe.commonutils import horne_extraction
@@ -228,37 +219,48 @@ class horne_extraction(object):
             self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (biny, binx), func=np.mean)
             self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (biny, binx), func=np.mean)
 
-        try:
-            self.imageMap = pd.DataFrame.from_dict({
-                "x": xarray,
-                "y": yarray,
-                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-                "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
-                "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
-                "flux": self.skySubtractedFrame.data.flatten()
-            })
-            self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-        except:
-            try:
-                self.imageMap = pd.DataFrame.from_dict({
-                    "x": xarray,
-                    "y": yarray,
-                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-                    "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
-                    "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
-                    "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
-                })
-                self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-            except:
-                self.imageMap = pd.DataFrame.from_dict({
-                    "x": xarray,
-                    "y": yarray,
-                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten(),
-                    "slit_position": self.twoDMap["SLIT"].data.flatten(),
-                    "order": self.twoDMap["ORDER"].data.flatten(),
-                    "flux": self.skySubtractedFrame.data.flatten()
-                })
-                self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        self.imageMap = pd.DataFrame.from_dict({
+            "x": xarray,
+            "y": yarray,
+            "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(float),
+            "slit_position": self.twoDMap["SLIT"].data.flatten().astype(float),
+            "order": self.twoDMap["ORDER"].data.flatten().astype(float),
+            "flux": self.skySubtractedFrame.data.flatten().astype(float)
+        })
+        self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+
+        # REMOVE IF THE ABOVE .astype(float) CONVERSION IS WORKING
+        # try:
+        #     self.imageMap = pd.DataFrame.from_dict({
+        #         "x": xarray,
+        #         "y": yarray,
+        #         "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(float),
+        #         "slit_position": self.twoDMap["SLIT"].data.flatten().astype(float),
+        #         "order": self.twoDMap["ORDER"].data.flatten().astype(int),
+        #         "flux": self.skySubtractedFrame.data.flatten().astype(float)
+        #     })
+        #     self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        # except:
+        #     try:
+        #         self.imageMap = pd.DataFrame.from_dict({
+        #             "x": xarray,
+        #             "y": yarray,
+        #             "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+        #             "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
+        #             "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
+        #             "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
+        #         })
+        #         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+        #     except:
+        #         self.imageMap = pd.DataFrame.from_dict({
+        #             "x": xarray,
+        #             "y": yarray,
+        #             "wavelength": self.twoDMap["WAVELENGTH"].data.flatten(),
+        #             "slit_position": self.twoDMap["SLIT"].data.flatten(),
+        #             "order": self.twoDMap["ORDER"].data.flatten(),
+        #             "flux": self.skySubtractedFrame.data.flatten()
+        #         })
+        #         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
         # REMOVE ZEROS
         mask = (self.imageMap['wavelength'] == 0) & (self.imageMap['slit_position'] == 0)
@@ -269,7 +271,7 @@ class horne_extraction(object):
         # FIND THE OBJECT TRACE IN EACH ORDER
         detector = detect_continuum(
             log=self.log,
-            pinholeFlat=self.skySubtractedFrame,
+            traceFrame=self.skySubtractedFrame,
             dispersion_map=self.dispersionMap,
             settings=self.settings,
             recipeSettings=self.recipeSettings,
@@ -289,7 +291,10 @@ class horne_extraction(object):
         """*extract the full spectrum order-by-order and return FITS Binary table containing order-merged spectrum*
 
         **Return:**
-            - None
+
+        - ``qcTable`` -- the data frame to collect measured QC metrics
+        - ``productsTable`` -- the data frame to collect output products
+        - ``mergedSpectumDF`` -- path to the FITS binary table containing the merged spectrum
         """
         self.log.debug('starting the ``extract`` method')
 
@@ -507,10 +512,12 @@ class horne_extraction(object):
         """*merge the extracted order spectra in one continuous spectrum*
 
         **Key Arguments:**
-            - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
 
         **Return:**
-            - None
+
+        - None
         """
 
         self.log.debug('starting the ``merge_extracted_orders`` method')
@@ -586,8 +593,9 @@ class horne_extraction(object):
         """*plot extracted spectrum QC plot*
 
         **Key Arguments:**
-            - ``uniqueOrders`` -- the unique orders of extraction
-            - ``extractions`` -- dataframes hosting order extractions
+
+        - ``uniqueOrders`` -- the unique orders of extraction
+        - ``extractions`` -- dataframes hosting order extractions
 
         **Usage:**
 
@@ -689,7 +697,8 @@ class horne_extraction(object):
         """*plot merged spectrum QC plot*
 
         **Key Arguments:**
-            - ``merged_orders`` -- the dataframe containing the merged order spectrum.
+
+        - ``merged_orders`` -- the dataframe containing the merged order spectrum.
 
         **Usage:**
 
@@ -763,7 +772,8 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     *extract the object spectrum for a single order*
 
     **Return:**
-        - ``crossDispersionSlices`` -- dataframe containing metadata for each cross-dispersion slice (single data-points in extracted spectrum)
+
+    - ``crossDispersionSlices`` -- dataframe containing metadata for each cross-dispersion slice (single data-points in extracted spectrum)
     """
     log.debug('starting the ``extract_single_order`` method')
 

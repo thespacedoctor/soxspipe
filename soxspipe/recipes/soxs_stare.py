@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # encoding: utf-8
 """
-*Reduce SOXS data taken in stare mode*
+*Reduce SOXS/Xshooter data taken in stare mode*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    February 28, 2022
+Date Created
+: February 28, 2022
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 from soxspipe.commonutils import subtract_sky
 from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 from fundamentals import tools
@@ -21,30 +21,20 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_stare(_base_recipe_):
+class soxs_stare(base_recipe):
     """
-    *The soxs_stare recipe*
+    *Reduce SOXS/Xshooter data taken in stare mode*
 
     **Key Arguments**
 
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
 
     See `produce_product` method for usage.
-
-    ```eval_rst
-    .. todo::
-
-        - add usage info
-        - create a sublime snippet for usage
-        - create cl-util for this class
-        - add a tutorial about ``soxs_stare`` to documentation
-
-    ```
     """
     # Initialisation
 
@@ -57,7 +47,7 @@ class soxs_stare(_base_recipe_):
             overwrite=False
 
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_stare, self).__init__(
             log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-stare")
         self.log = log
@@ -114,7 +104,8 @@ class soxs_stare(_base_recipe_):
         """*verify the input frame match those required by the soxs_stare recipe*
 
         **Return:**
-            - ``None``
+
+        - ``None``
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
@@ -177,7 +168,8 @@ class soxs_stare(_base_recipe_):
         """*The code to generate the product of the soxs_stare recipe*
 
         **Return:**
-            - ``productPath`` -- the path to the final product
+
+        - ``productPath`` -- the path to the final product
 
         **Usage**
 

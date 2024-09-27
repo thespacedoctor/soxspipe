@@ -1,53 +1,59 @@
-# `soxs_order_centres`
+# soxs_order_centres
 
-The purpose of the [`soxs_order_centres`](../_api/soxspipe.recipes.soxs_order_centres.html) recipe is to find and fit the order centres with low-level polynomials.
+Starting with the first pass dispersion solution from the [`soxs_disp_solution`](#soxspipe.recipes.soxs_disp_solution) recipe, the [`soxs_order_centres`](#soxspipe.recipes.soxs_order_centres) recipe finds and fits a global polynomial model to the central trace of each echelle order.
 
-### Input
+## Input
 
-| Data Type | Content | Related OB |
-|:----|:----|:---|
-| FITS Image | Flat lamp through a single-pinhole mask | `SOXS_slt_cal_VISLampFlatPinhole`, `SOXS_slt_cal_NIRLampFlatPinhole` |
-| FITS Image | Master Dark Frame (VIS only) | - |
-| FITS Image | Master Bias Frame (VIS only) | - |
-| FITS Image | Dark frame (Lamp-Off) of equal exposure length as single-pinhole frame (Lamp-On) (NIR only) | `SOXS_slt_cal_NIRLampFlatPinhole` |
-| CSV File | First guess dispersion solution | - |
+:::{include} inputs/soxs_order_centres.md
+:::
 
-### Parameters
 
-| Parameter                | Description                                   | Type  | Entry Point   | Related Util                                   |
-| ------------------------ | --------------------------------------------- | ----- | ------------- | ---------------------------------------------- |
-| order-sample-count  | number of times along the order in the dispersion direction to measure the order-centre trace  |  int | settings file |  [detect_continuum utility](../utils/detect_continuum.md) |
-| peak-sigma-limit  |  minimum value a peak must be above the median value of pixel to be considered for order-trace fitting  | int | settings file  |  [detect_continuum utility](../utils/detect_continuum.md) |
-| disp-axis-deg | degree of dispersion axis component of polynomal fit to order-centre traces |   | int | settings file  |  [detect_continuum utility](../utils/detect_continuum.md) |
-| order-deg | degree of order component of polynomal fit to order-centre traces |   | int | settings file  |  [detect_continuum utility](../utils/detect_continuum.md) |
-| poly-fitting-residual-clipping-sigma  | sigma distance limit, where distance is the difference between the detected and polynomial fitted positions of the order-trace, outside of which to remove lines from the fit   | float   | settings file |  [detect_continuum utility](../utils/detect_continuum.md) | 
-|  poly-clipping-iteration-limit  |  number of sigma-clipping iterations to perform before settings on a polynomial fit for the order-centre traces  |  int   | settings file | [detect_continuum utility](../utils/detect_continuum.md) |
+## Parameters
 
-### Method
+
+:::{include} parameters/soxs_order_centres.md
+:::
+
+
+
+## Method
+
+The algorithm used in the `soxs_order_centres` recipe is shown in {numref}`soxs_order_centres_diagram`.
+
+
 
 Once the single-pinhole flat-lamp frame has had the bias, dark and background subtracted it is passed to the [detect_continuum utility](../utils/detect_continuum.md) to fit the order centres.
 
-![](soxs_order_centres.png)
+:::{figure-md} soxs_order_centres_diagram
+![](soxs_order_centres.png){width=600px}
 
-### Output
- 
-| Data Type | Content |
-|:----|:----|
-| CSV File | [order table](../files/order_table.md) containing coefficients to the polynomial fits describing the order centre locations |
+The `soxs_order_centres` recipe algorithm.
+:::
 
-### QC Metrics
+## Output
 
-Plots similar to the one below are generated after each execution of [`soxs_order_centres`](../_api/soxspipe.recipes.soxs_order_centres.html).
 
-[![](https://live.staticflickr.com/65535/50345130012_4e869a6a7f_b.png)](https://live.staticflickr.com/65535/50345130012_4e869a6a7f_o.png)
+:::{include} output/soxs_order_centres.md
+:::
 
-| Metric  | Description |
-| :------------ | :----------- |
-| TBC     | ...  |
 
-### Recipe API
+## QC Metrics
 
-```eval_rst
-.. autoclass:: soxspipe.recipes.soxs_order_centres
-    :members:
-```
+Plots similar to the one below are generated after each execution of [`soxs_order_centres`](#soxspipe.recipes.soxs_order_centres). The residuals of a 'good' fit typically have a mean and standard-deviation <0.2px.
+
+
+:::{figure-md} soxs_order_centres_qc
+![image-20240924101027298](../_images/image-20240924101027298.png){width=600px}
+
+A QC plot resulting from the `soxs_order_centres` recipe as run on an SOXS NIR single pinhole QTH flat lamp frame. The top panel show the frame with green circles represent the locations on the cross-dispersion slices where a flux peak was detected. The red crosses show the centre of the slices where a peak failed to be detected. The second panel show the global polynomial fitted to the detected order-centre trace with the different colours representing individual echelle orders. The third row of panels show the fit residuals in the X and Y axes. The bottom panel shows the FWHM of the trace fits (in pixels) with respect to echelle order and wavelength.
+:::
+
+
+
+:::{include} qcs/soxs_order_centres.md
+:::
+
+## Recipe API
+
+:::{autodoc2-object} soxspipe.recipes.soxs_order_centres.soxs_order_centres
+:::

@@ -1,4 +1,4 @@
-## Spectral Format Table
+# Spectral Format Table
 
 The spectral format tables are static calibration files that provide some overview information about how each order typically presents itself on the plain of the detector. Useful information includes the minimum and maximum wavelength limits for each order. Here is an example of the XShooter UVB spectral format table contents:
 
