@@ -70,7 +70,7 @@ class reducer(object):
         )
         self.sessionId, allSessions = do.session_list(silent=True)
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
-        self.sessionDB = self.sessionPath + "/soxspipe.db"
+        self.sessionDB = workspaceDirectory + "/soxspipe.db"
 
         return None
 

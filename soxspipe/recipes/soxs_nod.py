@@ -265,7 +265,7 @@ class soxs_nod(base_recipe):
                     frameB.write(filePathB, overwrite=True)
 
                 # PROCESSING SINGLE SEQUENCE
-                mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=frameA, bFrame=frameB, locationSetIndex=sequenceCount)
+                mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=frameA, bFrame=frameB, locationSetIndex=sequenceCount, orderTablePath=orderTablePath)
                 if sequenceCount == 1:
                     allSpectrumA = mergedSpectrumDF_A
                     allSpectrumB = mergedSpectrumDF_B
@@ -293,21 +293,22 @@ class soxs_nod(base_recipe):
                 ignore_input_masks=False,
                 post_stack_clipping=True)
 
-            mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1)
+            mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
             stackedSpectrum = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
             self.plot_stacked_spectrum_qc(stackedSpectrum)
 
             self.clean_up()
             self.report_output()
 
-            self.log.debug('completed the ``produce_product`` method')
+        self.log.debug('completed the ``produce_product`` method')
         return productPath
 
     def process_single_ab_nodding_cycle(
             self,
             aFrame,
             bFrame,
-            locationSetIndex):
+            locationSetIndex,
+            orderTablePath):
         """*process a single AB nodding cycle*
 
         **Key Arguments:**
@@ -315,6 +316,7 @@ class soxs_nod(base_recipe):
         - ``aFrame`` -- the frame taken at the A location. CCDData object.
         - ``bFrame`` -- the frame taken at the B location. CCDDate object.
         - ``locationSetIndex`` -- the index of the AB cycle
+        - `orderTablePath` -- path to the order table
 
         **Return:**
 
@@ -360,11 +362,11 @@ class soxs_nod(base_recipe):
                 log=self.log, CCDObject=B_minus_A, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
 
         # TODO: ADD THESE CHECKS .... LIKELY FOR EACH AB CYCLE INDEX
-        if False:
+        if True:
             self.qc = generic_quality_checks(
-                log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+                log=self.log, frame=A_minus_B, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
             self.qc = spectroscopic_image_quality_checks(
-                log=self.log, frame=mflat, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
+                log=self.log, frame=A_minus_B, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc, orderTablePath=orderTablePath)
 
         if self.recipeSettings["save_single_frame_extractions"] == False:
             theseProducts = False
