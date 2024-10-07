@@ -507,8 +507,8 @@ soxs-nod:
 
 # UTILS
 background-subtraction:
-    bspline-deg: 3
-    gaussian-blur-sigma: 35
+    bspline-deg: 2
+    gaussian-blur-sigma: 65
 
 
 logging settings:

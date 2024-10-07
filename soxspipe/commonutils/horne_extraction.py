@@ -311,6 +311,7 @@ class horne_extraction(object):
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
         import numpy as np
         import scipy.ndimage
+        from astropy.stats import sigma_clip
 
         kw = self.kw
         arm = self.arm
@@ -318,7 +319,7 @@ class horne_extraction(object):
         # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = self.orderPixelTable['order'].unique()
         # print("FIX ME")
-        # uniqueOrders = [20]
+        # uniqueOrders = [25]
         extractions = []
 
         self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
@@ -345,6 +346,27 @@ class horne_extraction(object):
             shape = (new_shape[0], arr.shape[0] // new_shape[0], new_shape[1], arr.shape[1] // new_shape[1])
             return arr.reshape(shape).mean(-1).mean(1)
 
+        def initial_sigma_clipping(
+                rawFluxArray,
+                bpmArray,
+                wlArray):
+            """Run some initial sigma clipping to catch more bad pixels
+            """
+
+            import numpy as np
+            from astropy.stats import sigma_clip
+
+            newBpm = []
+            for r, m, w in zip(rawFluxArray, bpmArray, wlArray):
+                m[m > 0] = 1
+                maskedArray = np.ma.array(r, mask=m)
+                # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
+                newMask = sigma_clip(
+                    maskedArray, sigma_lower=3, sigma_upper=10, maxiters=1, cenfunc='mean', stdfunc="std")
+                newBpm.append(newMask.mask)
+
+            return np.array(newBpm)
+
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
         for order, amin, amax in zip(orderNums, amins, amaxs):
@@ -366,7 +388,10 @@ class horne_extraction(object):
                     else:
                         orderTable["sliceSky"] = list([0] * len(self.axisBcoords))
                     orderTable["sliceError"] = list(rebin(errorZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
-                    orderTable["bpMask"] = list(rebin(bpmZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
+
+                    newBpm = initial_sigma_clipping(rawFluxZoom[self.axisBcoords, self.axisAcoords], bpmZoom[self.axisBcoords, self.axisAcoords], wlZoom[self.axisBcoords, self.axisAcoords])
+                    orderTable["bpMask"] = list(rebin(newBpm, zoomTuple[0], zoomTuple[1]))
+
                 else:
                     orderTable["wavelength"] = list(rebin(wlZoom[self.axisAcoords, self.axisBcoords], zoomTuple[0], zoomTuple[1]))
                     orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisAcoords, self.axisBcoords], zoomTuple[0], zoomTuple[1]))
@@ -375,7 +400,8 @@ class horne_extraction(object):
                     else:
                         orderTable["sliceSky"] = list([0] * len(self.axisAcoords))
                     orderTable["sliceError"] = list(rebin(errorZoom[self.axisAcoords, self.axisBcoords], zoomTuple[0], zoomTuple[1]))
-                    orderTable["bpMask"] = list(rebin(bpmZoom[self.axisAcoords, self.axisBcoords], zoomTuple[0], zoomTuple[1]))
+                    newBpm = initial_sigma_clipping(rawFluxZoom[self.axisAcoords, self.axisBcoords], bpmZoom[self.axisAcoords, self.axisBcoords], wlZoom[self.axisAcoords, self.axisBcoords])
+                    orderTable["bpMask"] = list(rebin(newBpm, zoomTuple[0], zoomTuple[1]))
 
                 orderSlices.append(orderTable)
 
@@ -803,6 +829,10 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     crossDispersionSlices = crossDispersionSlices.apply(lambda x: create_cross_dispersion_slice(x), axis=1)
     crossDispersionSlices["sliceMask"] = [x.mask for x in crossDispersionSlices["sliceRawFluxMasked"]]
 
+    # from tabulate import tabulate
+    # print(tabulate(crossDispersionSlices, headers='keys', tablefmt='psql'))
+    # sys.exit(0)
+
     crossDispersionSlices["sliceRawFluxMaskedSum"] = [x.sum() for x in crossDispersionSlices["sliceRawFluxMasked"]]
 
     # WEIGHTS ARE NOT YET USED
@@ -822,7 +852,8 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     bpMaskImage = np.vstack(crossDispersionSlices["bpMask"])
     wavelengthImage = np.vstack(crossDispersionSlices["wavelength"])
 
-    if False:
+    # PLOT THE RECTIFIED IMAGES
+    if False and order == 25:
 
         fig = plt.figure(
             num=None,
@@ -1045,7 +1076,7 @@ def create_cross_dispersion_slice(
 
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
-        maskedArray, sigma_lower=100, sigma_upper=100, maxiters=1, cenfunc='median', stdfunc="mad_std")
+        maskedArray, sigma_lower=7, sigma_upper=10, maxiters=3, cenfunc='mean', stdfunc="std")
 
     # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
     series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0

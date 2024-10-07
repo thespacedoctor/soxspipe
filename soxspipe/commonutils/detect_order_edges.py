@@ -242,9 +242,9 @@ class detect_order_edges(_base_detect):
         # COUPLE THE UPPER AND LOWER EDGES FOR HOMOGENEOUS HEIGHT
         for o in uniqueOrders:
             mask = (orderPixelTable['order'] == o)
-            medianHeight = orderPixelTable.loc[mask]['order_height_upper'].median() + mad_std(orderPixelTable.loc[mask]['order_height_upper'] * 3)
+            medianHeight = orderPixelTable.loc[mask]['order_height_upper'].median() + mad_std(orderPixelTable.loc[mask]['order_height_upper'] * 3.)
             orderPixelTable.loc[mask, f"{self.axisA}coord_upper"] = orderPixelTable.loc[mask, f"{self.axisA}coord_centre"] + medianHeight
-            medianHeight = orderPixelTable.loc[mask]['order_height_lower'].median() + mad_std(orderPixelTable.loc[mask]['order_height_lower'] * 3)
+            medianHeight = orderPixelTable.loc[mask]['order_height_lower'].median() + mad_std(orderPixelTable.loc[mask]['order_height_lower'] * 3.)
             orderPixelTable.loc[mask, f"{self.axisA}coord_lower"] = orderPixelTable.loc[mask, f"{self.axisA}coord_centre"] - medianHeight
 
         if self.axisAbin > 1:
@@ -276,9 +276,9 @@ class detect_order_edges(_base_detect):
 
         # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
         for i in range(0, self.axisBDeg + 1):
-            orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"{self.axisB}coord"].values.astype('float')**i
+            orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"{self.axisB}coord"].pow(i)
         for i in range(0, self.orderDeg + 1):
-            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].values.astype('float')**i
+            orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
