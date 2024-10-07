@@ -2,14 +2,17 @@
 
 # Release Notes
 
-Fixed numpy 2.0 compatibility issues so soxspipe can now run with numpy v2.0 and greater
-Made big speed gains in the `order_to_image` method. This speeds up the `soxs_spatial_solution` dramatically.
-Instrument = "SHOOT" now recognised as Xshooter data
-New raw data is to be 'streamed' into the workspace's root folder. When 'soxspipe prep .' is run, the new data is found and filed automatically into the correct `/raw/YYYY-MM-DD/` folder. Adding new raw frames directly into the `raw/YYYY-MM-DD/` nested folder structure is also possible.
-4 installation methods are now reported in the documentation (anaconda is not required to install the pipeline). https://soxspipe.readthedocs.io/en/master/user_manual/installation.html
-"STD,TELLURIC" frames now recognised in stare mode.
-FIXED: bug in the detect continuum code that would fail to fit a gaussian in the cross-dispersion slices if NaN values were present.
-REFACTOR: exptimes recorded in the SQLite database are now rounded to 2 decimal places. There are occasions where exposure times in the FITS headers are given to 4 dp, and a set of (e.g. flat) frames have exposure times that differ by 0.0001 secs. The pipeline divided these frames into two sets when they should have been grouped together. This was causing failure on some mflat recipes. 
+## v0.11.2 - October 7, 2024
+
+* **ENHANCEMENT:** New raw data is to be 'streamed' into the workspace's root folder. When 'soxspipe prep .' is run, the new data is found and filed automatically into the correct `/raw/YYYY-MM-DD/` folder. Adding new raw frames directly into the `raw/YYYY-MM-DD/` nested folder structure is also possible.
+* **ENHANCEMENT:** "STD,TELLURIC" frames now recognised in stare mode.
+* **REFACTOR:** Made big speed gains in the `order_to_image` method. This speeds up the `soxs_spatial_solution` dramatically.
+* **REFACTOR:** exptimes recorded in the SQLite database are now rounded to 2 decimal places. There are occasions where exposure times in the FITS headers are given to 4 dp, and a set of (e.g. flat) frames have exposure times that differ by 0.0001 secs. The pipeline divided these frames into two sets when they should have been grouped together. This was causing failure on some mflat recipes. 
+* **FIXED:** Fixed numpy 2.0 compatibility issues so soxspipe can now run with numpy v2.0 and greater
+* **FIXED:** Instrument = "SHOOT" now recognised as Xshooter data
+* **FIXED:** bug in the detect continuum code that would fail to fit a gaussian in the cross-dispersion slices if NaN values were present.
+* **DOCS:** complete update of the SOXS documentation. See https://soxspipe.readthedocs.io
+* **DOCS:** 4 installation methods are now reported in the documentation (anaconda is not required to install the pipeline). https://soxspipe.readthedocs.io/en/master/user_manual/installation.html
 
 ## v0.11.1 - August 15, 2024
 
