@@ -121,7 +121,7 @@ class soxs_stare(base_recipe):
 
         if self.arm == "NIR":
             if not error:
-                okList = ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX"]
+                okList = ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX", "STD,TELLURIC"]
                 if "PAE" in self.settings and self.settings["PAE"]:
                     okList.append("FLAT,LAMP")
                 for i in imageTypes:
@@ -139,7 +139,7 @@ class soxs_stare(base_recipe):
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK"]:
+                    if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK", "STD,FLUX", "STD,TELLURIC"]:
                         error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
 
             if not error:
@@ -212,6 +212,16 @@ class soxs_stare(base_recipe):
         # FLUX STD FRAMES
         if not len(allObjectFrames):
             add_filters = {kw("DPR_TYPE"): 'STD,FLUX',
+                           kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
+            allObjectFrames = []
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                                           hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+                allObjectFrames.append(singleFrame)
+
+        # FLUX STD FRAMES
+        if not len(allObjectFrames):
+            add_filters = {kw("DPR_TYPE"): 'STD,TELLURIC',
                            kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):

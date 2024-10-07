@@ -856,8 +856,8 @@ class detect_continuum(_base_detect):
         # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
         # CONTAINING JUST NOISE
         try:
-            median_r = np.ma.median(slice)
-            std_r = mad_std(slice)
+            median_r = np.nanmedian(slice)
+            std_r = mad_std(slice, ignore_nan=True)
         except:
             median_r = None
 
@@ -873,6 +873,7 @@ class detect_continuum(_base_detect):
         if peaks is None or len(peaks) <= 0:
             # CHECK THE SLICE POINTS IF NEEDED
             if 1 == 0:
+                print(median_r, std_r)
                 import matplotlib.pyplot as plt
                 x = np.arange(0, len(slice))
                 plt.figure(figsize=(8, 5))
@@ -893,7 +894,9 @@ class detect_continuum(_base_detect):
 
         # NOW FIT
         try:
-            g = fit_g(g_init, np.arange(0, len(slice)), slice)
+            # MASK OUT NAN VALUES
+            mask = np.isfinite(slice)
+            g = fit_g(g_init, np.arange(0, len(slice))[mask], slice[mask])
         except:
             pixelPostion[f"cont_{self.axisA}"] = np.nan
             pixelPostion[f"cont_{self.axisB}"] = np.nan

@@ -96,7 +96,7 @@ class base_recipe(object):
         # INITIATE A DB CONNECTION
         self.conn = None
         if self.currentSession and self.sofName:
-            self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/soxspipe.db"
+            self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
 
             def dict_factory(cursor, row):
                 d = {}
@@ -109,7 +109,7 @@ class base_recipe(object):
         # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
         if self.conn:
             c = self.conn.cursor()
-            sqlQuery = f"update product_frames set status = 'fail' where sof = '{self.sofName}.sof'"
+            sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
 
@@ -706,7 +706,7 @@ class base_recipe(object):
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
             c = self.conn.cursor()
-            sqlQuery = f"update product_frames set status = 'pass' where sof = '{self.sofName}.sof'"
+            sqlQuery = f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
 
