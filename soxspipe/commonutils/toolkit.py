@@ -475,9 +475,9 @@ def unpack_order_table(
         orderPixelTable[f"{axisA}coord_edgeup"] = poly(orderPixelTable, *upper_coeff)
 
     if f"deg{axisB}_edgelow" in orderPolyTable.columns:
-        upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
+        lower_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
         poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
-        orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
+        orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *lower_coeff)
 
     if axisAbin != 1:
         for c in ["coord_centre", "coord_edgeup", "coord_edgelow"]:

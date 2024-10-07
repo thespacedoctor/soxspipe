@@ -406,7 +406,7 @@ soxs-stare:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_iterations: 4
+            percentile_clipping_iterations: 6
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
             percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
@@ -507,8 +507,8 @@ soxs-nod:
 
 # UTILS
 background-subtraction:
-    bspline-deg: 3
-    gaussian-blur-sigma: 35
+    bspline-deg: 2
+    gaussian-blur-sigma: 65
 
 
 logging settings:
