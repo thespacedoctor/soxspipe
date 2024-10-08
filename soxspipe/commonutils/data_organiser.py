@@ -373,7 +373,8 @@ class data_organiser(object):
                         # Recursively create missing directories
                         if not os.path.exists(parentDirectory):
                             os.makedirs(parentDirectory)
-                    shutil.move(self.rootDir + "/" + n, p)
+                    if os.path.exists(self.rootDir + "/" + n):
+                        shutil.move(self.rootDir + "/" + n, p)
 
         if not skipSqlSync:
             self._sync_sql_table_to_directory(self.rawDir, 'raw_frames', recursive=False)
