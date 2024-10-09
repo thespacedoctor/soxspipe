@@ -206,13 +206,13 @@ class soxs_disp_solution(base_recipe):
 
         add_filters = {kw("PRO_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            master_bias = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # UVB/VIS DARK
         add_filters = {kw("PRO_CATG"): 'MASTER_DARK_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            dark = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # NIR DARK
@@ -226,7 +226,7 @@ class soxs_disp_solution(base_recipe):
         # sys.exit(0)
 
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            dark = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         if self.inst.lower() == "soxs":
@@ -236,7 +236,7 @@ class soxs_disp_solution(base_recipe):
             add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK',
                            kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            pinhole_image = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            pinhole_image = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                          hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         self.pinholeFrame = self.detrend(
