@@ -205,7 +205,7 @@ class soxs_stare(base_recipe):
                        kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
         allObjectFrames = []
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
             allObjectFrames.append(singleFrame)
 
@@ -215,7 +215,7 @@ class soxs_stare(base_recipe):
                            kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
 
@@ -225,7 +225,7 @@ class soxs_stare(base_recipe):
                            kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
 
@@ -234,7 +234,7 @@ class soxs_stare(base_recipe):
                            kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
             self.log.warning("Processing a ORDER-TRACE frame with the stare-mode recipe")
@@ -245,7 +245,7 @@ class soxs_stare(base_recipe):
                            kw("DPR_TECH"): 'ECHELLE,SLIT,NODDING'}
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
             self.log.warning("Processing a NODDING frame with the stare-mode recipe")
@@ -256,13 +256,13 @@ class soxs_stare(base_recipe):
 
         add_filters = {kw("PRO_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            master_bias = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            master_bias = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # MASTER DARK
         add_filters = {kw("PRO_CATG"): 'MASTER_DARK_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            dark = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         if not dark:
@@ -270,20 +270,20 @@ class soxs_stare(base_recipe):
             add_filters = {kw("DPR_TYPE"): 'OBJECT',
                            kw("DPR_TECH"): 'IMAGE'}
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                dark = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                     hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         if "PAE" in self.settings and self.settings["PAE"]:
             add_filters = {kw("DPR_TYPE"): 'FLAT,LAMP',
                            kw("DPR_TECH"): 'IMAGE'}
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                dark = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                dark = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                     hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            master_flat = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            master_flat = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # FIND THE ORDER TABLE

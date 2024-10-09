@@ -274,6 +274,8 @@ soxs-stare:
     stacked-clipping-sigma: 5
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-iterations: 5
+    # USE LA COMSIC TO REMOVE CRHs BEFORE EXTRACTION
+    use_lacosmic: True
     uvb:
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 20
@@ -448,12 +450,14 @@ soxs-nod:
     horne-extraction-profile-clipping-sigma: 3.0
     # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
     horne-extraction-profile-clipping-iteration-count: 10
+    # USE LA COMSIC TO REMOVE CRHs BEFORE EXTRACTION
+    use_lacosmic: True
     uvb:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 50
+            slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -471,7 +475,7 @@ soxs-nod:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 50
+            slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -489,7 +493,7 @@ soxs-nod:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 200
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 50
+            slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).

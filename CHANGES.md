@@ -2,6 +2,11 @@
 
 # Release Notes
 
+* **ENHANCEMENT:** LaCosmic is run on images prior to source extraction to help remove cosmic ray hits.
+* **ENHANCEMENT:** Dichroic region is now clipped from the Xshooter UVB order merge spectrum
+* **REFACTOR:** Improved source continuum tracing making nodding reductions more robust.
+* **FIXED:** a bug where binning was not taken into consideration when reading the detector format before performing source extraction.
+
 ## v0.11.2 - October 7, 2024
 
 * **ENHANCEMENT:** New raw data is to be 'streamed' into the workspace's root folder. When 'soxspipe prep .' is run, the new data is found and filed automatically into the correct `/raw/YYYY-MM-DD/` folder. Adding new raw frames directly into the `raw/YYYY-MM-DD/` nested folder structure is also possible.

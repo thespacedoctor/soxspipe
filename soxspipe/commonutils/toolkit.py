@@ -709,7 +709,9 @@ def read_spectral_format(
         settings,
         arm,
         dispersionMap=False,
-        extended=True):
+        extended=True,
+        binx=1,
+        biny=1):
     """*read the spectral format table to get some key parameters*
 
     **Key Arguments:**
@@ -719,6 +721,8 @@ def read_spectral_format(
     - `arm` -- arm to retrieve format for
     - `dispersionMap` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are computed
     - `extended` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL (extended=True)
+    - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
+    - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
 
     **Return:**
 
@@ -809,9 +813,11 @@ def read_spectral_format(
         if dp["dispersion-axis"] == "x":
             axis = "y"
             rowCol = "rows"
+            abinFactor = biny
         else:
             axis = "x"
             rowCol = "columns"
+            abinFactor = binx
 
         amins = []
         amaxs = []
@@ -822,8 +828,8 @@ def read_spectral_format(
                 amin = 0
             if amax > dp["science-pixels"][rowCol]["end"]:
                 amax = dp["science-pixels"][rowCol]["end"]
-            amins.append(amin)
-            amaxs.append(amax)
+            amins.append(amin / abinFactor)
+            amaxs.append(amax / abinFactor)
 
         log.debug('completed the ``read_spectral_format`` function')
         return orderNums, waveLengthMin, waveLengthMax, amins, amaxs
