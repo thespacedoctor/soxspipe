@@ -3,7 +3,7 @@
 # Release Notes
 
 
-## v0.11.3 - October 9, 2024
+## v0.11.4 - October 9, 2024
 
 * **ENHANCEMENT:** LaCosmic is run on images prior to source extraction to help remove cosmic ray hits.
 * **ENHANCEMENT:** Dichroic region is now clipped from the Xshooter UVB order merge spectrum
