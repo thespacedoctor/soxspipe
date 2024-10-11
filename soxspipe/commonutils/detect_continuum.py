@@ -853,6 +853,11 @@ class detect_continuum(_base_detect):
             plt.ylabel('Flux')
             plt.show()
 
+        # print(slice)
+
+        slice[slice < 0] = np.nan
+        # print(slice)
+
         # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
         # CONTAINING JUST NOISE
         try:
@@ -860,6 +865,9 @@ class detect_continuum(_base_detect):
             std_r = mad_std(slice, ignore_nan=True)
         except:
             median_r = None
+
+        # print(median_r)
+        # print()
 
         if not median_r:
             pixelPostion[f"cont_{self.axisA}"] = np.nan
@@ -872,7 +880,7 @@ class detect_continuum(_base_detect):
         # CHECK PEAK HAS BEEN FOUND
         if peaks is None or len(peaks) <= 0:
             # CHECK THE SLICE POINTS IF NEEDED
-            if 1 == 0:
+            if False:
                 print(median_r, std_r)
                 import matplotlib.pyplot as plt
                 x = np.arange(0, len(slice))
@@ -884,6 +892,16 @@ class detect_continuum(_base_detect):
             pixelPostion[f"cont_{self.axisA}"] = np.nan
             pixelPostion[f"cont_{self.axisB}"] = np.nan
             return pixelPostion
+
+        if len(peaks) > 1:
+            closest = peaks[0]
+            smallest_diff = abs(self.sliceLength / 2. - closest)  # Initialize the smallest difference
+            for num in peaks:
+                current_diff = abs(self.sliceLength / 2. - num)  # Calculate the difference
+                if current_diff < smallest_diff:  # Check if current is closer
+                    smallest_diff = current_diff
+                    closest = num  # Update closest integer
+            peaks = [closest]
 
         # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
         # CENTRE THE GAUSSIAN ON THE PEAK
@@ -1252,6 +1270,9 @@ class detect_continuum(_base_detect):
         self.sliceLength = self.recipeSettings["slice-length"]
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
         self.sliceWidth = self.recipeSettings["slice-width"]
+
+        if "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper():
+            self.sliceWidth = 1
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan

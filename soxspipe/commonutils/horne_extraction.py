@@ -96,6 +96,7 @@ class horne_extraction(object):
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import unpack_order_table
         from soxspipe.commonutils import detector_lookup
+        from ccdproc import cosmicray_lacosmic
 
         self.log = log
         log.debug("instantiating a new 'horne_extraction' object")
@@ -136,6 +137,13 @@ class horne_extraction(object):
             self.skySubtractedFrame = CCDData.read(skySubtractedFrame, hdu=0, unit=u.electron,
                                                    hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
                                                    key_uncertainty_type='UTYPE')
+
+        if True and self.recipeSettings["use_lacosmic"]:
+            oldCount = self.skySubtractedFrame.mask.sum()
+            oldMask = self.skySubtractedFrame.mask.copy()
+            self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=4.0, gain_apply=False, niter=3, cleantype="meanmask")
+            newCount = self.skySubtractedFrame.mask.sum()
+            self.skySubtractedFrame.mask = oldMask
 
         # CHECK SKY MODEL FRAME IS USED (ONLY IN STARE MODE)
         if skyModelFrame == False:
@@ -324,9 +332,18 @@ class horne_extraction(object):
 
         self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
 
+        # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
+        binx = 1
+        biny = 1
+        try:
+            binx = int(self.skySubtractedFrame.header[kw("WIN_BINX")])
+            biny = int(self.skySubtractedFrame.header[kw("WIN_BINY")])
+        except:
+            pass
+
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
-            log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap, extended=False)
+            log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap, extended=False, binx=binx, biny=biny)
 
         zoomFactor = 35
         if self.detectorParams["dispersion-axis"] == "x":
@@ -362,7 +379,7 @@ class horne_extraction(object):
                 maskedArray = np.ma.array(r, mask=m)
                 # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
                 newMask = sigma_clip(
-                    maskedArray, sigma_lower=3, sigma_upper=10, maxiters=1, cenfunc='mean', stdfunc="std")
+                    maskedArray, sigma_lower=2, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std")
                 newBpm.append(newMask.mask)
 
             return np.array(newBpm)
@@ -589,6 +606,47 @@ class horne_extraction(object):
         ratio = 1 / stepWavelengthOrderMerge
         order_list = []
 
+        # MORE CAREFUL TREATMENT OF UVB ORDER MERGING
+        # if self.arm.upper() in ["UVB", "NIR"]:
+        uniqueOrders = extractedOrdersDF['order'].unique()
+        lastOrderMin = False
+        orderJoins = {}
+        orderGaps = {}
+        for o in uniqueOrders:
+            mask = (extractedOrdersDF['order'] == o)
+            if lastOrderMin:
+                order_join_wl = (extractedOrdersDF.loc[mask]['wavelengthMedian'].max() + lastOrderMin) / 2.
+                orderJoins[f'{o-1}{o}'] = order_join_wl
+                orderGaps[f'{o-1}{o}'] = extractedOrdersDF.loc[mask]['wavelengthMedian'].max() - lastOrderMin
+            lastOrderMin = extractedOrdersDF.loc[mask]['wavelengthMedian'].min()
+
+        # A FIX FOR THE UV XSHOOTER DATA (FLATS TAKEN WITH DIFFERENT LAMPS)
+        # GET UNIQUE VALUES IN COLUMN
+        if self.arm.upper() == "UVB":
+            orderJoins["2021"] = 363.5
+
+        stepRatio = 20
+        for o in uniqueOrders:
+            thisKey = f'{o-1}{o}'
+            if thisKey in orderJoins.keys():
+                mask = (extractedOrdersDF['order'] == o - 1)
+                gap = orderGaps[f'{o-1}{o}']
+                if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
+                    mask = ((extractedOrdersDF['order'] == o - 1) & (extractedOrdersDF['wavelengthMedian'] <= orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio))
+                    extractedOrdersDF = extractedOrdersDF.loc[~mask]
+
+                if f'{o}{o+1}' in orderGaps.keys():
+                    gap = orderGaps[f'{o-1}{o}']
+                if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
+                    mask = (extractedOrdersDF['order'] == o)
+                    mask = ((extractedOrdersDF['order'] == o) & (extractedOrdersDF['wavelengthMedian'] > orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio))
+                    extractedOrdersDF = extractedOrdersDF.loc[~mask]
+
+        if self.arm.upper() == "UVB":
+            # CLIP DICHROICH REGION
+            mask = (extractedOrdersDF['wavelengthMedian'] > 556)
+            extractedOrdersDF = extractedOrdersDF.loc[~mask]
+
         # SORT BY COLUMN NAME
         extractedOrdersDF.sort_values(['wavelengthMedian'],
                                       ascending=[True], inplace=True)
@@ -600,7 +658,7 @@ class horne_extraction(object):
         # INTERPOLATE THE ORDER SPECTRUM INTO THIS NEW ARRAY WITH A SINGLE STEP SIZE
         flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
         # PASS ORIGINAL RAW SPECTRUM AND RESAMPLE
-        spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values * u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"]))
+        spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values * u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values))
         resampler = FluxConservingResampler()
         flux_resampled = resampler(spectrum_orig, wave_resample_grid)
         # flux_resampled = median_smooth(flux_resampled, width=3)
@@ -853,17 +911,17 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     wavelengthImage = np.vstack(crossDispersionSlices["wavelength"])
 
     # PLOT THE RECTIFIED IMAGES
-    if False and order == 25:
+    if False:
 
-        fig = plt.figure(
-            num=None,
-            figsize=(135, 1),
-            dpi=None,
-            facecolor=None,
-            edgecolor=None,
-            frameon=True)
-        plt.imshow(wavelengthImage.T, interpolation='none', aspect='auto')
-        plt.show()
+        # fig = plt.figure(
+        #     num=None,
+        #     figsize=(135, 1),
+        #     dpi=None,
+        #     facecolor=None,
+        #     edgecolor=None,
+        #     frameon=True)
+        # plt.imshow(wavelengthImage.T, interpolation='none', aspect='auto')
+        # plt.show()
 
         fig = plt.figure(
             num=None,
@@ -875,25 +933,25 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
         plt.imshow(maskImage.T, interpolation='none', aspect='auto')
         plt.show()
 
-        fig = plt.figure(
-            num=None,
-            figsize=(135, 1),
-            dpi=None,
-            facecolor=None,
-            edgecolor=None,
-            frameon=True)
-        plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
-        plt.show()
+        # fig = plt.figure(
+        #     num=None,
+        #     figsize=(135, 1),
+        #     dpi=None,
+        #     facecolor=None,
+        #     edgecolor=None,
+        #     frameon=True)
+        # plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
+        # plt.show()
 
-        fig = plt.figure(
-            num=None,
-            figsize=(135, 1),
-            dpi=None,
-            facecolor=None,
-            edgecolor=None,
-            frameon=True)
-        plt.imshow(fluxNormalisedImage.T, interpolation='none', aspect='auto')
-        plt.show()
+        # fig = plt.figure(
+        #     num=None,
+        #     figsize=(135, 1),
+        #     dpi=None,
+        #     facecolor=None,
+        #     edgecolor=None,
+        #     frameon=True)
+        # plt.imshow(fluxNormalisedImage.T, interpolation='none', aspect='auto')
+        # plt.show()
 
     # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
@@ -1076,7 +1134,7 @@ def create_cross_dispersion_slice(
 
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
-        maskedArray, sigma_lower=7, sigma_upper=10, maxiters=3, cenfunc='mean', stdfunc="std")
+        maskedArray, sigma_lower=3, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std")
 
     # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
     series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0

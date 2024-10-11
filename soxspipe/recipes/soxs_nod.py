@@ -188,7 +188,7 @@ class soxs_nod(base_recipe):
             add_filters = {kw("DPR_TYPE"): t,
                            kw("DPR_TECH"): 'ECHELLE,SLIT,NODDING'}
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+                singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
                 if not self.masterHeader:
@@ -199,7 +199,7 @@ class soxs_nod(base_recipe):
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            master_flat = CCDData.read(i, hdu=0, unit=u.adu, hdu_uncertainty='ERRS',
+            master_flat = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         # FIND THE ORDER TABLE
