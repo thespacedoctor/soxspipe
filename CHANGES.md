@@ -3,7 +3,7 @@
 # Release Notes
 
 
-## v0.11.5 - October 15, 2024
+## v0.11.6 - October 15, 2024
 
 * **FIXED:** a regression in the detect continuum code
 
