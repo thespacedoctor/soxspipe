@@ -853,10 +853,9 @@ class detect_continuum(_base_detect):
             plt.ylabel('Flux')
             plt.show()
 
-        # print(slice)
+        origSlice = slice.copy()
 
-        slice[slice < 0] = np.nan
-        # print(slice)
+        slice[slice < -500] = np.nan
 
         # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
         # CONTAINING JUST NOISE
@@ -881,6 +880,13 @@ class detect_continuum(_base_detect):
         if peaks is None or len(peaks) <= 0:
             # CHECK THE SLICE POINTS IF NEEDED
             if False:
+                import matplotlib.pyplot as plt
+                x = np.arange(0, len(origSlice))
+                plt.figure(figsize=(8, 5))
+                plt.plot(x, slice, 'ko')
+                plt.xlabel('Position')
+                plt.ylabel('Flux')
+                plt.show()
                 print(median_r, std_r)
                 import matplotlib.pyplot as plt
                 x = np.arange(0, len(slice))
@@ -1271,8 +1277,8 @@ class detect_continuum(_base_detect):
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
         self.sliceWidth = self.recipeSettings["slice-width"]
 
-        if "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper():
-            self.sliceWidth = 1
+        if self.kw("DPR_TYPE").upper() in self.traceFrame.header and "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper() and self.sliceWidth > 3:
+            self.sliceWidth = 3
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan
