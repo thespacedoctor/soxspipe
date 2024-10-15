@@ -265,6 +265,7 @@ soxs-spatial-solution:
     
 bootstrap_dispersion_solution: False
 
+
 soxs-stare:
     # DIVIDE IMAGE BY MASTER FLAT FRAME
     use_flat: True
@@ -299,9 +300,9 @@ soxs-stare:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
             disp-axis-deg: 5
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-fitting-residual-clipping-sigma: 10
+            poly-fitting-residual-clipping-sigma: 7
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-clipping-iteration-limit: 3
+            poly-clipping-iteration-limit: 7
         sky-subtraction:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
@@ -350,9 +351,9 @@ soxs-stare:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 4
             # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 10
+            poly-fitting-residual-clipping-sigma: 7
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-clipping-iteration-limit: 3
+            poly-clipping-iteration-limit: 7
         sky-subtraction:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
@@ -401,9 +402,9 @@ soxs-stare:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
             disp-axis-deg: 4
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-fitting-residual-clipping-sigma: 10
+            poly-fitting-residual-clipping-sigma: 7
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-clipping-iteration-limit: 3
+            poly-clipping-iteration-limit: 7
         sky-subtraction:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
