@@ -3,6 +3,10 @@
 # Release Notes
 
 
+## v0.11.5 - October 15, 2024
+
+* **FIXED:** a regression in the detect continuum code
+
 ## v0.11.4 - October 9, 2024
 
 * **ENHANCEMENT:** LaCosmic is run on images prior to source extraction to help remove cosmic ray hits.
