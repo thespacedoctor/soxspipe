@@ -57,8 +57,8 @@ def uncompress(
         except Exception as e:
             log.error(f'Could not uncompress .Z files')
 
-        if stderr:
-            print(stderr)
+        if stderr and "uncompress" in stderr:
+            log.error(f'The uncompress command was not found. Please install it or manually uncompress all `.Z` files before running `soxspipe prep` again.')
             sys.exit(0)
 
     log.debug('completed the ``uncompress`` function')
