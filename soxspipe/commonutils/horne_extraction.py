@@ -424,7 +424,7 @@ class horne_extraction(object):
 
         from fundamentals import fmultiprocess
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
-                                    inputArray=orderSlices, poolSize=False, timeout=300, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, turnOffMP=True)
+                                    inputArray=orderSlices, poolSize=False, timeout=300, funclog=self.log, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, turnOffMP=True)
 
         self.plot_extracted_spectrum_qc(extractions=extractions, uniqueOrders=uniqueOrders)
 
@@ -818,13 +818,16 @@ class horne_extraction(object):
 
         mean, median, std = sigma_clipped_stats(merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
         plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
+        print(merged_orders['FLUX_COUNTS'].max())
+        print(std)
+        #sys.exit(0)
 
-        maxFlux = merged_orders['FLUX_COUNTS'].max() + std
+        maxFlux = merged_orders['FLUX_COUNTS'].max().value + std
         if maxFlux > median + 5 * std:
             maxFlux = median + 5 * std
 
         plt.ylim(-200, maxFlux)
-        plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+        plt.xlim(merged_orders['WAVE'].min().value, merged_orders['WAVE'].max().value)
 
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}.pdf")
         filePath = f"{self.qcDir}/{filename}"
@@ -851,7 +854,7 @@ class horne_extraction(object):
     # xt-class-method
 
 
-def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB):
+def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB):
     """
     *extract the object spectrum for a single order*
 
@@ -859,7 +862,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     - ``crossDispersionSlices`` -- dataframe containing metadata for each cross-dispersion slice (single data-points in extracted spectrum)
     """
-    log.debug('starting the ``extract_single_order`` method')
+    #log.debug('starting the ``extract_single_order`` method')
 
     import yaml
     import pandas as pd
@@ -877,7 +880,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     # CREATE THE SLICES AND DROP SLICES WITH ALL NANs (TYPICALLY PIXELS WITH NANs IN 2D IMAGE MAP)
     sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
-    log.print(f"\t## SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
+    #log.print(f"\t## SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
 
     # REMOVE SLICES WITH ALL NANS
     crossDispersionSlices["sliceRawFlux"] = [np.nan if np.isnan(x).all() else x for x in crossDispersionSlices["sliceRawFlux"]]
@@ -957,7 +960,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
     sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
-    log.print(f"\t## FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
+    #log.print(f"\t## FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
     for slitPixelIndex in range(0, slitHalfLength * 2):
 
         iteration = 1
@@ -1015,7 +1018,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
 
     sys.stdout.flush()
     sys.stdout.write("\x1b[1A\x1b[2K")
-    log.print(f"\t## EXTRACTING THE SPECTRUM - ORDER {order}")
+    #log.print(f"\t## EXTRACTING THE SPECTRUM - ORDER {order}")
 
     # NORMALISE THE FLUX IN EACH SLICE
     sliceFittedProfileSums = [x.sum() for x in crossDispersionSlices["sliceFittedProfile"]]
@@ -1116,7 +1119,7 @@ def extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippi
     mask = (crossDispersionSlices["fullColumnMask"] == False)
     crossDispersionSlices = crossDispersionSlices.loc[mask]
 
-    log.debug('completed the ``extract_single_order`` method')
+    #log.debug('completed the ``extract_single_order`` method')
 
     return crossDispersionSlices[['order', f'{axisA}coord_centre', f'{axisB}coord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 

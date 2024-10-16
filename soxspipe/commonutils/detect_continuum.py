@@ -1271,8 +1271,8 @@ class detect_continuum(_base_detect):
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
         self.sliceWidth = self.recipeSettings["slice-width"]
 
-        if "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper():
-            self.sliceWidth = 1
+        #if "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper():
+        #    self.sliceWidth = 1
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan
