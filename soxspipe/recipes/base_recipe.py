@@ -1479,6 +1479,8 @@ class base_recipe(object):
         if imageType in ["BIAS", "DARK", "FLAT"]:
             frame.header[
                 kw("PRO_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
+            frame.header[
+                kw("PRO_TECH")] = "IMAGE"
 
         self.log.debug('completed the ``update_fits_keywords`` method')
         return None
