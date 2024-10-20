@@ -85,7 +85,7 @@ You can download the source code for soxspipe directly from Github. This is the 
 
 ```bash
 cd ~/
-git clone git@github.com:thespacedoctor/soxspipe.git
+git clone https://github.com/thespacedoctor/soxspipe.git
 cd soxspipe
 ```
 

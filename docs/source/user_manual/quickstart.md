@@ -21,22 +21,14 @@ For alternative methods of installing `soxspipe`, please refer to the [installat
 
 ## Demo Data
 
-The demo XShooter data (stare-mode) is of the X-ray binary SAX J1808.4-3658 taken during a 2019 outburst. You can download and unpack the data with the following commands:
+The demo XShooter data is of AT2020xnd, a super-luminous supernova taken in stare mode, and HD 168076, a bright O-type star taken in nodding mode. You can download and unpack the data with the following commands:
 
 ```bash
-curl -L "https://www.dropbox.com/s/t3adwc86bcwonkj/soxspipe-quickstart-demo-lite.tgz?dl=1" > soxspipe-quickstart-demo.tgz
+curl -L "https://www.dropbox.com/scl/fi/g7ie2i4ijh0w2xrjq67xo/soxspipe-quickstart-demo-lite.tgz?rlkey=eow6ujhyyo1drmzv2yt2qpo8i&dl=1" > soxspipe-quickstart-demo.tgz
 tar -xzvf soxspipe-quickstart-demo.tgz
 ```
 
-You may also retrieve the raw data directly from the [ESO archive](http://archive.eso.org/eso/eso_archive_main.html) with the following parameters:
-
-```text
-RA = 18 08 27.54
-Dec = -36 58 44.3
-Night = 2019 08 30
-Spectroscopy = XSHOOTER/VLT
-Science
-```
+These are exactly the same data you can download from the [ESO archive](http://archive.eso.org/eso/eso_archive_main.html).
 
 ## Preparing the Data-Reduction Workspace
 
