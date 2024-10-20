@@ -191,6 +191,8 @@ soxs-stare:
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
+    # USE LA COMSIC TO REMOVE CRHs BEFORE EXTRACTION
+    use_lacosmic: True
     vis:
         # the length of the 'slit' used to collect object flux (in pixels)
         horne-extraction-slit-length: 20

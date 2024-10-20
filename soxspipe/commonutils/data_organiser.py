@@ -724,7 +724,7 @@ class data_organiser(object):
 
         filteredFrames["slit"] = filteredFrames["slit"].str.upper()
 
-        filteredFrames.loc[((filteredFrames['slit'].str.contains("MULTI")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "MPH"
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("MULT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "MPH"
         filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
         filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
 
@@ -1085,6 +1085,7 @@ class data_organiser(object):
 
         # NIGHT START
         # YYYY.MM.DDThh.mm.xxx
+        offFrameCount = 0
         if series["night start mjd"]:
 
             if "PINHOLE" in series["eso dpr tech"].upper():
@@ -1100,6 +1101,7 @@ class data_organiser(object):
                     offFrame = filteredFrames.loc[mask].head(1)
                     onFrame = filteredFrames.loc[~mask].head(1)
                     filteredFrames = pd.concat([onFrame, offFrame], ignore_index=True)
+                    offFrameCount = len(offFrame.index)
 
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
@@ -1287,14 +1289,25 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # DARK FRAMES
-        if series["eso seq arm"].lower() == "nir" and series["recipe"] in ["stare"]:
-            mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
-            df = calibrationFrames.loc[mask]
-            if len(df.index):
-                df.sort_values(by=['obs-delta'], inplace=True)
-                files = np.append(files, df["file"].values[0])
-                tags = np.append(tags, df["eso pro catg"].values[0])
-                filepaths = np.append(filepaths, df["filepath"].values[0])
+        if series["eso seq arm"].lower() == "nir" and series["recipe"] in ["stare", "disp_sol", "order_centres", "mflat", "spat_sol"]:
+            moveOn = False
+            if series["recipe"] in ["disp_sol", "order_centres", "mflat", "spat_sol"] and offFrameCount > 0:
+                moveOn = True
+            elif series["recipe"] in ["stare", "disp_sol", "order_centres", "mflat", "spat_sol"] and offFrameCount == 0:
+                mask = ((calibrationFrames['exptime'] == filteredFrames['exptime'].max()) & (calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')))
+                df = calibrationFrames.loc[mask]
+                if len(df.index) == 0:
+                    mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
+            else:
+                mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
+
+            if not moveOn:
+                df = calibrationFrames.loc[mask]
+                if len(df.index):
+                    df.sort_values(by=['obs-delta'], inplace=True)
+                    files = np.append(files, df["file"].values[0])
+                    tags = np.append(tags, df["eso pro catg"].values[0])
+                    filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {
