@@ -127,7 +127,7 @@ class soxs_mflat(base_recipe):
             # MIXED INPUT IMAGE TYPES ARE BAD
             if not error:
                 if len(imageTypes) > 1:
-                    if len(imageTypes) == 2 and "DARK" in imageTypes:
+                    if len(imageTypes) == 2 and ("DARK" in imageTypes) and ("LAMP,FLAT" in imageTypes):
                         pass
                     else:
                         imageTypes = " and ".join(imageTypes)
