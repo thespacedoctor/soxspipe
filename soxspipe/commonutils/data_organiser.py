@@ -242,7 +242,7 @@ class data_organiser(object):
         # EXIST IF NO FITS FILES EXIST - SOME PROTECT AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
         if fitsExist == False:
             print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
-            sys.exit(0)
+            return None
 
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
