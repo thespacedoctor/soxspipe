@@ -138,7 +138,8 @@ class soxs_disp_solution(base_recipe):
                     error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
             if not error:
-                if imageTypes[0] not in ["LAMP,FMTCHK", 'WAVE,LAMP']:
+                # FIX ME!
+                if imageTypes[0] not in ["LAMP,FMTCHK", 'LAMP,WAVE', 'WAVE,LAMP']:
                     error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
             if not error:
@@ -154,7 +155,8 @@ class soxs_disp_solution(base_recipe):
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["LAMP,FMTCHK", 'WAVE,LAMP']:
+                    # FIX ME!
+                    if i not in ["LAMP,FMTCHK", 'LAMP,WAVE', 'WAVE,LAMP']:
                         error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals()
 
             if not error:
