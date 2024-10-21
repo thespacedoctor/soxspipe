@@ -230,7 +230,8 @@ class soxs_disp_solution(base_recipe):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         if self.inst.lower() == "soxs":
-            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP',
+            # FIX ME!!
+            add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
                            kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
         else:
             add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK',
