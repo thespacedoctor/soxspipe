@@ -131,10 +131,9 @@ class soxs_mflat(base_recipe):
                     if len(imageTypes) == 2 and ("DARK" in imageTypes):
                         pass
                     else:
-
                         pass
-                        imageTypes = " and ".join(imageTypes)
-                        error = "Input frames are a mix of %(imageTypes)s" % locals()
+                        # imageTypes = " and ".join(imageTypes)
+                        # error = "Input frames are a mix of %(imageTypes)s" % locals()
 
             if not error:
                 if "LAMP,FLAT" not in imageTypes and "FLAT,LAMP" not in imageTypes:
