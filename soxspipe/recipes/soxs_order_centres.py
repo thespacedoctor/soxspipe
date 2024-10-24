@@ -135,10 +135,10 @@ class soxs_order_centres(base_recipe):
 
             if not error:
                 if self.inst == "SOXS":
-                    good = 'FLAT,LAMP'
+                    good = 'FLAT'
                 else:
                     good = "LAMP,ORDERDEF"
-                if imageTypes[0] != good:
+                if good not in imageTypes[0]:
                     error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames and a first-guess dispersion solution table for NIR" % locals()
 
             if not error:
@@ -226,8 +226,10 @@ class soxs_order_centres(base_recipe):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         if self.inst == "SOXS":
-            filter_list = [{kw("DPR_TYPE"): 'FLAT,LAMP',
-                            kw("DPR_TECH"): 'ECHELLE,PINHOLE'}]
+            filter_list = [
+                {kw("DPR_TYPE"): 'FLAT,LAMP', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'LAMP,FLAT', kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+            ]
         else:
             # UVB XSHOOTER - CHECK FOR D2 LAMP FIRST AND IF NOT FOUND USE THE QTH LAMP
             filter_list = [
