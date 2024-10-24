@@ -235,14 +235,16 @@ class soxs_spatial_solution(base_recipe):
 
         # MULTIPINHOLE IMAGE
         if self.inst.upper() == "SOXS":
-            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP',
-                           kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}
+            filter_list = [{kw("DPR_TYPE"): 'WAVE,LAMP', kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'},
+                           {kw("DPR_TYPE"): 'LAMP,WAVE', kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}]
         else:
-            add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
-                           kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}
-        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            multi_pinhole_image = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                               hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            filter_list = [{kw("DPR_TYPE"): 'LAMP,WAVE',
+                            kw("DPR_TECH"): 'ECHELLE,MULTI-PINHOLE'}]
+
+        for add_filters in filter_list:
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                multi_pinhole_image = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                                                   hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         self.dateObs = multi_pinhole_image.header[kw("DATE_OBS")]
 

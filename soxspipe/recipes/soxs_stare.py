@@ -121,7 +121,7 @@ class soxs_stare(base_recipe):
 
         if self.arm == "NIR":
             if not error:
-                okList = ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX", "STD,TELLURIC"]
+                okList = ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX", "STD,TELLURIC", "OBJECT,ASYNC"]
                 if "PAE" in self.settings and self.settings["PAE"]:
                     okList.append("FLAT,LAMP")
                 for i in imageTypes:
@@ -201,13 +201,16 @@ class soxs_stare(base_recipe):
         self.subtractSky = True
 
         # OBJECT FRAMES
-        add_filters = {kw("DPR_TYPE"): 'OBJECT',
-                       kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
+        filter_list = [
+            {kw("DPR_TYPE"): 'OBJECT', kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'},
+            {kw("DPR_TYPE"): 'OBJECT,ASYNC', kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
+        ]
         allObjectFrames = []
-        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                       hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
-            allObjectFrames.append(singleFrame)
+        for add_filters in filter_list:
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                                           hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+                allObjectFrames.append(singleFrame)
 
         # FLUX STD FRAMES
         if not len(allObjectFrames):
@@ -238,6 +241,9 @@ class soxs_stare(base_recipe):
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
             self.log.warning("Processing a ORDER-TRACE frame with the stare-mode recipe")
+            self.subtractSky = False
+
+        if "PAE" in self.settings and self.settings["PAE"]:
             self.subtractSky = False
 
         if not len(allObjectFrames):
