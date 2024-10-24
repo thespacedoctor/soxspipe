@@ -62,11 +62,11 @@ soxs-order-centre:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 50
+            slice-length: 30
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 5.0
+            peak-sigma-limit: 2.
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 6
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
@@ -74,7 +74,7 @@ soxs-order-centre:
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-fitting-residual-clipping-sigma: 10
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-clipping-iteration-limit: 2
+            poly-clipping-iteration-limit: 5
     # NIR is TUNED
     nir:
         detect-continuum:
@@ -85,7 +85,7 @@ soxs-order-centre:
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 2.0
+            peak-sigma-limit: 2.
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 5
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
@@ -93,7 +93,7 @@ soxs-order-centre:
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-fitting-residual-clipping-sigma: 10
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-clipping-iteration-limit: 2
+            poly-clipping-iteration-limit: 5
 
 soxs-mflat:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
@@ -106,11 +106,11 @@ soxs-mflat:
         # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE
         centre-order-window: 20
         # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
-        slice-length-for-edge-detection: 90
+        slice-length-for-edge-detection: 70
         # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
         slice-width-for-edge-detection: 5
         # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
-        min-percentage-threshold-for-edge-detection: 40
+        min-percentage-threshold-for-edge-detection: 20
         # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
         max-percentage-threshold-for-edge-detection: 50
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
@@ -118,7 +118,7 @@ soxs-mflat:
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
         order-deg: 3
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
-        poly-fitting-residual-clipping-sigma: 25
+        poly-fitting-residual-clipping-sigma: 10
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
@@ -128,11 +128,11 @@ soxs-mflat:
         # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
         centre-order-window: 20
         # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
-        slice-length-for-edge-detection: 90
+        slice-length-for-edge-detection: 70
         # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
         slice-width-for-edge-detection: 5
         # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
-        min-percentage-threshold-for-edge-detection: 40
+        min-percentage-threshold-for-edge-detection: 20
         # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
         max-percentage-threshold-for-edge-detection: 50
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
@@ -140,7 +140,7 @@ soxs-mflat:
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
         order-deg: 6
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
-        poly-fitting-residual-clipping-sigma: 25
+        poly-fitting-residual-clipping-sigma: 10
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
@@ -220,20 +220,30 @@ soxs-stare:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 2
         sky-subtraction:
-            # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-            median_clipping_sigma: 3
-            median_clipping_iterations: 5
-            # ROLLING WINDOW LENGTH IN DATA POINTS
-            median_rolling_window_size: 31
-            # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 2
-            percentile_clipping_iterations: 1
-            percentile_rolling_window_size: 15
+            # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_sigma: 3
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_iterations: 7
+            # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
+            percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.05
-            aggressive_object_masking: True
+            clip-slit-edge-fraction: 0.01
+            # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
+            aggressive_object_masking: False
+            # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 2
-            slit_illumination_order: 3
+            # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
+            slit_illumination_order: 1
+            # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
+            starting_points_per_knot: 300
+            # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
+            min_points_per_knot: 11
+            # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
+            bspline_fitting_residual_clipping_sigma: 20
+            # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+            bspline_iteration_limit: 4
+            # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
+            residual_floor_percentile: 95
     nir:
         # the length of the 'slit' used to collect object flux (in pixels)
         horne-extraction-slit-length: 10
@@ -261,21 +271,30 @@ soxs-stare:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 2
         sky-subtraction:
-            # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-            median_clipping_sigma: 3
-            median_clipping_iterations: 5
-            # ROLLING WINDOW LENGTH IN DATA POINTS
-            median_rolling_window_size: 31
-            # PERCENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 2
-            percentile_clipping_iterations: 1
-            percentile_rolling_window_size: 15
+            # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_sigma: 3
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_iterations: 7
+            # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
+            percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.05
-            aggressive_object_masking: True
+            clip-slit-edge-fraction: 0.01
+            # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
+            aggressive_object_masking: False
+            # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 2
-            slit_illumination_order: 3
-
+            # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
+            slit_illumination_order: 1
+            # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
+            starting_points_per_knot: 300
+            # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
+            min_points_per_knot: 11
+            # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
+            bspline_fitting_residual_clipping_sigma: 20
+            # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+            bspline_iteration_limit: 4
+            # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
+            residual_floor_percentile: 95
 
 
 # UTILS
