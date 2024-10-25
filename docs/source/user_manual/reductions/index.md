@@ -11,4 +11,5 @@ Like ESO pipelines, `soxspipe` is designed to execute `recipes`, which accept se
 :::{toctree}
 Reduction with a single command <reduce_command>
 Recipe by recipe reductions <recipe_reductions>
+Automatic Reductions Using a Watched Workspace <automatic_reductions>
 :::
