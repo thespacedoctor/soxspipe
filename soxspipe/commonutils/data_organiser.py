@@ -539,18 +539,16 @@ class data_organiser(object):
             masterTable.add_index("night start date")
             masterTable.add_index("night start mjd")
 
-        if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
-            masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
-
-            try:
-                masterTable["rospeed"][masterTable[
-                    "rospeed"] == -99.99] = -1
-            except:
-                masterTable["rospeed"] = masterTable["rospeed"].astype(str)
-                masterTable["rospeed"][masterTable[
-                    "rospeed"] == -99.99] = -1
-
-            if masterTable["rospeed"].dtype != 'int64':
+        if self.instrument.upper() != "SOXS":
+            if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
+                masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
+                try:
+                    masterTable["rospeed"][masterTable[
+                        "rospeed"] == -99.99] = '--'
+                except:
+                    masterTable["rospeed"] = masterTable["rospeed"].astype(str)
+                    masterTable["rospeed"][masterTable[
+                        "rospeed"] == -99.99] = '--'
                 masterTable["rospeed"][masterTable[
                     "rospeed"] == '1pt/400k/lg'] = 'fast'
                 masterTable["rospeed"][masterTable[
@@ -559,6 +557,19 @@ class data_organiser(object):
                     "rospeed"] == '1pt/100k/hg'] = 'slow'
                 masterTable["rospeed"][masterTable[
                     "rospeed"] == '1pt/100k/hg/AFC'] = 'slow'
+                masterTable.add_index("rospeed")
+        else:
+            if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
+                masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
+
+                try:
+                    masterTable["rospeed"][masterTable[
+                        "rospeed"] == -99.99] = -1
+                except:
+                    masterTable["rospeed"] = masterTable["rospeed"].astype(str)
+                    masterTable["rospeed"][masterTable[
+                        "rospeed"] == -99.99] = -1
+
                 masterTable.add_index("rospeed")
 
         if self.kw("TPL_ID").lower() in masterTable.colnames:
@@ -674,7 +685,15 @@ class data_organiser(object):
 
         if len(filesNotInDB):
             for f in filesNotInDB:
-                shutil.move(self.rootDir + "/" + f, self.rootDir)
+                # GET THE EXTENSION (WITH DOT PREFIX)
+                basename = os.path.basename(f)
+                extension = os.path.splitext(basename)[1]
+                if extension.lower() != ".fits":
+                    pass
+                elif self.rootDir in f:
+                    shutil.move(f, self.rootDir)
+                else:
+                    shutil.move(self.rootDir + "/" + f, self.rootDir)
             self._sync_raw_frames(skipSqlSync=True)
 
         c.close()
