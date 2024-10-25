@@ -69,6 +69,10 @@ class reducer(object):
             rootDir=workspaceDirectory,
         )
         self.sessionId, allSessions = do.session_list(silent=True)
+
+        if self.sessionId is None:
+            return None
+
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
         self.sessionDB = workspaceDirectory + "/soxspipe.db"
 
@@ -79,6 +83,10 @@ class reducer(object):
         *reduce the selected data*
         """
         self.log.debug('starting the ``reduce`` method')
+
+        if self.sessionId is None:
+            print("Please prepare this workspace using `soxspipe prep` before attempting to reduce the data.")
+            return None
 
         from fundamentals import times
         import traceback
