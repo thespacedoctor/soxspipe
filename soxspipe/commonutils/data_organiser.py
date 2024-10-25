@@ -242,7 +242,7 @@ class data_organiser(object):
         # EXIST IF NO FITS FILES EXIST - SOME PROTECT AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
         if fitsExist == False:
             print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
-            sys.exit(0)
+            return None
 
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
@@ -511,7 +511,7 @@ class data_organiser(object):
         masterTable = masterTable.filled()
 
         # FILTER OUT FRAMES WITH NO MJD
-        matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--"))
+        matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--") | (masterTable["exptime"] == -99.99))
         missingMJDFiles = masterTable['file'][matches]
         if len(missingMJDFiles):
             print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
@@ -539,22 +539,25 @@ class data_organiser(object):
 
         if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
             masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
+
             try:
                 masterTable["rospeed"][masterTable[
-                    "rospeed"] == -99.99] = '--'
+                    "rospeed"] == -99.99] = -1
             except:
                 masterTable["rospeed"] = masterTable["rospeed"].astype(str)
                 masterTable["rospeed"][masterTable[
-                    "rospeed"] == -99.99] = '--'
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == '1pt/400k/lg'] = 'fast'
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == '1pt/400k/lg/AFC'] = 'fast'
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == '1pt/100k/hg'] = 'slow'
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == '1pt/100k/hg/AFC'] = 'slow'
-            masterTable.add_index("rospeed")
+                    "rospeed"] == -99.99] = -1
+
+            if masterTable["rospeed"].dtype != 'int64':
+                masterTable["rospeed"][masterTable[
+                    "rospeed"] == '1pt/400k/lg'] = 'fast'
+                masterTable["rospeed"][masterTable[
+                    "rospeed"] == '1pt/400k/lg/AFC'] = 'fast'
+                masterTable["rospeed"][masterTable[
+                    "rospeed"] == '1pt/100k/hg'] = 'slow'
+                masterTable["rospeed"][masterTable[
+                    "rospeed"] == '1pt/100k/hg/AFC'] = 'slow'
+                masterTable.add_index("rospeed")
 
         if self.kw("TPL_ID").lower() in masterTable.colnames:
             masterTable["template"] = np.copy(masterTable[self.kw("TPL_ID").lower()])
@@ -886,15 +889,15 @@ class data_organiser(object):
             rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
         # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
-        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE"]))
+        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"]))
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
         if self.instrument.upper() == "SOXS":
             rawPinholeFrames = pd.read_sql(
-                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE") and ("eso seq arm" = "NIR" or ("lamp" not in ("Xe", "Ar", "Hg", "Ne", "ArNeHgXe" )))', con=conn)
+                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE","ECHELLE,MULTI-PINHOLE") and ("eso seq arm" = "NIR" or ("lamp" not in ("Xe", "Ar", "Hg", "Ne", "ArNeHgXe" )))', con=conn)
         else:
             rawPinholeFrames = pd.read_sql(
-                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE")', con=conn)
+                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE","ECHELLE,MULTI-PINHOLE")', con=conn)
         rawPinholeFrames.fillna("--", inplace=True)
         rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
