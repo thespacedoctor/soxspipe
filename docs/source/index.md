@@ -22,6 +22,7 @@ Preparing a Workspace <user_manual/preparing_a_workspace>
 user_manual/reductions/index
 user_manual/logging
 user_manual/pipeline_settings
+user_manual/watch_folder
 support
 
 :::

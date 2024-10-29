@@ -23,7 +23,7 @@ Options:
     session ls                             list all available data-reduction sessions in the workspace
     session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
     session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
-    reduce all                             reduce all of the data in a workspace.                 
+    reduce all                             reduce all of the data in a workspace.
 
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
@@ -97,7 +97,7 @@ def main(arguments=None):
         sys.argv.append("-s")
         sys.argv.append(settingsFile)
 
-    if "prep" in sys.argv:
+    if "prep" in sys.argv or "watch" in sys.argv:
         arguments = docopt(__doc__)
         if "--settings" in arguments.keys():
             del arguments["--settings"]
@@ -268,7 +268,6 @@ def main(arguments=None):
             reducedNod = recipe.produce_product()
 
         if a['prep']:
-            from soxspipe.commonutils import data_organiser
             do = data_organiser(
                 log=log,
                 rootDir=a["workspaceDirectory"]
@@ -323,33 +322,58 @@ def main(arguments=None):
         def action(
                 self,
                 **kwargs):
-            self.log.info('starting the ``action`` method')
-
-            pwd = kwargs["pwd"]
-
-            files_preserve = [sys.stdout]
-
             import time
+            self.log.info('starting the ``action`` method')
+            pwd = kwargs["pwd"]
+            # settings = kwargs["settings"]
+            # settingsFile = kwargs["settingsFile"]
+
+            currentSession = False
+
             while True:
                 os.chdir(pwd)
                 # if "." == arguments["--settings"][0]:
                 #     arguments["--settings"] = pwd + "/" + arguments["--settings"][1:]
                 a["workspaceDirectory"] = pwd
 
+                if currentSession:
+                    thisLog = log
+                else:
+                    thisLog = self.log
+
                 from soxspipe.commonutils import data_organiser
                 do = data_organiser(
-                    log=log,
+                    log=thisLog,
                     rootDir=pwd
                 )
                 do.prepare()
+
+                if not currentSession:
+                    currentSession, allSessions = do.session_list(silent=True)
+                    from importlib import reload
+                    import logging
+                    logging.shutdown()
+                    reload(logging)
+                    settingsFile = f"{pwd}/sessions/{currentSession}/soxspipe.yaml"
+                    arguments["--settings"] = settingsFile
+                    su = tools(
+                        arguments=arguments,
+                        docString=__doc__,
+                        logLevel="WARNING",
+                        options_first=False,
+                        projectName="soxspipe",
+                        defaultSettingsFile=False
+                    )
+                    argumentsIgnore, settings, log, dbConn = su.setup()
 
                 from soxspipe.commonutils import reducer
                 collection = reducer(
                     log=log,
                     workspaceDirectory=pwd,
                     settings=settings,
-                    pathToSettings=arguments["--settings"],
-                    quitOnFail=a["quitOnFailFlag"]
+                    pathToSettings=settingsFile,
+                    quitOnFail=a["quitOnFailFlag"],
+                    daemon=True
                 )
                 collection.reduce()
 
@@ -364,12 +388,21 @@ def main(arguments=None):
     from os.path import expanduser
     home = expanduser("~")
 
+    su = tools(
+        arguments=arguments,
+        docString=__doc__,
+        logLevel="WARNING",
+        options_first=False,
+        projectName="soxspipe",
+        defaultSettingsFile=False
+    )
+    arguments, settings, log, dbConn = su.setup()
+
     d = myDaemon(log=log, name="soxspipe", pwd=os.getcwd())
     d.errLog = home + f"/.config/soxspipe/daemon.log"
     d.rootDir = home + f"/.config/soxspipe/"
 
     if a['start']:
-
         d.start()
     elif a['stop']:
         d.stop()

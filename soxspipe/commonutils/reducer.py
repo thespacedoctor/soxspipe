@@ -51,7 +51,8 @@ class reducer(object):
             settings=False,
             pathToSettings=False,
             quitOnFail=False,
-            overwrite=False
+            overwrite=False,
+            daemon=False
 
     ):
         self.log = log
@@ -61,6 +62,7 @@ class reducer(object):
         self.overwrite = overwrite
         self.pathToSettings = pathToSettings
         self.quitOnFail = quitOnFail
+        self.daemon = daemon
 
         # REQUEST THE WORKSPACE PARAMETERS FROM THE DATA-ORGANISER
         from soxspipe.commonutils import data_organiser
@@ -117,7 +119,8 @@ class reducer(object):
                     rootDir=self.workspaceDirectory
                 )
                 do.session_refresh()
-                print(f"{'='*70}\n")
+                if not self.daemon:
+                    print(f"{'='*70}\n")
                 continue
 
             ## FINISH LOGGING ##
@@ -127,7 +130,8 @@ class reducer(object):
 
             self.log.print(f'\nRecipe Command: {row["command"]} ')
             self.log.print(f'Recipe Run Time: {runningTime}\n\n')
-            print(f"{'='*70}\n")
+            if not self.daemon:
+                print(f"{'='*70}\n")
 
         self.log.debug('completed the ``reduce`` method')
         return None

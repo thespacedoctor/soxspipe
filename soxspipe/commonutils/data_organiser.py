@@ -149,7 +149,27 @@ class data_organiser(object):
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
-        self.typeMap = {
+        self.typeMapXSH = {
+            "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
+            "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,orderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,dorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,qorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,flat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
+            "flat,lamp": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
+            "lamp,dflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,qflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}],
+            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
+            "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
+        }
+
+        # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
+        self.typeMapSOXS = {
             "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
             "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
             "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
@@ -278,6 +298,10 @@ class data_organiser(object):
             c.execute(sqlQuery)
             self.instrument = c.fetchall()[0][0]
             c.close()
+            if "SOXS" in self.instrument.upper():
+                self.typeMap = self.typeMapSOXS
+            else:
+                self.typeMap = self.typeMapXSH
         except:
             pass
 
@@ -312,6 +336,8 @@ class data_organiser(object):
         print(f"   - `sessions/`: directory of data-reduction sessions")
         print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
         print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
+
+        self.conn.close()
 
         self.log.debug('completed the ``prepare`` method')
         return None
@@ -474,6 +500,11 @@ class data_organiser(object):
         if "XSH" in self.instrument.upper() or "SHOOT" in self.instrument.upper():
             self.instrument = "XSH"
         print(f"The instrument has been set to '{self.instrument}'")
+
+        if "SOXS" in self.instrument.upper():
+            self.typeMap = self.typeMapSOXS
+        else:
+            self.typeMap = self.typeMapXSH
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -1127,6 +1158,13 @@ class data_organiser(object):
                     filteredFrames = pd.concat([onFrame, offFrame], ignore_index=True)
                     offFrameCount = len(offFrame.index)
 
+            if "FLAT" in series["eso dpr tech"].upper() and "NIR" not in series['eso seq arm'].upper():
+                mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+                offFrame = filteredFrames.loc[mask]
+                from tabulate import tabulate
+                print(tabulate(offFrame, headers='keys', tablefmt='psql'))
+                sys.exit(0)
+
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
                 filteredFrames = filteredFrames.loc[mask]
@@ -1315,6 +1353,11 @@ class data_organiser(object):
         # DARK FRAMES
         if series["eso seq arm"].lower() == "nir" and series["recipe"] in ["stare", "disp_sol", "order_centres", "mflat", "spat_sol"]:
             moveOn = False
+            if series["recipe"] == "mflat":
+                if "FLAT" in series["eso dpr type"].upper() and "NIR" in series['eso seq arm'].upper():
+                    mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+                    offFrame = filteredFrames.loc[mask]
+                    offFrameCount = len(offFrame.index)
             if series["recipe"] in ["disp_sol", "order_centres", "mflat", "spat_sol"] and offFrameCount > 0:
                 moveOn = True
             elif series["recipe"] in ["stare", "disp_sol", "order_centres", "mflat", "spat_sol"] and offFrameCount == 0:
@@ -1575,7 +1618,8 @@ class data_organiser(object):
                 logLevel="WARNING",
                 options_first=False,
                 projectName="soxspipe",
-                defaultSettingsFile=f"{inst}_default_settings.yaml"
+                defaultSettingsFile=f"{inst}_default_settings.yaml",
+                createLogger=False
             )
             arguments, settings, replacedLog, dbConn = su.setup()
 
@@ -1619,6 +1663,7 @@ class data_organiser(object):
         except:
             print(message)
         self.log.debug('completed the ``session_create`` method')
+
         return sessionId
 
     def session_list(
@@ -1811,6 +1856,11 @@ class data_organiser(object):
         c.execute(sqlQuery)
         self.instrument = c.fetchall()[0][0]
         c.close()
+
+        if "SOXS" in self.instrument.upper():
+            self.typeMap = self.typeMapSOXS
+        else:
+            self.typeMap = self.typeMapXSH
 
         # CLEAN UP FAILED FILES
         c = self.conn.cursor()
