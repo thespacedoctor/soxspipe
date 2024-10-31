@@ -399,6 +399,10 @@ class _base_detect(object):
             filename = self.sofName + ".fits"
         filename = filename.replace("MFLAT", "FLAT")
 
+        # if self.inst.upper() == "SOXS":
+        #     filename = filename.replace("_DLAMP", "")
+        #     filename = filename.replace("_QLAMP", "")
+
         if "mflat" in self.recipeName.lower():
             filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
         elif "stare" in self.recipeName.lower():
@@ -407,7 +411,7 @@ class _base_detect(object):
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE" + self.noddingSequence + ".fits"
 
-        if self.lampTag:
+        if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
 
         order_table_path = f"{outDir}/{filename}"

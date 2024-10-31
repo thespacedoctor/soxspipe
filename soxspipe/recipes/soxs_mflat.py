@@ -169,7 +169,7 @@ class soxs_mflat(base_recipe):
                     error = "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS" % locals()
 
         # UV-VIS NEEDS BOTH D AND Q-LAMPS
-        if not error:
+        if not error and self.inst.upper() != "SOXS":
             if "LAMP,QFLAT" in imageTypes or "LAMP,DFLAT" in imageTypes:
                 if "LAMP,QFLAT" in imageTypes and "LAMP,DFLAT" in imageTypes:
                     pass
@@ -257,12 +257,13 @@ class soxs_mflat(base_recipe):
                 self.masterFlatSet.append(None)
                 continue
 
-            if tag:
+            if tag and self.inst.upper() != "SOXS":
                 filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}", kw("OBJECT"): fk}
             else:
                 filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
+
             orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
-            if len(orderTablePaths) == 1:
+            if len(orderTablePaths) > 0:
                 orderTablePath = orderTablePaths[0]
                 thisPath = orderTablePath
             else:
@@ -548,20 +549,33 @@ class soxs_mflat(base_recipe):
                 darkCollection = None
 
         # FIND THE FLAT FRAMES
-        if self.inst.upper() == "SOXS":
-            filterDict = {kw("DPR_TYPE"): "FLAT,LAMP",
-                          kw("DPR_TECH"): "ECHELLE,SLIT"}
+        if self.arm.upper() == "NIR":
+            filter_list = [{kw("DPR_TYPE"): "FLAT,LAMP",
+                            kw("DPR_TECH"): "ECHELLE,SLIT"},
+                           {kw("DPR_TYPE"): "LAMP,FLAT",
+                            kw("DPR_TECH"): "ECHELLE,SLIT"}]
+            for add_filters in filter_list:
+                flatCollection = self.inputFrames.filter(**add_filters)
+                if len(flatCollection.files) > 0:
+                    break
         else:
-            filterDict = {kw("DPR_TYPE"): "LAMP,FLAT",
-                          kw("DPR_TECH"): "ECHELLE,SLIT"}
-        flatCollection = self.inputFrames.filter(**filterDict)
+            filterDict = {kw("DPR_TYPE"): "JUNK_DO_NOT_MATCH"}
+            flatCollection = self.inputFrames.filter(**filterDict)
 
-        filterDict = {kw("DPR_TYPE"): "LAMP,DFLAT",
-                      kw("DPR_TECH"): "ECHELLE,SLIT"}
-        dflatCollection = self.inputFrames.filter(**filterDict)
-        filterDict = {kw("DPR_TYPE"): "LAMP,QFLAT",
-                      kw("DPR_TECH"): "ECHELLE,SLIT"}
-        qflatCollection = self.inputFrames.filter(**filterDict)
+        if self.inst.upper() == "SOXS":
+            filterDict = {kw("LAMP2"): "Deut_Lamp",
+                          kw("DPR_TECH"): "ECHELLE,SLIT"}
+            dflatCollection = self.inputFrames.filter(**filterDict)
+            filterDict = {kw("LAMP1"): "Qth_Lamp",
+                          kw("DPR_TECH"): "ECHELLE,SLIT"}
+            qflatCollection = self.inputFrames.filter(**filterDict)
+        else:
+            filterDict = {kw("DPR_TYPE"): "LAMP,DFLAT",
+                          kw("DPR_TECH"): "ECHELLE,SLIT"}
+            dflatCollection = self.inputFrames.filter(**filterDict)
+            filterDict = {kw("DPR_TYPE"): "LAMP,QFLAT",
+                          kw("DPR_TECH"): "ECHELLE,SLIT"}
+            qflatCollection = self.inputFrames.filter(**filterDict)
 
         if len(flatCollection.files) == 0 and len(dflatCollection.files) == 0 and len(qflatCollection.files) == 0:
             raise FileNotFoundError(
@@ -600,10 +614,13 @@ class soxs_mflat(base_recipe):
                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
             self.log.print("\n# SUBTRACTING MASTER DARK/OFF-LAMP FROM FRAMES")
             for flat in flats:
+                from soxspipe.commonutils.toolkit import quicklook_image
                 mjd = flat.header[kw("MJDOBS")]
                 matchValue, matchIndex = nearest_neighbour(
                     flat.header[kw("MJDOBS")], darkMjds)
                 dark = darks[matchIndex]
+                this = self.detrend(
+                    inputFrame=flat, master_bias=bias, dark=dark)
                 calibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=dark))
 
@@ -750,7 +767,7 @@ class soxs_mflat(base_recipe):
 
         # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
         quicklook_image(
-            log=self.log, CCDObject=normalisedFrames[0], show=False, ext=None, surfacePlot=True, title=f"Single normalised flat frame {lamp}")
+            log=self.log, CCDObject=normalisedFrames[0], show=False, ext=None, surfacePlot=False, title=f"Single normalised flat frame {lamp}")
 
         self.log.debug('completed the ``normalise_flats`` method')
         return normalisedFrames
