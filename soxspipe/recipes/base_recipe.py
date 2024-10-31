@@ -284,6 +284,7 @@ class base_recipe(object):
 
             self.log.critical(message)
             raise IOError(message)
+
         bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
         frame.flags = bitMap.data
 

@@ -232,15 +232,18 @@ class soxs_disp_solution(base_recipe):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         if self.inst.lower() == "soxs":
-            # FIX ME!!
-            add_filters = {kw("DPR_TYPE"): 'LAMP,WAVE',
-                           kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+            filter_list = [
+                {kw("DPR_TYPE"): 'LAMP,WAVE', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'WAVE,LAMP', kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+            ]
         else:
-            add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK',
-                           kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
-        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            pinhole_image = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                         hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            filter_list = [{kw("DPR_TYPE"): 'LAMP,FMTCHK',
+                            kw("DPR_TECH"): 'ECHELLE,PINHOLE'}]
+
+        for add_filters in filter_list:
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                pinhole_image = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                                             hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         self.pinholeFrame = self.detrend(
             inputFrame=pinhole_image, master_bias=master_bias, dark=dark)

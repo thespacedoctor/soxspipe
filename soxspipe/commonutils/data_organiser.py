@@ -179,8 +179,8 @@ class data_organiser(object):
             # "lamp,flat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
             "lamp,flat": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
             "flat,lamp": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
-            "lamp,dflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
-            "lamp,qflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
+            "lamp,dflat": [{"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}],
+            "lamp,qflat": [{"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}],
             "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}, {"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
             "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
             "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],

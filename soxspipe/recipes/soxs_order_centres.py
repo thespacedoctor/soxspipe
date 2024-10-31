@@ -154,7 +154,7 @@ class soxs_order_centres(base_recipe):
         else:
             if not error:
                 if self.inst == "SOXS":
-                    goodList = ['FLAT,LAMP']
+                    goodList = ['FLAT,LAMP', 'LAMP,DFLAT', 'LAMP,FLAT']
                 else:
                     goodList = ["LAMP,ORDERDEF", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']
                 for i in imageTypes:
@@ -228,7 +228,12 @@ class soxs_order_centres(base_recipe):
         if self.inst == "SOXS":
             filter_list = [
                 {kw("DPR_TYPE"): 'FLAT,LAMP', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,FLAT', kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+                {kw("DPR_TYPE"): 'LAMP,FLAT', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'LAMP,DFLAT', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
+                # KEYWORD SCREW-UP DURING PAE MEANT WE HAD TO ADD BELOW WITH ECHELLE,SLIT ... SHOULD REMOVE THIS EVENTUALLY
+                {kw("DPR_TYPE"): 'FLAT,LAMP', kw("DPR_TECH"): 'ECHELLE,SLIT'},
+                {kw("DPR_TYPE"): 'LAMP,FLAT', kw("DPR_TECH"): 'ECHELLE,SLIT'},
+                {kw("DPR_TYPE"): 'LAMP,DFLAT', kw("DPR_TECH"): 'ECHELLE,SLIT'},
             ]
         else:
             # UVB XSHOOTER - CHECK FOR D2 LAMP FIRST AND IF NOT FOUND USE THE QTH LAMP
