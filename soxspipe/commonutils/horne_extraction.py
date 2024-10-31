@@ -722,8 +722,8 @@ class horne_extraction(object):
         mean, median, std = sigma_clipped_stats(allExtractions["extractedFluxBoxcarRobust"], sigma=5., stdfunc="mad_std", cenfunc="median", maxiters=3)
 
         maxFlux = allExtractions['extractedFluxBoxcarRobust'].max() + std
-        if maxFlux > median + 5 * std:
-            maxFlux = median + 5 * std
+        # if maxFlux > median + 5 * std:
+        #     maxFlux = median + 5 * std
 
         for df, o in zip(extractions, uniqueOrders):
 
@@ -833,14 +833,15 @@ class horne_extraction(object):
         plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
 
         maxFlux = merged_orders['FLUX_COUNTS'].max() + std
-        if maxFlux > median + 5 * std:
-            maxFlux = median + 5 * std
+        # if maxFlux > median + 5 * std:
+        #     maxFlux = median + 5 * std
 
         plt.ylim(-200, maxFlux)
         plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
 
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}.pdf")
         filePath = f"{self.qcDir}/{filename}"
+        # plt.show()
         plt.savefig(filePath, dpi='figure', bbox_inches='tight')
 
         utcnow = datetime.utcnow()

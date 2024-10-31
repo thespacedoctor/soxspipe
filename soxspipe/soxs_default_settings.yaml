@@ -184,7 +184,7 @@ soxs-spatial-solution:
 bootstrap_dispersion_solution: False
 
 soxs-stare:
-    use_flat: False
+    use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
@@ -246,9 +246,9 @@ soxs-stare:
             residual_floor_percentile: 95
     nir:
         # the length of the 'slit' used to collect object flux (in pixels)
-        horne-extraction-slit-length: 10
+        horne-extraction-slit-length: 20
         # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
-        horne-extraction-profile-global-clipping-sigma: 100
+        horne-extraction-profile-global-clipping-sigma: 25
         # the number of σ deviations that residuals from the fitted, dispersion-direction profile need to be beyond for a pixel to be clipped
         horne-extraction-profile-clipping-sigma: 3.0
         # number of sigma-clipping iterations to perform while fitted, dispersion-direction profiles
@@ -261,15 +261,15 @@ soxs-stare:
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 2.0
-            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-            disp-axis-deg: 5
-            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            peak-sigma-limit: 1.5
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
             order-deg: 6
-            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 10
-            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-clipping-iteration-limit: 2
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 5
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 5
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 7
         sky-subtraction:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
@@ -301,7 +301,6 @@ soxs-stare:
 background-subtraction:
     bspline-deg: 2
     gaussian-blur-sigma: 65
-
 
 logging settings:
     formatters:
