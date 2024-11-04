@@ -2,6 +2,7 @@
 
 # Release Notes
 
+* **ENHANCEMENT:** now recording 'ESO ADA ABSROT END' in the soxspipe.db database
 
 ## v0.11.6 - October 15, 2024
 

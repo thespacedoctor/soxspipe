@@ -118,7 +118,8 @@ class data_organiser(object):
             "NAXIS",
             "OBJECT",
             "TPL_ID",
-            "INSTRUME"
+            "INSTRUME",
+            "ABSROT"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -145,7 +146,8 @@ class data_organiser(object):
             'date-obs',
             'object',
             "template",
-            "instrume"
+            "instrume",
+            "absrot"
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
@@ -624,6 +626,10 @@ class data_organiser(object):
                 "binning"] == '1x-99'] = '--'
             masterTable.add_index("binning")
 
+        if self.kw("ABSROT").lower() in masterTable.colnames:
+            masterTable["absrot"] = masterTable[self.kw("ABSROT").lower()].astype(float)
+            masterTable.add_index("absrot")
+
         # ADD INDEXES ON ALL KEYS
         for k in self.keywords:
             try:
@@ -821,6 +827,7 @@ class data_organiser(object):
         rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
         rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir"), "lamp"] = rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir"), 'lamp'].fillna(rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir")].groupby(groupBy)['lamp'].transform('first'))
         rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
+        rawFrames.loc[(rawFrames['absrot'] == -99.99), 'absrot'] = 0.0
 
         rawFrames["exptime"] = rawFrames["exptime"].apply(lambda x: round(x, 2))
 
