@@ -701,7 +701,8 @@ class soxs_mflat(base_recipe):
             ORDEXP10list = []
             ORDEXP50list = []
             ORDEXP90list = []
-            for frame in inputFlats:
+
+            for i, frame in enumerate(inputFlats):
                 maskedFrame = ma.array(frame.data, mask=mask)
                 maskedData = np.ma.filled(maskedFrame, np.nan)
                 exposureLevel = np.nanpercentile(maskedData, 97)
@@ -713,6 +714,7 @@ class soxs_mflat(base_recipe):
                 normalisedFrame = frame.divide(exposureLevel)
                 normalisedFrame.header = frame.header
                 normalisedFrames.append(normalisedFrame)
+                print(i)
             ORDEXP10 = np.median(ORDEXP10list)
             ORDEXP50 = np.median(ORDEXP50list)
             ORDEXP90 = np.median(ORDEXP90list)
