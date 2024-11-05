@@ -1002,6 +1002,7 @@ class data_organiser(object):
         import pandas as pd
         import astropy
         import numpy as np
+        import time
 
         sofName = []
         matchDict = {}
@@ -1385,8 +1386,17 @@ class data_organiser(object):
         }
 
         sofMap = pd.DataFrame(myDict)
-        sofMap.to_sql(f'sof_map_{self.sessionId}', con=self.conn,
-                      index=False, if_exists='append')
+
+        keepTrying = 0
+        while keepTrying:
+            try:
+                sofMap.to_sql(f'sof_map_{self.sessionId}', con=self.conn,
+                              index=False, if_exists='append')
+            except Exception as e:
+                if keepTrying > 5:
+                    raise Exception(e)
+                time.sleep(5)
+                keepTrying += 1
 
         return series
 

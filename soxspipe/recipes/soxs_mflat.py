@@ -233,7 +233,6 @@ class soxs_mflat(base_recipe):
         calibratedFlats, dcalibratedFlats, qcalibratedFlats = self.calibrate_frame_set()
 
         allCalibratedFlats = calibratedFlats + dcalibratedFlats + qcalibratedFlats
-        quicklook_image(log=self.log, CCDObject=allCalibratedFlats[0], show=False, ext="Data", surfacePlot=True, title="Single bias and/or dark subtracted flat frame")
 
         calibratedFlatSet = [calibratedFlats, dcalibratedFlats, qcalibratedFlats]
         flatKeywords = ["LAMP,ORDERDEF", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']
@@ -549,7 +548,7 @@ class soxs_mflat(base_recipe):
                 darkCollection = None
 
         # FIND THE FLAT FRAMES
-        if self.arm.upper() == "NIR":
+        if self.arm.upper() == "NIR" or (self.inst.upper() != "SOXS" and self.arm.upper() == "VIS"):
             filter_list = [{kw("DPR_TYPE"): "FLAT,LAMP",
                             kw("DPR_TECH"): "ECHELLE,SLIT"},
                            {kw("DPR_TYPE"): "LAMP,FLAT",
@@ -623,9 +622,6 @@ class soxs_mflat(base_recipe):
                     inputFrame=flat, master_bias=bias, dark=dark)
                 calibratedFlats.append(self.detrend(
                     inputFrame=flat, master_bias=bias, dark=dark))
-
-        for frame in calibratedFlats:
-            quicklook_image(log=self.log, CCDObject=frame, show=False)
 
         if 1 == 0:
             from os.path import expanduser
