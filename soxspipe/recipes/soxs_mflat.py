@@ -713,7 +713,7 @@ class soxs_mflat(base_recipe):
                 # print(f"THE {lamp} FLAT EXPOSURE LEVEL IS {exposureLevel}")
                 normalisedFrame = frame.divide(exposureLevel)
                 normalisedFrame.header = frame.header
-                normalisedFrames.append(normalisedFrame)
+                # normalisedFrames.append(normalisedFrame)
                 print(i)
             ORDEXP10 = np.median(ORDEXP10list)
             ORDEXP50 = np.median(ORDEXP50list)
