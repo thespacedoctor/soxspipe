@@ -118,7 +118,8 @@ class data_organiser(object):
             "NAXIS",
             "OBJECT",
             "TPL_ID",
-            "INSTRUME"
+            "INSTRUME",
+            "ABSROT"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -145,11 +146,12 @@ class data_organiser(object):
             'date-obs',
             'object',
             "template",
-            "instrume"
+            "instrume",
+            "absrot"
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
-        self.typeMap = {
+        self.typeMapXSH = {
             "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
             "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
             "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
@@ -163,6 +165,28 @@ class data_organiser(object):
             "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}],
             "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
             "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
+        }
+
+        # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
+        self.typeMapSOXS = {
+            "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
+            "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,orderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,dorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,qorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+            # "lamp,flat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
+            "lamp,flat": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
+            "flat,lamp": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
+            "lamp,dflat": [{"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}],
+            "lamp,qflat": [{"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}],
+            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}, {"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
+            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
+            "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
+            "object,async": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
             "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
             "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
             "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
@@ -204,7 +228,7 @@ class data_organiser(object):
                                'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template', 'eso obs name']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
-        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT"]
+        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT", "OBJECT,ASYNC"]
 
         # THIS IS THE ORDER THE RECIPES NEED TO BE RUN IN (MAKE SURE THE REDUCTION SCRIPT HAS RECIPES IN THE CORRECT ORDER)
         self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
@@ -242,7 +266,7 @@ class data_organiser(object):
         # EXIST IF NO FITS FILES EXIST - SOME PROTECT AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
         if fitsExist == False:
             print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
-            sys.exit(0)
+            return None
 
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
@@ -276,6 +300,10 @@ class data_organiser(object):
             c.execute(sqlQuery)
             self.instrument = c.fetchall()[0][0]
             c.close()
+            if "SOXS" in self.instrument.upper():
+                self.typeMap = self.typeMapSOXS
+            else:
+                self.typeMap = self.typeMapXSH
         except:
             pass
 
@@ -310,6 +338,8 @@ class data_organiser(object):
         print(f"   - `sessions/`: directory of data-reduction sessions")
         print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
         print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
+
+        self.conn.close()
 
         self.log.debug('completed the ``prepare`` method')
         return None
@@ -473,6 +503,11 @@ class data_organiser(object):
             self.instrument = "XSH"
         print(f"The instrument has been set to '{self.instrument}'")
 
+        if "SOXS" in self.instrument.upper():
+            self.typeMap = self.typeMapSOXS
+        else:
+            self.typeMap = self.typeMapXSH
+
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
         self.kw = keyword_lookup(
@@ -511,7 +546,7 @@ class data_organiser(object):
         masterTable = masterTable.filled()
 
         # FILTER OUT FRAMES WITH NO MJD
-        matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--"))
+        matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--") | (masterTable["exptime"] == -99.99))
         missingMJDFiles = masterTable['file'][matches]
         if len(missingMJDFiles):
             print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
@@ -537,24 +572,38 @@ class data_organiser(object):
             masterTable.add_index("night start date")
             masterTable.add_index("night start mjd")
 
-        if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
-            masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
-            try:
+        if self.instrument.upper() != "SOXS":
+            if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
+                masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
+                try:
+                    masterTable["rospeed"][masterTable[
+                        "rospeed"] == -99.99] = '--'
+                except:
+                    masterTable["rospeed"] = masterTable["rospeed"].astype(str)
+                    masterTable["rospeed"][masterTable[
+                        "rospeed"] == -99.99] = '--'
                 masterTable["rospeed"][masterTable[
-                    "rospeed"] == -99.99] = '--'
-            except:
-                masterTable["rospeed"] = masterTable["rospeed"].astype(str)
+                    "rospeed"] == '1pt/400k/lg'] = 'fast'
                 masterTable["rospeed"][masterTable[
-                    "rospeed"] == -99.99] = '--'
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == '1pt/400k/lg'] = 'fast'
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == '1pt/400k/lg/AFC'] = 'fast'
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == '1pt/100k/hg'] = 'slow'
-            masterTable["rospeed"][masterTable[
-                "rospeed"] == '1pt/100k/hg/AFC'] = 'slow'
-            masterTable.add_index("rospeed")
+                    "rospeed"] == '1pt/400k/lg/AFC'] = 'fast'
+                masterTable["rospeed"][masterTable[
+                    "rospeed"] == '1pt/100k/hg'] = 'slow'
+                masterTable["rospeed"][masterTable[
+                    "rospeed"] == '1pt/100k/hg/AFC'] = 'slow'
+                masterTable.add_index("rospeed")
+        else:
+            if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
+                masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
+
+                try:
+                    masterTable["rospeed"][masterTable[
+                        "rospeed"] == -99.99] = -1
+                except:
+                    masterTable["rospeed"] = masterTable["rospeed"].astype(str)
+                    masterTable["rospeed"][masterTable[
+                        "rospeed"] == -99.99] = -1
+
+                masterTable.add_index("rospeed")
 
         if self.kw("TPL_ID").lower() in masterTable.colnames:
             masterTable["template"] = np.copy(masterTable[self.kw("TPL_ID").lower()])
@@ -576,6 +625,10 @@ class data_organiser(object):
             masterTable["binning"][masterTable[
                 "binning"] == '1x-99'] = '--'
             masterTable.add_index("binning")
+
+        if self.kw("ABSROT").lower() in masterTable.colnames:
+            masterTable["absrot"] = masterTable[self.kw("ABSROT").lower()].astype(float)
+            masterTable.add_index("absrot")
 
         # ADD INDEXES ON ALL KEYS
         for k in self.keywords:
@@ -669,7 +722,15 @@ class data_organiser(object):
 
         if len(filesNotInDB):
             for f in filesNotInDB:
-                shutil.move(self.rootDir + "/" + f, self.rootDir)
+                # GET THE EXTENSION (WITH DOT PREFIX)
+                basename = os.path.basename(f)
+                extension = os.path.splitext(basename)[1]
+                if extension.lower() != ".fits":
+                    pass
+                elif self.rootDir in f:
+                    shutil.move(f, self.rootDir)
+                else:
+                    shutil.move(self.rootDir + "/" + f, self.rootDir)
             self._sync_raw_frames(skipSqlSync=True)
 
         c.close()
@@ -724,7 +785,7 @@ class data_organiser(object):
 
         filteredFrames["slit"] = filteredFrames["slit"].str.upper()
 
-        filteredFrames.loc[((filteredFrames['slit'].str.contains("MULTI")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "MPH"
+        filteredFrames.loc[((filteredFrames['slit'].str.contains("MULT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "MPH"
         filteredFrames.loc[((filteredFrames['slit'].str.contains("PINHOLE")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "PH"
         filteredFrames.loc[((filteredFrames['slit'].str.contains("SLIT")) & (filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
 
@@ -766,6 +827,7 @@ class data_organiser(object):
         rawFrames.loc[(rawFrames['lamp'] == "--"), 'lamp'] = np.nan
         rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir"), "lamp"] = rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir"), 'lamp'].fillna(rawFrames.loc[(rawFrames['eso seq arm'].str.lower() == "nir")].groupby(groupBy)['lamp'].transform('first'))
         rawFrames.loc[(rawFrames['lamp'].isnull()), 'lamp'] = "--"
+        rawFrames.loc[(rawFrames['absrot'] == -99.99), 'absrot'] = 0.0
 
         rawFrames["exptime"] = rawFrames["exptime"].apply(lambda x: round(x, 2))
 
@@ -886,15 +948,15 @@ class data_organiser(object):
             rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
         # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
-        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE"]))
+        mask = (rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"]))
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
         if self.instrument.upper() == "SOXS":
             rawPinholeFrames = pd.read_sql(
-                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE") and ("eso seq arm" = "NIR" or ("lamp" not in ("Xe", "Ar", "Hg", "Ne", "ArNeHgXe" )))', con=conn)
+                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE","ECHELLE,MULTI-PINHOLE") and ("eso seq arm" = "NIR" or ("lamp" not in ("Xe", "Ar", "Hg", "Ne", "ArNeHgXe" )))', con=conn)
         else:
             rawPinholeFrames = pd.read_sql(
-                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE")', con=conn)
+                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE","ECHELLE,MULTI-PINHOLE")', con=conn)
         rawPinholeFrames.fillna("--", inplace=True)
         rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
@@ -1085,6 +1147,7 @@ class data_organiser(object):
 
         # NIGHT START
         # YYYY.MM.DDThh.mm.xxx
+        offFrameCount = 0
         if series["night start mjd"]:
 
             if "PINHOLE" in series["eso dpr tech"].upper():
@@ -1100,6 +1163,14 @@ class data_organiser(object):
                     offFrame = filteredFrames.loc[mask].head(1)
                     onFrame = filteredFrames.loc[~mask].head(1)
                     filteredFrames = pd.concat([onFrame, offFrame], ignore_index=True)
+                    offFrameCount = len(offFrame.index)
+
+            if "FLAT" in series["eso dpr tech"].upper() and "NIR" not in series['eso seq arm'].upper():
+                mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+                offFrame = filteredFrames.loc[mask]
+                from tabulate import tabulate
+                print(tabulate(offFrame, headers='keys', tablefmt='psql'))
+                sys.exit(0)
 
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
@@ -1287,14 +1358,30 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # DARK FRAMES
-        if series["eso seq arm"].lower() == "nir" and series["recipe"] in ["stare"]:
-            mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
-            df = calibrationFrames.loc[mask]
-            if len(df.index):
-                df.sort_values(by=['obs-delta'], inplace=True)
-                files = np.append(files, df["file"].values[0])
-                tags = np.append(tags, df["eso pro catg"].values[0])
-                filepaths = np.append(filepaths, df["filepath"].values[0])
+        if series["eso seq arm"].lower() == "nir" and series["recipe"] in ["stare", "disp_sol", "order_centres", "mflat", "spat_sol"]:
+            moveOn = False
+            if series["recipe"] == "mflat":
+                if "FLAT" in series["eso dpr type"].upper() and "NIR" in series['eso seq arm'].upper():
+                    mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
+                    offFrame = filteredFrames.loc[mask]
+                    offFrameCount = len(offFrame.index)
+            if series["recipe"] in ["disp_sol", "order_centres", "mflat", "spat_sol"] and offFrameCount > 0:
+                moveOn = True
+            elif series["recipe"] in ["stare", "disp_sol", "order_centres", "mflat", "spat_sol"] and offFrameCount == 0:
+                mask = ((calibrationFrames['exptime'] == filteredFrames['exptime'].max()) & (calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')))
+                df = calibrationFrames.loc[mask]
+                if len(df.index) == 0:
+                    mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
+            else:
+                mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
+
+            if not moveOn:
+                df = calibrationFrames.loc[mask]
+                if len(df.index):
+                    df.sort_values(by=['obs-delta'], inplace=True)
+                    files = np.append(files, df["file"].values[0])
+                    tags = np.append(tags, df["eso pro catg"].values[0])
+                    filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {
@@ -1538,7 +1625,8 @@ class data_organiser(object):
                 logLevel="WARNING",
                 options_first=False,
                 projectName="soxspipe",
-                defaultSettingsFile=f"{inst}_default_settings.yaml"
+                defaultSettingsFile=f"{inst}_default_settings.yaml",
+                createLogger=False
             )
             arguments, settings, replacedLog, dbConn = su.setup()
 
@@ -1582,6 +1670,7 @@ class data_organiser(object):
         except:
             print(message)
         self.log.debug('completed the ``session_create`` method')
+
         return sessionId
 
     def session_list(
@@ -1774,6 +1863,11 @@ class data_organiser(object):
         c.execute(sqlQuery)
         self.instrument = c.fetchall()[0][0]
         c.close()
+
+        if "SOXS" in self.instrument.upper():
+            self.typeMap = self.typeMapSOXS
+        else:
+            self.typeMap = self.typeMapXSH
 
         # CLEAN UP FAILED FILES
         c = self.conn.cursor()

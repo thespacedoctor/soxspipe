@@ -16,13 +16,14 @@ Usage:
     soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
     soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
 
 Options:
     prep                                   prepare a folder of raw data (workspace) for data reduction
     session ls                             list all available data-reduction sessions in the workspace
     session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
     session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
-    reduce all                             reduce all of the data in a workspace.                 
+    reduce all                             reduce all of the data in a workspace.
 
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
@@ -32,6 +33,10 @@ Options:
     spat_sol                               the spatial solution recipe
     stare                                  reduce stare mode science frames
     nod                                    reduce nodding mode science frames
+
+    start                                   start the watch daemon
+    stop                                    stop the watch daemon
+    status                                  print the status of the watch daemon
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
@@ -92,7 +97,7 @@ def main(arguments=None):
         sys.argv.append("-s")
         sys.argv.append(settingsFile)
 
-    if "prep" in sys.argv:
+    if "prep" in sys.argv or "watch" in sys.argv:
         arguments = docopt(__doc__)
         if "--settings" in arguments.keys():
             del arguments["--settings"]
@@ -263,7 +268,6 @@ def main(arguments=None):
             reducedNod = recipe.produce_product()
 
         if a['prep']:
-            from soxspipe.commonutils import data_organiser
             do = data_organiser(
                 log=log,
                 rootDir=a["workspaceDirectory"]
@@ -311,6 +315,100 @@ def main(arguments=None):
         )
         collection.reduce()
 
+    from fundamentals import daemonise
+
+    class myDaemon(daemonise):
+
+        def action(
+                self,
+                **kwargs):
+            import time
+            self.log.info('starting the ``action`` method')
+            pwd = kwargs["pwd"]
+            # settings = kwargs["settings"]
+            # settingsFile = kwargs["settingsFile"]
+
+            currentSession = False
+
+            while True:
+                os.chdir(pwd)
+                # if "." == arguments["--settings"][0]:
+                #     arguments["--settings"] = pwd + "/" + arguments["--settings"][1:]
+                a["workspaceDirectory"] = pwd
+
+                if currentSession:
+                    thisLog = log
+                else:
+                    thisLog = self.log
+
+                from soxspipe.commonutils import data_organiser
+                do = data_organiser(
+                    log=thisLog,
+                    rootDir=pwd
+                )
+                do.prepare()
+
+                if not currentSession:
+                    currentSession, allSessions = do.session_list(silent=True)
+                    from importlib import reload
+                    import logging
+                    logging.shutdown()
+                    reload(logging)
+                    settingsFile = f"{pwd}/sessions/{currentSession}/soxspipe.yaml"
+                    arguments["--settings"] = settingsFile
+                    su = tools(
+                        arguments=arguments,
+                        docString=__doc__,
+                        logLevel="WARNING",
+                        options_first=False,
+                        projectName="soxspipe",
+                        defaultSettingsFile=False
+                    )
+                    argumentsIgnore, settings, log, dbConn = su.setup()
+
+                from soxspipe.commonutils import reducer
+                collection = reducer(
+                    log=log,
+                    workspaceDirectory=pwd,
+                    settings=settings,
+                    pathToSettings=settingsFile,
+                    quitOnFail=a["quitOnFailFlag"],
+                    daemon=True
+                )
+                collection.reduce()
+
+                xsec = 15
+                print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
+                time.sleep(xsec)
+
+            self.log.info('completed the ``action`` method')
+            return None
+
+    # MAKE RELATIVE HOME PATH ABSOLUTE
+    from os.path import expanduser
+    home = expanduser("~")
+
+    su = tools(
+        arguments=arguments,
+        docString=__doc__,
+        logLevel="WARNING",
+        options_first=False,
+        projectName="soxspipe",
+        defaultSettingsFile=False
+    )
+    arguments, settings, log, dbConn = su.setup()
+
+    d = myDaemon(log=log, name="soxspipe", pwd=os.getcwd())
+    d.errLog = home + f"/.config/soxspipe/daemon.log"
+    d.rootDir = home + f"/.config/soxspipe/"
+
+    if a['start']:
+        d.start()
+    elif a['stop']:
+        d.stop()
+    elif a['status']:
+        d.status()
+
     # CALL FUNCTIONS/OBJECTS
     if "dbConn" in locals() and dbConn:
         dbConn.commit()
@@ -320,7 +418,7 @@ def main(arguments=None):
     runningTime = times.calculate_time_difference(startTime, endTime)
     sys.argv[0] = os.path.basename(sys.argv[0])
 
-    if not a['prep'] and not a['session'] and not a['reduce']:
+    if not a['prep'] and not a['session'] and not a['reduce'] and not a['watch']:
         log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
         log.print(f'Recipe Run Time: {runningTime}\n\n')
         print(f"{'='*70}\n")

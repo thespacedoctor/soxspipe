@@ -2,6 +2,11 @@
 
 # Release Notes
 
+* **ENHANCEMENT:** now recording 'ESO ADA ABSROT END' in the soxspipe.db database
+
+## v0.11.6 - October 15, 2024
+
+* **FIXED:** a regression in the detect continuum code
 
 ## v0.11.4 - October 9, 2024
 

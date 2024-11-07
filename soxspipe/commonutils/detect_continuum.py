@@ -399,6 +399,10 @@ class _base_detect(object):
             filename = self.sofName + ".fits"
         filename = filename.replace("MFLAT", "FLAT")
 
+        # if self.inst.upper() == "SOXS":
+        #     filename = filename.replace("_DLAMP", "")
+        #     filename = filename.replace("_QLAMP", "")
+
         if "mflat" in self.recipeName.lower():
             filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
         elif "stare" in self.recipeName.lower():
@@ -407,7 +411,7 @@ class _base_detect(object):
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE" + self.noddingSequence + ".fits"
 
-        if self.lampTag:
+        if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
 
         order_table_path = f"{outDir}/{filename}"
@@ -853,10 +857,9 @@ class detect_continuum(_base_detect):
             plt.ylabel('Flux')
             plt.show()
 
-        # print(slice)
+        origSlice = slice.copy()
 
-        slice[slice < 0] = np.nan
-        # print(slice)
+        slice[slice < -500] = np.nan
 
         # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
         # CONTAINING JUST NOISE
@@ -881,6 +884,13 @@ class detect_continuum(_base_detect):
         if peaks is None or len(peaks) <= 0:
             # CHECK THE SLICE POINTS IF NEEDED
             if False:
+                import matplotlib.pyplot as plt
+                x = np.arange(0, len(origSlice))
+                plt.figure(figsize=(8, 5))
+                plt.plot(x, slice, 'ko')
+                plt.xlabel('Position')
+                plt.ylabel('Flux')
+                plt.show()
                 print(median_r, std_r)
                 import matplotlib.pyplot as plt
                 x = np.arange(0, len(slice))
@@ -1271,8 +1281,8 @@ class detect_continuum(_base_detect):
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
         self.sliceWidth = self.recipeSettings["slice-width"]
 
-        #if "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper():
-        #    self.sliceWidth = 1
+        if self.kw("DPR_TYPE").upper() in self.traceFrame.header and "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper() and self.sliceWidth > 3:
+            self.sliceWidth = 3
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan
