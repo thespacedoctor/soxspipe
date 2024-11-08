@@ -22,7 +22,7 @@ soxspipe prep .
 Once the workspace has been prepared, you should find it contains the following files and folders:
 
 - `misc/`: a lost-and-found archive of non-fits files
-- `raw_frames/`: all raw frames to be reduced
+- `raw/`: all raw frames to be reduced
 - `sessions/`: directory of data-reduction sessions
 - `sof/`: the set-of-files (sof) files required for each reduction step
 - `soxspipe.db`: an SQLite database needed by the data-organiser; please do not delete

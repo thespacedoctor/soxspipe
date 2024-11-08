@@ -16,13 +16,14 @@
         soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
         soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
     
     Options:
         prep                                   prepare a folder of raw data (workspace) for data reduction
         session ls                             list all available data-reduction sessions in the workspace
         session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
         session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
-        reduce all                             reduce all of the data in a workspace.                 
+        reduce all                             reduce all of the data in a workspace.
     
         mbias                                  the master bias recipe
         mdark                                  the master dark recipe
@@ -32,6 +33,10 @@
         spat_sol                               the spatial solution recipe
         stare                                  reduce stare mode science frames
         nod                                    reduce nodding mode science frames
+    
+        start                                   start the watch daemon
+        stop                                    stop the watch daemon
+        status                                  print the status of the watch daemon
     
         inputFrames                            path to a directory of frames or a set-of-files file
     

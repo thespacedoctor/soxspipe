@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} reducer(log, workspaceDirectory, settings=False, pathToSettings=False, quitOnFail=False, overwrite=False)
+`````{py:class} reducer(log, workspaceDirectory, settings=False, pathToSettings=False, quitOnFail=False, overwrite=False, daemon=False)
 :canonical: soxspipe.commonutils.reducer.reducer
 
 Bases: {py:obj}`object`

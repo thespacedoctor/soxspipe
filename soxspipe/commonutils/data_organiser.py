@@ -910,6 +910,7 @@ class data_organiser(object):
 
         import pandas as pd
         import sqlite3 as sql
+        import time
 
         conn = self.conn
         rawFrames = pd.read_sql('SELECT * FROM raw_frames', con=conn)
@@ -986,8 +987,19 @@ class data_organiser(object):
         sqlQuery = f"delete from raw_frame_sets;"
         c.execute(sqlQuery)
         c.close()
-        rawGroups.replace(['--'], None).to_sql('raw_frame_sets', con=self.conn,
-                                               index=False, if_exists='append')
+
+        keepTrying = 0
+        while keepTrying < 6:
+            try:
+                rawGroups.replace(['--'], None).to_sql('raw_frame_sets', con=self.conn,
+                                                       index=False, if_exists='append')
+                keepTrying = 10
+            except Exception as e:
+
+                if keepTrying > 5:
+                    raise Exception(e)
+                time.sleep(1)
+                keepTrying += 1
 
         self.log.debug('completed the ``_populate_product_frames_db_table`` method')
         return None
@@ -1009,6 +1021,7 @@ class data_organiser(object):
         import pandas as pd
         import astropy
         import numpy as np
+        import time
 
         sofName = []
         matchDict = {}
@@ -1392,8 +1405,19 @@ class data_organiser(object):
         }
 
         sofMap = pd.DataFrame(myDict)
-        sofMap.to_sql(f'sof_map_{self.sessionId}', con=self.conn,
-                      index=False, if_exists='append')
+
+        keepTrying = 0
+        while keepTrying < 6:
+            try:
+                sofMap.to_sql(f'sof_map_{self.sessionId}', con=self.conn,
+                              index=False, if_exists='append')
+                keepTrying = 10
+            except Exception as e:
+
+                if keepTrying > 5:
+                    raise Exception(e)
+                time.sleep(1)
+                keepTrying += 1
 
         return series
 
@@ -1416,6 +1440,7 @@ class data_organiser(object):
         self.log.debug('starting the ``_populate_products_table`` method')
 
         import pandas as pd
+        import time
 
         if series["eso dpr type"].lower() != reductionOrder.lower():
             return series
@@ -1445,8 +1470,19 @@ class data_organiser(object):
                 products["filepath"] = "./product/" + i[6] + "/" + products["file"]
                 myDict = {k: [v] for k, v in products.items()}
                 products = pd.DataFrame(myDict)
-                products.to_sql('product_frames', con=self.conn,
-                                index=False, if_exists='append')
+
+                keepTrying = 0
+                while keepTrying < 6:
+                    try:
+                        products.to_sql('product_frames', con=self.conn,
+                                        index=False, if_exists='append')
+                        keepTrying = 10
+                    except Exception as e:
+
+                        if keepTrying > 5:
+                            raise Exception(e)
+                        time.sleep(1)
+                        keepTrying += 1
 
         self.log.debug('completed the ``_populate_products_table`` method')
         return series
