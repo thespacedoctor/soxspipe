@@ -168,7 +168,7 @@
 ```
 ````
 
-````{py:function} read_spectral_format(log, settings, arm, dispersionMap=False, extended=True)
+````{py:function} read_spectral_format(log, settings, arm, dispersionMap=False, extended=True, binx=1, biny=1)
 :canonical: soxspipe.commonutils.toolkit.read_spectral_format
 
 ```{autodoc2-docstring} soxspipe.commonutils.toolkit.read_spectral_format
