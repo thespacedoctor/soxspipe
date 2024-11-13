@@ -194,9 +194,9 @@ class soxs_spatial_solution(base_recipe):
         from soxspipe.commonutils import create_dispersion_map
 
         # TEMPORARY WARNING
-        if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
-            self.log.warning("The SOXS UVVIS Multi-Pinhole line-list is not yet ready. It will be included in a future code release")
-            return None, None, None
+        #if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
+        #    self.log.warning("The SOXS UVVIS Multi-Pinhole line-list is not yet ready. It will be included in a future code release")
+        #    return None, None, None
 
         arm = self.arm
         kw = self.kw
