@@ -204,21 +204,21 @@ soxs-stare:
         horne-extraction-profile-clipping-iteration-count: 10
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 70
+            order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 10
+            slice-length: 30
             # WIDTH OF EACH SLICE (PIXELS)
-            slice-width: 5
+            slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 1.5
+            peak-sigma-limit: 2.
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-            disp-axis-deg: 4
+            disp-axis-deg: 6
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-            order-deg: 6
+            order-deg: 3
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 6
+            poly-fitting-residual-clipping-sigma: 10
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-clipping-iteration-limit: 2
+            poly-clipping-iteration-limit: 5
         sky-subtraction:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
