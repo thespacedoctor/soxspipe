@@ -276,6 +276,10 @@ class data_organiser(object):
                 pass
             self.freshRun = False
         except IOError:
+            try:
+                os.remove(self.sessionIdFile)
+            except:
+                pass
             self.freshRun = True
             emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
             shutil.copyfile(emptyDb, self.rootDbPath)
@@ -969,6 +973,13 @@ class data_organiser(object):
         calibrationTables.fillna("--", inplace=True)
 
         # _generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
+
+        # SEND TO DATABASE
+        c = self.conn.cursor()
+        sqlQuery = f"delete from sof_map_{self.sessionId};"
+        c.execute(sqlQuery)
+        c.close()
+
         for o in self.reductionOrder:
             rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
             rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
@@ -1015,6 +1026,8 @@ class data_organiser(object):
         import astropy
         import numpy as np
         import time
+
+        incomplete = False
 
         sofName = []
         matchDict = {}
@@ -1094,11 +1107,14 @@ class data_organiser(object):
         if series["exptime"] and (series["eso seq arm"].lower() == "nir" or (series["eso seq arm"].lower() == "vis" and ("FLAT" in series["eso dpr type"].upper() or "DARK" in series["eso dpr type"].upper()))):
             matchDict['exptime'] = float(series["exptime"])
             sofName.append(str(series["exptime"]) + "S")
-        elif series["exptime"] and "BIAS" not in series["eso dpr type"].upper():
+        elif series["exptime"] and "BIAS" not in series["eso dpr type"].upper() and not ("FLAT" in series["eso dpr type"].upper() and series['eso seq arm'].upper() == "UVB"):
             sofName.append(str(series["exptime"]) + "S")
 
         if series["eso obs name"] != "--":
             matchDict["eso obs name"] = series["eso obs name"]
+
+        if "std" in series["eso dpr type"].lower() or "object" in series["eso dpr type"].lower():
+            matchDict["slit"] = series["slit"]
 
         sofName.append(str(series["instrume"]))
 
@@ -1117,7 +1133,7 @@ class data_organiser(object):
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_")) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE"))
-                elif "rospeed" in k.lower() or "binning" in k.lower():
+                elif "rospeed" in k.lower() or "binning" in k.lower() or "slit" in k.lower():
                     mask = (calibrationFrames[k].isin([v]) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
                 else:
                     mask = (calibrationFrames[k].isin([v]))
@@ -1129,6 +1145,8 @@ class data_organiser(object):
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_") | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
+                elif "slit" in k.lower():
+                    mask = (calibrationFrames[k].isin([v]) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
                 else:
                     mask = (calibrationFrames[k].isin([v]))
                 calibrationFrames = calibrationFrames.loc[mask]
@@ -1139,7 +1157,7 @@ class data_organiser(object):
                 continue
             if k in ["binning"] and seriesRecipe in ["mflat"]:
                 continue
-            if k in ["binning"]:
+            if k in ["binning", "slit"]:
                 mask = (calibrationTables[k].isin([v]) | calibrationTables['eso pro catg'].str.contains("DISP_TAB_"))
             elif "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
                 mask = (calibrationTables['eso pro catg'].str.contains("_TAB_"))
@@ -1272,6 +1290,8 @@ class data_organiser(object):
                 files = np.append(files, df["file"].values[0])
                 tags = np.append(tags, df["eso pro catg"].values[0])
                 filepaths = np.append(filepaths, df["filepath"].values[0])
+            elif series["eso seq arm"].upper() != "NIR":
+                incomplete = True
 
         # DISP SOLS
         if series["recipe"] in ["order_centres", "spat_sol", "stare", "nod"]:
@@ -1394,8 +1414,18 @@ class data_organiser(object):
             "file": files,
             "filepath": filepaths,
             "tag": tags,
-            "sof": [series['sof']] * len(tags)
+            "sof": [series['sof']] * len(tags),
         }
+
+        if incomplete:
+            series["complete"] = 0
+        else:
+            series["complete"] = 1
+
+        if incomplete:
+            myDict["complete"] = [0] * len(tags)
+        else:
+            myDict["complete"] = [1] * len(tags)
 
         sofMap = pd.DataFrame(myDict)
 
@@ -1439,7 +1469,7 @@ class data_organiser(object):
             return series
 
         template = series.copy()
-        removeColumns = ["counts", "product", "command"]
+        removeColumns = ["counts", "product", "command", "complete"]
 
         if template["recipe"] and template["recipe"].lower() in self.productMap:
             for i in removeColumns:
@@ -1529,7 +1559,7 @@ class data_organiser(object):
         if not os.path.exists(self.sofDir):
             os.makedirs(self.sofDir)
 
-        df = pd.read_sql_query(f"select * from sof_map_{self.sessionId};", conn)
+        df = pd.read_sql_query(f"select * from sof_map_{self.sessionId} where complete = 1;", conn)
 
         # GROUP RESULTS
         for name, group in df.groupby('sof'):

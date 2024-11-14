@@ -162,7 +162,7 @@ class reducer(object):
 
         # GET THE GROUPS OF FILES NEEDING REDUCED, ASSIGN THE CORRECT COMMAND TO EXECUTE THE RECIPE
         rawGroups = pd.read_sql(
-            'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=conn)
+            'SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 order by recipe_order', con=conn)
         rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
         if self.pathToSettings:
             rawGroups["command"] += f" -s {self.pathToSettings}"
