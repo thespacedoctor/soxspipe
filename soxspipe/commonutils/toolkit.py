@@ -1227,8 +1227,8 @@ def create_dispersion_solution_grid_lines_for_plot(
                 orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
             lineNumber += 1
 
-        spRange = np.arange(spLim[0], spLim[-1], 1)
-        spRange = np.append(spRange, [spLim[-1]])
+        spRange = np.arange(min(spLim), max(spLim), 1)
+        spRange = np.append(spRange, [max(spLim)])
         if not isinstance(skylines, bool):
             mask = skylines['WAVELENGTH'].between(wlLim[0], wlLim[1])
             wlRange = skylines.loc[mask]['WAVELENGTH'].values
@@ -1236,6 +1236,7 @@ def create_dispersion_solution_grid_lines_for_plot(
             step = int(wlLim[1] - wlLim[0]) / 400
             wlRange = np.arange(wlLim[0], wlLim[1], step)
         wlRange = np.append(wlRange, [wlLim[1]])
+
         for l in wlRange:
             myDict = {
                 "line": np.full_like(spRange, lineNumber),
