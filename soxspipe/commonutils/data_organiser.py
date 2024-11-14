@@ -1007,7 +1007,6 @@ class data_organiser(object):
                                                        index=False, if_exists='append')
                 keepTrying = 10
             except Exception as e:
-
                 if keepTrying > 5:
                     raise Exception(e)
                 time.sleep(1)
@@ -1322,6 +1321,8 @@ class data_organiser(object):
                         files = np.append(files, df.loc[mask, "file"].values[0])
                         tags = np.append(tags, df.loc[mask, "eso pro catg"].values[0])
                         filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
+            else:
+                incomplete = True
 
         # DISP SOLS IMAGE
         if series["recipe"] in ["stare", "nod"]:
@@ -1446,10 +1447,8 @@ class data_organiser(object):
                               index=False, if_exists='append')
                 keepTrying = 10
             except Exception as e:
-
                 if keepTrying > 5:
                     raise Exception(e)
-                time.sleep(1)
                 keepTrying += 1
 
         return series
