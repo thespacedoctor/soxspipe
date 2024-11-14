@@ -392,9 +392,6 @@ class data_organiser(object):
                 filteredDf["eso dpr tech"] = "ECHELLE,SLIT,STARE"
                 filteredDf["eso dpr type"] = "OBJECT"
 
-                from tabulate import tabulate
-                print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
-
                 rawFrames = pd.concat([rawFrames, filteredDf], ignore_index=True)
 
             # xpd-update-filter-dataframe-column-values
