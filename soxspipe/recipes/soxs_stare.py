@@ -233,7 +233,7 @@ class soxs_stare(base_recipe):
                 allObjectFrames.append(singleFrame)
 
         if not len(allObjectFrames) and "PAE" in self.settings and self.settings["PAE"]:
-            add_filters = {kw("DPR_TYPE"): 'FLAT,LAMP',
+            add_filters = {kw("DPR_TYPE"): 'LAMP,FLAT',
                            kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):

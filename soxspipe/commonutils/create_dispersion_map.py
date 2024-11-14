@@ -179,8 +179,6 @@ class create_dispersion_map(object):
         # READ PREDICTED LINE POSITIONS FROM FILE - RETURNED AS DATAFRAME
         orderPixelTable = self.get_predicted_line_list()
         totalLines = len(orderPixelTable.index)
-        print(orderPixelTable)
-
         self.uniqueSlitPos = orderPixelTable['slit_position'].unique()
 
         # GET THE WINDOW SIZE FOR ATTEMPTING TO DETECT LINES ON FRAME
@@ -576,8 +574,6 @@ class create_dispersion_map(object):
         # LINE LIST TO PANDAS DATAFRAME
         dat = Table.read(predictedLinesFile, format='fits')
         orderPixelTable = dat.to_pandas()
-        print('The very first reading...')
-        print(orderPixelTable)
 
         # RENAME ALL COLUMNS FOR CONSISTENCY
         listName = []
@@ -604,14 +600,8 @@ class create_dispersion_map(object):
             except:
                 pass
 
-        print('After ajusting columns...')
-        print(orderPixelTable)
-
         # THERE ARE DUPLICATES IN XSHOOTER LINE LIST
-        print(orderPixelTable)
         orderPixelTable.drop_duplicates(inplace=True)
-        print('Duplicates dropped')
-        print(orderPixelTable)
 
         # FITS TO PYTHON INDEXING
         # PHOTUTILS CENTRE OF BOTTOM LEFT PIXEL IS (0,0) BUT FOR WCS IT IS (1,1)
@@ -645,22 +635,15 @@ class create_dispersion_map(object):
                 # mask = (orderPixelTable['order'] == 4)
                 # orderPixelTable.loc[mask, "detector_x"] -= 10
                 # orderPixelTable.loc[mask, "detector_y"] -= 2
-            print('IN the elif')
-            print(orderPixelTable)
 
         if not self.firstGuessMap:
             slitIndex = int(dp["mid_slit_index"])
             # REMOVE FILTERED ROWS FROM DATA FRAME
             mask = (orderPixelTable['slit_index'] == slitIndex)
-            print('Before masking...', slitIndex)
-            print(orderPixelTable)
             orderPixelTable = orderPixelTable.loc[mask]
-            print('After masking...')
-            print(orderPixelTable)
 
         # WANT TO DETERMINE SYSTEMATIC SHIFT IF FIRST GUESS SOLUTION PRESENT
         if self.firstGuessMap:
-            print('In the branch of firstGuessMap')
             # ADD SOME EXTRA COLUMNS TO DATAFRAME
 
             # FILTER THE PREDICTED LINES TO ONLY SLIT POSITION INCLUDED IN
@@ -668,14 +651,11 @@ class create_dispersion_map(object):
             slitIndex = int(dp["mid_slit_index"])
 
             # GET THE OBSERVED PIXELS VALUES
-            print(orderPixelTable)
             orderPixelTable = dispersion_map_to_pixel_arrays(
                 log=self.log,
                 dispersionMapPath=self.firstGuessMap,
                 orderPixelTable=orderPixelTable
             )
-            print('After the dispersion map...')
-            print(orderPixelTable)
 
             # CREATE A COPY OF THE DATA-FRAME TO DETERMINE SHIFTS
             tmpList = orderPixelTable.copy()
@@ -722,8 +702,6 @@ class create_dispersion_map(object):
             orderPixelTable.drop(columns=['droppedOnMissing'], inplace=True)
 
         self.log.debug('completed the ``get_predicted_line_list`` method')
-        print('Returning...')
-        print(orderPixelTable)
         return orderPixelTable
 
     def detect_pinhole_arc_line(
@@ -2537,17 +2515,12 @@ class create_dispersion_map(object):
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueions = lineAtlas['ion'].unique()
-        print(uniqueions)
-
-        print(len(lineAtlas.index))
 
         # # mask = (lineAtlas['ion'].isin(["XeI", 'UNK']))
         # mask = (lineAtlas['ion'].isin(["HgI", 'UNK']))
         # # mask = (lineAtlas['ion'].isin(["NeI", "NeII", 'UNK']))
         # # mask = (lineAtlas['ion'].isin(["Ar", "ArI", "ArII", "ArIII", 'UNK']))
         # lineAtlas = lineAtlas.loc[mask]
-
-        print(len(lineAtlas.index))
 
         dfCollection = []
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):

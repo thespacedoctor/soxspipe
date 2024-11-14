@@ -387,10 +387,14 @@ class data_organiser(object):
 
             # FILTER DATA FRAME
             if self.PAE and self.instrument.upper() == "SOXS":
-                mask = ((rawFrames["eso dpr tech"] == "ECHELLE,PINHOLE") & (rawFrames["eso dpr type"] == "FLAT,LAMP"))
+                mask = ((rawFrames["eso dpr tech"] == "ECHELLE,PINHOLE") & (rawFrames["eso dpr type"] == "LAMP,FLAT"))
                 filteredDf = rawFrames.loc[mask]
                 filteredDf["eso dpr tech"] = "ECHELLE,SLIT,STARE"
                 filteredDf["eso dpr type"] = "OBJECT"
+
+                from tabulate import tabulate
+                print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
+
                 rawFrames = pd.concat([rawFrames, filteredDf], ignore_index=True)
 
             # xpd-update-filter-dataframe-column-values
@@ -1140,7 +1144,9 @@ class data_organiser(object):
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_")) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE"))
-                elif "rospeed" in k.lower() or "binning" in k.lower() or "slit" in k.lower():
+                elif "slit" in k.lower():
+                    mask = ~(~calibrationFrames[k].isin([v]) & (calibrationFrames['eso pro catg'].str.contains("MASTER_MFLAT")))
+                elif "rospeed" in k.lower() or "binning" in k.lower():
                     mask = (calibrationFrames[k].isin([v]) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
                 else:
                     mask = (calibrationFrames[k].isin([v]))
@@ -1153,18 +1159,18 @@ class data_organiser(object):
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_") | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
                 elif "slit" in k.lower():
-                    mask = (calibrationFrames[k].isin([v]) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
+                    mask = ~(~calibrationFrames[k].isin([v]) & (calibrationFrames['eso pro catg'].str.contains("MASTER_MFLAT")))
                 else:
                     mask = (calibrationFrames[k].isin([v]))
                 calibrationFrames = calibrationFrames.loc[mask]
 
         # EXTRA CALIBRATION TABLES
         for k, v in matchDict.items():
-            if k in ["rospeed", "exptime", "lamp", "eso obs name"]:
+            if k in ["rospeed", "exptime", "lamp", "eso obs name", "slit"]:
                 continue
             if k in ["binning"] and seriesRecipe in ["mflat"]:
                 continue
-            if k in ["binning", "slit"]:
+            if k in ["binning"]:
                 mask = (calibrationTables[k].isin([v]) | calibrationTables['eso pro catg'].str.contains("DISP_TAB_"))
             elif "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
                 mask = (calibrationTables['eso pro catg'].str.contains("_TAB_"))

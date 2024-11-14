@@ -84,7 +84,7 @@ def cut_image_slice(
         axisALen = frame.shape[0]
         axisBLen = frame.shape[1]
     else:
-        raise ValueError("sliceAxis needs to be eith 'x' or 'y'")
+        raise ValueError("sliceAxis needs to be either 'x' or 'y'")
 
     # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
     if (axisA > axisALen - halfSlice) or (axisB > axisBLen - halfwidth) or (axisA < halfSlice) or (axisB < halfwidth):
