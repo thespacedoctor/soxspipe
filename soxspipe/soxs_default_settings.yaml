@@ -153,9 +153,9 @@ soxs-spatial-solution:
     vis:
         pixel-window-size: 10
         pinhole-detection-thres-sigma: 5
-        order-deg: [4,4]
-        wavelength-deg: [5,6]
-        slit-deg: [2,2]
+        order-deg: [3,3]
+        wavelength-deg: [4,5]
+        slit-deg: [3,4]
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 4
         poly-fitting-residual-clipping-sigma: 9
