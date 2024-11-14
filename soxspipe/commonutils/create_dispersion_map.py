@@ -631,8 +631,9 @@ class create_dispersion_map(object):
                 xlen = science_pixels["columns"]["end"] - \
                     science_pixels["columns"]["start"]
                 ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
-                orderPixelTable["detector_x"] -= 4.0
-                orderPixelTable["detector_y"] -= 4.0
+                if arm == "VIS":
+                    orderPixelTable["detector_x"] -= 4.0
+                    orderPixelTable["detector_y"] -= 4.0
                 # orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
 
             else:
@@ -807,6 +808,7 @@ class create_dispersion_map(object):
         observed_x = np.nan
         observed_y = np.nan
         fwhm = np.nan
+
         if sources:
             # FIND SOURCE CLOSEST TO CENTRE
             if len(sources) > 1:
@@ -846,7 +848,7 @@ class create_dispersion_map(object):
                     # print(e)
                     pass
 
-            if False:
+            if False and iteration == 2:
                 import random
                 ran = random.randint(1, 3)
                 # if int(wl) == 7125:
