@@ -201,11 +201,11 @@ class create_dispersion_map(object):
         quicklook_image(
             log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
-        if True:
+        if False:
             import matplotlib.pyplot as plt
             from matplotlib.patches import Rectangle
             fig, ax = plt.subplots()
-            ax.imshow(pinholeFrameMasked, cmap='gray', origin='lower', vmin=300, vmax=1000)
+            ax.imshow(pinholeFrameMasked, cmap='gray', origin='lower', vmin=self.mean, vmax=self.mean + 5 * self.std)
             for index, row in orderPixelTable.iterrows():
                 x = row['detector_x']
                 y = row['detector_y']
@@ -217,7 +217,6 @@ class create_dispersion_map(object):
 
             # SORT BY COLUMN NAME
             orderPixelTable.sort_values(['wavelength'], inplace=True)
-
 
             boost = False
 
@@ -241,7 +240,6 @@ class create_dispersion_map(object):
                     else:
                         self.windowHalf = round(windowSize / 2)
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
-
 
                     orderPixelTable = orderPixelTable.apply(self.detect_pinhole_arc_line, axis=1, iraf=iraf, sigmaLimit=sigmaLimit, iteration=iteration)
 
@@ -575,7 +573,6 @@ class create_dispersion_map(object):
 
         predictedLinesFile = calibrationRootPath + "/" + dp["predicted pinhole lines"][frameTech][f"{binx}x{biny}"]
 
-
         # LINE LIST TO PANDAS DATAFRAME
         dat = Table.read(predictedLinesFile, format='fits')
         orderPixelTable = dat.to_pandas()
@@ -607,7 +604,6 @@ class create_dispersion_map(object):
             except:
                 pass
 
-
         print('After ajusting columns...')
         print(orderPixelTable)
 
@@ -631,29 +627,24 @@ class create_dispersion_map(object):
                 xlen = science_pixels["columns"]["end"] - \
                     science_pixels["columns"]["start"]
                 ylen = science_pixels["rows"]["end"] - science_pixels["rows"]["start"]
-                if arm == "VIS":
-                    orderPixelTable["detector_x"] -= 4.0
-                    orderPixelTable["detector_y"] -= 4.0
-                # orderPixelTable["detector_y"] = ylen - orderPixelTable["detector_y"]
-
             else:
                 orderPixelTable["detector_x"] -= science_pixels["columns"]["start"]
                 orderPixelTable["detector_y"] -= science_pixels["rows"]["start"]
             if arm == "VIS":
                 pass
-                # THIS IS TEMPORARALLY NEEDED TO ADJUST OLD LINE LIST
-                mask = (orderPixelTable['order'] == 1)
-                orderPixelTable.loc[mask, "detector_x"] -= 10
-                orderPixelTable.loc[mask, "detector_y"] += 6
-                mask = (orderPixelTable['order'] == 2)
-                orderPixelTable.loc[mask, "detector_x"] -= 14
-                orderPixelTable.loc[mask, "detector_y"] -= 10
-                mask = (orderPixelTable['order'] == 3)
-                orderPixelTable.loc[mask, "detector_x"] -= 11
-                orderPixelTable.loc[mask, "detector_y"] -= 9
-                mask = (orderPixelTable['order'] == 4)
-                orderPixelTable.loc[mask, "detector_x"] -= 8
-                orderPixelTable.loc[mask, "detector_y"] += 5
+                # # THIS IS TEMPORARALLY NEEDED TO ADJUST OLD LINE LIST
+                # mask = (orderPixelTable['order'] == 1)
+                # orderPixelTable.loc[mask, "detector_x"] -= 8
+                # orderPixelTable.loc[mask, "detector_y"] -= 2
+                # mask = (orderPixelTable['order'] == 2)
+                # orderPixelTable.loc[mask, "detector_x"] -= 23
+                # orderPixelTable.loc[mask, "detector_y"] -= 0
+                # mask = (orderPixelTable['order'] == 3)
+                # orderPixelTable.loc[mask, "detector_x"] -= 25
+                # orderPixelTable.loc[mask, "detector_y"] -= 0
+                # mask = (orderPixelTable['order'] == 4)
+                # orderPixelTable.loc[mask, "detector_x"] -= 10
+                # orderPixelTable.loc[mask, "detector_y"] -= 2
             print('IN the elif')
             print(orderPixelTable)
 
@@ -661,7 +652,7 @@ class create_dispersion_map(object):
             slitIndex = int(dp["mid_slit_index"])
             # REMOVE FILTERED ROWS FROM DATA FRAME
             mask = (orderPixelTable['slit_index'] == slitIndex)
-            print('Before masking...',slitIndex)
+            print('Before masking...', slitIndex)
             print(orderPixelTable)
             orderPixelTable = orderPixelTable.loc[mask]
             print('After masking...')
@@ -685,7 +676,6 @@ class create_dispersion_map(object):
             )
             print('After the dispersion map...')
             print(orderPixelTable)
-
 
             # CREATE A COPY OF THE DATA-FRAME TO DETERMINE SHIFTS
             tmpList = orderPixelTable.copy()
@@ -765,9 +755,9 @@ class create_dispersion_map(object):
         logging.getLogger().setLevel(logging.INFO + 5)
 
         if iteration is False:
-            iteration = ""
+            iterationText = ""
         else:
-            iteration = f", iter #{iteration}"
+            iterationText = f", iter #{iteration}"
 
         pinholeFrame = self.pinholeFrameMasked
         windowHalf = self.windowHalf
@@ -864,7 +854,7 @@ class create_dispersion_map(object):
                     plt.scatter(observed_x - xlow, observed_y -
                                 ylow, s=30)
                     plt.text(windowHalf - 2, windowHalf - 2, f"{observed_x-xlow:0.2f},{observed_y -ylow:0.2f}", fontsize=16, c="black", verticalalignment='bottom')
-                    plt.text(2, 2, f"{sigmaLimit}$\\sigma$, order {order}{iteration}\n{wl:0.1f},{detectionSigma:0.1f}", fontsize=16, c="white", verticalalignment='bottom')
+                    plt.text(2, 2, f"{sigmaLimit}$\\sigma$, order {order}{iterationText}\n{wl:0.1f},{detectionSigma:0.1f}", fontsize=16, c="white", verticalalignment='bottom')
                     plt.show()
 
         # plt.show()

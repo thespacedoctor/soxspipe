@@ -37,7 +37,7 @@ soxs-disp-solution:
         # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
         wavelength-deg: [4,5] 
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
-        poly-fitting-residual-clipping-sigma: 10
+        poly-fitting-residual-clipping-sigma: 7
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO DISPERSION SOLUTION
         poly-clipping-iteration-limit: 3
     # NIR is TUNED
