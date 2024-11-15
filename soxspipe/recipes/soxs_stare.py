@@ -126,6 +126,7 @@ class soxs_stare(base_recipe):
                     okList.append("FLAT,LAMP")
                 for i in imageTypes:
                     if i not in okList:
+                        print("1")
                         error = f"Found a {i} file. Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR."
 
             if not error:
@@ -134,17 +135,21 @@ class soxs_stare(base_recipe):
                     if "PAE" in self.settings and self.settings["PAE"]:
                         okList.append("ECHELLE,PINHOLE")
                     if i not in okList:
+                        print("2")
                         error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR. The sof file is missing a {i} frame."
 
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK", "STD,FLUX", "STD,TELLURIC"]:
+                    print(i)
+                    if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK", "STD,FLUX", "STD,TELLURIC", "OBJECT,ASYNC"]:
+                        print("11")
                         error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
 
             if not error:
                 for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
                     if i not in imageCat:
+                        print("22")
                         error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
 
         # if arm not in self.supplementaryInput or "DISP_MAP" not in self.supplementaryInput[arm]:

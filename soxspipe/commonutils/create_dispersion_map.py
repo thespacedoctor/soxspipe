@@ -199,7 +199,7 @@ class create_dispersion_map(object):
         quicklook_image(
             log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
-        if True:
+        if False:
             import matplotlib.pyplot as plt
             from matplotlib.patches import Rectangle
             fig, ax = plt.subplots()
@@ -207,7 +207,7 @@ class create_dispersion_map(object):
             for index, row in orderPixelTable.iterrows():
                 x = row['detector_x']
                 y = row['detector_y']
-                ax.add_patch(Rectangle((x - 5, y - 5), 10, 10, fill=None, edgecolor='red'))
+                ax.add_patch(Rectangle((x - windowSize / 2, y - windowSize / 2), windowSize, windowSize, fill=None, edgecolor='red'))
             plt.show()
 
         boost = True
@@ -620,21 +620,72 @@ class create_dispersion_map(object):
             else:
                 orderPixelTable["detector_x"] -= science_pixels["columns"]["start"]
                 orderPixelTable["detector_y"] -= science_pixels["rows"]["start"]
-            if arm == "VIS":
+            if arm == "NIR":
                 pass
-                # # THIS IS TEMPORARALLY NEEDED TO ADJUST OLD LINE LIST
-                # mask = (orderPixelTable['order'] == 1)
-                # orderPixelTable.loc[mask, "detector_x"] -= 8
-                # orderPixelTable.loc[mask, "detector_y"] -= 2
-                # mask = (orderPixelTable['order'] == 2)
-                # orderPixelTable.loc[mask, "detector_x"] -= 23
-                # orderPixelTable.loc[mask, "detector_y"] -= 0
-                # mask = (orderPixelTable['order'] == 3)
-                # orderPixelTable.loc[mask, "detector_x"] -= 25
-                # orderPixelTable.loc[mask, "detector_y"] -= 0
-                # mask = (orderPixelTable['order'] == 4)
-                # orderPixelTable.loc[mask, "detector_x"] -= 10
-                # orderPixelTable.loc[mask, "detector_y"] -= 2
+                # THIS IS TEMPORARALLY NEEDED TO ADJUST OLD LINE LIST
+                # orderPixelTable["detector_x"] += 7
+                # orderPixelTable["detector_y"] -= 9
+                # mask = (orderPixelTable['order'] == 24)
+                # orderPixelTable.loc[mask, "detector_x"] += 1
+                # orderPixelTable.loc[mask, "detector_y"] += 1
+                # mask = (orderPixelTable['order'] == 23)
+                # orderPixelTable.loc[mask, "detector_x"] += 1
+                # orderPixelTable.loc[mask, "detector_y"] += 1
+                # mask = (orderPixelTable['order'] == 22)
+                # orderPixelTable.loc[mask, "detector_x"] += 1
+                # orderPixelTable.loc[mask, "detector_y"] += 1
+                # mask = (orderPixelTable['order'] == 21)
+                # orderPixelTable.loc[mask, "detector_x"] += 1
+                # orderPixelTable.loc[mask, "detector_y"] += 2
+                # mask = (orderPixelTable['order'] == 20)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 2
+                # mask = (orderPixelTable['order'] == 19)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 2
+                # mask = (orderPixelTable['order'] == 18)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 2
+                # mask = (orderPixelTable['order'] == 17)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # mask = (orderPixelTable['order'] == 16)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # mask = (orderPixelTable['order'] == 15)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # mask = (orderPixelTable['order'] == 14)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # mask = (orderPixelTable['order'] == 13)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # mask = (orderPixelTable['order'] == 12)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # mask = (orderPixelTable['order'] == 11)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # mask = (orderPixelTable['order'] == 10)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # mask = (orderPixelTable['order'] == 9)
+                # orderPixelTable.loc[mask, "detector_x"] += 2
+                # orderPixelTable.loc[mask, "detector_y"] += 3
+                # # mask = (orderPixelTable['order'] == 2)
+                # # orderPixelTable.loc[mask, "detector_x"] -= 23
+                # # orderPixelTable.loc[mask, "detector_y"] -= 0
+                # # mask = (orderPixelTable['order'] == 3)
+                # # orderPixelTable.loc[mask, "detector_x"] -= 25
+                # # orderPixelTable.loc[mask, "detector_y"] -= 0
+                # # mask = (orderPixelTable['order'] == 4)
+                # # orderPixelTable.loc[mask, "detector_x"] -= 10
+                # # orderPixelTable.loc[mask, "detector_y"] -= 2
+                # from astropy.table import Table
+                # t = Table.from_pandas(orderPixelTable)
+                # # t.write("Xe.fits", overwrite=True)
+                # t.write("ArHgNeXe_clean_within_2.0pixel.fits", overwrite=True)
 
         if not self.firstGuessMap:
             slitIndex = int(dp["mid_slit_index"])
