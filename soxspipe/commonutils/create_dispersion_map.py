@@ -199,7 +199,7 @@ class create_dispersion_map(object):
         quicklook_image(
             log=self.log, CCDObject=pinholeFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
-        if False:
+        if True:
             import matplotlib.pyplot as plt
             from matplotlib.patches import Rectangle
             fig, ax = plt.subplots()
