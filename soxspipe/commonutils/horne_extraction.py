@@ -619,9 +619,20 @@ class horne_extraction(object):
         ratio = 1 / stepWavelengthOrderMerge
         order_list = []
 
+        # A FIX FOR SORTING OF SOXS VIS ORDERSK
+        mask = (extractedOrdersDF['order'] == 4)
+        extractedOrdersDF.loc[mask, 'order'] = 11
+        mask = (extractedOrdersDF['order'] == 3)
+        extractedOrdersDF.loc[mask, 'order'] = 13
+        mask = (extractedOrdersDF['order'] == 2)
+        extractedOrdersDF.loc[mask, 'order'] = 14
+        mask = (extractedOrdersDF['order'] == 1)
+        extractedOrdersDF.loc[mask, 'order'] = 12
+        extractedOrdersDF['order'] = extractedOrdersDF['order'] - 10
+
         # MORE CAREFUL TREATMENT OF UVB ORDER MERGING
         # if self.arm.upper() in ["UVB", "NIR"]:
-        uniqueOrders = extractedOrdersDF['order'].unique()
+        uniqueOrders = np.sort(extractedOrdersDF['order'].unique())
 
         # self.inst = self.skySubtractedFrame.header[self.kw("INSTRUME")]
         # if self.arm.upper() == "VIS" and self.inst.upper() == "SOXS":
@@ -635,7 +646,9 @@ class horne_extraction(object):
             if lastOrderMin:
                 order_join_wl = (extractedOrdersDF.loc[mask]['wavelengthMedian'].max() + lastOrderMin) / 2.
                 orderJoins[f'{o-1}{o}'] = order_join_wl
-                orderGaps[f'{o-1}{o}'] = extractedOrdersDF.loc[mask]['wavelengthMedian'].max() - lastOrderMin
+                gap = extractedOrdersDF.loc[mask]['wavelengthMedian'].max() - lastOrderMin
+                orderGaps[f'{o-1}{o}'] = gap
+                # print(f"ORDER: {o}, JOIN: {order_join_wl}, GAP: {gap}")
             lastOrderMin = extractedOrdersDF.loc[mask]['wavelengthMedian'].min()
 
         # A FIX FOR THE UV XSHOOTER DATA (FLATS TAKEN WITH DIFFERENT LAMPS)
@@ -649,7 +662,6 @@ class horne_extraction(object):
 
             thisKey = f'{o-1}{o}'
             if thisKey in orderJoins.keys():
-                print(thisKey)
                 mask = (extractedOrdersDF['order'] == o - 1)
                 gap = orderGaps[f'{o-1}{o}']
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
@@ -677,9 +689,13 @@ class horne_extraction(object):
         wave_resample_grid = wave_resample_grid * u.nm
 
         # INTERPOLATE THE ORDER SPECTRUM INTO THIS NEW ARRAY WITH A SINGLE STEP SIZE
-        flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
+        if "PAE" in self.settings and self.settings["PAE"] and True:
+            flux_orig = extractedOrdersDF['extractedFluxBoxcarRobust'].values * u.electron
+        else:
+            flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
         # PASS ORIGINAL RAW SPECTRUM AND RESAMPLE
         spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values * u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values))
+
         resampler = FluxConservingResampler()
         flux_resampled = resampler(spectrum_orig, wave_resample_grid)
         # flux_resampled = median_smooth(flux_resampled, width=3)
@@ -743,7 +759,7 @@ class horne_extraction(object):
 
             try:
                 if "PAE" in self.settings and self.settings["PAE"] and True:
-                    line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], zorder=2, linewidth=0.5)
+                    line = toprow.plot(extracted_wave_spectrum[10:-10], extracted_spectrum_nonopt[10:-10], zorder=2, linewidth=0.1)
                     toprow.text(extracted_wave_spectrum[10:-10].mean(), extracted_spectrum_nonopt[10:-10].mean() + 1.4 * extracted_spectrum_nonopt[10:-10].std(), int(o), fontsize=10, c=line[0].get_color(), verticalalignment='bottom')
 
                 else:
