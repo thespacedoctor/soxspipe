@@ -949,6 +949,7 @@ class detect_continuum(_base_detect):
             plt.show()
 
         self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
+
         return pixelPostion
 
     def plot_results(
@@ -1292,7 +1293,7 @@ class detect_continuum(_base_detect):
         # CROSS-DISPERSION DIRECTION. RETURN PEAK POSITIONS
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=self.traceFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=self.traceFrame, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         if "order" in self.recipeName.lower():
             self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
@@ -1302,9 +1303,23 @@ class detect_continuum(_base_detect):
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
         allLines = len(orderPixelTable.index)
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (orderPixelTable['cont_x'] < 0)
+        orderPixelTable.loc[mask, 'cont_x'] = np.nan
+        mask = (orderPixelTable['cont_y'] < 0)
+        orderPixelTable.loc[mask, 'cont_y'] = np.nan
+
+        # xpd-update-filter-dataframe-column-values
+
         # DROP ROWS WITH NAN VALUES
         orderPixelTable.dropna(axis='index', how='any',
                                subset=['cont_x'], inplace=True)
+        orderPixelTable.dropna(axis='index', how='any',
+                               subset=['cont_y'], inplace=True)
+
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable[["order", "fit_x", "fit_y", "cont_x", "cont_y"]], headers='keys', tablefmt='psql'))
 
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines

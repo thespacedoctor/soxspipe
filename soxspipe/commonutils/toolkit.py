@@ -104,7 +104,7 @@ def cut_image_slice(
         else:
             slice = ma.median(sliceFull, axis=0)
 
-    if False and random.randint(1, 101) < 5:
+    if True and random.randint(1, 101) < 5:
         import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
@@ -1068,7 +1068,7 @@ def predict_product_path(
 
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
-        sofName += "_SKYSUB"
+        sofName += "_EXTRACTED_MERGED"
     if "_NOD_" in sofName:
         sofName += "_EXTRACTED_MERGED"
     productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"

@@ -157,8 +157,8 @@ soxs-spatial-solution:
         wavelength-deg: [4,5]
         slit-deg: [3,4]
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 4
-        poly-fitting-residual-clipping-sigma: 9
+        poly-clipping-iteration-limit: 5
+        poly-fitting-residual-clipping-sigma: 7
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
         map_to_image_displacement_threshold: 0.01 # in pixels
@@ -192,7 +192,7 @@ soxs-stare:
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
     # USE LA COMSIC TO REMOVE CRHs BEFORE EXTRACTION
-    use_lacosmic: True
+    use_lacosmic: False
     vis:
         # the length of the 'slit' used to collect object flux (in pixels)
         horne-extraction-slit-length: 20
@@ -204,7 +204,7 @@ soxs-stare:
         horne-extraction-profile-clipping-iteration-count: 10
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 100
+            order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
             slice-length: 30
             # WIDTH OF EACH SLICE (PIXELS)
@@ -218,7 +218,7 @@ soxs-stare:
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-fitting-residual-clipping-sigma: 10
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-clipping-iteration-limit: 5
+            poly-clipping-iteration-limit: 3
         sky-subtraction:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
