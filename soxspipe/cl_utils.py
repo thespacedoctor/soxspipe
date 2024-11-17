@@ -6,7 +6,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe prep <workspaceDirectory>
-    soxspipe [-q] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
+    soxspipe [-qw] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -46,6 +46,7 @@ Options:
     -s, --settings <pathToSettingsFile>    the settings file
     -V, --verbose                          more verbose output
     -x, --overwrite                        more verbose output
+    -w, --watch                            watch the workspace and reduce new raw data as it is added (similar to 'watch' mode but runs in the foreground)
     --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
 """
 ################# GLOBAL IMPORTS ####################
@@ -305,15 +306,38 @@ def main(arguments=None):
         log.error(f'{e}\n{clCommand}', exc_info=True)
 
     if a["reduce"] and a["all"]:
-        from soxspipe.commonutils import reducer
-        collection = reducer(
-            log=log,
-            workspaceDirectory=a["workspaceDirectory"],
-            settings=settings,
-            pathToSettings=arguments["--settings"],
-            quitOnFail=a["quitOnFailFlag"]
-        )
-        collection.reduce()
+
+        exists = os.path.exists(a["workspaceDirectory"] + "/soxspipe.db")
+        if not exists:
+            print(f"Please run the 'soxspipe prep {a['workspaceDirectory']}' command to prepare your workspace command before attempting to reduce data")
+            return
+
+        watch = True
+
+        while watch:
+            from soxspipe.commonutils import reducer
+            collection = reducer(
+                log=log,
+                workspaceDirectory=a["workspaceDirectory"],
+                settings=settings,
+                pathToSettings=arguments["--settings"],
+                quitOnFail=a["quitOnFailFlag"]
+            )
+            collection.reduce()
+
+            if a["watchFlag"]:
+                xsec = 15
+                print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
+                time.sleep(xsec)
+
+                from soxspipe.commonutils import data_organiser
+                do = data_organiser(
+                    log=log,
+                    rootDir=a["workspaceDirectory"]
+                )
+                do.prepare()
+            else:
+                watch = False
 
     from fundamentals import daemonise
 
