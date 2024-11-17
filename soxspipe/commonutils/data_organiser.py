@@ -412,7 +412,7 @@ class data_organiser(object):
                         except:
                             pass
                     # FIND RECORDS IN rawFrames NOT IN rawFrames
-                    rawFrames = rawFrames[~rawFrames.set_index(['file', 'eso dpr tech']).index.isin(rawFrames.set_index(['file', 'eso dpr tech']).index)]
+                    rawFrames = rawFrames[~rawFrames.set_index(['file', 'eso dpr tech']).index.isin(knownRawFrames.set_index(['file', 'eso dpr tech']).index)]
 
             if len(rawFrames.index):
                 rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames['night start date'] + "/" + rawFrames['file']
