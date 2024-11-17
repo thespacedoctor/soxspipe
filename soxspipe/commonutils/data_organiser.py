@@ -382,6 +382,10 @@ class data_organiser(object):
         filteredFrames, fitsPaths, fitsNames = self._create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
 
         if fitsPaths:
+
+            conn = self.conn
+            knownRawFrames = pd.read_sql('SELECT * FROM raw_frames', con=conn)
+
             # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
             rawFrames, reducedFramesPixels, reducedFramesTables = self._categorise_frames(filteredFrames)
 
@@ -396,8 +400,23 @@ class data_organiser(object):
 
             # xpd-update-filter-dataframe-column-values
 
+            # FIND AND REMOVE DUPLICATE FILES
             if len(rawFrames.index):
                 rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames['night start date'] + "/" + rawFrames['file']
+                # FIND AND REMOVE DUPLICATE FILES
+                matchedFiles = pd.merge(rawFrames, knownRawFrames, on=['file', 'eso dpr tech'], how='inner')
+                if len(matchedFiles.index):
+                    for file in matchedFiles["file"]:
+                        try:
+                            os.remove(file)
+                        except:
+                            pass
+                    # FIND RECORDS IN rawFrames NOT IN rawFrames
+                    rawFrames = rawFrames[~rawFrames.set_index(['file', 'eso dpr tech']).index.isin(rawFrames.set_index(['file', 'eso dpr tech']).index)]
+
+            if len(rawFrames.index):
+                rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames['night start date'] + "/" + rawFrames['file']
+
                 rawFrames.to_sql('raw_frames', con=self.conn,
                                  index=False, if_exists='append')
                 filepaths = rawFrames['filepath']
@@ -988,9 +1007,12 @@ class data_organiser(object):
         c.execute(sqlQuery)
         c.close()
 
-        for o in self.reductionOrder:
-            rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
-            rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
+        repeat = 7
+        while repeat:
+            for o in self.reductionOrder:
+                rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
+                rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
+            repeat -= 1
 
         # xpd-update-filter-dataframe-column-values
 
@@ -1289,7 +1311,7 @@ class data_organiser(object):
 
         # CALIBRATIONS NEEDED?
         # BIAS FRAMES
-        if series["recipe"] in ["disp_sol", "order_centres", "mflat", "spat_sol", "stare"]:
+        if series["recipe"] in ["disp_sol", "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]:
 
             mask = calibrationFrames['eso pro catg'].isin([f"MASTER_BIAS_{series['eso seq arm'].upper()}"])
             df = calibrationFrames.loc[mask]
@@ -1303,29 +1325,33 @@ class data_organiser(object):
                 incomplete = True
 
         # DISP SOLS
-        if series["recipe"] in ["order_centres", "spat_sol", "stare", "nod"]:
+        if series["recipe"] in ["order_centres", "spat_sol", "stare", "nod", "offset"]:
             mask = calibrationTables['eso pro catg'].str.contains("DISP_TAB")
             df = calibrationTables.loc[mask]
 
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
-                if series["recipe"] in ["stare", "nod"]:
+                if series["recipe"] in ["stare", "nod", "offset"]:
                     mask = (df['recipe'] == "spat_sol")
                     if len(df.loc[mask, "file"].index):
                         files = np.append(files, df.loc[mask, "file"].values[0])
                         tags = np.append(tags, df.loc[mask, "eso pro catg"].values[0])
                         filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
+                    else:
+                        incomplete = True
                 else:
                     mask = (df['recipe'] == "disp_sol")
                     if len(df.loc[mask, "file"].index):
                         files = np.append(files, df.loc[mask, "file"].values[0])
                         tags = np.append(tags, df.loc[mask, "eso pro catg"].values[0])
                         filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
+                    else:
+                        incomplete = True
             else:
                 incomplete = True
 
         # DISP SOLS IMAGE
-        if series["recipe"] in ["stare", "nod"]:
+        if series["recipe"] in ["stare", "nod", "offset"]:
             mask = calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")
             df = calibrationFrames.loc[mask]
             if len(df.index):
@@ -1335,7 +1361,7 @@ class data_organiser(object):
                 filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # ORDER TAB
-        if series["recipe"] in ["mflat", "spat_sol", "stare", "nod"]:
+        if series["recipe"] in ["mflat", "spat_sol", "stare", "nod", "offset"]:
             mask = calibrationTables['eso pro catg'].str.contains('ORDER_TAB')
             df = calibrationTables.loc[mask]
             if series["recipe"] in ["mflat"]:
@@ -1368,6 +1394,8 @@ class data_organiser(object):
                     files = np.append(files, df.loc[mask, "file"].values[0])
                     tags = np.append(tags, df.loc[mask, "eso pro catg"].values[0])
                     filepaths = np.append(filepaths, df.loc[mask, "filepath"].values[0])
+            elif series["recipe"] in ["spat_sol", "mflat"]:
+                incomplete = True
 
         # FLAT FRAMES
         if series["recipe"] in ["spat_sol", "stare", "nod"]:
@@ -1475,6 +1503,9 @@ class data_organiser(object):
         import time
 
         if series["eso dpr type"].lower() != reductionOrder.lower():
+            return series
+
+        if series["complete"] == 0:
             return series
 
         template = series.copy()
