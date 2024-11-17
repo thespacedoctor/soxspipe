@@ -295,6 +295,23 @@ class horne_extraction(object):
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=productPath)
 
+        # ORDER CHECK INCASE OF POOR CONTINUUM FITTING
+        # GET UNIQUE VALUES IN COLUMN
+        self.inst = self.skySubtractedFrame.header[self.kw("INSTRUME")]
+        if self.arm.upper() == "VIS" and self.inst.upper() == "SOXS":
+            keepOrders = []
+            uniqueOrders = self.orderPixelTable['order'].unique()
+            for o in uniqueOrders:
+                mask = (self.orderPixelTable['order'] == o)
+                if self.orderPixelTable.loc[mask][f"{self.axisA}coord_centre"].std() < 20:
+                    keepOrders.append(o)
+                else:
+                    self.log.warning(f"Bad continuum fit to order {o}; this order will not be extracted")
+            mask = (self.orderPixelTable['order'].isin(keepOrders))
+            self.orderPixelTable = self.orderPixelTable.loc[mask]
+
+        # xpd-update-filter-dataframe-column-values
+
     def extract(self):
         """*extract the full spectrum order-by-order and return FITS Binary table containing order-merged spectrum*
 
