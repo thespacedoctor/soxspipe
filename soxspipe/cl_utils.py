@@ -352,7 +352,7 @@ def main(arguments=None):
             # settings = kwargs["settings"]
             # settingsFile = kwargs["settingsFile"]
 
-            currentSession = False
+            currentSession = None
 
             while True:
                 os.chdir(pwd)
@@ -374,32 +374,35 @@ def main(arguments=None):
 
                 if not currentSession:
                     currentSession, allSessions = do.session_list(silent=True)
-                    from importlib import reload
-                    import logging
-                    logging.shutdown()
-                    reload(logging)
-                    settingsFile = f"{pwd}/sessions/{currentSession}/soxspipe.yaml"
-                    arguments["--settings"] = settingsFile
-                    su = tools(
-                        arguments=arguments,
-                        docString=__doc__,
-                        logLevel="WARNING",
-                        options_first=False,
-                        projectName="soxspipe",
-                        defaultSettingsFile=False
-                    )
-                    argumentsIgnore, settings, log, dbConn = su.setup()
 
-                from soxspipe.commonutils import reducer
-                collection = reducer(
-                    log=log,
-                    workspaceDirectory=pwd,
-                    settings=settings,
-                    pathToSettings=settingsFile,
-                    quitOnFail=a["quitOnFailFlag"],
-                    daemon=True
-                )
-                collection.reduce()
+                    if currentSession:
+                        from importlib import reload
+                        import logging
+                        logging.shutdown()
+                        reload(logging)
+                        settingsFile = f"{pwd}/sessions/{currentSession}/soxspipe.yaml"
+                        arguments["--settings"] = settingsFile
+                        su = tools(
+                            arguments=arguments,
+                            docString=__doc__,
+                            logLevel="WARNING",
+                            options_first=False,
+                            projectName="soxspipe",
+                            defaultSettingsFile=False
+                        )
+                        argumentsIgnore, settings, log, dbConn = su.setup()
+
+                if currentSession:
+                    from soxspipe.commonutils import reducer
+                    collection = reducer(
+                        log=log,
+                        workspaceDirectory=pwd,
+                        settings=settings,
+                        pathToSettings=settingsFile,
+                        quitOnFail=a["quitOnFailFlag"],
+                        daemon=True
+                    )
+                    collection.reduce()
 
                 xsec = 15
                 print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
