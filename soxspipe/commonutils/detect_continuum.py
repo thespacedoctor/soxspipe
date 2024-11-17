@@ -1318,9 +1318,6 @@ class detect_continuum(_base_detect):
         orderPixelTable.dropna(axis='index', how='any',
                                subset=['cont_y'], inplace=True)
 
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable[["order", "fit_x", "fit_y", "cont_x", "cont_y"]], headers='keys', tablefmt='psql'))
-
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
 
