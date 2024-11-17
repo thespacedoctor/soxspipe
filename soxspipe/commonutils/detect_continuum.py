@@ -216,7 +216,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=1, cenfunc='mean', stdfunc='std')
             pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
