@@ -1293,7 +1293,7 @@ class detect_continuum(_base_detect):
         # CROSS-DISPERSION DIRECTION. RETURN PEAK POSITIONS
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=self.traceFrame, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=self.traceFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         if "order" in self.recipeName.lower():
             self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
@@ -1317,9 +1317,6 @@ class detect_continuum(_base_detect):
                                subset=['cont_x'], inplace=True)
         orderPixelTable.dropna(axis='index', how='any',
                                subset=['cont_y'], inplace=True)
-
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable[["order", "fit_x", "fit_y", "cont_x", "cont_y"]], headers='keys', tablefmt='psql'))
 
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
