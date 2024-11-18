@@ -280,8 +280,8 @@ class soxs_disp_solution(base_recipe):
             ).get()
 
             # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
-            import matplotlib
-            matplotlib.pyplot.switch_backend('Agg')
+            import matplotlib.pyplot as plt
+            plt.switch_backend('Agg')
             from fundamentals import fmultiprocess
 
             permList = list(perm)
@@ -362,9 +362,6 @@ def parameterTuning(p, log, recipeSettings, settings, pinholeFrame, qc, products
         create2DMap=False,
         lineDetectionTable=lineDetectionTable
     )
-    try:
-        productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
-    except:
-        pass
+    productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
 
     return None

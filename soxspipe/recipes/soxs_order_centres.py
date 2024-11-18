@@ -295,6 +295,11 @@ class soxs_order_centres(base_recipe):
             )
             orderPixelTable = detector.sample_trace()
 
+            print("\n\nTUNING SOXSPIPE\n")
+
+            # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
+            import matplotlib.pyplot as plt
+            plt.switch_backend('Agg')
             # DEFINE AN INPUT ARRAY
             from fundamentals import fmultiprocess
             # NOTE TO SELF: if having issue with multiprocessing stalling, try and import required modules into the mthod/function running this fmultiprocess function instead of at the module level

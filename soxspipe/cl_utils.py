@@ -50,6 +50,7 @@ Options:
     --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
 """
 ################# GLOBAL IMPORTS ####################
+import time
 import os
 import sys
 import readline

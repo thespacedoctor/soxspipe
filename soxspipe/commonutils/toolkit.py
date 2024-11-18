@@ -104,7 +104,7 @@ def cut_image_slice(
         else:
             slice = ma.median(sliceFull, axis=0)
 
-    if True and random.randint(1, 101) < 5:
+    if False and random.randint(1, 101) < 5:
         import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":

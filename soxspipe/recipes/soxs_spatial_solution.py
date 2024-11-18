@@ -194,7 +194,7 @@ class soxs_spatial_solution(base_recipe):
         from soxspipe.commonutils import create_dispersion_map
 
         # TEMPORARY WARNING
-        #if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
+        # if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
         #    self.log.warning("The SOXS UVVIS Multi-Pinhole line-list is not yet ready. It will be included in a future code release")
         #    return None, None, None
 
@@ -301,8 +301,8 @@ class soxs_spatial_solution(base_recipe):
             print("\n\nTUNING SOXSPIPE\n")
 
             # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
-            import matplotlib
-            matplotlib.pyplot.switch_backend('Agg')
+            import matplotlib.pyplot as plt
+            plt.switch_backend('Agg')
             from fundamentals import fmultiprocess
             # DEFINE AN INPUT ARRAY
             results = fmultiprocess(log=self.log, function=parameterTuning,

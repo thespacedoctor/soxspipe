@@ -216,7 +216,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=1, cenfunc='mean', stdfunc='std')
             pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -1293,7 +1293,7 @@ class detect_continuum(_base_detect):
         # CROSS-DISPERSION DIRECTION. RETURN PEAK POSITIONS
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=self.traceFrame, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=self.traceFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
 
         if "order" in self.recipeName.lower():
             self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
