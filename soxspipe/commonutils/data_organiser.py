@@ -253,9 +253,18 @@ class data_organiser(object):
 
         # TEST FITS FILES OR raw_frames DIRECT EXISTS
         fitsExist = False
-        # exists = os.path.exists(self.rawDir)
-        # if exists:
-        #     fitsExist = True
+        exists = os.path.exists(self.rawDir)
+        if exists:
+            from fundamentals.files import recursive_directory_listing
+            theseFiles = recursive_directory_listing(
+                log=self.log,
+                baseFolderPath=self.rawDir,
+                whatToList="files"  # all | files | dirs
+            )
+            for f in theseFiles:
+                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f)
+                fitsExist = True
+                break
         if not fitsExist:
             for d in os.listdir(self.rootDir):
                 filepath = os.path.join(self.rootDir, d)
