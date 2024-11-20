@@ -2,7 +2,17 @@
 
 # Release Notes
 
+## v0.11.7 - October 15, 2024
+
+* **FEATURE:** SOXS UVVIS line-list (first draft) now ships with the code.
+* **FEATURE:** pipeline can now 'watch' a folder and automatically reduce raw data added to it. This 'watch' feature can also be run as a system daemon.
 * **ENHANCEMENT:** now recording 'ESO ADA ABSROT END' in the soxspipe.db database
+* **ENHANCEMENT:** adding a check to see if the continuum fit is good in each order ... remove bad orders (SOXS VIS only so far)
+* **ENHANCEMENT:** improving SOXS extractions (using order centre traces with flat lamps)
+* **REFACTOR:** Data-organiser can now work with new SOXS DPR keywords.
+* **REFACTOR:** changing order centre clipping to mean and std (not median and mad)
+* **REFACTOR:** updated NIR line list after SOXS format change
+* **FIXED:** a few bugs
 
 ## v0.11.6 - October 15, 2024
 
