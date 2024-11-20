@@ -138,7 +138,8 @@ class soxs_disp_solution(base_recipe):
                     error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
             if not error:
-                if imageTypes[0] not in ["LAMP,FMTCHK", 'WAVE,LAMP']:
+                # FIX ME!
+                if imageTypes[0] not in ["LAMP,FMTCHK", 'LAMP,WAVE', 'WAVE,LAMP']:
                     error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR" % locals()
 
             if not error:
@@ -154,7 +155,8 @@ class soxs_disp_solution(base_recipe):
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["LAMP,FMTCHK", 'WAVE,LAMP']:
+                    # FIX ME!
+                    if i not in ["LAMP,FMTCHK", 'LAMP,WAVE', 'WAVE,LAMP']:
                         error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS" % locals()
 
             if not error:
@@ -230,14 +232,18 @@ class soxs_disp_solution(base_recipe):
                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         if self.inst.lower() == "soxs":
-            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP',
-                           kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+            filter_list = [
+                {kw("DPR_TYPE"): 'LAMP,WAVE', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'WAVE,LAMP', kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+            ]
         else:
-            add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK',
-                           kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
-        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            pinhole_image = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                         hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            filter_list = [{kw("DPR_TYPE"): 'LAMP,FMTCHK',
+                            kw("DPR_TECH"): 'ECHELLE,PINHOLE'}]
+
+        for add_filters in filter_list:
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                pinhole_image = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                                             hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
 
         self.pinholeFrame = self.detrend(
             inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
@@ -274,8 +280,8 @@ class soxs_disp_solution(base_recipe):
             ).get()
 
             # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
-            import matplotlib
-            matplotlib.pyplot.switch_backend('Agg')
+            import matplotlib.pyplot as plt
+            plt.switch_backend('Agg')
             from fundamentals import fmultiprocess
 
             permList = list(perm)

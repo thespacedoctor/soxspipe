@@ -7,7 +7,7 @@ VIS:
     # NAXIS1 == x-axis
     columns:
       start: 50
-      end: 2048
+      end: 858
     # NAXIS2 == y-axis
     rows:
       start: 0

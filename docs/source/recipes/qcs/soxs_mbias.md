@@ -1,5 +1,5 @@
 :::{table} Quality Control metrics calculated in the `soxs_mbias` recipe.
-:name: soxs_mbias_qc
+:name: table_soxs_mbias_qc
 
 | Label | Description | Unit |
 | :------------ | :----------- | ------------- |

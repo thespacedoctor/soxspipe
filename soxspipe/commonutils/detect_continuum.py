@@ -216,7 +216,7 @@ class _base_detect(object):
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=1, cenfunc='mean', stdfunc='std')
             pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
@@ -399,6 +399,10 @@ class _base_detect(object):
             filename = self.sofName + ".fits"
         filename = filename.replace("MFLAT", "FLAT")
 
+        # if self.inst.upper() == "SOXS":
+        #     filename = filename.replace("_DLAMP", "")
+        #     filename = filename.replace("_QLAMP", "")
+
         if "mflat" in self.recipeName.lower():
             filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
         elif "stare" in self.recipeName.lower():
@@ -407,7 +411,7 @@ class _base_detect(object):
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
             filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE" + self.noddingSequence + ".fits"
 
-        if self.lampTag:
+        if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
 
         order_table_path = f"{outDir}/{filename}"
@@ -945,6 +949,7 @@ class detect_continuum(_base_detect):
             plt.show()
 
         self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
+
         return pixelPostion
 
     def plot_results(
@@ -1298,9 +1303,20 @@ class detect_continuum(_base_detect):
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
         allLines = len(orderPixelTable.index)
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (orderPixelTable['cont_x'] < 0)
+        orderPixelTable.loc[mask, 'cont_x'] = np.nan
+        mask = (orderPixelTable['cont_y'] < 0)
+        orderPixelTable.loc[mask, 'cont_y'] = np.nan
+
+        # xpd-update-filter-dataframe-column-values
+
         # DROP ROWS WITH NAN VALUES
         orderPixelTable.dropna(axis='index', how='any',
                                subset=['cont_x'], inplace=True)
+        orderPixelTable.dropna(axis='index', how='any',
+                               subset=['cont_y'], inplace=True)
 
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines

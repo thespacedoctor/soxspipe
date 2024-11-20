@@ -84,7 +84,7 @@ def cut_image_slice(
         axisALen = frame.shape[0]
         axisBLen = frame.shape[1]
     else:
-        raise ValueError("sliceAxis needs to be eith 'x' or 'y'")
+        raise ValueError("sliceAxis needs to be either 'x' or 'y'")
 
     # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
     if (axisA > axisALen - halfSlice) or (axisB > axisBLen - halfwidth) or (axisA < halfSlice) or (axisB < halfwidth):
@@ -333,7 +333,10 @@ def quicklook_image(
 
         for l in range(int(gridLinePixelTable['line'].max())):
             mask = (gridLinePixelTable['line'] == l)
-            ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
+            if inst == "SOXS":
+                ax2.plot(gridLinePixelTable.loc[mask]["fit_x"], gridLinePixelTable.loc[mask]["fit_y"], "w-", linewidth=0.5, alpha=0.8, color="black")
+            else:
+                ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
 
     ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
@@ -1065,7 +1068,7 @@ def predict_product_path(
 
     sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
-        sofName += "_SKYSUB"
+        sofName += "_EXTRACTED_MERGED"
     if "_NOD_" in sofName:
         sofName += "_EXTRACTED_MERGED"
     productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
@@ -1224,8 +1227,8 @@ def create_dispersion_solution_grid_lines_for_plot(
                 orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
             lineNumber += 1
 
-        spRange = np.arange(spLim[0], spLim[-1], 1)
-        spRange = np.append(spRange, [spLim[-1]])
+        spRange = np.arange(min(spLim), max(spLim), 1)
+        spRange = np.append(spRange, [max(spLim)])
         if not isinstance(skylines, bool):
             mask = skylines['WAVELENGTH'].between(wlLim[0], wlLim[1])
             wlRange = skylines.loc[mask]['WAVELENGTH'].values
@@ -1233,6 +1236,7 @@ def create_dispersion_solution_grid_lines_for_plot(
             step = int(wlLim[1] - wlLim[0]) / 400
             wlRange = np.arange(wlLim[0], wlLim[1], step)
         wlRange = np.append(wlRange, [wlLim[1]])
+
         for l in wlRange:
             myDict = {
                 "line": np.full_like(spRange, lineNumber),

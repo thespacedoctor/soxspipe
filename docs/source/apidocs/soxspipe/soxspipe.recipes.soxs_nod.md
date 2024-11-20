@@ -70,7 +70,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````
 
-````{py:method} process_single_ab_nodding_cycle(aFrame, bFrame, locationSetIndex)
+````{py:method} process_single_ab_nodding_cycle(aFrame, bFrame, locationSetIndex, orderTablePath)
 :canonical: soxspipe.recipes.soxs_nod.soxs_nod.process_single_ab_nodding_cycle
 
 ```{autodoc2-docstring} soxspipe.recipes.soxs_nod.soxs_nod.process_single_ab_nodding_cycle

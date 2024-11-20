@@ -51,7 +51,8 @@ class reducer(object):
             settings=False,
             pathToSettings=False,
             quitOnFail=False,
-            overwrite=False
+            overwrite=False,
+            daemon=False
 
     ):
         self.log = log
@@ -61,6 +62,7 @@ class reducer(object):
         self.overwrite = overwrite
         self.pathToSettings = pathToSettings
         self.quitOnFail = quitOnFail
+        self.daemon = daemon
 
         # REQUEST THE WORKSPACE PARAMETERS FROM THE DATA-ORGANISER
         from soxspipe.commonutils import data_organiser
@@ -69,6 +71,10 @@ class reducer(object):
             rootDir=workspaceDirectory,
         )
         self.sessionId, allSessions = do.session_list(silent=True)
+
+        if self.sessionId is None:
+            return None
+
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
         self.sessionDB = workspaceDirectory + "/soxspipe.db"
 
@@ -79,6 +85,10 @@ class reducer(object):
         *reduce the selected data*
         """
         self.log.debug('starting the ``reduce`` method')
+
+        if self.sessionId is None:
+            print("Please prepare this workspace using `soxspipe prep` before attempting to reduce the data.")
+            return None
 
         from fundamentals import times
         import traceback
@@ -109,7 +119,8 @@ class reducer(object):
                     rootDir=self.workspaceDirectory
                 )
                 do.session_refresh()
-                print(f"{'='*70}\n")
+                if not self.daemon:
+                    print(f"{'='*70}\n")
                 continue
 
             ## FINISH LOGGING ##
@@ -119,7 +130,8 @@ class reducer(object):
 
             self.log.print(f'\nRecipe Command: {row["command"]} ')
             self.log.print(f'Recipe Run Time: {runningTime}\n\n')
-            print(f"{'='*70}\n")
+            if not self.daemon:
+                print(f"{'='*70}\n")
 
         self.log.debug('completed the ``reduce`` method')
         return None
@@ -150,7 +162,7 @@ class reducer(object):
 
         # GET THE GROUPS OF FILES NEEDING REDUCED, ASSIGN THE CORRECT COMMAND TO EXECUTE THE RECIPE
         rawGroups = pd.read_sql(
-            'SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order', con=conn)
+            'SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 order by recipe_order', con=conn)
         rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
         if self.pathToSettings:
             rawGroups["command"] += f" -s {self.pathToSettings}"
