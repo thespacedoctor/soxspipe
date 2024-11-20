@@ -341,7 +341,7 @@ class data_organiser(object):
                 self.sessionPath = self.sessionsDir + "/" + sessionId
 
         i = 0
-        while i < 3:
+        while i < 6:
             self._populate_product_frames_db_table()
             i += 1
         self._write_sof_files()
