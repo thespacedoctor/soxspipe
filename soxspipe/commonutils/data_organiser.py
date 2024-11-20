@@ -331,8 +331,10 @@ class data_organiser(object):
                 sessionId = readFile.read()
                 self.sessionPath = self.sessionsDir + "/" + sessionId
 
-        self._populate_product_frames_db_table()
-        self._populate_product_frames_db_table()
+        i = 0
+        while i < 7:
+            self._populate_product_frames_db_table()
+            i += 1
         self._write_sof_files()
 
         print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
