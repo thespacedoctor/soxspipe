@@ -262,9 +262,9 @@ class data_organiser(object):
                 whatToList="files"  # all | files | dirs
             )
             for f in theseFiles:
-                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f)
-                fitsExist = True
-                break
+                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f):
+                    fitsExist = True
+                    break
         if not fitsExist:
             for d in os.listdir(self.rootDir):
                 filepath = os.path.join(self.rootDir, d)
