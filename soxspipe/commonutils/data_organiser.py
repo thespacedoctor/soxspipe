@@ -253,9 +253,9 @@ class data_organiser(object):
 
         # TEST FITS FILES OR raw_frames DIRECT EXISTS
         fitsExist = False
-        exists = os.path.exists(self.rawDir)
-        if exists:
-            fitsExist = True
+        # exists = os.path.exists(self.rawDir)
+        # if exists:
+        #     fitsExist = True
         if not fitsExist:
             for d in os.listdir(self.rootDir):
                 filepath = os.path.join(self.rootDir, d)
