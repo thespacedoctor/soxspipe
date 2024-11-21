@@ -1018,12 +1018,9 @@ class data_organiser(object):
         c.execute(sqlQuery)
         c.close()
 
-        repeat = 7
-        while repeat:
-            for o in self.reductionOrder:
-                rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
-                rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
-            repeat -= 1
+        for o in self.reductionOrder:
+            rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
+            rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
 
         # xpd-update-filter-dataframe-column-values
 
