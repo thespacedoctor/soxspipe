@@ -32,7 +32,7 @@ Documentation for soxspipe is hosted by [Read the Docs](https://soxspipe.readthe
 The best way to install or upgrade soxspipe is to use `conda` to install the package in its own isolated environment, as shown here:
 
 ``` bash
-conda create -n soxspipe python=3.9 soxspipe -c conda-forge
+conda create -n soxspipe python=3.11 soxspipe -c conda-forge
 conda activate soxspipe
 ```
 

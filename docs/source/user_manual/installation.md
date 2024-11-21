@@ -11,7 +11,7 @@ There are multiple methods for installing soxspipe, and you can choose the metho
 With Miniforge initialised, generate an isolated environment for soxspipe and install it from the conda-forge distribution channel with the following command:
 
 ```bash
-conda create -n soxspipe python=3.9 soxspipe -c conda-forge
+conda create -n soxspipe python=3.11 soxspipe -c conda-forge
 ```
 
 If you have previously installed soxspipe, a warning will be issued stating that a conda environment already exists; select `y` when asked to remove the existing environment. This has proven to be the cleanest way to upgrade soxspipe.
@@ -32,7 +32,7 @@ soxspipe -v
 With Anaconda/Mininconda initialised, generate an isolated environment for soxspipe and install it from the conda-forge distribution channel with the following command:
 
 ```bash
-conda create -n soxspipe python=3.9 soxspipe -c conda-forge
+conda create -n soxspipe python=3.11 soxspipe -c conda-forge
 ```
 
 If you have previously installed soxspipe, a warning will be issued stating that a conda environment already exists; select `y` when asked to remove the existing environment. This has proven to be the cleanest way to upgrade soxspipe.
