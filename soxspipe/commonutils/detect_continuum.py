@@ -1302,6 +1302,9 @@ class detect_continuum(_base_detect):
 
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable[['cont_x', 'cont_y']], headers='keys', tablefmt='psql'))
+
         allLines = len(orderPixelTable.index)
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
