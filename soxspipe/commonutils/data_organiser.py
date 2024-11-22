@@ -527,6 +527,9 @@ class data_organiser(object):
         if "--" in instrument:
             instrument.remove("--")
 
+        if len(instrument) == 2 and "SHOOT" in instrument and "XSHOOTER" in instrument:
+            instrument = ["XSHOOTER"]
+
         self.instrument = None
         if len(instrument) > 1:
             self.log.error(f'The directory contains data from a mix of instruments. Please only provide data from either SOXS or XSH')
