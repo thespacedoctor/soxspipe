@@ -799,6 +799,9 @@ class detect_continuum(_base_detect):
                 myDict["slit_position"], np.zeros(len(wlArray)))
 
         orderPixelTable = pd.DataFrame(myDict)
+        from tabulate import tabulate
+        print(tabulate(orderPixelTable, headers='keys', tablefmt='psql'))
+
         orderPixelTable = dispersion_map_to_pixel_arrays(
             log=self.log,
             dispersionMapPath=self.dispersion_map,
@@ -1302,8 +1305,6 @@ class detect_continuum(_base_detect):
 
         orderPixelTable = orderPixelTable.apply(
             self.fit_1d_gaussian_to_slice, axis=1)
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable[['cont_x', 'cont_y', 'fit_x', 'fit_y']], headers='keys', tablefmt='psql'))
 
         allLines = len(orderPixelTable.index)
         # FILTER DATA FRAME
