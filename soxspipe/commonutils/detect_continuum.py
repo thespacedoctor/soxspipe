@@ -799,9 +799,6 @@ class detect_continuum(_base_detect):
                 myDict["slit_position"], np.zeros(len(wlArray)))
 
         orderPixelTable = pd.DataFrame(myDict)
-        from tabulate import tabulate
-        print(tabulate(orderPixelTable, headers='keys', tablefmt='psql'))
-
         orderPixelTable = dispersion_map_to_pixel_arrays(
             log=self.log,
             dispersionMapPath=self.dispersion_map,

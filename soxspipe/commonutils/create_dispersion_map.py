@@ -1056,21 +1056,22 @@ class create_dispersion_map(object):
         hduList = fits.HDUList([priHDU, BinTableHDU])
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
-        cache = self.settings["workspace-root-dir"].replace("~", home) + "/.cache"
-        # Recursively create missing directories
-        if not os.path.exists(cache):
-            os.makedirs(cache)
-        polyOrders = [orderDeg, wavelengthDeg, slitDeg]
-        if isinstance(orderDeg, list):
-            merged_list = []
-            for sublist in polyOrders:
-                merged_list.extend(sublist)
-            polyOrders = merged_list
-        polyOrders[:] = [str(l) for l in polyOrders]
-        polyOrders = "".join(polyOrders)
-        filename = f"{self.recipeName}_{self.arm}_{polyOrders}.fits"
-        cacheFilePath = f"{cache}/{filename}"
-        hduList.writeto(cacheFilePath, checksum=True, overwrite=True)
+        if False:
+            cache = self.settings["workspace-root-dir"].replace("~", home) + "/.cache"
+            # Recursively create missing directories
+            if not os.path.exists(cache):
+                os.makedirs(cache)
+            polyOrders = [orderDeg, wavelengthDeg, slitDeg]
+            if isinstance(orderDeg, list):
+                merged_list = []
+                for sublist in polyOrders:
+                    merged_list.extend(sublist)
+                polyOrders = merged_list
+            polyOrders[:] = [str(l) for l in polyOrders]
+            polyOrders = "".join(polyOrders)
+            filename = f"{self.recipeName}_{self.arm}_{polyOrders}.fits"
+            cacheFilePath = f"{cache}/{filename}"
+            hduList.writeto(cacheFilePath, checksum=True, overwrite=True)
 
         self.log.debug('completed the ``write_map_to_file`` method')
         return filePath

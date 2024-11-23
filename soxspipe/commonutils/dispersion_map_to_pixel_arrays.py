@@ -66,10 +66,6 @@ def dispersion_map_to_pixel_arrays(
     dat = Table.read(dispersion_map, format='fits')
     tableData = dat.to_pandas()
 
-    from tabulate import tabulate
-    print(tabulate(tableData, headers='keys', tablefmt='psql'))
-    sys.exit(0)
-
     # READ IN THE X- AND Y- GENERATING POLYNOMIALS FROM DISPERSION MAP FILE
     coeff = {}
     poly = {}
