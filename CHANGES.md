@@ -2,6 +2,11 @@
 
 # Release Notes
 
+## v0.11.9 - November 25, 2024
+
+* **REFACTOR:** updating the data-organiser to fix a performance issue.
+* **FIXED:** Allow the object trace polynomial orders to dynamically change if a fit to the continuum is not found (ala the order-centre tracing)
+
 ## v0.11.8 - November 21, 2024
 
 * **FEATURE:** SOXS UVVIS line-list (first draft) now ships with the code.

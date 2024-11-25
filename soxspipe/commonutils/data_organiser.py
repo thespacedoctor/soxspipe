@@ -527,6 +527,9 @@ class data_organiser(object):
         if "--" in instrument:
             instrument.remove("--")
 
+        if len(instrument) == 2 and "SHOOT" in instrument and "XSHOOTER" in instrument:
+            instrument = ["XSHOOTER"]
+
         self.instrument = None
         if len(instrument) > 1:
             self.log.error(f'The directory contains data from a mix of instruments. Please only provide data from either SOXS or XSH')
@@ -1018,12 +1021,9 @@ class data_organiser(object):
         c.execute(sqlQuery)
         c.close()
 
-        repeat = 7
-        while repeat:
-            for o in self.reductionOrder:
-                rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
-                rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
-            repeat -= 1
+        for o in self.reductionOrder:
+            rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
+            rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
 
         # xpd-update-filter-dataframe-column-values
 

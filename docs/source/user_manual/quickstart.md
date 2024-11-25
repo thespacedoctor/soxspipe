@@ -9,7 +9,7 @@ This quickstart guide is subject to (much) change during the development of the 
 The best way to install soxspipe is to use `conda` and install the package in its own isolated environment (preferably using [Miniforge](https://github.com/conda-forge/miniforge); a minimal installation for the conda package and environment manager), as shown here:
 
 ``` bash
-conda create -n soxspipe python=3.11 soxspipe -c conda-forge
+conda create -n soxspipe python=3.12 soxspipe -c conda-forge
 conda activate soxspipe
 ```
 
