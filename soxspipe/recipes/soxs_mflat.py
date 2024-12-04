@@ -226,11 +226,23 @@ class soxs_mflat(base_recipe):
         arm = self.arm
         kw = self.kw
 
+        import psutil
+        process = psutil.Process()
+        import humanize
+        print("HERE")
+        print(humanize.naturalsize(process.memory_info().rss))
+
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home)
 
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats, dcalibratedFlats, qcalibratedFlats = self.calibrate_frame_set()
+
+        import psutil
+        process = psutil.Process()
+        import humanize
+        print("HERE")
+        print(humanize.naturalsize(process.memory_info().rss))
 
         allCalibratedFlats = calibratedFlats + dcalibratedFlats + qcalibratedFlats
 
@@ -246,6 +258,12 @@ class soxs_mflat(base_recipe):
 
         productTable = self.products
         qcTable = self.qc
+
+        import psutil
+        process = psutil.Process()
+        import humanize
+        print("HERE")
+        print(humanize.naturalsize(process.memory_info().rss))
 
         for cf, fk, tag in zip(calibratedFlatSet, flatKeywords, lampTag):
 
@@ -664,6 +682,10 @@ class soxs_mflat(base_recipe):
         from astropy.stats import sigma_clip
         kw = self.kw
 
+        import psutil
+        process = psutil.Process()
+        import humanize
+
         try:
             self.binx = inputFlats[0].header[kw("WIN_BINX")]
             self.biny = inputFlats[0].header[kw("WIN_BINY")]
@@ -697,7 +719,8 @@ class soxs_mflat(base_recipe):
             ORDEXP10list = []
             ORDEXP50list = []
             ORDEXP90list = []
-            for frame in inputFlats:
+
+            for i, frame in enumerate(inputFlats):
                 maskedFrame = ma.array(frame.data, mask=mask)
                 maskedData = np.ma.filled(maskedFrame, np.nan)
                 exposureLevel = np.nanpercentile(maskedData, 97)
@@ -709,6 +732,7 @@ class soxs_mflat(base_recipe):
                 normalisedFrame = frame.divide(exposureLevel)
                 normalisedFrame.header = frame.header
                 normalisedFrames.append(normalisedFrame)
+                print(humanize.naturalsize(process.memory_info().rss))
             ORDEXP10 = np.median(ORDEXP10list)
             ORDEXP50 = np.median(ORDEXP50list)
             ORDEXP90 = np.median(ORDEXP90list)
