@@ -2229,7 +2229,7 @@ class create_dispersion_map(object):
 
         # resAx.scatter(orderPixelTable["wavelength"], orderPixelTable["R"], alpha=0.1)
         resAx.set_xlabel("Wavelength (nm)", fontsize=10)
-        resAx.set_ylabel("Resolution", fontsize=10)
+        resAx.set_ylabel("Resolution (from 0.5\" pinholes)", fontsize=10)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
