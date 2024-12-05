@@ -425,7 +425,8 @@ class soxs_stare(base_recipe):
             qcTable=self.qc,
             productsTable=self.products,
             dispersionMap=dispMap,
-            sofName=self.sofName
+            sofName=self.sofName,
+            startNightDate=self.startNightDate
         )
 
         self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()

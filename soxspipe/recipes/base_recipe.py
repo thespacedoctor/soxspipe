@@ -64,7 +64,7 @@ class base_recipe(object):
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
-            self.productPath = toolkit.predict_product_path(inputFrames, self.recipeName)
+            self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
             if os.path.exists(self.productPath) and not overwrite:
                 print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 raise FileExistsError
@@ -163,8 +163,8 @@ class base_recipe(object):
             settings=self.settings
         ).get
 
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
-        self.productDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}/"
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
+        self.productDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}/"
 
         return None
 
@@ -857,7 +857,7 @@ class base_recipe(object):
                 except:
                     pass
 
-            filedir += f"/product/{self.recipeName}/"
+            filedir += f"/reduced/{self.startNightDate}/{self.recipeName}/"
             filedir = filedir.replace("//", "/")
             # Recursively create missing directories
             if not os.path.exists(filedir):
@@ -1118,7 +1118,8 @@ class base_recipe(object):
                 orderTable=order_table,
                 settings=self.settings,
                 productsTable=self.products,
-                qcTable=self.qc
+                qcTable=self.qc,
+                startNightDate=self.startNightDate
             )
             backgroundFrame, processedFrame, self.products = background.subtract()
 
@@ -1135,9 +1136,9 @@ class base_recipe(object):
                 home = expanduser("~")
 
                 if self.currentSession:
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.startNightDate}/{self.recipeName}"
                 else:
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}"
                 outDir = outDir.replace("//", "/")
                 # RECURSIVELY CREATE MISSING DIRECTORIES
                 if not os.path.exists(outDir):

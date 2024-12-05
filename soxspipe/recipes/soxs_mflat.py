@@ -226,11 +226,13 @@ class soxs_mflat(base_recipe):
         arm = self.arm
         kw = self.kw
 
-        import psutil
-        process = psutil.Process()
-        import humanize
-        print("HERE")
-        print(humanize.naturalsize(process.memory_info().rss))
+        if False:
+            # HOW MUCH MEMORY IS BEING USED?
+            import psutil
+            process = psutil.Process()
+            import humanize
+            print("HERE")
+            print(humanize.naturalsize(process.memory_info().rss))
 
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home)
@@ -238,11 +240,13 @@ class soxs_mflat(base_recipe):
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats, dcalibratedFlats, qcalibratedFlats = self.calibrate_frame_set()
 
-        import psutil
-        process = psutil.Process()
-        import humanize
-        print("HERE")
-        print(humanize.naturalsize(process.memory_info().rss))
+        if False:
+            # HOW MUCH MEMORY IS BEING USED?
+            import psutil
+            process = psutil.Process()
+            import humanize
+            print("HERE")
+            print(humanize.naturalsize(process.memory_info().rss))
 
         allCalibratedFlats = calibratedFlats + dcalibratedFlats + qcalibratedFlats
 
@@ -259,11 +263,13 @@ class soxs_mflat(base_recipe):
         productTable = self.products
         qcTable = self.qc
 
-        import psutil
-        process = psutil.Process()
-        import humanize
-        print("HERE")
-        print(humanize.naturalsize(process.memory_info().rss))
+        if False:
+            # HOW MUCH MEMORY IS BEING USED?
+            import psutil
+            process = psutil.Process()
+            import humanize
+            print("HERE")
+            print(humanize.naturalsize(process.memory_info().rss))
 
         for cf, fk, tag in zip(calibratedFlatSet, flatKeywords, lampTag):
 
@@ -329,7 +335,8 @@ class soxs_mflat(base_recipe):
                 sofName=self.sofName,
                 binx=self.binx,
                 biny=self.biny,
-                lampTag=tag
+                lampTag=tag,
+                startNightDate=self.startNightDate
             )
             self.products, qcTable, orderDetectionCounts = edges.get()
 
@@ -368,7 +375,8 @@ class soxs_mflat(base_recipe):
                     settings=self.settings,
                     productsTable=self.products,
                     qcTable=self.qc,
-                    lamp=tag
+                    lamp=tag,
+                    startNightDate=self.startNightDate
                 )
                 backgroundFrame, combined_normalised_flat, self.products = background.subtract()
 
@@ -384,9 +392,9 @@ class soxs_mflat(base_recipe):
                     home = expanduser("~")
 
                     if self.currentSession:
-                        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
+                        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.startNightDate}/{self.recipeName}"
                     else:
-                        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+                        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}"
                     outDir = outDir.replace("//", "/")
                     # RECURSIVELY CREATE MISSING DIRECTORIES
                     if not os.path.exists(outDir):
@@ -732,7 +740,7 @@ class soxs_mflat(base_recipe):
                 normalisedFrame = frame.divide(exposureLevel)
                 normalisedFrame.header = frame.header
                 normalisedFrames.append(normalisedFrame)
-                print(humanize.naturalsize(process.memory_info().rss))
+                # print(humanize.naturalsize(process.memory_info().rss))
             ORDEXP10 = np.median(ORDEXP10list)
             ORDEXP50 = np.median(ORDEXP50list)
             ORDEXP90 = np.median(ORDEXP90list)
@@ -1008,7 +1016,8 @@ class soxs_mflat(base_recipe):
             tag="",
             sofName=self.sofName,
             binx=self.binx,
-            biny=self.biny
+            biny=self.biny,
+            startNightDate=self.startNightDate
         )
         self.products, self.qc, orderDetectionCounts = edges.get()
         # FILTER DATA FRAME

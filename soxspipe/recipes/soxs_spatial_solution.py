@@ -295,7 +295,8 @@ class soxs_spatial_solution(base_recipe):
                 qcTable=self.qc,
                 productsTable=self.products,
                 sofName=self.sofName,
-                create2DMap=False
+                create2DMap=False,
+                startNightDate=self.startNightDate
             ).get()
 
             print("\n\nTUNING SOXSPIPE\n")
@@ -327,7 +328,8 @@ class soxs_spatial_solution(base_recipe):
                 qcTable=self.qc,
                 productsTable=self.products,
                 sofName=self.sofName,
-                create2DMap=self.create2DMap
+                create2DMap=self.create2DMap,
+                startNightDate=self.startNightDate
             ).get()
 
         from datetime import datetime
@@ -397,7 +399,8 @@ def parameterTuning(p, log, recipeSettings, settings, multiPinholeFrame, disp_ma
         productsTable=products,
         sofName=sofName,
         create2DMap=False,
-        lineDetectionTable=lineDetectionTable
+        lineDetectionTable=lineDetectionTable,
+        startNightDate=self.startNightDate
     )
     try:
         productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()

@@ -35,6 +35,7 @@ class subtract_background(object):
     - ``qcTable`` -- the data frame to collect measured QC metrics
     - ``productsTable`` -- the data frame to collect output products
     - ``lamp`` -- needed for UVB flats
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
 
     **Usage:**
 
@@ -65,7 +66,8 @@ class subtract_background(object):
             settings=False,
             qcTable=False,
             productsTable=False,
-            lamp=""
+            lamp="",
+            startNightDate=""
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_background' object")
@@ -77,6 +79,7 @@ class subtract_background(object):
         self.qc = qcTable
         self.products = productsTable
         self.lamp = lamp
+        self.startNightDate = startNightDate
 
         from soxspipe.commonutils import detector_lookup
 
@@ -168,7 +171,7 @@ class subtract_background(object):
         if self.sofName:
             backgroundQCImage = self.sofName + f"_BKGROUND{self.lamp}.pdf"
             home = expanduser("~")
-            self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+            self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
             self.qcDir = self.qcDir.replace("//", "/")
             # RECURSIVELY CREATE MISSING DIRECTORIES
             if not os.path.exists(self.qcDir):

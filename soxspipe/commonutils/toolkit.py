@@ -1043,13 +1043,50 @@ def predict_product_path(
 
     ```python
     from soxspipe.commonutils import toolkit
-    productPath = toolkit.predict_product_path(sofFilePath)
+    productPath, startNightDate = toolkit.predict_product_path(sofFilePath)
     ```
     """
+    from astropy.time import Time, TimeDelta
+
+    import codecs
+
+    startNightDate = False
+
+    # TRY AND READ startNightDate FROM RAW FRAME DIRECTORY
+    with codecs.open(sofName, encoding='utf-8', mode='r') as readFile:
+        thisData = readFile.read()
+        for l in thisData.split("\n"):
+            if "raw/" in l:
+                startNightDate = l.split("raw/")[1].split("/")[0]
+                break
+
     try:
         sofName = os.path.basename(sofName)
     except:
         pass
+
+    sofName = sofName.replace(".sof", "")
+
+    if not startNightDate:
+
+        if not recipeName:
+            recipeName = sys.argv[1]
+            if recipeName[0] == "-":
+                recipeName = sys.argv[2]
+            recipeName = "soxs-" + recipeName
+
+        obsDate = sofName.split("_")[0]
+
+        startNightDate = ""
+
+        try:
+            obsDate = Time.strptime(obsDate, '%Y.%m.%dT%H.%M.%S.%f', scale='utc')
+            night_start_offset = TimeDelta(15.0 * 60 * 60, format='sec')
+            startNightDate = obsDate - night_start_offset
+            startNightDate = startNightDate.strftime("%Y-%m-%d")
+        except:
+            print("Could not determine OBSDATE from sof filename")
+            pass
 
     from soxspipe.commonutils import data_organiser
     from fundamentals.logs import emptyLogger
@@ -1060,25 +1097,18 @@ def predict_product_path(
     )
     currentSession, allSessions = do.session_list(silent=True)
 
-    if not recipeName:
-        recipeName = sys.argv[1]
-        if recipeName[0] == "-":
-            recipeName = sys.argv[2]
-        recipeName = "soxs-" + recipeName
-
-    sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
         sofName += "_EXTRACTED_MERGED"
     if "_NOD_" in sofName:
         sofName += "_EXTRACTED_MERGED"
-    productPath = f"./sessions/{currentSession}/product/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
+    productPath = f"./sessions/{currentSession}/reduced/{startNightDate}/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
     if "spatial" not in productPath:
         productPath = productPath.replace("spat", "spatial")
     if "solution" not in productPath:
         productPath = productPath.replace("spat", "spatial")
     productPath = productPath.replace("//", "/")
 
-    return productPath
+    return productPath, startNightDate
 
 
 def add_recipe_logger(

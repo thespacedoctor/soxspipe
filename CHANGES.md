@@ -2,6 +2,9 @@
 
 # Release Notes
 
+* **REFACTOR:** reduced products are now stored in the ESO compliant nested-folder scheme `/reduced/YYY-MM-DD/`
+* **REFACTOR:** QC are also stored in a similar nested-folder scheme `/qc/YYY-MM-DD/`
+
 ## v0.11.9 - November 25, 2024
 
 * **REFACTOR:** updating the data-organiser to fix a performance issue.

@@ -45,7 +45,8 @@ class create_dispersion_map(object):
     - ``productsTable`` -- the data frame to collect output products
     - ``sofName`` -- name of the originating SOF file
     - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
-        - ``lineDetectionTable`` -- the list of arc-lines detected on the pinhole frame (used only for pipeline tuning)
+    - ``lineDetectionTable`` -- the list of arc-lines detected on the pinhole frame (used only for pipeline tuning)
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
 
     **Usage:**
 
@@ -74,7 +75,8 @@ class create_dispersion_map(object):
             productsTable=False,
             sofName=False,
             create2DMap=True,
-            lineDetectionTable=False
+            lineDetectionTable=False,
+            startNightDate=""
     ):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
@@ -92,6 +94,7 @@ class create_dispersion_map(object):
         self.create2DMap = create2DMap
         self.recipeSettings = copy.deepcopy(recipeSettings)
         self.lineDetectionTable = lineDetectionTable
+        self.startNightDate = startNightDate
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -138,7 +141,7 @@ class create_dispersion_map(object):
             self.axisB = "x"
 
         home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
         self.qcDir = self.qcDir.replace("//", "/")
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(self.qcDir):
@@ -991,7 +994,7 @@ class create_dispersion_map(object):
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home)
-        outDir += f"/product/{self.recipeName}/"
+        outDir += f"/reduced/{self.startNightDate}/{self.recipeName}/"
         outDir = outDir.replace("//", "/")
         # Recursively create missing directories
         if not os.path.exists(outDir):
@@ -1741,7 +1744,7 @@ class create_dispersion_map(object):
 
         # DETERMINE WHERE TO WRITE THE FILE
         home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
         outDir = outDir.replace("//", "/")
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):

@@ -258,7 +258,7 @@ class soxs_nod(base_recipe):
                     home = expanduser("~")
                     filenameA = self.sofName + f"_A_{sequenceCount}.fits"
                     filenameB = self.sofName + f"_B_{sequenceCount}.fits"
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
                     filePathA = f"{outDir}/{filenameA}"
                     filePathB = f"{outDir}/{filenameB}"
                     frameA.write(filePathA, overwrite=True)
@@ -347,7 +347,7 @@ class soxs_nod(base_recipe):
         # Write in a fits file the A-B and B-A frames
         home = expanduser("~")
         filename = self.sofName + f"_AB_{locationSetIndex}.fits"
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
         A_minus_B.write(filePath, overwrite=True)
 
@@ -386,7 +386,8 @@ class soxs_nod(base_recipe):
             productsTable=theseProducts,
             dispersionMap=self.dispMap,
             sofName=self.sofName,
-            locationSetIndex=locationSetIndex
+            locationSetIndex=locationSetIndex,
+            startNightDate=self.startNightDate
         )
 
         self.qc, theseProducts, mergedSpectrumDF_A = optimalExtractor.extract()
@@ -404,7 +405,8 @@ class soxs_nod(base_recipe):
             productsTable=theseProducts,
             dispersionMap=self.dispMap,
             sofName=self.sofName,
-            locationSetIndex=locationSetIndex
+            locationSetIndex=locationSetIndex,
+            startNightDate=self.startNightDate
         )
         self.qc, theseProducts, mergedSpectrumDF_B = optimalExtractor.extract()
 
@@ -469,7 +471,7 @@ class soxs_nod(base_recipe):
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.fits")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 

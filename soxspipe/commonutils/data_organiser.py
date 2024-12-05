@@ -1541,7 +1541,7 @@ class data_organiser(object):
                 if i[4] and i[5]:
                     products["file"] = products["file"].split(i[4])[0] + i[5] + ".fits"
                     products["file"] = products["file"].replace(".fits.fits", ".fits")
-                products["filepath"] = "./product/" + i[6] + "/" + products["file"]
+                products["filepath"] = f"./reduced/{products['night start date']}/" + i[6] + "/" + products["file"]
                 myDict = {k: [v] for k, v in products.items()}
                 products = pd.DataFrame(myDict)
 
@@ -1741,7 +1741,7 @@ class data_organiser(object):
             arguments, settings, replacedLog, dbConn = su.setup()
 
         # MAKE ASSET PLACEHOLDERS
-        folders = ["sof", "qc", "product"]
+        folders = ["sof", "qc", "reduced"]
         for f in folders:
             if not os.path.exists(self.sessionPath + f"/{f}"):
                 os.makedirs(self.sessionPath + f"/{f}")
@@ -1904,7 +1904,7 @@ class data_organiser(object):
                 os.unlink(filepath)
 
         # SYMLINK FILES AND FOLDERS
-        toLink = ["product", "qc", "soxspipe.yaml", "sof", "soxspipe.log"]
+        toLink = ["reduced", "qc", "soxspipe.yaml", "sof", "soxspipe.log"]
         for l in toLink:
             dest = self.rootDir + f"/{l}"
             src = self.sessionPath + f"/{l}"

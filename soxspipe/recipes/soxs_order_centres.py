@@ -291,7 +291,8 @@ class soxs_order_centres(base_recipe):
                 productsTable=self.products,
                 sofName=self.sofName,
                 binx=binx,
-                biny=biny
+                biny=biny,
+                startNightDate=self.startNightDate
             )
             orderPixelTable = detector.sample_trace()
 
@@ -327,7 +328,8 @@ class soxs_order_centres(base_recipe):
                 productsTable=self.products,
                 sofName=self.sofName,
                 binx=binx,
-                biny=biny
+                biny=biny,
+                startNightDate=self.startNightDate
             )
             productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
 
@@ -366,7 +368,6 @@ def parameterTuning(p, log, recipeSettings, settings, orderFrame, disp_map_table
     recipeSettings["detect-continuum"]["order-deg"] = p[0]
     recipeSettings["detect-continuum"]["disp-axis-deg"] = p[1]
 
-    from soxspipe.commonutils import create_dispersion_map
     detector = detect_continuum(
         log=log,
         traceFrame=orderFrame,
@@ -379,7 +380,8 @@ def parameterTuning(p, log, recipeSettings, settings, orderFrame, disp_map_table
         sofName=sofName,
         binx=binx,
         biny=biny,
-        orderPixelTable=orderPixelTable
+        orderPixelTable=orderPixelTable,
+        startNightDate=self.startNightDate
     )
     try:
         productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
