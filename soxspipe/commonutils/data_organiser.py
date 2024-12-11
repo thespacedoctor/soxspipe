@@ -528,7 +528,7 @@ class data_organiser(object):
             instrument.remove("--")
 
         if len(instrument) == 2 and "SHOOT" in instrument and "XSHOOTER" in instrument:
-            instrument = ["XSHOOTER"]
+            instrument = ["XSH"]
 
         self.instrument = None
         if len(instrument) > 1:
@@ -1262,7 +1262,9 @@ class data_organiser(object):
                 mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
             else:
                 mask = (filteredFrames['eso dpr tech'].isin(["NONSENSE"]))
-            firstDate = filteredFrames.loc[~mask]['date-obs'].values[0].replace("-", ".").replace(":", ".")
+
+            firstDate = filteredFrames.loc[~mask]['date-obs'].values[0].split(".")[0]
+            firstDate = firstDate.replace("-", "").replace(":", "")
             sofName.insert(0, firstDate)
 
         # NEED SOME FINAL FILTERING ON UVB FLATS
@@ -1312,11 +1314,19 @@ class data_organiser(object):
         #         else:
         #             return series
 
-        if seriesRecipe in ("stare", "nod"):
-            object = filteredFrames['object'].values[0].replace(" ", "_")
-            sofName.append(object)
+        if seriesRecipe in ("stare", "nod", "offset"):
+            objectt = filteredFrames['object'].values[0].replace(" ", "_")[:8]
+            sofName.append(objectt)
 
-        series['sof'] = ("_").join(sofName).replace("-", "").replace(",", "_").upper() + ".sof"
+        # COMBINE AND SHORTEN SOF NAME
+        sofName = ("_").join(sofName).replace("-", "").replace(",", "_").upper() + ".sof"
+        sofName = sofName.replace("XSHOOTER", "XSH")
+        sofName = sofName.replace("FAST", "F")
+        sofName = sofName.replace("SLOW", "S")
+        sofName = sofName.replace("TELLURIC", "TELL")
+        sofName = sofName.replace("ORDER_LOCATIONS", "ORD_LOC")
+
+        series['sof'] = sofName
         series["recipe"] = seriesRecipe
         series["recipe_order"] = self.recipeOrder.index(seriesRecipe) + 1
 

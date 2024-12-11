@@ -714,7 +714,7 @@ class detect_order_edges(_base_detect):
         fig.suptitle(f"detection of order-edge locations - {arm}{lamp}{slitWidth} flat-frame\n{subtitle}", fontsize=12)
 
         if self.sofName:
-            filename = self.sofName + f"_ORDER_LOCATIONS{self.tag}.pdf"
+            filename = self.sofName + f"_ORD_LOC{self.tag}.pdf"
         else:
             filename = filenamer(
                 log=self.log,

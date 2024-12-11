@@ -1065,15 +1065,15 @@ def predict_product_path(
     except:
         pass
 
+    if not recipeName:
+        recipeName = sys.argv[1]
+        if recipeName[0] == "-":
+            recipeName = sys.argv[2]
+        recipeName = "soxs-" + recipeName
+
     sofName = sofName.replace(".sof", "")
 
     if not startNightDate:
-
-        if not recipeName:
-            recipeName = sys.argv[1]
-            if recipeName[0] == "-":
-                recipeName = sys.argv[2]
-            recipeName = "soxs-" + recipeName
 
         obsDate = sofName.split("_")[0]
 

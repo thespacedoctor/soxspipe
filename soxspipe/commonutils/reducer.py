@@ -102,6 +102,7 @@ class reducer(object):
             sof = row["sof"]
             startTime = times.get_now_sql_datetime()
             try:
+                self.log.print(f'\nRecipe Command: {row["command"]}')
                 self.run_recipe(recipe, sof)
             except FileExistsError as e:
                 continue
@@ -221,6 +222,7 @@ class reducer(object):
                 overwrite=self.overwrite
             ).produce_product()
 
+        return None
         if recipe == "order_centres":
             from soxspipe.recipes import soxs_order_centres
             order_table = soxs_order_centres(

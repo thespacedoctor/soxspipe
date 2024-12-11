@@ -83,7 +83,6 @@ class response_function(object):
             self.arm = str(header['HIERARCH ESO SEQ ARM']).strip().upper()  # KW lookup
         except Exception as e:
             raise Exception('Error reading the FITS header')
-            sys.exit(1)
 
         return None
 
@@ -161,7 +160,6 @@ class response_function(object):
             refitted_flux = interp1d(np.array(selected_rows['WAVE']), np.array(selected_rows[self.std_objName]) * 10 * 10**17, kind='next')
         except Exception as e:
             raise Exception("Standard star %s not found in the static calibration database" % self.std_objName)
-            sys.exit(1)
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
 
@@ -257,7 +255,7 @@ class response_function(object):
                 numIter = numIter + 1
             except Exception as e:
                 raise Exception('The fitting of response function did not converge!')
-                sys.exit(1)
+
         axs[2].plot(wave, np.polyval(coefficients, wave), c='red')
         axs[2].set_xlim(min(central_wavelengths), max(central_wavelengths))
         axs[2].set_ylim(min(zp), max(zp))
