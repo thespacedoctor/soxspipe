@@ -454,7 +454,7 @@ class base_recipe(object):
             pass
 
         if "filename" in columns:
-            columns.remove("file")
+            # columns.remove("file")
             columns.remove("filename")
             columns = ["filename"] + columns
 
@@ -472,7 +472,10 @@ class base_recipe(object):
                 this.rename_column(c, newC)
             newColumns.append(newC)
 
-        self.log.print(this[newColumns])
+        cleanColumns = newColumns.copy()
+        cleanColumns.remove("file")
+
+        self.log.print(this[cleanColumns])
         self.log.print("\n")
 
         self.rawFrames = this[newColumns]
@@ -1472,6 +1475,7 @@ class base_recipe(object):
         self.log.debug('starting the ``update_fits_keywords`` method')
 
         import math
+        from astropy.utils.data import compute_hash
 
         arm = self.arm
         kw = self.kw
@@ -1496,9 +1500,6 @@ class base_recipe(object):
         tableData['filename'] = tableData['filename'].str.replace("_pre", "")
         tableData['tag'] = tableData['TYPE'] + "_" + tableData['ARM']
 
-        from tabulate import tabulate
-        print(tabulate(tableData, headers='keys', tablefmt='psql'))
-
         iterator = 1
         for f, t, z in zip(tableData['filename'].values, tableData['tag'].values, tableData[kw("PRO_TYPE")].values):
             if isinstance(z, float) and math.isnan(z):
@@ -1510,13 +1511,15 @@ class base_recipe(object):
                 iterator += 1
 
         iterator = 1
-        for f, c, z in zip(tableData['filename'].values, tableData[kw("PRO_CATG")].values, tableData[kw("PRO_TYPE")].values):
+
+        for f, c, z, p in zip(tableData['filename'].values, tableData[kw("PRO_CATG")].values, tableData[kw("PRO_TYPE")].values, tableData["file"].values):
             if not isinstance(z, float) or not math.isnan(z):
                 valueLen = 80 - len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = ''")
                 if len(f) > valueLen:
                     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
                 frame.header[f"ESO PRO REC1 CAL{iterator} NAME"] = f[:valueLen]
                 frame.header[f"ESO PRO REC1 CAL{iterator} CATG"] = c
+                frame.header[f"ESO PRO REC1 CAL{iterator} DATAMD5"] = compute_hash(p)
                 iterator += 1
 
         iterator = 1
@@ -1524,7 +1527,7 @@ class base_recipe(object):
         for k, v in recipeSettings.items():
             if not isinstance(v, dict):
                 if isinstance(v, list):
-                    v = " ,".join(map(str, v))
+                    v = ", ".join(map(str, v)).strip()
 
                 frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k[:40]
                 frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v
