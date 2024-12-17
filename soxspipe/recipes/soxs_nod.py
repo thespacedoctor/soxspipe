@@ -264,6 +264,10 @@ class soxs_nod(base_recipe):
                     frameA.write(filePathA, overwrite=True)
                     frameB.write(filePathB, overwrite=True)
 
+                # INJECT KEYWORDS INTO HEADER
+                self.update_fits_keywords(frame=frameA)
+                self.update_fits_keywords(frame=frameB)
+
                 # PROCESSING SINGLE SEQUENCE
                 mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=frameA, bFrame=frameB, locationSetIndex=sequenceCount, orderTablePath=orderTablePath)
                 if sequenceCount == 1:
@@ -293,8 +297,13 @@ class soxs_nod(base_recipe):
                 ignore_input_masks=False,
                 post_stack_clipping=True)
 
+            # INJECT KEYWORDS INTO HEADER
+            self.update_fits_keywords(frame=aFrame)
+            self.update_fits_keywords(frame=bFrame)
+
             mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
             stackedSpectrum = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
+
             self.plot_stacked_spectrum_qc(stackedSpectrum)
 
             self.clean_up()

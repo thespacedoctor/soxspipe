@@ -222,7 +222,6 @@ class reducer(object):
                 overwrite=self.overwrite
             ).produce_product()
 
-        return None
         if recipe == "order_centres":
             from soxspipe.recipes import soxs_order_centres
             order_table = soxs_order_centres(

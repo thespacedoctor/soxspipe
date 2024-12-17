@@ -1448,12 +1448,14 @@ class base_recipe(object):
 
     def update_fits_keywords(
             self,
-            frame):
+            frame,
+            rawFrames=False):
         """*update fits keywords to comply with ESO Phase 3 standards*
 
         **Key Arguments:**
 
         - ``frame`` -- the frame to update
+        - ``rawFrames`` -- limit the raw frames to be listed in the fits header to only these frames (list)
 
         **Return:**
 
@@ -1502,8 +1504,10 @@ class base_recipe(object):
 
         iterator = 1
         for f, t, z in zip(tableData['filename'].values, tableData['tag'].values, tableData[kw("PRO_TYPE")].values):
+            if rawFrames and f not in rawFrames:
+                continue
             if isinstance(z, float) and math.isnan(z):
-                valueLen = 80 - len(f"ESO PRO REC1 RAW{iterator} NAME" + "HIERARCH  = ''")
+                valueLen = 80 - len(f"ESO PRO REC1 RAW{iterator} NAME" + "HIERARCH  = '")
                 if len(f) > valueLen:
                     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
                 frame.header[f"ESO PRO REC1 RAW{iterator} NAME"] = f[:valueLen]
@@ -1514,9 +1518,9 @@ class base_recipe(object):
 
         for f, c, z, p in zip(tableData['filename'].values, tableData[kw("PRO_CATG")].values, tableData[kw("PRO_TYPE")].values, tableData["file"].values):
             if not isinstance(z, float) or not math.isnan(z):
-                valueLen = 80 - len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = ''")
-                if len(f) > valueLen:
-                    self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
+                valueLen = 80 - len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = '")
+                # if len(f) > valueLen:
+                #     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
                 frame.header[f"ESO PRO REC1 CAL{iterator} NAME"] = f[:valueLen]
                 frame.header[f"ESO PRO REC1 CAL{iterator} CATG"] = c
                 frame.header[f"ESO PRO REC1 CAL{iterator} DATAMD5"] = compute_hash(p)
@@ -1525,6 +1529,8 @@ class base_recipe(object):
         iterator = 1
         recipeSettings = self.get_recipe_settings()
         for k, v in recipeSettings.items():
+            if k.lower() in ["uvb", "vis", "nir"]:
+                continue
             if not isinstance(v, dict):
                 if isinstance(v, list):
                     v = ", ".join(map(str, v)).strip()
@@ -1566,11 +1572,6 @@ class base_recipe(object):
         if recipeSettings and self.arm and self.arm.lower() in recipeSettings:
             for k, v in recipeSettings[self.arm.lower()].items():
                 recipeSettings[k] = v
-        for k in ["uvb", "vis", "nir"]:
-            if k in recipeSettings:
-                del recipeSettings[k]
-            if k.upper() in recipeSettings:
-                del recipeSettings[k]
 
         self.log.debug('completed the ``get_recipe_settings`` method')
         return recipeSettings

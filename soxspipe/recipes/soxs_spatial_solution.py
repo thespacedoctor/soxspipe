@@ -266,6 +266,9 @@ class soxs_spatial_solution(base_recipe):
         self.multiPinholeFrame = self.detrend(
             inputFrame=multi_pinhole_image, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=order_table)
 
+        # INJECT KEYWORDS INTO HEADER
+        self.update_fits_keywords(frame=self.multiPinholeFrame)
+
         if self.settings["save-intermediate-products"]:
             fileDir = self.workspaceRootPath
             filepath = self._write(

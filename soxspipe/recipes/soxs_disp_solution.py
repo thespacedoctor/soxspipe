@@ -248,7 +248,7 @@ class soxs_disp_solution(base_recipe):
         self.pinholeFrame = self.detrend(
             inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
 
-        self.update_fits_keywords(self.pinholeFrame)
+        self.update_fits_keywords(frame=self.pinholeFrame)
 
         if self.settings["save-intermediate-products"]:
             outDir = self.workspaceRootPath

@@ -255,6 +255,8 @@ class soxs_order_centres(base_recipe):
         self.orderFrame = self.detrend(
             inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
+        self.update_fits_keywords(frame=self.orderFrame)
+
         if self.settings["save-intermediate-products"]:
             fileDir = self.workspaceRootPath
             filepath = self._write(

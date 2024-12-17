@@ -209,7 +209,7 @@ class data_organiser(object):
             ],
             "mflat": [
                 ["REDUCED", "ECHELLE,SLIT", "MASTER_FLAT", "PIXELS", None, None, "soxs-mflat"],
-                ["REDUCED", "ECHELLE,SLIT", "ORDER_TAB", "TABLE", "MFLAT", "ORDER_LOCATIONS", "soxs-mflat"]
+                ["REDUCED", "ECHELLE,SLIT", "ORDER_TAB", "TABLE", "MFLAT", "OLOC", "soxs-mflat"]
             ],
             "spat_sol": [
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_TAB", "TABLE", None, None, "soxs-spatial-solution"],
@@ -1140,7 +1140,7 @@ class data_organiser(object):
         if True and ("PINHOLE" in series["eso dpr tech"].upper() or (series["instrume"] == "SOXS" and "FLAT" in series["eso dpr type"].upper())):
             if series["lamp"] != "--":
                 matchDict['lamp'] = series["lamp"]
-                sofName.append(series["lamp"])
+                # sofName.append(series["lamp"])
 
         if series["instrume"] == "SOXS":
             sofName.append(series["slit"])
@@ -1324,7 +1324,9 @@ class data_organiser(object):
         sofName = sofName.replace("FAST", "F")
         sofName = sofName.replace("SLOW", "S")
         sofName = sofName.replace("TELLURIC", "TELL")
-        sofName = sofName.replace("ORDER_LOCATIONS", "ORD_LOC")
+        sofName = sofName.replace("ORDER_LOCATIONS", "OLOC")
+        sofName = sofName.replace("DISP_SOL", "DSOL")
+        sofName = sofName.replace("SPAT_SOL", "SSOL")
 
         series['sof'] = sofName
         series["recipe"] = seriesRecipe

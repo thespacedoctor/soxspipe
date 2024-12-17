@@ -45,6 +45,7 @@ class subtract_sky(object):
     - ``dispMap`` -- path to dispersion map. Default *False*
     - ``sofName`` -- name of the originating SOF file. Default *False*
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *soxs-stare*
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
 
     **Usage:**
 
@@ -80,7 +81,8 @@ class subtract_sky(object):
             productsTable,
             dispMap=False,
             sofName=False,
-            recipeName="soxs-stare"
+            recipeName="soxs-stare",
+            startNightDate=""
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
@@ -93,6 +95,7 @@ class subtract_sky(object):
         self.sofName = sofName
         self.recipeName = recipeName
         self.recipeSettings = recipeSettings
+        self.startNightDate = startNightDate
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
