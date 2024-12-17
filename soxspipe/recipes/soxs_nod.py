@@ -183,7 +183,7 @@ class soxs_nod(base_recipe):
         # OBJECT/STANDARD FRAMES
         types = ['OBJECT', 'STD,FLUX', 'STD,TELLURIC']
         allObjectFrames = []
-        self.masterHeader = False
+        self.masterHeaderFrame = False
         for t in types:
             add_filters = {kw("DPR_TYPE"): t,
                            kw("DPR_TECH"): 'ECHELLE,SLIT,NODDING'}
@@ -191,8 +191,8 @@ class soxs_nod(base_recipe):
                 singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
-                if not self.masterHeader:
-                    self.masterHeader = singleFrame.header
+                if not self.masterHeaderFrame:
+                    self.masterHeaderFrame = singleFrame.copy()
             if len(allObjectFrames):
                 break
 
@@ -250,6 +250,7 @@ class soxs_nod(base_recipe):
             allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
 
             for frameA, frameB in zip(allFrameA, allFrameB):
+
                 self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
                 if False:
                     quicklook_image(log=self.log, CCDObject=frameA, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
@@ -264,9 +265,17 @@ class soxs_nod(base_recipe):
                     frameA.write(filePathA, overwrite=True)
                     frameB.write(filePathB, overwrite=True)
 
+                rawFrames = []
+                if "ARCFILE" in frameA.header:
+                    rawFrames.append(frameA.header["ARCFILE"])
+                    rawFrames.append(frameB.header["ARCFILE"])
+                else:
+                    rawFrames.append(frameA.header["ORIGFILE"])
+                    rawFrames.append(frameB.header["ORIGFILE"])
+
                 # INJECT KEYWORDS INTO HEADER
-                self.update_fits_keywords(frame=frameA)
-                self.update_fits_keywords(frame=frameB)
+                self.update_fits_keywords(frame=frameA, rawFrames=rawFrames)
+                self.update_fits_keywords(frame=frameB, rawFrames=rawFrames)
 
                 # PROCESSING SINGLE SEQUENCE
                 mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=frameA, bFrame=frameB, locationSetIndex=sequenceCount, orderTablePath=orderTablePath)
@@ -467,7 +476,9 @@ class soxs_nod(base_recipe):
         ).get
 
         # SELECTING HEADER A_minus_B (is this the same?)
-        header = self.masterHeader
+        self.update_fits_keywords(frame=self.masterHeaderFrame)
+        header = self.masterHeaderFrame.header
+
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
         header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
 
@@ -491,7 +502,7 @@ class soxs_nod(base_recipe):
 
         utcnow = datetime.utcnow()
         self.utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-        self.dateObs = self.masterHeader[kw("DATE_OBS")]
+        self.dateObs = header[kw("DATE_OBS")]
 
         self.products = pd.concat([self.products, pd.Series({
             "soxspipe_recipe": self.recipeName,
