@@ -636,8 +636,10 @@ class detect_continuum(_base_detect):
                 )
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
-                # if "order" in self.recipeName.lower() and mean_res > 1:
-                if mean_res > 2 and not (self.instr == "SOXS" and self.arm == "VIS"):
+                if "order" in self.recipeName.lower() and mean_res > 2:
+                    orderPixelTable = backupOrderPixelTable
+                    raise AttributeError("Failed to continuum trace")
+                elif mean_res > 5 and not (self.inst == "SOXS" and self.arm == "VIS"):
                     # BAD FIT ... FORCE A FAIL
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
