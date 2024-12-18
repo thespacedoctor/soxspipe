@@ -481,7 +481,7 @@ class subtract_sky(object):
         # SIGMA RESIDUAL
         weights = tworow.plot(
             imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"].values - imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"].max() * 1.2, label='$\sigma$ residual scatter (shifted)', c=black)
+            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"].values - imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"].max() * 1.2, label='$\\sigma$ residual scatter (shifted)', c=black)
         ylimmin = -imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"].max() * 1.3
 
         if ylimmin < -3000:
@@ -522,7 +522,7 @@ class subtract_sky(object):
         threerow.set_ylim(median - 3 * std, median + 7 * std)
         threerow.set_xlabel(
             "slit-position relative to slit centre (arcsec)", fontsize=10)
-        threerow.set_ylabel("flux minus smoothed flux residual ($\sigma$)", fontsize=10)
+        threerow.set_ylabel("flux minus smoothed flux residual ($\\sigma$)", fontsize=10)
 
         threerow.legend(loc=2, fontsize=8, bbox_to_anchor=(1.05, 1), borderaxespad=0.)
 
