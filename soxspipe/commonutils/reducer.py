@@ -102,6 +102,7 @@ class reducer(object):
             sof = row["sof"]
             startTime = times.get_now_sql_datetime()
             try:
+                self.log.print(f'\nRecipe Command: {row["command"]}')
                 self.run_recipe(recipe, sof)
             except FileExistsError as e:
                 continue

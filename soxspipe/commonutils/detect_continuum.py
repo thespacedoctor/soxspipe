@@ -404,12 +404,12 @@ class _base_detect(object):
         #     filename = filename.replace("_QLAMP", "")
 
         if "mflat" in self.recipeName.lower():
-            filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
+            filename = filename.upper().split("FLAT")[0] + "OLOC.fits"
         elif "stare" in self.recipeName.lower():
-            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
+            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE.fits"
         elif "nod" in self.recipeName.lower():
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
-            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE" + self.noddingSequence + ".fits"
+            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + ".fits"
 
         if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
@@ -636,8 +636,10 @@ class detect_continuum(_base_detect):
                 )
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
-                # if "order" in self.recipeName.lower() and mean_res > 1:
-                if mean_res > 2 and not (self.instr == "SOXS" and self.arm == "VIS"):
+                if "order" in self.recipeName.lower() and mean_res > 2:
+                    orderPixelTable = backupOrderPixelTable
+                    raise AttributeError("Failed to continuum trace")
+                elif mean_res > 5 and not (self.inst == "SOXS" and self.arm == "VIS"):
                     # BAD FIT ... FORCE A FAIL
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")

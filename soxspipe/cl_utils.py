@@ -86,7 +86,8 @@ def main(arguments=None):
             from soxspipe.commonutils import toolkit
             productPath, startNightDate = toolkit.predict_product_path(sys.argv[2])
             if os.path.exists(productPath):
-                print(f"The product of this recipe already exists at '{productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                basename = os.path.basename(self.productPath)
+                print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])

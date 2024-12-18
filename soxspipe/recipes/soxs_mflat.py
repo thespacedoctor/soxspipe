@@ -253,6 +253,7 @@ class soxs_mflat(base_recipe):
         calibratedFlatSet = [calibratedFlats, dcalibratedFlats, qcalibratedFlats]
         flatKeywords = ["LAMP,ORDERDEF", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']
         lampTag = ["", "_DLAMP", "_QLAMP"]
+        filelists = [self.calibratedFlatFiles, self.dFlatFiles, self.qFlatFiles]
         normalisedFlatSet = []
         self.combinedNormalisedFlatSet = []
         self.masterFlatSet = []
@@ -271,7 +272,7 @@ class soxs_mflat(base_recipe):
             print("HERE")
             print(humanize.naturalsize(process.memory_info().rss))
 
-        for cf, fk, tag in zip(calibratedFlatSet, flatKeywords, lampTag):
+        for cf, fk, tag, files in zip(calibratedFlatSet, flatKeywords, lampTag, filelists):
 
             if len(cf) == 0:
                 self.orderTableSet.append(None)
@@ -321,6 +322,8 @@ class soxs_mflat(base_recipe):
             quicklook_image(log=self.log, CCDObject=combined_normalised_flat, show=False, ext=None, surfacePlot=True, title=f"Recombined normalised flat frames {tag}")
 
             self.combinedNormalisedFlatSet.append(combined_normalised_flat.copy())
+
+            self.update_fits_keywords(frame=combined_normalised_flat, rawFrames=files)
 
             # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
             edges = detect_order_edges(
@@ -605,6 +608,15 @@ class soxs_mflat(base_recipe):
         if len(flatCollection.files) == 0 and len(dflatCollection.files) == 0 and len(qflatCollection.files) == 0:
             raise FileNotFoundError(
                 "The mflat recipe needs flat-frames as input, none found")
+
+        self.calibratedFlatFiles = flatCollection.files
+
+        self.calibratedFlatFiles = []
+        self.calibratedFlatFiles[:] = [os.path.basename(l).replace("_pre", "") for l in flatCollection.files]
+        self.dFlatFiles = []
+        self.dFlatFiles[:] = [os.path.basename(l).replace("_pre", "") for l in dflatCollection.files]
+        self.qFlatFiles = []
+        self.qFlatFiles[:] = [os.path.basename(l).replace("_pre", "") for l in qflatCollection.files]
 
         # LIST OF CCDDATA OBJECTS
         flats = [c for c in flatCollection.ccds(ccd_kwargs={
