@@ -876,10 +876,14 @@ class base_recipe(object):
             self.log.print(f"\nSetting {frame.mask.sum()} bad-pixels to a value of 0 while saving '{filename}'.")
             frame.data[frame.mask] = 1
 
+        if "NAXIS" in frame.header and frame.header["NAXIS"] != 0 and "INHERIT" in frame.header:
+            del frame.header["INHERIT"]
+
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
         if product:
+
             HDUList.writeto(filepath, output_verify='fix+warn',
                             overwrite=overwrite, checksum=True)
         else:

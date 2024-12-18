@@ -262,8 +262,8 @@ class soxs_nod(base_recipe):
                     outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
                     filePathA = f"{outDir}/{filenameA}"
                     filePathB = f"{outDir}/{filenameB}"
-                    frameA.write(filePathA, overwrite=True)
-                    frameB.write(filePathB, overwrite=True)
+                    frameA.write(filePathA, overwrite=True, checksum=True)
+                    frameB.write(filePathB, overwrite=True, checksum=True)
 
                 rawFrames = []
                 if "ARCFILE" in frameA.header:
@@ -367,10 +367,10 @@ class soxs_nod(base_recipe):
         filename = self.sofName + f"_AB_{locationSetIndex}.fits"
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
         filePath = f"{outDir}/{filename}"
-        A_minus_B.write(filePath, overwrite=True)
+        A_minus_B.write(filePath, overwrite=True, checksum=True)
 
         filename = self.sofName + f"_BA_{locationSetIndex}.fits"
-        B_minus_A.write(filePath, overwrite=True)
+        B_minus_A.write(filePath, overwrite=True, checksum=True)
 
         if False:
             from soxspipe.commonutils.toolkit import quicklook_image
