@@ -253,6 +253,23 @@ class soxs_spatial_solution(base_recipe):
 
         self.dateObs = multi_pinhole_image.header[kw("DATE_OBS")]
 
+        # DO WE HAVE A SLIT ARC?
+        slit_arc = False
+        if self.inst.upper() == "SOXS":
+            filter_list = [{kw("DPR_TYPE"): 'WAVE,LAMP', kw("DPR_TECH"): 'ECHELLE,SLIT'},
+                           {kw("DPR_TYPE"): 'LAMP,WAVE', kw("DPR_TECH"): 'ECHELLE,SLIT'}]
+        else:
+            filter_list = [{kw("DPR_TYPE"): 'LAMP,WAVE',
+                            kw("DPR_TECH"): 'ECHELLE,SLIT'}]
+        for add_filters in filter_list:
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                slit_arc = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        if slit_arc:
+            print(f"The 1.0 arc slit arc-lamp frame is {i}. Over to you Marco!")
+            sys.exit(0)
+
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
         order_table = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
