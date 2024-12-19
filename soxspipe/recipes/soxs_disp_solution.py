@@ -248,6 +248,8 @@ class soxs_disp_solution(base_recipe):
         self.pinholeFrame = self.detrend(
             inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
 
+        self.update_fits_keywords(frame=self.pinholeFrame)
+
         if self.settings["save-intermediate-products"]:
             outDir = self.workspaceRootPath
             filePath = self._write(
@@ -277,6 +279,7 @@ class soxs_disp_solution(base_recipe):
                 qcTable=self.qc,
                 productsTable=self.products,
                 sofName=self.sofName,
+                startNightDate=self.startNightDate
             ).get()
 
             # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
@@ -308,7 +311,8 @@ class soxs_disp_solution(base_recipe):
                 pinholeFrame=self.pinholeFrame,
                 qcTable=self.qc,
                 productsTable=self.products,
-                sofName=self.sofName
+                sofName=self.sofName,
+                startNightDate=self.startNightDate
             ).get()
 
             filename = os.path.basename(productPath)
@@ -360,7 +364,8 @@ def parameterTuning(p, log, recipeSettings, settings, pinholeFrame, qc, products
         productsTable=products,
         sofName=sofName,
         create2DMap=False,
-        lineDetectionTable=lineDetectionTable
+        lineDetectionTable=lineDetectionTable,
+        startNightDate=self.startNightDate
     )
     productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
 

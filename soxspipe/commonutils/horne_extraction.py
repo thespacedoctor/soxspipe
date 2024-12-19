@@ -42,8 +42,9 @@ class horne_extraction(object):
     - ``qcTable`` -- the data frame to collect measured QC metrics
     - ``productsTable`` -- the data frame to collect output products (if False no products are saved to file)
     - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
-        - ``sofName`` -- the set-of-files filename
-        - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
+    - ``sofName`` -- the set-of-files filename
+    - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
 
     **Usage:**
 
@@ -83,7 +84,8 @@ class horne_extraction(object):
             productsTable=False,
             dispersionMap=False,
             sofName=False,
-            locationSetIndex=False
+            locationSetIndex=False,
+            startNightDate=""
 
     ):
         import numpy as np
@@ -109,6 +111,7 @@ class horne_extraction(object):
         self.sofName = sofName
         self.noddingSequence = ""
         self.recipeSettings = recipeSettings
+        self.startNightDate = startNightDate
 
         # DETECTING SEQUENCE AUTOMATICALLY
         try:
@@ -119,7 +122,7 @@ class horne_extraction(object):
             self.noddingSequence = ""
 
         home = expanduser("~")
-        self.outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+        self.outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
 
         # COLLECT SETTINGS FROM SETTINGS FILE
         self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
@@ -196,7 +199,7 @@ class horne_extraction(object):
             )
 
         home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
         self.qcDir = self.qcDir.replace("//", "/")
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(self.qcDir):
@@ -287,7 +290,8 @@ class horne_extraction(object):
             recipeName=self.recipeName,
             qcTable=self.qc,
             productsTable=self.products,
-            locationSetIndex=locationSetIndex
+            locationSetIndex=locationSetIndex,
+            startNightDate=self.startNightDate
         )
         productPath, self.qc, self.products, orderPolyTable, self.orderPixelTable, orderMetaTable = detector.get()
 

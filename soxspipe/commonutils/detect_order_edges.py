@@ -43,11 +43,12 @@ class detect_order_edges(_base_detect):
     - ``qcTable`` -- the data frame to collect measured QC metrics
     - ``productsTable`` -- the data frame to collect output products
     - ``tag`` -- e.g. '_DLAMP' to differentiate between UV-VIS lamps
-        - ``sofName`` -- name of the originating SOF file
-        - ``binx`` -- binning in x-axis
-        - ``biny`` -- binning in y-axis
-        - ``extendToEdges`` -- if true, extend the order edge tracing to the edges of the frame (Default *True*)
-        - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
+    - ``sofName`` -- name of the originating SOF file
+    - ``binx`` -- binning in x-axis
+    - ``biny`` -- binning in y-axis
+    - ``extendToEdges`` -- if true, extend the order edge tracing to the edges of the frame (Default *True*)
+    - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
 
     **Usage:**
 
@@ -86,7 +87,8 @@ class detect_order_edges(_base_detect):
             binx=1,
             biny=1,
             extendToEdges=True,
-            lampTag=False
+            lampTag=False,
+            startNightDate=""
     ):
         self.log = log
         log.debug("instantiating a new 'detect_order_edges' object")
@@ -103,6 +105,7 @@ class detect_order_edges(_base_detect):
         self.sofName = sofName
         self.extendToEdges = extendToEdges
         self.lampTag = lampTag
+        self.startNightDate = startNightDate
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -154,7 +157,7 @@ class detect_order_edges(_base_detect):
         # self.lamp = get_calibration_lamp(log=log, frame=flatFrame, kw=self.kw)
 
         home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
         self.qcDir = self.qcDir.replace("//", "/")
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(self.qcDir):
@@ -711,7 +714,7 @@ class detect_order_edges(_base_detect):
         fig.suptitle(f"detection of order-edge locations - {arm}{lamp}{slitWidth} flat-frame\n{subtitle}", fontsize=12)
 
         if self.sofName:
-            filename = self.sofName + f"_ORDER_LOCATIONS{self.tag}.pdf"
+            filename = self.sofName + f"_ORD_LOC{self.tag}.pdf"
         else:
             filename = filenamer(
                 log=self.log,

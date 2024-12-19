@@ -382,7 +382,7 @@ class _base_detect(object):
         if (False and (self.binx > 1 or self.biny > 1)) or (isinstance(self.products, bool) and self.products == False):
             outDir = self.settings["workspace-root-dir"] + "/tmp"
         else:
-            outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}"
+            outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
             outDir = outDir.replace("//", "/")
         # Recursively create missing directories
         if not os.path.exists(outDir):
@@ -404,12 +404,12 @@ class _base_detect(object):
         #     filename = filename.replace("_QLAMP", "")
 
         if "mflat" in self.recipeName.lower():
-            filename = filename.upper().split("FLAT")[0] + "ORDER_LOCATIONS.fits"
+            filename = filename.upper().split("FLAT")[0] + "OLOC.fits"
         elif "stare" in self.recipeName.lower():
-            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE.fits"
+            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE.fits"
         elif "nod" in self.recipeName.lower():
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
-            filename = filename.upper().split(".FITS")[0] + "_OBJECT_TRACE" + self.noddingSequence + ".fits"
+            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + ".fits"
 
         if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
@@ -474,6 +474,7 @@ class detect_continuum(_base_detect):
     - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
     - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
     - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
 
     **Usage:**
 
@@ -507,7 +508,8 @@ class detect_continuum(_base_detect):
             biny=1,
             lampTag=False,
             locationSetIndex=False,
-            orderPixelTable=False
+            orderPixelTable=False,
+            startNightDate=""
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -533,6 +535,7 @@ class detect_continuum(_base_detect):
         self.recipeSettings = copy.deepcopy(recipeSettings["detect-continuum"])
         self.lampTag = lampTag
         self.orderPixelTable = orderPixelTable
+        self.startNightDate = startNightDate
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -561,7 +564,7 @@ class detect_continuum(_base_detect):
         self.lamp = get_calibration_lamp(log=log, frame=traceFrame, kw=self.kw)
 
         home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
         self.qcDir = self.qcDir.replace("//", "/")
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(self.qcDir):
@@ -633,8 +636,10 @@ class detect_continuum(_base_detect):
                 )
                 mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
-                # if "order" in self.recipeName.lower() and mean_res > 1:
-                if mean_res > 2 and not (self.instr == "SOXS" and self.arm == "VIS"):
+                if "order" in self.recipeName.lower() and mean_res > 2:
+                    orderPixelTable = backupOrderPixelTable
+                    raise AttributeError("Failed to continuum trace")
+                elif mean_res > 5 and not (self.inst == "SOXS" and self.arm == "VIS"):
                     # BAD FIT ... FORCE A FAIL
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")

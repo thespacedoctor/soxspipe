@@ -209,7 +209,7 @@ class data_organiser(object):
             ],
             "mflat": [
                 ["REDUCED", "ECHELLE,SLIT", "MASTER_FLAT", "PIXELS", None, None, "soxs-mflat"],
-                ["REDUCED", "ECHELLE,SLIT", "ORDER_TAB", "TABLE", "MFLAT", "ORDER_LOCATIONS", "soxs-mflat"]
+                ["REDUCED", "ECHELLE,SLIT", "ORDER_TAB", "TABLE", "MFLAT", "OLOC", "soxs-mflat"]
             ],
             "spat_sol": [
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_TAB", "TABLE", None, None, "soxs-spatial-solution"],
@@ -528,7 +528,7 @@ class data_organiser(object):
             instrument.remove("--")
 
         if len(instrument) == 2 and "SHOOT" in instrument and "XSHOOTER" in instrument:
-            instrument = ["XSHOOTER"]
+            instrument = ["XSH"]
 
         self.instrument = None
         if len(instrument) > 1:
@@ -1140,7 +1140,7 @@ class data_organiser(object):
         if True and ("PINHOLE" in series["eso dpr tech"].upper() or (series["instrume"] == "SOXS" and "FLAT" in series["eso dpr type"].upper())):
             if series["lamp"] != "--":
                 matchDict['lamp'] = series["lamp"]
-                sofName.append(series["lamp"])
+                # sofName.append(series["lamp"])
 
         if series["instrume"] == "SOXS":
             sofName.append(series["slit"])
@@ -1262,7 +1262,9 @@ class data_organiser(object):
                 mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
             else:
                 mask = (filteredFrames['eso dpr tech'].isin(["NONSENSE"]))
-            firstDate = filteredFrames.loc[~mask]['date-obs'].values[0].replace("-", ".").replace(":", ".")
+
+            firstDate = filteredFrames.loc[~mask]['date-obs'].values[0].split(".")[0]
+            firstDate = firstDate.replace("-", "").replace(":", "")
             sofName.insert(0, firstDate)
 
         # NEED SOME FINAL FILTERING ON UVB FLATS
@@ -1312,11 +1314,21 @@ class data_organiser(object):
         #         else:
         #             return series
 
-        if seriesRecipe in ("stare", "nod"):
-            object = filteredFrames['object'].values[0].replace(" ", "_")
-            sofName.append(object)
+        if seriesRecipe in ("stare", "nod", "offset"):
+            objectt = filteredFrames['object'].values[0].replace(" ", "_")[:8]
+            sofName.append(objectt)
 
-        series['sof'] = ("_").join(sofName).replace("-", "").replace(",", "_").upper() + ".sof"
+        # COMBINE AND SHORTEN SOF NAME
+        sofName = ("_").join(sofName).replace("-", "").replace(",", "_").upper() + ".sof"
+        sofName = sofName.replace("XSHOOTER", "XSH")
+        sofName = sofName.replace("FAST", "F")
+        sofName = sofName.replace("SLOW", "S")
+        sofName = sofName.replace("TELLURIC", "TELL")
+        sofName = sofName.replace("ORDER_LOCATIONS", "OLOC")
+        sofName = sofName.replace("DISP_SOL", "DSOL")
+        sofName = sofName.replace("SPAT_SOL", "SSOL")
+
+        series['sof'] = sofName
         series["recipe"] = seriesRecipe
         series["recipe_order"] = self.recipeOrder.index(seriesRecipe) + 1
 
@@ -1541,7 +1553,7 @@ class data_organiser(object):
                 if i[4] and i[5]:
                     products["file"] = products["file"].split(i[4])[0] + i[5] + ".fits"
                     products["file"] = products["file"].replace(".fits.fits", ".fits")
-                products["filepath"] = "./product/" + i[6] + "/" + products["file"]
+                products["filepath"] = f"./reduced/{products['night start date']}/" + i[6] + "/" + products["file"]
                 myDict = {k: [v] for k, v in products.items()}
                 products = pd.DataFrame(myDict)
 
@@ -1741,7 +1753,7 @@ class data_organiser(object):
             arguments, settings, replacedLog, dbConn = su.setup()
 
         # MAKE ASSET PLACEHOLDERS
-        folders = ["sof", "qc", "product"]
+        folders = ["sof", "qc", "reduced"]
         for f in folders:
             if not os.path.exists(self.sessionPath + f"/{f}"):
                 os.makedirs(self.sessionPath + f"/{f}")
@@ -1904,7 +1916,7 @@ class data_organiser(object):
                 os.unlink(filepath)
 
         # SYMLINK FILES AND FOLDERS
-        toLink = ["product", "qc", "soxspipe.yaml", "sof", "soxspipe.log"]
+        toLink = ["reduced", "qc", "soxspipe.yaml", "sof", "soxspipe.log"]
         for l in toLink:
             dest = self.rootDir + f"/{l}"
             src = self.sessionPath + f"/{l}"

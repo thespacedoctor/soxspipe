@@ -374,8 +374,8 @@ class set_of_files(object):
 
             # PREPEND SESSION PATHS
             if self.currentSession:
-                fitsFiles[:] = [f.replace("./product", f"./sessions/{self.currentSession}/product") for f in fitsFiles]
-                supplementaryFilepaths[:] = [f.replace("./product", f"./sessions/{self.currentSession}/product") for f in supplementaryFilepaths]
+                fitsFiles[:] = [f.replace("./reduced", f"./sessions/{self.currentSession}/reduced") for f in fitsFiles]
+                supplementaryFilepaths[:] = [f.replace("./reduced", f"./sessions/{self.currentSession}/reduced") for f in supplementaryFilepaths]
 
             # MAKE SURE FILES EXIST
             allFiles = fitsFiles.extend(supplementaryFilepaths)

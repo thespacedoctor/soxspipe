@@ -317,6 +317,9 @@ class soxs_stare(base_recipe):
         combined_object = self.detrend(
             inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
 
+        # INJECT KEYWORDS INTO HEADER
+        self.update_fits_keywords(frame=combined_object)
+
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
             log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=3, title=False, surfacePlot=False, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=False)
@@ -333,7 +336,8 @@ class soxs_stare(base_recipe):
                 productsTable=self.products,
                 dispMap=dispMap,
                 sofName=self.sofName,
-                recipeName=self.recipeName
+                recipeName=self.recipeName,
+                startNightDate=self.startNightDate
             )
             skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, self.qc, self.products = skymodel.subtract()
 
@@ -425,7 +429,8 @@ class soxs_stare(base_recipe):
             qcTable=self.qc,
             productsTable=self.products,
             dispersionMap=dispMap,
-            sofName=self.sofName
+            sofName=self.sofName,
+            startNightDate=self.startNightDate
         )
 
         self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()

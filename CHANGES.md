@@ -2,6 +2,17 @@
 
 # Release Notes
 
+## v0.11.10 - December 19, 2024
+
+* **ENHANCEMENT:** Raw frames & their categories are reported in the FITS headers of the recipe products.
+* **ENHANCEMENT:** Intermediate calibration products are reported in the recipe product FITS headers alongside their MD5 hash (DATAMD5)
+* **ENHANCEMENT:** Recipe settings and values are reported in the FITS headers of the recipe products.
+* **ENHANCEMENT:** The recipe command is now printed before AND after execution to the terminal and the recipe log file.
+* **REFACTOR:** The length of SOF and product filenames have been compressed so they can be reported within the FITS header character limit.
+* **REFACTOR:** reduced products are now stored in the ESO-compliant nested-folder scheme `/reduced/YYYY-MM-DD/`
+* **REFACTOR:** QCs are also stored in a similar nested-folder scheme `/qc/YYYY-MM-DD/`
+* **FIXED:** All FITS file products pass fitsverify checks
+
 ## v0.11.9 - November 25, 2024
 
 * **REFACTOR:** updating the data-organiser to fix a performance issue.

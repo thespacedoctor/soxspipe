@@ -64,9 +64,10 @@ class base_recipe(object):
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
-            self.productPath = toolkit.predict_product_path(inputFrames, self.recipeName)
+            self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
             if os.path.exists(self.productPath) and not overwrite:
-                print(f"The product of this recipe already exists at '{self.productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                basename = os.path.basename(self.productPath)
+                print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 raise FileExistsError
             self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:
@@ -163,8 +164,8 @@ class base_recipe(object):
             settings=self.settings
         ).get
 
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}/"
-        self.productDir = self.settings["workspace-root-dir"].replace("~", home) + f"/product/{self.recipeName}/"
+        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
+        self.productDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}/"
 
         return None
 
@@ -453,7 +454,7 @@ class base_recipe(object):
             pass
 
         if "filename" in columns:
-            columns.remove("file")
+            # columns.remove("file")
             columns.remove("filename")
             columns = ["filename"] + columns
 
@@ -471,8 +472,13 @@ class base_recipe(object):
                 this.rename_column(c, newC)
             newColumns.append(newC)
 
-        self.log.print(this[newColumns])
+        cleanColumns = newColumns.copy()
+        cleanColumns.remove("file")
+
+        self.log.print(this[cleanColumns])
         self.log.print("\n")
+
+        self.rawFrames = this[newColumns]
 
         # SORT RECIPE AND ARM SETTINGS
         self.recipeSettings = self.get_recipe_settings()
@@ -857,7 +863,7 @@ class base_recipe(object):
                 except:
                     pass
 
-            filedir += f"/product/{self.recipeName}/"
+            filedir += f"/reduced/{self.startNightDate}/{self.recipeName}/"
             filedir = filedir.replace("//", "/")
             # Recursively create missing directories
             if not os.path.exists(filedir):
@@ -870,10 +876,14 @@ class base_recipe(object):
             self.log.print(f"\nSetting {frame.mask.sum()} bad-pixels to a value of 0 while saving '{filename}'.")
             frame.data[frame.mask] = 1
 
+        if "NAXIS" in frame.header and frame.header["NAXIS"] != 0 and "INHERIT" in frame.header:
+            del frame.header["INHERIT"]
+
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
         if product:
+
             HDUList.writeto(filepath, output_verify='fix+warn',
                             overwrite=overwrite, checksum=True)
         else:
@@ -1118,7 +1128,8 @@ class base_recipe(object):
                 orderTable=order_table,
                 settings=self.settings,
                 productsTable=self.products,
-                qcTable=self.qc
+                qcTable=self.qc,
+                startNightDate=self.startNightDate
             )
             backgroundFrame, processedFrame, self.products = background.subtract()
 
@@ -1135,9 +1146,9 @@ class base_recipe(object):
                 home = expanduser("~")
 
                 if self.currentSession:
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.startNightDate}/{self.recipeName}"
                 else:
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}"
                 outDir = outDir.replace("//", "/")
                 # RECURSIVELY CREATE MISSING DIRECTORIES
                 if not os.path.exists(outDir):
@@ -1441,12 +1452,14 @@ class base_recipe(object):
 
     def update_fits_keywords(
             self,
-            frame):
+            frame,
+            rawFrames=False):
         """*update fits keywords to comply with ESO Phase 3 standards*
 
         **Key Arguments:**
 
         - ``frame`` -- the frame to update
+        - ``rawFrames`` -- limit the raw frames to be listed in the fits header to only these frames (list)
 
         **Return:**
 
@@ -1467,6 +1480,9 @@ class base_recipe(object):
         """
         self.log.debug('starting the ``update_fits_keywords`` method')
 
+        import math
+        from astropy.utils.data import compute_hash
+
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
@@ -1483,6 +1499,57 @@ class base_recipe(object):
                 kw("PRO_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
             frame.header[
                 kw("PRO_TECH")] = "IMAGE"
+
+        # SPEC FORMAT TO PANDAS DATAFRAME
+        tableData = self.rawFrames.to_pandas()
+
+        tableData['filename'] = tableData['filename'].str.replace("_pre", "")
+        tableData['tag'] = tableData['TYPE'] + "_" + tableData['ARM']
+
+        iterator = 1
+        for f, t, z in zip(tableData['filename'].values, tableData['tag'].values, tableData[kw("PRO_TYPE")].values):
+            if rawFrames and f not in rawFrames:
+                continue
+            if isinstance(z, float) and math.isnan(z):
+                valueLen = 80 - len(f"ESO PRO REC1 RAW{iterator} NAME" + "HIERARCH  = '")
+                if len(f) > valueLen:
+                    self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
+                frame.header[f"ESO PRO REC1 RAW{iterator} NAME"] = f[:valueLen]
+                frame.header[f"ESO PRO REC1 RAW{iterator} CATG"] = t
+                iterator += 1
+
+        iterator = 1
+
+        for f, c, z, p in zip(tableData['filename'].values, tableData[kw("PRO_CATG")].values, tableData[kw("PRO_TYPE")].values, tableData["file"].values):
+            if not isinstance(z, float) or not math.isnan(z):
+                valueLen = 80 - len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = '")
+                # if len(f) > valueLen:
+                #     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
+                frame.header[f"ESO PRO REC1 CAL{iterator} NAME"] = f[:valueLen]
+                frame.header[f"ESO PRO REC1 CAL{iterator} CATG"] = c
+                frame.header[f"ESO PRO REC1 CAL{iterator} DATAMD5"] = compute_hash(p)
+                iterator += 1
+
+        iterator = 1
+        recipeSettings = self.get_recipe_settings()
+        for k, v in recipeSettings.items():
+            if k.lower() in ["uvb", "vis", "nir"]:
+                continue
+            if not isinstance(v, dict):
+                if isinstance(v, list):
+                    v = ", ".join(map(str, v)).strip()
+
+                frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k[:40]
+                frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v
+                iterator += 1
+            else:
+                for k2, v2 in v.items():
+                    frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k2[:40]
+                    frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v2
+                    iterator += 1
+
+        # from tabulate import tabulate
+        # print(tabulate(tableData, headers='keys', tablefmt='psql'))
 
         self.log.debug('completed the ``update_fits_keywords`` method')
         return None

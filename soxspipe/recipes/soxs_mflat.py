@@ -226,17 +226,34 @@ class soxs_mflat(base_recipe):
         arm = self.arm
         kw = self.kw
 
+        if False:
+            # HOW MUCH MEMORY IS BEING USED?
+            import psutil
+            process = psutil.Process()
+            import humanize
+            print("HERE")
+            print(humanize.naturalsize(process.memory_info().rss))
+
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home)
 
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats, dcalibratedFlats, qcalibratedFlats = self.calibrate_frame_set()
 
+        if False:
+            # HOW MUCH MEMORY IS BEING USED?
+            import psutil
+            process = psutil.Process()
+            import humanize
+            print("HERE")
+            print(humanize.naturalsize(process.memory_info().rss))
+
         allCalibratedFlats = calibratedFlats + dcalibratedFlats + qcalibratedFlats
 
         calibratedFlatSet = [calibratedFlats, dcalibratedFlats, qcalibratedFlats]
         flatKeywords = ["LAMP,ORDERDEF", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']
         lampTag = ["", "_DLAMP", "_QLAMP"]
+        filelists = [self.calibratedFlatFiles, self.dFlatFiles, self.qFlatFiles]
         normalisedFlatSet = []
         self.combinedNormalisedFlatSet = []
         self.masterFlatSet = []
@@ -247,7 +264,15 @@ class soxs_mflat(base_recipe):
         productTable = self.products
         qcTable = self.qc
 
-        for cf, fk, tag in zip(calibratedFlatSet, flatKeywords, lampTag):
+        if False:
+            # HOW MUCH MEMORY IS BEING USED?
+            import psutil
+            process = psutil.Process()
+            import humanize
+            print("HERE")
+            print(humanize.naturalsize(process.memory_info().rss))
+
+        for cf, fk, tag, files in zip(calibratedFlatSet, flatKeywords, lampTag, filelists):
 
             if len(cf) == 0:
                 self.orderTableSet.append(None)
@@ -298,6 +323,8 @@ class soxs_mflat(base_recipe):
 
             self.combinedNormalisedFlatSet.append(combined_normalised_flat.copy())
 
+            self.update_fits_keywords(frame=combined_normalised_flat, rawFrames=files)
+
             # DETECT THE ORDER EDGES AND UPDATE THE ORDER LOCATIONS TABLE
             edges = detect_order_edges(
                 log=self.log,
@@ -311,7 +338,8 @@ class soxs_mflat(base_recipe):
                 sofName=self.sofName,
                 binx=self.binx,
                 biny=self.biny,
-                lampTag=tag
+                lampTag=tag,
+                startNightDate=self.startNightDate
             )
             self.products, qcTable, orderDetectionCounts = edges.get()
 
@@ -350,7 +378,8 @@ class soxs_mflat(base_recipe):
                     settings=self.settings,
                     productsTable=self.products,
                     qcTable=self.qc,
-                    lamp=tag
+                    lamp=tag,
+                    startNightDate=self.startNightDate
                 )
                 backgroundFrame, combined_normalised_flat, self.products = background.subtract()
 
@@ -366,9 +395,9 @@ class soxs_mflat(base_recipe):
                     home = expanduser("~")
 
                     if self.currentSession:
-                        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.recipeName}"
+                        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.startNightDate}/{self.recipeName}"
                     else:
-                        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.recipeName}"
+                        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}"
                     outDir = outDir.replace("//", "/")
                     # RECURSIVELY CREATE MISSING DIRECTORIES
                     if not os.path.exists(outDir):
@@ -580,6 +609,15 @@ class soxs_mflat(base_recipe):
             raise FileNotFoundError(
                 "The mflat recipe needs flat-frames as input, none found")
 
+        self.calibratedFlatFiles = flatCollection.files
+
+        self.calibratedFlatFiles = []
+        self.calibratedFlatFiles[:] = [os.path.basename(l).replace("_pre", "") for l in flatCollection.files]
+        self.dFlatFiles = []
+        self.dFlatFiles[:] = [os.path.basename(l).replace("_pre", "") for l in dflatCollection.files]
+        self.qFlatFiles = []
+        self.qFlatFiles[:] = [os.path.basename(l).replace("_pre", "") for l in qflatCollection.files]
+
         # LIST OF CCDDATA OBJECTS
         flats = [c for c in flatCollection.ccds(ccd_kwargs={
                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
@@ -664,6 +702,10 @@ class soxs_mflat(base_recipe):
         from astropy.stats import sigma_clip
         kw = self.kw
 
+        import psutil
+        process = psutil.Process()
+        import humanize
+
         try:
             self.binx = inputFlats[0].header[kw("WIN_BINX")]
             self.biny = inputFlats[0].header[kw("WIN_BINY")]
@@ -697,7 +739,8 @@ class soxs_mflat(base_recipe):
             ORDEXP10list = []
             ORDEXP50list = []
             ORDEXP90list = []
-            for frame in inputFlats:
+
+            for i, frame in enumerate(inputFlats):
                 maskedFrame = ma.array(frame.data, mask=mask)
                 maskedData = np.ma.filled(maskedFrame, np.nan)
                 exposureLevel = np.nanpercentile(maskedData, 97)
@@ -709,6 +752,7 @@ class soxs_mflat(base_recipe):
                 normalisedFrame = frame.divide(exposureLevel)
                 normalisedFrame.header = frame.header
                 normalisedFrames.append(normalisedFrame)
+                # print(humanize.naturalsize(process.memory_info().rss))
             ORDEXP10 = np.median(ORDEXP10list)
             ORDEXP50 = np.median(ORDEXP50list)
             ORDEXP90 = np.median(ORDEXP90list)
@@ -984,7 +1028,8 @@ class soxs_mflat(base_recipe):
             tag="",
             sofName=self.sofName,
             binx=self.binx,
-            biny=self.biny
+            biny=self.biny,
+            startNightDate=self.startNightDate
         )
         self.products, self.qc, orderDetectionCounts = edges.get()
         # FILTER DATA FRAME
