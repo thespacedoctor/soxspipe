@@ -2,6 +2,8 @@
 
 # Release Notes
 
+## v0.11.10 - December 19, 2024
+
 * **ENHANCEMENT:** Raw frames & their categories are reported in the FITS headers of the recipe products.
 * **ENHANCEMENT:** Intermediate calibration products are reported in the recipe product FITS headers alongside their MD5 hash (DATAMD5)
 * **ENHANCEMENT:** Recipe settings and values are reported in the FITS headers of the recipe products.
