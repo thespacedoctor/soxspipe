@@ -25,7 +25,10 @@ from builtins import object
 import sys
 import os
 from datetime import datetime
-
+from astropy.modeling import models, fitting
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
 os.environ['TERM'] = 'vt100'
 
 
@@ -76,7 +79,8 @@ class create_dispersion_map(object):
             sofName=False,
             create2DMap=True,
             lineDetectionTable=False,
-            startNightDate=""
+            startNightDate="",
+            arcFrame=None
     ):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
@@ -95,6 +99,7 @@ class create_dispersion_map(object):
         self.recipeSettings = copy.deepcopy(recipeSettings)
         self.lineDetectionTable = lineDetectionTable
         self.startNightDate = startNightDate
+        self.arcFrame = arcFrame
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -421,7 +426,7 @@ class create_dispersion_map(object):
             missingLinesFN = self.sofName + "_MISSED_LINES.fits"
 
         # WRITE CLIPPED LINE LIST TO FILE
-        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_px', 'R', 'pixelScaleNm', 'detector_x_shifted', 'detector_y_shifted', ]
+        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_px', 'R', 'pixelScaleNm', 'detector_x_shifted', 'detector_y_shifted', 'R_arc','FWHM_arc']
         if "ion" in goodLinesTable.columns:
             keepColumns.insert(0, 'ion')
         clippedLinesTable['sigma_clipped'] = True
@@ -1186,6 +1191,35 @@ class create_dispersion_map(object):
         combined_res_std = np.std(orderPixelTable["residuals_xy"])
         combined_res_median = np.median(orderPixelTable["residuals_xy"])
 
+        #orderPixelTable['tilt'] = 0.0
+        #orderPixelTable['distance_to_middle'] = 0.0
+
+
+        #COMPUTING THE TILT ON THE SLIT IMAGE 
+
+
+        #for index, row in orderPixelTable.iterrows():
+            #GETTING THE OBSERVED_X AND OBSERVED_Y POSITION IN THE MIDDLE OF THE SLIT
+        #    if row['slit_index'] == 4:
+        #        orderPixelTable.at[index,'tilt'] = 0.0
+        #        orderPixelTable.at[index,'distance_to_middle'] = 0.0
+        #    else:
+        #        current_wave = row['wavelength']
+        #        current_order = row['order']
+        #        middle_row = orderPixelTable.query('wavelength == @current_wave and order == @current_order and slit_index == 4 ')
+        #        middle_row = middle_row.iloc[0]#
+
+        #        current_tilt = np.arctan((row['observed_y'] - middle_row['observed_y'])/(row['observed_x'] - middle_row['observed_x']))
+        #        orderPixelTable.at[index,'tilt'] = np.pi/2 + float(current_tilt)
+        #        orderPixelTable.at[index,'distance_to_middle'] = np.sqrt(float( (row['observed_x'] - middle_row['observed_x'])**2 + (row['observed_y'] - middle_row['observed_y'])**2))
+
+
+        if self.arcFrame:
+            orderPixelTable[["R_arc","FWHM_arc"]] = orderPixelTable.apply(self._calculate_resolution_on_slit, axis=1)
+
+        else:
+            orderPixelTable["R_arc"] = 0.0
+            orderPixelTable["FWHM_arc"] = 0.0
         if writeQCs:
             absx = abs(orderPixelTable["residuals_x"])
             absy = abs(orderPixelTable["residuals_y"])
@@ -1282,6 +1316,55 @@ class create_dispersion_map(object):
 
         self.log.debug('completed the ``calculate_residuals`` method')
         return combined_res_mean, combined_res_std, combined_res_median, orderPixelTable
+
+    def _calculate_resolution_on_slit(
+            self,
+            row
+            ):
+            if self.arm == 'NIR':
+
+                detector_row =self.arcFrame.data[int(row['detector_y']) ,  int(row['detector_x'])-10:int(row['detector_x'])+10]
+
+                detector_row = detector_row - np.median(detector_row)
+            else:
+                detector_row =self.arcFrame.data[int(row['detector_y']) - 10:int(row['detector_y']) + 10,  int(row['detector_x'])]
+                detector_row = detector_row - np.median(detector_row)
+
+            #detector_row =self.arcFrame.data[int(row['detector_y']) - 10:int(row['detector_y']) + 10,  int(row['detector_x'])]
+            
+            
+            
+             #FITTING THE LINE WITH A GAUSSIAN PROFILE
+            g_init = models.Gaussian1D(amplitude=1000., mean=10, stddev=1.)
+
+            fit_g = fitting.LevMarLSQFitter()
+                
+            try:
+                g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
+                if g.stddev.value < 1.0:
+                    #1.0 SLIT CANNOT BE LESS THAN 1.0 px
+                    raise Exception
+                import random
+
+                random_number = random.randint(1, 5)
+                if False and random_number == 2:
+                    plt.plot(np.arange(0, len(detector_row)), detector_row)
+                    plt.plot(np.arange(0, len(detector_row)), g(np.arange(0, len(detector_row))))
+                    plt.show()
+            except Exception as e:
+                return pd.Series([None, None])
+
+
+            #stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
+            stddev_corrected =float(g.stddev.value)
+            
+            # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS
+            if stddev_corrected < 1.0 or stddev_corrected > 6.0 :
+                return pd.Series([None, None])
+
+            resolution_line = row['wavelength']/(row['delta_wavelength']*stddev_corrected*2.35)
+
+            return pd.Series([resolution_line, stddev_corrected*2.35])
 
     def fit_polynomials(
             self,
@@ -2217,11 +2300,19 @@ class create_dispersion_map(object):
         else:
             fig.suptitle(f"residuals of global dispersion solution fitting - {arm} single pinhole\n{subtitle}", fontsize=10, y=0.99)
         orderPixelTable_groups = orderPixelTable.groupby(['order'])
+        #print(orderPixelTable)
         for name, group in orderPixelTable_groups:
-            resAx.scatter(group["wavelength"], group["R"], alpha=0.1)
+            if self.arcFrame:
+                resAx.scatter(group["wavelength"], group["R_arc"], alpha=0.1)
+                mean_resol = group["R_arc"].mean()
+                std_resol = group["R_arc"].std()
+                resAx.set_ylabel("Resolution (from 1.0\" slit)", fontsize=10)
+            else:
+                resAx.scatter(group["wavelength"], group["R"], alpha=0.1)
             # CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
-            mean_resol = group["R"].mean()
-            std_resol = group["R"].std()
+                mean_resol = group["R"].mean()
+                std_resol = group["R"].std()
+                resAx.set_ylabel("Resolution (from 0.5\" pinhole)", fontsize=10)
 
             mean_wavelength = group["wavelength"].mean()
             # ADD THIS POINT TO THE PLOT USING STD_RES AS ERROR BAR
@@ -2232,7 +2323,7 @@ class create_dispersion_map(object):
 
         # resAx.scatter(orderPixelTable["wavelength"], orderPixelTable["R"], alpha=0.1)
         resAx.set_xlabel("Wavelength (nm)", fontsize=10)
-        resAx.set_ylabel("Resolution (from 0.5\" pinholes)", fontsize=10)
+        
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
