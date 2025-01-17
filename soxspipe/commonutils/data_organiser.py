@@ -1473,7 +1473,11 @@ class data_organiser(object):
 
         # SLIT ARC-LAMP FRAMES
         if series["recipe"] in ["spat_sol"]:
-            mask = ((rawFrames["night start mjd"] == series["night start mjd"]) & (rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])) & (rawFrames['slit'].isin(["SLIT1.0"])))
+            if True:
+                mask = ((rawFrames["night start mjd"] == series["night start mjd"]) & (rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])) & (rawFrames['slit'].isin(["SLIT1.0"])))
+            else:
+                # THIS IS FOR TESTING XSHOOTER RESOLUTION MEASUREMENTS ONLY
+                mask = ((rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])))
             df = rawFrames.loc[mask]
             if len(df.index):
                 df['obs-delta'] = df["mjd-obs"] - series["mjd-obs"]

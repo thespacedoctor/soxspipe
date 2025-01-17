@@ -426,7 +426,7 @@ class create_dispersion_map(object):
             missingLinesFN = self.sofName + "_MISSED_LINES.fits"
 
         # WRITE CLIPPED LINE LIST TO FILE
-        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_px', 'R', 'pixelScaleNm', 'detector_x_shifted', 'detector_y_shifted', 'R_arc','FWHM_arc']
+        keepColumns = ['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y', 'observed_x', 'observed_y', 'x_diff', 'y_diff', 'fit_x', 'fit_y', 'residuals_x', 'residuals_y', 'residuals_xy', 'sigma_clipped', "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", 'fwhm_pin_px', 'R_pin', 'pixelScaleNm', 'detector_x_shifted', 'detector_y_shifted', 'R_slit', 'fwhm_slit_px']
         if "ion" in goodLinesTable.columns:
             keepColumns.insert(0, 'ion')
         clippedLinesTable['sigma_clipped'] = True
@@ -907,7 +907,7 @@ class create_dispersion_map(object):
         predictedLine['observed_x'] = observed_x
         predictedLine['observed_y'] = observed_y
         if iraf:
-            predictedLine['fwhm_px'] = fwhm
+            predictedLine['fwhm_pin_px'] = fwhm
 
         self.log.debug('completed the ``detect_pinhole_arc_line`` method')
         return predictedLine
@@ -1173,8 +1173,8 @@ class create_dispersion_map(object):
             orderPixelTable["fit_y_low"] = orderPixelTableLow["fit_y"]
 
             orderPixelTable["pixelScaleNm"] = nmRange / np.power(np.power(orderPixelTable["fit_x_high"] - orderPixelTable["fit_x_low"], 2) + np.power(orderPixelTable["fit_y_high"] - orderPixelTable["fit_y_low"], 2), 0.5)
-            orderPixelTable["delta_wavelength"] = orderPixelTable["pixelScaleNm"] * orderPixelTable["fwhm_px"]
-            orderPixelTable["R"] = orderPixelTable["wavelength"] / orderPixelTable["delta_wavelength"]
+            orderPixelTable["delta_wavelength"] = orderPixelTable["pixelScaleNm"] * orderPixelTable["fwhm_pin_px"]
+            orderPixelTable["R_pin"] = orderPixelTable["wavelength"] / orderPixelTable["delta_wavelength"]
 
             # REMOVE COLUMN FROM DATA FRAME
             orderPixelTable.drop(columns=['fit_x_high', 'fit_y_high', 'fit_x_low', 'fit_y_low'], inplace=True)
@@ -1194,12 +1194,10 @@ class create_dispersion_map(object):
         #orderPixelTable['tilt'] = 0.0
         #orderPixelTable['distance_to_middle'] = 0.0
 
+        # COMPUTING THE TILT ON THE SLIT IMAGE
 
-        #COMPUTING THE TILT ON THE SLIT IMAGE 
-
-
-        #for index, row in orderPixelTable.iterrows():
-            #GETTING THE OBSERVED_X AND OBSERVED_Y POSITION IN THE MIDDLE OF THE SLIT
+        # for index, row in orderPixelTable.iterrows():
+        # GETTING THE OBSERVED_X AND OBSERVED_Y POSITION IN THE MIDDLE OF THE SLIT
         #    if row['slit_index'] == 4:
         #        orderPixelTable.at[index,'tilt'] = 0.0
         #        orderPixelTable.at[index,'distance_to_middle'] = 0.0
@@ -1213,13 +1211,12 @@ class create_dispersion_map(object):
         #        orderPixelTable.at[index,'tilt'] = np.pi/2 + float(current_tilt)
         #        orderPixelTable.at[index,'distance_to_middle'] = np.sqrt(float( (row['observed_x'] - middle_row['observed_x'])**2 + (row['observed_y'] - middle_row['observed_y'])**2))
 
-
         if self.arcFrame:
-            orderPixelTable[["R_arc","FWHM_arc"]] = orderPixelTable.apply(self._calculate_resolution_on_slit, axis=1)
+            orderPixelTable[["R_slit", "fwhm_slit_px"]] = orderPixelTable.apply(self._calculate_resolution_on_slit, axis=1)
 
         else:
-            orderPixelTable["R_arc"] = 0.0
-            orderPixelTable["FWHM_arc"] = 0.0
+            orderPixelTable["R_slit"] = 0.0
+            orderPixelTable["fwhm_slit_px"] = 0.0
         if writeQCs:
             absx = abs(orderPixelTable["residuals_x"])
             absy = abs(orderPixelTable["residuals_y"])
@@ -1320,51 +1317,55 @@ class create_dispersion_map(object):
     def _calculate_resolution_on_slit(
             self,
             row
-            ):
-            if self.arm == 'NIR':
+    ):
+        import math
+        stdToFwhm = 2 * (2 * math.log(2))**0.5
 
-                detector_row =self.arcFrame.data[int(row['detector_y']) ,  int(row['detector_x'])-10:int(row['detector_x'])+10]
+        if self.detectorParams["dispersion-axis"] == "y":
+            detector_row = self.arcFrame.data[int(row['observed_y']), int(row['observed_x']) - 10:int(row['observed_x']) + 10]
+            detector_row = detector_row - np.median(detector_row)
+        else:
+            detector_row = self.arcFrame.data[int(row['observed_y']) - 10:int(row['observed_y']) + 10, int(row['observed_x'])]
+            detector_row = detector_row - np.median(detector_row)
 
-                detector_row = detector_row - np.median(detector_row)
-            else:
-                detector_row =self.arcFrame.data[int(row['detector_y']) - 10:int(row['detector_y']) + 10,  int(row['detector_x'])]
-                detector_row = detector_row - np.median(detector_row)
+        # FITTING THE LINE WITH A GAUSSIAN PROFILE
+        g_init = models.Gaussian1D(amplitude=1000., mean=10, stddev=1.)
+        fit_g = fitting.LevMarLSQFitter()
 
-            #detector_row =self.arcFrame.data[int(row['detector_y']) - 10:int(row['detector_y']) + 10,  int(row['detector_x'])]
-            
-            
-            
-             #FITTING THE LINE WITH A GAUSSIAN PROFILE
-            g_init = models.Gaussian1D(amplitude=1000., mean=10, stddev=1.)
-
-            fit_g = fitting.LevMarLSQFitter()
-                
-            try:
-                g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
-                if g.stddev.value < 1.0:
-                    #1.0 SLIT CANNOT BE LESS THAN 1.0 px
-                    raise Exception
-                import random
-
-                random_number = random.randint(1, 5)
-                if False and random_number == 2:
-                    plt.plot(np.arange(0, len(detector_row)), detector_row)
-                    plt.plot(np.arange(0, len(detector_row)), g(np.arange(0, len(detector_row))))
-                    plt.show()
-            except Exception as e:
-                return pd.Series([None, None])
-
+        try:
+            g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
+            if g.stddev.value < 1.0:
+                # 1.0 SLIT CANNOT BE LESS THAN 1.0 px
+                raise Exception
 
             #stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
-            stddev_corrected =float(g.stddev.value)
-            
-            # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS
-            if stddev_corrected < 1.0 or stddev_corrected > 6.0 :
-                return pd.Series([None, None])
+            stddev_corrected = float(g.stddev.value)
+            fwhm = stddev_corrected * stdToFwhm
 
-            resolution_line = row['wavelength']/(row['delta_wavelength']*stddev_corrected*2.35)
+            import random
 
-            return pd.Series([resolution_line, stddev_corrected*2.35])
+            random_number = random.randint(1, 5)
+            if False and random_number == 2:
+                gaussx = np.arange(0, len(detector_row), 0.05)
+                plt.plot(np.arange(0, len(detector_row)), detector_row)
+                stddev_corrected * stdToFwhm
+                plt.plot(gaussx, g(gaussx), label=f'STD = {g.stddev.value:0.2f}, FWHM = {fwhm:0.2f}')
+                plt.legend()
+                plt.show()
+        except Exception as e:
+            return pd.Series([None, None])
+
+        #stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
+        stddev_corrected = float(g.stddev.value)
+
+        # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS
+        if stddev_corrected < 1.0 or stddev_corrected > 6.0:
+            return pd.Series([None, None])
+
+        delta_wavelength = row["pixelScaleNm"] * fwhm
+        resolution_line = row["wavelength"] / delta_wavelength
+
+        return pd.Series([resolution_line, fwhm])
 
     def fit_polynomials(
             self,
@@ -1569,7 +1570,7 @@ class create_dispersion_map(object):
                         orderPixelTable["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY * 3, maxiters=1, cenfunc='median', stdfunc='mad_std')
                     orderPixelTable["sigma_clipped_y"] = masked_residuals.mask
                     masked_residuals = sigma_clip(
-                        orderPixelTable["R"], sigma_lower=3000, sigma_upper=10, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                        orderPixelTable["R_pin"], sigma_lower=3000, sigma_upper=10, maxiters=1, cenfunc='median', stdfunc='mad_std')
                     orderPixelTable["sigma_clipped_R"] = masked_residuals.mask
                     orderPixelTable.loc[((orderPixelTable["sigma_clipped_y"] == True) | (orderPixelTable["sigma_clipped_x"] == True) | (orderPixelTable["sigma_clipped_R"] == True)), "sigma_clipped"] = True
 
@@ -2126,6 +2127,7 @@ class create_dispersion_map(object):
         import matplotlib.pyplot as plt
         import pandas as pd
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
+        from astropy.stats import sigma_clipped_stats
 
         arm = self.arm
         kw = self.kw
@@ -2197,7 +2199,8 @@ class create_dispersion_map(object):
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
-            resAx = fig.add_subplot(gs[6:8, :])
+            fwhmAx = fig.add_subplot(gs[6:7, :])
+            resAx = fig.add_subplot(gs[7:8, :])
             settingsAx = fig.add_subplot(gs[8:, 2:])
             qcAx = fig.add_subplot(gs[8:, 0:2])
         else:
@@ -2208,7 +2211,8 @@ class create_dispersion_map(object):
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
-            resAx = fig.add_subplot(gs[6:8, :])
+            fwhmAx = fig.add_subplot(gs[6:7, :])
+            resAx = fig.add_subplot(gs[7:8, :])
             settingsAx = fig.add_subplot(gs[8:, 2:])
             qcAx = fig.add_subplot(gs[8:, 0:2])
 
@@ -2300,30 +2304,71 @@ class create_dispersion_map(object):
         else:
             fig.suptitle(f"residuals of global dispersion solution fitting - {arm} single pinhole\n{subtitle}", fontsize=10, y=0.99)
         orderPixelTable_groups = orderPixelTable.groupby(['order'])
-        #print(orderPixelTable)
+
+        if self.arcFrame:
+            mean_fwhm, median, std_fwhm = sigma_clipped_stats(orderPixelTable["fwhm_slit_px"].values, sigma=3.0, stdfunc="std", cenfunc="mean", maxiters=3)
+            mean_r, median, std_r = sigma_clipped_stats(orderPixelTable["R_slit"].values, sigma=3.0, stdfunc="std", cenfunc="mean", maxiters=3)
+        else:
+            mean_fwhm, median, std_fwhm = sigma_clipped_stats(orderPixelTable["fwhm_pin_px"].values, sigma=3.0, stdfunc="std", cenfunc="mean", maxiters=3)
+            mean_r, median, std_r = sigma_clipped_stats(orderPixelTable["R_pin"].values, sigma=3.0, stdfunc="std", cenfunc="mean", maxiters=3)
+
+        lowerFwhm = mean_fwhm - 3 * std_fwhm
+        upperFwhm = mean_fwhm + 3 * std_fwhm
+        lowerR = mean_r - 3 * std_r
+        upperR = mean_r + 3 * std_r
+
+        # print(orderPixelTable)
+
         for name, group in orderPixelTable_groups:
+
             if self.arcFrame:
-                resAx.scatter(group["wavelength"], group["R_arc"], alpha=0.1)
-                mean_resol = group["R_arc"].mean()
-                std_resol = group["R_arc"].std()
-                resAx.set_ylabel("Resolution (from 1.0\" slit)", fontsize=10)
+
+                slitWidth = self.arcFrame.header[kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
+
+                fwhmAx.set_title(f"Line FWHM measured via {slitWidth}\" slit arc-lamp frame", fontsize=9)
+                fwhmAx.scatter(group["wavelength"], group["fwhm_slit_px"], alpha=0.1)
+
+                mean_fwhm, median, std_fwhm = sigma_clipped_stats(group["fwhm_slit_px"].values, sigma=3.0, stdfunc="std", cenfunc="mean", maxiters=3)
+
+                # mean_fwhm = group["fwhm_slit_px"].mean()
+                # std_fwhm = group["fwhm_slit_px"].std()
+                fwhmAx.set_ylabel("FWHM (px)", fontsize=9)
+                mean_wavelength = group["wavelength"].mean()
+                fwhmAx.errorbar(mean_wavelength, mean_fwhm, yerr=std_fwhm, fmt='o', color='black', alpha=0.6)
+                fwhmAx.tick_params(axis='both', which='major', labelsize=8)
+
+                resAx.set_title(f"Resolution measured via {slitWidth}\" slit arc-lamp frame", fontsize=9)
+                resAx.scatter(group["wavelength"], group["R_slit"], alpha=0.1)
+                mean_resol, median, std_resol = sigma_clipped_stats(group["R_slit"].values, sigma=3.0, stdfunc="std", cenfunc="mean", maxiters=3)
+                # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
+                resAx.errorbar(mean_wavelength, mean_resol, yerr=std_resol, fmt='o', color='black', alpha=0.6)
+
             else:
-                resAx.scatter(group["wavelength"], group["R"], alpha=0.1)
-            # CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
-                mean_resol = group["R"].mean()
-                std_resol = group["R"].std()
-                resAx.set_ylabel("Resolution (from 0.5\" pinhole)", fontsize=10)
+                fwhmAx.set_title("Line FWHM measured via 0.5\" pinhole  arc-lamp frame", fontsize=9)
+                fwhmAx.scatter(group["wavelength"], group["fwhm_pin_px"], alpha=0.1)
+                mean_fwhm = group["fwhm_pin_px"].mean()
+                std_fwhm = group["fwhm_pin_px"].std()
+                fwhmAx.set_ylabel("FWHM (px)", fontsize=9)
+                mean_wavelength = group["wavelength"].mean()
+                fwhmAx.errorbar(mean_wavelength, mean_fwhm, yerr=std_fwhm, fmt='o', color='black', alpha=0.6)
+                fwhmAx.tick_params(axis='both', which='major', labelsize=8)
 
-            mean_wavelength = group["wavelength"].mean()
-            # ADD THIS POINT TO THE PLOT USING STD_RES AS ERROR BAR
-            # make marker big
+                resAx.set_title("Resolution as measured via 0.5\" pinhole arc-lamp frame", fontsize=9)
+                resAx.scatter(group["wavelength"], group["R_pin"], alpha=0.1)
+                # CALCULATE THE MEAN AND STD DEV OF THE GROUP AND ADD TO THE PLOT
+                mean_resol = group["R_pin"].mean()
+                std_resol = group["R_pin"].std()
+                # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
+                resAx.errorbar(mean_wavelength, mean_resol, yerr=std_resol, fmt='o', color='black', alpha=0.6)
 
-            # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
-            resAx.errorbar(mean_wavelength, mean_resol, yerr=std_resol, fmt='o', color='black', alpha=1.0)
+        resAx.set_ylabel("R", fontsize=9)
+        resAx.tick_params(axis='both', which='major', labelsize=8)
 
         # resAx.scatter(orderPixelTable["wavelength"], orderPixelTable["R"], alpha=0.1)
-        resAx.set_xlabel("Wavelength (nm)", fontsize=10)
-        
+        resAx.set_xlabel("Wavelength (nm)", fontsize=9)
+
+        fwhmAx.set_ylim([lowerFwhm, upperFwhm])
+        resAx.set_ylim([lowerR, upperR])
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -2491,13 +2536,13 @@ class create_dispersion_map(object):
         lineGroups = orderPixelTable.loc[(orderPixelTable["dropped"] == False)][columnsNoStrings].groupby(['wavelength', 'order']).mean()
         lineGroups = lineGroups.reset_index()
         masked_residuals = sigma_clip(
-            lineGroups["fwhm_px"], sigma_lower=2.5, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
+            lineGroups["fwhm_pin_px"], sigma_lower=2.5, sigma_upper=5, maxiters=3, cenfunc='median', stdfunc='mad_std')
         lineGroups["sigma_clipped_fwhm"] = masked_residuals.mask
         lineGroups["sigma_clipped"] = masked_residuals.mask
 
         toprow.scatter(
             x=lineGroups["wavelength"],  # numpy array of x-points
-            y=lineGroups["fwhm_px"],  # numpy array of y-points
+            y=lineGroups["fwhm_pin_px"],  # numpy array of y-points
             s=1,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="black",    # color or sequence of color, optional, default
             marker='x',
@@ -2506,7 +2551,7 @@ class create_dispersion_map(object):
 
         toprow.scatter(
             x=lineGroups[(lineGroups["sigma_clipped_fwhm"] == True)]["wavelength"],  # numpy array of x-points
-            y=lineGroups[(lineGroups["sigma_clipped_fwhm"] == True)]["fwhm_px"],  # numpy array of y-points
+            y=lineGroups[(lineGroups["sigma_clipped_fwhm"] == True)]["fwhm_pin_px"],  # numpy array of y-points
             s=5,    # 1 number or array of areas for each datapoint (i.e. point size)
             c="red",    # color or sequence of color, optional, default
             marker='x',
