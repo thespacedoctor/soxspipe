@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} subtract_background(log, frame, orderTable, sofName=False, recipeName=False, settings=False, qcTable=False, productsTable=False, lamp='')
+`````{py:class} subtract_background(log, frame, orderTable, sofName=False, recipeName=False, settings=False, qcTable=False, productsTable=False, lamp='', startNightDate='')
 :canonical: soxspipe.commonutils.subtract_background.subtract_background
 
 Bases: {py:obj}`object`

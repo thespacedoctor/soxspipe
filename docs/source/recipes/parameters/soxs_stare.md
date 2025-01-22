@@ -1,5 +1,6 @@
 :::{table} The `soxs_stare` recipe parameters.
 :name: soxs_stare_parameters
+:widths: 25, 30, 10, 15, 20
 
 
 | Parameter                                         | Description                                                                                                 | Type  | Entry Point   | Related Util                                       |

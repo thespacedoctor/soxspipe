@@ -46,14 +46,14 @@
 ```
 ````
 
-````{py:function} extract_single_order(crossDispersionSlices, log, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB)
+````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB)
 :canonical: soxspipe.commonutils.horne_extraction.extract_single_order
 
 ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.extract_single_order
 ```
 ````
 
-`````{py:class} horne_extraction(log, settings, recipeSettings, skyModelFrame, skySubtractedFrame, twoDMapPath, recipeName=False, qcTable=False, productsTable=False, dispersionMap=False, sofName=False, locationSetIndex=False)
+`````{py:class} horne_extraction(log, settings, recipeSettings, skyModelFrame, skySubtractedFrame, twoDMapPath, recipeName=False, qcTable=False, productsTable=False, dispersionMap=False, sofName=False, locationSetIndex=False, startNightDate='')
 :canonical: soxspipe.commonutils.horne_extraction.horne_extraction
 
 Bases: {py:obj}`object`

@@ -8,7 +8,7 @@
 ### Static Calibration Data
 
 * Reference bad pixel map
-* Reference all-sky catalogue of stars
+* Reference all-sky catalogue of stars (Refcat2 {cite:p}`tonry2018a`).
 
 ### Intermediate Data Products
 

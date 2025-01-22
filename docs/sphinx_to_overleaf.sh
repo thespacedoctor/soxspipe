@@ -23,9 +23,13 @@ fd \\.tex   --exec perl -0777 -pi -e 's/\\pagestyle\{plain\}//gs'
 fd \\.tex   --exec perl -0777 -pi -e 's/\\pagestyle\{normal\}//gs'
 # fd \\.tex   --exec perl -0777 -pi -e 's/\[width\=\d*\\sphinxpxdimen\]//gs'
 fd \\.tex   --exec perl -0777 -pi -e 's/\[width\=601\\sphinxpxdimen\]/\[width\=210\\sphinxpxdimen\]/gs'
+# fd \\.tex   --exec perl -0777 -pi -e 's/\\sphinxcaption/\\caption/gs'
+# fd \\.tex   --exec perl -0777 -pi -e 's/\\begin{savenotes}/\\begin{figure}\[h\]\\begin{savenotes}/gs'
+# fd \\.tex   --exec perl -0777 -pi -e 's/\\end{savenotes}/\\end{savenotes}\\end{figure}/gs'
 
 
 # rm -rf ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx
 # mkdir ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx
 cp -r latex/* ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx/
 cp -r latex/* ~/Dropbox/Apps/Overleaf/SOXS-MAN-0006-Pipeline-User-Manual/sphinx/
+
