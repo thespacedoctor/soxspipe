@@ -6,7 +6,6 @@ The purpose of the [`soxs_mdark`](#soxspipe.recipes.soxs_mdark) recipe is to gen
 
 ## Input
 
-
 :::{include} inputs/soxs_mdark.md
 :::
 

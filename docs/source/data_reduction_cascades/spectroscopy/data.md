@@ -8,12 +8,13 @@
 * Single pinhole arc-lamp frames
 * Single pinhole flat-field frame
 * Multiple pinhole arc-lamp frames
-* Standard star observations
+* Flux (and potentially Telluric) Standard star observations
+* Regular linearity test data
 
 ### Static Calibration Data
 
 * Reference bad pixel map 
-* Line reference table to wavelength calibrate spectra
+* Line reference table to wavelength calibrate spectra (wavelength solution is in air)
 * Standard star flux table
 * Atmospheric extinction table
 * Sky Lines reference table

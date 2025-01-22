@@ -1,5 +1,5 @@
 :::{table} Input files for the `soxs_mbias` recipe. The files are typically passed to the `soxs_mbias` recipe via a set-of-file (sof) file listing one file per line.
-:name: soxs_mbias_input
+:name: table_soxs_mbias_input
 
 | Data Type | Content | Related OB |
 |:----|:----|:---|
@@ -10,3 +10,4 @@
 
 
 
+THIS IS A TEST {numref}`table_soxs_mbias_input`.

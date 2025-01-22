@@ -85,8 +85,8 @@ numfig = True
 numfig_format = {
     'code-block': 'Listing %s',
     'figure': 'Fig. %s',
-    'section': 'Section',
     'table': 'Table %s',
+    'section': 'Section',
 }
 
 
@@ -224,6 +224,10 @@ if not on_rtd:
         ('overleaf/support', 'support.tex', u'sessions',
          u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/references', 'references.tex', u'references',
+         u'David R. Young & Marco Landoni', 'howto', False),
+    ]
+    latex_documents = [
+        ('overleaf/recipes', 'recipes.tex', u'recipes',
          u'David R. Young & Marco Landoni', 'howto', False),
     ]
 else:

@@ -6,7 +6,7 @@
     
     Usage:
         soxspipe prep <workspaceDirectory>
-        soxspipe [-q] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
+        soxspipe [-qw] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
         soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
         soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -46,6 +46,7 @@
         -s, --settings <pathToSettingsFile>    the settings file
         -V, --verbose                          more verbose output
         -x, --overwrite                        more verbose output
+        -w, --watch                            watch the workspace and reduce new raw data as it is added (similar to 'watch' mode but runs in the foreground)
         --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
     
 

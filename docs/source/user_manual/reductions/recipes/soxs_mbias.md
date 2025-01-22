@@ -22,3 +22,7 @@ Product files are written in the `products/soxs_mbias`, and QC plots are in the 
 :::{include} ../../../recipes/qcs/soxs_mbias.md
 :::
 
+## Input
+
+:::{include} ../../../recipes/inputs/soxs_mbias.md
+:::

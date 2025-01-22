@@ -149,7 +149,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````
 
-````{py:method} update_fits_keywords(frame)
+````{py:method} update_fits_keywords(frame, rawFrames=False)
 :canonical: soxspipe.recipes.soxs_mflat.soxs_mflat.update_fits_keywords
 
 ````
