@@ -11,7 +11,7 @@ Date Created
 """
 ################# GLOBAL IMPORTS ####################
 from fundamentals import fmultiprocess
-from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_format
+from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_format, twoD_disp_map_image_to_dataframe
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
@@ -1214,6 +1214,7 @@ class create_dispersion_map(object):
         if self.arcFrame:
             orderPixelTable[["R_slit", "fwhm_slit_px"]] = orderPixelTable.apply(self._calculate_resolution_on_slit, axis=1)
 
+
         else:
             orderPixelTable["R_slit"] = 0.0
             orderPixelTable["fwhm_slit_px"] = 0.0
@@ -1366,6 +1367,35 @@ class create_dispersion_map(object):
         resolution_line = row["wavelength"] / delta_wavelength
 
         return pd.Series([resolution_line, fwhm])
+
+    def _calculate_wavelength_on_difference(
+        self,
+        row,
+        twoDMap
+
+    ):
+        try:
+
+            #ASSIGN WAVELENGTH
+            filter = (twoDMap["x"].astype(int) == row["xcoord"].astype(int)) & (twoDMap["y"].astype(int) == row["ycoord_centre"].astype(int))
+            select_line_wavelength = twoDMap[filter].iloc[0]
+
+            #NOW GETTING THE PIXEL SCALE IN ARC SEC AND DETERMINE THE SLIT HEIGTH
+
+            filter_up = (twoDMap["x"].astype(np.int32) == row["xcoord"].astype(np.int32)) & (twoDMap["y"].astype(np.int32) == row["ycoord_edgeup"].astype(np.int32)-5)
+            row_up = twoDMap[filter_up].iloc[0]
+
+            filter_low = (twoDMap["x"].astype(np.int32) == row["xcoord"].astype(np.int32)) & (twoDMap["y"].astype(np.int32) == row["ycoord_edgelow"].astype(np.int32)+5)
+            row_low = twoDMap[filter_low].iloc[0]
+
+            pixel_span_sample = (row["ycoord_edgeup"].astype(np.int32)-5) - ( row["ycoord_edgelow"].astype(np.int32)+5)
+            pixel_scale = (row_up["slit_position"] - row_low["slit_position"])/pixel_span_sample
+            return pd.Series([select_line_wavelength["wavelength"], row["diff_xy"]*pixel_scale, pixel_scale])
+
+        except Exception as e:
+            #print(e)
+            return pd.Series([None,None])
+
 
     def fit_polynomials(
             self,
@@ -1667,6 +1697,9 @@ class create_dispersion_map(object):
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTable, extend=0., order=order)
+
+        print('Order table:')
+        print(orderPixelTable)
 
         # CREATE THE IMAGE SAME SIZE AS DETECTOR - NAN INSIDE ORDERS, 0 OUTSIDE
         science_pixels = dp["science-pixels"]
@@ -2119,6 +2152,8 @@ class create_dispersion_map(object):
         ```
         """
         self.log.debug('starting the ``create_dispersion_map_qc_plot`` method')
+        print('**************** dispMapImage: ', dispMapImage )
+        print(self.orderTable)
         # print('Creating the QC plot:')
         # print(orderPixelTable)
 
@@ -2150,7 +2185,6 @@ class create_dispersion_map(object):
                 skylines=False,
                 slitPositions=self.uniqueSlitPos
             )
-
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis='index', how='any', subset=[
             'residuals_x'], inplace=True)
@@ -2192,17 +2226,20 @@ class create_dispersion_map(object):
         # a = plt.figure(figsize=(40, 15))
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
+            print('---- HERE -----')
             fig = plt.figure(figsize=(6, 20), constrained_layout=True)
             # CREATE THE GRID OF AXES
-            gs = fig.add_gridspec(10, 4)
+            gs = fig.add_gridspec(12, 4)
             toprow = fig.add_subplot(gs[0:2, :])
             midrow = fig.add_subplot(gs[2:4, :])
             bottomleft = fig.add_subplot(gs[4:6, 0:2])
             bottomright = fig.add_subplot(gs[4:6, 2:])
             fwhmAx = fig.add_subplot(gs[6:7, :])
             resAx = fig.add_subplot(gs[7:8, :])
-            settingsAx = fig.add_subplot(gs[8:, 2:])
-            qcAx = fig.add_subplot(gs[8:, 0:2])
+            sizeAx = fig.add_subplot(gs[8:9, :])
+            gapAx = fig.add_subplot(gs[9:10, :])
+            settingsAx = fig.add_subplot(gs[10:, 2:])
+            qcAx = fig.add_subplot(gs[11:, 0:2])
         else:
             fig = plt.figure(figsize=(6, 20), constrained_layout=True)
             # CREATE THE GRID OF AXES
@@ -2318,6 +2355,11 @@ class create_dispersion_map(object):
         upperR = mean_r + 3 * std_r
 
         # print(orderPixelTable)
+        #
+        #
+        #UNPACK ORDER TABLE TO GET SLIT HEIGHT IN PX
+        orderPolyTable, orderGeoTable, orderMetaTable = unpack_order_table(
+            log=self.log, orderTablePath=self.orderTable, extend=0.)
 
         for name, group in orderPixelTable_groups:
 
@@ -2343,6 +2385,46 @@ class create_dispersion_map(object):
                 # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
                 resAx.errorbar(mean_wavelength, mean_resol, yerr=std_resol, fmt='o', color='black', alpha=0.6)
 
+
+                dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=self.arcFrame, kw=self.kw)
+                orderGeoTable["diff_xy"] = orderGeoTable["ycoord_edgeup"] - orderGeoTable["ycoord_edgelow"]
+                orderGeoTable[["diff_wavelength","slit_size", "pixel_spatial_scale"]] = orderGeoTable.apply(self._calculate_wavelength_on_difference, axis=1, args=(dispMapDF,))
+                print(orderGeoTable)
+
+
+                sizeAx.plot(orderGeoTable["diff_wavelength"], orderGeoTable["slit_size"])
+                sizeAx.set_xlabel('Wavelength')
+                sizeAx.set_ylabel('Slit size')
+                #PLOTTING THE ORDER GAP DISTANCES
+
+                #print(f"Number of non-NaN rows in 'slit_length': {non_nan_count}")
+                min_o = np.min(orderGeoTable['order'])
+                max_o = np.max(orderGeoTable['order'])
+                for o in range(min_o, max_o):
+                    filter = orderGeoTable['order'] == o
+                    order_l = orderGeoTable[filter]
+
+                    filter = orderGeoTable['order'] == o+1
+                    order_u = orderGeoTable[filter]
+                    #print(order_10)
+                    #print(order_9)
+                    merged_ul = order_l.merge(order_u,on=["xcoord"],suffixes=('_l', '_u'))
+
+                    merged_ul['order_distance'] = merged_ul['ycoord_edgelow_u'] - merged_ul['ycoord_edgeup_l']
+                    #print(merged_ul)
+                    #sys.exit(0)
+                    pixel_scale_mean = (merged_ul['pixel_spatial_scale_l'] + merged_ul['pixel_spatial_scale_u'])/(2.0)
+                    gapAx.scatter(merged_ul['diff_wavelength_l'], merged_ul['order_distance']*pixel_scale_mean, label=o)
+                    gapAx.set_xlabel('Wavelength')
+                    gapAx.set_ylabel('Order sep')
+
+                    print(np.min(merged_ul['order_distance']))
+
+
+
+                #print('-------- gridLinePixelTable -------- ')
+                #from tabulate import tabulate
+                #print(tabulate(gridLinePixelTable, headers='keys', tablefmt='psql'))
             else:
                 fwhmAx.set_title("Line FWHM measured via 0.5\" pinhole  arc-lamp frame", fontsize=9)
                 fwhmAx.scatter(group["wavelength"], group["fwhm_pin_px"], alpha=0.1)
