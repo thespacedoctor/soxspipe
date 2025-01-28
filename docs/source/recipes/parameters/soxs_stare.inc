@@ -21,6 +21,9 @@
 | disp-axis-deg                                     | degree of y-component of global polynomial fit to object trace                                              | int   | settings file | [`detect_continuum`](../utils/detect_continuum.md) |
 | poly-fitting-residual-clipping-sigma              | clipping limit (median and mad) when fitting global polynomial to object trace                              | float | settings file | [`detect_continuum`](../utils/detect_continuum.md) |
 | poly-clipping-iteration-limit                     | maximum number of clipping iterations when fitting global polynomial to object trace                        | int   | settings file | [`detect_continuum`](../utils/detect_continuum.md) |
+| background-subtraction: bspline-deg         | degree of bsplines used to fit the inter-order background (if `subtract_background` == True)         | int  | settings file                  | [`subtract_background`](../utils/subtract_background.md) |
+| background-subtraction: gaussian-blur-sigma | Standard deviation of Gaussian kernel used to smooth background image (if `subtract_background` == True)  | int  | settings file                 | [`subtract_background`](../utils/subtract_background.md) |
+
 
 :::
 

@@ -18,8 +18,8 @@
 | poly-clipping-iteration-limit               | maximum number of clipping iterations when fitting global polynomial to order edges                  | int   | settings file                 | [`detect_order_edges`](../utils/detect_order_edges.md)             |
 | low-sensitivity-clipping-sigma              | pixels with a flux less than this many sigma (mad) below the median flux level added to the bp map   | float | settings file                 | -                                                                  |
 | scale-d2-to-qth                             | scale d2 to qth lamp flats when stitching                                                            | bool  | settings file                 | -                                                                  |
-
-
+| background-subtraction: bspline-deg         | degree of bsplines used to fit the inter-order background (if `subtract_background` == True)         | int  | settings file                  | [`subtract_background`](../utils/subtract_background.md) |
+| background-subtraction: gaussian-blur-sigma | Standard deviation of Gaussian kernel used to smooth background image (if `subtract_background` == True)  | int  | settings file                 | [`subtract_background`](../utils/subtract_background.md) |
 
 :::
 

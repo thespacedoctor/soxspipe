@@ -16,6 +16,8 @@
 | poly-clipping-pinhole-sets           | clipping performed on multi-pinhole sets (true) or individual pinholes (false)                                                  | bool     | settings                 | [`create_dispersion_map`](../utils/create_dispersion_map.md) |
 | map-to-image-displacement-threshold  | maximum distance allowed from the pixel centre when calculating wavelength, order and slit-position for 2d disp-sol image       | float    | settings                 | [`create_dispersion_map`](../utils/create_dispersion_map.md) |
 | mph_line_set_min                     | full multi-pinholes sets (same arc line) with fewer than mph_line_set_min lines detected get clipped                            | int      | settings                 | [`create_dispersion_map`](../utils/create_dispersion_map.md) |
+| background-subtraction: bspline-deg         | degree of bsplines used to fit the inter-order background (if `subtract_background` == True)         | int  | settings file                  | [`subtract_background`](../utils/subtract_background.md) |
+| background-subtraction: gaussian-blur-sigma | Standard deviation of Gaussian kernel used to smooth background image (if `subtract_background` == True)  | int  | settings file                 | [`subtract_background`](../utils/subtract_background.md) |
 
 :::
 

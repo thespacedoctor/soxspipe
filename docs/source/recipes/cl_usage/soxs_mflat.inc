@@ -17,4 +17,8 @@ Product files are written in the `products/soxs_mflat`, and QC plots are in the 
 
 ### Reduction Tips
 
+If this recipe fails during the fitting of the order edge, the first parameter to adjust is `poly-fitting-residual-clipping-sigma`. Try reducing this to 3-5 sigma and rerun the recipe to see if a fit is found. If the fit still fails, next try and increase the `slice-width-for-edge-detection` to 5-9 pixels to give the code a better chance of detecting the order-edges. 
 
+If the previous adjustments have not helped, you can slowly reduce `min-percentage-threshold-for-edge-detection` and/or increase `max-percentage-threshold-for-edge-detection` by 2-3 percent and attempt a refit.
+
+You can also try adjusting the polynomial fitting orders in `order-deg` and `disp-axis-deg`. However, please be advised the pipeline itself will dynamically adjust these values if they fail to fit the default set. It will slowly reduce the orders and refit until it finds a fit or decides a fit can not be found (after five iterations of decreasing the orders).
