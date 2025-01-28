@@ -30,5 +30,5 @@ Once the workspace has been prepared, you should find it contains the following 
 
 Your workspace is now prepared, and you are now ready to reduce your data.
 
-:::{include} sessions.md
+:::{include} sessions.inc
 :::

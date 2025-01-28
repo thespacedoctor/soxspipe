@@ -1,17 +1,16 @@
 # soxs_mflat
 
-The [`soxs_mflat`](#soxspipe.recipes.soxs_mflat) recipe creates a single normalised master-flat frame used to correct for non-uniformity in response to light across the detector plane. Hot and dead pixels are also detected and added to a bad-pixel mask. Finally, the echelle order edges are detected and fitted with a polynomial model.
+:::{include} ./descriptions/soxs_mflat.inc
+:::
 
-Sources of this non-uniformity include:
-Varying pixel sensitivities.
-Obstructions in the optical path (e.g., dust or pollen grains).
-Vignetting at the edges of the detector.
-A flat frame is ideally an image taken with uniform illumination across the detector's light-collecting pixels. This evenly exposed image can be used to identify irregularities in the detector's response.
 
 ## Input
 
 
-:::{include} inputs/soxs_mflat.md
+:::{include} ./inputs/soxs_mflat.inc
+:::
+
+:::{include} ./static_files/soxs_mflat.inc
 :::
 
 
@@ -20,7 +19,7 @@ A flat frame is ideally an image taken with uniform illumination across the dete
 ## Parameters
 
 
-:::{include} parameters/soxs_mflat.md
+:::{include} parameters/soxs_mflat.inc
 :::
 
 ## Method
@@ -30,7 +29,7 @@ The algorithm used in the `soxs_mflat` recipe is shown in {numref}`soxs_mflat_di
 :::{figure-md} soxs_mflat_diagram
 ![](soxs_mflat.png){width=600px}
 
-The `soxs_mflat` recipe algorithm.
+The `soxs_mflat` recipe algorithm. At the top of the diagram, NIR input data is found on the right and VIS on the left. 
 :::
 
 The individual flat field frames have bias and dark signatures removed using the [`detrend`](../utils/detrend.md) utility. Here is an example of one such calibrated flat frame:
@@ -96,19 +95,27 @@ Finally, the combined normalised frames for the D and QTH lamps are stacked to o
 
 ## Output
 
-:::{include} output/soxs_mflat.md
+:::{include} output/soxs_mflat.inc
 :::
 
 ## QC Metrics
 
+
+
+:::{include} qcs/soxs_mflat.inc
+:::
+
+
 :::{figure-md} soxs_mflat_qc
-![image-20240924120759673](../_images/image-20240924120759673.png){width=600px}
+![image-20250128123443989](../_images/image-20250128123443989.png){width=600px}
 
 A QC plot resulting from the `soxs_mflat` recipe (Xshooter NIR). The top panel shows the upper and lower-order edge detections registered in the individual cross-dispersion slices in an Xshooter NIR flat frame. The bottom panel shows the global polynomial fits to the upper and lower-order edges, with the area between the fits filled with different colours to reveal the unique echelle orders across the detector plane.
 :::
 
-:::{include} qcs/soxs_mflat.md
-:::
+
+
+
+
 
 
 ## Recipe API

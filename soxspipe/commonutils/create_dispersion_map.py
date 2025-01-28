@@ -2253,7 +2253,7 @@ class create_dispersion_map(object):
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1), fontsize=4)
+        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.15), fontsize=4)
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
@@ -2284,7 +2284,7 @@ class create_dispersion_map(object):
             midrow.invert_yaxis()
         midrow.set_ylim([0, rotatedImg.shape[0]])
 
-        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1), fontsize=4)
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.15), fontsize=4)
 
         # PLOT THE RESIDUALS
         plt.subplots_adjust(top=0.92)

@@ -1,7 +1,5 @@
 # horne_extraction
 
-DAVE WAS HERE
-
 The [`horne_extraction`](#soxspipe.commonutils.horne_extraction) utility performs an optimal extraction of a source's flux from an echelle order using the algorithms reported in {cite:t}`horne1986`.
 
 

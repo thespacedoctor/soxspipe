@@ -8,6 +8,6 @@
 :::
 
 
-:::{include} output/soxs_xxxrecipexxx.md
+:::{include} output/soxs_xxxrecipexxx.inc
 :::
 

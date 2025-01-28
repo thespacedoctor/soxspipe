@@ -8,5 +8,5 @@
 :::
 
 
-:::{include} inputs/soxs_xxxrecipexxx.md
+:::{include} inputs/soxs_xxxrecipexxx.inc
 :::
