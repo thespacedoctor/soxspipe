@@ -1,17 +1,21 @@
 # soxs_mbias
 
-:::{include} ./descriptions/soxs_mbias.md
+:::{include} ./descriptions/soxs_mbias.inc
 :::
 
 
 ## Input
 
-:::{include} ./inputs/soxs_mbias.md
+:::{include} ./inputs/soxs_mbias.inc
 :::
+
+:::{include} ./static_files/soxs_mbias.inc
+:::
+
 
 ## Parameters
 
-:::{include} ./parameters/soxs_mbias.md
+:::{include} ./parameters/soxs_mbias.inc
 :::
 
 ## Method
@@ -26,13 +30,13 @@ The `soxs-mbias` recipe algorithm.
 
 ## Output
 
-:::{include} ./output/soxs_mbias.md
+:::{include} ./output/soxs_mbias.inc
 :::
 
 
 ## QC Metrics
 
-:::{include} ./qcs/soxs_mbias.md
+:::{include} ./qcs/soxs_mbias.inc
 :::
 
 

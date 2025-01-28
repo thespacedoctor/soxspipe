@@ -193,6 +193,8 @@ if not on_rtd:
     latex_documents = [
         ('overleaf/introduction', 'introduction.tex', u'introduction',
          u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/collecting_data', 'collecting_data.tex', u'collecting data',
+         u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/recipes', 'recipes.tex', u'recipes',
          u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/utils', 'utils.tex', u'utils',
@@ -224,10 +226,6 @@ if not on_rtd:
         ('overleaf/support', 'support.tex', u'sessions',
          u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/references', 'references.tex', u'references',
-         u'David R. Young & Marco Landoni', 'howto', False),
-    ]
-    latex_documents = [
-        ('overleaf/recipes', 'recipes.tex', u'recipes',
          u'David R. Young & Marco Landoni', 'howto', False),
     ]
 else:

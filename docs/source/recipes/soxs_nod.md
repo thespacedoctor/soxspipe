@@ -1,16 +1,22 @@
 # soxs_nod
 
-The [`soxs_nod`](#soxspipe.recipes.soxs_nod) recipe reduces the science frames produced by the NTT and SOXS from a nodding mode observation block.
+:::{include} ./descriptions/soxs_nod.inc
+:::
+
 
 ## Input
 
-:::{include} inputs/soxs_nod.md
+:::{include} ./inputs/soxs_nod.inc
 :::
+
+:::{include} ./static_files/soxs_nod.inc
+:::
+
 
 ## Parameters
 
 
-:::{include} parameters/soxs_nod.md
+:::{include} parameters/soxs_nod.inc
 :::
 
 
@@ -38,13 +44,13 @@ If the jitter is present, the `soxs_nod` recipe determines how many different of
 
 ## Output
  
-:::{include} output/soxs_nod.md
+:::{include} output/soxs_nod.inc
 :::
 
 ## QC Metrics
 
 
-:::{include} qcs/soxs_nod.md
+:::{include} qcs/soxs_nod.inc
 :::
 
 ## Recipe API

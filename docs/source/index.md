@@ -18,6 +18,7 @@ user_manual/quickstart
 
 
 user_manual/installation
+user_manual/collecting_data
 Preparing a Workspace <user_manual/preparing_a_workspace>
 user_manual/reductions/index
 user_manual/logging
