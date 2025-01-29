@@ -915,7 +915,7 @@ class detect_order_edges(_base_detect):
             (medSlide[axisAminguess + 1] - medSlide[axisAminguess]) + 2
 
         # IF THE WIDTH BETWEEN MIN AND MAX IS TOO SMALL THEN REJECT .. OR NEGATIVE MIN AND MAX THRESHOLDS
-        if (axisAmax - axisAmin < 10) or minThreshold < 0.01 or maxThreshold < 0.01:
+        if (axisAmax - axisAmin < 10) or (self.arm != "VIS" and (minThreshold < 0.01 or maxThreshold < 0.01)):
             # SANITY CHECK PLOT OF CROSS-SECTION
             if False:
                 import matplotlib.pyplot as plt

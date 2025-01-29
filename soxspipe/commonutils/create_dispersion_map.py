@@ -101,8 +101,6 @@ class create_dispersion_map(object):
         self.startNightDate = startNightDate
         self.arcFrame = arcFrame
 
-        self.arcFrame = False
-
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
         kw = keyword_lookup(
@@ -1369,38 +1367,6 @@ class create_dispersion_map(object):
 
         return pd.Series([resolution_line, fwhm])
 
-    def _calculate_wavelength_on_difference(
-        self,
-        row,
-        twoDMap
-
-    ):
-        try:
-
-            # ASSIGN WAVELENGTH
-            from datetime import datetime, date, time
-            now = datetime.now()
-            now = now.strftime("%Y%m%dt%H%M%S")
-            print(now)
-            filter = (twoDMap["x"].astype(int) == row["xcoord"].astype(int)) & (twoDMap["y"].astype(int) == row["ycoord_centre"].astype(int))
-            select_line_wavelength = twoDMap[filter].iloc[0]
-
-            # NOW GETTING THE PIXEL SCALE IN ARC SEC AND DETERMINE THE SLIT HEIGHT
-
-            filter_up = (twoDMap["x"].astype(np.int32) == row["xcoord"].astype(np.int32)) & (twoDMap["y"].astype(np.int32) == row["ycoord_edgeup"].astype(np.int32) - 5)
-            row_up = twoDMap[filter_up].iloc[0]
-
-            filter_low = (twoDMap["x"].astype(np.int32) == row["xcoord"].astype(np.int32)) & (twoDMap["y"].astype(np.int32) == row["ycoord_edgelow"].astype(np.int32) + 5)
-            row_low = twoDMap[filter_low].iloc[0]
-
-            pixel_span_sample = (row["ycoord_edgeup"].astype(np.int32) - 5) - (row["ycoord_edgelow"].astype(np.int32) + 5)
-            pixel_scale = (row_up["slit_position"] - row_low["slit_position"]) / pixel_span_sample
-            return pd.Series([select_line_wavelength["wavelength"], row["diff_xy"] * pixel_scale, pixel_scale])
-
-        except Exception as e:
-            # print(e)
-            return pd.Series([None, None])
-
     def fit_polynomials(
             self,
             orderPixelTable,
@@ -2372,50 +2338,33 @@ class create_dispersion_map(object):
             orderPolyTable, orderGeoTable, orderMetaTable = unpack_order_table(
                 log=self.log, orderTablePath=self.orderTable, extend=0.)
 
-            from tabulate import tabulate
-            print("orderGeoTable")
-
             orderGeoTable[f'{self.axisA}_u'] = orderGeoTable[f'{self.axisA}coord_edgeup'].astype(int)
             orderGeoTable[f'{self.axisA}_l'] = orderGeoTable[f'{self.axisA}coord_edgelow'].astype(int)
 
-            print(tabulate(orderGeoTable.head(10), headers='keys', tablefmt='psql'))
-
-            print("HERE1")
-            dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=13, twoDMapPath=dispMapImage, associatedFrame=self.arcFrame, kw=self.kw)
-
-            print(len(orderGeoTable.index))
+            dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=self.log, slit_length=14, twoDMapPath=dispMapImage, associatedFrame=self.arcFrame, kw=self.kw)
 
             # MERGE DATAFRAMES
             orderGeoTableLower = orderGeoTable.merge(dispMapDF, left_on=[f'{self.axisA}_l', f'{self.axisB}coord'], right_on=[self.axisA, self.axisB])
             orderGeoTableLower.rename(columns={"order_x": "order"}, inplace=True)
-            orderGeoTableLower = orderGeoTableLower[['order', 'x', 'y', 'wavelength', 'slit_position', 'flux', 'pixelScale', f'{self.axisA}coord_centre']]
-
-            from tabulate import tabulate
-            print(tabulate(orderGeoTableLower.head(10), headers='keys', tablefmt='psql'))
+            orderGeoTableLower = orderGeoTableLower[['order', 'x', 'y', 'wavelength', 'slit_position', 'flux', 'pixelScale', f'{self.axisA}coord_centre', f'{self.axisA}coord_edgelow']]
 
             orderGeoTableUpper = orderGeoTable.merge(dispMapDF, left_on=[f'{self.axisA}_u', f'{self.axisB}coord'], right_on=[self.axisA, self.axisB])
             orderGeoTableUpper.rename(columns={"order_x": "order"}, inplace=True)
-            orderGeoTableUpper = orderGeoTableUpper[['order', 'x', 'y', 'wavelength', 'slit_position', 'flux', 'pixelScale', f'{self.axisA}coord_centre']]
-
-            print(len(orderGeoTable.index))
-
-            from tabulate import tabulate
-            print(tabulate(orderGeoTableUpper.head(10), headers='keys', tablefmt='psql'))
+            orderGeoTableUpper = orderGeoTableUpper[['order', 'x', 'y', 'wavelength', 'slit_position', 'flux', 'pixelScale', f'{self.axisA}coord_centre', f'{self.axisA}coord_edgeup']]
 
             orderGeoTable = orderGeoTableLower.merge(orderGeoTableUpper, left_on=[f'{self.axisA}coord_centre', self.axisB], right_on=[f'{self.axisA}coord_centre', self.axisB], suffixes=('_l', '_u'))
-            orderGeoTableUpper.rename(columns={"order_l": "order"}, inplace=True)
+            orderGeoTable.rename(columns={"order_l": "order"}, inplace=True)
 
             orderGeoTable["wavelength"] = (orderGeoTable["wavelength_l"] + orderGeoTable["wavelength_u"]) / 2.
-            orderGeoTable["slitLengthPixels"] = np.abs(orderGeoTable[f"{self.axisA}_u"] - orderGeoTable[f"{self.axisA}_l"])
+            orderGeoTable["slitLengthPixelsInt"] = np.abs(orderGeoTable[f"{self.axisA}_u"] - orderGeoTable[f"{self.axisA}_l"])
+            orderGeoTable["slitLengthPixels"] = np.abs(orderGeoTable[f"{self.axisA}coord_edgeup"] - orderGeoTable[f"{self.axisA}coord_edgelow"])
             orderGeoTable["slitLengthArcsec"] = np.abs(orderGeoTable[f"slit_position_u"] - orderGeoTable[f"slit_position_l"])
-
-            from tabulate import tabulate
-            print(tabulate(orderGeoTable.head(10), headers='keys', tablefmt='psql'))
-
-            # how = left, right, outer, inner, cross
-            # https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.merge.html
+            orderGeoTable["pixelScale"] = orderGeoTable["slitLengthArcsec"] / orderGeoTable["slitLengthPixelsInt"]
+            orderGeoTable["slitLengthArcsec"] = orderGeoTable["slitLengthPixels"] * orderGeoTable["pixelScale"]
 
         for name, group in orderPixelTable_groups:
+
+            thisOrder = group["order"].values[0]
 
             if self.arcFrame:
 
@@ -2427,6 +2376,7 @@ class create_dispersion_map(object):
                 mean_wavelength = group["wavelength"].mean()
                 fwhmAx.errorbar(mean_wavelength, mean_fwhm, yerr=std_fwhm, fmt='o', color='black', alpha=0.6)
                 fwhmAx.tick_params(axis='both', which='major', labelsize=8)
+                x_limits = fwhmAx.get_xlim()
 
                 resAx.set_title(f"Resolution measured via {slitWidth}\" slit arc-lamp frame", fontsize=9)
                 resAx.scatter(group["wavelength"], group["R_slit"], alpha=0.1)
@@ -2434,40 +2384,40 @@ class create_dispersion_map(object):
                 # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
                 resAx.errorbar(mean_wavelength, mean_resol, yerr=std_resol, fmt='o', color='black', alpha=0.6)
 
-                sizeAx.plot(orderGeoTable["wavelength"], orderGeoTable["slitLengthArcsec"])
-                sizeAx.set_xlabel('Wavelength')
-                sizeAx.set_ylabel('Slit size')
+                # FILTER DATA FRAME
+                # FIRST CREATE THE MASK
+                mask = (orderGeoTable["order"] == thisOrder)
+                filteredDf = orderGeoTable.loc[mask]
+
+                sizeAx.plot(filteredDf["wavelength"], filteredDf["slitLengthArcsec"])
+                sizeAx.set_xlabel('wavelength (nm)', fontsize=9)
+                sizeAx.set_ylabel('slit height\n(arcsec)', fontsize=9)
+                sizeAx.set_xlim(x_limits)
+                sizeAx.tick_params(axis='both', which='major', labelsize=8)
+                sizeAx.set_title(f"Slit height as measured between the lower and upper order edges", fontsize=9)
+
                 # PLOTTING THE ORDER GAP DISTANCES
+                mask = orderGeoTable['order'] == thisOrder
+                order_l = orderGeoTable[mask]
+                mask = orderGeoTable['order'] == thisOrder + 1
+                order_u = orderGeoTable[mask]
+                if len(order_l.index) and len(order_u.index):
+                    # print(order_10)
+                    # print(order_9)
+                    merged_ul = order_l.merge(order_u, on=[self.axisB], suffixes=('_l', '_u'))
 
-                # # print(f"Number of non-NaN rows in 'slit_length': {non_nan_count}")
-                # min_o = np.min(orderGeoTable['order'])
-                # max_o = np.max(orderGeoTable['order'])
-                # for o in range(min_o, max_o):
-                #     mask = orderGeoTable['order'] == o
-                #     order_l = orderGeoTable[mask]
+                    merged_ul['order_distance'] = merged_ul[f"{self.axisA}coord_edgelow_u"] - merged_ul[f"{self.axisA}coord_edgeup_l"]
+                    # print(merged_ul)
+                    # sys.exit(0)
+                    pixel_scale_mean = (merged_ul['pixelScale_l'] + merged_ul['pixelScale_u']) / (2.0)
+                    gapAx.plot(merged_ul['wavelength_l'], merged_ul['order_distance'] * pixel_scale_mean, label=thisOrder)
+                    gapAx.set_xlabel('wavelength (nm)', fontsize=9)
+                    gapAx.set_ylabel('inter-order\ngap (arcsec)', fontsize=9)
 
-                #     mask = orderGeoTable['order'] == o + 1
-                #     order_u = orderGeoTable[mask]
-                #     # print(order_10)
-                #     # print(order_9)
-                #     merged_ul = order_l.merge(order_u, on=["xcoord"], suffixes=('_l', '_u'))
+                gapAx.set_xlim(x_limits)
+                gapAx.tick_params(axis='both', which='major', labelsize=8)
+                gapAx.set_title(f"Inter-order gap measured between adjacent orders", fontsize=9)
 
-                #     tab
-
-                #     merged_ul['order_distance'] = merged_ul['ycoord_edgelow_u'] - merged_ul['ycoord_edgeup_l']
-                #     # print(merged_ul)
-                #     # sys.exit(0)
-                #     pixel_scale_mean = (merged_ul['pixel_spatial_scale_l'] + merged_ul['pixel_spatial_scale_u']) / (2.0)
-                #     gapAx.scatter(merged_ul['diff_wavelength_l'], merged_ul['order_distance'] * pixel_scale_mean, label=o)
-                #     gapAx.set_xlabel('Wavelength')
-                #     gapAx.set_ylabel('Order sep')
-                #     print("INSIDE")
-                #     print(np.min(merged_ul['order_distance']))
-                # print("HERE3")
-
-                #print('-------- gridLinePixelTable -------- ')
-                #from tabulate import tabulate
-                #print(tabulate(gridLinePixelTable, headers='keys', tablefmt='psql'))
             else:
                 fwhmAx.set_title("Line FWHM measured via 0.5\" pinhole  arc-lamp frame", fontsize=9)
                 fwhmAx.scatter(group["wavelength"], group["fwhm_pin_px"], alpha=0.1)
@@ -2490,10 +2440,11 @@ class create_dispersion_map(object):
         resAx.tick_params(axis='both', which='major', labelsize=8)
 
         # resAx.scatter(orderPixelTable["wavelength"], orderPixelTable["R"], alpha=0.1)
-        resAx.set_xlabel("Wavelength (nm)", fontsize=9)
+        resAx.set_xlabel("wavelength (nm)", fontsize=9)
 
         fwhmAx.set_ylim([lowerFwhm, upperFwhm])
         resAx.set_ylim([lowerR, upperR])
+        resAx.set_xlim(x_limits)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
