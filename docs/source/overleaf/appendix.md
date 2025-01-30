@@ -2,7 +2,7 @@
 
 ## Appendix
 
-### UV-VIS Resolution Plots
+### UV-VIS & NIR Resolution Plots
 
 :::{figure-md} uvvis_res_0.5
 ![image-20250130111041783](../_images/image-20250130111041783.png){width=600px}
@@ -33,13 +33,6 @@ As above but with selected lines resulting from a QTH-lamp imaged through a 1.5 
 
 As above but with selected lines resulting from a QTH-lamp imaged through a 5.0 arcsec slit. Multiplying the mean FWHM by the pixel scale (0.28 $\mathrm{arcsec/px}$) we recover a slit-width close to the 5.0 arcsec used. 
 :::
-
-
-
-
-
-### NIR Resolution Plots
-
 
 
 

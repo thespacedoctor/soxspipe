@@ -20,3 +20,4 @@ Product files are written in the `products/soxs_stare`, and QC plots are in the 
 ### Reduction Tips
 
 
+Typically, this recipe fails because the object trace is not found or fitted correctly. This may simply be because the object is too faint in the data, but a few settings can be adjusted to try and secure a fit. First, increase `slice-length` by a few pixels and try the recipe again. If this does not work, adjust `poly-fitting-residual-clipping-sigma` to both lower and higher levels (by 1 or 2 sigma each time) and rerun the recipe each time.

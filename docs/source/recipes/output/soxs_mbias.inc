@@ -6,7 +6,7 @@
 
 | Label   | Content                                                                           | Data Type  | PRO CATG | PRO TYPE | PRO TECH |
 | ------- | :-------------------------------------------------------------------------------- | ---------- |---------- |---------- |---------- |
-| `MBIAS` | Master bias frame (frame containing typical bias-voltage applied to the detector) | FITS image | `MASTER_BIAS_<ARM>`          | `IMAGE`          |   `REDUCED`        |
+| `MBIAS` | Master bias frame (frame containing typical bias-voltage applied to the detector) | FITS image | `MASTER_BIAS_<ARM>`          |  `REDUCED`           |   `IMAGE`      |
 
 :::
 
