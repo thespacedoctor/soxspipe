@@ -1119,7 +1119,7 @@ def add_recipe_logger(
     **Key Arguments:**
 
     - `log` -- original logger
-    - `productPath` -- path to the recipe product 
+    - `productPath` -- path to the recipe product
 
     **Usage:**
 

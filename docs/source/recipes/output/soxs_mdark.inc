@@ -4,7 +4,7 @@
 
 | Label | Content                                                      | Data Type  | PRO CATG | PRO TYPE | PRO TECH |
 | ----- | :----------------------------------------------------------- | ---------- |---------- |---------- |---------- |
-| MDARK | Master dark frame (frame containing typical dark-current flux accumulated over the exposure time of the input frames) | FITS image |  `DARK_<ARM>`         |    `IMAGE`       |   `REDUCED`        |
+| `MDARK` | Master dark frame (frame containing typical dark-current flux accumulated over the exposure time of the input frames) | FITS image |  `DARK_<ARM>`         |   `REDUCED`        |  `IMAGE`       |  
 
 :::
 

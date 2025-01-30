@@ -4,12 +4,12 @@
 
 | Label                  | Content                                                | Data Type | PRO CATG | PRO TYPE | PRO TECH |
 | ---------------------- | ------------------------------------------------------ | --------- |---------- |---------- |---------- |
-| `SPAT_SOL`               | Full dispersion-spatial solution                       | FITS      |           |           |           |
-| `2D_MAP`                 | 2D detector map of wavelength, slit position and order | FITS      |           |           |           |
+| `SPAT SOL`               | Full dispersion-spatial solution                       | FITS      |    `DISP_TAB_<ARM>`       |    `REDUCED`       |     `ECHELLE,MULTI-PINHOLE`      |
+| `2D MAP`                 | 2D detector map of wavelength, slit position and order | FITS      |     `DISP_IMAGE_<ARM>`      |    `REDUCED`       |     `ECHELLE,MULTI-PINHOLE`      |
 | `BKGROUND`               | Fitted intra-order image background                    | PDF       |    -       |    -       |     -      |
-| `DISP_MAP_LINES`         | Dispersion solution fitted lines                       | FITS      |           |           |           |
-| `DISP_MAP_LINES_MISSING` | Undetected arc lines                                   | FITS      |           |           |           |
-| `DISP_MAP_RES`           | Dispersion solution QC plots                           | PDF       |      -       |    -       |     -      |
+| `DISP MAP LINES`         | Dispersion solution fitted lines                       | FITS      |   -       |    -       |     -      |
+| `DISP MAP LINES MISSING` | Undetected arc lines                                   | FITS      |    -       |    -       |     -      |
+| `DISP MAP RES`           | Dispersion solution QC plots                           | PDF       |      -       |    -       |     -      |
 
 :::
 

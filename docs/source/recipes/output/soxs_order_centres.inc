@@ -4,8 +4,8 @@
 
 | Label               | Content                                      | Data Type | PRO CATG | PRO TYPE | PRO TECH |
 | ------------------- | :------------------------------------------- | --------- |---------- |---------- |---------- |
-| `ORDER_CENTRES`     | Polynomial fits to the order centre traces                      | FITS      |    `ORDER_TAB_<ARM>`       |     `REDUCED`      |    `ECHELLE,SLIT`       |
-| `ORDER_CENTRES_RES` | Residuals of the order centre polynomial fit | PDF       |    -       |    -       |     -      |
+| `ORDER CENTRES`     | Polynomial fits to the order centre traces                      | FITS      |    `ORDER_TAB_<ARM>`       |     `REDUCED`      |    `ECHELLE,SLIT`       |
+| `ORDER CENTRES RES` | Residuals of the order centre polynomial fit | PDF       |    -       |    -       |     -      |
 
 
 :::
