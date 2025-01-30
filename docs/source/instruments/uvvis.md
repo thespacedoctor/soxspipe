@@ -57,6 +57,36 @@ A SOXS UV-VIS Xenon arc lamp frame. The arc lines are not perpendicular to the d
 :::{figure-md} uvis_resolution
 ![image-20250127101442991](../_images/image-20250127101442991.png){width=600px}
 
-The spectral resolution of the SOXS UV-VIS spectral arm. This plot is generated during the execution of the `soxs_spatial_solution` recipe. For selected lines resulting from a QTH-lamp imaged through a 1 arcsec slit, the FWHM is measured at nine locations along the length of the slit. In the top panel, the measured FWHMs are displayed with respect to the wavelengths of the lines. The orange, green, blue and red circles represent the $u, g, r$ and $i$ pseudo orders of the spectrograph, and the black circles (with error bars) represent the mean FWHM for the order (and standard deviation). In the bottom panel, the measured pixel scale from the dispersion solution is used to convert FWHM to spectra resolution $R$. For a 1 arcsec slit, the SOXS UV-VIS detector achieves a resolution $R > 5000$ in all four orders.
+The spectral resolution of the SOXS UV-VIS spectral arm. This plot is generated during the execution of the `soxs_spatial_solution` recipe. For selected lines resulting from a QTH-lamp imaged through a 1 arcsec slit, the FWHM is measured at nine locations along the length of the slit. In the top panel, the measured FWHMs are displayed with respect to the wavelengths of the lines. The orange, green, blue and red circles represent the $u, g, r$ and $i$ pseudo orders of the spectrograph, and the black circles (with error bars) represent the mean FWHM for the order (and standard deviation). In the bottom panel, the measured pixel scale from the dispersion solution is used to convert FWHM to spectra resolution $R$. For a 1 arcsec slit, the SOXS UV-VIS detector achieves a resolution $R > 5000$ in all four orders. The wavelengths of the arc-lines detected range from $355-833 \mathrm{nm}$.
 
 :::
+
+
+
+
+
+
+
+:::{figure-md} vis_slit_height
+![image-20250129135803707](../_images/image-20250129135803707.png)
+
+The UV-VIS slit-height as measured between the edges of each dispersion order on a UV-VIS through-slit flat frame. Each colour in the plot represents an individual dispersion order. The slit height is measured close to the expected $\sim$12 arcsecs across all orders.
+
+
+:::
+
+
+
+
+:::{figure-md} vis_slit_gap
+![image-20250129135813991](../_images/image-20250129135813991.png)
+
+The UV-VIS inter-order gaps as measured between the edges of adjacent dispersion orders on an UV-VIS through-slit flat frame. Each colour in the plot represents an individual dispersion order. The minimum inter-order gap is $\sim$28 arcsecs.
+
+:::
+
+
+
+
+
+

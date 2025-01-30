@@ -1212,6 +1212,7 @@ class create_dispersion_map(object):
         #        orderPixelTable.at[index,'distance_to_middle'] = np.sqrt(float( (row['observed_x'] - middle_row['observed_x'])**2 + (row['observed_y'] - middle_row['observed_y'])**2))
 
         if self.arcFrame:
+            self.slitWidth = self.arcFrame.header[self.kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
             orderPixelTable[["R_slit", "fwhm_slit_px"]] = orderPixelTable.apply(self._calculate_resolution_on_slit, axis=1)
 
         else:
@@ -1321,20 +1322,30 @@ class create_dispersion_map(object):
         import math
         stdToFwhm = 2 * (2 * math.log(2))**0.5
 
-        if self.detectorParams["dispersion-axis"] == "y":
-            detector_row = self.arcFrame.data[int(row['observed_y']), int(row['observed_x']) - 10:int(row['observed_x']) + 10]
-            detector_row = detector_row - np.median(detector_row)
+        # GOOD GUESS AT STD AND SLICE SIZE
+        if self.arm == "NIR":
+            guessStd = (float(self.slitWidth) / 0.25) / stdToFwhm
         else:
-            detector_row = self.arcFrame.data[int(row['observed_y']) - 10:int(row['observed_y']) + 10, int(row['observed_x'])]
+            guessStd = (float(self.slitWidth) / 0.29) / stdToFwhm
+        sliceSize = int(guessStd * 5.)
+
+        if self.detectorParams["dispersion-axis"] == "y":
+            detector_row = self.arcFrame.data[int(row['observed_y']), int(row['observed_x']) - sliceSize:int(row['observed_x']) + sliceSize]
             detector_row = detector_row - np.median(detector_row)
+            detector_row = np.where(detector_row < 0, 0, detector_row)
+        else:
+            detector_row = self.arcFrame.data[int(row['observed_y']) - sliceSize:int(row['observed_y']) + sliceSize, int(row['observed_x'])]
+            detector_row = detector_row - np.median(detector_row)
+            detector_row = np.where(detector_row < 0, 0, detector_row)
 
         # FITTING THE LINE WITH A GAUSSIAN PROFILE
-        g_init = models.Gaussian1D(amplitude=1000., mean=10, stddev=1.)
+        g_init = models.Gaussian1D(amplitude=1., mean=0, stddev=guessStd)
         fit_g = fitting.LevMarLSQFitter()
 
         try:
             g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
-            if g.stddev.value < 1.0:
+
+            if g.stddev.value < guessStd / 2.:
                 # 1.0 SLIT CANNOT BE LESS THAN 1.0 px
                 raise Exception
 
@@ -1359,7 +1370,7 @@ class create_dispersion_map(object):
         stddev_corrected = float(g.stddev.value)
 
         # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS
-        if stddev_corrected < 1.0 or stddev_corrected > 6.0:
+        if stddev_corrected < guessStd / 2. or stddev_corrected > guessStd * 2.:
             return pd.Series([None, None])
 
         delta_wavelength = row["pixelScaleNm"] * fwhm
@@ -2384,39 +2395,42 @@ class create_dispersion_map(object):
                 # ADD TO THE POINT THE ERROR BAR CONTAINED IN STD_RED
                 resAx.errorbar(mean_wavelength, mean_resol, yerr=std_resol, fmt='o', color='black', alpha=0.6)
 
-                # FILTER DATA FRAME
-                # FIRST CREATE THE MASK
-                mask = (orderGeoTable["order"] == thisOrder)
-                filteredDf = orderGeoTable.loc[mask]
+                if thisOrder not in [24]:
 
-                sizeAx.plot(filteredDf["wavelength"], filteredDf["slitLengthArcsec"])
-                sizeAx.set_xlabel('wavelength (nm)', fontsize=9)
-                sizeAx.set_ylabel('slit height\n(arcsec)', fontsize=9)
-                sizeAx.set_xlim(x_limits)
-                sizeAx.tick_params(axis='both', which='major', labelsize=8)
-                sizeAx.set_title(f"Slit height as measured between the lower and upper order edges", fontsize=9)
+                    # FILTER DATA FRAME
+                    # FIRST CREATE THE MASK
+                    mask = (orderGeoTable["order"] == thisOrder)
+                    filteredDf = orderGeoTable.loc[mask]
 
-                # PLOTTING THE ORDER GAP DISTANCES
-                mask = orderGeoTable['order'] == thisOrder
-                order_l = orderGeoTable[mask]
-                mask = orderGeoTable['order'] == thisOrder + 1
-                order_u = orderGeoTable[mask]
-                if len(order_l.index) and len(order_u.index):
-                    # print(order_10)
-                    # print(order_9)
-                    merged_ul = order_l.merge(order_u, on=[self.axisB], suffixes=('_l', '_u'))
+                    sizeAx.plot(filteredDf["wavelength"], filteredDf["slitLengthArcsec"])
+                    sizeAx.set_xlabel('wavelength (nm)', fontsize=9)
+                    sizeAx.set_ylabel('slit height\n(arcsec)', fontsize=9)
+                    sizeAx.set_xlim(x_limits)
+                    sizeAx.tick_params(axis='both', which='major', labelsize=8)
+                    sizeAx.set_title(f"Slit height as measured between the lower and upper order edges", fontsize=9)
 
-                    merged_ul['order_distance'] = merged_ul[f"{self.axisA}coord_edgelow_u"] - merged_ul[f"{self.axisA}coord_edgeup_l"]
-                    # print(merged_ul)
-                    # sys.exit(0)
-                    pixel_scale_mean = (merged_ul['pixelScale_l'] + merged_ul['pixelScale_u']) / (2.0)
-                    gapAx.plot(merged_ul['wavelength_l'], merged_ul['order_distance'] * pixel_scale_mean, label=thisOrder)
-                    gapAx.set_xlabel('wavelength (nm)', fontsize=9)
-                    gapAx.set_ylabel('inter-order\ngap (arcsec)', fontsize=9)
+                    # PLOTTING THE ORDER GAP DISTANCES
+                    if thisOrder not in [23]:
+                        mask = orderGeoTable['order'] == thisOrder
+                        order_l = orderGeoTable[mask]
+                        mask = orderGeoTable['order'] == thisOrder + 1
+                        order_u = orderGeoTable[mask]
+                        if len(order_l.index) and len(order_u.index):
+                            # print(order_10)
+                            # print(order_9)
+                            merged_ul = order_l.merge(order_u, on=[self.axisB], suffixes=('_l', '_u'))
 
-                gapAx.set_xlim(x_limits)
-                gapAx.tick_params(axis='both', which='major', labelsize=8)
-                gapAx.set_title(f"Inter-order gap measured between adjacent orders", fontsize=9)
+                            merged_ul['order_distance'] = merged_ul[f"{self.axisA}coord_edgelow_u"] - merged_ul[f"{self.axisA}coord_edgeup_l"]
+                            # print(merged_ul)
+                            # sys.exit(0)
+                            pixel_scale_mean = (merged_ul['pixelScale_l'] + merged_ul['pixelScale_u']) / (2.0)
+                            gapAx.plot(merged_ul['wavelength_l'], merged_ul['order_distance'] * pixel_scale_mean, label=thisOrder)
+                            gapAx.set_xlabel('wavelength (nm)', fontsize=9)
+                            gapAx.set_ylabel('inter-order\ngap (arcsec)', fontsize=9)
+
+                        gapAx.set_xlim(x_limits)
+                        gapAx.tick_params(axis='both', which='major', labelsize=8)
+                        gapAx.set_title(f"Inter-order gap measured between adjacent orders", fontsize=9)
 
             else:
                 fwhmAx.set_title("Line FWHM measured via 0.5\" pinhole  arc-lamp frame", fontsize=9)
@@ -2427,6 +2441,7 @@ class create_dispersion_map(object):
                 mean_wavelength = group["wavelength"].mean()
                 fwhmAx.errorbar(mean_wavelength, mean_fwhm, yerr=std_fwhm, fmt='o', color='black', alpha=0.6)
                 fwhmAx.tick_params(axis='both', which='major', labelsize=8)
+                x_limits = fwhmAx.get_xlim()
 
                 resAx.set_title("Resolution as measured via 0.5\" pinhole arc-lamp frame", fontsize=9)
                 resAx.scatter(group["wavelength"], group["R_pin"], alpha=0.1)

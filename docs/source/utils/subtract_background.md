@@ -31,7 +31,7 @@ For each column in the masked frame, a bspline is fitted to the unmasked fluxes 
 :::{figure-md} background_spline
 ![image-20240920140729800](../_images/image-20240920140729800.png){width=600px}
 
-The red points are the unmasked data located along a single column in the masked frame. The blue line is the bspline fitted to the data, providing a model for the scattered background light contaminating the inter-order regions.
+The red points are the unmasked data located along a single column in the masked frame. The blue line is the bspline fitted to the data, providing a model for the scattered background light contaminating the inter-order regions. The frame in this instance is a master flat frame.
 :::
 
 
@@ -41,7 +41,7 @@ A Gaussian filter is applied to the image to remove the structure resulting from
 :::{figure-md} background_iamge_blurred
 ![image-20240920135302518](../_images/image-20240920135302518.png){width=600px}
 
-The final image of the model background scattered light, which is then subtracted from the original data frame.
+The final image of the model background scattered light, which is then subtracted from the original data frame. The frame in this instance is a master flat frame. 
 :::
 
 

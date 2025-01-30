@@ -227,6 +227,8 @@ if not on_rtd:
          u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/references', 'references.tex', u'references',
          u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/appendix', 'appendix.tex', u'appendix',
+         u'David R. Young & Marco Landoni', 'howto', False),
     ]
 else:
     latex_documents = [
