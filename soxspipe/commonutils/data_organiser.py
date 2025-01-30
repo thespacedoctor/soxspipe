@@ -1471,6 +1471,21 @@ class data_organiser(object):
                     tags = np.append(tags, df["eso pro catg"].values[0])
                     filepaths = np.append(filepaths, df["filepath"].values[0])
 
+        # SLIT ARC-LAMP FRAMES
+        if series["recipe"] in ["spat_sol"]:
+            if True:
+                mask = ((rawFrames["night start mjd"] == series["night start mjd"]) & (rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])) & (rawFrames['slit'].isin(["SLIT1.0"])))
+            else:
+                # THIS IS FOR TESTING XSHOOTER RESOLUTION MEASUREMENTS ONLY
+                mask = ((rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])))
+            df = rawFrames.loc[mask]
+            if len(df.index):
+                df['obs-delta'] = df["mjd-obs"] - series["mjd-obs"]
+                df.sort_values(by=['obs-delta'], inplace=True)
+                files = np.append(files, df["file"].values[0])
+                tags = np.append(tags, 'SLIT_ARC')
+                filepaths = np.append(filepaths, df["filepath"].values[0])
+
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {
             "file": files,
@@ -1951,7 +1966,7 @@ class data_organiser(object):
         from soxspipe.commonutils import data_organiser
         do = data_organiser(
             log=log,
-            rootDir="." 
+            rootDir="."
         )
         do.session_refresh()
         ```

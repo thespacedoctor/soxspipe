@@ -1,6 +1,6 @@
 # create_dispersion_map
 
-The [`create_dispersion_map`](#soxspipe.commonutils.create_dispersion_map) utility searches for emission line detections in arc-lamp frames imaged through pinhole masks. The measured line positions are then iteratively fitted with a set of polynomials to produce a global dispersion solution (and spatial solution in the case of a multi-pinhole frame). Both the [`soxs_disp_solution`](../recipes/soxs_disp_solution.md) and [`soxs_spatial_solution`](../recipes/soxs_spatial_solution.md) recipes use the utility.
+The [`create_dispersion_map`](#soxspipe.commonutils.create_dispersion_map) utility searches for emission line detections in arc-lamp frames imaged through pinhole masks. The measured line positions are then iteratively fitted with a set of polynomials to produce a global dispersion solution (and spatial solution in the case of a multi-pinhole frame). Both the [`soxs_disp_solution`](../recipes/soxs_disp_solution.md) and [`soxs_spatial_solution`](../recipes/soxs_spatial_solution.md) recipes use the utility. The final wavelength solution is provided in air.
 
 :::{figure-md} create_dispersion_map_util
 ![](create_dispersion_map.png){width=600px}
@@ -18,6 +18,7 @@ For each line in the line list:
 * An image stamp centred on the predicted pixel position ($X_o, Y_o$) of dimensions winX and winY is generated from the pinhole calibration frame.
 * A sigma-clipped median pixel value is calculated and subtracted from each stamp.
 * DAOStarFinder is employed to search for the *observed* detector position ($X, Y$) of the arc line via 2D Gaussian profile fitting on the stamp (see {numref}`arc_line_stamp`).
+* The bad-pixel mask is considered when measuring the position of the pinhole arc-line and if a lines falls on a bad-pixel it is ignored.
 
 :::{figure-md} arc_line_stamp
 ![image-20240913113957207](../_images/image-20240913113957207.png){width=300px}

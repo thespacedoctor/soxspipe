@@ -1,6 +1,7 @@
 (recipes-section)=
 # Recipes
 
+
 SOXSPIPE borrows the informative concept of `recipes' employed by ESO's data reduction pipelines to define the modular components of the pipeline. These recipes can be strung together to create an end-to-end workflow that takes as input the raw and calibration frames from the instrument and telescope and processes them all the way through to fully reduced, calibrated, ESO Phase III compliant science products.
 
 ## Standard Calibrations
@@ -40,3 +41,5 @@ soxs_stare
 soxs_nod
 soxs_offset
 :::
+
+

@@ -253,6 +253,26 @@ class soxs_spatial_solution(base_recipe):
 
         self.dateObs = multi_pinhole_image.header[kw("DATE_OBS")]
 
+        # DO WE HAVE A SLIT ARC?
+        slit_arc = False
+        if self.inst.upper() == "SOXS":
+            filter_list = [{kw("DPR_TYPE"): 'WAVE,LAMP', kw("DPR_TECH"): 'ECHELLE,SLIT'},
+                           {kw("DPR_TYPE"): 'LAMP,WAVE', kw("DPR_TECH"): 'ECHELLE,SLIT'}]
+        else:
+            filter_list = [{kw("DPR_TYPE"): 'LAMP,WAVE',
+                            kw("DPR_TECH"): 'ECHELLE,SLIT'}]
+        for add_filters in filter_list:
+            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                slit_arc = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+        # CHECK IF SLIT ARC IS PRESENT
+        if slit_arc:
+            # print(f"The 1.0 arc slit arc-lamp frame is {i}. Resolution plot will be given for 1.0'' arcsec slit")
+            self.slit_arc = slit_arc
+        else:
+            self.slit_arc = None
+
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
         order_table = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
@@ -265,6 +285,19 @@ class soxs_spatial_solution(base_recipe):
             master_flat = False
         self.multiPinholeFrame = self.detrend(
             inputFrame=multi_pinhole_image, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=order_table)
+
+        # DETREND THE slit_arc IF PRESENT
+
+        if slit_arc:
+            # print('Detrending slit arc...')
+            self.slit_arc = self.detrend(
+                inputFrame=slit_arc, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=order_table)
+        else:
+            self.slit_arc = None
+
+        if False:
+            quicklook_image(
+                log=self.log, CCDObject=self.slit_arc, show=True, ext=False, stdWindow=1, title="Multi-pinhole Frame Overlaid with Dispersion Solution", settings=self.settings)
 
         # INJECT KEYWORDS INTO HEADER
         self.update_fits_keywords(frame=self.multiPinholeFrame)
@@ -332,7 +365,8 @@ class soxs_spatial_solution(base_recipe):
                 productsTable=self.products,
                 sofName=self.sofName,
                 create2DMap=self.create2DMap,
-                startNightDate=self.startNightDate
+                startNightDate=self.startNightDate,
+                arcFrame=self.slit_arc
             ).get()
 
         from datetime import datetime

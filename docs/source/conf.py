@@ -85,8 +85,8 @@ numfig = True
 numfig_format = {
     'code-block': 'Listing %s',
     'figure': 'Fig. %s',
-    'section': 'Section',
     'table': 'Table %s',
+    'section': 'Section',
 }
 
 
@@ -192,6 +192,8 @@ latex_engine = 'xelatex'
 if not on_rtd:
     latex_documents = [
         ('overleaf/introduction', 'introduction.tex', u'introduction',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/collecting_data', 'collecting_data.tex', u'collecting data',
          u'David R. Young & Marco Landoni', 'howto', False),
         ('overleaf/recipes', 'recipes.tex', u'recipes',
          u'David R. Young & Marco Landoni', 'howto', False),

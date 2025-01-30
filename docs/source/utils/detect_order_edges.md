@@ -21,7 +21,9 @@ $$
 threshold = minvalue + (maxvalue - minvalue) * 0.25
 $$
 
-For each slice along each order, the pixel-locations xmin (lower edge) and xmax (upper edge) where the flux reaches this minimum flux threshold are detected and recorded (see red circles in {numref}`order-edge-slice`). If the minimum flux is not recorded at any point along the order edge, the threshold slowly increments to the maximum flux until the threshold is registered. Slices where both edges are undetected before the maximum flux threshold is reached are rejected.
+If the minimum flux is not recorded at any point along the order edge, the threshold slowly increments to the maximum flux until the threshold is registered. Slices where both edges are undetected before the maximum flux threshold is reached are rejected.
+
+For each slice along each order, we measure the flux at the centre of the order and record a minimum and maximum percentage of this central flux (minimum and maximum percentages are set in the settings file). Then, we smooth the flux with a rolling-median filter for each cross-dispersion slice. Finally, we start at the minimum flux threshold to try and find both order edges simultaneously. If an edge can’t be found at this threshold, we incrementally increase the threshold until we find the edges or reach the maximum threshold. If found, the pixel-locations xmin (lower edge) and xmax (upper edge) where the flux reaches this minimum flux threshold are recorded (see red circles in {numref}`order-edge-slice`). If, however, the maximum threshold is reached, then the slice will be discarded.
 
 
 :::{figure-md} order-edge-slice

@@ -1,17 +1,20 @@
 # soxs_offset
 
-The purpose of the [`soxs_offset`](#soxspipe.recipes.soxs_offset) recipe is to reduced the science frames produced by the NTT and SOXS from a nodding mode observation block.
+
+:::{include} ./descriptions/soxs_offset.inc
+:::
+
 
 ## Input
 
 <!-- FIND OBs HERE : https://docs.google.com/spreadsheets/d/1-3VXkIWcydvpawwVl_C3pNTU3HgnElJaYFAKow65Fl8/edit#gid=0 -->
 
-:::{include} inputs/soxs_offset.md
+:::{include} inputs/soxs_offset.inc
 :::
 
 ## Parameters
 
-:::{include} parameters/soxs_offset.md
+:::{include} parameters/soxs_offset.inc
 :::
 
 
@@ -27,13 +30,13 @@ The `soxs_offset` recipe algorithm.
 
 ## Output
  
-:::{include} output/soxs_offset.md
+:::{include} output/soxs_offset.inc
 :::
 
 
 ## QC Metrics
 
-:::{include} qcs/soxs_offset.md
+:::{include} qcs/soxs_offset.inc
 :::
 
 ## Recipe API

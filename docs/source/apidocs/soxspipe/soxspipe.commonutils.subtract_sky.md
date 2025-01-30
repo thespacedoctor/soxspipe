@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} subtract_sky(log, settings, recipeSettings, objectFrame, twoDMap, qcTable, productsTable, dispMap=False, sofName=False, recipeName='soxs-stare')
+`````{py:class} subtract_sky(log, settings, recipeSettings, objectFrame, twoDMap, qcTable, productsTable, dispMap=False, sofName=False, recipeName='soxs-stare', startNightDate='')
 :canonical: soxspipe.commonutils.subtract_sky.subtract_sky
 
 Bases: {py:obj}`object`

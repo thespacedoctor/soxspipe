@@ -1,6 +1,6 @@
 ## Acquisition Camera
 
-Although the SOXS acquisition and guiding camera will mainly be used for the acquisition of sources to allow for the centring of targets on the slits, it will also provide science-grade imaging capability. The Andor iKon M934 camera detector has a $1024\times1024$ pixel BEX2-DD CCD providing a $3.5\times3.5$ arcmin FOV with a 0.205 arcsec pixel scale. 7 filters are provided; the 6 LSST $u, g, r, i, z, y$ and the $V$ Johnston filter. See {cite:t}`brucalassi2018a` for more detail. 
+Although the SOXS acquisition and guiding camera will mainly be used for the acquisition of sources to allow for the centring of targets on the slits, it will also provide science-grade imaging capability. The Andor iKon M934 camera detector has a $1024\times1024$ pixel BEX2-DD CCD providing a circular FOV with a $3.5$ arcmin diameter and a 0.205 arcsec pixel scale. 7 filters are provided; the 6 LSST $u, g, r, i, z, y$ and the $V$ Johnston filter. See {cite:t}`brucalassi2018a` for more detail. As photometry data is obtained simultaneously with source spectra, the extracted spectral flux may be scaled to the photometry from the acquisition camera (in relation to the filter used in the acquisition frame). This offers an absolute flux correction for the spectral data.
 
 :::{table} Acquisition Camera Characteristics
 
