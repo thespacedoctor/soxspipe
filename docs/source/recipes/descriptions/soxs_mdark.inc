@@ -1,0 +1,3 @@
+Every raw CCD image contains counts resulting from a 'dark current', electrons released due to the thermal effects in the CCD material. For both the UVB-VIS (< 0.00012 $\rm{e^{-}/s/pixel}$) and NIR detectors (< 0.005  $\rm{e^{-}/s/pixel}$), the dark current is almost negligible. Not all pixels will have the same dark current, with some pixels having a higher-than-typical current. These are so-called 'hot-pixels', and these must be identified and recorded (using the [`create_noise_map`](../utils/create_noise_map.md) utility).
+
+The purpose of the [`soxs_mdark`](#soxspipe.recipes.soxs_mdark) recipe is to generate a master-dark frame used to remove flux attributed to the dark current from other frames.

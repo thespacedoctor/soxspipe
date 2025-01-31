@@ -182,6 +182,7 @@ class detect_order_edges(_base_detect):
         import numpy as np
         import pandas as pd
         from astropy.stats import mad_std
+        from soxspipe.commonutils.toolkit import read_spectral_format
 
         self.log.print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
 
@@ -285,6 +286,7 @@ class detect_order_edges(_base_detect):
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
+
         orderPixelTableUpper = orderPixelTable.dropna(axis='index', how='any',
                                                       subset=[f"{self.axisA}coord_upper"])
 
@@ -790,6 +792,7 @@ class detect_order_edges(_base_detect):
 
         orderData["minThreshold"] = minvalue + (maxvalue - minvalue) * minThresholdPercenage
         orderData["maxThreshold"] = minvalue + (maxvalue - minvalue) * maxThresholdPercenage
+        orderData["maxvalue"] = maxvalue
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if False:
@@ -911,8 +914,8 @@ class detect_order_edges(_base_detect):
             (threshold - medSlide[axisAminguess]) / \
             (medSlide[axisAminguess + 1] - medSlide[axisAminguess]) + 2
 
-        # IF THE WIDTH BETWEEN MIN AND MAX IS TOO SMALL THEN REJECT
-        if axisAmax - axisAmin < 10:
+        # IF THE WIDTH BETWEEN MIN AND MAX IS TOO SMALL THEN REJECT .. OR NEGATIVE MIN AND MAX THRESHOLDS
+        if (axisAmax - axisAmin < 10) or (self.arm != "VIS" and (minThreshold < 0.01 or maxThreshold < 0.01)):
             # SANITY CHECK PLOT OF CROSS-SECTION
             if False:
                 import matplotlib.pyplot as plt

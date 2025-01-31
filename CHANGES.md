@@ -2,6 +2,10 @@
 
 # Release Notes
 
+## v0.12.10 - January 31, 2025
+
+* **ENHANCEMENT:** Major updates to the documentation following PAE.
+
 ## v0.11.10 - December 19, 2024
 
 * **ENHANCEMENT:** Raw frames & their categories are reported in the FITS headers of the recipe products.

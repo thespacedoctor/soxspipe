@@ -129,7 +129,7 @@ At vero eos et accusamus et iusto odio dignissimos ducimus qui blanditiis praese
 
 ## Cross References
 
-### Intro  
+### Intro
 
 Some text
 

@@ -9,5 +9,5 @@
 
 
 
-:::{include} qcs/soxs_xxxrecipexxx.md
+:::{include} qcs/soxs_xxxrecipexxx.inc
 :::

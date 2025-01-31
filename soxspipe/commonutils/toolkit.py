@@ -537,21 +537,21 @@ def generic_quality_checks(
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
-    nanCount = np.count_nonzero(np.isnan(frame.data))
+    # nanCount = np.count_nonzero(np.isnan(frame.data))
 
     utcnow = datetime.utcnow()
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-    qcTable = pd.concat([qcTable, pd.Series({
-        "soxspipe_recipe": recipeName,
-        "qc_name": "N NAN PIXELS",
-        "qc_value": nanCount,
-        "qc_comment": "Number of NaN pixels",
-        "qc_unit": "",
-        "obs_date_utc": dateObs,
-        "reduction_date_utc": utcnow,
-        "to_header": False
-    }).to_frame().T], ignore_index=True)
+    # qcTable = pd.concat([qcTable, pd.Series({
+    #     "soxspipe_recipe": recipeName,
+    #     "qc_name": "N NAN PIXELS",
+    #     "qc_value": nanCount,
+    #     "qc_comment": "Number of NaN pixels",
+    #     "qc_unit": "",
+    #     "obs_date_utc": dateObs,
+    #     "reduction_date_utc": utcnow,
+    #     "to_header": False
+    # }).to_frame().T], ignore_index=True)
 
     # COUNT BAD-PIXELS
     badCount = frame.mask.sum()
@@ -1119,7 +1119,7 @@ def add_recipe_logger(
     **Key Arguments:**
 
     - `log` -- original logger
-    - `productPath` -- path to the recipe product 
+    - `productPath` -- path to the recipe product
 
     **Usage:**
 

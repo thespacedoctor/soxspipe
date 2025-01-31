@@ -109,7 +109,7 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} update_fits_keywords(frame)
+````{py:method} update_fits_keywords(frame, rawFrames=False)
 :canonical: soxspipe.recipes.base_recipe.base_recipe.update_fits_keywords
 
 ```{autodoc2-docstring} soxspipe.recipes.base_recipe.base_recipe.update_fits_keywords

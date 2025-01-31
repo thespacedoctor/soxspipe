@@ -1,19 +1,21 @@
 # soxs_mbias
 
-A zero-second exposure will contain only read-noise, and \~half of the pixels within this Gaussian distribution centred around zero counts will always contain negative flux. To avoid negative counts, an offset *bias* voltage is applied at the amplifier stage so that even when no photons are detected, the A/D converter will always register a positive value. This bias-voltage offset must be accounted for in the data reduction process. 
-
-The purpose of the [`soxs_mbias`](#soxspipe.recipes.soxs_mbias) recipe is to provide a master-bias frame that can be subtracted from science/calibration frames to remove the contribution of pixel counts resulting from the bias voltage.
-
+:::{include} ./descriptions/soxs_mbias.inc
+:::
 
 
 ## Input
 
-:::{include} inputs/soxs_mbias.md
+:::{include} ./inputs/soxs_mbias.inc
 :::
+
+:::{include} ./static_files/soxs_mbias.inc
+:::
+
 
 ## Parameters
 
-:::{include} parameters/soxs_mbias.md
+:::{include} ./parameters/soxs_mbias.inc
 :::
 
 ## Method
@@ -28,18 +30,18 @@ The `soxs-mbias` recipe algorithm.
 
 ## Output
 
-:::{include} output/soxs_mbias.md
+:::{include} ./output/soxs_mbias.inc
 :::
 
 
 ## QC Metrics
 
-:::{include} qcs/soxs_mbias.md
+:::{include} ./qcs/soxs_mbias.inc
 :::
 
 
 ## Recipe API
 
-:::{autodoc2-object} soxspipe.recipes.soxs_mbias.soxs_mbias
+:::{autodoc2-object} ./soxspipe.recipes.soxs_mbias.soxs_mbias
 :::
 

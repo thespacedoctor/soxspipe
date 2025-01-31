@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} detect_order_edges(log, flatFrame, orderCentreTable, settings=False, recipeSettings=False, recipeName='soxs-mflat', verbose=False, qcTable=False, productsTable=False, tag='', sofName=False, binx=1, biny=1, extendToEdges=True, lampTag=False)
+`````{py:class} detect_order_edges(log, flatFrame, orderCentreTable, settings=False, recipeSettings=False, recipeName='soxs-mflat', verbose=False, qcTable=False, productsTable=False, tag='', sofName=False, binx=1, biny=1, extendToEdges=True, lampTag=False, startNightDate='')
 :canonical: soxspipe.commonutils.detect_order_edges.detect_order_edges
 
 Bases: {py:obj}`soxspipe.commonutils._base_detect`

@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} create_dispersion_map(log, settings, recipeSettings, pinholeFrame, firstGuessMap=False, orderTable=False, qcTable=False, productsTable=False, sofName=False, create2DMap=True, lineDetectionTable=False)
+`````{py:class} create_dispersion_map(log, settings, recipeSettings, pinholeFrame, firstGuessMap=False, orderTable=False, qcTable=False, productsTable=False, sofName=False, create2DMap=True, lineDetectionTable=False, startNightDate='', arcFrame=None)
 :canonical: soxspipe.commonutils.create_dispersion_map.create_dispersion_map
 
 Bases: {py:obj}`object`

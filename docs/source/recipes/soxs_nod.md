@@ -1,16 +1,22 @@
 # soxs_nod
 
-The [`soxs_nod`](#soxspipe.recipes.soxs_nod) recipe reduces the science frames produced by the NTT and SOXS from a nodding mode observation block.
+:::{include} ./descriptions/soxs_nod.inc
+:::
+
 
 ## Input
 
-:::{include} inputs/soxs_nod.md
+:::{include} ./inputs/soxs_nod.inc
 :::
+
+:::{include} ./static_files/soxs_nod.inc
+:::
+
 
 ## Parameters
 
 
-:::{include} parameters/soxs_nod.md
+:::{include} parameters/soxs_nod.inc
 :::
 
 
@@ -35,16 +41,17 @@ Adopting this assumption, the `soxs_nod` recipe proceeds as follows. First, it i
 
 If the jitter is present, the `soxs_nod` recipe determines how many different offsets are present in the provided frames, which are grouped according to their offsets before stacking. The procedure described above is then repeated for each offset detected in the input data. At the end of the procedure, there will be a number of spectra equal to the number of detected offsets in the data. Those spectra are then stacked and merged to obtain a unique spectrum.
 
+Note a boxcar extraction is also preformed alongside the Horne extraction. Use the `horne-extraction-slit-length` to control the size of the aperture used to preform the boxcar extraction on the object trace.
 
 ## Output
  
-:::{include} output/soxs_nod.md
+:::{include} output/soxs_nod.inc
 :::
 
 ## QC Metrics
 
 
-:::{include} qcs/soxs_nod.md
+:::{include} qcs/soxs_nod.inc
 :::
 
 ## Recipe API
