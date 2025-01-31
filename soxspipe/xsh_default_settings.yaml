@@ -1,0 +1,548 @@
+version: 1
+
+# INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
+save-intermediate-products: False
+
+# instrument the data belongs to; `xsh` or `soxs`
+instrument: xsh
+data-extension: 0
+
+soxs-mbias:
+    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 1
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 3
+
+soxs-mdark:
+    # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 1
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 5
+
+soxs-disp-solution:
+    uvb:
+        # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
+        pixel-window-size: 10
+        # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
+        pinhole-detection-thres-sigma: 3
+        # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        order-deg: [4,4]
+        # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        wavelength-deg: [4,5]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 5
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 7
+    vis:
+        # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
+        pixel-window-size: 10
+        # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
+        pinhole-detection-thres-sigma: 3
+        # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        order-deg: [4,4]
+        # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        wavelength-deg: [5,5]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 5
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 10
+    nir:
+        # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
+        pixel-window-size: 10
+        # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
+        pinhole-detection-thres-sigma: 3
+        # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        order-deg: [4,4]
+        # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        wavelength-deg: [4,4]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 5
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 7
+
+soxs-order-centre:
+    uvb:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 100
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 30
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 5
+            # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-fitting-residual-clipping-sigma: 10
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 5
+    vis:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 100
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 30
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 4
+            # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-fitting-residual-clipping-sigma: 10
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 5
+    nir:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 100
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 30
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 4
+            # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-fitting-residual-clipping-sigma: 10
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 5
+
+soxs-mflat:
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: True
+    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    stacked-clipping-sigma: 5
+    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    stacked-clipping-iterations: 5
+    uvb:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        disp-axis-deg: 4
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 10
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 2
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
+        # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+        scale-d2-to-qth: True
+    vis:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+        disp-axis-deg: 4
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 10
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 2
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
+    nir:
+        # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
+        centre-order-window: 20
+        # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-length-for-edge-detection: 90
+        # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
+        slice-width-for-edge-detection: 5
+        # MINIMUM VALUE FLUX CAN DROP TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        min-percentage-threshold-for-edge-detection: 20
+        # MAXIMUM VALUE FLUX CAN CLIMB TO AS PERCENTAGE OF CENTRAL FLUX AND BE COUNTED AS AN ORDER EDGE
+        max-percentage-threshold-for-edge-detection: 50
+        # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
+        order-deg: 6
+        # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+        disp-axis-deg: 4
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-fitting-residual-clipping-sigma: 10
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
+        poly-clipping-iteration-limit: 2
+        # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
+        low-sensitivity-clipping-sigma: 2
+
+
+soxs-spatial-solution:
+    # DIVIDE IMAGE BY MASTER FLAT FRAME
+    use_flat: False
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: True
+    uvb:
+        # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
+        pixel-window-size: 10
+        # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
+        pinhole-detection-thres-sigma: 5
+        # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        order-deg: [4,4]
+        # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        wavelength-deg: [4,5]
+        # DEGREE OF SLIT POSITION COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        slit-deg: [5,2]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 4
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 3
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
+        # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
+        map_to_image_displacement_threshold: 0.01 # in pixels
+        # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
+        mph_line_set_min: 9
+    vis:
+        # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
+        pixel-window-size: 10
+        # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
+        pinhole-detection-thres-sigma: 5
+        # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        order-deg: [4,4]
+        # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        wavelength-deg: [5,4]
+        # DEGREE OF SLIT POSITION COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        slit-deg: [3,2]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 4
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 3
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
+        # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
+        map_to_image_displacement_threshold: 0.01 # in pixels
+        # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
+        mph_line_set_min: 9
+    nir:
+        # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
+        pixel-window-size: 10
+        # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
+        pinhole-detection-thres-sigma: 5
+        # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        order-deg: [5,4]
+        # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        wavelength-deg: [4,4]
+        # DEGREE OF SLIT POSITION COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
+        slit-deg: [5,2]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 9
+        # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
+        poly-fitting-residual-clipping-sigma: 3
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
+        # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
+        map_to_image_displacement_threshold: 0.01 # in pixels
+        # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
+        mph_line_set_min: 9
+    
+bootstrap_dispersion_solution: False
+
+
+soxs-stare:
+    # DIVIDE IMAGE BY MASTER FLAT FRAME
+    use_flat: True
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: True
+    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    stacked-clipping-sigma: 5
+    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    stacked-clipping-iterations: 5
+    # USE LA COMSIC TO REMOVE CRHs BEFORE EXTRACTION
+    use_lacosmic: True
+    uvb:
+        # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
+        horne-extraction-slit-length: 20
+        # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
+        horne-extraction-profile-global-clipping-sigma: 25
+        # SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
+        horne-extraction-profile-clipping-sigma: 3.0
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
+        horne-extraction-profile-clipping-iteration-count: 10
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 100
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 30
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.0
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 5
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 7
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 7
+        sky-subtraction:
+            # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_sigma: 3
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_iterations: 7
+            # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
+            percentile_rolling_window_size: 35
+            # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+            clip-slit-edge-fraction: 0.01
+            # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
+            aggressive_object_masking: False
+            # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
+            bspline_order: 2
+            # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
+            slit_illumination_order: 1
+            # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
+            starting_points_per_knot: 300
+            # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
+            min_points_per_knot: 11
+            # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
+            bspline_fitting_residual_clipping_sigma: 20
+            # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+            bspline_iteration_limit: 4
+            # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
+            residual_floor_percentile: 95
+    vis:
+        # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
+        horne-extraction-slit-length: 20
+        # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
+        horne-extraction-profile-global-clipping-sigma: 25
+        # SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
+        horne-extraction-profile-clipping-sigma: 3.0
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
+        horne-extraction-profile-clipping-iteration-count: 10
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 100
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 30
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 4
+            # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-fitting-residual-clipping-sigma: 7
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 7
+        sky-subtraction:
+            # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_sigma: 3
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_iterations: 5
+            # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
+            percentile_rolling_window_size: 35
+            # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+            clip-slit-edge-fraction: 0.01
+            # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
+            aggressive_object_masking: False
+            # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
+            bspline_order: 3
+            # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
+            slit_illumination_order: 1
+            # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
+            starting_points_per_knot: 100
+            # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
+            min_points_per_knot: 11
+            # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
+            bspline_fitting_residual_clipping_sigma: 20
+            # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+            bspline_iteration_limit: 7
+            # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
+            residual_floor_percentile: 90
+    nir:
+        # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
+        horne-extraction-slit-length: 20
+        # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
+        horne-extraction-profile-global-clipping-sigma: 25
+        ## SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
+        horne-extraction-profile-clipping-sigma: 3.0
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
+        horne-extraction-profile-clipping-iteration-count: 10
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 100
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 30
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 4
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 7
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 7
+        sky-subtraction:
+            # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_sigma: 3
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
+            percentile_clipping_iterations: 6
+            # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
+            percentile_rolling_window_size: 35
+            # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+            clip-slit-edge-fraction: 0.03
+            # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
+            aggressive_object_masking: False
+            # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
+            bspline_order: 3
+            # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
+            slit_illumination_order: 1
+            # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
+            starting_points_per_knot: 25
+            # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
+            min_points_per_knot: 9
+            # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
+            bspline_fitting_residual_clipping_sigma: 20
+            # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+            bspline_iteration_limit: 7
+            # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
+            residual_floor_percentile: 70
+
+
+
+soxs-nod:
+    use_flat: True
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: False
+    # SAVE INDIVIDUAL FRAME EXTRACTION
+    save_single_frame_extractions: False
+    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    stacked-clipping-sigma: 5
+    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    stacked-clipping-iterations: 5
+    # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
+    horne-extraction-slit-length: 20
+    # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
+    horne-extraction-profile-global-clipping-sigma: 25
+    # SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
+    horne-extraction-profile-clipping-sigma: 3.0
+    # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
+    horne-extraction-profile-clipping-iteration-count: 10
+    # USE LA COMSIC TO REMOVE CRHs BEFORE EXTRACTION
+    use_lacosmic: True
+    uvb:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 150
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 70
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.0
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 5
+            # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 7
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 7
+    vis:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 150
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 70
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 4
+            # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 7
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 7
+    nir:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 200
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 70
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 2.
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 4
+            # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 7
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 7
+
+
+
+# UTILS
+background-subtraction:
+    bspline-deg: 2
+    gaussian-blur-sigma: 65
+
+
+logging settings:
+    formatters:
+        file_style:
+            format: '%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s'
+            datefmt: '%Y/%m/%d %H:%M:%S'
+        console_style:
+            format: '%(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s'
+            datefmt: '%H:%M:%S'
+        html_style:
+            format: '<div id="row" class="%(levelname)s"><span class="date">%(asctime)s</span>   <span class="label">file:</span><span class="filename">%(filename)s</span>   <span class="label">method:</span><span class="funcName">%(funcName)s</span>   <span class="label">line#:</span><span class="lineno">%(lineno)d</span> <span class="pathname">%(pathname)s</span>  <div class="right"><span class="message">%(message)s</span><span class="levelname">%(levelname)s</span></div></div>'
+            datefmt: '%Y-%m-%d <span class= "time">%H:%M <span class= "seconds">%Ss</span></span>'
+    handlers:
+        console:
+            class: logging.StreamHandler
+            level: WARNING
+            formatter: console_style
+            stream: ext://sys.stdout
+        file:
+            class: logging.handlers.GroupWriteRotatingFileHandler
+            level: WARNING
+            formatter: file_style
+            filename: /Users/Dave/.config/soxspipe/soxspipe.log
+            mode: w+
+            maxBytes: 102400
+            backupCount: 1
+            delay: True
+    root:
+        level: INFO
+        handlers: [file,console]
+

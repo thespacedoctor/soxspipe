@@ -4,24 +4,29 @@ version: 1
 instrument: soxs
 
 soxs-mbias:
-    clipping-lower-sigma: 5
-    clipping-upper-sigma: 5   
-    clipping-iteration-count: 5
+    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 1
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
+    stacked-clipping-sigma: 5
+    stacked-clipping-iterations: 3
 
 soxs-mdark:
+    # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 1
     stacked-clipping-sigma: 5
-    stacked-clipping-iterations: 5
-    clipping-lower-sigma: 5
-    clipping-upper-sigma: 5   
-    clipping-iteration-count: 5
+    stacked-clipping-iterations: 5 
+
 
 soxs-disp-solution:
     pixel-window-size: 10
-    order-deg: 4
-    wavelength-deg: 5
+    pinhole-detection-thres-sigma: 5
+    order-deg: 3
+    wavelength-deg: 3
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
     poly-clipping-iteration-limit: 10
-    poly-fitting-residual-clipping-sigma: 7
+    poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centre:
     detect-continuum:
@@ -30,34 +35,56 @@ soxs-order-centre:
         # LENGTH OF EACH SLICE (PIXELS)
         slice-length: 10
         # WIDTH OF EACH SLICE (PIXELS)
-        slice-width: 5
+        slice-width: 1
         # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-        peak-sigma-limit: 3
+        peak-sigma-limit: 1.5
         # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        disp-axis-deg: 3
+        disp-axis-deg: 5
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-        order-deg: 5
+        order-deg: 6
         # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-        poly-fitting-residual-clipping-sigma: 3
+        poly-fitting-residual-clipping-sigma: 5
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
         poly-clipping-iteration-limit: 7
-
+        
 soxs-spatial-solution:
+    use_flat: False
     pixel-window-size: 10
+    pinhole-detection-thres-sigma: 5
     order-deg: 4
     wavelength-deg: 5
     slit-deg: 2
     poly-clipping-iteration-limit: 10
     poly-fitting-residual-clipping-sigma: 5
+    pinhole_fwhm_px_max: 2.5
+    pinhole_fwhm_px_min: 1.0
+    mph_line_set_min: 8
+    uvb:
+        pixel-window-size: 10
+        pinhole-detection-thres-sigma: 5
+        # DEGREE OF ORDER TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
+        order-deg: [4,4]
+        # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
+        wavelength-deg: [4,5]
+        # DEGREE OF SLIT TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
+        slit-deg: [5,2]
+        # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTLING ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
+        poly-clipping-iteration-limit: 4
+        poly-fitting-residual-clipping-sigma: 9
+        # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
+        poly-clipping-pinhole-sets: True
+        map_to_image_displacement_threshold: 0.01 # in pixels
+        # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
+        mph_line_set_min: 9
 
 
 soxs-mflat:
+    subtract_background: True
     centre-order-window: 20
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
-    clipping-lower-sigma: 50
-    clipping-upper-sigma: 1000   
-    clipping-iteration-count: 1
+    # NUMBER OF CROSS-ORDER SLICES PER ORDER
+    order-sample-count: 70
     slice-length-for-edge-detection: 90
     slice-width-for-edge-detection: 5
     min-percentage-threshold-for-edge-detection: 20
@@ -67,20 +94,14 @@ soxs-mflat:
     poly-fitting-residual-clipping-sigma: 5
     poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
+    # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+    scale-d2-to-qth: True
     
 soxs-stare:
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
-    # number of σ below the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-lower-simga: 10
-    # number of σ above the median *frame* flux beyond which pixel is added to the bad-pixel mask
-    clipping-upper-simga: 10 
-    # number of sigma-clipping iterations to perform when added pixels to the bad-pixel mask
-    clipping-iteration-count: 0
-    clipping-lower-sigma: 10
-    clipping-upper-sigma: 10 
     # the length of the 'slit' used to collect object flux (in pixels)
     horne-extraction-slit-length: 20
     # the number of σ deviations beyond the median pixel value for a pixel to be clipped (removing CRH and bad-pixels)
@@ -106,31 +127,32 @@ soxs-stare:
         poly-fitting-residual-clipping-sigma: 5.0
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
         poly-clipping-iteration-limit: 1
+    sky-subtraction:
+        # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
+        median_clipping_sigma: 3
+        median_clipping_iterations: 5
+        # ROLLING WINDOW LENGTH IN DATA POINTS
+        median_rolling_window_size: 31
+        # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
+        percentile_clipping_sigma: 2
+        percentile_clipping_iterations: 1
+        percentile_rolling_window_size: 15
+        # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
+        clip-slit-edge-fraction: 0.05
+        aggressive_object_masking: True
+        bspline_order: 3
+        slit_illumination_order: 3
 
 
-sky-subtraction:
-    # MEDIAN CLIPPING FIRST USED TO CLIP MOST DEVIANT PIXELS (BAD AND CRHs)
-    median_clipping_sigma: 3
-    median_clipping_iterations: 5
-    # ROLLING WINDOW LENGTH IN DATA POINTS
-    median_rolling_window_size: 31
-    # PECENTILE CLIPPING USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-    percential_clipping_sigma: 2
-    percential_clipping_iterations: 1
-    percential_rolling_window_size: 15
-    # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-    clip-slit-edge-fraction: 0.05
-    aggressive_object_masking: True
-    bspline_order: 3
-    slit_illumination_order: 3
+
 
 # soxs-straighten:
 #     asdasd: 1
 
 # UTILS
 background-subtraction:
-    bspline-deg: 2
-    median-filter-pixels: 9
+    bspline-deg: 3
+    gaussian-blur-sigma: 35
 
 
 data-extension: 1
@@ -156,17 +178,19 @@ logging settings:
     handlers:
         console:
             class: logging.StreamHandler
-            level: DEBUG
+            level: WARNING
             formatter: console_style
             stream: ext://sys.stdout
         file:
             class: logging.handlers.GroupWriteRotatingFileHandler
             level: WARNING
             formatter: file_style
-            filename: ~/.config/soxspipe/soxspipe.log
+            filename: /Users/Dave/.config/soxspipe/soxspipe.log
             mode: w+
             maxBytes: 102400
             backupCount: 1
+            delay: True
     root:
-        level: WARNING
+        level: INFO
         handlers: [file,console]
+

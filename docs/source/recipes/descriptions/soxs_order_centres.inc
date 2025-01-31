@@ -1,0 +1,1 @@
+Starting with the first pass dispersion solution from the [`soxs_disp_solution`](#soxspipe.recipes.soxs_disp_solution) recipe, the [`soxs_order_centres`](#soxspipe.recipes.soxs_order_centres) recipe finds and fits a global polynomial model to the central trace of each echelle order.

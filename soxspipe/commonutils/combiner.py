@@ -3,11 +3,11 @@
 """
 *Sub-class of CCDProc Combiner to fix error map combination*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young
 
-:Date Created:
-    October 27, 2022
+Date Created
+: October 27, 2022
 """
 from ccdproc import Combiner as OriginalCombiner
 from fundamentals import tools

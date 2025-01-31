@@ -77,37 +77,6 @@ class test_soxs_mflat(unittest.TestCase):
         print(tabulate(orderPolyTable, headers='keys', tablefmt='psql'))
         print(tabulate(orderPixelTable.head(100), headers='keys', tablefmt='psql'))
 
-    @pytest.mark.full
-    def test_xsh_mflat_nir_inter_order_to_unity_func(self):
-        orderTable = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/inter_order_low_sens_to_bpm/20170819T150225_NIR_ORDER_LOCATIONS.fits"
-        flat = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/inter_order_low_sens_to_bpm/lamp_flat_nir.fits"
-        sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_long_flats.sof"
-
-        from os.path import expanduser
-        home = expanduser("~")
-        flat = flat.replace("~", home)
-        orderTable = orderTable.replace("~", home)
-
-        from astropy.nddata import CCDData
-        from astropy import units as u
-        frame = CCDData.read(flat, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                             hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
-
-        from soxspipe.recipes import soxs_mflat
-        this = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
-        )
-        this.binx = 1
-        this.biny = 1
-        mflat = this.mask_low_sens_and_inter_order_to_unity(
-            orderTablePath=orderTable,
-            frame=frame
-        )
-        print(f"The master flat file has been saved to '{mflat}'")
-
     def test_xsh_mflat_nir_long_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_long_flats.sof"
         from soxspipe.recipes import soxs_mflat
@@ -120,6 +89,7 @@ class test_soxs_mflat(unittest.TestCase):
         mflat = this.produce_product()
         print(f"The master flat file has been saved to '{mflat}'")
 
+    @pytest.mark.full
     def test_soxs_mflat_nir_soxsreal_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs/FLAT/sof/SOXS_NIR_FLATS.sof"
         from soxspipe.recipes import soxs_mflat

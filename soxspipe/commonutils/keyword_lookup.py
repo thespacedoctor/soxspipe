@@ -3,11 +3,11 @@
 """
 *Given a keyword token and instrument name return the exact FITS Header keyword*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    February 26, 2020
+Date Created
+: February 26, 2020
 """
 ################# GLOBAL IMPORTS ####################
 from fundamentals import tools
@@ -22,8 +22,10 @@ class keyword_lookup(object):
     *The worker class for the keyword_lookup module*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary. Default *False*
+    - ``instrument`` -- can directly add the instrument if settings file is not avalable. Default *False*
 
     **Usage**
 
@@ -33,7 +35,8 @@ class keyword_lookup(object):
     from soxspipe.commonutils import keyword_lookup
     kw = keyword_lookup(
         log=log,
-        settings=settings
+        settings=settings,
+        instrument=False,
     ).get
     ```
 
@@ -65,17 +68,21 @@ class keyword_lookup(object):
     def __init__(
             self,
             log,
+            instrument=False,
             settings=False,
 
     ):
         self.log = log
-        log.debug("instansiating a new 'keyword_lookup' object")
+        log.debug("instantiating a new 'keyword_lookup' object")
         self.settings = settings
+        self.instrument = instrument
         # xt-self-arg-tmpx
 
         # SELECT THE INSTRUMENT AND READ THE KEYWORD DICTIONARY IN RESOURCES
         # FOLDER
-        if "instrument" in settings:
+        if instrument:
+            self.instrument = instrument
+        elif settings and "instrument" in settings:
             self.instrument = settings["instrument"]
         else:
             self.instrument = "soxs"
@@ -90,11 +97,13 @@ class keyword_lookup(object):
         *given a tag, and optional keyword index, return the FITS Header keyword for the selected instrument*
 
         **Key Arguments:**
-            - ``tag`` -- the keyword tag as set in the yaml keyword dictionary (e.g. 'SDP_KEYWORD_TMID' returns 'TMID'). Can be string or list of sttings.
-            - ``index`` -- add an index to the keyword if not False (e.g. tag='PROV', index=3 returns 'PROV03') Default *False*
+
+        - ``tag`` -- the keyword tag as set in the yaml keyword dictionary (e.g. 'SDP_KEYWORD_TMID' returns 'TMID'). Can be string or list of sttings.
+        - ``index`` -- add an index to the keyword if not False (e.g. tag='PROV', index=3 returns 'PROV03') Default *False*
 
         **Return:**
-            - ``keywords`` -- the FITS Header keywords. Can be string or list of sttings depending on format of tag argument
+
+        - ``keywords`` -- the FITS Header keywords. Can be string or list of sttings depending on format of tag argument
 
         **Usage**
 
@@ -133,7 +142,8 @@ class keyword_lookup(object):
         """*select the keyword dictionary based on the instrument passed via the settings*
 
         **Return:**
-            - ``kwDict`` -- the python dictionary of keywords (key = tag, value = fits keyword)
+
+        - ``kwDict`` -- the python dictionary of keywords (key = tag, value = fits keyword)
 
         **Usage**
 
@@ -150,7 +160,7 @@ class keyword_lookup(object):
 
         # GENERATE PATH TO YAML DICTIONARY
         yamlFilePath = os.path.dirname(os.path.dirname(
-            __file__)) + "/resources/" + self.instrument + "_keywords.yaml"
+            __file__)) + "/resources/" + self.instrument.lower() + "_keywords.yaml"
 
         # YAML CONTENT TO DICTIONARY
         import yaml

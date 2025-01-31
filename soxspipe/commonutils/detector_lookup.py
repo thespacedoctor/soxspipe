@@ -3,18 +3,18 @@
 """
 *return a dictionary of detector characteristics and parameters*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    August 13, 2020
+Date Created
+: August 13, 2020
 """
 ################# GLOBAL IMPORTS ####################
+from fundamentals import tools
 from builtins import object
 import sys
 import os
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
 
 
 class detector_lookup(object):
@@ -22,8 +22,9 @@ class detector_lookup(object):
     *return a dictionary of detector characteristics and parameters*
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
 
     **Usage:**
 
@@ -46,7 +47,7 @@ class detector_lookup(object):
             settings=False,
     ):
         self.log = log
-        log.debug("instansiating a new 'detector_lookup' object")
+        log.debug("instantiating a new 'detector_lookup' object")
         self.settings = settings
 
         # SELECT THE INSTRUMENT AND READ THE KEYWORD DICTIONARY IN RESOURCES
@@ -65,7 +66,8 @@ class detector_lookup(object):
         *return a dictionary of detector characteristics and parameters*
 
         **Key Arguments:**
-            - ``arm`` -- the detector parameters to return
+
+        - ``arm`` -- the detector parameters to return
         """
         self.log.debug('starting the ``get`` method')
 
@@ -82,7 +84,8 @@ class detector_lookup(object):
         """*select the detector parameter dictionary based on the instrument passed via the settings*
 
         **Return:**
-            - ``dectDict`` -- the python dictionary of detector parameters
+
+        - ``dectDict`` -- the python dictionary of detector parameters
 
         **Usage**
 
@@ -100,7 +103,6 @@ class detector_lookup(object):
         # GENERATE PATH TO YAML DICTIONARY
         yamlFilePath = os.path.dirname(os.path.dirname(
             __file__)) + "/resources/" + self.instrument + "_detector_parameters.yaml"
-
 
         # YAML CONTENT TO DICTIONARY
         import yaml

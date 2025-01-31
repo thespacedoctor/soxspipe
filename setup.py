@@ -11,22 +11,21 @@ def readme():
 
 
 install_requires = [
-    'pyyaml==5.4.1',
+    'pyyaml==6.0.2',
     'soxspipe',
-    'fundamentals',
-    'astropy',
-    'ccdproc',
-    'docopt',
-    'photutils',
-    'matplotlib',
-    'numpy',
-    'unicodecsv',
-    'pandas',
-    'tabulate',
-    'bottleneck',
-    'multiprocess',
-    'jinja2',
-    'specutils'
+    'fundamentals==2.7.2',
+    'astropy==6.1.2 ',
+    'ccdproc==2.4.2',
+    'docopt==0.6.2',
+    'photutils==1.13.0',
+    'matplotlib==3.9.2',
+    'numpy==2.1.0',
+    'unicodecsv==0.14.1',
+    'pandas==2.2.2',
+    'tabulate==0.9.0',
+    'bottleneck==1.4.0',
+    'multiprocess==0.70.16',
+    'specutils==1.16.0'
 ]
 
 # READ THE DOCS SERVERS
@@ -43,7 +42,7 @@ setup(name="soxspipe",
       classifiers=[
           'Development Status :: 4 - Beta',
           'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
-          'Programming Language :: Python :: 3.9',
+          'Programming Language :: Python :: 3.11',
           'Topic :: Utilities',
       ],
       keywords=['soxs, eso, data, pipeline, spectra'],

@@ -87,9 +87,10 @@ class test_detect_continuum(unittest.TestCase):
         from soxspipe.commonutils import detect_continuum
         this = detect_continuum(
             log=log,
-            pinholeFlat=pinholeFlat,
+            traceFrame=pinholeFlat,
             dispersion_map=dispersion_map,
             settings=settings,
+            recipeSettings=settings["soxs-order-centre"],
             recipeName="soxs-order-centre",
             qcTable=qc,
             productsTable=products

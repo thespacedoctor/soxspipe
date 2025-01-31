@@ -3,11 +3,11 @@
 """
 *Given a FITS object, use the SOXS file-naming scheme to return a filename to be used to save the FITS object to disk*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young
 
-:Date Created:
-    March  9, 2021
+Date Created
+: March  9, 2021
 """
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
@@ -27,14 +27,16 @@ def filenamer(
     """Given a FITS object, use the SOXS file-naming scheme to return a filename to be used to save the FITS object to disk
 
     **Key Arguments:**
-        - ``log`` -- logger
-        - ``frame`` -- the CCDData object frame
-        - ``keywordLookup`` -- the keyword lookup dictionary (needed if `settings` not provided). Default *False*
-        - ``detectorLookup`` -- the detector parameters (needed if `settings` not provided). Default *False*
-        - ``settings`` -- the soxspipe settings dictionary (needed if `keywordLookup` and `detectorLookup` not provided). Default *False*
+
+    - ``log`` -- logger
+    - ``frame`` -- the CCDData object frame
+    - ``keywordLookup`` -- the keyword lookup dictionary (needed if `settings` not provided). Default *False*
+    - ``detectorLookup`` -- the detector parameters (needed if `settings` not provided). Default *False*
+    - ``settings`` -- the soxspipe settings dictionary (needed if `keywordLookup` and `detectorLookup` not provided). Default *False*
 
     **Return:**
-        - ``filename`` -- stanardised name to for the input frame
+
+    - ``filename`` -- stanardised name to for the input frame
 
     ```python
     frame = CCDData.read(filepath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
@@ -84,16 +86,20 @@ def filenamer(
         binning = ""
 
     romode = ""
+
     if kw("DET_READ_SPEED") in frame.header:
-        if frame.header[kw("DET_READ_SPEED")] == 1:
-            romode = "_rospeed1"
-        elif "100k" in frame.header[kw("DET_READ_SPEED")].lower():
-            romode = "_slow"
-        elif "400k" in frame.header[kw("DET_READ_SPEED")].lower():
-            romode = "_fast"
+        if frame.header[kw("INSTRUME")].strip().upper() == "SOXS":
+            romode = "_ro" + str(frame.header[kw("DET_READ_SPEED")])
         else:
-            self.log.print(frame.header[kw("DET_READ_SPEED")])
-            raise LookupError(f"Cound not parse readout mode")
+            if frame.header[kw("DET_READ_SPEED")] == 1:
+                romode = "_rospeed1"
+            elif "100k" in frame.header[kw("DET_READ_SPEED")].lower():
+                romode = "_slow"
+            elif "400k" in frame.header[kw("DET_READ_SPEED")].lower():
+                romode = "_fast"
+            else:
+                log.print(frame.header[kw("DET_READ_SPEED")])
+                raise LookupError(f"Cound not parse readout mode")
 
     filename = f"{dateStamp}_{arm}{binning}{romode}"
 

@@ -2,7 +2,8 @@
 
 
 
-[![](https://zenodo.org/badge/186854638.svg)](https://zenodo.org/badge/latestdoi/186854638) 
+[![](https://zenodo.org/badge/DOI/10.5281/zenodo.8038264.svg)](https://zenodo.org/doi/10.5281/zenodo.8038264) 
+
 
 
 
@@ -31,7 +32,7 @@ Documentation for soxspipe is hosted by [Read the Docs](https://soxspipe.readthe
 The best way to install or upgrade soxspipe is to use `conda` to install the package in its own isolated environment, as shown here:
 
 ``` bash
-conda create -n soxspipe python=3.9 soxspipe -c conda-forge
+conda create -n soxspipe python=3.12 soxspipe -c conda-forge
 conda activate soxspipe
 ```
 
@@ -45,11 +46,11 @@ If you use `soxspipe` in your work, please cite using the following BibTeX entry
 
 ```bibtex
 @software{Young_soxspipe,
-    author = {Young, David R., Landoni, Marco},
-    doi = {10.5281/zenodo.8038265},
+    author = {Young, David R. & Landoni, Marco},
+    doi = {10.5281/zenodo.8038264},
     license = {GPL-3.0-only},
-    title = {{soxspipe}},
-    url = {https://github.com/thespacedoctor/soxspipe}
+    title = {{soxspipe. The SOXS data-reduction pipeline}},
+    url = {https://zenodo.org/doi/10.5281/zenodo.8038264}
 }
 ```
- 
+

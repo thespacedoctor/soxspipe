@@ -3,16 +3,16 @@
 """
 *The recipe to generate a master dark frame*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    January 27, 2020
+Date Created
+: January 27, 2020
 """
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
 
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 
 from fundamentals import tools
 from builtins import object
@@ -23,17 +23,17 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_mdark(_base_recipe_):
+class soxs_mdark(base_recipe):
     """
-    *The soxs_mdark recipe*
+    *The `soxs_mdark` recipe generates a master-dark frame used to remove flux attributed to the dark current from other frames.*
 
     **Key Arguments**
 
-        - ``log`` -- logger
-        - ``settings`` -- the settings dictionary
-        - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
-        - ``verbose`` -- verbose. True or False. Default *False*
-        - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
     **Usage**
 
@@ -42,16 +42,10 @@ class soxs_mdark(_base_recipe_):
     mdarkFrame = soxs_mdark(
         log=log,
         settings=settings,
-        inputFrames=fileList
-    )..produce_product()
-    ```
-
-    ---
-
-    ```eval_rst
-    .. todo::
-
-        - add a tutorial about ``soxs_mdark`` to documentation
+        inputFrames=fileList,
+        verbose=False,
+        overwrite=False
+    ).produce_product()
     ```
     """
 
@@ -64,14 +58,13 @@ class soxs_mdark(_base_recipe_):
             overwrite=False
 
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
+        # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_mdark, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mdark")
         self.log = log
-        log.debug("instansiating a new 'soxs_mdark' object")
+        log.debug("instantiating a new 'soxs_mdark' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
@@ -111,7 +104,7 @@ class soxs_mdark(_base_recipe_):
             self):
         """*verify input frame match those required by the soxs_mdark recipe*
 
-        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
+        If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
@@ -145,7 +138,7 @@ class soxs_mdark(_base_recipe_):
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
-            self.log.print()
+            self.log.print("")
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -157,7 +150,8 @@ class soxs_mdark(_base_recipe_):
         """*generate a master dark frame*
 
         **Return:**
-            - ``productPath`` -- the path to master dark frame
+
+        - ``productPath`` -- the path to master dark frame
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -171,7 +165,7 @@ class soxs_mdark(_base_recipe_):
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        meanFluxLevels, rons, noiseFrames = zip(*[self.subtact_mean_flux_level(c) for c in ccds])
+        meanFluxLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanFluxLevel = np.mean(meanFluxLevels)
         masterMedianFluxLevel = np.median(meanFluxLevels)
         rawRon = np.mean(rons)

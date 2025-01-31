@@ -1,40 +1,71 @@
 
+:::{include} ../../README.md
+:::
 
-{{../../README.md}}
+:::{toctree}
+:hidden:
+:maxdepth: 4
 
-
-```eval_rst
-.. toctree::
-   :hidden:
-   :maxdepth: 4
-
-   Install <index>
-   quickstart
-   logging
-   sessions
-   primer_on_soxs_obs_modes
-   recipes/index
-   utils/index
-   files/index
-   changes_link
-```
+Introduction <soxspipe_introduction/index>
+user_manual/quickstart
+:::
 
 
-```eval_rst
-.. toctree::
-   :hidden:
-   :maxdepth: 30
-   :caption: API reference
+:::{toctree}
+:hidden:
+:maxdepth: 4
+:caption: User Manual
 
-   autosummary
-```
 
-```eval_rst
-.. toctree::
-   :hidden:
+user_manual/installation
+user_manual/collecting_data
+Preparing a Workspace <user_manual/preparing_a_workspace>
+user_manual/reductions/index
+user_manual/logging
+user_manual/pipeline_settings
+user_manual/watch_folder
+support
 
-   genindex
-```
+:::
+
+
+:::{toctree}
+:hidden:
+:maxdepth: 2
+:caption: Design Manual
+
+SOXS Instruments <instruments/index>
+observing_modes/index
+data_reduction_cascades/index
+data_organiser_and_reducer/index
+recipes/index
+utils/_index
+
+:::
+
+
+:::{toctree}
+:hidden:
+:caption: " "
+
+faq
+changes_link
+references
+apidocs/index
+:::
+
+:::{toctree}
+:hidden:
+:caption: " "
+:::
+
+:::{toctree}
+:hidden:
+:caption: " "
+
+todolist
+:::
+
 
 
 ## Acknowledgements

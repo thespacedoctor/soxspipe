@@ -3,11 +3,11 @@
 """
 *small reusable functions used throughout soxspipe*
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young
 
-:Date Created:
-    September 18, 2020
+Date Created
+: September 18, 2020
 """
 
 
@@ -84,7 +84,7 @@ def cut_image_slice(
         axisALen = frame.shape[0]
         axisBLen = frame.shape[1]
     else:
-        raise ValueError("sliceAxis needs to be eith 'x' or 'y'")
+        raise ValueError("sliceAxis needs to be either 'x' or 'y'")
 
     # CHECK WE ARE NOT GOING BEYOND BOUNDS OF FRAME
     if (axisA > axisALen - halfSlice) or (axisB > axisBLen - halfwidth) or (axisA < halfSlice) or (axisB < halfwidth):
@@ -104,7 +104,7 @@ def cut_image_slice(
         else:
             slice = ma.median(sliceFull, axis=0)
 
-    if plot and random.randint(1, 101) < 10000:
+    if False and random.randint(1, 101) < 5:
         import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
@@ -140,7 +140,8 @@ def quicklook_image(
         dispMapImage=False,
         inst=False,
         settings=False,
-        skylines=False):
+        skylines=False,
+        saveToPath=False):
     """*generate a quicklook image of a CCDObject - useful for development/debugging*
 
     **Key Arguments:**
@@ -164,6 +165,9 @@ def quicklook_image(
     """
     log.debug('starting the ``quicklook_image`` function')
 
+    if not show and not saveToPath:
+        return
+
     import pandas as pd
     import matplotlib as mpl
     import numpy as np
@@ -171,6 +175,8 @@ def quicklook_image(
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
     from soxspipe.commonutils import keyword_lookup
     from soxspipe.commonutils import detector_lookup
+    originalRC = dict(mpl.rcParams)
+    import matplotlib.pyplot as plt
 
     if settings:
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -192,12 +198,6 @@ def quicklook_image(
         dp = detectorParams
         science_pixels = dp["science-pixels"]
 
-    originalRC = dict(mpl.rcParams)
-
-    if not show:
-        return
-    import matplotlib.pyplot as plt
-
     if ext == "data":
         frame = CCDObject.data
     elif ext == "mask":
@@ -214,6 +214,34 @@ def quicklook_image(
         except:
             inst = "XSHOOTER"
 
+    if skylines:
+        calibrationRootPath = get_calibrations_path(log=log, settings=settings)
+        skylines = calibrationRootPath + "/" + dp["skylines"]
+        # SPEC FORMAT TO PANDAS DATAFRAME
+        from astropy.table import Table
+        dat = Table.read(skylines, format='fits')
+        skylinesDF = dat.to_pandas()
+    else:
+        skylinesDF = False
+
+    # COMBINE MASK WITH THE BAD PIXEL MASK
+    if not isinstance(dispMapImage, bool):
+
+        gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
+            log=log,
+            dispMap=dispMap,
+            dispMapImage=dispMapImage,
+            associatedFrame=CCDObject,
+            kw=kw,
+            skylines=skylinesDF
+        )
+
+        try:
+            mask = (frame.mask == 1) | (interOrderMask == 1)
+        except:
+            mask = interOrderMask == 1
+        frame.mask = mask
+
     if inst == "SOXS":
         rotatedImg = np.flipud(frame)
     elif inst == "XSHOOTER":
@@ -222,9 +250,12 @@ def quicklook_image(
         rotatedImg = frame
     rotatedImg = np.flipud(rotatedImg)
 
-    std = np.nanstd(frame)
-    mean = np.nanmean(frame)
-    median = np.nanmean(frame)
+    from astropy.stats import sigma_clipped_stats
+    mean, median, std = sigma_clipped_stats(frame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+
+    # std = np.nanstd(frame)
+    # mean = np.nanmean(frame)
+    # median = np.nanmean(frame)
     palette = copy(plt.cm.viridis)
     palette.set_bad("#dc322f", 1.0)
     vmax = median + stdWindow * 0.5 * std
@@ -234,14 +265,14 @@ def quicklook_image(
 
         from matplotlib import rc
 
-        axisColour = '#dddddd'
+        axisColour = '#002b36'
         rc('axes', edgecolor=axisColour, labelcolor=axisColour, linewidth=0.6)
         rc('xtick', color=axisColour)
         rc('ytick', color=axisColour)
         rc('grid', color=axisColour)
         rc('text', color=axisColour)
 
-        fig = plt.figure(figsize=(40, 10))
+        fig = plt.figure(figsize=(20, 8))
         ax = fig.add_subplot(121, projection='3d')
         if inst == "XSHOOTER":
             plt.gca().invert_yaxis()
@@ -268,11 +299,11 @@ def quicklook_image(
 
         ax.set_xlim(0, rotatedImg.shape[1])
         ax.set_ylim(0, rotatedImg.shape[0])
-        # ax.set_zlim(0, min(np.nanmax(frame), mean + stdWindow * 10 * std))
+        ax.set_zlim(vmin, min(np.nanmax(frame), vmax * 1.2))
 
         if inst == "SOXS":
             ax.invert_yaxis()
-        backgroundColour = '#404040'
+        backgroundColour = 'white'
         fig.set_facecolor(backgroundColour)
         ax.set_facecolor(backgroundColour)
         ax.xaxis.pane.set_edgecolor(backgroundColour)
@@ -281,14 +312,14 @@ def quicklook_image(
 
         if inst == "SOXS":
             plt.xlabel(
-                "x-axis", fontsize=10)
+                "x-axis", fontsize=16)
             plt.ylabel(
-                "y-axis", fontsize=10)
+                "y-axis", fontsize=16)
         else:
             plt.xlabel(
-                "y-axis", fontsize=10)
+                "y-axis", fontsize=16)
             plt.ylabel(
-                "x-axis", fontsize=10)
+                "x-axis", fontsize=16)
 
         ax2 = fig.add_subplot(122)
     else:
@@ -298,28 +329,14 @@ def quicklook_image(
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
 
-    if skylines:
-        calibrationRootPath = get_calibrations_path(log=log, settings=settings)
-        skylines = calibrationRootPath + "/" + dp["skylines"]
-        # SPEC FORMAT TO PANDAS DATAFRAME
-        from astropy.table import Table
-        dat = Table.read(skylines, format='fits')
-        skylinesDF = dat.to_pandas()
-
     if not isinstance(dispMapImage, bool):
-
-        gridLinePixelTable = create_dispersion_solution_grid_lines_for_plot(
-            log=log,
-            dispMap=dispMap,
-            dispMapImage=dispMapImage,
-            associatedFrame=CCDObject,
-            kw=kw,
-            skylines=skylines
-        )
 
         for l in range(int(gridLinePixelTable['line'].max())):
             mask = (gridLinePixelTable['line'] == l)
-            ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
+            if inst == "SOXS":
+                ax2.plot(gridLinePixelTable.loc[mask]["fit_x"], gridLinePixelTable.loc[mask]["fit_y"], "w-", linewidth=0.5, alpha=0.8, color="black")
+            else:
+                ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
 
     ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
@@ -337,23 +354,29 @@ def quicklook_image(
         fig.colorbar(detectorPlot, shrink=shrink)
         # plt.colorbar()
     if title:
-        fig.suptitle(title, fontsize=16)
+        fig.suptitle(title, fontsize=20)
     if inst == "XSHOOTER":
         ax2.invert_yaxis()
     # cbar.ticklabel_format(useOffset=False)
     if inst == "SOXS":
         plt.xlabel(
-            "x-axis", fontsize=10)
+            "x-axis", fontsize=16)
         plt.ylabel(
-            "y-axis", fontsize=10)
+            "y-axis", fontsize=16)
     else:
         plt.xlabel(
-            "y-axis", fontsize=10)
+            "y-axis", fontsize=16)
         plt.ylabel(
-            "x-axis", fontsize=10)
+            "x-axis", fontsize=16)
 
-    plt.show()
+    if show:
+        plt.show()
+
+    if saveToPath:
+        plt.savefig(saveToPath, dpi='figure', bbox_inches='tight')
+        plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
+    plt.close()
 
     log.debug('completed the ``quicklook_image`` function')
     return None
@@ -369,7 +392,7 @@ def unpack_order_table(
         prebinned=False,
         order=False,
         limitToDetectorFormat=False):
-    """*unpack an order table and return a top-level `orderPolyTable` data-frame and a second `orderPixelTable` data-frame with the central-trace coordinates of each order given
+    """*Unpack an order location table and return an `orderPolyTable` dataframe containing the polynomial coefficients for the order centres and edges, an `orderPixelTable` dataframe containing the pixel-coordinates for each order centre and edges, and finally, an `orderMetaTable` dataframe giving metadata about the frame binning and format.*
 
     **Key Arguments:**
 
@@ -455,14 +478,14 @@ def unpack_order_table(
         orderPixelTable[f"{axisA}coord_edgeup"] = poly(orderPixelTable, *upper_coeff)
 
     if f"deg{axisB}_edgelow" in orderPolyTable.columns:
-        upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
+        lower_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
         poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
-        orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *upper_coeff)
+        orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *lower_coeff)
 
     if axisAbin != 1:
-        orderPixelTable[f"{axisA}coord_centre"] /= axisAbin
-        orderPixelTable[f"{axisA}coord_edgeup"] /= axisAbin
-        orderPixelTable[f"{axisA}coord_edgelow"] /= axisAbin
+        for c in ["coord_centre", "coord_edgeup", "coord_edgelow"]:
+            if f"{axisA}{c}" in orderPixelTable.columns:
+                orderPixelTable[f"{axisA}{c}"] /= axisAbin
     if axisBbin != 1:
         orderMetaTable[f"{axisB}min"] /= axisBbin
         orderMetaTable[f"{axisB}max"] /= axisBbin
@@ -494,15 +517,9 @@ def generic_quality_checks(
 
     **Usage:**
 
-    ```eval_rst
-    .. todo::
-
-            add usage info
-            create a sublime snippet for usage
-    ```
-
     ```python
-    usage code
+    from soxspipe.commonutils.toolkit import generic_quality_checks
+    qcTable = generic_quality_checks(log=log, frame=myFrame, settings=settings, recipeName="my recipe", qcTable=qcTable)
     ```
     """
     log.debug('starting the ``functionName`` function')
@@ -520,21 +537,21 @@ def generic_quality_checks(
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
-    nanCount = np.count_nonzero(np.isnan(frame.data))
+    # nanCount = np.count_nonzero(np.isnan(frame.data))
 
     utcnow = datetime.utcnow()
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-    qcTable = pd.concat([qcTable, pd.Series({
-        "soxspipe_recipe": recipeName,
-        "qc_name": "N NAN PIXELS",
-        "qc_value": nanCount,
-        "qc_comment": "Number of NaN pixels",
-        "qc_unit": "",
-        "obs_date_utc": dateObs,
-        "reduction_date_utc": utcnow,
-        "to_header": False
-    }).to_frame().T], ignore_index=True)
+    # qcTable = pd.concat([qcTable, pd.Series({
+    #     "soxspipe_recipe": recipeName,
+    #     "qc_name": "N NAN PIXELS",
+    #     "qc_value": nanCount,
+    #     "qc_comment": "Number of NaN pixels",
+    #     "qc_unit": "",
+    #     "obs_date_utc": dateObs,
+    #     "reduction_date_utc": utcnow,
+    #     "to_header": False
+    # }).to_frame().T], ignore_index=True)
 
     # COUNT BAD-PIXELS
     badCount = frame.mask.sum()
@@ -588,15 +605,10 @@ def spectroscopic_image_quality_checks(
 
     **Usage:**
 
-    ```eval_rst
-    .. todo::
-
-            add usage info
-            create a sublime snippet for usage
-    ```
-
     ```python
-    usage code
+    from soxspipe.commonutils.toolkit import spectroscopic_image_quality_checks
+    qcTable = spectroscopic_image_quality_checks(
+            log=log, frame=myFrame, settings=settings, recipeName="this recipe", qcTable=qcTable, orderTablePath=orderTablePath)
     ```
     """
     log.debug('starting the ``functionName`` function')
@@ -604,6 +616,7 @@ def spectroscopic_image_quality_checks(
     import numpy.ma as ma
     import numpy as np
     import pandas as pd
+    from soxspipe.commonutils import detector_lookup
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -624,12 +637,19 @@ def spectroscopic_image_quality_checks(
             biny = 1
 
     inst = frame.header[kw("INSTRUME")]
-    if inst == "SOXS":
-        axisA = "y"
-        axisB = "x"
-    elif inst == "XSHOOTER":
+
+    # DETECTOR PARAMETERS LOOKUP OBJECT
+    detectorParams = detector_lookup(
+        log=log,
+        settings=settings
+    ).get(arm)
+
+    if detectorParams["dispersion-axis"] == "x":
         axisA = "x"
         axisB = "y"
+    else:
+        axisA = "y"
+        axisB = "x"
 
     # UNPACK THE ORDER TABLE
     orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
@@ -692,7 +712,9 @@ def read_spectral_format(
         settings,
         arm,
         dispersionMap=False,
-        extended=True):
+        extended=True,
+        binx=1,
+        biny=1):
     """*read the spectral format table to get some key parameters*
 
     **Key Arguments:**
@@ -702,11 +724,14 @@ def read_spectral_format(
     - `arm` -- arm to retrieve format for
     - `dispersionMap` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are computed
     - `extended` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL (extended=True)
+    - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
+    - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
 
     **Return:**
-        - ``orderNums`` -- a list of the order numbers
-        - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
-        - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
+
+    - ``orderNums`` -- a list of the order numbers
+    - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
+    - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
 
     **Usage:**
 
@@ -752,7 +777,8 @@ def read_spectral_format(
 
     # EXTRACT REQUIRED PARAMETERS
     orderNums = specFormatTable["ORDER"].values
-    if extended:
+
+    if extended or "WLMIN" not in specFormatTable.columns:
         waveLengthMin = specFormatTable["WLMINFUL"].values
         waveLengthMax = specFormatTable["WLMAXFUL"].values
     else:
@@ -787,12 +813,14 @@ def read_spectral_format(
             header = hdul[0].header
 
         orderPixelRanges = []
-        if header[kw("INSTRUME")] == "SOXS":
-            axis = "x"
-            rowCol = "columns"
-        else:
+        if dp["dispersion-axis"] == "x":
             axis = "y"
             rowCol = "rows"
+            abinFactor = biny
+        else:
+            axis = "x"
+            rowCol = "columns"
+            abinFactor = binx
 
         amins = []
         amaxs = []
@@ -803,8 +831,8 @@ def read_spectral_format(
                 amin = 0
             if amax > dp["science-pixels"][rowCol]["end"]:
                 amax = dp["science-pixels"][rowCol]["end"]
-            amins.append(amin)
-            amaxs.append(amax)
+            amins.append(amin / abinFactor)
+            amaxs.append(amax / abinFactor)
 
         log.debug('completed the ``read_spectral_format`` function')
         return orderNums, waveLengthMin, waveLengthMax, amins, amaxs
@@ -850,7 +878,8 @@ def twoD_disp_map_image_to_dataframe(
         twoDMapPath,
         kw=False,
         associatedFrame=False,
-        removeMaskedPixels=False):
+        removeMaskedPixels=False,
+        dispAxis="y"):
     """*convert the 2D dispersion image map to a pandas dataframe*
 
     **Key Arguments:**
@@ -858,15 +887,16 @@ def twoD_disp_map_image_to_dataframe(
     - `log` -- logger
     - `twoDMapPath` -- 2D dispersion map image path
     - `kw` -- fits keyword lookup dictionary
-    - `associatedFrame` -- include a flux column in returned dataframe from a frame assosiated with the dispersion map. Default *False*
-    - `removeMaskedPixels` -- remove the masked pixels from the assosicated image? Default *False*
+    - `associatedFrame` -- include a flux column in returned dataframe from a frame associated with the dispersion map. Default *False*
+    - `removeMaskedPixels` -- remove the masked pixels from the associated image? Default *False*
+    - `dispAxis` -- x or y. Needed for pixel scale calculation
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
     mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, kw=kw)
-    ```           
+    ```
     """
     log.debug('starting the ``twoD_disp_map_image_to_dataframe`` function')
 
@@ -892,11 +922,20 @@ def twoD_disp_map_image_to_dataframe(
 
     hdul = fits.open(twoDMapPath)
 
+    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float")
+    hdul["SLIT"].data = hdul["SLIT"].data.astype("float")
+    hdul["ORDER"].data = hdul["ORDER"].data.astype("float")
+
+    binned = False
     if binx > 1 or biny > 1:
+        binned = True
         from astropy.nddata import block_reduce
+        minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
         hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
         hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
         hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
+        minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
+        minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
 
     # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
     xdim = hdul[0].data.shape[1]
@@ -904,25 +943,47 @@ def twoD_disp_map_image_to_dataframe(
     xarray = np.tile(np.arange(0, xdim), ydim)
     yarray = np.repeat(np.arange(0, ydim), xdim)
 
+    if not binned:
+        minimumBinnedPixelValue = np.ones_like(yarray)
+
     thisDict = {
         "x": xarray,
         "y": yarray,
-        "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-        "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
-        "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+        "wavelength": hdul["WAVELENGTH"].data.flatten().astype(float),
+        "slit_position": hdul["SLIT"].data.flatten().astype(float),
+        "order": hdul["ORDER"].data.flatten().astype(float),
+        "min": minimumBinnedPixelValue.astype(float)
     }
 
-    try:
-        if associatedFrame:
-            thisDict["flux"] = associatedFrame.data.flatten()
-            thisDict["mask"] = associatedFrame.mask.flatten()
-            thisDict["error"] = associatedFrame.uncertainty.flatten()
+    if associatedFrame:
+        thisDict["flux"] = associatedFrame.data.flatten().astype(float)
+        thisDict["mask"] = associatedFrame.mask.flatten().astype(bool)
+        thisDict["error"] = associatedFrame.uncertainty.array.flatten().astype(float)
 
-    except:
-        if associatedFrame:
-            thisDict["flux"] = associatedFrame.data.flatten().byteswap().newbyteorder()
-            thisDict["mask"] = associatedFrame.mask.flatten().byteswap().newbyteorder()
-            thisDict["error"] = associatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
+    # REMOVE IF ABOVE .astype(float) IS WORKING
+    # try:
+    #     if associatedFrame:
+    #         thisDict["flux"] = associatedFrame.data.flatten()
+    #         thisDict["mask"] = associatedFrame.mask.flatten()
+    #         thisDict["error"] = associatedFrame.uncertainty.array.flatten()
+
+    # except Exception as e:
+
+    #     if binned:
+    #         minimumBinnedPixelValue = minimumBinnedPixelValue.byteswap().newbyteorder()
+
+    #     thisDict = {
+    #         "x": xarray,
+    #         "y": yarray,
+    #         "wavelength": hdul["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
+    #         "slit_position": hdul["SLIT"].data.flatten().byteswap().newbyteorder(),
+    #         "order": hdul["ORDER"].data.flatten().byteswap().newbyteorder(),
+    #         "min": minimumBinnedPixelValue
+    #     }
+    #     if associatedFrame:
+    #         thisDict["flux"] = associatedFrame.data.flatten().byteswap().newbyteorder()
+    #         thisDict["mask"] = associatedFrame.mask.flatten().byteswap().newbyteorder()
+    #         thisDict["error"] = associatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
 
     mapDF = pd.DataFrame.from_dict(thisDict)
     if removeMaskedPixels:
@@ -933,39 +994,99 @@ def twoD_disp_map_image_to_dataframe(
     mask = (mapDF['wavelength'] == 0)
     mapDF = mapDF.loc[~mask]
 
+    interOrderMask = hdul["ORDER"].data.copy()
+    interOrderMask = np.where(interOrderMask > 0, 0, interOrderMask)
+    interOrderMask = np.where(np.isnan(interOrderMask), 1, interOrderMask)
+
     mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
     # REMOVE FILTERED ROWS FROM DATA FRAME
     mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
     mapDF = mapDF.loc[~mask]
+    mask = (mapDF['min'] == 0)
+    mapDF = mapDF.loc[~mask]
+
+    # SORT BY COLUMN NAME
+    mapDF.sort_values(['wavelength'], inplace=True)
+
+    # CALCULATE PIXEL SCALE
+    if dispAxis == "y":
+        mapDF.sort_values(['x', 'y'], inplace=True)
+    else:
+        mapDF.sort_values(['y', 'x'], inplace=True)
+    shiftedWlArray = list(mapDF["wavelength"].values)[1:]
+    shiftedWlArray.append(np.nan)
+    mapDF["pixelScale"] = mapDF["wavelength"] - shiftedWlArray
+    mask = (mapDF['pixelScale'] > 2) | (mapDF['pixelScale'] < -2)
+    mapDF.loc[mask, 'pixelScale'] = 0.
+    mapDF['pixelScale'] = mapDF['pixelScale'].abs()
 
     # SORT BY COLUMN NAME
     mapDF.sort_values(['wavelength'], inplace=True)
 
     log.debug('completed the ``twoD_disp_map_image_to_dataframe`` function')
-    return mapDF
+    return mapDF, interOrderMask
 
 
 def predict_product_path(
-        sofName):
+        sofName,
+        recipeName=False):
     """*predict the path of the recipe product from a given SOF name*
 
     **Key Arguments:**
 
     - `log` -- logger,
     - `sofName` -- name or full path to the sof file
+    - ``recipeName`` -- name of the recipe being considered. Default *False*.
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils import toolkit
-    productPath = toolkit.predict_product_path(sofFilePath)
-    ```           
+    productPath, startNightDate = toolkit.predict_product_path(sofFilePath)
+    ```
     """
+    from astropy.time import Time, TimeDelta
+
+    import codecs
+
+    startNightDate = False
+
+    # TRY AND READ startNightDate FROM RAW FRAME DIRECTORY
+    with codecs.open(sofName, encoding='utf-8', mode='r') as readFile:
+        thisData = readFile.read()
+        for l in thisData.split("\n"):
+            if "raw/" in l:
+                startNightDate = l.split("raw/")[1].split("/")[0]
+                break
+
     try:
         sofName = os.path.basename(sofName)
     except:
         pass
+
+    if not recipeName:
+        recipeName = sys.argv[1]
+        if recipeName[0] == "-":
+            recipeName = sys.argv[2]
+        recipeName = "soxs-" + recipeName
+
+    sofName = sofName.replace(".sof", "")
+
+    if not startNightDate:
+
+        obsDate = sofName.split("_")[0]
+
+        startNightDate = ""
+
+        try:
+            obsDate = Time.strptime(obsDate, '%Y.%m.%dT%H.%M.%S.%f', scale='utc')
+            night_start_offset = TimeDelta(15.0 * 60 * 60, format='sec')
+            startNightDate = obsDate - night_start_offset
+            startNightDate = startNightDate.strftime("%Y-%m-%d")
+        except:
+            print("Could not determine OBSDATE from sof filename")
+            pass
 
     from soxspipe.commonutils import data_organiser
     from fundamentals.logs import emptyLogger
@@ -976,32 +1097,49 @@ def predict_product_path(
     )
     currentSession, allSessions = do.session_list(silent=True)
 
-    recipeName = sys.argv[1]
-    if recipeName[0] == "-":
-        recipeName = sys.argv[2]
-
-    sofName = sofName.replace(".sof", "")
     if "_STARE_" in sofName:
-        sofName += "_SKYSUB"
-    productPath = f"./sessions/{currentSession}/product/soxs-" + recipeName.replace("_", "-").replace("sol", "solution").replace("centres", "centre").replace("spat", "spatial") + "/" + sofName + ".fits"
+        sofName += "_EXTRACTED_MERGED"
+    if "_NOD_" in sofName:
+        sofName += "_EXTRACTED_MERGED"
+    productPath = f"./sessions/{currentSession}/reduced/{startNightDate}/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
+    if "spatial" not in productPath:
+        productPath = productPath.replace("spat", "spatial")
+    if "solution" not in productPath:
+        productPath = productPath.replace("spat", "spatial")
     productPath = productPath.replace("//", "/")
 
-    return productPath
+    return productPath, startNightDate
 
 
 def add_recipe_logger(
         log,
         productPath):
     """*add a recipe-specific handler to the default logger that writes the recipe's logs adjacent to the recipe project*
+
+    **Key Arguments:**
+
+    - `log` -- original logger
+    - `productPath` -- path to the recipe product
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import add_recipe_logger
+    log = add_recipe_logger(log, productPath="/path/to/product")
+    ```
+
     """
     import logging
     import os
 
-    for handler in log.handlers:
-        if handler.get_name() == "recipeLog":
-            log.removeHandler(handler)
-        if handler.get_name() == "recipeErr":
-            log.removeHandler(handler)
+    i = 0
+    while i < 3:
+        for handler in log.handlers:
+            if handler.get_name() == "recipeLog":
+                log.removeHandler(handler)
+            if handler.get_name() == "recipeErr":
+                log.removeHandler(handler)
+        i += 1
 
     # GET THE EXTENSION (WITH DOT PREFIX)
     loggingPath = os.path.splitext(productPath)[0] + ".log"
@@ -1028,7 +1166,7 @@ def add_recipe_logger(
     recipeErr = logging.FileHandler(loggingErrorPath, mode='a', encoding=None, delay=True)
     recipeErrFormatter = logging.Formatter('%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', '%Y-%m-%d %H:%M:%S')
     recipeErr.set_name("recipeErr")
-    recipeErr.setLevel(logging.WARNING)
+    recipeErr.setLevel(logging.ERROR)
     recipeErr.setFormatter(recipeErrFormatter)
     log.addHandler(recipeErr)
 
@@ -1052,7 +1190,7 @@ def create_dispersion_solution_grid_lines_for_plot(
         kw,
         skylines=False,
         slitPositions=False):
-    """*give a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
+    """*given a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
 
     **Key Arguments:**
 
@@ -1080,14 +1218,15 @@ def create_dispersion_solution_grid_lines_for_plot(
     for l in range(int(gridLinePixelTable['line'].max())):
         mask = (gridLinePixelTable['line'] == l)
         ax.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
-    ```           
+    ```
     """
     log.debug('starting the ``create_dispersion_solution_grid_lines_for_plot`` function')
 
     import numpy as np
     import pandas as pd
 
-    dispMapDF = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
+    dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
+
     uniqueOrders = dispMapDF['order'].unique()
     wlLims = []
     sPos = []
@@ -1118,15 +1257,16 @@ def create_dispersion_solution_grid_lines_for_plot(
                 orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
             lineNumber += 1
 
-        spRange = np.arange(spLim[0], spLim[-1], 1)
-        spRange = np.append(spRange, [spLim[-1]])
-        if skylines:
-            mask = skylinesDF['WAVELENGTH'].between(wlLim[0], wlLim[1])
-            wlRange = skylinesDF.loc[mask]['WAVELENGTH'].values
+        spRange = np.arange(min(spLim), max(spLim), 1)
+        spRange = np.append(spRange, [max(spLim)])
+        if not isinstance(skylines, bool):
+            mask = skylines['WAVELENGTH'].between(wlLim[0], wlLim[1])
+            wlRange = skylines.loc[mask]['WAVELENGTH'].values
         else:
             step = int(wlLim[1] - wlLim[0]) / 400
             wlRange = np.arange(wlLim[0], wlLim[1], step)
         wlRange = np.append(wlRange, [wlLim[1]])
+
         for l in wlRange:
             myDict = {
                 "line": np.full_like(spRange, lineNumber),
@@ -1145,7 +1285,126 @@ def create_dispersion_solution_grid_lines_for_plot(
     )
 
     log.debug('completed the ``create_dispersion_solution_grid_lines_for_plot`` function')
-    return orderPixelTable
+    return orderPixelTable, interOrderMask
 
-# use the tab-trigger below for new function
-# xt-def-function
+
+def get_calibration_lamp(
+        log,
+        frame,
+        kw):
+    """*given a frame, determine which calibration lamp is being used*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `frame` -- the frame to determine the calibration lamp for
+    - `kw` -- the FITS header keyword dictionary
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import get_calibration_lamp
+    lamp = get_calibration_lamp(log=log, frame=frame, kw=kw)
+    ```
+    """
+    log.debug('starting the ``read_calibration_lamp`` function')
+
+    inst = frame.header["INSTRUME"]
+    lamp = None
+
+    for l in [kw("LAMP1"), kw("LAMP2"), kw("LAMP3"), kw("LAMP4"), kw("LAMP5"), kw("LAMP6"), kw("LAMP7")]:
+        if l in frame.header:
+            newLamp = frame.header[l]
+            newLamp = newLamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("VIS_", "").replace("UVB_", "").replace("_lamp", "").replace("_Lamp", "").replace("Argo", "Ar").replace("Neon", "Ne").replace("Merc", "Hg").replace("Xeno", "Xe")
+            if lamp:
+                lamp += newLamp
+            else:
+                lamp = newLamp
+
+    log.debug('completed the ``read_calibration_lamp`` function')
+    return lamp
+
+
+def qc_settings_plot_tables(
+        log,
+        qc,
+        qcAx,
+        settings,
+        settingsAx):
+    """*generate QC and settings table to be placed at the bottom of the QC plots*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `qc` -- date frame of collected QCs
+    - `qcAx` -- the axis to add the QC table to
+    - `settings` -- settings to report in settings table
+    - `settingsAx` -- the axis to add the settings table to
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import qc_settings_plot_tables
+    qc_settings_plot_tables(log=log,qc=self.qc,qcAx=qcAx, settings=settings,settingsAx=settingsAx)
+    ```
+    """
+    log.debug('starting the ``qc_settings_plot_tables`` function')
+
+    import matplotlib as plt
+    import numpy as np
+    import pandas as pd
+
+    tables = []
+    cols = []
+
+    qcCopy = qc.copy()
+    qcCopy["value"] = qcCopy["qc_value"].astype(str) + " " + qcCopy["qc_unit"]
+    qcCopy.loc[qcCopy['value'].isnull(), "value"] = qcCopy.loc[qcCopy['value'].isnull(), "qc_value"]
+
+    columns1 = ["value", "qc_comment"]
+    colColours = plt.cm.Greys(np.full(len(columns1), 0.1))
+    rowColours = plt.cm.Greys(np.full(len(qcCopy.index), 0.1))
+    rowLabels = qcCopy["qc_name"].values
+
+    if len(qcCopy[columns1].values):
+        qcTable = qcAx.table(cellText=qcCopy[columns1].values, colLabels=columns1, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
+        tables.append(qcTable)
+        cols.append(columns1)
+    # qcAx.set_title(
+    #     "QC Table", fontsize=9)
+
+    settingsCopy = {k: v for k, v in settings.items() if k not in ['nir', 'vis', 'uvb']}
+
+    settingsCopy = {"setting": settingsCopy.keys(), "value": settingsCopy.values()}
+
+    settingsDF = pd.DataFrame(settingsCopy)
+
+    columns2 = ["value"]
+    colColours = plt.cm.Greys(np.full(len(columns2), 0.1))
+    rowColours = plt.cm.Greys(np.full(len(settingsDF.index), 0.1))
+    rowLabels = settingsDF["setting"].values
+    settingsTable = settingsAx.table(cellText=settingsDF[columns2].values, colLabels=columns2, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
+    tables.append(settingsTable)
+    cols.append(columns2)
+    # settingsAx.set_title(
+    #     "Parameters", fontsize=9, loc='left')
+    settingsAx.margins(x=0, y=0)
+
+    for t, c in zip(tables, cols):
+        t.scale(1, 1.5)
+        t.auto_set_font_size(False)
+        t.set_fontsize(4)
+        table_cells = t.properties()['children']
+        for cell in table_cells:
+            cell.set_linewidth(0.3)
+        t.auto_set_column_width(list(range(len(c))))
+
+    for a in [qcAx, settingsAx]:
+
+        # Hide axes
+        a.get_xaxis().set_visible(False)
+        a.get_yaxis().set_visible(False)
+        a.axis('off')
+
+    log.debug('completed the ``qc_settings_plot_tables`` function')
+    return None

@@ -1,151 +1,262 @@
-# -*- coding: utf-8 -*-
+# Configuration file for the Sphinx documentation builder.
+# -- Project information -----------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-from soxspipe import cl_utils
-from builtins import str
-import sys
+
+import time
 import os
-from datetime import datetime, date, time
-from mock import Mock as MagicMock
-import re
-from sphinx_markdown_parser.parser import MarkdownParser, CommonMarkParser
-from sphinx_markdown_parser.transform import AutoStructify
-import m2r
-import codecs
-
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.todo',
-              'sphinx.ext.mathjax', 'sphinx.ext.autosummary', 'sphinx.ext.coverage', 'sphinx.ext.linkcode', 'sphinxcontrib.mermaid', 'sphinx_search.extension']
-
-
-class Mock(MagicMock):
-    """AVOID INSTALLING THESE C-DEPENDENT PACKAGES"""
-    @classmethod
-    def __getattr__(cls, name):
-        return Mock()
-
-
-MOCK_MODULES = ['numpy', 'scipy', 'matplotlib', 'matplotlib.colors',
-                'matplotlib.pyplot', 'matplotlib.cm', 'matplotlib.path', 'matplotlib.patches', 'matplotlib.projections', 'matplotlib.projections.geo', 'healpy', 'astropy', 'astropy.io', 'pylibmc', 'HMpTy', 'HMpTy.mysql', 'ligo', 'ligo.gracedb', 'ligo.gracedb.rest', 'astropy.nddata', 'astropy.units.quantity', 'astropy.modeling', 'astropy.wcs.utils', 'astropy.utils', 'ccdproc', 'astropy.stats', 'reproject', 'pandas', 'astropy.nddata.nduncertainty', 'photutils', 'scipy.optimize', 'photutils.utils', 'astropy.visualization', 'scipy.signal', 'numpy.ma', 'scipy.interpolate', 'scipy.ndimage.filters', 'astropy.table', 'scipy.stats.median_absolute_deviation', 'ccdproc.image_collection']
-MOCK_MODULES = []
-sys.modules.update((mod_name, Mock()) for mod_name in MOCK_MODULES)
+import sys
+from datetime import datetime, date
+# Check if we are on Read the Docs
+on_rtd = os.environ.get('READTHEDOCS') == 'True'
 
 # WHERE DOES THIS conf.py FILE LIVE?
 moduleDirectory = os.path.dirname(os.path.realpath(__file__))
 # GET PACKAGE __version__ INTO locals()
 exec(open(moduleDirectory + "/../../soxspipe/__version__.py").read())
-
-
 sys.path.insert(0, os.path.abspath('../../soxspipe/soxspipe'))
-
-
-autosummary_generate = True
-autosummary_imported_members = True
-autodoc_member_order = 'bysource'
-add_module_names = False
-todo_include_todos = True
-templates_path = ['_static/whistles-theme/sphinx']
-source_suffix = ['.rst', '.md']
-master_doc = 'index'
-# pygments_style = 'monokai'
-html_theme = 'sphinx_rtd_theme'
-html_logo = "_images/thespacedoctor_icon_white_circle.png"
-html_favicon = "_images/favicon.ico"
-html_show_sourcelink = True
-html_theme_options = {
-    'logo_only': False,
-    'display_version': True,
-    'prev_next_buttons_location': 'bottom',
-    'style_external_links': False,
-    'vcs_pageview_mode': '',
-    'style_nav_header_background': 'white',
-    # Toc options
-    'collapse_navigation': True,
-    'sticky_navigation': True,
-    'navigation_depth': 1,
-    'includehidden': True,
-    'titles_only': False,
-    'github_user': 'thespacedoctor',
-    'github_repo': 'soxspipe',
-    'strap_line': "The data-reduction pipeline for NTT's SOXS instrument"
-}
-html_theme_path = ['_static/whistles-theme/sphinx/_themes']
-# html_title = None
-# html_short_title = None
-# html_sidebars = {}
-# html_last_updated_fmt = '%b %d, %Y'
-# html_additional_pages = {}
-html_show_copyright = True
-html_show_sphinx = True
-html_add_permalinks = u"  ∞"
-html_static_path = ['_static', '_images']
-html_file_suffix = None
-trim_footnote_reference_space = True
-# Add substitutions here
-rst_epilog = u"""
-.. |tsd| replace:: thespacedoctor
-""" % locals()
-link_resolver_url = "https://github.com/thespacedoctor/soxspipe/blob/master"
-
 
 # General information about the project.
 now = datetime.now()
 now = now.strftime("%Y")
 project = u'soxspipe'
-copyright = u'%(now)s, Dave Young' % locals()
+copyright = u'%(now)s, David R. Young & Marco Lanodi' % locals()
 version = "v" + str(__version__)
 release = version
 today_fmt = '%Y'
 
-exclude_patterns = ['_build', '_templates',
-                    '**__version__.py', '**setup.py', 'api/soxspipe.rst']
-modindex_common_prefix = ["soxspipe."]
-
-# (source start file, target name, title, author, documentclass [howto/manual]).
-latex_documents = [
-    ('index', 'soxspipe.tex', u'soxspipe Documentation',
-     u'Dave Young', 'manual'),
-]
-latex_logo = "_images/thespacedoctor_icon_dark.png"
-
-markdown_parser_config = {
-    'auto_toc_maxdepth': 4,
-    'enable_auto_toc_tree': True,
-    'enable_eval_rst': True,
-    'enable_inline_math': True,
-    'enable_math': True,
-    'extensions': [
-        'extra',
-        'nl2br',
-        'sane_lists',
-        'smarty',
-        'toc',
-        'wikilinks',
-        'pymdownx.arithmatex',
-        'meta',
-        'pymdownx.tilde',
-        'pymdownx.critic',
-        'pymdownx.tasklist',
-        'mdx_include',
-        'pymdownx.mark',
-        'pymdownx.betterem',
-        'pymdownx.caret',
-        'legacy_attrs'
-    ],
-    'extension_configs': {
-        'toc': {
-            'marker': '1234TOC1234',
-            'toc_depth': '2-5'
-        },
-        'pymdownx.tasklist': {
-            'custom_checkbox': False,
-            'clickable_checkbox': False
-        },
-        'mdx_include': {
-            "base_path": moduleDirectory,
-            "syntax_left": "\{\{",
-            "syntax_right": "\}\}",
-        }
-    },
+# -- General configuration ---------------------------------------------------
+templates_path = ['_templates']
+exclude_patterns = ['**xxx**']
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
 }
+
+extensions = [
+    # Sphinx's own extensions
+    "sphinx.ext.autodoc",
+    "sphinx.ext.extlinks",
+    "sphinx.ext.intersphinx",
+    "sphinx.ext.mathjax",
+    "sphinx.ext.todo",
+    "sphinx.ext.viewcode",
+    'sphinxcontrib.inkscapeconverter',
+    'sphinx.ext.autosectionlabel',
+    # External stuff
+    "sphinxext.opengraph",
+    "myst_parser",
+    "sphinx_copybutton",
+    "sphinx_design",
+    "sphinx_inline_tabs",
+    'autodoc2',
+    'sphinxcontrib.mermaid',
+    'sphinx_togglebutton',
+    'sphinx.ext.coverage',
+    'sphinx.ext.linkcode',
+    'sphinx_search.extension',
+    'sphinx_tippy',
+    "sphinx_remove_toctrees",
+    'sphinxcontrib.bibtex'
+]
+myst_enable_extensions = [
+    "tasklist",
+    "amsmath",
+    "attrs_inline",
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "fieldlist",
+    "html_admonition",
+    "html_image",
+    "linkify",
+    "replacements",
+    "smartquotes",
+    "strikethrough",
+    "substitution",
+    "attrs_block"
+
+]
+suppress_warnings = ["myst.strikethrough"]
+autosectionlabel_prefix_document = True
+
+numfig = True
+
+numfig_format = {
+    'code-block': 'Listing %s',
+    'figure': 'Fig. %s',
+    'table': 'Table %s',
+    'section': 'Section',
+}
+
+
+# EXTENSION SETTINGS
+myst_enable_checkboxes = True
+myst_heading_anchors = 3
+todo_include_todos = True
+
+link_resolver_url = "https://github.com/thespacedoctor/soxspipe/blob/master"
+
+remove_from_toctrees = ["utils/[!_]*"]
+
+
+# BIBTEX STUFF
+bibtex_bibfiles = ['dry-bookends-references.bib']
+# bibtex_reference_style = 'author_year'
+# bibtex_default_style = 'unsrtalpha'
+
+# AUTODOC2 AND BIBTEX PLUGS CLASH DUE TO THIS ISSUE: https://github.com/pylint-dev/astroid/issues/2191
+# UNTIL THIS IS FIXED SWITCH BETWEEN THE TWO
+runAutodoc2 = os.getenv("AUTODOC2")
+
+
+if True or (runAutodoc2 and runAutodoc2 != "None"):
+    print("RUNNING AUTODOC2")
+    autodoc2_packages = [
+        {
+            "path": "../../soxspipe",
+            "exclude_files": ["*test_*.py"],
+
+        }
+    ]
+    autodoc2_render_plugin = "myst"
+    autodoc2_skip_module_regexes = [r".*test.*"]
+    autodoc2_hidden_objects = ["private"]
+    autodoc2_sort_names = True
+# else:
+
+if False:
+    # THIS BUG NEEDS FIXED TO BE ABLE TO USE AUTODOC2 AND ROUND BRACKETS
+    # https://github.com/pylint-dev/astroid/issues/2191
+    print("RUNNING A SPHINX BUILD")
+    import dataclasses
+    from sphinxcontrib.bibtex.style.referencing.author_year import AuthorYearReferenceStyle
+    from sphinxcontrib.bibtex.style.referencing import BracketStyle
+    import sphinxcontrib.bibtex.plugin
+
+    def bracket_style() -> BracketStyle:
+        return BracketStyle(
+            left='(',
+            right=')',
+        )
+
+    @dataclasses.dataclass
+    class MyReferenceStyle(AuthorYearReferenceStyle):
+        bracket_parenthetical: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_textual: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_author: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_label: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_year: BracketStyle = dataclasses.field(default_factory=bracket_style)
+
+    sphinxcontrib.bibtex.plugin.register_plugin(
+        'sphinxcontrib.bibtex.style.referencing',
+        'author_year_round', MyReferenceStyle)
+    bibtex_reference_style = 'author_year_round'
+
+
+# use the tab-trigger below for new function
+# xt-def-function
+
+
+# OpenGraph metadata
+ogp_site_url = "https://soxspipe.readthedocs.io/en"
+# This is the image that GitHub stores for our social media previews
+ogp_image = "https://live.staticflickr.com/65535/51602359158_6105a9d0c7_b.png"
+ogp_custom_meta_tags = [
+    '<meta name="twitter:card" content="summary_large_image">',
+]
+
+# -- THEME SETTINGS -------------------------------------------------
+html_theme = 'furo'
+html_static_path = ['_static', '_images']
+html_theme_options = {
+    "light_logo": "thespacedoctor_icon_dark_circle.png",
+    "dark_logo": "thespacedoctor_icon_white_circle.png",
+    "source_repository": "https://github.com/thespacedoctor/soxspipe/",
+    "source_branch": "master",
+    "source_directory": "docs/source/",
+}
+html_favicon = "_images/favicon.ico"
+html_title = f"soxspipe <small>v{__version__}</small>"
+html_show_sourcelink = True
+html_add_permalinks = u"  ∞"
+# OTHER USEFUL SETTINGS
+# html_theme_options = {
+#     "announcement": "<em>Important</em> announcement!",
+# }
+
+# -- LaTeX output -------------------------------------------------
+
+latex_engine = 'xelatex'
+
+if not on_rtd:
+    latex_documents = [
+        ('overleaf/introduction', 'introduction.tex', u'introduction',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/collecting_data', 'collecting_data.tex', u'collecting data',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/recipes', 'recipes.tex', u'recipes',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/utils', 'utils.tex', u'utils',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/instruments', 'instruments.tex', u'instruments',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/data_organiser_and_reducer', 'data_organiser_and_reducer.tex', u'data organiser and reducer',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/data_reduction_cascades', 'data_reduction_cascades.tex', u'data reduction cascades',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/observing_modes', 'observing_modes.tex', u'observing modes',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/files', 'files.tex', u'files',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/quickstart_guide', 'quickstart_guide.tex', u'quickstart guide',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/installation', 'installation.tex', u'installation',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/preparing_a_workspace', 'preparing_a_workspace.tex', u'preparing a workspace',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/reductions', 'reductions.tex', u'reductions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/pipeline_settings', 'pipeline_settings.tex', u'pipeline settings',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/logging', 'logging.tex', u'logging',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/sessions', 'sessions.tex', u'sessions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/support', 'support.tex', u'sessions',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/references', 'references.tex', u'references',
+         u'David R. Young & Marco Landoni', 'howto', False),
+        ('overleaf/appendix', 'appendix.tex', u'appendix',
+         u'David R. Young & Marco Landoni', 'howto', False),
+    ]
+else:
+    latex_documents = [
+        ("index", 'soxspipe.tex', 'soxspipe Documentation', u'David R. Young & Marco Landoni', 'manual'),
+    ]
+
+
+latex_toplevel_sectioning = "section"
+latex_show_urls = 'footnote'
+
+
+def linkcode_resolve(domain, info):
+    if domain != 'py':
+        return None
+    if not info['module']:
+        return None
+
+    filename = info['module'].replace('.', '/')
+    if info['fullname'] and "." not in info['fullname']:
+        filename += "/" + info['fullname'] + ".py"
+    else:
+        if "/" in filename:
+            filename = ("/").join(filename.split("/")[0:-1]) + "/"
+        else:
+            filename = ""
+        filename += ("/").join(info['fullname'].split(
+            ".")[0:-1]) + ".py" + "#" + info['fullname'].split(".")[-1]
+    return link_resolver_url + "/" + filename
 
 
 def updateUsageMd():
@@ -153,6 +264,7 @@ def updateUsageMd():
     *Grab the usage from cl_utils.py to display in README.md*
     """
     from soxspipe import cl_utils
+    import codecs
     usage = cl_utils.__doc__
 
     if not "Usage:" in usage or "todo:" in usage:
@@ -177,313 +289,4 @@ def updateUsageMd():
     return None
 
 
-def generateAutosummaryIndex():
-
-    import soxspipe
-    import inspect
-    import os.path
-    import time
-
-    # CHECK FOR LAST MODIFIED TIME - DON'T UPDATE IF < 5 SEC
-    # autobuild GOES INTO INFINITE LOOP OTHERWISE
-    moduleDirectory = os.path.dirname(__file__)
-    file = moduleDirectory + "/autosummary.rst"
-    pathToWriteFile = file
-    exists = os.path.exists(file)
-    if not exists:
-        pathToWriteFile = file
-        try:
-            writeFile = open(pathToWriteFile, 'w')
-            writeFile.write("")
-            writeFile.close()
-        except IOError as e:
-            message = 'could not open the file %s' % (pathToWriteFile,)
-            raise IOError(message)
-
-    now = time.time()
-    delta = now - os.path.getmtime(file)
-    if delta < 5:
-        return None
-
-    # GET ALL SUBPACKAGES
-    allSubpackages = ["soxspipe"]
-    allSubpackages += findAllSubpackges(
-        pathToPackage="soxspipe"
-    )
-
-    # INSPECT TO FIND ALL MODULES, CLASSES AND FUNCTIONS
-    allModules = []
-    allClasses = []
-    allFunctions = []
-    allMethods = []
-    for sp in allSubpackages:
-        for name, obj in inspect.getmembers(__import__(sp, fromlist=[''])):
-            if inspect.ismodule(obj):
-                if name in ["numpy"]:
-                    continue
-                thisMod = sp + "." + name
-                if thisMod not in allSubpackages and len(name) and name[0:1] != "$" and name[-5:] != "tests" and name not in ["cl_utils", "inspect", "os"]:
-                    allModules.append(sp + "." + name)
-                # if thisMod not in allSubpackages and len(name) and name[0:2] != "__" and name[-5:] != "tests" and name != "cl_utils" and name != "utKit":
-                #     allModules.append(sp + "." + name)
-
-    moreModules = []
-    for spm in allSubpackages + allModules:
-        for name, obj in inspect.getmembers(__import__(spm, fromlist=[''])):
-            if name[:2] == "__" or allSubpackages[0] not in name:
-                continue
-            try:
-                moreModules.append(obj.__module__)
-            except:
-                pass
-
-    for spm in allSubpackages + allModules + moreModules:
-        for name, obj in inspect.getmembers(__import__(spm, globals(), locals(), fromlist=[''], level=0)):
-            if name[:2] == "__":
-                continue
-            if spm.split(".")[-1] == name:
-                continue
-            if inspect.isclass(obj):
-                thisClass = spm + "." + name
-                if (thisClass == obj.__module__ or spm == obj.__module__) and len(name) and name[0:1] != "_" and "ImageFileCollection" not in name:
-                    allClasses.append(thisClass)
-            if inspect.isfunction(obj):
-                thisFunction = spm + "." + name
-                if (spm == obj.__module__ or obj.__module__ == thisFunction) and len(name) and name != "main" and name[0:1] != "_":
-                    allFunctions.append(thisFunction)
-            if inspect.ismethod(obj):
-                thisMethod = spm + "." + name
-                if (spm == obj.__module__ or obj.__module__ == thisMethod) and len(name) and name != "main" and name[0:1] != "_":
-                    allMethods.append(thisMethod)
-
-    allSubpackages = allSubpackages[1:]
-    allSubpackages.sort(reverse=False)
-    allModules.sort()
-    allClasses.sort()
-    allFunctions.sort()
-    allSubpackages = ("\n   ").join(allSubpackages)
-    allModules = ("\n   ").join(allModules)
-    allClasses = ("\n   ").join(allClasses)
-    allFunctions = ("\n   ").join(allFunctions)
-
-    # FOR SUBPACKAGES USE THE SUBPACKAGE TEMPLATE INSTEAD OF DEFAULT MODULE
-    # TEMPLATE
-    if len(allModules):
-        thisText = """
-Modules
--------
-
-.. autosummary::
-   :toctree: _autosummary
-   :nosignatures:
-
-   %(allSubpackages)s 
-   %(allModules)s 
-
-""" % locals()
-
-    if len(allClasses):
-        thisText += """
-Classes
--------
-
-.. autosummary::
-   :toctree: _autosummary
-   :nosignatures:
-
-   %(allClasses)s 
-
-""" % locals()
-
-    if len(allFunctions):
-        thisText += """
-Functions
----------
-
-.. autosummary::
-   :toctree: _autosummary
-   :nosignatures:
-
-   %(allFunctions)s 
-""" % locals()
-
-    moduleDirectory = os.path.dirname(__file__)
-    writeFile = codecs.open(
-        moduleDirectory + "/autosummary.rst", encoding='utf-8', mode='w')
-    writeFile.write(thisText)
-    writeFile.close()
-
-    regex = re.compile(r'\n\s*.*?utKit\.utKit(\n|$)', re.I)
-    allClasses = regex.sub("\n", allClasses)
-
-    autosummaryInclude = u"""
-**Modules**
-
-.. autosummary::
-   :nosignatures:
-
-   %(allSubpackages)s 
-   %(allModules)s
-
-**Classes**
-
-.. autosummary::
-   :nosignatures:
-
-   %(allClasses)s 
-
-**Functions**
-
-.. autosummary::
-   :nosignatures:
-
-   %(allFunctions)s 
-""" % locals()
-
-    moduleDirectory = os.path.dirname(__file__)
-    writeFile = codecs.open(
-        moduleDirectory + "/autosummary_include.rst", encoding='utf-8', mode='w')
-    writeFile.write(autosummaryInclude)
-    writeFile.close()
-
-    return thisText
-
-
-def findAllSubpackges(
-    pathToPackage
-):
-    import pkgutil
-    importedPackage = __import__(
-        pathToPackage, fromlist=[''])
-    subPackages = []
-
-    for importer, modname, ispkg in pkgutil.walk_packages(importedPackage.__path__, prefix=importedPackage.__name__ + '.',
-                                                          onerror=lambda x: None):
-        if ispkg and "tests" != modname[-5:] and "._" not in modname and ".tests." not in modname:
-            subPackages.append(modname)
-
-    return subPackages
-
-
-def linkcode_resolve(domain, info):
-    if domain != 'py':
-        return None
-    if not info['module']:
-        return None
-
-    filename = info['module'].replace('.', '/')
-    if info['fullname'] and "." not in info['fullname']:
-        filename += "/" + info['fullname'] + ".py"
-    else:
-        if "/" in filename:
-            filename = ("/").join(filename.split("/")[0:-1]) + "/"
-        else:
-            filename = ""
-        filename += ("/").join(info['fullname'].split(
-            ".")[0:-1]) + ".py" + "#" + info['fullname'].split(".")[-1]
-    return link_resolver_url + "/" + filename
-
-
-def docstring(app, what, name, obj, options, lines):
-
-    md = '\n'.join(lines)
-
-    # FIX MARKDOWN
-    md = md.replace("    imes", "\\times")
-    md = md.replace("    ext{", "\\text{")
-    if "\nm{" in md or "{\nm " in md:
-        md = md.replace("\n        ", "\n")
-        md = md.replace("\nm{", "\\rm{")
-        md = md.replace("{\nm ", "{\\rm ")
-        # md = md.replace("\nm{", "\\text{")
-    # if "electron counts" in md:
-    #     print(md)
-    #     sys.exit(0)
-
-    regex = re.compile(r'(.+?)\n:\s+(.*\n)')
-    md = regex.sub(r'\1\n  \2', md)
-
-    # FIX INLINE MATH
-    regex = re.compile(r'(\s|\n)(\$[^\$\n]+\$)([^\$])')
-    md = regex.sub(r'\1`\2`\3', md)
-
-    # FIX EQUATIONS
-    regex = re.compile(r'\n\$\$(\S)')
-    md = regex.sub(r'\n$$\n\1', md)
-    regex = re.compile(r'(\S)\$\$\n')
-    md = regex.sub(r'\1\n$$', md)
-
-    # FIX DEFINITIONS
-    regex = re.compile(r'(( |\t)+)- ``([^\n]+)`` -')
-    md = regex.sub(r"6473829123- `\3` -", md)
-
-    # REMOVE STRIKETHROUGH
-    regex = re.compile(r'~~([^~\n]+)~~ ?')
-    md = regex.sub(r"", md)
-
-    # ALLOW FOR CITATIONS TO SEMI-WORK (AS FOOTNOTES)
-    regex = re.compile(r'\[#(.*?)\]')
-    md = regex.sub(r"[^cn\1]", md)
-
-    # SUBSCRIPT
-    regex = re.compile(r'([!~]*\S)~(\S)([!~]*\n)')
-    md = regex.sub(r"\1~\2~\3", md)
-    regex = re.compile(r'([^\~])\~([^\~\n]+)\~([^\~])')
-    index = 0
-    while index < 100 and "~" in md:
-        index += 1
-        md = regex.sub(r'\1\\ :sub:`\2`\\\3', md, count=1)
-
-    # SUPERSCRIPT
-    regex = re.compile(r'([!\^]*\S)\^(\S)([!\^]*\n)')
-    md = regex.sub(r"\1^\2^\3", md)
-    regex = re.compile(r'([^\^])\^([^\^\n]+)\^([^\^])')
-    index = 0
-    while index < 100 and "^" in md:
-        index += 1
-        md = regex.sub(r'\1\\ :sup:`\2`\\\3', md, count=1)
-
-    # HR
-    regex = re.compile(r'\n---')
-    md = regex.sub(r"\n\n----------\n\n", md)
-
-    # FIX LINKS
-    # regex = re.compile(r'\[(.*?)\]\(\/?(\_autosummary\/)?(\S*?)(\.html)?\)')
-    # md = regex.sub(r'[\1](\3.html)', md)
-
-    rst = md
-    rst = m2r.convert(md)
-
-    rst = rst.replace("6473829123", "  ")
-    rst = rst.replace(".. code-block:: eval_rst", "")
-
-    rst = rst.replace("  imes", "\\times")
-
-    # $$\rm{error}$$
-    matchObject = True
-    while matchObject:
-        matchObject = re.search(r'\n\n(\$\$\n(\S(.*\n)*?)\$\$)', rst)
-        if matchObject:
-            math = matchObject.group(2)
-            math = math.replace("\n", " \\\\\n    ")
-            math = "\n\n.. math::\n\n    " + math
-            rst = rst.replace(matchObject.group(0), math)
-
-    # REPLACE THE DOCSTRING LINES WITH OUR NEW RST
-    lines.clear()
-    for line in rst.split("\n"):
-        lines.append(line)
-
-
-def setup(app):
-    app.connect('autodoc-process-docstring', docstring)
-    app.add_source_suffix('.md', 'markdown')
-    app.add_source_parser(MarkdownParser)
-    app.add_config_value('markdown_parser_config',
-                         markdown_parser_config, True)
-    app.add_transform(AutoStructify)
-
-
-# DO THE WORK
 updateUsageMd()
-autosummaryText = generateAutosummaryIndex()

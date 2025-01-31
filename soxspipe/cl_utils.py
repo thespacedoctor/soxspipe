@@ -6,20 +6,25 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe prep <workspaceDirectory>
+    soxspipe [-qw] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
-    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
+    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
     soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
     soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vx] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
 
 Options:
     prep                                   prepare a folder of raw data (workspace) for data reduction
     session ls                             list all available data-reduction sessions in the workspace
     session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
     session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
+    reduce all                             reduce all of the data in a workspace.
+
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
     mflat                                  the master flat recipe
@@ -27,16 +32,25 @@ Options:
     order_centres                          the order centres recipe
     spat_sol                               the spatial solution recipe
     stare                                  reduce stare mode science frames
+    nod                                    reduce nodding mode science frames
+
+    start                                   start the watch daemon
+    stop                                    stop the watch daemon
+    status                                  print the status of the watch daemon
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
+    -q, --quitOnFail                       stop the pipeline if a recipe fails
     -h, --help                             show this help message
     -v, --version                          show version
     -s, --settings <pathToSettingsFile>    the settings file
     -V, --verbose                          more verbose output
     -x, --overwrite                        more verbose output
+    -w, --watch                            watch the workspace and reduce new raw data as it is added (similar to 'watch' mode but runs in the foreground)
+    --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
 """
 ################# GLOBAL IMPORTS ####################
+import time
 import os
 import sys
 import readline
@@ -66,12 +80,13 @@ def main(arguments=None):
     currentSession, allSessions = do.session_list(silent=True)
 
     # QUICKLY SKIP IF PRODUCT EXIST
-    if len(sys.argv[1:]) == 2:
+    if len(sys.argv[1:]) == 2 or len(sys.argv[1:]) == 4:
         if sys.argv[2].split(".")[-1].lower() == "sof":
             from soxspipe.commonutils import toolkit
-            productPath = toolkit.predict_product_path(sys.argv[2])
+            productPath, startNightDate = toolkit.predict_product_path(sys.argv[2])
             if os.path.exists(productPath):
-                print(f"The product of this recipe already exists at '{productPath}'. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                basename = os.path.basename(productPath)
+                print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
@@ -84,13 +99,18 @@ def main(arguments=None):
         sys.argv.append("-s")
         sys.argv.append(settingsFile)
 
+    if "prep" in sys.argv or "watch" in sys.argv:
+        arguments = docopt(__doc__)
+        if "--settings" in arguments.keys():
+            del arguments["--settings"]
+
     su = tools(
-        arguments=None,
+        arguments=arguments,
         docString=__doc__,
         logLevel="WARNING",
         options_first=False,
         projectName="soxspipe",
-        defaultSettingsFile=True
+        defaultSettingsFile=False
     )
     arguments, settings, log, dbConn = su.setup()
 
@@ -160,15 +180,6 @@ def main(arguments=None):
         # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
         if a['outputDirectory']:
             settings["workspace-root-dir"] = a['outputDirectory']
-        else:
-            from soxspipe.commonutils import data_organiser
-            do = data_organiser(
-                log=log,
-                rootDir="."
-            )
-            currentSession, allSessions = do.session_list(silent=True)
-            if currentSession:
-                settings["workspace-root-dir"] = f"./sessions/{currentSession}/"
 
         if a["mbias"]:
             from soxspipe.recipes import soxs_mbias
@@ -199,7 +210,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                polyOrders=a["polyFlag"]
             ).produce_product()
 
         if a["order_centres"]:
@@ -209,7 +221,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                polyOrders=a["polyFlag"]
             ).produce_product()
 
         if a["spat_sol"]:
@@ -219,7 +232,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                polyOrders=a["polyFlag"]
             ).produce_product()
 
         if a["mflat"]:
@@ -242,11 +256,20 @@ def main(arguments=None):
                 verbose=verbose,
                 overwrite=a["overwriteFlag"]
             )
-
             reducedStare = recipe.produce_product()
 
+        if a["nod"]:
+            from soxspipe.recipes import soxs_nod
+            recipe = soxs_nod(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"]
+            )
+            reducedNod = recipe.produce_product()
+
         if a['prep']:
-            from soxspipe.commonutils import data_organiser
             do = data_organiser(
                 log=log,
                 rootDir=a["workspaceDirectory"]
@@ -277,11 +300,144 @@ def main(arguments=None):
             )
             sessionId = do.session_create(sessionId=a['sessionId'])
 
+    except FileExistsError as e:
+        sys.exit(0)
+
     except Exception as e:
         log.error(f'{e}\n{clCommand}', exc_info=True)
 
-    # CALL FUNCTIONS/OBJECTS
+    if a["reduce"] and a["all"]:
 
+        exists = os.path.exists(a["workspaceDirectory"] + "/soxspipe.db")
+        if not exists:
+            print(f"Please run the 'soxspipe prep {a['workspaceDirectory']}' command to prepare your workspace command before attempting to reduce data")
+            return
+
+        watch = True
+
+        while watch:
+            from soxspipe.commonutils import reducer
+            collection = reducer(
+                log=log,
+                workspaceDirectory=a["workspaceDirectory"],
+                settings=settings,
+                pathToSettings=arguments["--settings"],
+                quitOnFail=a["quitOnFailFlag"]
+            )
+            collection.reduce()
+
+            if a["watchFlag"]:
+                xsec = 15
+                print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
+                time.sleep(xsec)
+
+                from soxspipe.commonutils import data_organiser
+                do = data_organiser(
+                    log=log,
+                    rootDir=a["workspaceDirectory"]
+                )
+                do.prepare()
+            else:
+                watch = False
+
+    from fundamentals import daemonise
+
+    class myDaemon(daemonise):
+
+        def action(
+                self,
+                **kwargs):
+            import time
+            self.log.info('starting the ``action`` method')
+            pwd = kwargs["pwd"]
+            # settings = kwargs["settings"]
+            # settingsFile = kwargs["settingsFile"]
+
+            currentSession = None
+
+            while True:
+                os.chdir(pwd)
+                # if "." == arguments["--settings"][0]:
+                #     arguments["--settings"] = pwd + "/" + arguments["--settings"][1:]
+                a["workspaceDirectory"] = pwd
+
+                if currentSession:
+                    thisLog = log
+                else:
+                    thisLog = self.log
+
+                from soxspipe.commonutils import data_organiser
+                do = data_organiser(
+                    log=thisLog,
+                    rootDir=pwd
+                )
+                do.prepare()
+
+                if not currentSession:
+                    currentSession, allSessions = do.session_list(silent=True)
+
+                    if currentSession:
+                        from importlib import reload
+                        import logging
+                        logging.shutdown()
+                        reload(logging)
+                        settingsFile = f"{pwd}/sessions/{currentSession}/soxspipe.yaml"
+                        arguments["--settings"] = settingsFile
+                        su = tools(
+                            arguments=arguments,
+                            docString=__doc__,
+                            logLevel="WARNING",
+                            options_first=False,
+                            projectName="soxspipe",
+                            defaultSettingsFile=False
+                        )
+                        argumentsIgnore, settings, log, dbConn = su.setup()
+
+                if currentSession:
+                    from soxspipe.commonutils import reducer
+                    collection = reducer(
+                        log=log,
+                        workspaceDirectory=pwd,
+                        settings=settings,
+                        pathToSettings=settingsFile,
+                        quitOnFail=a["quitOnFailFlag"],
+                        daemon=True
+                    )
+                    collection.reduce()
+
+                xsec = 15
+                print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
+                time.sleep(xsec)
+
+            self.log.info('completed the ``action`` method')
+            return None
+
+    # MAKE RELATIVE HOME PATH ABSOLUTE
+    from os.path import expanduser
+    home = expanduser("~")
+
+    su = tools(
+        arguments=arguments,
+        docString=__doc__,
+        logLevel="WARNING",
+        options_first=False,
+        projectName="soxspipe",
+        defaultSettingsFile=False
+    )
+    arguments, settings, log, dbConn = su.setup()
+
+    d = myDaemon(log=log, name="soxspipe", pwd=os.getcwd())
+    d.errLog = home + f"/.config/soxspipe/daemon.log"
+    d.rootDir = home + f"/.config/soxspipe/"
+
+    if a['start']:
+        d.start()
+    elif a['stop']:
+        d.stop()
+    elif a['status']:
+        d.status()
+
+    # CALL FUNCTIONS/OBJECTS
     if "dbConn" in locals() and dbConn:
         dbConn.commit()
         dbConn.close()
@@ -289,10 +445,10 @@ def main(arguments=None):
     endTime = times.get_now_sql_datetime()
     runningTime = times.calculate_time_difference(startTime, endTime)
     sys.argv[0] = os.path.basename(sys.argv[0])
-    log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
-    log.print(f'Recipe Run Time: {runningTime}\n\n')
 
-    if not a['prep'] and not a['session']:
+    if not a['prep'] and not a['session'] and not a['reduce'] and not a['watch']:
+        log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
+        log.print(f'Recipe Run Time: {runningTime}\n\n')
         print(f"{'='*70}\n")
 
     return

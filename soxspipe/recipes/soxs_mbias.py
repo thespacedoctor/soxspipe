@@ -3,18 +3,18 @@
 """
 *The recipe for creating master-bias frames *
 
-:Author:
-    David Young & Marco Landoni
+Author
+: David Young & Marco Landoni
 
-:Date Created:
-    January 22, 2020
+Date Created
+: January 22, 2020
 """
 ################# GLOBAL IMPORTS ####################
 
 from soxspipe.commonutils.toolkit import generic_quality_checks
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
-from ._base_recipe_ import _base_recipe_
+from .base_recipe import base_recipe
 from fundamentals import tools
 from builtins import object
 import sys
@@ -24,9 +24,9 @@ import os
 os.environ['TERM'] = 'vt100'
 
 
-class soxs_mbias(_base_recipe_):
+class soxs_mbias(base_recipe):
     """
-    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have bias (and dark current) removed by subtracting an off-frame of equal expsoure length.*
+    *The* `soxs_mbias` *recipe is used to generate a master-bias frame from a set of input raw bias frames. The recipe is used only for the UV-VIS arm as NIR frames have bias (and dark current) removed by subtracting an off-frame of equal exposure length.*
 
     **Key Arguments**
 
@@ -34,7 +34,7 @@ class soxs_mbias(_base_recipe_):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
-    - ``overwrite`` -- overwrite the prodcut file if it already exists. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
 
     **Usage**
 
@@ -45,13 +45,6 @@ class soxs_mbias(_base_recipe_):
         settings=settings,
         inputFrames=fileList
     ).produce_product()
-    ```
-
-    ---
-
-    ```eval_rst
-    .. todo::
-        - add a tutorial about ``soxs_mbias`` to documentation
     ```
     """
     # Initialisation
@@ -64,14 +57,12 @@ class soxs_mbias(_base_recipe_):
             verbose=False,
             overwrite=False
     ):
-        # INHERIT INITIALISATION FROM  _base_recipe_
-        super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
-        log.debug("instansiating a new 'soxs_mbias' object")
+        # INHERIT INITIALISATION FROM  base_recipe
+        this = super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
+        log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
-        # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
@@ -93,10 +84,8 @@ class soxs_mbias(_base_recipe_):
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-        # self.log.print("\n# RAW INPUT BIAS FRAMES - SUMMARY")
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(['MJD-OBS'])
-        # self.log.print(self.inputFrames.summary, "\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
@@ -109,7 +98,7 @@ class soxs_mbias(_base_recipe_):
             self):
         """*verify the input frame match those required by the soxs_mbias recipe*
 
-        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception shall be raised.
+        If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug('starting the ``verify_input_frames`` method')
 
@@ -132,7 +121,7 @@ class soxs_mbias(_base_recipe_):
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.error("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
-            self.log.print()
+            self.log.print("")
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
@@ -145,7 +134,8 @@ class soxs_mbias(_base_recipe_):
         """*generate a master bias frame*
 
         **Return:**
-            - ``productPath`` -- the path to the master bias frame
+
+        - ``productPath`` -- the path to the master bias frame
         """
         self.log.debug('starting the ``produce_product`` method')
 
@@ -159,7 +149,7 @@ class soxs_mbias(_base_recipe_):
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        meanBiasLevels, rons, noiseFrames = zip(*[self.subtact_mean_flux_level(c) for c in ccds])
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
@@ -169,17 +159,11 @@ class soxs_mbias(_base_recipe_):
 
         masterRon = np.std(combined_noise.data)
 
-        # FILL MASKED PIXELS WITH 0
+        # USE COMBINED NOISE MASK AS MBIAS MASK
         combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
         combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
         combined_bias_mean = combined_noise
-        combined_bias_mean.mask[:] = False
-
-        # # MULTIPROCESSING HERE ADDS A SELF_DEFEATING OVERHEAD
-        # from fundamentals import fmultiprocess
-        # # DEFINE AN INPUT ARRAY
-        # results = fmultiprocess(log=self.log, function=self.subtact_mean_flux_level,
-        #                         inputArray=ccds, poolSize=False, timeout=300)
+        combined_bias_mean.mask = combined_noise.mask
 
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
 
@@ -246,11 +230,13 @@ class soxs_mbias(_base_recipe_):
         """*calculate the structure of the bias*
 
         **Key Arguments:**
-            - ``combined_bias_mean`` -- the mbias frame
+
+        - ``combined_bias_mean`` -- the mbias frame
 
         **Return:**
-            - ``structx`` -- slope of BIAS in X direction
-            - ``structx`` -- slope of BIAS in Y direction
+
+        - ``structx`` -- slope of BIAS in X direction
+        - ``structx`` -- slope of BIAS in Y direction
 
         **Usage:**
 
@@ -324,10 +310,12 @@ class soxs_mbias(_base_recipe_):
         A 2D FFT is applied to each of the raw bias frames and the standard deviation and median absolute deviation calcualted for each result. The maximum std/mad is then added as the ppnmax QC in the master bias frame header.
 
         **Key Arguments:**
-            - ``frames`` -- the raw bias frames (imageFileCollection)
+
+        - ``frames`` -- the raw bias frames (imageFileCollection)
 
         **Return:**
-            - ``ppnmax``
+
+        - ``ppnmax``
 
         **Usage:**
 
@@ -341,6 +329,7 @@ class soxs_mbias(_base_recipe_):
         from astropy.stats import sigma_clip
         import numpy as np
         import pandas as pd
+        from ccdproc import block_reduce
 
         # LIST OF CCDDATA OBJECTS
         ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
@@ -349,11 +338,13 @@ class soxs_mbias(_base_recipe_):
         for frame in ccds:
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
+            # BIN THE FRAME TO INCREASE SPEED
+            maskedDataArray = block_reduce(maskedDataArray, 5, np.mean)
             dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
 
             # SIGMA-CLIP THE DATA
             masked_dark_image_grey_fourier = sigma_clip(
-                dark_image_grey_fourier, sigma_lower=1000, sigma_upper=1000, maxiters=1, cenfunc='mean')
+                dark_image_grey_fourier, sigma_lower=100, sigma_upper=100, maxiters=1, cenfunc='mean')
             goodData = np.ma.compressed(masked_dark_image_grey_fourier)
 
             # frame_mad = median_abs_deviation(dark_image_grey_fourier, axis=None)
@@ -366,6 +357,8 @@ class soxs_mbias(_base_recipe_):
             from soxspipe.commonutils.toolkit import quicklook_image
             quicklook_image(
                 log=self.log, CCDObject=abs(masked_dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
+            quicklook_image(
+                log=self.log, CCDObject=abs(dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
 
             ratios.append(frame_std / frame_mad)
 

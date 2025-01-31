@@ -110,3 +110,7 @@ if __name__ == '__main__':
     # unittest.main()
 
     # x-class-to-test-named-worker-function
+#ADD A MAIN HERE TO RUN THOSE TESTS
+if __name__ == "__main__":
+    unittest.main()
+    

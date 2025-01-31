@@ -4,14 +4,15 @@ version: 1
 instrument: soxs
 
 # soxs-mbias:
-#     clipping-lower-sigma: 5
-#     clipping-upper-sigma: 5   
-#     clipping-iteration-count: 5
+#     # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+#     frame-clipping-sigma: 3 
+#     frame-clipping-iterations: 1
+#     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
+#     stacked-clipping-sigma: 5
+#     stacked-clipping-iterations: 3
 
 # soxs-mdark:
-#     clipping-lower-sigma: 5
-#     clipping-upper-sigma: 5   
-#     clipping-iteration-count: 5
+
 
 # soxs-disp-solution:
 #     pixel-window-size: 10
@@ -29,18 +30,21 @@ instrument: soxs
 #     poly-clipping-iteration-limit: 5
 
 # soxs-spatial-solution:
+#     use_flat: False
 #     pixel-window-size: 10
 #     order-deg: 3
 #     wavelength-deg: 3
 #     slit-deg: 3
 #     poly-clipping-iteration-limit: 10
 #     poly-fitting-residual-clipping-sigma: 5
+#     pinhole_fwhm_px_max: 2.5
+#     pinhole_fwhm_px_min: 1.0
+#     mph_line_set_min: 8
 
 # soxs-mflat:
 #     centre-order-window: 20
-#     clipping-lower-sigma: 50
-#     clipping-upper-sigma: 50   
-#     clipping-iteration-count: 5
+#     # NUMBER OF CROSS-ORDER SLICES PER ORDER
+#     order-sample-count: 50
 #     slice-length-for-edge-detection: 90
 #     slice-width-for-edge-detection: 5
 #     min-percentage-threshold-for-edge-detection: 20
@@ -49,6 +53,8 @@ instrument: soxs
 #     poly-fitting-residual-clipping-sigma: 5
 #     poly-clipping-iteration-limit: 10
 #     low-sensitivity-clipping-sigma: 2
+#     # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
+#     scale-d2-to-qth: True
     
 
 # soxs-straighten:
@@ -57,7 +63,7 @@ instrument: soxs
 # # UTILS
 # background-subtraction:
 #     bspline-deg: 3
-#     median-filter-pixels: 11
+#     gaussian-blur-sigma: 35
 
 # test-data-root: ~/xshooter-pipeline-data/unittest_data
 workspace-root-dir: ~/soxspipe-unittests/intermediate/soxs

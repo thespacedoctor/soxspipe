@@ -1,5 +1,114 @@
 
-# Release Notes  
+
+# Release Notes
+
+## v0.11.10 - December 19, 2024
+
+* **ENHANCEMENT:** Raw frames & their categories are reported in the FITS headers of the recipe products.
+* **ENHANCEMENT:** Intermediate calibration products are reported in the recipe product FITS headers alongside their MD5 hash (DATAMD5)
+* **ENHANCEMENT:** Recipe settings and values are reported in the FITS headers of the recipe products.
+* **ENHANCEMENT:** The recipe command is now printed before AND after execution to the terminal and the recipe log file.
+* **REFACTOR:** The length of SOF and product filenames have been compressed so they can be reported within the FITS header character limit.
+* **REFACTOR:** reduced products are now stored in the ESO-compliant nested-folder scheme `/reduced/YYYY-MM-DD/`
+* **REFACTOR:** QCs are also stored in a similar nested-folder scheme `/qc/YYYY-MM-DD/`
+* **FIXED:** All FITS file products pass fitsverify checks
+
+## v0.11.9 - November 25, 2024
+
+* **REFACTOR:** updating the data-organiser to fix a performance issue.
+* **FIXED:** Allow the object trace polynomial orders to dynamically change if a fit to the continuum is not found (ala the order-centre tracing)
+
+## v0.11.8 - November 21, 2024
+
+* **FEATURE:** SOXS UVVIS line-list (first draft) now ships with the code.
+* **FEATURE:** pipeline can now 'watch' a folder and automatically reduce raw data added to it. This 'watch' feature can also be run as a system daemon.
+* **ENHANCEMENT:** Python 3.11 is the mimimum python version now
+* **ENHANCEMENT:** pinning the main packages used by soxspipe
+* **ENHANCEMENT:** now recording 'ESO ADA ABSROT END' in the soxspipe.db database
+* **ENHANCEMENT:** adding a check to see if the continuum fit is good in each order ... remove bad orders (SOXS VIS only so far)
+* **ENHANCEMENT:** improving SOXS extractions (using order centre traces with flat lamps)
+* **REFACTOR:** Data-organiser can now work with new SOXS DPR keywords.
+* **REFACTOR:** changing order centre clipping to mean and std (not median and mad)
+* **REFACTOR:** updated NIR line list after SOXS format change
+* **FIXED:** a few bugs
+
+## v0.11.6 - October 15, 2024
+
+* **FIXED:** a regression in the detect continuum code
+
+## v0.11.4 - October 9, 2024
+
+* **ENHANCEMENT:** LaCosmic is run on images prior to source extraction to help remove cosmic ray hits.
+* **ENHANCEMENT:** Dichroic region is now clipped from the Xshooter UVB order merge spectrum
+* **REFACTOR:** Improved source continuum tracing making nodding reductions more robust.
+* **FIXED:** a bug where binning was not taken into consideration when reading the detector format before performing source extraction.
+
+## v0.11.2 - October 7, 2024
+
+* **ENHANCEMENT:** New raw data is to be 'streamed' into the workspace's root folder. When 'soxspipe prep .' is run, the new data is found and filed automatically into the correct `/raw/YYYY-MM-DD/` folder. Adding new raw frames directly into the `raw/YYYY-MM-DD/` nested folder structure is also possible.
+* **ENHANCEMENT:** "STD,TELLURIC" frames now recognised in stare mode.
+* **REFACTOR:** Made big speed gains in the `order_to_image` method. This speeds up the `soxs_spatial_solution` dramatically.
+* **REFACTOR:** exptimes recorded in the SQLite database are now rounded to 2 decimal places. There are occasions where exposure times in the FITS headers are given to 4 dp, and a set of (e.g. flat) frames have exposure times that differ by 0.0001 secs. The pipeline divided these frames into two sets when they should have been grouped together. This was causing failure on some mflat recipes. 
+* **FIXED:** Fixed numpy 2.0 compatibility issues so soxspipe can now run with numpy v2.0 and greater
+* **FIXED:** Instrument = "SHOOT" now recognised as Xshooter data
+* **FIXED:** bug in the detect continuum code that would fail to fit a gaussian in the cross-dispersion slices if NaN values were present.
+* **DOCS:** complete update of the SOXS documentation. See https://soxspipe.readthedocs.io
+* **DOCS:** 4 installation methods are now reported in the documentation (anaconda is not required to install the pipeline). https://soxspipe.readthedocs.io/en/master/user_manual/installation.html
+
+## v0.11.1 - August 15, 2024
+
+* **REFACTOR:** interpolated wavelength resolutions set to match that of the Xshooter pipeline in order-merged spectra (NIR were the same, but now UVB and VIS arms also match Xshooter).
+* **FIXED:** bug in the Horne extraction causing artificial 'undulations' in the extracted spectra.
+* **FIXED:** bad pixel treatment in Horne extraction (was severely affecting NIR extraction in particular)
+* **FIXED:** filename case-sensitivity issue when working on a case-sensitive file system
+* **FIXED:** issue where the prep command was looking for a settings file in "~/.config/soxspipe"
+
+## v0.11.0 - July 21, 2024
+
+* **FEATURE:** ascii exports
+* **FEATURE:** nodding mode
+* **FEATURE:** allowing order-trace frames to be reduced in stare mode for PAE
+* **FEATURE:** pipeline is now reducing soxs UVVIS data robustly.
+* **FEATURE:** adding code to help tune the pipeline. Add the setting `tune-pipeline: True` to the setttings file and run a recipe command.
+* **ENHANCEMENT:** pipeline parameters (in default settings file) are now optimally tuned from UVVIS up to flats and NIR up to spatial solution.
+* **ENHANCEMENT:** This release includes many robustness updates
+
+## v0.10.2 - April 23, 2024
+
+* **ENHANCEMENT:** the calibration lamp name is now added to the sof filenames, and hence the product file names
+* **ENHANCEMENT:** file summary now shows which calibration lamps are used
+* **ENHANCEMENT:** adding bad-pixel maps for SOXS detectors (currently blank)
+* **ENHANCEMENT:** pipeline can select default settings for either soxs or xsh (previously there was only one default settings file)
+* **FIXED**: SOXS VIS darks are now getting split by EXPTIME in data-organiser
+
+## v0.10.1 - April 11, 2024
+
+* **FEATURE:** the data-organiser has been 'plumbed' to work with SOXS data (will now work with Xshooter or SOXS data).
+* **ENHANCEMENT:** clipping of entire MPH set based on their combined RMS scatter from their predicted locations. MPH sets with large scatter are consider poor and removed before polynomial fitting.
+* **ENHANCEMENT:** option added to relevant recipes settings to allow toggling of fitting and subtracting of intra-order scattered background light (`subtract_background`)
+* **REFACTOR**: added arm and lamp to QC plot titles.
+* **REFACTOR** recipe settings can now be set independently for each arm.
+* **REFACTOR:** fitting of the scatter background light is now much more robust.
+* **REFACTOR:** The scattered light background images are now saved as QC PDFs instead of FITS frames.
+* **FIXED**: fixed issue where logs were getting duplicated.
+* **FIXED**: the scaling and stitching together of the UVB D2 and QTH lamp flats.
+
+## v0.10.0 - February 20, 2024
+
+* a `bootstrap_dispersion_solution` has been added to the advanced settings. It this is set to True, the pipeline will attempt to bootstrap the initial dispersion solution (using the static line list) with lines from a line-atlas. The line-atlas contains more lines and lines with more precise wavelength measurements.
+* **FEATURE**: a new 'reducer' module and terminal command replace the old `_reduce_all/sh` script. This allows the data-organiser to dynamically self-correct if a recipe fails.
+* **ENHANCEMENT:** robustness fixes and updates.
+* `pinhole_fwhm_px_min` and `pinhole_fwhm_px_max` settings added to `soxs-spatial-solution`. Detected pinholes with a FWHM below/above these values get clipped.
+* **FIXED**: The bad-pixel mask from the noise map of the mbias frame is now injected mbias product. The Xshooter UVB electron trap is now clearly visible in the master bias quality extension.
+* `mph_line_set_min` setting added to `soxs-spatial-solution`. Full multi-pinholes sets (same arc line) with fewer than mph_line_set_min lines detected get clipped.
+
+## v0.9.9 - January 24, 2024
+
+* **FIXED**: bug fix logger
+
+## v0.9.8 - January 19, 2024
+
+* **FIXED**: bug fix in collecting settings files from the default location
 
 
 ## v0.9.7 - December 7, 2023
@@ -28,7 +137,7 @@
 * **REFACTOR:** bad-pixel values set to 0 in data extensions of products
 * **REFACTOR:** nans have been replaced by zero in FITS image product
 * **FIXED**: a mismatch between daofind results and the original input pixel table was causing dispersion solution to break (a recent bug introduced during code optimisations)
-* **FIXED**: the internal soxspipe logger was being interfered with by astropy so that logs were somtimes getting redirected to the wrong place
+* **FIXED**: the internal soxspipe logger was being interfered with by astropy so that logs were sometimes getting redirected to the wrong place
 
 ## v0.9.0 - October 11, 2023
 
@@ -78,7 +187,7 @@
 * **REFACTOR:** changed quickstart guide compress to gzipped tar  
 * **REFACTOR:** updated default settings to be more robust  
 
-## v0.7.1 - November 4, 2022  
+## v0.7.1 - November 4, 2022
 
 * **FEATURE:** UV D-Lamp and QTH-Lamp master flats now being stitched together  
 * **FEATURE:** errors in error maps now being treated correctly and propagating to combined images  
