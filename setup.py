@@ -25,7 +25,8 @@ install_requires = [
     'tabulate==0.9.0',
     'bottleneck==1.4.0',
     'multiprocess==0.70.16',
-    'specutils==1.16.0'
+    'specutils==1.16.0',
+    'humanize==4.11.0'
 ]
 
 # READ THE DOCS SERVERS
