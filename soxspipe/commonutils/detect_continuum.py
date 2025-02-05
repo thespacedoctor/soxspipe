@@ -639,7 +639,7 @@ class detect_continuum(_base_detect):
                 if "order" in self.recipeName.lower() and mean_res > 2:
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
-                elif mean_res > 5 and not (self.inst == "SOXS" and self.arm == "VIS"):
+                elif mean_res > 10 and not (self.inst == "SOXS" and self.arm == "VIS") and False:
                     # BAD FIT ... FORCE A FAIL
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
@@ -1299,7 +1299,7 @@ class detect_continuum(_base_detect):
         # CROSS-DISPERSION DIRECTION. RETURN PEAK POSITIONS
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=self.traceFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log, CCDObject=self.traceFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=False)
 
         if "order" in self.recipeName.lower():
             self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
