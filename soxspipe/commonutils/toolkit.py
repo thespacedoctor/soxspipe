@@ -1408,3 +1408,50 @@ def qc_settings_plot_tables(
 
     log.debug('completed the ``qc_settings_plot_tables`` function')
     return None
+
+
+def utility_setup(
+        log,
+        settings,
+        recipeName,
+        startNightDate):
+    """*setup some tools needed by most soxspipe utils*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `settings` -- the settings dictionary
+    - `recipeName` -- name of the recipe as it appears in the settings dictionary
+    - `startNightDate` -- YYYY-MM-DD date of the observation night. Default ""
+
+    **Return:**
+
+    - `qcDir` -- the QC directory (created if missing)
+
+    **Usage:**
+
+    ```python
+    usage code 
+    ```           
+    """
+    log.debug('starting the ``utility_setup`` function')
+
+    from os.path import expanduser
+    home = expanduser("~")
+
+    # QC DIR
+    qcDir = settings["workspace-root-dir"].replace("~", home) + f"/qc/{startNightDate}/{recipeName}/"
+    qcDir = qcDir.replace("//", "/")
+    # RECURSIVELY CREATE MISSING DIRECTORIES
+    if not os.path.exists(qcDir):
+        os.makedirs(qcDir)
+
+    # PRODUCT DIR
+    productDir = settings["workspace-root-dir"].replace("~", home) + f"/reduced/{startNightDate}/{recipeName}/"
+    productDir = productDir.replace("//", "/")
+    # RECURSIVELY CREATE MISSING DIRECTORIES
+    if not os.path.exists(productDir):
+        os.makedirs(productDir)
+
+    log.debug('completed the ``utility_setup`` function')
+    return qcDir, productDir

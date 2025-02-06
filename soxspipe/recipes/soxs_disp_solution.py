@@ -343,9 +343,6 @@ class soxs_disp_solution(base_recipe):
         self.log.debug('completed the ``produce_product`` method')
         return productPath
 
-    # use the tab-trigger below for new method
-    # xt-class-method
-
 
 def parameterTuning(p, log, recipeSettings, settings, pinholeFrame, qc, products, sofName, lineDetectionTable):
     """*tuning the spatial solution*        

@@ -196,6 +196,9 @@ class soxs_nod(base_recipe):
             if len(allObjectFrames):
                 break
 
+        if t == 'STD,FLUX':
+            self.generateReponseCurve = True
+
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -288,10 +291,7 @@ class soxs_nod(base_recipe):
 
                 sequenceCount += 1
             stackedSpectrum = self.stack_extractions([allSpectrumA, allSpectrumB])
-            self.plot_stacked_spectrum_qc(stackedSpectrum)
-            self.clean_up()
-            self.report_output()
-            # sys.exit(0)
+
         else:
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
@@ -311,12 +311,25 @@ class soxs_nod(base_recipe):
             self.update_fits_keywords(frame=bFrame)
 
             mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
-            stackedSpectrum = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
+            stackedSpectrum, extractionPath = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
 
-            self.plot_stacked_spectrum_qc(stackedSpectrum)
+        if self.generateReponseCurve:
+            from soxspipe.commonutils import response_function
+            response = response_function(
+                log=self.log,
+                settings=self.settings,
+                recipeName=self.recipeName,
+                sofName=self.sofName,
+                stdExtractionPath=extractionPath,
+                qcTable=self.qc,
+                productsTable=self.products,
+                startNightDate=self.startNightDate
+            )
+            self.qc, self.products = response.get()
 
-            self.clean_up()
-            self.report_output()
+        self.plot_stacked_spectrum_qc(stackedSpectrum)
+        self.clean_up()
+        self.report_output()
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
@@ -524,12 +537,12 @@ class soxs_nod(base_recipe):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": self.utcnow,
             "product_desc": f"Ascii version of extracted source spectrum",
-            "file_path": filePath,
+            "file_path": asciiFilePath,
             "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``stack_extractions`` method')
-        return stackedSpectrum
+        return stackedSpectrum, filePath
 
     def plot_stacked_spectrum_qc(
             self,

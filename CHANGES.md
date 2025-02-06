@@ -2,6 +2,8 @@
 
 # Release Notes
 
+if the object trace produces residuals with a mean > 10 pixels, then a fitting fail is forced.
+
 ## v0.12.10 - January 31, 2025
 
 * **ENHANCEMENT:** Major updates to the documentation following PAE.
