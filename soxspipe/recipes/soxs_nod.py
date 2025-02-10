@@ -101,6 +101,8 @@ class soxs_nod(base_recipe):
         self.inputFrames = self.prepare_frames(
             save=self.settings["save-intermediate-products"])
 
+        self.generateReponseCurve = False
+
         return None
 
     def verify_input_frames(
@@ -262,9 +264,8 @@ class soxs_nod(base_recipe):
                     home = expanduser("~")
                     filenameA = self.sofName + f"_A_{sequenceCount}.fits"
                     filenameB = self.sofName + f"_B_{sequenceCount}.fits"
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-                    filePathA = f"{outDir}/{filenameA}"
-                    filePathB = f"{outDir}/{filenameB}"
+                    filePathA = f"{self.productDir}/{filenameA}"
+                    filePathB = f"{self.productDir}/{filenameB}"
                     frameA.write(filePathA, overwrite=True, checksum=True)
                     frameB.write(filePathB, overwrite=True, checksum=True)
 
@@ -290,7 +291,7 @@ class soxs_nod(base_recipe):
                     allSpectrumB = pd.concat([allSpectrumB, mergedSpectrumDF_B])
 
                 sequenceCount += 1
-            stackedSpectrum = self.stack_extractions([allSpectrumA, allSpectrumB])
+            stackedSpectrum, extractionPath = self.stack_extractions([allSpectrumA, allSpectrumB])
 
         else:
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
@@ -378,8 +379,7 @@ class soxs_nod(base_recipe):
         # Write in a fits file the A-B and B-A frames
         home = expanduser("~")
         filename = self.sofName + f"_AB_{locationSetIndex}.fits"
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.productDir}/{filename}"
         A_minus_B.write(filePath, overwrite=True, checksum=True)
 
         filename = self.sofName + f"_BA_{locationSetIndex}.fits"
@@ -504,13 +504,12 @@ class soxs_nod(base_recipe):
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
         filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.fits")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.productDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
         asciiFilename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.txt")
-        asciiFilePath = f"{outDir}/{asciiFilename}"
+        asciiFilePath = f"{self.productDir}/{asciiFilename}"
         stackedSpectrum.write(asciiFilePath, format='ascii', overwrite=True)
 
         utcnow = datetime.utcnow()

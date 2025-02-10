@@ -121,9 +121,6 @@ class horne_extraction(object):
         except:
             self.noddingSequence = ""
 
-        home = expanduser("~")
-        self.outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-
         # COLLECT SETTINGS FROM SETTINGS FILE
         self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
         self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
@@ -198,12 +195,8 @@ class horne_extraction(object):
                 settings=self.settings
             )
 
-        home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-        self.qcDir = self.qcDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(self.qcDir):
-            os.makedirs(self.qcDir)
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
 
         # OPEN AND UNPACK THE 2D IMAGE MAP
         self.twoDMap = fits.open(twoDMapPath)
@@ -495,7 +488,7 @@ class horne_extraction(object):
 
             # DISCRETE ORDERS
             filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS{self.noddingSequence}.fits")
-            filePath = f"{self.outDir}/{filename}"
+            filePath = f"{self.productDir}/{filename}"
             hduList.writeto(filePath, checksum=True, overwrite=True)
 
             utcnow = datetime.utcnow()
@@ -515,7 +508,7 @@ class horne_extraction(object):
 
             # NOW MERGED SPECTRUM
             filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED{self.noddingSequence}.fits")
-            filePath = f"{self.outDir}/{filename}"
+            filePath = f"{self.productDir}/{filename}"
             mergedTable = Table.from_pandas(mergedSpectumDF)
             BinTableHDU = fits.table_to_hdu(mergedTable)
             hduList = fits.HDUList([priHDU, BinTableHDU])

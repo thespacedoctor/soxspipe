@@ -94,12 +94,20 @@ class response_function(object):
         ).get
         kw = self.kw
 
+        stdNames = ["LTT7987", "EG274", "LTT3218", "EG21"]
+        stdAkas = ["CD-3017706" "CD-3810980", "CD-325613", "CPD-69177"]
+
         hdul = fits.open(self.stdExtractionPath)
         self.header = hdul[0].header
         self.dateObs = self.header[kw("DATE_OBS")]
         self.texp = float(self.header[kw("EXPTIME")])
         self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()  # Name is in the format 'EG 274'
         self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")
+
+        if self.std_objName in stdAkas:
+            for s, a in zip(stdNames, stdAkas):
+                if self.std_objName == a:
+                    self.std_objName = s
 
         # USING THE AVERAGE AIR MASS
         airmass_start = float(self.header[kw("AIRM_START")])
@@ -143,15 +151,18 @@ class response_function(object):
         # GET THE ABSOLUTE STANDARD STAR FLUXES, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
         stdAbsFluxDF = Table.read(self.calibrationRootPath + "/" + self.detectorParams["flux-standards"], format='fits')
         stdAbsFluxDF = stdAbsFluxDF.to_pandas()
+        # MAKE ALL COLUMNS UPPERCASE
+        stdAbsFluxDF.columns = [d.upper() for d in stdAbsFluxDF.columns]
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
         stdAbsFluxDF = stdAbsFluxDF[(stdAbsFluxDF['WAVE'] > np.min(self.stdExtractionDF['WAVE']) - 10) & (stdAbsFluxDF['WAVE'] < 10 + np.max(self.stdExtractionDF['WAVE']))]
 
         # FLUX IS CONVERTED IN ERG / CM2 / S / ANG
         try:
-            self.std_wavelength_to_abs_flux = interp1d(np.array(stdAbsFluxDF['WAVE']), np.array(stdAbsFluxDF[self.std_objName]) * 10 * 10**17, kind='next')
+            self.std_wavelength_to_abs_flux = interp1d(np.array(stdAbsFluxDF['WAVE']), np.array(stdAbsFluxDF[self.std_objName]) * 10 * 10**17, kind='next', fill_value="extrapolate")
         except Exception as e:
-            raise Exception("Standard star %s not found in the static calibration database" % self.std_objName)
+            self.log.error(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {stdAbsFluxDF.columns[1:]}")
+            raise Exception(e)
             sys.exit(1)
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
@@ -372,7 +383,7 @@ class response_function(object):
             "file_type": "PDF",
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
-            "product_desc": f"Response curve QC plot",
+            "product_desc": f"Response curve QC plot.",
             "file_path": plotFilePath,
             "label": "QC"
         }).to_frame().T], ignore_index=True)
@@ -449,7 +460,7 @@ class response_function(object):
             "file_type": "FITS",
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": utcnow,
-            "product_desc": f"Response function coeffs",
+            "product_desc": f"Response function coeffs.",
             "file_path": filePath,
             "label": "PROD"
         }).to_frame().T], ignore_index=True)

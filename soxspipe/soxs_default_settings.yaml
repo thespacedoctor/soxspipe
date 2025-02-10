@@ -297,6 +297,11 @@ soxs-stare:
             residual_floor_percentile: 95
 
 
+soxs-response:
+    max_iteration: 5
+    poly_order: 7
+
+
 # UTILS
 background-subtraction:
     bspline-deg: 2

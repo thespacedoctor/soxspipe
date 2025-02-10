@@ -164,8 +164,8 @@ class base_recipe(object):
             settings=self.settings
         ).get
 
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-        self.productDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}/"
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=self.recipeName, startNightDate=self.startNightDate)
 
         return None
 

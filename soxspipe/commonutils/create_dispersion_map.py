@@ -145,12 +145,8 @@ class create_dispersion_map(object):
             self.axisA = "y"
             self.axisB = "x"
 
-        home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-        self.qcDir = self.qcDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(self.qcDir):
-            os.makedirs(self.qcDir)
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=self.recipeName, startNightDate=startNightDate)
 
         return None
 
@@ -996,15 +992,6 @@ class create_dispersion_map(object):
                         coeff_dict_y[f'c{i}{j}{k}'] = ycoeff[n_coeff]
                         n_coeff += 1
 
-        # DETERMINE WHERE TO WRITE THE FILE
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home)
-        outDir += f"/reduced/{self.startNightDate}/{self.recipeName}/"
-        outDir = outDir.replace("//", "/")
-        # Recursively create missing directories
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-
         if not self.sofName:
             filename = filenamer(
                 log=self.log,
@@ -1034,7 +1021,7 @@ class create_dispersion_map(object):
         else:
             # filename = filename.split("ARC")[0] + "2D_MAP.fits"
             header[kw("PRO_TECH").upper()] = "ECHELLE,MULTI-PINHOLE"
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.productDir}/{filename}"
 
         df = pd.DataFrame([coeff_dict_x, coeff_dict_y])
         t = Table.from_pandas(df)
@@ -1837,20 +1824,12 @@ class create_dispersion_map(object):
         combinedWlImage.data += wlMap.data
         combinedSlitImage.data += wlMap.data
 
-        # DETERMINE WHERE TO WRITE THE FILE
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-        outDir = outDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-
         # GET THE EXTENSION (WITH DOT PREFIX)
         extension = os.path.splitext(dispersionMapPath)[1]
         filename = os.path.basename(
             dispersionMapPath).replace(extension, "_IMAGE.fits")
 
-        dispersion_image_filePath = f"{outDir}/{filename}"
+        dispersion_image_filePath = f"{self.productDir}/{filename}"
         # WRITE CCDDATA OBJECT TO FILE
         # from astropy.io import fits
         header = copy.deepcopy(self.dispMapHeader)

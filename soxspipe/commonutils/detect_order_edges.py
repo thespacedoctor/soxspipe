@@ -156,12 +156,8 @@ class detect_order_edges(_base_detect):
 
         # self.lamp = get_calibration_lamp(log=log, frame=flatFrame, kw=self.kw)
 
-        home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-        self.qcDir = self.qcDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(self.qcDir):
-            os.makedirs(self.qcDir)
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(

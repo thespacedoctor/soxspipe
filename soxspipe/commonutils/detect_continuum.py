@@ -377,17 +377,6 @@ class _base_detect(object):
         arm = self.arm
         kw = self.kw
 
-        # DETERMINE WHERE TO WRITE THE FILE
-        home = expanduser("~")
-        if (False and (self.binx > 1 or self.biny > 1)) or (isinstance(self.products, bool) and self.products == False):
-            outDir = self.settings["workspace-root-dir"] + "/tmp"
-        else:
-            outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-            outDir = outDir.replace("//", "/")
-        # Recursively create missing directories
-        if not os.path.exists(outDir):
-            os.makedirs(outDir)
-
         if not self.sofName:
             filename = filenamer(
                 log=self.log,
@@ -414,7 +403,7 @@ class _base_detect(object):
         if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
 
-        order_table_path = f"{outDir}/{filename}"
+        order_table_path = f"{self.productDir}/{filename}"
 
         header = copy.deepcopy(frame.header)
         with suppress(KeyError):
@@ -563,12 +552,8 @@ class detect_continuum(_base_detect):
 
         self.lamp = get_calibration_lamp(log=log, frame=traceFrame, kw=self.kw)
 
-        home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-        self.qcDir = self.qcDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(self.qcDir):
-            os.makedirs(self.qcDir)
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
 
         # SET IMAGE ORIENTATION
         if self.detectorParams["dispersion-axis"] == "x":
@@ -639,7 +624,7 @@ class detect_continuum(_base_detect):
                 if "order" in self.recipeName.lower() and mean_res > 2:
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
-                elif mean_res > 10 and not (self.inst == "SOXS" and self.arm == "VIS") and False:
+                elif mean_res > 10 and not (self.inst == "SOXS" and self.arm == "VIS"):
                     # BAD FIT ... FORCE A FAIL
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")

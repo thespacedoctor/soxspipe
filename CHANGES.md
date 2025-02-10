@@ -3,6 +3,7 @@
 # Release Notes
 
 if the object trace produces residuals with a mean > 10 pixels, then a fitting fail is forced.
+Created a `utility_setup` tool to create the QC and product directories needed for recipes and utils (to stop duplicating code)
 
 ## v0.12.10 - January 31, 2025
 

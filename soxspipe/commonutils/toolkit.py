@@ -1427,6 +1427,7 @@ def utility_setup(
     **Return:**
 
     - `qcDir` -- the QC directory (created if missing)
+    - `productDir` -- the product directory (created if missing)
 
     **Usage:**
 
