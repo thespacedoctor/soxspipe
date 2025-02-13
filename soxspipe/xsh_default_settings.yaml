@@ -504,7 +504,7 @@ soxs-nod:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
             disp-axis-deg: 4
             # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-fitting-residual-clipping-sigma: 7
+            poly-fitting-residual-clipping-sigma: 5
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 7
 
