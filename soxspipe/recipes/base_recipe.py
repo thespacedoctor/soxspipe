@@ -35,6 +35,8 @@ class base_recipe(object):
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
+    - ``command`` -- the command called to run the recipe
+
 
     **Usage**
 
@@ -48,7 +50,8 @@ class base_recipe(object):
             inputFrames=False,
             verbose=False,
             overwrite=False,
-            recipeName=False
+            recipeName=False,
+            command=False
     ):
         import yaml
         import pandas as pd
@@ -74,6 +77,9 @@ class base_recipe(object):
             self.sofName = False
             self.productPath = False
             self.log = log
+
+        if command:
+            self.log.print(f'\nRecipe Command: {command}')
 
         from soxspipe.commonutils.toolkit import get_calibrations_path
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
@@ -1482,6 +1488,7 @@ class base_recipe(object):
 
         import math
         from astropy.utils.data import compute_hash
+        import soxspipe.__version__ as version
 
         arm = self.arm
         kw = self.kw
@@ -1547,6 +1554,13 @@ class base_recipe(object):
                     frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k2[:40]
                     frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v2
                     iterator += 1
+
+        # SOXSPIPE VERSION
+        frame.header[f"ESO PRO REC1 PIPE ID"] = f"soxspipe/v{version}"
+
+        # RECIPE
+        if self.recipeName:
+            frame.header[f"ESO PRO REC1 ID"] = self.recipeName
 
         # from tabulate import tabulate
         # print(tabulate(tableData, headers='keys', tablefmt='psql'))

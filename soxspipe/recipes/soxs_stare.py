@@ -32,6 +32,8 @@ class soxs_stare(base_recipe):
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``command`` -- the command called to run the recipe
+
 
 
     See `produce_product` method for usage.
@@ -44,12 +46,13 @@ class soxs_stare(base_recipe):
             settings=False,
             inputFrames=[],
             verbose=False,
-            overwrite=False
+            overwrite=False,
+            command=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_stare, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-stare")
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-stare", command=command)
         self.log = log
         log.debug("instantiating a new 'soxs_stare' object")
         self.settings = settings

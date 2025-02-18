@@ -34,12 +34,13 @@ class soxs_straighten(base_recipe):
             settings=False,
             inputFrames=[],
             verbose=False,
-            overwrite=False
+            overwrite=False,
+            command=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_straighten, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-straighten")
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-straighten", command=command)
         self.log = log
         log.debug("instantiating a new 'soxs_straighten' object")
         self.settings = settings

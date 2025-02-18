@@ -179,6 +179,13 @@ class _base_detect(object):
         iteration = 0
 
         allClipped = []
+
+        # REMOVE FILTERED ROWS FROM DATA FRAME
+        if 'pre-clipped' in pixelList.columns:
+            removeMask = (pixelList['pre-clipped'] == True)
+            allClipped.append(pixelList.loc[removeMask])
+            pixelList = pixelList.loc[~removeMask]
+
         coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
         while clippedCount > 0 and iteration < clippingIterationLimit:
             startCount = len(pixelList.index)
@@ -639,7 +646,7 @@ class detect_continuum(_base_detect):
                 if "order" in self.recipeName.lower() and mean_res > 2:
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
-                elif mean_res > 5 and not (self.inst == "SOXS" and self.arm == "VIS"):
+                elif mean_res > 10 and not (self.inst == "SOXS" and self.arm == "VIS"):
                     # BAD FIT ... FORCE A FAIL
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
@@ -653,7 +660,7 @@ class detect_continuum(_base_detect):
                 # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
                 coeff, orderPixelTable, clippedData = self.fit_global_polynomial(
                     pixelList=orderPixelTable,
-                    axisACol="stddev",
+                    axisACol="gauss_stddev",
                     axisBCol=f"cont_{self.axisB}",
                     exponentsIncluded=True
                 )
@@ -816,7 +823,9 @@ class detect_continuum(_base_detect):
 
     def fit_1d_gaussian_to_slice(
             self,
-            pixelPostion):
+            pixelPostion,
+            sliceLength,
+            medianStddev=False):
         """*cut a slice from the pinhole flat along the cross-dispersion direction centred on pixel position, fit 1D gaussian and return the peak pixel position*
 
         **Key Arguments:**
@@ -835,7 +844,7 @@ class detect_continuum(_base_detect):
         from scipy.signal import find_peaks
 
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
-        halfSlice = self.sliceLength / 2
+        halfSlice = sliceLength
 
         # SET IMAGE ORIENTATION
         if self.detectorParams["dispersion-axis"] == "x":
@@ -846,7 +855,10 @@ class detect_continuum(_base_detect):
             sliceAntiAxis = "x"
 
         slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.traceFrame,
-                                                                         width=self.sliceWidth, length=self.sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
+                                                                         width=self.sliceWidth, length=sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
+
+        if not medianStddev:
+            medianStddev = 1
 
         if slice is None:
             pixelPostion[f"cont_{self.axisA}"] = np.nan
@@ -911,9 +923,9 @@ class detect_continuum(_base_detect):
 
         if len(peaks) > 1:
             closest = peaks[0]
-            smallest_diff = abs(self.sliceLength / 2. - closest)  # Initialize the smallest difference
+            smallest_diff = abs(sliceLength / 2. - closest)  # Initialize the smallest difference
             for num in peaks:
-                current_diff = abs(self.sliceLength / 2. - num)  # Calculate the difference
+                current_diff = abs(sliceLength / 2. - num)  # Calculate the difference
                 if current_diff < smallest_diff:  # Check if current is closer
                     smallest_diff = current_diff
                     closest = num  # Update closest integer
@@ -922,7 +934,7 @@ class detect_continuum(_base_detect):
         # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
         # CENTRE THE GAUSSIAN ON THE PEAK
         g_init = models.Gaussian1D(
-            amplitude=1000., mean=peaks[0], stddev=1.)
+            amplitude=1., mean=peaks[0], stddev=medianStddev)
         # self.log.print(f"g_init: {g_init}")
         fit_g = fitting.LevMarLSQFitter()
 
@@ -935,11 +947,19 @@ class detect_continuum(_base_detect):
             pixelPostion[f"cont_{self.axisA}"] = np.nan
             pixelPostion[f"cont_{self.axisB}"] = np.nan
             return pixelPostion
+
+        # MEAN FOUND BEYOND THE LENGTH OF THE SLICE?
+        if g.mean.value > sliceLength or g.mean.value < 0:
+            pixelPostion[f"cont_{self.axisA}"] = np.nan
+            pixelPostion[f"cont_{self.axisB}"] = np.nan
+            return pixelPostion
+
         pixelPostion[f"cont_{sliceAxis}"] = g.mean.value + \
             max(0, slice_length_offset)
         pixelPostion[f"cont_{sliceAntiAxis}"] = slice_width_centre
-        pixelPostion["amplitude"] = g.amplitude.value
-        pixelPostion["stddev"] = g.stddev.value
+        pixelPostion["gauss_amplitude"] = g.amplitude.value
+        pixelPostion["gauss_stddev"] = g.stddev.value
+        pixelPostion["gauss_mean"] = g.mean.value
 
         # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAID
         if False and random() < 0.02:
@@ -1026,7 +1046,7 @@ class detect_continuum(_base_detect):
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
         toprow.set_title(
-            "1D guassian peak positions (post-clipping)", fontsize=10)
+            "1D gaussian peak positions (post-clipping)", fontsize=10)
         toprow.scatter(orderPixelTable[f"cont_{self.axisB}"], orderPixelTable[f"cont_{self.axisA}"], marker='o', c='green', s=0.3, alpha=0.6, label="cross-dispersion 1D gaussian peak-position")
         toprow.scatter(clippedData[f"cont_{self.axisB}"], clippedData[f"cont_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5, label="peaks clipped during continuum fitting")
         # Put a legend below current axis
@@ -1183,19 +1203,19 @@ class detect_continuum(_base_detect):
         stdToFwhm = 2 * (2 * math.log(2))**0.5
         for o, c in zip(uniqueOrders, colors):
             mask = (orderPixelTable['order'] == o)
-            fwhmaxis.scatter(orderPixelTable.loc[mask]['wavelength'].values, orderPixelTable.loc[mask]['stddev_fit'].values * stdToFwhm, alpha=0.2, s=1, c=c)
+            fwhmaxis.scatter(orderPixelTable.loc[mask]['wavelength'].values, orderPixelTable.loc[mask]['gauss_stddev_fit'].values * stdToFwhm, alpha=0.2, s=1, c=c)
             if len(orderPixelTable.loc[mask].index) > 10:
                 labelIndex = 10
             else:
                 labelIndex = 1
             try:
-                fwhmaxis.text(orderPixelTable.loc[mask]['wavelength'].values[labelIndex], orderPixelTable.loc[mask]['stddev_fit'].values[labelIndex] * stdToFwhm, int(o), fontsize=8, c=c, verticalalignment='bottom')
+                fwhmaxis.text(orderPixelTable.loc[mask]['wavelength'].values[labelIndex], orderPixelTable.loc[mask]['gauss_stddev_fit'].values[labelIndex] * stdToFwhm, int(o), fontsize=8, c=c, verticalalignment='bottom')
             except:
                 pass
         fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
         fwhmaxis.set_ylabel('Cross-dispersion\nFWHM (pixels)', fontsize=10)
 
-        fwhmaxis.set_ylim(orderPixelTable['stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['stddev_fit'].max() * stdToFwhm * 1.2)
+        fwhmaxis.set_ylim(orderPixelTable['gauss_stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['gauss_stddev_fit'].max() * stdToFwhm * 1.2)
 
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
         self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
@@ -1239,6 +1259,7 @@ class detect_continuum(_base_detect):
         plt.tight_layout()
         if not self.settings["tune-pipeline"]:
             plt.savefig(filePath, dpi=720)
+        # plt.show()
         plt.close()
 
         if self.settings["tune-pipeline"]:
@@ -1306,24 +1327,84 @@ class detect_continuum(_base_detect):
         else:
             self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
 
-        orderPixelTable = orderPixelTable.apply(
-            self.fit_1d_gaussian_to_slice, axis=1)
+        def find_centre_points(
+                orderPixelTable,
+                medianShift=False,
+                medianStddev=False):
+            """*find the central peak of the continuum trace*
+            """
+            from astropy.stats import sigma_clip, mad_std
+
+            sliceLength = self.sliceLength
+            if medianShift:
+                orderPixelTable[f"fit_{self.axisA}"] = orderPixelTable[f"fit_{self.axisA}"] - medianShift
+                if sliceLength > medianStddev * 7 + 5:
+                    sliceLength = int(medianStddev * 7 + 5)
+
+            orderPixelTable = orderPixelTable.apply(
+                self.fit_1d_gaussian_to_slice, axis=1, sliceLength=sliceLength, medianStddev=medianStddev)
+
+            # FILTER DATA FRAME
+            # FIRST CREATE THE MASK
+            mask = (orderPixelTable['cont_x'] < 0)
+            orderPixelTable.loc[mask, 'cont_x'] = np.nan
+            mask = (orderPixelTable['cont_y'] < 0)
+            orderPixelTable.loc[mask, 'cont_y'] = np.nan
+
+            # DROP ROWS WITH NAN VALUES
+            orderPixelTable.dropna(axis='index', how='any',
+                                   subset=['cont_x'], inplace=True)
+            orderPixelTable.dropna(axis='index', how='any',
+                                   subset=['cont_y'], inplace=True)
+
+            # FIND HOW FAR AWAY FROM THE CENTRE THE CONTINUUM WAS FOUND
+            orderPixelTable["centre_shift"] = orderPixelTable[f"fit_{self.axisA}"] - orderPixelTable[f"cont_{self.axisA}"]
+
+            # SIGMA-CLIP THE DATA ON STDDEV
+            masked_residuals = sigma_clip(
+                orderPixelTable["gauss_stddev"], sigma_lower=3, sigma_upper=3, maxiters=3, cenfunc='mean', stdfunc='std')
+            masked_residuals2 = sigma_clip(
+                orderPixelTable["centre_shift"], sigma_lower=3, sigma_upper=3, maxiters=5, cenfunc='mean', stdfunc='std')
+            # MERGING USING LOGICAL OR
+            merged_mask = np.logical_or(masked_residuals.mask, masked_residuals2.mask)
+            orderPixelTable["pre-clipped"] = merged_mask
+
+            mask = (orderPixelTable['pre-clipped'] == False)
+            filteredDf = orderPixelTable.loc[mask]
+            medianShift = filteredDf["centre_shift"].median()
+            medianStddev = filteredDf["gauss_stddev"].median()
+
+            if False:
+                import matplotlib.pyplot as plt
+                plt.figure(figsize=(8, 5))
+                plt.scatter(orderPixelTable["wavelength"], orderPixelTable["centre_shift"], marker='o', s=30, label=f'Median Shift={medianShift:2.1f}, Median STD={medianStddev:2.1f}')
+                filteredDf = orderPixelTable.loc[~mask]
+                plt.scatter(filteredDf["wavelength"], filteredDf["centre_shift"], marker='x', s=30)
+                plt.legend()
+                plt.show()
+
+            if False:
+                import matplotlib.pyplot as plt
+                plt.figure(figsize=(8, 5))
+                plt.scatter(orderPixelTable["wavelength"], orderPixelTable["gauss_stddev"], marker='o', s=30)
+                mask = (orderPixelTable['pre-clipped'] == True)
+                filteredDf = orderPixelTable.loc[mask]
+                plt.scatter(filteredDf["wavelength"], filteredDf["gauss_stddev"], marker='x', s=30)
+                plt.show()
+
+            # DROP THE MASKED PEAKS?
+            if False:
+                mask = (orderPixelTable['pre-clipped'] == False)
+                orderPixelTable = orderPixelTable.loc[mask]
+                # REMOVE COLUMN FROM DATA FRAME
+                # orderPixelTable.drop(columns=['mask'], inplace=True)
+
+            return orderPixelTable, medianShift, medianStddev
 
         allLines = len(orderPixelTable.index)
-        # FILTER DATA FRAME
-        # FIRST CREATE THE MASK
-        mask = (orderPixelTable['cont_x'] < 0)
-        orderPixelTable.loc[mask, 'cont_x'] = np.nan
-        mask = (orderPixelTable['cont_y'] < 0)
-        orderPixelTable.loc[mask, 'cont_y'] = np.nan
-
-        # xpd-update-filter-dataframe-column-values
-
-        # DROP ROWS WITH NAN VALUES
-        orderPixelTable.dropna(axis='index', how='any',
-                               subset=['cont_x'], inplace=True)
-        orderPixelTable.dropna(axis='index', how='any',
-                               subset=['cont_y'], inplace=True)
+        tmpOrderPixelTable = orderPixelTable.copy()
+        orderPixelTable, medianShift, medianStddev = find_centre_points(orderPixelTable=tmpOrderPixelTable, medianShift=False, medianStddev=False)
+        orderPixelTable, medianShift, medianStddev = find_centre_points(orderPixelTable=tmpOrderPixelTable, medianShift=medianShift, medianStddev=medianStddev)
 
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
@@ -1368,6 +1449,7 @@ class detect_continuum(_base_detect):
         self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
 
         self.log.debug('completed the ``sample_trace`` method')
+
         return orderPixelTable
 
     # use the tab-trigger below for new method
