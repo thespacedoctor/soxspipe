@@ -1362,7 +1362,7 @@ class detect_continuum(_base_detect):
 
             # SIGMA-CLIP THE DATA ON STDDEV
             masked_residuals = sigma_clip(
-                orderPixelTable["gauss_stddev"], sigma_lower=7, sigma_upper=7, maxiters=1, cenfunc='mean', stdfunc='std')
+                orderPixelTable["gauss_stddev"], sigma_lower=5, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc='std')
             masked_residuals2 = sigma_clip(
                 orderPixelTable["centre_shift"], sigma_lower=3, sigma_upper=3, maxiters=5, cenfunc='mean', stdfunc='std')
             # MERGING USING LOGICAL OR
