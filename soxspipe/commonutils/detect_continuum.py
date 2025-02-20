@@ -1361,9 +1361,12 @@ class detect_continuum(_base_detect):
             orderPixelTable["centre_shift"] = orderPixelTable[f"fit_{self.axisA}"] - orderPixelTable[f"cont_{self.axisA}"]
 
             # SIGMA-CLIP THE DATA ON STDDEV
-            masked_residuals = sigma_clip(
-                orderPixelTable["centre_shift"], sigma_lower=3, sigma_upper=3, maxiters=5, cenfunc='mean', stdfunc='std')
-            orderPixelTable["pre-clipped"] = masked_residuals.mask
+            if "centre" not in self.recipeName:
+                masked_residuals = sigma_clip(
+                    orderPixelTable["centre_shift"], sigma_lower=3, sigma_upper=3, maxiters=5, cenfunc='mean', stdfunc='std')
+                orderPixelTable["pre-clipped"] = masked_residuals.mask
+            else:
+                orderPixelTable["pre-clipped"] = False
 
             mask = (orderPixelTable['pre-clipped'] == False)
             filteredDf = orderPixelTable.loc[mask]
