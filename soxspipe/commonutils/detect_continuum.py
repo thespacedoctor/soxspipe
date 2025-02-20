@@ -1362,12 +1362,8 @@ class detect_continuum(_base_detect):
 
             # SIGMA-CLIP THE DATA ON STDDEV
             masked_residuals = sigma_clip(
-                orderPixelTable["gauss_stddev"], sigma_lower=1000, sigma_upper=1000, maxiters=1, cenfunc='mean', stdfunc='std')
-            masked_residuals2 = sigma_clip(
                 orderPixelTable["centre_shift"], sigma_lower=3, sigma_upper=3, maxiters=5, cenfunc='mean', stdfunc='std')
-            # MERGING USING LOGICAL OR
-            merged_mask = np.logical_or(masked_residuals.mask, masked_residuals2.mask)
-            orderPixelTable["pre-clipped"] = merged_mask
+            orderPixelTable["pre-clipped"] = masked_residuals.mask
 
             mask = (orderPixelTable['pre-clipped'] == False)
             filteredDf = orderPixelTable.loc[mask]
