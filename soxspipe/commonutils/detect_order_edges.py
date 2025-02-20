@@ -592,82 +592,82 @@ class detect_order_edges(_base_detect):
         myDict = {f"{self.axisB}": axisBlinelist}
         df = pd.DataFrame(myDict)
 
-        # colors = []
-        # labelAdded = None
-        # for o in uniqueOrders:
-        #     o = int(o)
-        #     axisBmin = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"].values[0]
-        #     axisBmax = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"].values[0]
+        colors = []
+        labelAdded = None
+        for o in uniqueOrders:
+            o = int(o)
+            axisBmin = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"].values[0]
+            axisBmax = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"].values[0]
 
-        #     df["order"] = o
-        #     axisAfitupStart = poly(df, *coeffupper)
-        #     axisAfitlowStart = poly(df, *coefflower)
+            df["order"] = o
+            axisAfitupStart = poly(df, *coeffupper)
+            axisAfitlowStart = poly(df, *coefflower)
 
-        #     if flipImage and not rotateImage:
-        #         axisAfitupStart = aLen - axisAfitupStart
-        #         axisAfitlowStart = aLen - axisAfitlowStart
+            if flipImage and not rotateImage:
+                axisAfitupStart = aLen - axisAfitupStart
+                axisAfitlowStart = aLen - axisAfitlowStart
 
-        #     # xfit = np.ones(len(xfit)) * \
-        #     #     self.flatFrame.data.shape[1] - xfit
-        #     axisAfitup, axisBfitup = zip(
-        #         *[(a, b) for a, b in zip(axisAfitupStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
-        #     axisAfitlow, axisBfitlow = zip(
-        #         *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
+            # xfit = np.ones(len(xfit)) * \
+            #     self.flatFrame.data.shape[1] - xfit
+            axisAfitup, axisBfitup = zip(
+                *[(a, b) for a, b in zip(axisAfitupStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
+            axisAfitlow, axisBfitlow = zip(
+                *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
 
-        #     if len(axisBfitlow) < len(axisBfitup):
-        #         half = int(len(axisAfitlowStart) / 2)
-        #         try:
-        #             axisAfitlowExtra, axisBfitlowExtra = zip(
-        #                 *[(0, b) for a, b in zip(axisAfitlowStart[:half], axisBlinelist[:half]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
-        #             axisAfitlow = axisAfitlowExtra + axisAfitlow
-        #             axisBfitlow = axisBfitlowExtra + axisBfitlow
-        #         except:
-        #             pass
-        #         try:
-        #             axisAfitlowExtra, axisBfitlowExtra = zip(
-        #                 *[(0, b) for a, b in zip(axisAfitlowStart[half:], axisBlinelist[half:]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
-        #             axisAfitlow += axisAfitlowExtra
-        #             axisBfitlow += axisBfitlowExtra
-        #         except:
-        #             pass
+            if len(axisBfitlow) < len(axisBfitup):
+                half = int(len(axisAfitlowStart) / 2)
+                try:
+                    axisAfitlowExtra, axisBfitlowExtra = zip(
+                        *[(0, b) for a, b in zip(axisAfitlowStart[:half], axisBlinelist[:half]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
+                    axisAfitlow = axisAfitlowExtra + axisAfitlow
+                    axisBfitlow = axisBfitlowExtra + axisBfitlow
+                except:
+                    pass
+                try:
+                    axisAfitlowExtra, axisBfitlowExtra = zip(
+                        *[(0, b) for a, b in zip(axisAfitlowStart[half:], axisBlinelist[half:]) if (a < 0 or a > (axisALength) - 10) and b in axisBfitup])
+                    axisAfitlow += axisAfitlowExtra
+                    axisBfitlow += axisBfitlowExtra
+                except:
+                    pass
 
-        #     if self.axisAbin > 1:
-        #         axisAfitup = np.array(axisAfitup) / self.axisAbin
-        #         axisAfitlow = np.array(axisAfitlow) / self.axisAbin
-        #     if self.axisBbin > 1:
-        #         axisBfitup = np.array(axisBfitup) / self.axisBbin
-        #         axisBfitlow = np.array(axisBfitlow) / self.axisBbin
+            if self.axisAbin > 1:
+                axisAfitup = np.array(axisAfitup) / self.axisAbin
+                axisAfitlow = np.array(axisAfitlow) / self.axisAbin
+            if self.axisBbin > 1:
+                axisBfitup = np.array(axisBfitup) / self.axisBbin
+                axisBfitlow = np.array(axisBfitlow) / self.axisBbin
 
-        #     l = midrow.plot(axisBfitlow, axisAfitlow, linewidth=0.1)
-        #     colors.append(l[0].get_color())
+            l = midrow.plot(axisBfitlow, axisAfitlow, linewidth=0.1)
+            colors.append(l[0].get_color())
 
-        #     if labelAdded == None:
-        #         label1 = "order edge"
-        #         label2 = "order region"
-        #         labelAdded = True
-        #     else:
-        #         label1 = None
-        #         label2 = None
+            if labelAdded == None:
+                label1 = "order edge"
+                label2 = "order region"
+                labelAdded = True
+            else:
+                label1 = None
+                label2 = None
 
-        #     u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color(), label=label1, linewidth=0.1)
-        #     try:
-        #         midrow.fill_between(axisBfitlow, axisAfitlow, axisAfitup, alpha=0.4, fc=l[0].get_color(), label=label2)
-        #     except:
-        #         pass
-        #     midrow.text(axisBfitlow[10], axisAfitlow[10] + 5, int(o), fontsize=6, c="white", verticalalignment='bottom')
+            u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color(), label=label1, linewidth=0.1)
+            try:
+                midrow.fill_between(axisBfitlow, axisAfitlow, axisAfitup, alpha=0.4, fc=l[0].get_color(), label=label2)
+            except:
+                pass
+            midrow.text(axisBfitlow[10], axisAfitlow[10] + 5, int(o), fontsize=6, c="white", verticalalignment='bottom')
 
-        # # xfit = np.ones(len(xfit)) * \
-        # #     self.pinholeFrame.data.shape[1] - xfit
-        # # midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
-        # # midrow.set_yticklabels([])
-        # # midrow.set_xticklabels([])
-        # midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
-        # midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        # midrow.xaxis.set_label_coords(0.5, -0.12)
-        # midrow.tick_params(axis='both', which='major', labelsize=9)
+        # xfit = np.ones(len(xfit)) * \
+        #     self.pinholeFrame.data.shape[1] - xfit
+        # midrow.scatter(yfit, xfit, marker='x', c='blue', s=4)
+        # midrow.set_yticklabels([])
+        # midrow.set_xticklabels([])
+        midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
+        midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
+        midrow.xaxis.set_label_coords(0.5, -0.12)
+        midrow.tick_params(axis='both', which='major', labelsize=9)
 
-        # midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.12),
-        #               fontsize=4)
+        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.12),
+                      fontsize=4)
 
         # PLOT THE FINAL RESULTS:
         if False:
