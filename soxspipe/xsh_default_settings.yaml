@@ -456,9 +456,9 @@ soxs-nod:
     uvb:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 100
+            order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 50
+            slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -474,9 +474,9 @@ soxs-nod:
     vis:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 100
+            order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 50
+            slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -492,9 +492,9 @@ soxs-nod:
     nir:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 100
+            order-sample-count: 200
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 50
+            slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -504,7 +504,7 @@ soxs-nod:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
             disp-axis-deg: 4
             # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-fitting-residual-clipping-sigma: 5
+            poly-fitting-residual-clipping-sigma: 7
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 7
 
