@@ -1119,7 +1119,7 @@ class detect_continuum(_base_detect):
             # lower = xfit - 3 * stdfit
             # upper = xfit + 3 * stdfit
             if labelAdded == None:
-                label1 = "$3\sigma$ deviation"
+                label1 = "$3\\sigma$ deviation"
                 label2 = "polynomial fit"
                 labelAdded = True
             else:
