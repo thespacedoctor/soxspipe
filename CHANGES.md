@@ -1,4 +1,4 @@
-
+# Release Notes
 
 ## v0.12.2 - February 21, 2025
 
