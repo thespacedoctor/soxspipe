@@ -26,9 +26,6 @@ import sys
 import os
 from datetime import datetime
 
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
 os.environ['TERM'] = 'vt100'
 
 
@@ -1321,6 +1318,9 @@ class create_dispersion_map(object):
     ):
         import math
         from astropy.modeling import models, fitting
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import pandas as pd
         stdToFwhm = 2 * (2 * math.log(2))**0.5
 
         # GOOD GUESS AT STD AND SLICE SIZE

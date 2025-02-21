@@ -14,7 +14,7 @@
 
 * **ENHANCEMENT:** resolution plots added to the `soxs-spatial-solution` QC PDF (if a through-slit arc frame file is provided).
 
-## v0.12.1 - January 31, 2025
+## v0.12.0 - January 31, 2025
 
 * **ENHANCEMENT:** Major updates to the documentation following PAE.
 
