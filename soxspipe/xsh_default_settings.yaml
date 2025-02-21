@@ -80,7 +80,7 @@ soxs-order-centre:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 5
             # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 10
+            poly-fitting-residual-clipping-sigma: 5
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
     vis:
@@ -98,7 +98,7 @@ soxs-order-centre:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 4
             # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 10
+            poly-fitting-residual-clipping-sigma: 5
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
     nir:
@@ -116,7 +116,7 @@ soxs-order-centre:
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 4
             # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 10
+            poly-fitting-residual-clipping-sigma: 5
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
 
@@ -456,7 +456,7 @@ soxs-nod:
     uvb:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 150
+            order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
             slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
@@ -474,7 +474,7 @@ soxs-nod:
     vis:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 150
+            order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
             slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
@@ -492,7 +492,7 @@ soxs-nod:
     nir:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 200
+            order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
             slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)

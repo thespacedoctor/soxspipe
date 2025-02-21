@@ -1,6 +1,14 @@
 
 
-# Release Notes
+## v0.12.2 - February 21, 2025
+
+* **ENHANCEMENT:** Pipeline name and version added to product headers.
+* **ENHANCEMENT:** recipe ID added to product headers.
+* **ENHANCEMENT:** added comments to all settings in the SOXS default settings file
+* **ENHANCEMENT:** there are now 2 rounds of object trace detection. The first round helps to locate the slit-position and a typical standard-deviation of the object profile, and the second round uses this information to preform a better measurement and fit of the trace. This is improving the fitting for faint objects.
+* **REFACTOR:** adjusted default 'slice' lengths used to detect a continuum in nodding frames.
+* **REFACTOR:** many adjustments to improve robustness and extractions
+* **FIXED:** recipe command was getting written to the bottom of the log file of the previous recipe instead of the top of the current recipe log
 
 ## v0.12.1 - February 10, 2025
 

@@ -102,8 +102,7 @@ class reducer(object):
             sof = row["sof"]
             startTime = times.get_now_sql_datetime()
             try:
-                self.log.print(f'\nRecipe Command: {row["command"]}')
-                self.run_recipe(recipe, sof)
+                self.run_recipe(recipe, sof, command=row["command"])
             except FileExistsError as e:
                 continue
             except Exception as e:
@@ -175,13 +174,15 @@ class reducer(object):
     def run_recipe(
             self,
             recipe,
-            sof):
+            sof,
+            command=False):
         """*execute a pipeline recipe*
 
         **Key Arguments:**
 
         - ``recipe`` -- the name of the recipe tp execute
         - ``sof`` -- path to the sof file containing the files the recipe requires
+        - ``command`` -- the command used to run the recipe
 
         **Usage:**
 
@@ -199,7 +200,8 @@ class reducer(object):
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
-                overwrite=self.overwrite
+                overwrite=self.overwrite,
+                command=command
             )
             mbiasFrame = recipe.produce_product()
 
@@ -209,7 +211,8 @@ class reducer(object):
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
-                overwrite=self.overwrite
+                overwrite=self.overwrite,
+                command=command
             )
             mdarkFrame = recipe.produce_product()
 
@@ -219,7 +222,8 @@ class reducer(object):
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
-                overwrite=self.overwrite
+                overwrite=self.overwrite,
+                command=command
             ).produce_product()
 
         if recipe == "order_centres":
@@ -228,7 +232,8 @@ class reducer(object):
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
-                overwrite=self.overwrite
+                overwrite=self.overwrite,
+                command=command
             ).produce_product()
 
         if recipe == "mflat":
@@ -237,7 +242,8 @@ class reducer(object):
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
-                overwrite=self.overwrite
+                overwrite=self.overwrite,
+                command=command
             )
             mflatFrame = recipe.produce_product()
 
@@ -247,7 +253,8 @@ class reducer(object):
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
-                overwrite=self.overwrite
+                overwrite=self.overwrite,
+                command=command
             ).produce_product()
 
         if recipe == "stare":
@@ -256,7 +263,8 @@ class reducer(object):
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
-                overwrite=self.overwrite
+                overwrite=self.overwrite,
+                command=command
             )
             reducedStare = recipe.produce_product()
 
@@ -266,7 +274,8 @@ class reducer(object):
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
-                overwrite=self.overwrite
+                overwrite=self.overwrite,
+                command=command
             )
             reducedNod = recipe.produce_product()
 

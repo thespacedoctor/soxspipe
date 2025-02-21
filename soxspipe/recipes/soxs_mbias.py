@@ -35,6 +35,8 @@ class soxs_mbias(base_recipe):
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``command`` -- the command called to run the recipe
+
 
     **Usage**
 
@@ -55,10 +57,11 @@ class soxs_mbias(base_recipe):
             settings=False,
             inputFrames=[],
             verbose=False,
-            overwrite=False
+            overwrite=False,
+            command=False
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        this = super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias")
+        this = super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias", command=command)
         log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames

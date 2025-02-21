@@ -182,6 +182,8 @@ def main(arguments=None):
         if a['outputDirectory']:
             settings["workspace-root-dir"] = a['outputDirectory']
 
+        command = (" ").join(sys.argv)
+
         if a["mbias"]:
             from soxspipe.recipes import soxs_mbias
             recipe = soxs_mbias(
@@ -189,7 +191,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             mbiasFrame = recipe.produce_product()
 
@@ -200,7 +203,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             mdarkFrame = recipe.produce_product()
 
@@ -212,7 +216,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"]
+                polyOrders=a["polyFlag"],
+                command=command
             ).produce_product()
 
         if a["order_centres"]:
@@ -223,7 +228,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"]
+                polyOrders=a["polyFlag"],
+                command=command
             ).produce_product()
 
         if a["spat_sol"]:
@@ -234,7 +240,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"]
+                polyOrders=a["polyFlag"],
+                command=command
             ).produce_product()
 
         if a["mflat"]:
@@ -244,7 +251,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             mflatFrame = recipe.produce_product()
 
@@ -255,7 +263,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             reducedStare = recipe.produce_product()
 
@@ -266,7 +275,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             reducedNod = recipe.produce_product()
 

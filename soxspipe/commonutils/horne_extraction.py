@@ -130,7 +130,7 @@ class horne_extraction(object):
         self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
         self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
 
-        # TODO: replace this value with true value from FITS header
+        # TODO: replace this value with true value from FITS headerfobject
         self.ron = 3.0
 
         # OPEN THE SKY-SUBTRACTED FRAME
@@ -144,7 +144,7 @@ class horne_extraction(object):
         if True and self.recipeSettings["use_lacosmic"]:
             oldCount = self.skySubtractedFrame.mask.sum()
             oldMask = self.skySubtractedFrame.mask.copy()
-            self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=4.0, gain_apply=False, niter=3, cleantype="meanmask")
+            self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=4.0, gain_apply=False, niter=5, cleantype="meanmask")
             newCount = self.skySubtractedFrame.mask.sum()
             self.skySubtractedFrame.mask = oldMask
 
@@ -372,6 +372,7 @@ class horne_extraction(object):
         else:
             zoomTuple = (zoomFactor, 1)
         wlZoom = scipy.ndimage.zoom(self.twoDMap["WAVELENGTH"].data, zoomTuple, order=0)
+        slitZoom = scipy.ndimage.zoom(self.twoDMap["SLIT"].data, zoomTuple, order=0)
         rawFluxZoom = scipy.ndimage.zoom(self.skySubtractedFrame.data, zoomTuple, order=0)
         if self.skyModelFrame:
             skyZoom = scipy.ndimage.zoom(self.skyModelFrame.data, zoomTuple, order=0)
@@ -422,6 +423,7 @@ class horne_extraction(object):
                 if self.detectorParams["dispersion-axis"] == "x":
                     orderTable["wavelength"] = list(rebin(wlZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
                     orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
+                    orderTable["slit"] = list(rebin(slitZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
                     if self.skyModelFrame:
                         orderTable["sliceSky"] = list(rebin(skyZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
                     else:
@@ -434,6 +436,7 @@ class horne_extraction(object):
                 else:
                     orderTable["wavelength"] = list(rebin(wlZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
                     orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
+                    orderTable["slit"] = list(rebin(slitZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
                     if self.skyModelFrame:
                         orderTable["sliceSky"] = list(rebin(skyZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
                     else:
@@ -964,6 +967,8 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     crossDispersionSlices["wavelength"] = [np.nan if x.mask.sum() > x.mask.shape[0] / 1.1 else x for x in crossDispersionSlices["wavelengthMask"]]
     crossDispersionSlices.dropna(axis='index', how='any', subset=["wavelength"], inplace=True)
 
+    crossDispersionSlices["fitsImage"] = [np.nan if x.mask.sum() > x.mask.shape[0] / 1.1 else x for x in crossDispersionSlices["sliceRawFluxMasked"]]
+
     if not len(crossDispersionSlices.index):
         return None
 
@@ -975,9 +980,23 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     errorImage = np.vstack(crossDispersionSlices["sliceError"])
     bpMaskImage = np.vstack(crossDispersionSlices["bpMask"])
     wavelengthImage = np.vstack(crossDispersionSlices["wavelength"])
+    slitImage = np.vstack(crossDispersionSlices["slit"])
+
+    fluxRawImageMasked = np.ma.masked_array(fluxRawImage, mask=maskImage)
+    fluxRawImageMasked = fluxRawImageMasked.filled(np.nan)
 
     # PLOT THE RECTIFIED IMAGES
-    if False:
+    if True:
+
+        from astropy.io import fits
+        hdu = fits.PrimaryHDU(data=fluxRawImageMasked.T)
+
+        # Add Wavelength and Slit Position to the header
+        hdu.header['WAVELENGTH'] = (300, 'Starting Wavelength (Angstroms)')
+        hdu.header['SLITPOS'] = (-5, 'Starting Slit Position')
+
+        # Save the FITS file
+        hdu.writeto(f'/tmp/spectrum_image_{order}.fits', overwrite=True)
 
         # fig = plt.figure(
         #     num=None,
@@ -999,15 +1018,15 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         # plt.imshow(maskImage.T, interpolation='none', aspect='auto')
         # plt.show()
 
-        fig = plt.figure(
-            num=None,
-            figsize=(135, 1),
-            dpi=None,
-            facecolor=None,
-            edgecolor=None,
-            frameon=True)
-        plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
-        plt.show()
+        # fig = plt.figure(
+        #     num=None,
+        #     figsize=(135, 1),
+        #     dpi=None,
+        #     facecolor=None,
+        #     edgecolor=None,
+        #     frameon=True)
+        # plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
+        # plt.show()
 
         # fig = plt.figure(
         #     num=None,
@@ -1200,7 +1219,7 @@ def create_cross_dispersion_slice(
 
     # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
     series["sliceRawFluxMasked"] = sigma_clip(
-        maskedArray, sigma_lower=3, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std")
+        maskedArray, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std")
 
     # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
     series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0

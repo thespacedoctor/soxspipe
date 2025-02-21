@@ -36,6 +36,8 @@ class soxs_nod(base_recipe):
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``command`` -- the command called to run the recipe
+
 
 
     **Usage**
@@ -56,12 +58,13 @@ class soxs_nod(base_recipe):
             settings=False,
             inputFrames=[],
             verbose=False,
-            overwrite=False
+            overwrite=False,
+            command=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_nod, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-nod")
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-nod", command=command)
         self.log = log
         log.debug("instansiating a new 'soxs_nod' object")
         self.settings = settings
@@ -293,6 +296,7 @@ class soxs_nod(base_recipe):
             self.report_output()
             # sys.exit(0)
         else:
+
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
                 frames=allFrameA,
@@ -362,7 +366,7 @@ class soxs_nod(base_recipe):
         A_minus_B.header = hdr_A
         B_minus_A.header = hdr_B
 
-        # Write in a fits file the A-B and B-A frames
+        # WRITE IN A FITS FILE THE A-B AND B-A FRAMES
         home = expanduser("~")
         filename = self.sofName + f"_AB_{locationSetIndex}.fits"
         outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
@@ -370,6 +374,7 @@ class soxs_nod(base_recipe):
         A_minus_B.write(filePath, overwrite=True, checksum=True)
 
         filename = self.sofName + f"_BA_{locationSetIndex}.fits"
+        filePath = f"{outDir}/{filename}"
         B_minus_A.write(filePath, overwrite=True, checksum=True)
 
         if False:
