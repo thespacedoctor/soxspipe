@@ -25,7 +25,7 @@ from builtins import object
 import sys
 import os
 from datetime import datetime
-from astropy.modeling import models, fitting
+
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -1320,6 +1320,7 @@ class create_dispersion_map(object):
             row
     ):
         import math
+        from astropy.modeling import models, fitting
         stdToFwhm = 2 * (2 * math.log(2))**0.5
 
         # GOOD GUESS AT STD AND SLICE SIZE
