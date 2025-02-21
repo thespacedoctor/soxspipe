@@ -1,6 +1,6 @@
 
 
-# Release Notes
+## v0.12.2 - February 21, 2025
 
 * **ENHANCEMENT:** Pipeline name and version added to product headers.
 * **ENHANCEMENT:** recipe ID added to product headers.
