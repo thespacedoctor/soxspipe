@@ -1,5 +1,9 @@
 # Release Notes
 
+## v0.12.3 - February 25, 2025
+
+* **FIXED:** fixing string literal bug resulting from new sqlite3 release
+
 ## v0.12.2 - February 21, 2025
 
 * **ENHANCEMENT:** Pipeline name and version added to product headers.
