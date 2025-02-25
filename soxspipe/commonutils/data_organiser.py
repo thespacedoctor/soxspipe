@@ -976,7 +976,7 @@ class data_organiser(object):
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = pd.read_sql(
-            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE")', con=conn)
+            "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,SLIT,STARE')", con=conn)
 
         rawScienceFrames.fillna("--", inplace=True)
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
@@ -992,10 +992,11 @@ class data_organiser(object):
         # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
         if self.instrument.upper() == "SOXS":
             rawPinholeFrames = pd.read_sql(
-                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE","ECHELLE,MULTI-PINHOLE") and ("eso seq arm" = "NIR" or ("lamp" not in ("Xe", "Ar", "Hg", "Ne", "ArNeHgXe" )))', con=conn)
+                "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE') and ('eso seq arm' = 'NIR' or ('lamp' not in ('Xe', 'Ar', 'Hg', 'Ne', 'ArNeHgXe' )))", con=conn)
         else:
             rawPinholeFrames = pd.read_sql(
-                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE","ECHELLE,MULTI-PINHOLE")', con=conn)
+                "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE')", con=conn)
+
         rawPinholeFrames.fillna("--", inplace=True)
         rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
@@ -1007,10 +1008,10 @@ class data_organiser(object):
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
-        calibrationFrames = pd.read_sql(f'SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%" and (status_{self.sessionId} != "fail" or status_{self.sessionId} is null)', con=conn)
+        calibrationFrames = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` not like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationFrames.fillna("--", inplace=True)
 
-        calibrationTables = pd.read_sql(f'SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%" and (status_{self.sessionId} != "fail" or status_{self.sessionId} is null)', con=conn)
+        calibrationTables = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationTables.fillna("--", inplace=True)
 
         # _generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
@@ -1234,9 +1235,6 @@ class data_organiser(object):
             if "FLAT" in series["eso dpr tech"].upper() and "NIR" not in series['eso seq arm'].upper():
                 mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
                 offFrame = filteredFrames.loc[mask]
-                from tabulate import tabulate
-                print(tabulate(offFrame, headers='keys', tablefmt='psql'))
-                sys.exit(0)
 
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
@@ -1282,7 +1280,7 @@ class data_organiser(object):
         filteredFrames["tag"] = filteredFrames["eso dpr type"].replace(",", "_") + "_" + filteredFrames["eso seq arm"]
         # LAMP ON AND OFF TAGS
         if series["eso seq arm"].lower() == "nir":
-            if seriesRecipe in ["disp_sol", "order_centres", "mflat" "spat_sol"]:
+            if seriesRecipe in ["disp_sol", "order_centres", "mflat", "spat_sol"]:
                 mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
                 filteredFrames.loc[mask, "tag"] += ",OFF"
                 filteredFrames.loc[~mask, "tag"] += ",ON"
@@ -1460,6 +1458,7 @@ class data_organiser(object):
                 df = calibrationFrames.loc[mask]
                 if len(df.index) == 0:
                     mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
+
             else:
                 mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
 
