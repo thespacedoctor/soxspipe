@@ -154,6 +154,8 @@ class response_function(object):
         stdExtWave = self.stdExtractionDF['WAVE'].values
         stdExtFlux = self.stdExtractionDF['FLUX_COUNTS'].values
 
+        
+
         # GET THE ABSOLUTE STANDARD STAR FLUXES, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
         print(self.calibrationRootPath + "/" + self.detectorParams["flux-standards"])
         stdAbsFluxDF = Table.read(self.calibrationRootPath + "/" + self.detectorParams["flux-standards"], format='fits')
@@ -190,22 +192,25 @@ class response_function(object):
         
 
         #GETTING EFFICIENCY 
-
+        stdEfficiencyEstimate = None
         #USING THE STD STAR SPECTRUM THAT IS NOT CORRECTED BY FLAT
-        extWave_noflat = self.stdExtractionNotFlatDF['WAVE'].values
-        dispersion_nf = self.stdExtractionNotFlatDF['WAVE'].values - np.roll(self.stdExtractionNotFlatDF['WAVE'].values,1)
-        dispersion_nf = dispersion_nf*10 #CONVERTING IN ANG
-        dispersion_nf[0] =  dispersion_nf[1] 
-        area = 400*400*3.14
-        c = 3*10**10
-        h = 6.63*10**-27
-        stdAbsPhotonFlux = ((self.std_wavelength_to_abs_flux(self.stdExtractionNotFlatDF['WAVE'].values)*10**-17*self.stdExtractionNotFlatDF['WAVE'].values*10**-7)/(h*c))*area
-        self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF['FLUX_COUNTS'].values/dispersion_nf
-        self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF / self.texp
+        try:
+            extWave_noflat = self.stdExtractionNotFlatDF['WAVE'].values
+            dispersion_nf = self.stdExtractionNotFlatDF['WAVE'].values - np.roll(self.stdExtractionNotFlatDF['WAVE'].values,1)
+            dispersion_nf = dispersion_nf*10 #CONVERTING IN ANG
+            dispersion_nf[0] =  dispersion_nf[1] 
+            area = 400*400*3.14
+            c = 3*10**10
+            h = 6.63*10**-27
+            stdAbsPhotonFlux = ((self.std_wavelength_to_abs_flux(self.stdExtractionNotFlatDF['WAVE'].values)*10**-17*self.stdExtractionNotFlatDF['WAVE'].values*10**-7)/(h*c))*area
+            self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF['FLUX_COUNTS'].values/dispersion_nf
+            self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF / self.texp
 
-        stdEfficiencyEstimate = (self.stdExtractionNotFlatDF) / (stdAbsPhotonFlux)
-        #print(self.std_wavelength_to_abs_flux(stdExtWave))
-        #print(self.stdExtractionDF['WAVE'])
+            stdEfficiencyEstimate = (self.stdExtractionNotFlatDF) / (stdAbsPhotonFlux)
+        except:
+            #LANDING HERE NO STD STAR SPECTRUM WITHOUT FLAT CORRECTION IS PROVIDED
+            stdEfficiencyEstimate = None
+            pass
 
 
         # APPLYING EXTINCTION CORRECTION
@@ -358,13 +363,17 @@ class response_function(object):
 
         # WRITE THE QC PLOT TO PDF
         fig = plt.figure(figsize=(6, 22))
-        gs = fig.add_gridspec(30, 4)
+        if stdEfficiencyEstimate is not None:
+            gs = fig.add_gridspec(30, 4)
+        else:
+            gs = fig.add_gridspec(25, 4)
         onerow = fig.add_subplot(gs[0:4, :])
         tworow = fig.add_subplot(gs[5:9, :])
         threerow = fig.add_subplot(gs[10:14, :])
         fourrow = fig.add_subplot(gs[15:19, :])
         fiverow = fig.add_subplot(gs[20:24, :])
-        sixrow = fig.add_subplot(gs[25:29, :])
+        if stdEfficiencyEstimate is not None:
+            sixrow = fig.add_subplot(gs[25:29, :])
 
         onerow.plot(stdExtWave, self.std_wavelength_to_abs_flux(stdExtWave))
         onerow.set_title(f'{self.std_objName} absolute flux spectrum', fontsize=12)
@@ -409,15 +418,15 @@ class response_function(object):
         fiverow.tick_params(axis='both', which='major', labelsize=9)
 
 
-
-        sixrow.plot(stdExtWave_noflat, stdEfficiencyEstimate)
-        sixrow.set_ylim(0, np.min([max(stdEfficiencyEstimate), 1.0]))
-        # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
-        plt.subplots_adjust(hspace=1.0)
-        sixrow.set_title('Efficiency (end-to-end)', fontsize=12)
-        sixrow.set_xlabel(f"wavelength (nm)", fontsize=9)
-        sixrow.set_ylabel("Efficiency", fontsize=9)
-        sixrow.tick_params(axis='both', which='major', labelsize=9)
+        if stdEfficiencyEstimate is not None:
+            sixrow.plot(stdExtWave_noflat, stdEfficiencyEstimate)
+            sixrow.set_ylim(0, np.min([max(stdEfficiencyEstimate), 1.0]))
+            # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
+            plt.subplots_adjust(hspace=1.0)
+            sixrow.set_title('Efficiency (end-to-end)', fontsize=12)
+            sixrow.set_xlabel(f"wavelength (nm)", fontsize=9)
+            sixrow.set_ylabel("Efficiency", fontsize=9)
+            sixrow.tick_params(axis='both', which='major', labelsize=9)
 
         plotFilename = self.sofName + "_RESPONSE.pdf"
         plotFilePath = f"{self.qcDir}/{plotFilename}"
