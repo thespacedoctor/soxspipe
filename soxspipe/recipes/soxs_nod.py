@@ -219,7 +219,18 @@ class soxs_nod(base_recipe):
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
-        # DETREND ALL NODDING IMAGES
+        # DETREND ALL NODDING IMAGES - CHECK IF WE NEED TO COMPUTE THE RESPONSE FUNCTION
+        # IN THAT CASE, WE NEED TO EXTRACT THE OBJECT SPECTRUM *ALSO* WITH NOT-FLATFIELD CORRECTED FRAME
+
+        if self.generateReponseCurve:
+            allFrameA = allObjectFrames[0]
+            allFrameB = allObjectFrames[1]
+
+            #NOW COMPUTE A SINGLE A-B CYCLE
+            mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat = self.process_single_ab_nodding_cycle(aFrame=allFrameA, bFrame=allFrameB, locationSetIndex=1, orderTablePath=orderTablePath)
+            stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat],"NOTFLAT")
+
+
         if self.recipeSettings["use_flat"]:
             allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
 
@@ -316,6 +327,7 @@ class soxs_nod(base_recipe):
 
         if self.generateReponseCurve:
             from soxspipe.commonutils import response_function
+            print('Now extracting response at path ' + extractionPath_notflat)
             response = response_function(
                 log=self.log,
                 settings=self.settings,
@@ -324,7 +336,8 @@ class soxs_nod(base_recipe):
                 stdExtractionPath=extractionPath,
                 qcTable=self.qc,
                 productsTable=self.products,
-                startNightDate=self.startNightDate
+                startNightDate=self.startNightDate,
+                stdNotFlatExtractionPath=extractionPath_notflat,
             )
             self.qc, self.products = response.get()
 
@@ -449,7 +462,8 @@ class soxs_nod(base_recipe):
 
     def stack_extractions(
             self,
-            dataFrameList):
+            dataFrameList,
+            postfix=""):
         """*merge individual AB cycles into a master extraction*
 
         **Key Arguments:**
@@ -503,12 +517,12 @@ class soxs_nod(base_recipe):
 
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
-        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.fits")
+        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED_" + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
-        asciiFilename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.txt")
+        asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED_" + postfix + ".txt")
         asciiFilePath = f"{self.productDir}/{asciiFilename}"
         stackedSpectrum.write(asciiFilePath, format='ascii', overwrite=True)
 

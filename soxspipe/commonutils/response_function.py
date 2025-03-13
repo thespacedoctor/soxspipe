@@ -63,6 +63,7 @@ class response_function(object):
             qcTable=False,
             productsTable=False,
             startNightDate="",
+            stdNotFlatExtractionPath=""
     ):
         self.log = log
         log.debug("instansiating a new 'response_function' object")
@@ -103,6 +104,11 @@ class response_function(object):
         self.texp = float(self.header[kw("EXPTIME")])
         self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()  # Name is in the format 'EG 274'
         self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")
+
+        if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
+            #STD STAR GIVEN, READING THE NON FLAT FIELDED SPECTRUM
+            self.stdExtractionNotFlatDF = Table.read(stdNotFlatExtractionPath, format='fits')
+            self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF.to_pandas()
 
         if self.std_objName in stdAkas:
             for s, a in zip(stdNames, stdAkas):
@@ -148,7 +154,10 @@ class response_function(object):
         stdExtWave = self.stdExtractionDF['WAVE'].values
         stdExtFlux = self.stdExtractionDF['FLUX_COUNTS'].values
 
+        
+
         # GET THE ABSOLUTE STANDARD STAR FLUXES, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
+        print(self.calibrationRootPath + "/" + self.detectorParams["flux-standards"])
         stdAbsFluxDF = Table.read(self.calibrationRootPath + "/" + self.detectorParams["flux-standards"], format='fits')
         stdAbsFluxDF = stdAbsFluxDF.to_pandas()
         # MAKE ALL COLUMNS UPPERCASE
@@ -159,7 +168,7 @@ class response_function(object):
 
         # FLUX IS CONVERTED IN ERG / CM2 / S / ANG
         try:
-            self.std_wavelength_to_abs_flux = interp1d(np.array(stdAbsFluxDF['WAVE']), np.array(stdAbsFluxDF[self.std_objName]) * 10 * 10**17, kind='next', fill_value="extrapolate")
+            self.std_wavelength_to_abs_flux = interp1d(np.array(stdAbsFluxDF['WAVE']), np.array(stdAbsFluxDF[self.std_objName])  * 10**17, kind='next', fill_value="extrapolate")
         except Exception as e:
             self.log.error(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {stdAbsFluxDF.columns[1:]}")
             raise Exception(e)
@@ -172,10 +181,37 @@ class response_function(object):
         # CONVERT FLUX_COUNTS TO FLUX_COUNTS / NM BY DIVIDING BY THE PIXEL SIZE
         dispersion = stdExtWave - np.roll(stdExtWave, 1)
         dispersion[0] = dispersion[1]  # first element will be out
+
+        #CONVERTING TO ANG
+        dispersion = dispersion * 10
         stdExtFlux = stdExtFlux / dispersion
 
         # NOW DIVIDING FOR THE EXPOSURE TIME
         stdExtFlux = stdExtFlux / self.texp
+
+        
+
+        #GETTING EFFICIENCY 
+        stdEfficiencyEstimate = None
+        #USING THE STD STAR SPECTRUM THAT IS NOT CORRECTED BY FLAT
+        try:
+            extWave_noflat = self.stdExtractionNotFlatDF['WAVE'].values
+            dispersion_nf = self.stdExtractionNotFlatDF['WAVE'].values - np.roll(self.stdExtractionNotFlatDF['WAVE'].values,1)
+            dispersion_nf = dispersion_nf*10 #CONVERTING IN ANG
+            dispersion_nf[0] =  dispersion_nf[1] 
+            area = 400*400*3.14
+            c = 3*10**10
+            h = 6.63*10**-27
+            stdAbsPhotonFlux = ((self.std_wavelength_to_abs_flux(self.stdExtractionNotFlatDF['WAVE'].values)*10**-17*self.stdExtractionNotFlatDF['WAVE'].values*10**-7)/(h*c))*area
+            self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF['FLUX_COUNTS'].values/dispersion_nf
+            self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF / self.texp
+
+            stdEfficiencyEstimate = (self.stdExtractionNotFlatDF) / (stdAbsPhotonFlux)
+        except:
+            #LANDING HERE NO STD STAR SPECTRUM WITHOUT FLAT CORRECTION IS PROVIDED
+            stdEfficiencyEstimate = None
+            pass
+
 
         # APPLYING EXTINCTION CORRECTION
         if self.arm == 'UVB' or self.arm == 'VIS':
@@ -234,6 +270,8 @@ class response_function(object):
                 raise Exception('The fitting of response function did not converge!')
                 sys.exit(1)
 
+
+
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
         self.write_response_function_to_file(
             responseFuncCoeffs=responseFuncCoeffs,
@@ -242,12 +280,14 @@ class response_function(object):
 
         self.plot_response_curve(
             stdExtWave=stdExtWave,
+            stdExtWave_noflat=extWave_noflat,
             stdExtFlux=stdExtFlux,
             binCentreWave=binCentreWave,
             binCentreWaveOriginal=binCentreWaveOriginal,
             binIntegratedFlux=binIntegratedFlux,
             absToExtFluxRatio=absToExtFluxRatio,
-            responseFuncCoeffs=responseFuncCoeffs
+            responseFuncCoeffs=responseFuncCoeffs,
+            stdEfficiencyEstimate=stdEfficiencyEstimate
         )
 
         return self.qc, self.products
@@ -290,12 +330,14 @@ class response_function(object):
     def plot_response_curve(
             self,
             stdExtWave,
+            stdExtWave_noflat,
             stdExtFlux,
             binCentreWave,
             binCentreWaveOriginal,
             binIntegratedFlux,
             absToExtFluxRatio,
-            responseFuncCoeffs):
+            responseFuncCoeffs,
+            stdEfficiencyEstimate):
         """*generate a QC plot for the response curve*
 
         **Key Arguments:**
@@ -307,6 +349,7 @@ class response_function(object):
         - ``binIntegratedFlux`` -- binned flux
         - ``absToExtFluxRatio`` -- the ratio of the absolute flux vs the extraction flux
         - ``responseFuncCoeffs`` -- the response function coefficients
+        - ``stdEfficiencyEstimate`` -- the estimated instrument efficiency
 
         **Return:**
             - `plotFilePath` -- the path to the QC plot PDF
@@ -320,12 +363,17 @@ class response_function(object):
 
         # WRITE THE QC PLOT TO PDF
         fig = plt.figure(figsize=(6, 22))
-        gs = fig.add_gridspec(25, 4)
+        if stdEfficiencyEstimate is not None:
+            gs = fig.add_gridspec(30, 4)
+        else:
+            gs = fig.add_gridspec(25, 4)
         onerow = fig.add_subplot(gs[0:4, :])
         tworow = fig.add_subplot(gs[5:9, :])
         threerow = fig.add_subplot(gs[10:14, :])
         fourrow = fig.add_subplot(gs[15:19, :])
         fiverow = fig.add_subplot(gs[20:24, :])
+        if stdEfficiencyEstimate is not None:
+            sixrow = fig.add_subplot(gs[25:29, :])
 
         onerow.plot(stdExtWave, self.std_wavelength_to_abs_flux(stdExtWave))
         onerow.set_title(f'{self.std_objName} absolute flux spectrum', fontsize=12)
@@ -368,6 +416,17 @@ class response_function(object):
         fiverow.set_xlabel(f"wavelength (nm)", fontsize=9)
         fiverow.set_ylabel("residual", fontsize=9)
         fiverow.tick_params(axis='both', which='major', labelsize=9)
+
+
+        if stdEfficiencyEstimate is not None:
+            sixrow.plot(stdExtWave_noflat, stdEfficiencyEstimate)
+            sixrow.set_ylim(0, np.min([max(stdEfficiencyEstimate), 1.0]))
+            # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
+            plt.subplots_adjust(hspace=1.0)
+            sixrow.set_title('Efficiency (end-to-end)', fontsize=12)
+            sixrow.set_xlabel(f"wavelength (nm)", fontsize=9)
+            sixrow.set_ylabel("Efficiency", fontsize=9)
+            sixrow.tick_params(axis='both', which='major', labelsize=9)
 
         plotFilename = self.sofName + "_RESPONSE.pdf"
         plotFilePath = f"{self.qcDir}/{plotFilename}"
