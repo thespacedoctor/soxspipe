@@ -1,5 +1,8 @@
 # Release Notes
 
+* **FIXED:** a SQLite query containing "fail". It is now 'fail' in single quotes.
+* **FIXED:** an issue with mixed slit width in SOXS stare mode. We had a PAE setting to allow order centre traces to be reduced in stare mode, but this setting was tripping up true stare-mode data.
+
 ## v0.12.3 - February 25, 2025
 
 * **FIXED:** fixing string literal bug resulting from new sqlite3 release
