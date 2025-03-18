@@ -26,7 +26,8 @@ install_requires = [
     'bottleneck==1.4.0',
     'multiprocess==0.70.16',
     'specutils==1.16.0',
-    'humanize==4.11.0'
+    'humanize==4.11.0',
+    'Pyarrow==18.1.0'
 ]
 
 # READ THE DOCS SERVERS

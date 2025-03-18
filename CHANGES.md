@@ -1,5 +1,7 @@
 # Release Notes
 
+* **ENHANCEMENT:** Added Pyarrow as a dependency (soon to be required by pandas).
+
 ## v0.12.3 - February 25, 2025
 
 * **FIXED:** fixing string literal bug resulting from new sqlite3 release
