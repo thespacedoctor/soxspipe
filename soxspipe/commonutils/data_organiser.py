@@ -56,7 +56,7 @@ class data_organiser(object):
         from astropy.utils.exceptions import AstropyWarning
         warnings.simplefilter('ignore', AstropyWarning)
 
-        self.PAE = True
+        self.PAE = False
 
         log.debug("instantiating a new 'data_organiser' object")
 
@@ -2007,7 +2007,7 @@ class data_organiser(object):
 
         # CLEAN UP FAILED FILES
         c = self.conn.cursor()
-        sqlQuery = f'delete from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and p.status_{sessionId} = "fail");'
+        sqlQuery = f"delete from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and p.status_{sessionId} = 'fail');"
         c.execute(sqlQuery)
         c.close()
 
