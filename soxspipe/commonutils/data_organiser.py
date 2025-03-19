@@ -1433,8 +1433,6 @@ class data_organiser(object):
 
                 if len(filteredFrames["slit"].values):
                     if self.PAE and self.instrument.upper() == "SOXS":
-                        print(f"SHIT, {self.PAE}")
-                        sys.exit(0)
                         pass
                     else:
                         df = df.loc[(df["slit"] == filteredFrames["slit"].values[0])]
