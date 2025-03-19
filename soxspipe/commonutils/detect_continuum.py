@@ -1311,8 +1311,6 @@ class detect_continuum(_base_detect):
 
         if self.kw("DPR_TYPE").upper() in self.traceFrame.header and "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper() and self.sliceWidth > 3:
             self.sliceWidth = 3
-            print("HERE")
-            sys.exit(0)
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan
