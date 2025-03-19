@@ -153,7 +153,7 @@ soxs-spatial-solution:
         # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
         pixel-window-size: 10
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
-        pinhole-detection-thres-sigma: 5
+        pinhole-detection-thres-sigma: 3
         # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
         order-deg: [3,3]
         # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
@@ -162,7 +162,7 @@ soxs-spatial-solution:
         slit-deg: [3,4]
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 5
-        poly-fitting-residual-clipping-sigma: 7
+        poly-fitting-residual-clipping-sigma: 5
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
         # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
