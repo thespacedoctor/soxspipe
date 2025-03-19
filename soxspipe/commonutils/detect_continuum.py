@@ -1311,6 +1311,8 @@ class detect_continuum(_base_detect):
 
         if self.kw("DPR_TYPE").upper() in self.traceFrame.header and "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper() and self.sliceWidth > 3:
             self.sliceWidth = 3
+            print("HERE")
+            sys.exit(0)
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
         orderPixelTable[f'cont_{self.axisA}'] = np.nan
@@ -1403,6 +1405,10 @@ class detect_continuum(_base_detect):
         allLines = len(orderPixelTable.index)
         tmpOrderPixelTable = orderPixelTable.copy()
         orderPixelTable, medianShift, medianStddev = find_centre_points(orderPixelTable=tmpOrderPixelTable, medianShift=False, medianStddev=False)
+
+        # VIS PSEUDO-ORDERS SHIFT IN DIFFERENT DIRECTIONS .. POSSIBLY REVISIT TO TREAT u&g AND r&i SEPARATELY
+        if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
+            medianShift = False
         orderPixelTable, medianShift, medianStddev = find_centre_points(orderPixelTable=tmpOrderPixelTable, medianShift=medianShift, medianStddev=medianStddev)
 
         foundLines = len(orderPixelTable.index)
