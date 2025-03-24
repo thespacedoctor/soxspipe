@@ -363,7 +363,7 @@ class horne_extraction(object):
             pass
 
         if self.arm == "NIR":
-            self.gain = self.detectorParam["gain"]
+            self.gain = self.detectorParams["gain"]
         elif self.inst.upper() == "SOXS":
             self.gain = self.skySubtractedFrame.header[kw("GAIN")]
         else:
