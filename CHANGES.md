@@ -1,6 +1,10 @@
 # Release Notes
 
-* **ENHANCEMENT:** Added Pyarrow as a dependency (soon to be required by pandas).
+* **ENHANCEMENT:** Added Pyarrow as a dependency (soon to be required by pandas) ... this broke the install. Can we fix it?
+
+
+
+* **FIXED:** fixed the gain keyword in the SOXS keyword lookup table
 * **FIXED:** don't shift slices for 2nd iteration of object trace detection for SOXS VIS (u&g shift in opposite direction from r&i)
 * **FIXED:** a SQLite query containing "fail". It is now 'fail' in single quotes.
 * **FIXED:** an issue with mixed slit width in SOXS stare mode. We had a PAE setting to allow order centre traces to be reduced in stare mode, but this setting was tripping up true stare-mode data.
