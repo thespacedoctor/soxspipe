@@ -168,6 +168,7 @@ class create_dispersion_map(object):
         from astropy.stats import sigma_clip
 
         bootstrap_dispersion_solution = self.settings["bootstrap_dispersion_solution"]
+        tightFit = self.settings["bootstrap_dispersion_solution"]
 
         orderDeg = self.recipeSettings["order-deg"]
         wavelengthDeg = self.recipeSettings["wavelength-deg"]
@@ -234,15 +235,23 @@ class create_dispersion_map(object):
                 tmpDF = orderPixelTable.copy()
                 while iteration < 3:
 
-                    if iteration == 0:
-                        sigmaLimit = 20
-                        self.windowHalf = round(windowSize * 1.5)
+                    # self.windowHalf = round(windowSize / 2)
+                    # sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
+
+                    if tightFit:
+                        self.windowHalf = round(windowSize / 2)
+                        sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
+                    elif iteration == 0:
+                        sigmaLimit = 50
+                        self.windowHalf = round(windowSize)
                     elif iteration == 1:
-                        sigmaLimit = 10
+                        sigmaLimit = 25
                         self.windowHalf = windowSize
                     else:
                         self.windowHalf = round(windowSize / 2)
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
+
+                    # print(self.windowHalf, sigmaLimit)
 
                     orderPixelTable = orderPixelTable.apply(self.detect_pinhole_arc_line, axis=1, iraf=iraf, sigmaLimit=sigmaLimit, iteration=iteration)
 
