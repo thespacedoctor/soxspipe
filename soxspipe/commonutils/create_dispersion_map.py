@@ -243,7 +243,7 @@ class create_dispersion_map(object):
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
                     elif iteration == 0:
                         sigmaLimit = 50
-                        self.windowHalf = round(windowSize)
+                        self.windowHalf = round(windowSize * 2)
                     elif iteration == 1:
                         sigmaLimit = 25
                         self.windowHalf = windowSize
