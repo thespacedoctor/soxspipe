@@ -27,7 +27,7 @@ VIS:
       1x2: SOXS_ThAr_SING_VIS_1x2.fits
       2x2: SOXS_ThAr_SING_VIS_2x2.fits
     multi:
-      1x1: SOXS_ThAr_MULT_VIS_1x1.fits
+      1x1: SOXS_MPH_TAB_VIS_ThAr_1x1.fits
       1x2: SOXS_ThAr_MULT_VIS_1x2.fits
       2x2: SOXS_ThAr_MULT_VIS_2x2.fits
   mid_slit_index: 4
