@@ -29,17 +29,17 @@ soxs-mdark:
 soxs-disp-solution:
     vis:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
-        pixel-window-size: 10
+        pixel-window-size: 8
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
-        pinhole-detection-thres-sigma: 10
+        pinhole-detection-thres-sigma: 5
         # DEGREE OF ORDER TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
         order-deg: [3,3]
         # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
-        wavelength-deg: [4,5] 
+        wavelength-deg: [5,5] 
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
-        poly-fitting-residual-clipping-sigma: 7
+        poly-fitting-residual-clipping-sigma: 4
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 5
+        poly-clipping-iteration-limit: 7
     nir:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
         pixel-window-size: 10
