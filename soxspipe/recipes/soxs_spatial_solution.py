@@ -440,7 +440,7 @@ def parameterTuning(p, log, recipeSettings, settings, multiPinholeFrame, disp_ma
         sofName=sofName,
         create2DMap=False,
         lineDetectionTable=lineDetectionTable,
-        startNightDate=self.startNightDate
+        startNightDate=False
     )
     try:
         productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
