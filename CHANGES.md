@@ -1,6 +1,8 @@
 # Release Notes
 
-* **ENHANCEMENT:** added settings and refactored code for SOXS nodding
+## v0.13.0 - April 2, 2025
+
+* **ENHANCEMENT:** added settings and refactored code for SOXS nodding .. first SOXS on sky data can now be reduced.
 * **REFACTOR:** rebuilt VIS line lists
 * **REFACTOR:** changed some internal file names
 * **REFACTOR:** retuned some SOXS VIS recipe parameters
