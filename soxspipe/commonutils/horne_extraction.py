@@ -307,7 +307,7 @@ class horne_extraction(object):
             uniqueOrders = self.orderPixelTable['order'].unique()
             for o in uniqueOrders:
                 mask = (self.orderPixelTable['order'] == o)
-                if self.orderPixelTable.loc[mask][f"{self.axisA}coord_centre"].std() < 20:
+                if self.orderPixelTable.loc[mask][f"{self.axisA}coord_centre"].std() < 100:
                     keepOrders.append(o)
                 else:
                     self.log.warning(f"Bad continuum fit to order {o}; this order will not be extracted")
