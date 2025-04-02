@@ -1242,6 +1242,11 @@ class data_organiser(object):
             else:
                 mask = (filteredFrames['night start mjd'] == int(series["night start mjd"]))
                 filteredFrames = filteredFrames.loc[mask]
+
+            if series["eso dpr tech"] in ["ECHELLE,SLIT,NODDING"]:
+                mask = (filteredFrames['exptime'] == series["exptime"])
+                filteredFrames = filteredFrames.loc[mask]
+
             try:
                 frameMjd = filteredFrames["mjd-obs"].values[0]
             except:

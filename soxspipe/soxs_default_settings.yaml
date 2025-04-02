@@ -308,6 +308,64 @@ soxs-stare:
             residual_floor_percentile: 95
 
 
+soxs-nod:
+    use_flat: True
+    # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
+    subtract_background: False
+    # SAVE INDIVIDUAL FRAME EXTRACTION
+    save_single_frame_extractions: False
+    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    stacked-clipping-sigma: 5
+    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    stacked-clipping-iterations: 5
+    # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
+    horne-extraction-slit-length: 20
+    # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
+    horne-extraction-profile-global-clipping-sigma: 25
+    # SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
+    horne-extraction-profile-clipping-sigma: 3.0
+    # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
+    horne-extraction-profile-clipping-iteration-count: 10
+    # USE LA COMSIC TO REMOVE CRHs BEFORE EXTRACTION
+    use_lacosmic: True
+    vis:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 90
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 30
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 1.5
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            disp-axis-deg: 6
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
+            order-deg: 3
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 3
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
+            poly-clipping-iteration-limit: 10
+    nir:
+        detect-continuum:
+            # NUMBER OF CROSS-ORDER SLICES PER ORDER
+            order-sample-count: 100
+            # LENGTH OF EACH SLICE (PIXELS)
+            slice-length: 30
+            # WIDTH OF EACH SLICE (PIXELS)
+            slice-width: 5
+            # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
+            peak-sigma-limit: 1.5
+            # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            order-deg: 6
+            # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
+            disp-axis-deg: 5
+            # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-fitting-residual-clipping-sigma: 5
+            # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
+            poly-clipping-iteration-limit: 7
+
+
 # UTILS
 background-subtraction:
     bspline-deg: 2
