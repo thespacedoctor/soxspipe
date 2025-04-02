@@ -993,7 +993,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     fluxRawImageMasked = fluxRawImageMasked.filled(np.nan)
 
     # PLOT THE RECTIFIED IMAGES
-    if True:
+    if False:
 
         from astropy.io import fits
         hdu = fits.PrimaryHDU(data=fluxRawImageMasked.T)
@@ -1025,15 +1025,15 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         # plt.imshow(maskImage.T, interpolation='none', aspect='auto')
         # plt.show()
 
-        # fig = plt.figure(
-        #     num=None,
-        #     figsize=(135, 1),
-        #     dpi=None,
-        #     facecolor=None,
-        #     edgecolor=None,
-        #     frameon=True)
-        # plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
-        # plt.show()
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
+        plt.show()
 
         # fig = plt.figure(
         #     num=None,
