@@ -185,7 +185,7 @@ class soxs_nod(base_recipe):
 
         # OBJECT/STANDARD FRAMES
         types = ['OBJECT', 'STD,FLUX', 'STD,TELLURIC']
-        allObjectFrames = []
+        allObjectFrames, allFilenames = [], []
         self.masterHeaderFrame = False
         for t in types:
             add_filters = {kw("DPR_TYPE"): t,
@@ -194,6 +194,7 @@ class soxs_nod(base_recipe):
                 singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
+                allFilenames.append(os.path.basename(i).replace("_pre.", "."))
                 if not self.masterHeaderFrame:
                     self.masterHeaderFrame = singleFrame.copy()
             if len(allObjectFrames):
@@ -225,20 +226,30 @@ class soxs_nod(base_recipe):
             log=self.log, CCDObject=allObjectFrames[0], show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
 
         # DIVIDING IN A AND B SEQUENCES
-        allFrameA, allFrameB, allFrameAOffsets, allFrameBOffsets = [], [], [], []
+        allFrameA, allFrameB, allFrameAOffsets, allFrameBOffsets, allFrameANames, allFrameBNames = [], [], [], [], [], []
 
         # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
-        for frame in allObjectFrames:
-            offset = frame.header[kw("NOD_CUMULATIVE_OFFSETY")]
+        for frame, filename in zip(allObjectFrames, allFilenames):
+            # offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSET{self.axisA.upper()}")]
+            offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSETY")]
+            if offset == 0:
+                pass
             if offset > 0:
                 allFrameAOffsets.append(offset)
                 allFrameA.append(frame)
+                allFrameANames.append(filename)
             else:
                 allFrameBOffsets.append(offset)
                 allFrameB.append(frame)
+                allFrameBNames.append(filename)
 
         uniqueOffsets = list(set(allFrameAOffsets))
-        if len(uniqueOffsets) > 1:
+        if len(uniqueOffsets) == 0:
+            error = f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
+            self.log.error(f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames.")
+            raise Exception(error)
+
+        elif len(uniqueOffsets) > 1:
             s = "S"
         else:
             s = ""
@@ -252,7 +263,7 @@ class soxs_nod(base_recipe):
             allFrameA.sort(key=lambda x: x.header["MJD-OBS"])
             allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
 
-            for frameA, frameB in zip(allFrameA, allFrameB):
+            for frameA, frameB, frameAName, frameBName in zip(allFrameA, allFrameB, allFrameANames, allFrameBNames):
 
                 self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
                 if False:
@@ -272,9 +283,12 @@ class soxs_nod(base_recipe):
                 if "ARCFILE" in frameA.header:
                     rawFrames.append(frameA.header["ARCFILE"])
                     rawFrames.append(frameB.header["ARCFILE"])
-                else:
+                elif "ORIGFILE" in frameA.header:
                     rawFrames.append(frameA.header["ORIGFILE"])
                     rawFrames.append(frameB.header["ORIGFILE"])
+                else:
+                    rawFrames.append(frameAName)
+                    rawFrames.append(frameBName)
 
                 # INJECT KEYWORDS INTO HEADER
                 self.update_fits_keywords(frame=frameA, rawFrames=rawFrames)

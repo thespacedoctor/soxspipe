@@ -168,6 +168,7 @@ class create_dispersion_map(object):
         from astropy.stats import sigma_clip
 
         bootstrap_dispersion_solution = self.settings["bootstrap_dispersion_solution"]
+        tightFit = self.settings["bootstrap_dispersion_solution"]
 
         orderDeg = self.recipeSettings["order-deg"]
         wavelengthDeg = self.recipeSettings["wavelength-deg"]
@@ -234,15 +235,23 @@ class create_dispersion_map(object):
                 tmpDF = orderPixelTable.copy()
                 while iteration < 3:
 
-                    if iteration == 0:
-                        sigmaLimit = 20
-                        self.windowHalf = round(windowSize * 1.5)
+                    # self.windowHalf = round(windowSize / 2)
+                    # sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
+
+                    if tightFit:
+                        self.windowHalf = round(windowSize / 2)
+                        sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
+                    elif iteration == 0:
+                        sigmaLimit = 50
+                        self.windowHalf = round(windowSize * 2)
                     elif iteration == 1:
-                        sigmaLimit = 10
+                        sigmaLimit = 25
                         self.windowHalf = windowSize
                     else:
                         self.windowHalf = round(windowSize / 2)
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
+
+                    # print(self.windowHalf, sigmaLimit)
 
                     orderPixelTable = orderPixelTable.apply(self.detect_pinhole_arc_line, axis=1, iraf=iraf, sigmaLimit=sigmaLimit, iteration=iteration)
 
@@ -605,6 +614,11 @@ class create_dispersion_map(object):
             except:
                 pass
 
+        if "delete" in orderPixelTable.columns:
+            # REMOVE FILTERED ROWS FROM DATA FRAME
+            mask = (orderPixelTable['delete'] == 1)
+            orderPixelTable.drop(index=orderPixelTable[mask].index, inplace=True)
+
         # THERE ARE DUPLICATES IN XSHOOTER LINE LIST
         orderPixelTable.drop_duplicates(inplace=True)
 
@@ -820,7 +834,7 @@ class create_dispersion_map(object):
         try:
             # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
             daofind = DAOStarFinder(
-                fwhm=3., threshold=sigmaLimit * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=False)
+                fwhm=3., threshold=sigmaLimit * std, roundlo=-2.0, roundhi=2.0, sharplo=-0.5, sharphi=2.0, exclude_border=False)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE .. EXCEPT FOR LOW SIGNAL IMAGES
             # sources = daofind(stamp.data, mask=stamp.mask)
             sources = daofind(stamp.data - median, mask=stamp.mask)

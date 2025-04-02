@@ -1,5 +1,18 @@
 # Release Notes
 
+## v0.13.0 - April 2, 2025
+
+* **ENHANCEMENT:** added settings and refactored code for SOXS nodding .. first SOXS on sky data can now be reduced.
+* **REFACTOR:** rebuilt VIS line lists
+* **REFACTOR:** changed some internal file names
+* **REFACTOR:** retuned some SOXS VIS recipe parameters
+* **FIXED:** gain is now getting read from the FITS headers for non-NIR frames
+* **FIXED:** fixed the gain keyword in the SOXS keyword lookup table
+* **FIXED:** don't shift slices for 2nd iteration of object trace detection for SOXS VIS (u&g shift in opposite direction from r&i)
+* **FIXED:** a SQLite query containing "fail". It is now 'fail' in single quotes.
+* **FIXED:** an issue with mixed slit width in SOXS stare mode. We had a PAE setting to allow order centre traces to be reduced in stare mode, but this setting was tripping up true stare-mode data.
+* ... and much more
+
 ## v0.12.3 - February 25, 2025
 
 * **FIXED:** fixing string literal bug resulting from new sqlite3 release

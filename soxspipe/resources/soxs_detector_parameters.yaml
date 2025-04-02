@@ -14,8 +14,8 @@ VIS:
       end: 4096
   # DEFAULT BINNING [y, x]
   binning: [1, 1]
-  gain: 0.87 # e/ADU
-  ron: 2.08 # e
+  gain: 1. # e/ADU
+  ron: 3.80 # e
   saturation: 65535.
   bad-pixel map:
     1x1: BP_MAP_RP_VIS_1x1.fits
@@ -27,7 +27,7 @@ VIS:
       1x2: SOXS_ThAr_SING_VIS_1x2.fits
       2x2: SOXS_ThAr_SING_VIS_2x2.fits
     multi:
-      1x1: SOXS_ThAr_MULT_VIS_1x1.fits
+      1x1: SOXS_MPH_TAB_VIS_ThAr_1x1.fits
       1x2: SOXS_ThAr_MULT_VIS_1x2.fits
       2x2: SOXS_ThAr_MULT_VIS_2x2.fits
   mid_slit_index: 4
@@ -54,7 +54,7 @@ NIR:
   # # DEFAULT BINNING [y, x]
   binning: [1, 1]
   # saturation: 2.0e5
-  gain: MISSING # e/ADU
+  gain: 1. # e/ADU
   ron: 7.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
   bad-pixel map:
     1x1: BP_MAP_RP_NIR.fits

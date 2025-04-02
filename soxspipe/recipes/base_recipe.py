@@ -620,6 +620,7 @@ class base_recipe(object):
             self.detectorParams["gain"] = gain[0] * u.electron / u.adu
         else:
             # NIR
+            self.log.print("\n\tGain is being read from the detector parameter file (not the FITS header)\n")
             self.detectorParams["gain"] = self.detectorParams[
                 "gain"] * u.electron / u.adu
 

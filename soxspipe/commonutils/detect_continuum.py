@@ -1403,6 +1403,10 @@ class detect_continuum(_base_detect):
         allLines = len(orderPixelTable.index)
         tmpOrderPixelTable = orderPixelTable.copy()
         orderPixelTable, medianShift, medianStddev = find_centre_points(orderPixelTable=tmpOrderPixelTable, medianShift=False, medianStddev=False)
+
+        # VIS PSEUDO-ORDERS SHIFT IN DIFFERENT DIRECTIONS .. POSSIBLY REVISIT TO TREAT u&g AND r&i SEPARATELY
+        if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
+            medianShift = False
         orderPixelTable, medianShift, medianStddev = find_centre_points(orderPixelTable=tmpOrderPixelTable, medianShift=medianShift, medianStddev=medianStddev)
 
         foundLines = len(orderPixelTable.index)

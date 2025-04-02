@@ -307,7 +307,7 @@ class horne_extraction(object):
             uniqueOrders = self.orderPixelTable['order'].unique()
             for o in uniqueOrders:
                 mask = (self.orderPixelTable['order'] == o)
-                if self.orderPixelTable.loc[mask][f"{self.axisA}coord_centre"].std() < 20:
+                if self.orderPixelTable.loc[mask][f"{self.axisA}coord_centre"].std() < 100:
                     keepOrders.append(o)
                 else:
                     self.log.warning(f"Bad continuum fit to order {o}; this order will not be extracted")
@@ -361,6 +361,13 @@ class horne_extraction(object):
             biny = int(self.skySubtractedFrame.header[kw("WIN_BINY")])
         except:
             pass
+
+        if self.arm == "NIR":
+            self.gain = self.detectorParams["gain"]
+        elif self.inst.upper() == "SOXS":
+            self.gain = self.skySubtractedFrame.header[kw("GAIN")]
+        else:
+            self.gain = self.skySubtractedFrame.header[kw("CONAD")]
 
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
@@ -450,7 +457,7 @@ class horne_extraction(object):
 
         from fundamentals import fmultiprocess
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
-                                    inputArray=orderSlices, poolSize=False, timeout=300, funclog=self.log, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, turnOffMP=True)
+                                    inputArray=orderSlices, poolSize=False, timeout=300, funclog=self.log, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, gain=self.gain, turnOffMP=True)
 
         updatedExtractions = []
         for e, wlTuple in zip(extractions, wlMinMax):
@@ -917,7 +924,7 @@ class horne_extraction(object):
     # xt-class-method
 
 
-def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB):
+def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, gain=1.0):
     """
     *extract the object spectrum for a single order*
 
@@ -986,7 +993,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     fluxRawImageMasked = fluxRawImageMasked.filled(np.nan)
 
     # PLOT THE RECTIFIED IMAGES
-    if True:
+    if False:
 
         from astropy.io import fits
         hdu = fits.PrimaryHDU(data=fluxRawImageMasked.T)
@@ -1018,15 +1025,15 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         # plt.imshow(maskImage.T, interpolation='none', aspect='auto')
         # plt.show()
 
-        # fig = plt.figure(
-        #     num=None,
-        #     figsize=(135, 1),
-        #     dpi=None,
-        #     facecolor=None,
-        #     edgecolor=None,
-        #     frameon=True)
-        # plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
-        # plt.show()
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
+        plt.show()
 
         # fig = plt.figure(
         #     num=None,
@@ -1105,9 +1112,6 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     # NORMALISE THE FLUX IN EACH SLICE
     sliceFittedProfileSums = [x.sum() for x in crossDispersionSlices["sliceFittedProfile"]]
     crossDispersionSlices["sliceFittedProfileNormalised"] = crossDispersionSlices["sliceFittedProfile"] / sliceFittedProfileSums
-
-    # TODO: USE DETECTOR GAIN
-    gain = 1.0
 
     # VARIANCE FROM HORNE 86 PAPER
     crossDispersionSlices["sliceVariance"] = ron + np.abs(crossDispersionSlices["sliceRawFlux"] * crossDispersionSlices["sliceFittedProfileNormalised"] + crossDispersionSlices["sliceSky"]) / gain

@@ -367,8 +367,11 @@ def parameterTuning(p, log, recipeSettings, settings, pinholeFrame, qc, products
         sofName=sofName,
         create2DMap=False,
         lineDetectionTable=lineDetectionTable,
-        startNightDate=self.startNightDate
+        startNightDate=False
     )
-    productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+    try:
+        productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+    except:
+        pass
 
     return None
