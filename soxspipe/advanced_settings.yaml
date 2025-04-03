@@ -17,3 +17,9 @@ PAE: False
 
 
 night_start_offset_hrs: 15
+
+vlt-data-raw: "/data/raw"
+vlt-data-reduced: "/data/reduced"
+
+# vlt-data-raw: "/Users/Dave/Desktop/data/raw"
+# vlt-data-reduced: "/Users/Dave/Desktop/data/reduced"
