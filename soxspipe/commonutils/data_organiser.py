@@ -80,7 +80,7 @@ class data_organiser(object):
         self.sessionsDir = rootDir + "/sessions"
 
         if self.vlt:
-            self.use_vlt_environment_folders()
+            self.vltReduced = self.use_vlt_environment_folders()
 
         # SESSION ID PLACEHOLDER FILE
         self.sessionIdFile = self.sessionsDir + "/.sessionid"
@@ -1786,6 +1786,13 @@ class data_organiser(object):
             arguments, settings, replacedLog, dbConn = su.setup()
 
         # MAKE ASSET PLACEHOLDERS
+        if self.vlt:
+            dest = self.sessionPath + "/reduced"
+            try:
+                os.symlink(self.vltReduced, dest)
+            except:
+                pass
+
         folders = ["sof", "qc", "reduced"]
         for f in folders:
             if not os.path.exists(self.sessionPath + f"/{f}"):
@@ -2099,7 +2106,7 @@ class data_organiser(object):
             os.symlink(vltRaw, self.rawDir)
 
         self.log.debug('completed the ``use_vlt_environment_folders`` method')
-        return None
+        return vltReduced
 
     # use the tab-trigger below for new method
     # xt-class-method
