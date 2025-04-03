@@ -1,5 +1,7 @@
 # Release Notes
 
+* **ENHANCEMENT:** added a '--vlt' flag to the prep command. If used, the pipeline will opt to use the `/data/raw` and `/data/reduced` folders found in a typical VLT environment workstation.
+
 ## v0.13.0 - April 2, 2025
 
 * **ENHANCEMENT:** added settings and refactored code for SOXS nodding .. first SOXS on sky data can now be reduced.
