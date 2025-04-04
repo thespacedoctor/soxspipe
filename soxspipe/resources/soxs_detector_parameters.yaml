@@ -20,6 +20,7 @@ VIS:
   bad-pixel map:
     1x1: BP_MAP_RP_VIS_1x1.fits
     1x2: BP_MAP_RP_VIS_1x2.fits
+    2x1: BP_MAP_RP_VIS_2x1.fits
     2x2: BP_MAP_RP_VIS_2x2.fits
   predicted pinhole lines:
     single:

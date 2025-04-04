@@ -1084,6 +1084,9 @@ class data_organiser(object):
 
         incomplete = False
 
+        if series['eso seq arm'].upper() == "ACQ":
+            return series
+
         sofName = []
         matchDict = {}
         sofName.append(series['eso seq arm'].upper())
@@ -1219,9 +1222,11 @@ class data_organiser(object):
             elif "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
                 mask = (calibrationTables['eso pro catg'].str.contains("_TAB_"))
             else:
+                # mask = (calibrationTables[k].isin([v]))
                 try:
                     mask = (calibrationTables[k].isin([v]))
                 except:
+                    print(series)
                     print(k, v)
                     sys.exit(0)
             calibrationTables = calibrationTables.loc[mask]
