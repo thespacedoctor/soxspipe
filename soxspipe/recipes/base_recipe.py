@@ -68,6 +68,7 @@ class base_recipe(object):
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
+            # print(self.productPath)
             if os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
                 print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
@@ -506,6 +507,7 @@ class base_recipe(object):
 
         from astropy import units as u
         from contextlib import suppress
+        import numpy as np
 
         kw = self.kw
 
@@ -554,16 +556,18 @@ class base_recipe(object):
             self.axisA = "y"
             self.axisB = "x"
 
+        # BE CAREFUL WHAT TO MATCH WHEN INSPECTING BINNING ... DON'T BE TO STRICT
+        matches = ((self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"ORDER_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_IMAGE_{self.arm}".upper()))
+        binningMatch = self.inputFrames.summary[matches]
+
         # MIXED BINNING IS BAD
         if self.arm == "NIR":
             # NIR ARRAY NEVER BINNED
             cdelt1 = [1]
             cdelt2 = [1]
         else:
-            cdelt1 = self.inputFrames.values(
-                keyword=kw("CDELT1"), unique=True)
-            cdelt2 = self.inputFrames.values(
-                keyword=kw("CDELT2"), unique=True)
+            cdelt1 = np.unique(binningMatch[kw("CDELT1")].data)
+            cdelt2 = np.unique(binningMatch[kw("CDELT2")].data)
             try:
                 cdelt1.remove(None)
                 cdelt2.remove(None)
@@ -794,8 +798,8 @@ class base_recipe(object):
             rs = int(rs / binning[0])
             re = int(re / binning[0])
         if binning[1] > 1:
-            cs = int(cs / binning[0])
-            ce = int(ce / binning[0])
+            cs = int(cs / binning[1])
+            ce = int(ce / binning[1])
 
         trimmed_frame = ccdproc.trim_image(frame[rs: re, cs: ce])
 
