@@ -971,6 +971,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     crossDispersionSlices.dropna(axis='index', how='any', subset=["sliceRawFlux"], inplace=True)
 
     # MASK THE MOST DEVIANT PIXELS IN EACH SLICE
+    crossDispersionSlices = create_cross_dispersion_slices(crossDispersionSlices=crossDispersionSlices)
     crossDispersionSlices = crossDispersionSlices.apply(lambda x: create_cross_dispersion_slice(x), axis=1)
     crossDispersionSlices["sliceMask"] = [x.mask for x in crossDispersionSlices["sliceRawFluxMasked"]]
 
@@ -1229,6 +1230,53 @@ def create_cross_dispersion_slice(
         series):
     """This function is used to create a single, 1-pixel wide cross-dispersion slice of object data. When applied to the dataframe, a single slice is created for each discrete pixel position in the dispersion direction
     """
+
+    import numpy as np
+    from astropy.stats import sigma_clip
+
+    series['bpMask'][series['bpMask'] > 0] = 1
+    maskedArray = np.ma.array(series["sliceRawFlux"], mask=series['bpMask'])
+
+    # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
+    series["sliceRawFluxMasked"] = sigma_clip(
+        maskedArray, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std")
+
+    # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
+    series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0
+
+    series["fullColumnMask"] = False
+    if np.ma.count_masked(series["sliceRawFluxMasked"]) > 1:
+        series["sliceRawFluxMasked"].mask = True
+        series["fullColumnMask"] = True
+
+    # SIGMA-CLIP WAVELENGTH
+    series['wavelengthMask'] = series['wavelength'].copy()
+    series['wavelengthMask'][series['wavelengthMask'] > 0] = 3
+    series['wavelengthMask'][series['wavelengthMask'] < 0.1] = 1
+    series['wavelengthMask'][series['wavelengthMask'] > 2] = 0
+    maskedArray = np.ma.array(series["wavelength"], mask=series['wavelengthMask'])
+    series["wavelengthMask"] = sigma_clip(
+        maskedArray, sigma_lower=1, sigma_upper=1, maxiters=3, cenfunc='mean', stdfunc="std")
+
+    return series
+
+
+def create_cross_dispersion_slices(
+        crossDispersionSlices):
+    """This function is used to create a single, 1-pixel wide cross-dispersion slices of object data. When applied to the dataframe, a single slice is created for each discrete pixel position in the dispersion direction
+
+    **Key Arguments:**
+
+    - ``crossDispersionSlices`` -- the seed dataframe
+
+    **Return:**
+
+    - ``crossDispersionSlices`` -- dataframe containing metadata for each cross-dispersion slice (single data-points in extracted spectrum)
+    """
+
+    print(crossDispersionSlices)
+
+    sys.exit(0)
 
     import numpy as np
     from astropy.stats import sigma_clip
