@@ -1,5 +1,10 @@
 # Release Notes
 
+* **ENHANCEMENT:** can reduce all SOXS UVVIS binnings
+* **REFACTOR:** changed parameters sent to daostarfinder to better detect pinhole lines
+* **ENHANCEMENT:** strategically added a few more lines to the SOXS UVVIS line lists.
+* **ENHANCEMENT:** added a parameter in the settings file to turn plotting of the sky-model QC plot on or off (off by default as this is a time expensive plot).
+* **ENHANCEMENT:** included a parameter in the settings file to turn on-frame sky-subtraction (stare-mode) on or off be default
 * **ENHANCEMENT:** added a '--vlt' flag to the prep command. If used, the pipeline will opt to use the `/data/raw` and `/data/reduced` folders found in a typical VLT environment workstation.
 * **REFACTOR:** data-organiser can now read the exptime from the ACQ camera images (found in the `HIERARCH ESO DET3 EXPO TIME` keyword)	
 
