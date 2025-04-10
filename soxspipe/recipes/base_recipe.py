@@ -68,6 +68,7 @@ class base_recipe(object):
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
+            # print(self.productPath)
             if os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
                 print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
@@ -556,7 +557,7 @@ class base_recipe(object):
             self.axisB = "x"
 
         # BE CAREFUL WHAT TO MATCH WHEN INSPECTING BINNING ... DON'T BE TO STRICT
-        matches = ((self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"ORDER_TAB_{self.arm}".upper()))
+        matches = ((self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"ORDER_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_IMAGE_{self.arm}".upper()))
         binningMatch = self.inputFrames.summary[matches]
 
         # MIXED BINNING IS BAD
