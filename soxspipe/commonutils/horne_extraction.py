@@ -208,6 +208,9 @@ class horne_extraction(object):
         # OPEN AND UNPACK THE 2D IMAGE MAP
         self.twoDMap = fits.open(twoDMapPath)
 
+        dpBinx = self.twoDMap[0].header[kw('WIN_BINX')]
+        dpBiny = self.twoDMap[0].header[kw('WIN_BINY')]
+
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
         binx = 1
         biny = 1
@@ -217,18 +220,29 @@ class horne_extraction(object):
         except:
             pass
 
-        xdim = int(self.twoDMap[0].data.shape[1] / binx)
-        ydim = int(self.twoDMap[0].data.shape[0] / biny)
+        # ADJUST SLIT HEIGHT IF BINNING IN USE
+        if binx > 1 or biny > 1:
+            if self.detectorParams["dispersion-axis"] == "x":
+                self.slitHalfLength /= binx
+            else:
+                self.slitHalfLength /= biny
+            self.slitHalfLength = round(self.slitHalfLength)
+
+        binxRatio = binx / dpBinx
+        binyRatio = biny / dpBiny
+
+        xdim = int(self.twoDMap[0].data.shape[1] / binxRatio)
+        ydim = int(self.twoDMap[0].data.shape[0] / binyRatio)
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
 
         self.skySubtractedFrame.data[self.skySubtractedFrame.data == 0] = np.nan
 
-        if binx > 1 or biny > 1:
+        if binxRatio > 1 or binyRatio > 1:
             from astropy.nddata import block_reduce
-            self.twoDMap["WAVELENGTH"].data = block_reduce(self.twoDMap["WAVELENGTH"].data, (biny, binx), func=np.mean)
-            self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (biny, binx), func=np.mean)
-            self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (biny, binx), func=np.mean)
+            self.twoDMap["WAVELENGTH"].data = block_reduce(self.twoDMap["WAVELENGTH"].data, (binyRatio, binxRatio), func=np.mean)
+            self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (binyRatio, binxRatio), func=np.mean)
+            self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (binyRatio, binxRatio), func=np.mean)
 
         self.imageMap = pd.DataFrame.from_dict({
             "x": xarray,
@@ -1057,6 +1071,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
 
         fractions = fluxNormalisedImage[:, slitPixelIndex]
         wave_px = crossDispersionSlices[f"{axisB}coord"]
+
         weights = weightImage[:, slitPixelIndex]
         mask = maskImage[:, slitPixelIndex]
 
