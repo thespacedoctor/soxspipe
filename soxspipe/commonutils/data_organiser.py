@@ -1022,6 +1022,11 @@ class data_organiser(object):
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
+        # REMOVE UNNEEDED FRAMES FROM GROUPS
+        # mask = (rawGroups['slitmask'].isin(["PH", "MPH"])) & (
+        #     rawGroups['binning'].isin(["2x1", "2x2", "1x2"]))
+        # rawGroups = rawGroups.loc[~mask]
+
         calibrationFrames = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` not like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationFrames.fillna("--", inplace=True)
 
@@ -1497,7 +1502,7 @@ class data_organiser(object):
         # SLIT ARC-LAMP FRAMES
         if series["recipe"] in ["spat_sol"]:
             if True:
-                mask = ((rawFrames["night start mjd"] == series["night start mjd"]) & (rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])) & (rawFrames['slit'].isin(["SLIT1.0"])))
+                mask = ((rawFrames["binning"] == series["binning"]) & (rawFrames["night start mjd"] == series["night start mjd"]) & (rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])) & (rawFrames['slit'].isin(["SLIT1.0"])))
             else:
                 # THIS IS FOR TESTING XSHOOTER RESOLUTION MEASUREMENTS ONLY
                 mask = ((rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])))
@@ -2059,7 +2064,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        usage code 
+        usage code
         ```
 
         ---

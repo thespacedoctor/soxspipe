@@ -242,10 +242,10 @@ class create_dispersion_map(object):
                         self.windowHalf = round(windowSize / 2)
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
                     elif iteration == 0:
-                        sigmaLimit = 50
+                        sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 10)
                         self.windowHalf = round(windowSize * 2)
                     elif iteration == 1:
-                        sigmaLimit = 25
+                        sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 10)
                         self.windowHalf = windowSize
                     else:
                         self.windowHalf = round(windowSize / 2)
@@ -834,7 +834,7 @@ class create_dispersion_map(object):
         try:
             # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
             daofind = DAOStarFinder(
-                fwhm=3., threshold=sigmaLimit * std, roundlo=-2.0, roundhi=2.0, sharplo=-0.5, sharphi=2.0, exclude_border=False)
+                fwhm=2.0, threshold=sigmaLimit * std, roundlo=-2.0, roundhi=2.0, sharplo=-0.5, sharphi=2.0, exclude_border=False)
             # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE .. EXCEPT FOR LOW SIGNAL IMAGES
             # sources = daofind(stamp.data, mask=stamp.mask)
             sources = daofind(stamp.data - median, mask=stamp.mask)
