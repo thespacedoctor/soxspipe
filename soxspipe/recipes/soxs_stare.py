@@ -205,7 +205,7 @@ class soxs_stare(base_recipe):
         master_bias = False
         dark = False
 
-        self.subtractSky = True
+        self.subtractSky = self.recipeSettings["sky-subtraction"]["subtract_sky"]
 
         # OBJECT FRAMES
         filter_list = [

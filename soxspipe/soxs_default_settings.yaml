@@ -231,6 +231,8 @@ soxs-stare:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
         sky-subtraction:
+            # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
+            subtract_sky: True
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
@@ -255,6 +257,8 @@ soxs-stare:
             bspline_iteration_limit: 4
             # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
             residual_floor_percentile: 95
+            # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
+            sky_model_qc_plot: False
     nir:
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 20
@@ -282,6 +286,8 @@ soxs-stare:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 7
         sky-subtraction:
+            # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
+            subtract_sky: True
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
@@ -306,6 +312,8 @@ soxs-stare:
             bspline_iteration_limit: 4
             # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
             residual_floor_percentile: 95
+            # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
+            sky_model_qc_plot: False
 
 
 soxs-nod:
