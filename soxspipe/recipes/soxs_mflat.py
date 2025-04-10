@@ -339,8 +339,8 @@ class soxs_mflat(base_recipe):
                 productsTable=self.products,
                 tag=tag,
                 sofName=self.sofName,
-                binx=self.binx,
-                biny=self.biny,
+                binx=self.binRatioX,
+                biny=self.binRatioY,
                 lampTag=tag,
                 startNightDate=self.startNightDate
             )
@@ -704,6 +704,7 @@ class soxs_mflat(base_recipe):
         import pandas as pd
         from astropy.stats import sigma_clip
         kw = self.kw
+        from astropy.io import fits
 
         import psutil
         process = psutil.Process()
@@ -716,6 +717,19 @@ class soxs_mflat(base_recipe):
             if self.arm.lower() == "nir":
                 self.binx = 1
                 self.biny = 1
+
+        # GRAB HEADER FROM ORDER LOCATION .. WHAT IS BINNING?
+        with fits.open(orderTablePath, memmap=True) as hdul:
+            header = hdul[0].header
+        try:
+            dpBinx = header[kw('WIN_BINX')]
+            dpBiny = header[kw('WIN_BINY')]
+        except:
+            dpBinx = 1
+            dpBiny = 1
+
+        self.binRatioX = self.binx / dpBinx
+        self.binRatioY = self.biny / dpBiny
 
         window = int(self.recipeSettings["centre-order-window"] / 2)
 
@@ -1030,8 +1044,8 @@ class soxs_mflat(base_recipe):
             productsTable=self.products,
             tag="",
             sofName=self.sofName,
-            binx=self.binx,
-            biny=self.biny,
+            binx=self.binRatioX,
+            biny=self.binRatioY,
             startNightDate=self.startNightDate
         )
         self.products, self.qc, orderDetectionCounts = edges.get()

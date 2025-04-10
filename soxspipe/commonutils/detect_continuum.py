@@ -770,11 +770,14 @@ class detect_continuum(_base_detect):
         **Return:**
 
         - ``orderPixelTable`` -- a data-frame containing lines and associated pixel locations
+        - `dmBinx` -- the dispersion map binning in x
+        - `dmBiny` -- the dispersion map binning in y
         """
         self.log.debug('starting the ``create_pixel_arrays`` method')
 
         import numpy as np
         import pandas as pd
+        from astropy.io import fits
 
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
@@ -818,8 +821,19 @@ class detect_continuum(_base_detect):
             orderPixelTable=orderPixelTable
         )
 
+        # GRAB HEADER FROM DISPERSION MAP
+        with fits.open(self.dispersion_map, memmap=True) as hdul:
+            header = hdul[0].header
+
+        try:
+            dmBinx = header[self.kw('WIN_BINX')]
+            dmBiny = header[self.kw('WIN_BINY')]
+        except:
+            dmBinx = 1
+            dmBiny = 1
+
         self.log.debug('completed the ``create_pixel_arrays`` method')
-        return orderPixelTable
+        return orderPixelTable, dmBinx, dmBiny
 
     def fit_1d_gaussian_to_slice(
             self,
@@ -1290,13 +1304,13 @@ class detect_continuum(_base_detect):
 
         # CONVERT WAVELENGTH TO PIXEL POSITIONS AND RETURN ARRAY OF POSITIONS TO
         # SAMPLE THE TRACES
-        orderPixelTable = self.create_pixel_arrays()
+        orderPixelTable, dmBinx, dmBiny = self.create_pixel_arrays()
 
         binx = 1
         biny = 1
         try:
-            binx = self.traceFrame.header[self.kw("WIN_BINX")]
-            biny = self.traceFrame.header[self.kw("WIN_BINY")]
+            binx = self.traceFrame.header[self.kw("WIN_BINX")] / dmBinx
+            biny = self.traceFrame.header[self.kw("WIN_BINY")] / dmBiny
         except:
             pass
 
