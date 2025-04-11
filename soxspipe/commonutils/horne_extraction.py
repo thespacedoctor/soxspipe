@@ -452,6 +452,7 @@ class horne_extraction(object):
                     orderTable["sliceError"] = list(rebin(errorZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
 
                     newBpm = initial_sigma_clipping(rawFluxZoom[self.axisBcoords, self.axisAcoords], bpmZoom[self.axisBcoords, self.axisAcoords], wlZoom[self.axisBcoords, self.axisAcoords])
+
                     orderTable["bpMask"] = list(rebin(newBpm, zoomTuple[0], zoomTuple[1]))
 
                 else:
@@ -1234,15 +1235,15 @@ def create_cross_dispersion_slice(
     import numpy as np
     from astropy.stats import sigma_clip
 
-    series['bpMask'][series['bpMask'] > 0] = 1
-    maskedArray = np.ma.array(series["sliceRawFlux"], mask=series['bpMask'])
+    # series['bpMask'][series['bpMask'] > 0] = 1
+    # maskedArray = np.ma.array(series["sliceRawFlux"], mask=series['bpMask'])
 
-    # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
-    series["sliceRawFluxMasked"] = sigma_clip(
-        maskedArray, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std")
+    # # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
+    # series["sliceRawFluxMasked"] = sigma_clip(
+    #     maskedArray, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std")
 
-    # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
-    series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0
+    # # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
+    # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0
 
     series["fullColumnMask"] = False
     if np.ma.count_masked(series["sliceRawFluxMasked"]) > 1:
@@ -1274,22 +1275,30 @@ def create_cross_dispersion_slices(
     - ``crossDispersionSlices`` -- dataframe containing metadata for each cross-dispersion slice (single data-points in extracted spectrum)
     """
 
-    print(crossDispersionSlices)
-
-    sys.exit(0)
-
     import numpy as np
     from astropy.stats import sigma_clip
 
-    series['bpMask'][series['bpMask'] > 0] = 1
-    maskedArray = np.ma.array(series["sliceRawFlux"], mask=series['bpMask'])
+    bpMask = np.array(crossDispersionSlices["bpMask"].tolist())
+    bpMask[bpMask > 1] = 1
+    crossDispersionSlices["bpMask"] = list(bpMask)
+    sliceRawFlux = crossDispersionSlices["sliceRawFlux"]
 
-    # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
-    series["sliceRawFluxMasked"] = sigma_clip(
-        maskedArray, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std")
+    maskedArrays = [np.ma.array(f, mask=m) for f, m in zip(sliceRawFlux, bpMask)]
 
-    # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
-    series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0
+    maskedArrays = [sigma_clip(
+        ma, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std") for ma in maskedArrays]
+
+    for ma in maskedArrays:
+        ma.data[ma.mask] = 0
+
+    crossDispersionSlices["sliceRawFluxMasked"] = maskedArrays
+
+    return crossDispersionSlices
+
+    from tabulate import tabulate
+    print(tabulate(crossDispersionSlices.head(10), headers='keys', tablefmt='psql'))
+
+    sys.exit(0)
 
     series["fullColumnMask"] = False
     if np.ma.count_masked(series["sliceRawFluxMasked"]) > 1:
