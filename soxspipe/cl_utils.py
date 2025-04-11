@@ -5,7 +5,7 @@
 Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
-    soxspipe prep <workspaceDirectory>
+    soxspipe prep <workspaceDirectory> [--vlt]
     soxspipe [-qw] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -48,6 +48,7 @@ Options:
     -x, --overwrite                        more verbose output
     -w, --watch                            watch the workspace and reduce new raw data as it is added (similar to 'watch' mode but runs in the foreground)
     --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
+    --vlt                                  only use this flag if setting up a workspace on a VLT environment workstation
 """
 ################# GLOBAL IMPORTS ####################
 import time
@@ -181,6 +182,8 @@ def main(arguments=None):
         if a['outputDirectory']:
             settings["workspace-root-dir"] = a['outputDirectory']
 
+        command = (" ").join(sys.argv)
+
         if a["mbias"]:
             from soxspipe.recipes import soxs_mbias
             recipe = soxs_mbias(
@@ -188,7 +191,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             mbiasFrame = recipe.produce_product()
 
@@ -199,7 +203,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             mdarkFrame = recipe.produce_product()
 
@@ -211,7 +216,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"]
+                polyOrders=a["polyFlag"],
+                command=command
             ).produce_product()
 
         if a["order_centres"]:
@@ -222,7 +228,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"]
+                polyOrders=a["polyFlag"],
+                command=command
             ).produce_product()
 
         if a["spat_sol"]:
@@ -233,7 +240,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"]
+                polyOrders=a["polyFlag"],
+                command=command
             ).produce_product()
 
         if a["mflat"]:
@@ -243,7 +251,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             mflatFrame = recipe.produce_product()
 
@@ -254,7 +263,8 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             reducedStare = recipe.produce_product()
 
@@ -265,14 +275,16 @@ def main(arguments=None):
                 settings=settings,
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
-                overwrite=a["overwriteFlag"]
+                overwrite=a["overwriteFlag"],
+                command=command
             )
             reducedNod = recipe.produce_product()
 
         if a['prep']:
             do = data_organiser(
                 log=log,
-                rootDir=a["workspaceDirectory"]
+                rootDir=a["workspaceDirectory"],
+                vlt=a["vltFlag"]
             )
             do.prepare()
 

@@ -36,6 +36,8 @@ class soxs_nod(base_recipe):
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.   
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``command`` -- the command called to run the recipe
+
 
 
     **Usage**
@@ -56,12 +58,13 @@ class soxs_nod(base_recipe):
             settings=False,
             inputFrames=[],
             verbose=False,
-            overwrite=False
+            overwrite=False,
+            command=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_nod, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-nod")
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-nod", command=command)
         self.log = log
         log.debug("instansiating a new 'soxs_nod' object")
         self.settings = settings
@@ -184,7 +187,7 @@ class soxs_nod(base_recipe):
 
         # OBJECT/STANDARD FRAMES
         types = ['OBJECT', 'STD,FLUX', 'STD,TELLURIC']
-        allObjectFrames = []
+        allObjectFrames, allFilenames = [], []
         self.masterHeaderFrame = False
         for t in types:
             add_filters = {kw("DPR_TYPE"): t,
@@ -193,6 +196,7 @@ class soxs_nod(base_recipe):
                 singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
+                allFilenames.append(os.path.basename(i).replace("_pre.", "."))
                 if not self.masterHeaderFrame:
                     self.masterHeaderFrame = singleFrame.copy()
             if len(allObjectFrames):
@@ -238,20 +242,30 @@ class soxs_nod(base_recipe):
             log=self.log, CCDObject=allObjectFrames[0], show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
 
         # DIVIDING IN A AND B SEQUENCES
-        allFrameA, allFrameB, allFrameAOffsets, allFrameBOffsets = [], [], [], []
+        allFrameA, allFrameB, allFrameAOffsets, allFrameBOffsets, allFrameANames, allFrameBNames = [], [], [], [], [], []
 
         # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
-        for frame in allObjectFrames:
-            offset = frame.header[kw("NOD_CUMULATIVE_OFFSETY")]
+        for frame, filename in zip(allObjectFrames, allFilenames):
+            # offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSET{self.axisA.upper()}")]
+            offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSETY")]
+            if offset == 0:
+                pass
             if offset > 0:
                 allFrameAOffsets.append(offset)
                 allFrameA.append(frame)
+                allFrameANames.append(filename)
             else:
                 allFrameBOffsets.append(offset)
                 allFrameB.append(frame)
+                allFrameBNames.append(filename)
 
         uniqueOffsets = list(set(allFrameAOffsets))
-        if len(uniqueOffsets) > 1:
+        if len(uniqueOffsets) == 0:
+            error = f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
+            self.log.error(f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames.")
+            raise Exception(error)
+
+        elif len(uniqueOffsets) > 1:
             s = "S"
         else:
             s = ""
@@ -265,7 +279,7 @@ class soxs_nod(base_recipe):
             allFrameA.sort(key=lambda x: x.header["MJD-OBS"])
             allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
 
-            for frameA, frameB in zip(allFrameA, allFrameB):
+            for frameA, frameB, frameAName, frameBName in zip(allFrameA, allFrameB, allFrameANames, allFrameBNames):
 
                 self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
                 if False:
@@ -284,9 +298,12 @@ class soxs_nod(base_recipe):
                 if "ARCFILE" in frameA.header:
                     rawFrames.append(frameA.header["ARCFILE"])
                     rawFrames.append(frameB.header["ARCFILE"])
-                else:
+                elif "ORIGFILE" in frameA.header:
                     rawFrames.append(frameA.header["ORIGFILE"])
                     rawFrames.append(frameB.header["ORIGFILE"])
+                else:
+                    rawFrames.append(frameAName)
+                    rawFrames.append(frameBName)
 
                 # INJECT KEYWORDS INTO HEADER
                 self.update_fits_keywords(frame=frameA, rawFrames=rawFrames)
@@ -305,6 +322,7 @@ class soxs_nod(base_recipe):
             stackedSpectrum, extractionPath = self.stack_extractions([allSpectrumA, allSpectrumB])
 
         else:
+
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
                 frames=allFrameA,
@@ -389,13 +407,14 @@ class soxs_nod(base_recipe):
         A_minus_B.header = hdr_A
         B_minus_A.header = hdr_B
 
-        # Write in a fits file the A-B and B-A frames
+        # WRITE IN A FITS FILE THE A-B AND B-A FRAMES
         home = expanduser("~")
         filename = self.sofName + f"_AB_{locationSetIndex}.fits"
         filePath = f"{self.productDir}/{filename}"
         A_minus_B.write(filePath, overwrite=True, checksum=True)
 
         filename = self.sofName + f"_BA_{locationSetIndex}.fits"
+        filePath = f"{outDir}/{filename}"
         B_minus_A.write(filePath, overwrite=True, checksum=True)
 
         if False:

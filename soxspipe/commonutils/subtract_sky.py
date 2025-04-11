@@ -244,7 +244,7 @@ class subtract_sky(object):
             if isinstance(imageMapOrder, pd.core.frame.DataFrame):
                 # INJECT THE PIXEL VALUES BACK INTO THE PLACEHOLDER IMAGES
                 skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData = self.add_data_to_placeholder_images(imageMapOrder, skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData)
-                if o == self.qcPlotOrder and True:
+                if o == self.qcPlotOrder and self.recipeSettings["sky-subtraction"]["sky_model_qc_plot"]:
                     qc_plot_path = self.plot_sky_sampling(order=o, imageMapOrderDF=imageMapOrder, tck=tck, knotLocations=knots)
                     basename = os.path.basename(qc_plot_path)
                     self.products = pd.concat([self.products, pd.Series({

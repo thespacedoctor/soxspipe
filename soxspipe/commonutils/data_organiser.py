@@ -26,6 +26,7 @@ class data_organiser(object):
 
     - ``log`` -- logger
     - ``rootDir`` -- the root directory of the data to process
+    - ``vlt`` -- prepare the workspace using the standard vlt /data directory
 
     **Usage:**
 
@@ -47,16 +48,20 @@ class data_organiser(object):
     def __init__(
             self,
             log,
-            rootDir
+            rootDir,
+            vlt=False
     ):
         from os.path import expanduser
         import codecs
         from fundamentals.logs import emptyLogger
         import warnings
+
         from astropy.utils.exceptions import AstropyWarning
         warnings.simplefilter('ignore', AstropyWarning)
 
-        self.PAE = True
+        self.vlt = vlt
+
+        self.PAE = False
 
         log.debug("instantiating a new 'data_organiser' object")
 
@@ -73,6 +78,9 @@ class data_organiser(object):
         self.rawDir = rootDir + "/raw"
         self.miscDir = rootDir + "/misc"
         self.sessionsDir = rootDir + "/sessions"
+
+        if self.vlt:
+            self.vltReduced = self.use_vlt_environment_folders()
 
         # SESSION ID PLACEHOLDER FILE
         self.sessionIdFile = self.sessionsDir + "/.sessionid"
@@ -119,7 +127,8 @@ class data_organiser(object):
             "OBJECT",
             "TPL_ID",
             "INSTRUME",
-            "ABSROT"
+            "ABSROT",
+            "EXPTIME2"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -326,6 +335,7 @@ class data_organiser(object):
 
         basename = os.path.basename(self.rootDir)
         print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
+
         self._sync_raw_frames()
         self._move_misc_files()
 
@@ -582,6 +592,10 @@ class data_organiser(object):
                 except:
                     masterTable[fil].fill_value = "--"
         masterTable = masterTable.filled()
+
+        # FIX ACQ CAM EXPTIME
+        matches = ((masterTable["exptime"] == -99.99) & (masterTable[self.kw("EXPTIME2").lower()] != -99.99))
+        masterTable["exptime"][matches] = masterTable[self.kw("EXPTIME2").lower()][matches]
 
         # FILTER OUT FRAMES WITH NO MJD
         matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--") | (masterTable["exptime"] == -99.99))
@@ -976,7 +990,7 @@ class data_organiser(object):
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = pd.read_sql(
-            'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,SLIT,STARE")', con=conn)
+            "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,SLIT,STARE')", con=conn)
 
         rawScienceFrames.fillna("--", inplace=True)
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
@@ -992,10 +1006,11 @@ class data_organiser(object):
         # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
         if self.instrument.upper() == "SOXS":
             rawPinholeFrames = pd.read_sql(
-                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE","ECHELLE,MULTI-PINHOLE") and ("eso seq arm" = "NIR" or ("lamp" not in ("Xe", "Ar", "Hg", "Ne", "ArNeHgXe" )))', con=conn)
+                "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE') and ('eso seq arm' = 'NIR' or ('lamp' not in ('Xe', 'Ar', 'Hg', 'Ne', 'ArNeHgXe' )))", con=conn)
         else:
             rawPinholeFrames = pd.read_sql(
-                'SELECT * FROM raw_frames where "eso dpr tech" in ("ECHELLE,PINHOLE","ECHELLE,MULTI-PINHOLE")', con=conn)
+                "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE')", con=conn)
+
         rawPinholeFrames.fillna("--", inplace=True)
         rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
@@ -1007,10 +1022,15 @@ class data_organiser(object):
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
-        calibrationFrames = pd.read_sql(f'SELECT * FROM product_frames where `eso pro catg` not like "%_TAB_%" and (status_{self.sessionId} != "fail" or status_{self.sessionId} is null)', con=conn)
+        # REMOVE UNNEEDED FRAMES FROM GROUPS
+        # mask = (rawGroups['slitmask'].isin(["PH", "MPH"])) & (
+        #     rawGroups['binning'].isin(["2x1", "2x2", "1x2"]))
+        # rawGroups = rawGroups.loc[~mask]
+
+        calibrationFrames = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` not like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationFrames.fillna("--", inplace=True)
 
-        calibrationTables = pd.read_sql(f'SELECT * FROM product_frames where `eso pro catg` like "%_TAB_%" and (status_{self.sessionId} != "fail" or status_{self.sessionId} is null)', con=conn)
+        calibrationTables = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationTables.fillna("--", inplace=True)
 
         # _generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
@@ -1068,6 +1088,9 @@ class data_organiser(object):
         import time
 
         incomplete = False
+
+        if series['eso seq arm'].upper() == "ACQ":
+            return series
 
         sofName = []
         matchDict = {}
@@ -1204,9 +1227,11 @@ class data_organiser(object):
             elif "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
                 mask = (calibrationTables['eso pro catg'].str.contains("_TAB_"))
             else:
+                # mask = (calibrationTables[k].isin([v]))
                 try:
                     mask = (calibrationTables[k].isin([v]))
                 except:
+                    print(series)
                     print(k, v)
                     sys.exit(0)
             calibrationTables = calibrationTables.loc[mask]
@@ -1234,9 +1259,6 @@ class data_organiser(object):
             if "FLAT" in series["eso dpr tech"].upper() and "NIR" not in series['eso seq arm'].upper():
                 mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
                 offFrame = filteredFrames.loc[mask]
-                from tabulate import tabulate
-                print(tabulate(offFrame, headers='keys', tablefmt='psql'))
-                sys.exit(0)
 
             if series["eso dpr tech"] in ["ECHELLE,SLIT,STARE"]:
                 mask = (filteredFrames['mjd-obs'] == series["mjd-obs"])
@@ -1244,6 +1266,11 @@ class data_organiser(object):
             else:
                 mask = (filteredFrames['night start mjd'] == int(series["night start mjd"]))
                 filteredFrames = filteredFrames.loc[mask]
+
+            if series["eso dpr tech"] in ["ECHELLE,SLIT,NODDING"]:
+                mask = (filteredFrames['exptime'] == series["exptime"])
+                filteredFrames = filteredFrames.loc[mask]
+
             try:
                 frameMjd = filteredFrames["mjd-obs"].values[0]
             except:
@@ -1282,7 +1309,7 @@ class data_organiser(object):
         filteredFrames["tag"] = filteredFrames["eso dpr type"].replace(",", "_") + "_" + filteredFrames["eso seq arm"]
         # LAMP ON AND OFF TAGS
         if series["eso seq arm"].lower() == "nir":
-            if seriesRecipe in ["disp_sol", "order_centres", "mflat" "spat_sol"]:
+            if seriesRecipe in ["disp_sol", "order_centres", "mflat", "spat_sol"]:
                 mask = (filteredFrames['eso dpr tech'].isin(["IMAGE"]))
                 filteredFrames.loc[mask, "tag"] += ",OFF"
                 filteredFrames.loc[~mask, "tag"] += ",ON"
@@ -1460,6 +1487,7 @@ class data_organiser(object):
                 df = calibrationFrames.loc[mask]
                 if len(df.index) == 0:
                     mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
+
             else:
                 mask = calibrationFrames['eso pro catg'].str.contains('MASTER_DARK')
 
@@ -1474,7 +1502,7 @@ class data_organiser(object):
         # SLIT ARC-LAMP FRAMES
         if series["recipe"] in ["spat_sol"]:
             if True:
-                mask = ((rawFrames["night start mjd"] == series["night start mjd"]) & (rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])) & (rawFrames['slit'].isin(["SLIT1.0"])))
+                mask = ((rawFrames["binning"] == series["binning"]) & (rawFrames["night start mjd"] == series["night start mjd"]) & (rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])) & (rawFrames['slit'].isin(["SLIT1.0"])))
             else:
                 # THIS IS FOR TESTING XSHOOTER RESOLUTION MEASUREMENTS ONLY
                 mask = ((rawFrames['eso seq arm'] == series['eso seq arm']) & (rawFrames["rospeed"] == series["rospeed"]) & (rawFrames['eso dpr type'].isin(["LAMP,WAVE", "WAVE,LAMP"])) & (rawFrames['eso dpr tech'].isin(["ECHELLE,SLIT"])))
@@ -1768,6 +1796,13 @@ class data_organiser(object):
             arguments, settings, replacedLog, dbConn = su.setup()
 
         # MAKE ASSET PLACEHOLDERS
+        if self.vlt:
+            dest = self.sessionPath + "/reduced"
+            try:
+                os.symlink(self.vltReduced, dest)
+            except:
+                pass
+
         folders = ["sof", "qc", "reduced"]
         for f in folders:
             if not os.path.exists(self.sessionPath + f"/{f}"):
@@ -1924,12 +1959,6 @@ class data_organiser(object):
         import shutil
         import os
 
-        # UNLINK SYMLINK IN ROOT
-        for d in os.listdir(self.rootDir):
-            filepath = os.path.join(self.rootDir, d)
-            if os.path.islink(filepath):
-                os.unlink(filepath)
-
         # SYMLINK FILES AND FOLDERS
         toLink = ["reduced", "qc", "soxspipe.yaml", "sof", "soxspipe.log"]
         for l in toLink:
@@ -2008,7 +2037,7 @@ class data_organiser(object):
 
         # CLEAN UP FAILED FILES
         c = self.conn.cursor()
-        sqlQuery = f'delete from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and p.status_{sessionId} = "fail");'
+        sqlQuery = f"delete from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and p.status_{sessionId} = 'fail');"
         c.execute(sqlQuery)
         c.close()
 
@@ -2021,6 +2050,73 @@ class data_organiser(object):
 
         self.log.debug('completed the ``session_refresh`` method')
         return None
+
+    def use_vlt_environment_folders(
+            self):
+        """*use vlt environment folders*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+            - None
+
+        **Usage:**
+
+        ```python
+        usage code
+        ```
+
+        ---
+
+        ```eval_rst
+        .. todo::
+
+            - add usage info
+            - create a sublime snippet for usage
+            - write a command-line tool for this method
+            - update package tutorial with command-line tool info if needed
+        ```
+        """
+        self.log.debug('starting the ``use_vlt_environment_folders`` method')
+
+        import yaml
+
+        # COLLECT ADVANCED SETTINGS
+        parentDirectory = os.path.dirname(__file__)
+        advs = parentDirectory + "/advanced_settings.yaml"
+        level = 0
+        exists = False
+        count = 1
+        while not exists and len(advs) and count < 10:
+            count += 1
+            level -= 1
+            exists = os.path.exists(advs)
+            if not exists:
+                advs = "/".join(parentDirectory.split("/")
+                                [:level]) + "/advanced_settings.yaml"
+        if not exists:
+            advs = {}
+        else:
+            with open(advs, 'r') as stream:
+                advs = yaml.safe_load(stream)
+
+        vltRaw = advs["vlt-data-raw"]
+        vltReduced = advs["vlt-data-reduced"]
+
+        # TEST THE VLT FOLDERS EXIST
+        if not os.path.exists(vltRaw) or not os.path.exists(vltReduced):
+            print("The VLT data structure does not seem to exist on this machine. Are you sure you need to use the --vlt flag?")
+            sys.exit(0)
+
+        try:
+            os.symlink(vltRaw, self.rawDir)
+        except:
+            os.unlink(self.rawDir)
+            os.symlink(vltRaw, self.rawDir)
+
+        self.log.debug('completed the ``use_vlt_environment_folders`` method')
+        return vltReduced
 
     # use the tab-trigger below for new method
     # xt-class-method

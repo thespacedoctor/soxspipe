@@ -808,10 +808,6 @@ def read_spectral_format(
             removeOffDetectorLocation=False
         )
 
-        # GRAB HEADER FROM DISPERSION MAP
-        with fits.open(dispersionMap, memmap=True) as hdul:
-            header = hdul[0].header
-
         orderPixelRanges = []
         if dp["dispersion-axis"] == "x":
             axis = "y"

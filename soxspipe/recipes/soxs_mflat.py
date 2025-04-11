@@ -39,6 +39,8 @@ class soxs_mflat(base_recipe):
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``command`` -- the command called to run the recipe
+
 
     **Usage**
 
@@ -59,12 +61,13 @@ class soxs_mflat(base_recipe):
             settings=False,
             inputFrames=[],
             verbose=False,
-            overwrite=False
+            overwrite=False,
+            command=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_mflat, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mflat")
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mflat", command=command)
         self.log = log
         log.debug("instantiating a new 'soxs_mflat' object")
         self.settings = settings
@@ -336,8 +339,8 @@ class soxs_mflat(base_recipe):
                 productsTable=self.products,
                 tag=tag,
                 sofName=self.sofName,
-                binx=self.binx,
-                biny=self.biny,
+                binx=self.binRatioX,
+                biny=self.binRatioY,
                 lampTag=tag,
                 startNightDate=self.startNightDate
             )
@@ -701,6 +704,7 @@ class soxs_mflat(base_recipe):
         import pandas as pd
         from astropy.stats import sigma_clip
         kw = self.kw
+        from astropy.io import fits
 
         import psutil
         process = psutil.Process()
@@ -713,6 +717,19 @@ class soxs_mflat(base_recipe):
             if self.arm.lower() == "nir":
                 self.binx = 1
                 self.biny = 1
+
+        # GRAB HEADER FROM ORDER LOCATION .. WHAT IS BINNING?
+        with fits.open(orderTablePath, memmap=True) as hdul:
+            header = hdul[0].header
+        try:
+            dpBinx = header[kw('WIN_BINX')]
+            dpBiny = header[kw('WIN_BINY')]
+        except:
+            dpBinx = 1
+            dpBiny = 1
+
+        self.binRatioX = self.binx / dpBinx
+        self.binRatioY = self.biny / dpBiny
 
         window = int(self.recipeSettings["centre-order-window"] / 2)
 
@@ -1027,8 +1044,8 @@ class soxs_mflat(base_recipe):
             productsTable=self.products,
             tag="",
             sofName=self.sofName,
-            binx=self.binx,
-            biny=self.biny,
+            binx=self.binRatioX,
+            biny=self.binRatioY,
             startNightDate=self.startNightDate
         )
         self.products, self.qc, orderDetectionCounts = edges.get()

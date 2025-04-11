@@ -35,6 +35,8 @@ class base_recipe(object):
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
+    - ``command`` -- the command called to run the recipe
+
 
     **Usage**
 
@@ -48,7 +50,8 @@ class base_recipe(object):
             inputFrames=False,
             verbose=False,
             overwrite=False,
-            recipeName=False
+            recipeName=False,
+            command=False
     ):
         import yaml
         import pandas as pd
@@ -65,6 +68,7 @@ class base_recipe(object):
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
+            # print(self.productPath)
             if os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
                 print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
@@ -74,6 +78,9 @@ class base_recipe(object):
             self.sofName = False
             self.productPath = False
             self.log = log
+
+        if command:
+            self.log.print(f'\nRecipe Command: {command}')
 
         from soxspipe.commonutils.toolkit import get_calibrations_path
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
@@ -500,6 +507,7 @@ class base_recipe(object):
 
         from astropy import units as u
         from contextlib import suppress
+        import numpy as np
 
         kw = self.kw
 
@@ -548,16 +556,18 @@ class base_recipe(object):
             self.axisA = "y"
             self.axisB = "x"
 
+        # BE CAREFUL WHAT TO MATCH WHEN INSPECTING BINNING ... DON'T BE TO STRICT
+        matches = ((self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"ORDER_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_IMAGE_{self.arm}".upper()))
+        binningMatch = self.inputFrames.summary[matches]
+
         # MIXED BINNING IS BAD
         if self.arm == "NIR":
             # NIR ARRAY NEVER BINNED
             cdelt1 = [1]
             cdelt2 = [1]
         else:
-            cdelt1 = self.inputFrames.values(
-                keyword=kw("CDELT1"), unique=True)
-            cdelt2 = self.inputFrames.values(
-                keyword=kw("CDELT2"), unique=True)
+            cdelt1 = np.unique(binningMatch[kw("CDELT1")].data)
+            cdelt2 = np.unique(binningMatch[kw("CDELT2")].data)
             try:
                 cdelt1.remove(None)
                 cdelt2.remove(None)
@@ -614,6 +624,7 @@ class base_recipe(object):
             self.detectorParams["gain"] = gain[0] * u.electron / u.adu
         else:
             # NIR
+            self.log.print("\n\tGain is being read from the detector parameter file (not the FITS header)\n")
             self.detectorParams["gain"] = self.detectorParams[
                 "gain"] * u.electron / u.adu
 
@@ -787,8 +798,8 @@ class base_recipe(object):
             rs = int(rs / binning[0])
             re = int(re / binning[0])
         if binning[1] > 1:
-            cs = int(cs / binning[0])
-            ce = int(ce / binning[0])
+            cs = int(cs / binning[1])
+            ce = int(ce / binning[1])
 
         trimmed_frame = ccdproc.trim_image(frame[rs: re, cs: ce])
 
@@ -1482,6 +1493,7 @@ class base_recipe(object):
 
         import math
         from astropy.utils.data import compute_hash
+        import soxspipe.__version__ as version
 
         arm = self.arm
         kw = self.kw
@@ -1547,6 +1559,13 @@ class base_recipe(object):
                     frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k2[:40]
                     frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v2
                     iterator += 1
+
+        # SOXSPIPE VERSION
+        frame.header[f"ESO PRO REC1 PIPE ID"] = f"soxspipe/v{version}"
+
+        # RECIPE
+        if self.recipeName:
+            frame.header[f"ESO PRO REC1 ID"] = self.recipeName
 
         # from tabulate import tabulate
         # print(tabulate(tableData, headers='keys', tablefmt='psql'))

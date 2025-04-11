@@ -609,6 +609,7 @@ class detect_order_edges(_base_detect):
                 *[(a, b) for a, b in zip(axisAfitupStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
             axisAfitlow, axisBfitlow = zip(
                 *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10])
+
             if len(axisBfitlow) < len(axisBfitup):
                 half = int(len(axisAfitlowStart) / 2)
                 try:

@@ -1,13 +1,45 @@
-
-
 # Release Notes
 
-if the object trace produces residuals with a mean > 10 pixels, then a fitting fail is forced.
-Created a `utility_setup` tool to create the QC and product directories needed for recipes and utils (to stop duplicating code)
-* Added a lookup table for standard star aliases sometimes used in the FITS header naming.
-* Added fill_value="extrapolate" to `interp1d` as some standard stars contained extracted flux outside of the database-stored absolute flux.
+* **ENHANCEMENT:** can reduce all SOXS UVVIS binnings
+* **REFACTOR:** changed parameters sent to daostarfinder to better detect pinhole lines
+* **ENHANCEMENT:** strategically added a few more lines to the SOXS UVVIS line lists.
+* **ENHANCEMENT:** added a parameter in the settings file to turn plotting of the sky-model QC plot on or off (off by default as this is a time expensive plot).
+* **ENHANCEMENT:** included a parameter in the settings file to turn on-frame sky-subtraction (stare-mode) on or off be default
+* **ENHANCEMENT:** added a '--vlt' flag to the prep command. If used, the pipeline will opt to use the `/data/raw` and `/data/reduced` folders found in a typical VLT environment workstation.
+* **REFACTOR:** data-organiser can now read the exptime from the ACQ camera images (found in the `HIERARCH ESO DET3 EXPO TIME` keyword)	
 
-## v0.12.10 - January 31, 2025
+## v0.13.0 - April 2, 2025
+
+* **ENHANCEMENT:** added settings and refactored code for SOXS nodding .. first SOXS on sky data can now be reduced.
+* **REFACTOR:** rebuilt VIS line lists
+* **REFACTOR:** changed some internal file names
+* **REFACTOR:** retuned some SOXS VIS recipe parameters
+* **FIXED:** gain is now getting read from the FITS headers for non-NIR frames
+* **FIXED:** fixed the gain keyword in the SOXS keyword lookup table
+* **FIXED:** don't shift slices for 2nd iteration of object trace detection for SOXS VIS (u&g shift in opposite direction from r&i)
+* **FIXED:** a SQLite query containing "fail". It is now 'fail' in single quotes.
+* **FIXED:** an issue with mixed slit width in SOXS stare mode. We had a PAE setting to allow order centre traces to be reduced in stare mode, but this setting was tripping up true stare-mode data.
+* ... and much more
+
+## v0.12.3 - February 25, 2025
+
+* **FIXED:** fixing string literal bug resulting from new sqlite3 release
+
+## v0.12.2 - February 21, 2025
+
+* **ENHANCEMENT:** Pipeline name and version added to product headers.
+* **ENHANCEMENT:** recipe ID added to product headers.
+* **ENHANCEMENT:** added comments to all settings in the SOXS default settings file
+* **ENHANCEMENT:** there are now 2 rounds of object trace detection. The first round helps to locate the slit-position and a typical standard-deviation of the object profile, and the second round uses this information to preform a better measurement and fit of the trace. This is improving the fitting for faint objects.
+* **REFACTOR:** adjusted default 'slice' lengths used to detect a continuum in nodding frames.
+* **REFACTOR:** many adjustments to improve robustness and extractions
+* **FIXED:** recipe command was getting written to the bottom of the log file of the previous recipe instead of the top of the current recipe log
+
+## v0.12.1 - February 10, 2025
+
+* **ENHANCEMENT:** resolution plots added to the `soxs-spatial-solution` QC PDF (if a through-slit arc frame file is provided).
+
+## v0.12.0 - January 31, 2025
 
 * **ENHANCEMENT:** Major updates to the documentation following PAE.
 

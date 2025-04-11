@@ -34,6 +34,7 @@ class soxs_disp_solution(base_recipe):
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*.
+    - ``command`` -- the command called to run the recipe
 
     **Usage**
 
@@ -54,12 +55,13 @@ class soxs_disp_solution(base_recipe):
             inputFrames=[],
             verbose=False,
             overwrite=False,
-            polyOrders=False
+            polyOrders=False,
+            command=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_disp_solution, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-disp-solution")
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-disp-solution", command=command)
         self.log = log
         log.debug("instantiating a new 'soxs_disp_solution' object")
         self.settings = settings
@@ -362,8 +364,11 @@ def parameterTuning(p, log, recipeSettings, settings, pinholeFrame, qc, products
         sofName=sofName,
         create2DMap=False,
         lineDetectionTable=lineDetectionTable,
-        startNightDate=self.startNightDate
+        startNightDate=False
     )
-    productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+    try:
+        productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+    except:
+        pass
 
     return None

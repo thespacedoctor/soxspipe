@@ -32,6 +32,8 @@ class soxs_spatial_solution(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
     - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345435 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4, slit_x=3 ,slit_y=5. Default *False*. 
+    - ``command`` -- the command called to run the recipe
+
 
     See `produce_product` method for usage.
 
@@ -46,11 +48,12 @@ class soxs_spatial_solution(base_recipe):
             verbose=False,
             overwrite=False,
             create2DMap=True,
-            polyOrders=False
+            polyOrders=False,
+            command=False
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_spatial_solution, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-spatial-solution")
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-spatial-solution", command=command)
         self.log = log
         log.debug("instantiating a new 'soxs_spatial_solution' object")
         self.settings = settings
@@ -437,7 +440,7 @@ def parameterTuning(p, log, recipeSettings, settings, multiPinholeFrame, disp_ma
         sofName=sofName,
         create2DMap=False,
         lineDetectionTable=lineDetectionTable,
-        startNightDate=self.startNightDate
+        startNightDate=False
     )
     try:
         productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
