@@ -410,13 +410,10 @@ class horne_extraction(object):
             from astropy.stats import sigma_clip
 
             newBpm = []
-            for r, m, w in zip(rawFluxArray, bpmArray, wlArray):
-                m[m > 0] = 1
-                maskedArray = np.ma.array(r, mask=m)
-                # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
-                newMask = sigma_clip(
-                    maskedArray, sigma_lower=2, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std")
-                newBpm.append(newMask.mask)
+
+            bpmArray[bpmArray > 0] = 1
+
+            newBpm = [sigma_clip(np.ma.array(r, mask=m), sigma_lower=2, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std").mask for r, m, w in zip(rawFluxArray, bpmArray, wlArray)]
 
             return np.array(newBpm)
 
@@ -967,17 +964,8 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     # MASK THE MOST DEVIANT PIXELS IN EACH SLICE
     crossDispersionSlices = create_cross_dispersion_slices(crossDispersionSlices=crossDispersionSlices)
 
-    crossDispersionSlices["sliceMask"] = [x.mask for x in crossDispersionSlices["sliceRawFluxMasked"]]
-
-    crossDispersionSlices["sliceRawFluxMaskedSum"] = [x.sum() for x in crossDispersionSlices["sliceRawFluxMasked"]]
-
     # WEIGHTS ARE NOT YET USED
     crossDispersionSlices["sliceWeights"] = ron + np.abs(crossDispersionSlices["sliceRawFlux"]) / (crossDispersionSlices["sliceRawFluxMaskedSum"].pow(2))
-
-    # NORMALISE THE FLUX
-    crossDispersionSlices["sliceFluxNormalised"] = crossDispersionSlices["sliceRawFluxMasked"] / crossDispersionSlices["sliceRawFluxMaskedSum"]
-
-    crossDispersionSlices["sliceFluxNormalisedSum"] = [x.sum() for x in crossDispersionSlices["sliceFluxNormalised"]]
 
     # REMOVE SLICES WITH FULLY MASKED WAVELENGTH
     crossDispersionSlices["wavelength"] = [np.nan if x.mask.sum() > x.mask.shape[0] / 1.1 else x for x in crossDispersionSlices["wavelengthMask"]]
@@ -1236,37 +1224,51 @@ def create_cross_dispersion_slices(
     import numpy as np
     from astropy.stats import sigma_clip
 
-    # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
-    bpMask = np.array(crossDispersionSlices["bpMask"].tolist())
+    # VERTICALLY STACK THE SLICES INTO PSEDUO-RECTIFIED IMAGE
+    bpMask = np.vstack(crossDispersionSlices["bpMask"])
+    sliceRawFlux = np.vstack(crossDispersionSlices["sliceRawFlux"])
     bpMask[bpMask > 1] = 1
-    crossDispersionSlices["bpMask"] = list(bpMask)
-    sliceRawFlux = crossDispersionSlices["sliceRawFlux"]
-    maskedArrays = [np.ma.array(f, mask=m) for f, m in zip(sliceRawFlux, bpMask)]
-    maskedArrays = [sigma_clip(
-        ma, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std") for ma in maskedArrays]
+
+    sliceRawFluxMasked = np.ma.array(sliceRawFlux, mask=bpMask)
+    sliceRawFluxMasked = sigma_clip(
+        sliceRawFluxMasked, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std", axis=1)
+    sliceRawFluxMasked.data[sliceRawFluxMasked.mask] = 0
+
+    maskedArrays = [np.ma.masked_array(row) for row in sliceRawFluxMasked]
 
     # FULL SLICE MASK IF MORE THAN 1(?) PIXEL CLIPPED
     fullColumnMask = []
     for ma in maskedArrays:
-        ma.data[ma.mask] = 0
         if np.ma.count_masked(ma) > 1:
             ma.mask = True
             fullColumnMask.append(True)
         else:
             fullColumnMask.append(False)
 
+    crossDispersionSlices["sliceMask"] = [x.mask for x in maskedArrays]
     crossDispersionSlices["sliceRawFluxMasked"] = maskedArrays
     crossDispersionSlices["fullColumnMask"] = fullColumnMask
+    sliceRawFluxMaskedSum = sliceRawFluxMasked.sum(axis=1)
+    crossDispersionSlices["sliceRawFluxMaskedSum"] = [row for row in sliceRawFluxMaskedSum]
+
+    sliceFluxNormalised = sliceRawFluxMasked / sliceRawFluxMaskedSum[:, np.newaxis]
+    crossDispersionSlices["sliceFluxNormalised"] = [row for row in sliceFluxNormalised]
+    sliceFluxNormalisedSum = sliceFluxNormalised.sum(axis=1)
+    crossDispersionSlices["sliceFluxNormalisedSum"] = [row for row in sliceFluxNormalisedSum]
 
     # SIGMA-CLIP WAVELENGTH
-    wlMask = np.array(crossDispersionSlices["wavelength"].tolist())
+    wlMask = np.vstack(crossDispersionSlices["wavelength"])
+    sliceRawFlux = np.vstack(crossDispersionSlices["sliceRawFlux"])
+
+    # wlMask = np.array(crossDispersionSlices["wavelength"].tolist())
     wlMask[wlMask > 0] = 3
     wlMask[wlMask < 0.1] = 1
     wlMask[wlMask > 2] = 0
-    wlArray = np.array(crossDispersionSlices["wavelength"].tolist())
-    maskedArrays = [np.ma.array(f, mask=m) for f, m in zip(wlArray, wlMask)]
-    maskedArrays = [sigma_clip(
-        ma, sigma_lower=1, sigma_upper=1, maxiters=3, cenfunc='mean', stdfunc="std") for ma in maskedArrays]
+    wlArray = np.vstack(crossDispersionSlices["wavelength"])
+    maskedImage = np.ma.array(wlArray, mask=wlMask)
+    maskedImage = sigma_clip(
+        maskedImage, sigma_lower=1, sigma_upper=1, maxiters=3, cenfunc='mean', stdfunc="std", axis=1)
+    maskedArrays = [np.ma.masked_array(row) for row in maskedImage]
     crossDispersionSlices["wavelengthMask"] = maskedArrays
 
     return crossDispersionSlices
