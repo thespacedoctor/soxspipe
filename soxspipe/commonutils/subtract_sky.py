@@ -265,20 +265,21 @@ class subtract_sky(object):
         skySubtractedCCDData.data[np.isnan(skySubtractedCCDData.data)] = 0
         skySubtractedCCDData.uncertainty.array[np.isnan(skySubtractedCCDData.uncertainty.array)] = 0
 
-        comparisonPdf = self.plot_image_comparison(self.objectFrame, skymodelCCDData, skySubtractedCCDData)
+        if self.recipeSettings["sky-subtraction"]["sky_model_qc_plot"]:
+            comparisonPdf = self.plot_image_comparison(self.objectFrame, skymodelCCDData, skySubtractedCCDData)
 
-        filename = os.path.basename(comparisonPdf)
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": "SKY SUBTRACTION QUICKLOOK",
-            "file_name": filename,
-            "file_type": "PDF",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"Sky-subtraction quicklook",
-            "file_path": comparisonPdf,
-            "label": "QC"
-        }).to_frame().T], ignore_index=True)
+            filename = os.path.basename(comparisonPdf)
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": "soxs-stare",
+                "product_label": "SKY SUBTRACTION QUICKLOOK",
+                "file_name": filename,
+                "file_type": "PDF",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"Sky-subtraction quicklook",
+                "file_path": comparisonPdf,
+                "label": "QC"
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``get`` method')
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, self.qc, self.products
