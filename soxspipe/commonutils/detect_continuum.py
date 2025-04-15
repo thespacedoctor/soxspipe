@@ -10,8 +10,6 @@ Date Created
 : September 10, 2020
 """
 ################# GLOBAL IMPORTS ####################
-
-
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
 from soxspipe.commonutils.toolkit import get_calibration_lamp
@@ -820,20 +818,20 @@ class detect_continuum(_base_detect):
         self.log.debug('completed the ``create_pixel_arrays`` method')
         return orderPixelTable, dmBinx, dmBiny
 
-    def fit_1d_gaussian_to_slice(
+    def fit_1d_gaussian_to_slices(
             self,
-            pixelPostion,
+            orderPixelTable,
             sliceLength,
             medianStddev=False):
         """*cut a slice from the pinhole flat along the cross-dispersion direction centred on pixel position, fit 1D gaussian and return the peak pixel position*
 
         **Key Arguments:**
 
-        - ``pixelPostion`` -- the x,y pixel coordinate from orderPixelTable data-frame (series)
+        - ``orderPixelTable`` -- the pixel table dataframe
 
         **Return:**
 
-        - ``pixelPostion`` -- now including gaussian fit peak xy position
+        - ``orderPixelTable`` -- the pixel table dataframe with order centre trace
         """
         self.log.debug('starting the ``fit_1d_gaussian_to_slice`` method')
 
@@ -841,6 +839,9 @@ class detect_continuum(_base_detect):
         from astropy.stats import mad_std
         from astropy.modeling import models, fitting
         from scipy.signal import find_peaks
+
+        if not medianStddev:
+            medianStddev = 1
 
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
         halfSlice = sliceLength
@@ -853,62 +854,26 @@ class detect_continuum(_base_detect):
             sliceAxis = "y"
             sliceAntiAxis = "x"
 
-        slice, slice_length_offset, slice_width_centre = cut_image_slice(log=self.log, frame=self.traceFrame,
-                                                                         width=self.sliceWidth, length=sliceLength, x=pixelPostion["fit_x"], y=pixelPostion["fit_y"], sliceAxis=sliceAxis, median=True, plot=False)
+        fitx = orderPixelTable["fit_x"]
+        fity = orderPixelTable["fit_y"]
+        contSliceAxis, contSliceAntiAxis, gauss_amplitude, gauss_stddev, gauss_mean = [], [], [], [], []
 
-        if not medianStddev:
-            medianStddev = 1
+        slices = []
+        slices[:] = [cut_image_slice(log=self.log, frame=self.traceFrame, width=self.sliceWidth, length=sliceLength, x=x, y=y, sliceAxis=sliceAxis, median=True, plot=False) for x, y in zip(fitx, fity)]
 
-        if slice is None:
-            pixelPostion[f"cont_{self.axisA}"] = np.nan
-            pixelPostion[f"cont_{self.axisB}"] = np.nan
-            return pixelPostion
+        for s in slices:
+            slice, slice_length_offset, slice_width_centre = s[0], s[1], s[2]
 
-        # CHECK THE SLICE POINTS IF NEEDED
-        if 1 == 0:
-            import matplotlib.pyplot as plt
-            x = np.arange(0, len(slice))
-            plt.figure(figsize=(8, 5))
-            plt.plot(x, slice, 'ko')
-            plt.xlabel('Position')
-            plt.ylabel('Flux')
-            plt.show()
+            if slice is None:
+                contSliceAxis.append(np.nan)
+                contSliceAntiAxis.append(np.nan)
+                gauss_amplitude.append(np.nan)
+                gauss_stddev.append(np.nan)
+                gauss_mean.append(np.nan)
+                continue
 
-        origSlice = slice.copy()
-
-        slice[slice < -500] = np.nan
-
-        # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
-        # CONTAINING JUST NOISE
-        try:
-            median_r = np.nanmedian(slice)
-            std_r = mad_std(slice, ignore_nan=True)
-        except:
-            median_r = None
-
-        # print(median_r)
-        # print()
-
-        if not median_r:
-            pixelPostion[f"cont_{self.axisA}"] = np.nan
-            pixelPostion[f"cont_{self.axisB}"] = np.nan
-            return pixelPostion
-
-        peaks, _ = find_peaks(slice, height=median_r +
-                              self.peakSigmaLimit * std_r, width=1)
-
-        # CHECK PEAK HAS BEEN FOUND
-        if peaks is None or len(peaks) <= 0:
             # CHECK THE SLICE POINTS IF NEEDED
-            if False:
-                import matplotlib.pyplot as plt
-                x = np.arange(0, len(origSlice))
-                plt.figure(figsize=(8, 5))
-                plt.plot(x, slice, 'ko')
-                plt.xlabel('Position')
-                plt.ylabel('Flux')
-                plt.show()
-                print(median_r, std_r)
+            if 1 == 0:
                 import matplotlib.pyplot as plt
                 x = np.arange(0, len(slice))
                 plt.figure(figsize=(8, 5))
@@ -916,66 +881,127 @@ class detect_continuum(_base_detect):
                 plt.xlabel('Position')
                 plt.ylabel('Flux')
                 plt.show()
-            pixelPostion[f"cont_{self.axisA}"] = np.nan
-            pixelPostion[f"cont_{self.axisB}"] = np.nan
-            return pixelPostion
 
-        if len(peaks) > 1:
-            closest = peaks[0]
-            smallest_diff = abs(sliceLength / 2. - closest)  # Initialize the smallest difference
-            for num in peaks:
-                current_diff = abs(sliceLength / 2. - num)  # Calculate the difference
-                if current_diff < smallest_diff:  # Check if current is closer
-                    smallest_diff = current_diff
-                    closest = num  # Update closest integer
-            peaks = [closest]
+            origSlice = slice.copy()
+            slice[slice < -500] = np.nan
 
-        # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
-        # CENTRE THE GAUSSIAN ON THE PEAK
-        g_init = models.Gaussian1D(
-            amplitude=1., mean=peaks[0], stddev=medianStddev)
-        # self.log.print(f"g_init: {g_init}")
-        fit_g = fitting.LevMarLSQFitter()
+            # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
+            # CONTAINING JUST NOISE
+            try:
+                median_r = np.nanmedian(slice)
+                std_r = mad_std(slice, ignore_nan=True)
+            except:
+                median_r = None
 
-        # NOW FIT
-        try:
-            # MASK OUT NAN VALUES
-            mask = np.isfinite(slice)
-            g = fit_g(g_init, np.arange(0, len(slice))[mask], slice[mask])
-        except:
-            pixelPostion[f"cont_{self.axisA}"] = np.nan
-            pixelPostion[f"cont_{self.axisB}"] = np.nan
-            return pixelPostion
+            if not median_r:
+                contSliceAxis.append(np.nan)
+                contSliceAntiAxis.append(np.nan)
+                gauss_amplitude.append(np.nan)
+                gauss_stddev.append(np.nan)
+                gauss_mean.append(np.nan)
+                continue
 
-        # MEAN FOUND BEYOND THE LENGTH OF THE SLICE?
-        if g.mean.value > sliceLength or g.mean.value < 0:
-            pixelPostion[f"cont_{self.axisA}"] = np.nan
-            pixelPostion[f"cont_{self.axisB}"] = np.nan
-            return pixelPostion
+            peaks, _ = find_peaks(slice, height=median_r +
+                                  self.peakSigmaLimit * std_r, width=1)
 
-        pixelPostion[f"cont_{sliceAxis}"] = g.mean.value + \
-            max(0, slice_length_offset)
-        pixelPostion[f"cont_{sliceAntiAxis}"] = slice_width_centre
-        pixelPostion["gauss_amplitude"] = g.amplitude.value
-        pixelPostion["gauss_stddev"] = g.stddev.value
-        pixelPostion["gauss_mean"] = g.mean.value
+            # CHECK PEAK HAS BEEN FOUND
+            if peaks is None or len(peaks) <= 0:
+                # CHECK THE SLICE POINTS IF NEEDED
+                if False:
+                    import matplotlib.pyplot as plt
+                    x = np.arange(0, len(origSlice))
+                    plt.figure(figsize=(8, 5))
+                    plt.plot(x, slice, 'ko')
+                    plt.xlabel('Position')
+                    plt.ylabel('Flux')
+                    plt.show()
+                    print(median_r, std_r)
+                    import matplotlib.pyplot as plt
+                    x = np.arange(0, len(slice))
+                    plt.figure(figsize=(8, 5))
+                    plt.plot(x, slice, 'ko')
+                    plt.xlabel('Position')
+                    plt.ylabel('Flux')
+                    plt.show()
+                contSliceAxis.append(np.nan)
+                contSliceAntiAxis.append(np.nan)
+                gauss_amplitude.append(np.nan)
+                gauss_stddev.append(np.nan)
+                gauss_mean.append(np.nan)
+                continue
 
-        # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAID
-        if False and random() < 0.02:
-            import matplotlib.pyplot as plt
-            x = np.arange(0, len(slice))
-            plt.figure(figsize=(8, 5))
-            plt.plot(x, slice, 'ko')
-            plt.xlabel('Position')
-            plt.ylabel('Flux')
-            gaussx = np.arange(0, max(x), 0.05)
-            plt.plot(gaussx, g(gaussx), label=f'Mean = {g.mean.value:0.2f}, std = {g.stddev.value:0.2f}, cont_{self.axisA} = {pixelPostion[f"cont_{self.axisA}"]:0.2f}, fit_{self.axisA} = {pixelPostion[f"fit_{self.axisA}"]:0.2f},cont_{self.axisB} = {pixelPostion[f"cont_{self.axisB}"]:0.2f},fit_y = {pixelPostion[f"fit_{self.axisB}"]:0.2f}')
-            plt.legend()
-            plt.show()
+            if len(peaks) > 1:
+                closest = peaks[0]
+                smallest_diff = abs(sliceLength / 2. - closest)  # Initialize the smallest difference
+                for num in peaks:
+                    current_diff = abs(sliceLength / 2. - num)  # Calculate the difference
+                    if current_diff < smallest_diff:  # Check if current is closer
+                        smallest_diff = current_diff
+                        closest = num  # Update closest integer
+                peaks = [closest]
+
+            # MASK DATA FAR FROM PEAK
+            # slice[:peaks[0] - 7] = np.nan
+            # slice[peaks[0] + 7:] = np.nan
+
+            # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
+            # CENTRE THE GAUSSIAN ON THE PEAK
+            g_init = models.Gaussian1D(
+                amplitude=slice[peaks[0]], mean=peaks[0], stddev=medianStddev)
+            # self.log.print(f"g_init: {g_init}")
+            fit_g = fitting.LevMarLSQFitter()
+
+            # NOW FIT
+            try:
+                # MASK OUT NAN VALUES
+                mask = np.isfinite(slice)
+                g = fit_g(g_init, np.arange(0, len(slice))[mask], slice[mask])
+            except:
+                contSliceAxis.append(np.nan)
+                contSliceAntiAxis.append(np.nan)
+                gauss_amplitude.append(np.nan)
+                gauss_stddev.append(np.nan)
+                gauss_mean.append(np.nan)
+                continue
+
+            # MEAN FOUND BEYOND THE LENGTH OF THE SLICE?
+            if g.mean.value > sliceLength or g.mean.value < 0:
+                contSliceAxis.append(np.nan)
+                contSliceAntiAxis.append(np.nan)
+                gauss_amplitude.append(np.nan)
+                gauss_stddev.append(np.nan)
+                gauss_mean.append(np.nan)
+                continue
+
+            contSliceAxis.append(g.mean.value +
+                                 max(0, slice_length_offset))
+            contSliceAntiAxis.append(slice_width_centre)
+            gauss_amplitude.append(g.amplitude.value)
+            gauss_stddev.append(g.stddev.value)
+            gauss_mean.append(g.mean.value)
+
+            # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAID
+            if False and random() < 0.02:
+                import matplotlib.pyplot as plt
+                x = np.arange(0, len(slice))
+                plt.figure(figsize=(8, 5))
+                plt.plot(x, slice, 'ko')
+                plt.xlabel('Position')
+                plt.ylabel('Flux')
+                gaussx = np.arange(0, max(x), 0.05)
+                plt.plot(gaussx, g(gaussx), label=f'Mean = {g.mean.value:0.2f}, std = {g.stddev.value:0.2f}, cont_{self.axisA} = {pixelPostion[f"cont_{self.axisA}"]:0.2f}, fit_{self.axisA} = {pixelPostion[f"fit_{self.axisA}"]:0.2f},cont_{self.axisB} = {pixelPostion[f"cont_{self.axisB}"]:0.2f},fit_y = {pixelPostion[f"fit_{self.axisB}"]:0.2f}')
+                plt.legend()
+                plt.show()
+
+        orderPixelTable[f"cont_{sliceAxis}"] = contSliceAxis
+        orderPixelTable[f"cont_{sliceAntiAxis}"] = contSliceAntiAxis
+        orderPixelTable[f"gauss_amplitude"] = gauss_amplitude
+        orderPixelTable[f"gauss_stddev"] = gauss_stddev
+        orderPixelTable[f"gauss_mean"] = gauss_mean
 
         self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
 
-        return pixelPostion
+        return orderPixelTable
 
     def plot_results(
             self,
@@ -1340,8 +1366,7 @@ class detect_continuum(_base_detect):
                 if sliceLength > medianStddev * 7 + 5:
                     sliceLength = int(medianStddev * 7 + 5)
 
-            orderPixelTable = orderPixelTable.apply(
-                self.fit_1d_gaussian_to_slice, axis=1, sliceLength=sliceLength, medianStddev=medianStddev)
+            orderPixelTable = self.fit_1d_gaussian_to_slices(orderPixelTable=orderPixelTable, sliceLength=sliceLength, medianStddev=medianStddev)
 
             # FILTER DATA FRAME
             # FIRST CREATE THE MASK
