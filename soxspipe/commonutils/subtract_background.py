@@ -331,7 +331,7 @@ class subtract_background(object):
 
         import skimage
         from skimage.morphology import disk
-        maskedAsNanImage = skimage.filters.median(maskedAsNanImage, footprint=disk(4))
+        maskedAsNanImage = skimage.filters.median(maskedAsNanImage, footprint=disk(3))
 
         # REMOVE -VE VALUES
         maskedAsNanImage = np.where(maskedAsNanImage < 0, 0, maskedAsNanImage)
@@ -403,7 +403,7 @@ class subtract_background(object):
         quicklook_image(
             log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image")
 
-        backgroundMap = scipy.ndimage.filters.gaussian_filter(backgroundMap, gaussianSigma)
+        backgroundMap = scipy.ndimage.filters.gaussian_filter(backgroundMap, gaussianSigma, truncate=2, axes=0)
 
         # SET -VE T0 ZERO
         backgroundMap = np.where(backgroundMap < 0, 0, backgroundMap)
