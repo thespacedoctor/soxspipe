@@ -19,6 +19,7 @@ import sys
 import os
 from soxspipe.commonutils import create_dispersion_map
 
+
 os.environ['TERM'] = 'vt100'
 
 

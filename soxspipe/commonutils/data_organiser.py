@@ -555,6 +555,7 @@ class data_organiser(object):
             self.typeMap = self.typeMapSOXS
         else:
             self.typeMap = self.typeMapXSH
+            self.keyword_lookups.remove("EXPTIME2")
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -594,8 +595,9 @@ class data_organiser(object):
         masterTable = masterTable.filled()
 
         # FIX ACQ CAM EXPTIME
-        matches = ((masterTable["exptime"] == -99.99) & (masterTable[self.kw("EXPTIME2").lower()] != -99.99))
-        masterTable["exptime"][matches] = masterTable[self.kw("EXPTIME2").lower()][matches]
+        if "SOXS" in self.instrument.upper():
+            matches = ((masterTable["exptime"] == -99.99) & (masterTable[self.kw("EXPTIME2").lower()] != -99.99))
+            masterTable["exptime"][matches] = masterTable[self.kw("EXPTIME2").lower()][matches]
 
         # FILTER OUT FRAMES WITH NO MJD
         matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--") | (masterTable["exptime"] == -99.99))

@@ -19,6 +19,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+import pandas as pd
 
 os.environ['TERM'] = 'vt100'
 

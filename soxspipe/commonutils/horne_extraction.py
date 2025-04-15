@@ -201,8 +201,12 @@ class horne_extraction(object):
         # OPEN AND UNPACK THE 2D IMAGE MAP
         self.twoDMap = fits.open(twoDMapPath)
 
-        dpBinx = self.twoDMap[0].header[kw('WIN_BINX')]
-        dpBiny = self.twoDMap[0].header[kw('WIN_BINY')]
+        try:
+            dpBinx = self.twoDMap[0].header[kw('WIN_BINX')]
+            dpBiny = self.twoDMap[0].header[kw('WIN_BINY')]
+        except:
+            dpBinx = 1
+            dpBiny = 1
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
         binx = 1

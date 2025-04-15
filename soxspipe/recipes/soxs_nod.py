@@ -230,10 +230,9 @@ class soxs_nod(base_recipe):
             allFrameA = allObjectFrames[0]
             allFrameB = allObjectFrames[1]
 
-            #NOW COMPUTE A SINGLE A-B CYCLE
+            # NOW COMPUTE A SINGLE A-B CYCLE
             mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat = self.process_single_ab_nodding_cycle(aFrame=allFrameA, bFrame=allFrameB, locationSetIndex=1, orderTablePath=orderTablePath)
-            stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat],"NOTFLAT")
-
+            stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat], "NOTFLAT")
 
         if self.recipeSettings["use_flat"]:
             allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
@@ -414,7 +413,7 @@ class soxs_nod(base_recipe):
         A_minus_B.write(filePath, overwrite=True, checksum=True)
 
         filename = self.sofName + f"_BA_{locationSetIndex}.fits"
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.productDir}/{filename}"
         B_minus_A.write(filePath, overwrite=True, checksum=True)
 
         if False:
