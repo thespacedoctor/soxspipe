@@ -1,10 +1,15 @@
 # Release Notes
 
+- optimisation of master flat code
+- optimisation of background light fitting code
+- some optimisations of continuum detection code
+- some optimisations of the horne extraction
 - if the object trace produces residuals with a mean > 10 pixels, then a fitting fail is forced.
   Created a `utility_setup` tool to create the QC and product directories needed for recipes and utils (to stop duplicating code)
 
 * Added a lookup table for standard star aliases sometimes used in the FITS header naming.
 * Added fill_value="extrapolate" to `interp1d` as some standard stars contained extracted flux outside of the database-stored absolute flux.
+* Small bug fixes
 
 ## v0.13.1 - April 10, 2025
 
