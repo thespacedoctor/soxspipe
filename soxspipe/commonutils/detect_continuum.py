@@ -841,7 +841,7 @@ class detect_continuum(_base_detect):
         from scipy.signal import find_peaks
 
         if not medianStddev:
-            medianStddev = 1
+            medianStddev = 2.0
 
         # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
         halfSlice = sliceLength
@@ -948,7 +948,6 @@ class detect_continuum(_base_detect):
             # CENTRE THE GAUSSIAN ON THE PEAK
             g_init = models.Gaussian1D(
                 amplitude=slice[peaks[0]], mean=peaks[0], stddev=medianStddev)
-            # self.log.print(f"g_init: {g_init}")
             fit_g = fitting.LevMarLSQFitter()
 
             # NOW FIT
