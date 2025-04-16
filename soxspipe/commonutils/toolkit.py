@@ -419,6 +419,11 @@ def unpack_order_table(
     import pandas as pd
     import numpy as np
     import math
+
+    # PIXEL DELTA NEEDS TO BE ODD .. ELSE MASKING ON BINNED DATA GETS MESSED UP
+    if pixelDelta % 2 == 0:
+        pixelDelta += 1  # Return the nearest odd number above if it's even
+
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
     home = expanduser("~")
@@ -451,8 +456,12 @@ def unpack_order_table(
     else:
         ratio = 1
 
-    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(
-        orderMetaTable[f"{axisB}min"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio)]
+    blower = orderMetaTable[f"{axisB}min"].values * ratio
+    bupper = orderMetaTable[f"{axisB}max"].values * ratio
+    brange = orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio
+
+    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(blower, bupper, brange)]
+
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
 
