@@ -143,6 +143,7 @@ class detect_order_edges(_base_detect):
         # SET IMAGE ORIENTATION
 
         # SET IMAGE ORIENTATION
+
         if self.detectorParams["dispersion-axis"] == "x":
             self.axisA = "x"
             self.axisB = "y"
@@ -198,8 +199,6 @@ class detect_order_edges(_base_detect):
             self.recipeSettings["max-percentage-threshold-for-edge-detection"]) / 100
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
-        print(self.pixelDelta)
-
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=self.pixelDelta)
 
