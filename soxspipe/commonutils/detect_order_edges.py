@@ -148,11 +148,13 @@ class detect_order_edges(_base_detect):
             self.axisB = "y"
             self.axisAbin = self.binx
             self.axisBbin = self.biny
+            self.pixelDelta = int(25 / self.biny)
         else:
             self.axisA = "y"
             self.axisB = "x"
             self.axisAbin = self.biny
             self.axisBbin = self.binx
+            self.pixelDelta = int(25 / self.binx)
 
         # self.lamp = get_calibration_lamp(log=log, frame=flatFrame, kw=self.kw)
 
@@ -196,9 +198,10 @@ class detect_order_edges(_base_detect):
             self.recipeSettings["max-percentage-threshold-for-edge-detection"]) / 100
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
+        print(self.pixelDelta)
 
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=25)
+            log=self.log, orderTablePath=self.orderCentreTable, binx=self.binx, biny=self.biny, pixelDelta=self.pixelDelta)
 
         # REMOVE TOP 2 ORDERS IF BLOCKING FILTER USED
         if "JH" in self.slit:
