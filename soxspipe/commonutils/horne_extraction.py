@@ -362,7 +362,7 @@ class horne_extraction(object):
         # uniqueOrders = [25]
         extractions = []
 
-        self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
+        self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n")
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
         binx = 1
@@ -384,7 +384,9 @@ class horne_extraction(object):
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
             log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap, extended=False, binx=binx, biny=biny)
 
-        zoomFactor = 35
+        self.log.print("\tBuilding wavelength, slit-position, flux, error and bad-pixel arrays\n")
+
+        zoomFactor = 11
         if self.detectorParams["dispersion-axis"] == "x":
             zoomTuple = (1, zoomFactor)
         else:
@@ -405,8 +407,7 @@ class horne_extraction(object):
 
         def initial_sigma_clipping(
                 rawFluxArray,
-                bpmArray,
-                wlArray):
+                bpmArray):
             """Run some initial sigma clipping to catch more bad pixels
             """
 
@@ -417,9 +418,11 @@ class horne_extraction(object):
 
             bpmArray[bpmArray > 0] = 1
 
-            newBpm = [sigma_clip(np.ma.array(r, mask=m), sigma_lower=2, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std").mask for r, m, w in zip(rawFluxArray, bpmArray, wlArray)]
+            rawFluxMasked = np.ma.array(rawFluxArray, mask=bpmArray)
+            rawFluxMasked = sigma_clip(rawFluxMasked, sigma_lower=2, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std", axis=1)
+            newBpm = rawFluxMasked.mask
 
-            return np.array(newBpm)
+            return newBpm
 
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
@@ -437,7 +440,8 @@ class horne_extraction(object):
 
                 if self.detectorParams["dispersion-axis"] == "x":
                     orderTable["wavelength"] = list(rebin(wlZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
-                    orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
+                    rawFluxRebinned = rebin(rawFluxZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1])
+                    orderTable["sliceRawFlux"] = list(rawFluxRebinned)
                     orderTable["slit"] = list(rebin(slitZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
                     if self.skyModelFrame:
                         orderTable["sliceSky"] = list(rebin(skyZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
@@ -445,21 +449,25 @@ class horne_extraction(object):
                         orderTable["sliceSky"] = list([0] * len(self.axisBcoords))
                     orderTable["sliceError"] = list(rebin(errorZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
 
-                    newBpm = initial_sigma_clipping(rawFluxZoom[self.axisBcoords, self.axisAcoords], bpmZoom[self.axisBcoords, self.axisAcoords], wlZoom[self.axisBcoords, self.axisAcoords])
+                    bpmRebinned = rebin(bpmZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1])
+                    newBpm = initial_sigma_clipping(rawFluxRebinned, bpmRebinned)
 
-                    orderTable["bpMask"] = list(rebin(newBpm, zoomTuple[0], zoomTuple[1]))
+                    orderTable["bpMask"] = list(newBpm)
 
                 else:
                     orderTable["wavelength"] = list(rebin(wlZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
-                    orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
+                    rawFluxRebinned = rebin(rawFluxZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0])
+                    orderTable["sliceRawFlux"] = list(rawFluxRebinned)
                     orderTable["slit"] = list(rebin(slitZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
                     if self.skyModelFrame:
                         orderTable["sliceSky"] = list(rebin(skyZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
                     else:
                         orderTable["sliceSky"] = list([0] * len(self.axisAcoords))
                     orderTable["sliceError"] = list(rebin(errorZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
-                    newBpm = initial_sigma_clipping(rawFluxZoom[self.axisAcoords, self.axisBcoords], bpmZoom[self.axisAcoords, self.axisBcoords], wlZoom[self.axisAcoords, self.axisBcoords])
-                    orderTable["bpMask"] = list(rebin(newBpm, zoomTuple[1], zoomTuple[0]))
+                    bpmRebinned = rebin(bpmZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0])
+
+                    newBpm = initial_sigma_clipping(rawFluxRebinned, bpmRebinned)
+                    orderTable["bpMask"] = list(newBpm)
 
                 orderSlices.append(orderTable)
                 wlMinMax.append((wlmin, wlmax))
@@ -832,7 +840,6 @@ class horne_extraction(object):
         # plt.show()
         plt.savefig(filePath, dpi='figure', bbox_inches='tight')
         plt.close()
-        # plt.show()
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
