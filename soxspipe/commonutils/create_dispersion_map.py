@@ -226,7 +226,7 @@ class create_dispersion_map(object):
                 # DETECT THE LINES ON THE PINHOLE FRAME AND
                 # ADD OBSERVED LINES TO DATAFRAME
                 iteration = 0
-                self.log.print(f"\n# FINDING PINHOLE ARC-LINES ON IMAGE")
+                self.log.print(f"\n# FINDING PINHOLE ARC-LINES ON IMAGE\n")
                 iraf = False
                 tmpDF = orderPixelTable.copy()
                 while iteration < 3:
@@ -249,7 +249,7 @@ class create_dispersion_map(object):
 
                     # print(self.windowHalf, sigmaLimit)
 
-                    orderPixelTable = orderPixelTable.apply(self.detect_pinhole_arc_line, axis=1, iraf=iraf, sigmaLimit=sigmaLimit, iteration=iteration)
+                    orderPixelTable = self.detect_pinhole_arc_lines(orderPixelTable=orderPixelTable, iraf=iraf, sigmaLimit=sigmaLimit, iteration=iteration)
 
                     iteration += 1
 
@@ -770,9 +770,9 @@ class create_dispersion_map(object):
         self.log.debug('completed the ``get_predicted_line_list`` method')
         return orderPixelTable
 
-    def detect_pinhole_arc_line(
+    def detect_pinhole_arc_lines(
             self,
-            predictedLine,
+            orderPixelTable,
             iraf=True,
             sigmaLimit=3,
             iteration=False):
@@ -780,7 +780,7 @@ class create_dispersion_map(object):
 
         **Key Arguments:**
 
-        - ``predictedLine`` -- single predicted line coordinates from predicted line-list
+        - ``orderPixelTable`` -- the inital line list
         - ``iraf`` -- use IRAF star finder to generate a FWHM
         - ``sigmaLimit`` -- the lower sigma limit for arc line to be considered detected
         - ``iteration`` -- which detect and shift iteration are we on?
@@ -789,7 +789,7 @@ class create_dispersion_map(object):
 
         - ``predictedLine`` -- the line with the observed pixel coordinates appended (if detected, otherwise nan)
         """
-        self.log.debug('starting the ``detect_pinhole_arc_line`` method')
+        self.log.debug('starting the ``detect_pinhole_arc_lines`` method')
 
         import numpy as np
         from photutils import DAOStarFinder, IRAFStarFinder
@@ -805,119 +805,66 @@ class create_dispersion_map(object):
 
         pinholeFrame = self.pinholeFrameMasked
         windowHalf = self.windowHalf
-        if 'detector_x_shifted' in predictedLine:
-            x = predictedLine['detector_x_shifted']
-            y = predictedLine['detector_y_shifted']
-        else:
-            x = predictedLine['detector_x']
-            y = predictedLine['detector_y']
 
-        order = predictedLine['order']
-        wl = predictedLine['wavelength']
+        if 'detector_x_shifted' in orderPixelTable.columns:
+            xArray = orderPixelTable['detector_x_shifted']
+            yArray = orderPixelTable['detector_y_shifted']
+        else:
+            xArray = orderPixelTable['detector_x']
+            yArray = orderPixelTable['detector_y']
+
+        orderArray = orderPixelTable['order']
+        wlArray = orderPixelTable['wavelength']
 
         # CLIP A STAMP FROM IMAGE AROUNDS PREDICTED POSITION
-        xlow = round(np.max([x - windowHalf, 0]))
-        xup = round(np.min([x + windowHalf, pinholeFrame.shape[1]]))
-        ylow = round(np.max([y - windowHalf, 0]))
-        yup = round(np.min([y + windowHalf, pinholeFrame.shape[0]]))
-        stamp = pinholeFrame[ylow:yup, xlow:xup]
+        xlows = xArray - windowHalf
+        xlows[xlows < 0] = 0
+        xlows = np.round(xlows).astype(int)
 
-        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
-        stamp = np.ma.array(stamp.data, mask=stamp.mask)
-        # USE DAOStarFinder TO FIND LINES WITH 2D GAUSSIAN FITTING
-        mean, median, std = sigma_clipped_stats(stamp, sigma=3.0, stdfunc="mad_std", cenfunc="median")
+        xups = xArray + windowHalf
+        xups[xups > pinholeFrame.shape[1]] = pinholeFrame.shape[1]
+        xups = np.round(xups).astype(int)
 
-        try:
-            # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
-            daofind = DAOStarFinder(
-                fwhm=2.0, threshold=sigmaLimit * std, roundlo=-2.0, roundhi=2.0, sharplo=-0.5, sharphi=2.0, exclude_border=False)
-            # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE .. EXCEPT FOR LOW SIGNAL IMAGES
-            # sources = daofind(stamp.data, mask=stamp.mask)
-            sources = daofind(stamp.data - median, mask=stamp.mask)
-        except Exception as e:
-            sources = None
+        ylows = yArray - windowHalf
+        ylows[ylows < 0] = 0
+        ylows = np.round(ylows).astype(int)
 
-        old_resid = windowHalf * 4
-        selectedSource = None
-        observed_x = np.nan
-        observed_y = np.nan
-        fwhm = np.nan
+        yups = yArray + windowHalf
+        yups[yups > pinholeFrame.shape[0]] = pinholeFrame.shape[0]
+        yups = np.round(yups).astype(int)
 
-        if sources:
-            # FIND SOURCE CLOSEST TO CENTRE
-            if len(sources) > 1:
-                for source in sources:
-                    tmp_x = source['xcentroid']
-                    tmp_y = source['ycentroid']
-                    new_resid = ((windowHalf - tmp_x)**2 +
-                                 (windowHalf - tmp_y)**2)**0.5
-                    if new_resid < old_resid:
-                        observed_x = tmp_x + xlow
-                        observed_y = tmp_y + ylow
-                        stamp_x = tmp_x
-                        stamp_y = tmp_y
-                        old_resid = new_resid
-                        selectedSource = source
-                        detectionSigma = source['peak'] / std
+        stamps = []
+        stamps[:] = [(pinholeFrame[ylow:yup, xlow:xup], xlow, xup, ylow, yup) for xlow, xup, ylow, yup in zip(xlows, xups, ylows, yups)]
 
-            else:
-                observed_x = sources[0]['xcentroid'] + xlow
-                observed_y = sources[0]['ycentroid'] + ylow
-                stamp_x = sources[0]['xcentroid']
-                stamp_y = sources[0]['ycentroid']
-                selectedSource = sources[0]
-                detectionSigma = sources[0]['peak'] / std
+        predictedLines = {
+            "sharpness": [],
+            "roundness1": [],
+            "roundness2": [],
+            "npix": [],
+            "sky": [],
+            "peak": [],
+            "flux": [],
+            "observed_x": [],
+            "observed_y": [],
+        }
 
-            if iraf:
-                try:
-                    # Rerun detection with IRAFStarFinder
-                    iraf_find = IRAFStarFinder(
-                        fwhm=3., threshold=1 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=True, xycoords=[(stamp_x, stamp_y)])
-                    iraf_sources = iraf_find(stamp)
-                    fwhm = iraf_sources['fwhm'][0]
-                except Exception as e:
-                    fwhm = np.nan
-                    # print(np.shape(stamp))
-                    # print(stamp_x,stamp_y)
-                    # print(e)
-                    pass
-
-            if False and iteration == 2:
-                import random
-                ran = random.randint(1, 3)
-                # if int(wl) == 7125:
-                # if True or order == 2.:
-                if True:
-                    print(x, y)
-                    # if ran == 1:
-                    import matplotlib.pyplot as plt
-                    plt.clf()
-                    plt.imshow(stamp)
-                    # plt.show()
-                    plt.scatter(0, 0, marker='x', s=30)
-                    plt.scatter(observed_x - xlow, observed_y -
-                                ylow, s=30)
-                    plt.text(windowHalf - 2, windowHalf - 2, f"{observed_x-xlow:0.2f},{observed_y -ylow:0.2f}", fontsize=16, c="black", verticalalignment='bottom')
-                    plt.text(2, 2, f"{sigmaLimit}$\\sigma$, order {order}{iterationText}\n{wl:0.1f},{detectionSigma:0.1f}", fontsize=16, c="white", verticalalignment='bottom')
-                    plt.show()
-
-        # plt.show()
-
-        keepValues = ["sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux"]
-        if not selectedSource:
-            for k in keepValues:
-                predictedLine[k] = np.nan
-        else:
-            for k in keepValues:
-                predictedLine[k] = selectedSource[k]
-
-        predictedLine['observed_x'] = observed_x
-        predictedLine['observed_y'] = observed_y
         if iraf:
-            predictedLine['fwhm_pin_px'] = fwhm
+            predictedLines["fwhm_pin_px"] = []
 
-        self.log.debug('completed the ``detect_pinhole_arc_line`` method')
-        return predictedLine
+        from fundamentals import fmultiprocess
+        # DEFINE AN INPUT ARRAY
+        results = fmultiprocess(log=self.log, function=measure_line_position,
+                                inputArray=stamps, poolSize=False, timeout=300, mute=True, progressBar=False, windowHalf=self.windowHalf, iraf=iraf, sigmaLimit=sigmaLimit)
+
+        for r in results:
+            for k, v in predictedLines.items():
+                predictedLines[k].append(r[k])
+
+        for k, v in predictedLines.items():
+            orderPixelTable[k] = v
+
+        self.log.debug('completed the ``detect_pinhole_arc_lines`` method')
+        return orderPixelTable
 
     def write_map_to_file(
             self,
@@ -1189,8 +1136,8 @@ class create_dispersion_map(object):
         combined_res_std = np.std(orderPixelTable["residuals_xy"])
         combined_res_median = np.median(orderPixelTable["residuals_xy"])
 
-        #orderPixelTable['tilt'] = 0.0
-        #orderPixelTable['distance_to_middle'] = 0.0
+        # orderPixelTable['tilt'] = 0.0
+        # orderPixelTable['distance_to_middle'] = 0.0
 
         # COMPUTING THE TILT ON THE SLIT IMAGE
 
@@ -1351,7 +1298,7 @@ class create_dispersion_map(object):
                 # 1.0 SLIT CANNOT BE LESS THAN 1.0 px
                 raise Exception
 
-            #stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
+            # stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
             stddev_corrected = float(g.stddev.value)
             fwhm = stddev_corrected * stdToFwhm
 
@@ -1368,7 +1315,7 @@ class create_dispersion_map(object):
         except Exception as e:
             return pd.Series([None, None])
 
-        #stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
+        # stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
         stddev_corrected = float(g.stddev.value)
 
         # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS
@@ -2866,3 +2813,131 @@ class create_dispersion_map(object):
 
     # use the tab-trigger below for new method
     # xt-class-method
+
+
+def measure_line_position(
+        stampInfo,
+        log,
+        windowHalf,
+        iraf,
+        sigmaLimit):
+    """*measure the line position on a given stamp*
+
+    **Key Arguments:**
+
+    - `stampInfo` -- stamp pixels, xlow, xup, ylow, yup
+    - `log` -- logger
+    - `windowHalf` -- half of the stamp side
+    - `iraf` -- run IRAF source detection to get FWHM?
+    - `sigmaLimit` -- stamp source detection minimum sigma   
+    """
+    log.debug('starting the ``measure_line_position`` function')
+
+    import numpy as np
+    from photutils import DAOStarFinder, IRAFStarFinder
+    from astropy.stats import sigma_clipped_stats
+    # ASTROPY HAS RESET LOGGING LEVEL -- FIX
+    import logging
+    logging.getLogger().setLevel(logging.INFO + 5)
+
+    stamp, xlow, xup, ylow, yup = stampInfo[0], stampInfo[1], stampInfo[2], stampInfo[3], stampInfo[4]
+
+    # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+    stamp = np.ma.array(stamp.data, mask=stamp.mask)
+    # USE DAOStarFinder TO FIND LINES WITH 2D GAUSSIAN FITTING
+    mean, median, std = sigma_clipped_stats(stamp, sigma=3.0, stdfunc="mad_std", cenfunc="median")
+
+    try:
+        # LET AS MANY LINES BE DETECTED AS POSSIBLE ... WE WILL CLEAN UP LATER
+        daofind = DAOStarFinder(
+            fwhm=2.0, threshold=sigmaLimit * std, roundlo=-2.0, roundhi=2.0, sharplo=-0.5, sharphi=2.0, exclude_border=False)
+        # SUBTRACTING MEDIAN MAKES LITTLE TO NO DIFFERENCE .. EXCEPT FOR LOW SIGNAL IMAGES
+        # sources = daofind(stamp.data, mask=stamp.mask)
+        sources = daofind(stamp.data - median, mask=stamp.mask)
+    except Exception as e:
+        sources = None
+
+    old_resid = windowHalf * 4
+    selectedSource = None
+    observed_x = np.nan
+    observed_y = np.nan
+    fwhm = np.nan
+
+    if sources:
+        # FIND SOURCE CLOSEST TO CENTRE
+        if len(sources) > 1:
+            for source in sources:
+                tmp_x = source['xcentroid']
+                tmp_y = source['ycentroid']
+                new_resid = ((windowHalf - tmp_x)**2 +
+                             (windowHalf - tmp_y)**2)**0.5
+                if new_resid < old_resid:
+                    observed_x = tmp_x + xlow
+                    observed_y = tmp_y + ylow
+                    stamp_x = tmp_x
+                    stamp_y = tmp_y
+                    old_resid = new_resid
+                    selectedSource = source
+                    detectionSigma = source['peak'] / std
+
+        else:
+            observed_x = sources[0]['xcentroid'] + xlow
+            observed_y = sources[0]['ycentroid'] + ylow
+            stamp_x = sources[0]['xcentroid']
+            stamp_y = sources[0]['ycentroid']
+            selectedSource = sources[0]
+            detectionSigma = sources[0]['peak'] / std
+
+        if iraf:
+            try:
+                # Rerun detection with IRAFStarFinder
+                iraf_find = IRAFStarFinder(
+                    fwhm=3., threshold=1 * std, roundlo=-2.0, roundhi=2.0, sharplo=-1, sharphi=3.0, exclude_border=True, xycoords=[(stamp_x, stamp_y)])
+                iraf_sources = iraf_find(stamp)
+                fwhm = iraf_sources['fwhm'][0]
+            except Exception as e:
+                fwhm = np.nan
+                # print(np.shape(stamp))
+                # print(stamp_x,stamp_y)
+                # print(e)
+                pass
+
+        if False and iteration == 2:
+            import random
+            ran = random.randint(1, 3)
+            # if int(wl) == 7125:
+            # if True or order == 2.:
+            if True:
+                print(x, y)
+                # if ran == 1:
+                import matplotlib.pyplot as plt
+                plt.clf()
+                plt.imshow(stamp)
+                # plt.show()
+                plt.scatter(0, 0, marker='x', s=30)
+                plt.scatter(observed_x - xlow, observed_y -
+                            ylow, s=30)
+                plt.text(windowHalf - 2, windowHalf - 2, f"{observed_x-xlow:0.2f},{observed_y -ylow:0.2f}", fontsize=16, c="black", verticalalignment='bottom')
+                plt.text(2, 2, f"{sigmaLimit}$\\sigma$, order {order}{iterationText}\n{wl:0.1f},{detectionSigma:0.1f}", fontsize=16, c="white", verticalalignment='bottom')
+                plt.show()
+
+    # plt.show()
+    predictedLine = {}
+    keepValues = ["sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux"]
+    if not selectedSource:
+        for k in keepValues:
+            predictedLine[k] = np.nan
+    else:
+        for k in keepValues:
+            predictedLine[k] = selectedSource[k]
+
+    predictedLine['observed_x'] = observed_x
+    predictedLine['observed_y'] = observed_y
+    if iraf:
+        predictedLine['fwhm_pin_px'] = fwhm
+
+    log.debug('completed the ``measure_line_position`` function')
+    return predictedLine
+
+# use the tab-trigger below for new function
+# xt-def-function
