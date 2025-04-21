@@ -1,5 +1,6 @@
 # Release Notes
 
+- optimisation of spatial solution recipe
 - improved XSH UVB mflat when binning is used
 - optimisation of master flat code
 - optimisation of background light fitting code
