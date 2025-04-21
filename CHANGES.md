@@ -1,9 +1,11 @@
 # Release Notes
 
+- improved XSH UVB mflat when binning is used
 - optimisation of master flat code
 - optimisation of background light fitting code
 - some optimisations of continuum detection code
 - some optimisations of the horne extraction
+- optimisation of stare mode (>2 times faster)
 - if the object trace produces residuals with a mean > 10 pixels, then a fitting fail is forced.
   Created a `utility_setup` tool to create the QC and product directories needed for recipes and utils (to stop duplicating code)
 
