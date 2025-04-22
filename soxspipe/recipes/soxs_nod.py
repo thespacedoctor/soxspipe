@@ -505,6 +505,9 @@ class soxs_nod(base_recipe):
         from astropy.io import fits
         from astropy.table import Table
 
+        if postfix and postfix[0] != "_":
+            postfix = "_" + postfix
+
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND mergedSpectrumDF_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
 
         merged_dataframe = pd.concat(dataFrameList)
@@ -535,12 +538,12 @@ class soxs_nod(base_recipe):
 
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
-        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED_" + postfix + ".fits")
+        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
-        asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED_" + postfix + ".txt")
+        asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")
         asciiFilePath = f"{self.productDir}/{asciiFilename}"
         stackedSpectrum.write(asciiFilePath, format='ascii', overwrite=True)
 
