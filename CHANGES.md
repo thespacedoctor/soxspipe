@@ -1,5 +1,7 @@
 # Release Notes
 
+## v0.13.2 - April 24, 2025
+
 * **FEATURE:** response curves and efficiency plots generated for flux standards in nodding mode
 * **REFACTOR:** optimisation of spatial solution recipe
 * **REFACTOR:** improved XSH UVB mflat when binning is used
