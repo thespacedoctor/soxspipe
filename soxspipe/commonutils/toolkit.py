@@ -690,6 +690,9 @@ def spectroscopic_image_quality_checks(
     utcnow = datetime.utcnow()
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
+    mean = "%0.*f" % (2, mean)
+    flux = "%0.*f" % (2, flux)
+
     qcTable = pd.concat([qcTable, pd.Series({
         "soxspipe_recipe": recipeName,
         "qc_name": "INNER ORDER PIX MEAN",
