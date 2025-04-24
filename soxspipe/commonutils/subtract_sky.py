@@ -147,12 +147,8 @@ class subtract_sky(object):
                 settings=self.settings
             )
 
-        home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-        self.qcDir = self.qcDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(self.qcDir):
-            os.makedirs(self.qcDir)
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
 
         if self.arm != "NIR" and kw('WIN_BINX') in self.objectFrame.header:
             self.binx = int(self.objectFrame.header[kw('WIN_BINX')])
@@ -269,20 +265,21 @@ class subtract_sky(object):
         skySubtractedCCDData.data[np.isnan(skySubtractedCCDData.data)] = 0
         skySubtractedCCDData.uncertainty.array[np.isnan(skySubtractedCCDData.uncertainty.array)] = 0
 
-        comparisonPdf = self.plot_image_comparison(self.objectFrame, skymodelCCDData, skySubtractedCCDData)
+        if self.recipeSettings["sky-subtraction"]["sky_model_qc_plot"]:
+            comparisonPdf = self.plot_image_comparison(self.objectFrame, skymodelCCDData, skySubtractedCCDData)
 
-        filename = os.path.basename(comparisonPdf)
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": "SKY SUBTRACTION QUICKLOOK",
-            "file_name": filename,
-            "file_type": "PDF",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"Sky-subtraction quicklook",
-            "file_path": comparisonPdf,
-            "label": "QC"
-        }).to_frame().T], ignore_index=True)
+            filename = os.path.basename(comparisonPdf)
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": "soxs-stare",
+                "product_label": "SKY SUBTRACTION QUICKLOOK",
+                "file_name": filename,
+                "file_type": "PDF",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"Sky-subtraction quicklook",
+                "file_path": comparisonPdf,
+                "label": "QC"
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``get`` method')
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, self.qc, self.products

@@ -37,6 +37,8 @@ UVB:
   dispersion-axis: x
   rotate-qc-plot: 90
   flip-qc-plot: 1
+  extinction: extinction_lasilla.fits
+  flux-standards: flux_standards.fits
             
 VIS:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -77,6 +79,8 @@ VIS:
   dispersion-axis: x
   rotate-qc-plot: 90
   flip-qc-plot: 1
+  extinction: extinction_lasilla.fits
+  flux-standards: flux_standards.fits
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -111,4 +115,6 @@ NIR:
   dispersion-axis: x
   rotate-qc-plot: 90
   flip-qc-plot: 1
+  extinction: extinction_lasilla.fits
+  flux-standards: flux_standards.fits
 

@@ -419,6 +419,11 @@ def unpack_order_table(
     import pandas as pd
     import numpy as np
     import math
+
+    # PIXEL DELTA NEEDS TO BE ODD .. ELSE MASKING ON BINNED DATA GETS MESSED UP
+    if pixelDelta % 2 == 0:
+        pixelDelta += 1  # Return the nearest odd number above if it's even
+
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
     home = expanduser("~")
@@ -451,8 +456,12 @@ def unpack_order_table(
     else:
         ratio = 1
 
-    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(
-        orderMetaTable[f"{axisB}min"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio, orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio)]
+    blower = orderMetaTable[f"{axisB}min"].values * ratio
+    bupper = orderMetaTable[f"{axisB}max"].values * ratio
+    brange = orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio
+
+    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(blower, bupper, brange)]
+
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
 
@@ -680,6 +689,9 @@ def spectroscopic_image_quality_checks(
 
     utcnow = datetime.utcnow()
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+    mean = "%0.*f" % (2, mean)
+    flux = "%0.*f" % (2, flux)
 
     qcTable = pd.concat([qcTable, pd.Series({
         "soxspipe_recipe": recipeName,
@@ -1404,3 +1416,51 @@ def qc_settings_plot_tables(
 
     log.debug('completed the ``qc_settings_plot_tables`` function')
     return None
+
+
+def utility_setup(
+        log,
+        settings,
+        recipeName,
+        startNightDate):
+    """*setup some tools needed by most soxspipe utils*
+
+    **Key Arguments:**
+
+    - `log` -- logger
+    - `settings` -- the settings dictionary
+    - `recipeName` -- name of the recipe as it appears in the settings dictionary
+    - `startNightDate` -- YYYY-MM-DD date of the observation night. Default ""
+
+    **Return:**
+
+    - `qcDir` -- the QC directory (created if missing)
+    - `productDir` -- the product directory (created if missing)
+
+    **Usage:**
+
+    ```python
+    usage code 
+    ```           
+    """
+    log.debug('starting the ``utility_setup`` function')
+
+    from os.path import expanduser
+    home = expanduser("~")
+
+    # QC DIR
+    qcDir = settings["workspace-root-dir"].replace("~", home) + f"/qc/{startNightDate}/{recipeName}/"
+    qcDir = qcDir.replace("//", "/")
+    # RECURSIVELY CREATE MISSING DIRECTORIES
+    if not os.path.exists(qcDir):
+        os.makedirs(qcDir)
+
+    # PRODUCT DIR
+    productDir = settings["workspace-root-dir"].replace("~", home) + f"/reduced/{startNightDate}/{recipeName}/"
+    productDir = productDir.replace("//", "/")
+    # RECURSIVELY CREATE MISSING DIRECTORIES
+    if not os.path.exists(productDir):
+        os.makedirs(productDir)
+
+    log.debug('completed the ``utility_setup`` function')
+    return qcDir, productDir

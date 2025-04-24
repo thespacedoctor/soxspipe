@@ -109,6 +109,9 @@ class subtract_background(object):
             self.axisA = "y"
             self.axisB = "x"
 
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
+
         quicklook_image(
             log=self.log, CCDObject=self.frame, show=False, ext='data', stdWindow=3, surfacePlot=True, title="Initial input frame needing scattered light subtraction")
 
@@ -170,12 +173,6 @@ class subtract_background(object):
         saveToPath = False
         if self.sofName:
             backgroundQCImage = self.sofName + f"_BKGROUND{self.lamp}.pdf"
-            home = expanduser("~")
-            self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-            self.qcDir = self.qcDir.replace("//", "/")
-            # RECURSIVELY CREATE MISSING DIRECTORIES
-            if not os.path.exists(self.qcDir):
-                os.makedirs(self.qcDir)
             saveToPath = self.qcDir + "/" + backgroundQCImage
 
         quicklook_image(
@@ -334,7 +331,7 @@ class subtract_background(object):
 
         import skimage
         from skimage.morphology import disk
-        maskedAsNanImage = skimage.filters.median(maskedAsNanImage, footprint=disk(4))
+        maskedAsNanImage = skimage.filters.median(maskedAsNanImage, footprint=disk(3))
 
         # REMOVE -VE VALUES
         maskedAsNanImage = np.where(maskedAsNanImage < 0, 0, maskedAsNanImage)
@@ -406,7 +403,7 @@ class subtract_background(object):
         quicklook_image(
             log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image")
 
-        backgroundMap = scipy.ndimage.filters.gaussian_filter(backgroundMap, gaussianSigma)
+        backgroundMap = scipy.ndimage.filters.gaussian_filter(backgroundMap, gaussianSigma, truncate=2, axes=0)
 
         # SET -VE T0 ZERO
         backgroundMap = np.where(backgroundMap < 0, 0, backgroundMap)

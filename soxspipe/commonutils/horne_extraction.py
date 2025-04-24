@@ -121,9 +121,6 @@ class horne_extraction(object):
         except:
             self.noddingSequence = ""
 
-        home = expanduser("~")
-        self.outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-
         # COLLECT SETTINGS FROM SETTINGS FILE
         self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
         self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
@@ -198,18 +195,18 @@ class horne_extraction(object):
                 settings=self.settings
             )
 
-        home = expanduser("~")
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-        self.qcDir = self.qcDir.replace("//", "/")
-        # RECURSIVELY CREATE MISSING DIRECTORIES
-        if not os.path.exists(self.qcDir):
-            os.makedirs(self.qcDir)
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
 
         # OPEN AND UNPACK THE 2D IMAGE MAP
         self.twoDMap = fits.open(twoDMapPath)
 
-        dpBinx = self.twoDMap[0].header[kw('WIN_BINX')]
-        dpBiny = self.twoDMap[0].header[kw('WIN_BINY')]
+        try:
+            dpBinx = self.twoDMap[0].header[kw('WIN_BINX')]
+            dpBiny = self.twoDMap[0].header[kw('WIN_BINY')]
+        except:
+            dpBinx = 1
+            dpBiny = 1
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
         binx = 1
@@ -365,7 +362,7 @@ class horne_extraction(object):
         # uniqueOrders = [25]
         extractions = []
 
-        self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n\n")
+        self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n")
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
         binx = 1
@@ -387,7 +384,9 @@ class horne_extraction(object):
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
             log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap, extended=False, binx=binx, biny=biny)
 
-        zoomFactor = 35
+        self.log.print("\tBuilding wavelength, slit-position, flux, error and bad-pixel arrays\n")
+
+        zoomFactor = 11
         if self.detectorParams["dispersion-axis"] == "x":
             zoomTuple = (1, zoomFactor)
         else:
@@ -408,8 +407,7 @@ class horne_extraction(object):
 
         def initial_sigma_clipping(
                 rawFluxArray,
-                bpmArray,
-                wlArray):
+                bpmArray):
             """Run some initial sigma clipping to catch more bad pixels
             """
 
@@ -417,15 +415,14 @@ class horne_extraction(object):
             from astropy.stats import sigma_clip
 
             newBpm = []
-            for r, m, w in zip(rawFluxArray, bpmArray, wlArray):
-                m[m > 0] = 1
-                maskedArray = np.ma.array(r, mask=m)
-                # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
-                newMask = sigma_clip(
-                    maskedArray, sigma_lower=2, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std")
-                newBpm.append(newMask.mask)
 
-            return np.array(newBpm)
+            bpmArray[bpmArray > 0] = 1
+
+            rawFluxMasked = np.ma.array(rawFluxArray, mask=bpmArray)
+            rawFluxMasked = sigma_clip(rawFluxMasked, sigma_lower=2, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std", axis=1)
+            newBpm = rawFluxMasked.mask
+
+            return newBpm
 
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
@@ -443,7 +440,8 @@ class horne_extraction(object):
 
                 if self.detectorParams["dispersion-axis"] == "x":
                     orderTable["wavelength"] = list(rebin(wlZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
-                    orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
+                    rawFluxRebinned = rebin(rawFluxZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1])
+                    orderTable["sliceRawFlux"] = list(rawFluxRebinned)
                     orderTable["slit"] = list(rebin(slitZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
                     if self.skyModelFrame:
                         orderTable["sliceSky"] = list(rebin(skyZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
@@ -451,20 +449,25 @@ class horne_extraction(object):
                         orderTable["sliceSky"] = list([0] * len(self.axisBcoords))
                     orderTable["sliceError"] = list(rebin(errorZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1]))
 
-                    newBpm = initial_sigma_clipping(rawFluxZoom[self.axisBcoords, self.axisAcoords], bpmZoom[self.axisBcoords, self.axisAcoords], wlZoom[self.axisBcoords, self.axisAcoords])
-                    orderTable["bpMask"] = list(rebin(newBpm, zoomTuple[0], zoomTuple[1]))
+                    bpmRebinned = rebin(bpmZoom[self.axisBcoords, self.axisAcoords], zoomTuple[0], zoomTuple[1])
+                    newBpm = initial_sigma_clipping(rawFluxRebinned, bpmRebinned)
+
+                    orderTable["bpMask"] = list(newBpm)
 
                 else:
                     orderTable["wavelength"] = list(rebin(wlZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
-                    orderTable["sliceRawFlux"] = list(rebin(rawFluxZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
+                    rawFluxRebinned = rebin(rawFluxZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0])
+                    orderTable["sliceRawFlux"] = list(rawFluxRebinned)
                     orderTable["slit"] = list(rebin(slitZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
                     if self.skyModelFrame:
                         orderTable["sliceSky"] = list(rebin(skyZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
                     else:
                         orderTable["sliceSky"] = list([0] * len(self.axisAcoords))
                     orderTable["sliceError"] = list(rebin(errorZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0]))
-                    newBpm = initial_sigma_clipping(rawFluxZoom[self.axisAcoords, self.axisBcoords], bpmZoom[self.axisAcoords, self.axisBcoords], wlZoom[self.axisAcoords, self.axisBcoords])
-                    orderTable["bpMask"] = list(rebin(newBpm, zoomTuple[1], zoomTuple[0]))
+                    bpmRebinned = rebin(bpmZoom[self.axisAcoords, self.axisBcoords], zoomTuple[1], zoomTuple[0])
+
+                    newBpm = initial_sigma_clipping(rawFluxRebinned, bpmRebinned)
+                    orderTable["bpMask"] = list(newBpm)
 
                 orderSlices.append(orderTable)
                 wlMinMax.append((wlmin, wlmax))
@@ -519,7 +522,7 @@ class horne_extraction(object):
 
             # DISCRETE ORDERS
             filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_ORDERS{self.noddingSequence}.fits")
-            filePath = f"{self.outDir}/{filename}"
+            filePath = f"{self.productDir}/{filename}"
             hduList.writeto(filePath, checksum=True, overwrite=True)
 
             utcnow = datetime.utcnow()
@@ -539,7 +542,7 @@ class horne_extraction(object):
 
             # NOW MERGED SPECTRUM
             filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED{self.noddingSequence}.fits")
-            filePath = f"{self.outDir}/{filename}"
+            filePath = f"{self.productDir}/{filename}"
             mergedTable = Table.from_pandas(mergedSpectumDF)
             BinTableHDU = fits.table_to_hdu(mergedTable)
             hduList = fits.HDUList([priHDU, BinTableHDU])
@@ -837,7 +840,6 @@ class horne_extraction(object):
         # plt.show()
         plt.savefig(filePath, dpi='figure', bbox_inches='tight')
         plt.close()
-        # plt.show()
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -971,18 +973,10 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     crossDispersionSlices.dropna(axis='index', how='any', subset=["sliceRawFlux"], inplace=True)
 
     # MASK THE MOST DEVIANT PIXELS IN EACH SLICE
-    crossDispersionSlices = crossDispersionSlices.apply(lambda x: create_cross_dispersion_slice(x), axis=1)
-    crossDispersionSlices["sliceMask"] = [x.mask for x in crossDispersionSlices["sliceRawFluxMasked"]]
-
-    crossDispersionSlices["sliceRawFluxMaskedSum"] = [x.sum() for x in crossDispersionSlices["sliceRawFluxMasked"]]
+    crossDispersionSlices = create_cross_dispersion_slices(crossDispersionSlices=crossDispersionSlices)
 
     # WEIGHTS ARE NOT YET USED
     crossDispersionSlices["sliceWeights"] = ron + np.abs(crossDispersionSlices["sliceRawFlux"]) / (crossDispersionSlices["sliceRawFluxMaskedSum"].pow(2))
-
-    # NORMALISE THE FLUX
-    crossDispersionSlices["sliceFluxNormalised"] = crossDispersionSlices["sliceRawFluxMasked"] / crossDispersionSlices["sliceRawFluxMaskedSum"]
-
-    crossDispersionSlices["sliceFluxNormalisedSum"] = [x.sum() for x in crossDispersionSlices["sliceFluxNormalised"]]
 
     # REMOVE SLICES WITH FULLY MASKED WAVELENGTH
     crossDispersionSlices["wavelength"] = [np.nan if x.mask.sum() > x.mask.shape[0] / 1.1 else x for x in crossDispersionSlices["wavelengthMask"]]
@@ -1225,36 +1219,67 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     return crossDispersionSlices[['order', f'{axisA}coord_centre', f'{axisB}coord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
 
-def create_cross_dispersion_slice(
-        series):
-    """This function is used to create a single, 1-pixel wide cross-dispersion slice of object data. When applied to the dataframe, a single slice is created for each discrete pixel position in the dispersion direction
+def create_cross_dispersion_slices(
+        crossDispersionSlices):
+    """This function is used to create a single, 1-pixel wide cross-dispersion slices of object data. When applied to the dataframe, a single slice is created for each discrete pixel position in the dispersion direction
+
+    **Key Arguments:**
+
+    - ``crossDispersionSlices`` -- the seed dataframe
+
+    **Return:**
+
+    - ``crossDispersionSlices`` -- dataframe containing metadata for each cross-dispersion slice (single data-points in extracted spectrum)
     """
 
     import numpy as np
     from astropy.stats import sigma_clip
 
-    series['bpMask'][series['bpMask'] > 0] = 1
-    maskedArray = np.ma.array(series["sliceRawFlux"], mask=series['bpMask'])
+    # VERTICALLY STACK THE SLICES INTO PSEDUO-RECTIFIED IMAGE
+    bpMask = np.vstack(crossDispersionSlices["bpMask"])
+    sliceRawFlux = np.vstack(crossDispersionSlices["sliceRawFlux"])
+    bpMask[bpMask > 1] = 1
 
-    # SIGMA-CLIP THE DATA TO REMOVE COSMIC/BAD-PIXELS
-    series["sliceRawFluxMasked"] = sigma_clip(
-        maskedArray, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std")
+    sliceRawFluxMasked = np.ma.array(sliceRawFlux, mask=bpMask)
+    sliceRawFluxMasked = sigma_clip(
+        sliceRawFluxMasked, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std", axis=1)
+    sliceRawFluxMasked.data[sliceRawFluxMasked.mask] = 0
 
-    # series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask]=series["sliceRawFluxMasked"].data[~series["sliceRawFluxMasked"].mask].median()
-    series["sliceRawFluxMasked"].data[series["sliceRawFluxMasked"].mask] = 0
+    maskedArrays = [np.ma.masked_array(row) for row in sliceRawFluxMasked]
 
-    series["fullColumnMask"] = False
-    if np.ma.count_masked(series["sliceRawFluxMasked"]) > 1:
-        series["sliceRawFluxMasked"].mask = True
-        series["fullColumnMask"] = True
+    # FULL SLICE MASK IF MORE THAN 1(?) PIXEL CLIPPED
+    fullColumnMask = []
+    for ma in maskedArrays:
+        if np.ma.count_masked(ma) > 1:
+            ma.mask = True
+            fullColumnMask.append(True)
+        else:
+            fullColumnMask.append(False)
+
+    crossDispersionSlices["sliceMask"] = [x.mask for x in maskedArrays]
+    crossDispersionSlices["sliceRawFluxMasked"] = maskedArrays
+    crossDispersionSlices["fullColumnMask"] = fullColumnMask
+    sliceRawFluxMaskedSum = sliceRawFluxMasked.sum(axis=1)
+    crossDispersionSlices["sliceRawFluxMaskedSum"] = [row for row in sliceRawFluxMaskedSum]
+
+    sliceFluxNormalised = sliceRawFluxMasked / sliceRawFluxMaskedSum[:, np.newaxis]
+    crossDispersionSlices["sliceFluxNormalised"] = [row for row in sliceFluxNormalised]
+    sliceFluxNormalisedSum = sliceFluxNormalised.sum(axis=1)
+    crossDispersionSlices["sliceFluxNormalisedSum"] = [row for row in sliceFluxNormalisedSum]
 
     # SIGMA-CLIP WAVELENGTH
-    series['wavelengthMask'] = series['wavelength'].copy()
-    series['wavelengthMask'][series['wavelengthMask'] > 0] = 3
-    series['wavelengthMask'][series['wavelengthMask'] < 0.1] = 1
-    series['wavelengthMask'][series['wavelengthMask'] > 2] = 0
-    maskedArray = np.ma.array(series["wavelength"], mask=series['wavelengthMask'])
-    series["wavelengthMask"] = sigma_clip(
-        maskedArray, sigma_lower=1, sigma_upper=1, maxiters=3, cenfunc='mean', stdfunc="std")
+    wlMask = np.vstack(crossDispersionSlices["wavelength"])
+    sliceRawFlux = np.vstack(crossDispersionSlices["sliceRawFlux"])
 
-    return series
+    # wlMask = np.array(crossDispersionSlices["wavelength"].tolist())
+    wlMask[wlMask > 0] = 3
+    wlMask[wlMask < 0.1] = 1
+    wlMask[wlMask > 2] = 0
+    wlArray = np.vstack(crossDispersionSlices["wavelength"])
+    maskedImage = np.ma.array(wlArray, mask=wlMask)
+    maskedImage = sigma_clip(
+        maskedImage, sigma_lower=1, sigma_upper=1, maxiters=3, cenfunc='mean', stdfunc="std", axis=1)
+    maskedArrays = [np.ma.masked_array(row) for row in maskedImage]
+    crossDispersionSlices["wavelengthMask"] = maskedArrays
+
+    return crossDispersionSlices

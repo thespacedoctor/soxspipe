@@ -70,7 +70,6 @@ def main(arguments=None):
     """
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
     """
-
     # DETERMINE CURRENT DATA-REDUCTION SESSION
     from fundamentals.logs import emptyLogger
     from soxspipe.commonutils import data_organiser

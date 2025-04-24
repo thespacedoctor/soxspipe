@@ -374,6 +374,11 @@ soxs-nod:
             poly-clipping-iteration-limit: 7
 
 
+soxs-response:
+    max_iteration: 5
+    poly_order: 7
+
+
 # UTILS
 background-subtraction:
     bspline-deg: 2

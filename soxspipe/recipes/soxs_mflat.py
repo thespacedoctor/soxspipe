@@ -810,17 +810,14 @@ class soxs_mflat(base_recipe):
 
         else:
             self.log.print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL - SECOND PASS")
-            for frame in inputFlats:
 
-                exposureFrame = frame.divide(firstPassMasterFlat)
-                newMask = np.ma.masked_where(np.isnan(exposureFrame.data), exposureFrame.data)
-                newMask = (mask == 1) | (newMask.mask == 1)
-                maskedFrame = ma.array(exposureFrame.data, mask=newMask)
-                exposureLevel = np.ma.median(maskedFrame)
-                # print(f"THE {lamp} FLAT EXPOSURE LEVEL IS {exposureLevel}")
-                normalisedFrame = frame.divide(exposureLevel)
+            exposureFrames = [frame.divide(firstPassMasterFlat) for frame in inputFlats]
+            newMasks = [np.ma.masked_where(np.isnan(exposureFrame.data), exposureFrame.data) for exposureFrame in exposureFrames]
+            maskedFrames = [ma.array(exposureFrame.data, mask=(mask == 1) | (newMask.mask == 1)) for exposureFrame, newMask in zip(exposureFrames, newMasks)]
+            normalisedFrames = [frame.divide(np.ma.median(maskedFrame)) for maskedFrame, frame in zip(maskedFrames, inputFlats)]
+
+            for frame, normalisedFrame in zip(inputFlats, normalisedFrames):
                 normalisedFrame.header = frame.header
-                normalisedFrames.append(normalisedFrame)
 
         # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
         quicklook_image(

@@ -209,7 +209,9 @@ soxs-nod:
 soxs-straighten:
     asdasd: 1
 
-
+soxs-response:
+    max_iteration: 5
+    poly_order: 7
 
 # UTILS
 background-subtraction:

@@ -14,6 +14,7 @@ packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings_xsh.yaml"
 # settingsFile = home + \
 #     "/git_repos/_misc_/settings/soxspipe/test_settings.yaml"
+# pip install -e . (in the repo dir)
 
 su = tools(
     arguments={"settingsFile": settingsFile},
@@ -49,16 +50,162 @@ class test_response_function(unittest.TestCase):
 
     import pytest
 
-    def test_xsh_response_function_function(self):
+    def test_tmp(self):
 
-        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
+        import pandas as pd
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": [],
+            "label": []
+        })
+
+        # print(packageDirectory)
+        stdExtractionPath = "~/Desktop/xsh_nodding_5BZQ_J0256-2137_blazar/soxspipe_reduced/reduced/2022-07-25/soxs-nod/20220725T232255_NIR_NOD_120.0S_XSH_STD_FLUX_EXTRACTED_MERGED.fits"
         from soxspipe.commonutils import response_function
-        reponse = response_function(
+        response = response_function(
             log=log,
             settings=settings,
-            stdExtractionPath=stdExtractionPath
+            recipeName="soxs-nod",
+            sofName="my-sof-filename",
+            stdExtractionPath=stdExtractionPath,
+            qcTable=qc,
+            productsTable=products,
+            startNightDate="2025-10-10"
         )
-        reponse.get()
+        response.get()
+
+    def test_xsh_response_function_uvb_function(self):
+
+        import pandas as pd
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": [],
+            "label": []
+        })
+        # print(packageDirectory)
+        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/uvb/2019.08.23T23.24.12.925_UVB_1X2_SLOW_STARE_XSHOOTER_EG_274_EXTRACTED_MERGED.fits"
+        from soxspipe.commonutils import response_function
+        response = response_function(
+            log=log,
+            settings=settings,
+            recipeName="soxs-nod",
+            sofName="my-sof-filename",
+            stdExtractionPath=stdExtractionPath,
+            qcTable=qc,
+            productsTable=products,
+            startNightDate="2025-10-10"
+        )
+        response.get()
+
+    def test_xsh_response_function_vis_function(self):
+
+        import pandas as pd
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": [],
+            "label": []
+        })
+        # print(packageDirectory)
+        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/vis/2019.08.23T23.10.18.163_VIS_1X2_SLOW_STARE_XSHOOTER_EG_274_EXTRACTED_MERGED.fits"
+        from soxspipe.commonutils import response_function
+        response = response_function(
+            log=log,
+            settings=settings,
+            recipeName="soxs-nod",
+            sofName="my-sof-filename",
+            stdExtractionPath=stdExtractionPath,
+            qcTable=qc,
+            productsTable=products,
+            startNightDate="2025-10-10"
+        )
+        response.get()
+
+    def test_xsh_response_function_nir_function(self):
+
+        import pandas as pd
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        qc = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "qc_name": [],
+            "qc_value": [],
+            "qc_unit": [],
+            "qc_comment": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "to_header": []
+        })
+        products = pd.DataFrame({
+            "soxspipe_recipe": [],
+            "product_label": [],
+            "file_name": [],
+            "file_type": [],
+            "obs_date_utc": [],
+            "reduction_date_utc": [],
+            "file_path": [],
+            "label": []
+        })
+        # print(packageDirectory)
+        stdExtractionPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-reponse-function/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
+        from soxspipe.commonutils import response_function
+        response = response_function(
+            log=log,
+            settings=settings,
+            recipeName="soxs-nod",
+            sofName="my-sof-filename",
+            stdExtractionPath=stdExtractionPath,
+            qcTable=qc,
+            productsTable=products,
+            startNightDate="2025-10-10"
+        )
+        response.get()
 
     def test_soxs_response_function_function_exception(self):
 
@@ -77,8 +224,16 @@ class test_response_function(unittest.TestCase):
 
         # x-print-testpage-for-pessto-marshall-web-object
 
+
+if __name__ == '__main__':
+    suite = unittest.TestSuite()
+    suite.addTest(test_response_function("test_xsh_response_function_function"))
+    runner = unittest.TextTestRunner()
+    runner.run(suite)
+
+    # unittest.main()
+
     # x-class-to-test-named-worker-function
-#ADD A MAIN HERE TO RUN THOSE TESTS
+# ADD A MAIN HERE TO RUN THOSE TESTS
 if __name__ == "__main__":
     unittest.main()
-    

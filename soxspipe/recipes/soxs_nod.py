@@ -104,6 +104,8 @@ class soxs_nod(base_recipe):
         self.inputFrames = self.prepare_frames(
             save=self.settings["save-intermediate-products"])
 
+        self.generateReponseCurve = False
+
         return None
 
     def verify_input_frames(
@@ -200,6 +202,9 @@ class soxs_nod(base_recipe):
             if len(allObjectFrames):
                 break
 
+        if t == 'STD,FLUX':
+            self.generateReponseCurve = True
+
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -218,7 +223,17 @@ class soxs_nod(base_recipe):
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
-        # DETREND ALL NODDING IMAGES
+        # DETREND ALL NODDING IMAGES - CHECK IF WE NEED TO COMPUTE THE RESPONSE FUNCTION
+        # IN THAT CASE, WE NEED TO EXTRACT THE OBJECT SPECTRUM *ALSO* WITH NOT-FLATFIELD CORRECTED FRAME
+
+        if self.generateReponseCurve:
+            allFrameA = allObjectFrames[0]
+            allFrameB = allObjectFrames[1]
+
+            # NOW COMPUTE A SINGLE A-B CYCLE
+            mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat = self.process_single_ab_nodding_cycle(aFrame=allFrameA, bFrame=allFrameB, locationSetIndex=1, orderTablePath=orderTablePath)
+            stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat], "NOTFLAT")
+
         if self.recipeSettings["use_flat"]:
             allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
 
@@ -273,9 +288,8 @@ class soxs_nod(base_recipe):
                     home = expanduser("~")
                     filenameA = self.sofName + f"_A_{sequenceCount}.fits"
                     filenameB = self.sofName + f"_B_{sequenceCount}.fits"
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-                    filePathA = f"{outDir}/{filenameA}"
-                    filePathB = f"{outDir}/{filenameB}"
+                    filePathA = f"{self.productDir}/{filenameA}"
+                    filePathB = f"{self.productDir}/{filenameB}"
                     frameA.write(filePathA, overwrite=True, checksum=True)
                     frameB.write(filePathB, overwrite=True, checksum=True)
 
@@ -304,11 +318,8 @@ class soxs_nod(base_recipe):
                     allSpectrumB = pd.concat([allSpectrumB, mergedSpectrumDF_B])
 
                 sequenceCount += 1
-            stackedSpectrum = self.stack_extractions([allSpectrumA, allSpectrumB])
-            self.plot_stacked_spectrum_qc(stackedSpectrum)
-            self.clean_up()
-            self.report_output()
-            # sys.exit(0)
+            stackedSpectrum, extractionPath = self.stack_extractions([allSpectrumA, allSpectrumB])
+
         else:
 
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
@@ -329,12 +340,27 @@ class soxs_nod(base_recipe):
             self.update_fits_keywords(frame=bFrame)
 
             mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
-            stackedSpectrum = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
+            stackedSpectrum, extractionPath = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
 
-            self.plot_stacked_spectrum_qc(stackedSpectrum)
+        if self.generateReponseCurve:
+            from soxspipe.commonutils import response_function
+            print('Now extracting response at path ' + extractionPath_notflat)
+            response = response_function(
+                log=self.log,
+                settings=self.settings,
+                recipeName=self.recipeName,
+                sofName=self.sofName,
+                stdExtractionPath=extractionPath,
+                qcTable=self.qc,
+                productsTable=self.products,
+                startNightDate=self.startNightDate,
+                stdNotFlatExtractionPath=extractionPath_notflat,
+            )
+            self.qc, self.products = response.get()
 
-            self.clean_up()
-            self.report_output()
+        self.plot_stacked_spectrum_qc(stackedSpectrum)
+        self.clean_up()
+        self.report_output()
 
         self.log.debug('completed the ``produce_product`` method')
         return productPath
@@ -383,12 +409,11 @@ class soxs_nod(base_recipe):
         # WRITE IN A FITS FILE THE A-B AND B-A FRAMES
         home = expanduser("~")
         filename = self.sofName + f"_AB_{locationSetIndex}.fits"
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.productDir}/{filename}"
         A_minus_B.write(filePath, overwrite=True, checksum=True)
 
         filename = self.sofName + f"_BA_{locationSetIndex}.fits"
-        filePath = f"{outDir}/{filename}"
+        filePath = f"{self.productDir}/{filename}"
         B_minus_A.write(filePath, overwrite=True, checksum=True)
 
         if False:
@@ -455,7 +480,8 @@ class soxs_nod(base_recipe):
 
     def stack_extractions(
             self,
-            dataFrameList):
+            dataFrameList,
+            postfix=""):
         """*merge individual AB cycles into a master extraction*
 
         **Key Arguments:**
@@ -478,6 +504,9 @@ class soxs_nod(base_recipe):
         from datetime import datetime
         from astropy.io import fits
         from astropy.table import Table
+
+        if postfix and postfix[0] != "_":
+            postfix = "_" + postfix
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND mergedSpectrumDF_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
 
@@ -509,14 +538,13 @@ class soxs_nod(base_recipe):
 
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
-        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.fits")
-        outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}"
-        filePath = f"{outDir}/{filename}"
+        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
+        filePath = f"{self.productDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
-        asciiFilename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED.txt")
-        asciiFilePath = f"{outDir}/{asciiFilename}"
+        asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")
+        asciiFilePath = f"{self.productDir}/{asciiFilename}"
         stackedSpectrum.write(asciiFilePath, format='ascii', overwrite=True)
 
         utcnow = datetime.utcnow()
@@ -543,12 +571,12 @@ class soxs_nod(base_recipe):
             "obs_date_utc": self.dateObs,
             "reduction_date_utc": self.utcnow,
             "product_desc": f"Ascii version of extracted source spectrum",
-            "file_path": filePath,
+            "file_path": asciiFilePath,
             "label": "PROD"
         }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``stack_extractions`` method')
-        return stackedSpectrum
+        return stackedSpectrum, filePath
 
     def plot_stacked_spectrum_qc(
             self,

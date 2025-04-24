@@ -19,6 +19,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+import pandas as pd
 
 os.environ['TERM'] = 'vt100'
 
@@ -69,6 +70,7 @@ class base_recipe(object):
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
             # print(self.productPath)
+
             if os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
                 print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
@@ -171,8 +173,8 @@ class base_recipe(object):
             settings=self.settings
         ).get
 
-        self.qcDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}/"
-        self.productDir = self.settings["workspace-root-dir"].replace("~", home) + f"/reduced/{self.startNightDate}/{self.recipeName}/"
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=self.recipeName, startNightDate=self.startNightDate)
 
         return None
 

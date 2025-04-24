@@ -100,6 +100,8 @@ class soxs_stare(base_recipe):
                 settings=self.settings
             )
 
+        self.generateReponseCurve = False
+
         return None
 
     def verify_input_frames(
@@ -228,6 +230,7 @@ class soxs_stare(base_recipe):
                 singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
+                self.generateReponseCurve = True
 
         # FLUX STD FRAMES
         if not len(allObjectFrames):
@@ -434,8 +437,21 @@ class soxs_stare(base_recipe):
             sofName=self.sofName,
             startNightDate=self.startNightDate
         )
-
         self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()
+
+        if self.generateReponseCurve and False:
+            from soxspipe.commonutils import response_function
+            response = response_function(
+                log=self.log,
+                settings=self.settings,
+                recipeName=self.recipeName,
+                sofName=self.sofName,
+                stdExtractionPath=extractionPath,
+                qcTable=self.qc,
+                productsTable=self.products,
+                startNightDate=self.startNightDate
+            )
+            self.qc, self.products = response.get()
 
         self.clean_up()
         self.report_output()
