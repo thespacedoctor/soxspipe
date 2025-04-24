@@ -439,7 +439,7 @@ class soxs_stare(base_recipe):
         )
         self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()
 
-        if self.generateReponseCurve:
+        if self.generateReponseCurve and False:
             from soxspipe.commonutils import response_function
             response = response_function(
                 log=self.log,
