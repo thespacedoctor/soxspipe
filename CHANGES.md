@@ -1,19 +1,19 @@
 # Release Notes
 
+* **FEATURE:** response curves and efficiency plots generated for flux standards in nodding mode
+* **REFACTOR:** optimisation of spatial solution recipe
+* **REFACTOR:** improved XSH UVB mflat when binning is used
+* **REFACTOR:** optimisation of master flat code
+* **REFACTOR:** optimisation of background light fitting code
+* **REFACTOR:** some optimisations of continuum detection code
+* **REFACTOR:** some optimisations of the horne extraction
+* **REFACTOR:** optimisation of stare mode (>2 times faster)
+* **REFACTOR:** if the object trace produces residuals with a mean > 10 pixels, then a fitting fail is forced.
+* **REFACTOR:** Created a `utility_setup` tool to create the QC and product directories needed for recipes and utils (to stop duplicating code)
+* **ENHANCEMENT:** Added a lookup table for standard star aliases sometimes used in the FITS header naming.
+* **ENHANCEMENT:** Added fill_value="extrapolate" to `interp1d` as some standard stars contained extracted flux outside of the database-stored absolute flux.
 * **FIXED:** issue with data-organiser tripping on duplicate files
-- optimisation of spatial solution recipe
-- improved XSH UVB mflat when binning is used
-- optimisation of master flat code
-- optimisation of background light fitting code
-- some optimisations of continuum detection code
-- some optimisations of the horne extraction
-- optimisation of stare mode (>2 times faster)
-- if the object trace produces residuals with a mean > 10 pixels, then a fitting fail is forced.
-  Created a `utility_setup` tool to create the QC and product directories needed for recipes and utils (to stop duplicating code)
-
-* Added a lookup table for standard star aliases sometimes used in the FITS header naming.
-* Added fill_value="extrapolate" to `interp1d` as some standard stars contained extracted flux outside of the database-stored absolute flux.
-* Small bug fixes
+* **FIXED:** Small bug fixes
 
 ## v0.13.1 - April 10, 2025
 
