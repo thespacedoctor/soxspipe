@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED:** issue with data-organiser tripping on duplicate files
 - optimisation of spatial solution recipe
 - improved XSH UVB mflat when binning is used
 - optimisation of master flat code

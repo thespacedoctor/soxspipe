@@ -782,7 +782,7 @@ class data_organiser(object):
                 if extension.lower() != ".fits":
                     pass
                 elif self.rootDir in f:
-                    shutil.move(f, self.rootDir)
+                    shutil.move(os.path.abspath(f), os.path.abspath(self.rootDir) + "/" + basename)
                 else:
                     shutil.move(self.rootDir + "/" + f, self.rootDir)
             self._sync_raw_frames(skipSqlSync=True)
