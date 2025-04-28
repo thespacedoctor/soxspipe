@@ -806,9 +806,9 @@ class data_organiser(object):
                     pass
                 elif self.rootDir in f:
                     print(basename)
-                    os.symlink(os.path.realpath(f), os.path.abspath(self.rootDir) + "/" + basename)
-                    import time
-                    time.sleep(0.01)
+                    exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
+                    if not exists:
+                        os.symlink(os.path.realpath(f), os.path.abspath(self.rootDir) + "/" + basename)
                 else:
                     print("HUM")
                     shutil.move(self.rootDir + "/" + f, self.rootDir)
