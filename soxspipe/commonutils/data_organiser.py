@@ -789,6 +789,8 @@ class data_organiser(object):
                     pass
                 elif self.rootDir in f:
                     os.symlink(os.path.realpath(f), os.path.abspath(self.rootDir) + "/" + basename)
+                    import time
+                    time.sleep(0.01)
                 else:
                     shutil.move(self.rootDir + "/" + f, self.rootDir)
             self._sync_raw_frames(skipSqlSync=True)
