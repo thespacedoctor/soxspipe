@@ -777,6 +777,8 @@ class data_organiser(object):
 
         c = self.conn.cursor()
 
+        print("1")
+
         sqlQuery = f"select filepath from {tableName};"
         c.execute(sqlQuery)
 
@@ -786,12 +788,16 @@ class data_organiser(object):
         filesNotInDB = set(fitsPaths) - set(dbFiles)
         filesNotInFS = set(dbFiles) - set(fitsPaths)
 
+        print("2")
+
         if len(filesNotInFS):
             filesNotInFS = ("','").join(filesNotInFS)
             sqlQuery = f"delete from {tableName} where filepath in ('{filesNotInFS}');"
+            print(sqlQuery)
             c.execute(sqlQuery)
 
         if len(filesNotInDB):
+            print(f"LEN {len(filesNotInDB)}")
             for f in filesNotInDB:
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 basename = os.path.basename(f)
@@ -799,11 +805,14 @@ class data_organiser(object):
                 if extension.lower() != ".fits":
                     pass
                 elif self.rootDir in f:
+                    print(basename)
                     os.symlink(os.path.realpath(f), os.path.abspath(self.rootDir) + "/" + basename)
                     import time
                     time.sleep(0.01)
                 else:
+                    print("HUM")
                     shutil.move(self.rootDir + "/" + f, self.rootDir)
+            print("PHEW")
             self._sync_raw_frames(skipSqlSync=True)
 
         c.close()
