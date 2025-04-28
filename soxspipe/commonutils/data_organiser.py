@@ -286,8 +286,6 @@ class data_organiser(object):
             print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
             return None
 
-        print("ONE")
-
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
             os.makedirs(self.rawDir)
@@ -331,8 +329,6 @@ class data_organiser(object):
         except:
             pass
 
-        print("TWO")
-
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
             os.makedirs(self.sessionsDir)
@@ -341,9 +337,7 @@ class data_organiser(object):
         print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
 
         self._sync_raw_frames()
-        print("THREE")
         self._move_misc_files()
-        print("FOUR")
 
         # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
         # OTHERWISE USE CURRENT SESSION
@@ -408,8 +402,6 @@ class data_organiser(object):
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
         filteredFrames, fitsPaths, fitsNames = self._create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
 
-        print("A")
-
         if fitsPaths:
 
             conn = self.conn
@@ -465,11 +457,8 @@ class data_organiser(object):
                         if os.path.islink(self.rootDir + "/" + n):
                             os.remove(self.rootDir + "/" + n)
 
-        print("B")
         if not skipSqlSync:
-            print("C")
             self._sync_sql_table_to_directory(self.rawDir, 'raw_frames', recursive=False)
-        print("D")
 
         self.log.debug('completed the ``_sync_raw_frames`` method')
         return None
@@ -777,8 +766,6 @@ class data_organiser(object):
 
         c = self.conn.cursor()
 
-        print("1")
-
         sqlQuery = f"select filepath from {tableName};"
         c.execute(sqlQuery)
 
@@ -788,16 +775,12 @@ class data_organiser(object):
         filesNotInDB = set(fitsPaths) - set(dbFiles)
         filesNotInFS = set(dbFiles) - set(fitsPaths)
 
-        print("2")
-
         if len(filesNotInFS):
             filesNotInFS = ("','").join(filesNotInFS)
             sqlQuery = f"delete from {tableName} where filepath in ('{filesNotInFS}');"
-            print(sqlQuery)
             c.execute(sqlQuery)
 
         if len(filesNotInDB):
-            print(f"LEN {len(filesNotInDB)}")
             for f in filesNotInDB:
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 basename = os.path.basename(f)
@@ -805,14 +788,11 @@ class data_organiser(object):
                 if extension.lower() != ".fits":
                     pass
                 elif self.rootDir in f:
-                    print(basename)
                     exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
                     if not exists:
                         os.symlink(os.path.realpath(f), os.path.abspath(self.rootDir) + "/" + basename)
                 else:
-                    print("HUM")
                     shutil.move(self.rootDir + "/" + f, self.rootDir)
-            print("PHEW")
             self._sync_raw_frames(skipSqlSync=True)
 
         c.close()
