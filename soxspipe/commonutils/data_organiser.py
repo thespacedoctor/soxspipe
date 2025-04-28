@@ -286,6 +286,8 @@ class data_organiser(object):
             print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
             return None
 
+        print("ONE")
+
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
             os.makedirs(self.rawDir)
@@ -329,6 +331,8 @@ class data_organiser(object):
         except:
             pass
 
+        print("TWO")
+
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
             os.makedirs(self.sessionsDir)
@@ -337,7 +341,9 @@ class data_organiser(object):
         print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
 
         self._sync_raw_frames()
+        print("THREE")
         self._move_misc_files()
+        print("FOUR")
 
         # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
         # OTHERWISE USE CURRENT SESSION
@@ -402,6 +408,8 @@ class data_organiser(object):
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
         filteredFrames, fitsPaths, fitsNames = self._create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
 
+        print("A")
+
         if fitsPaths:
 
             conn = self.conn
@@ -457,8 +465,11 @@ class data_organiser(object):
                         if os.path.islink(self.rootDir + "/" + n):
                             os.remove(self.rootDir + "/" + n)
 
+        print("B")
         if not skipSqlSync:
+            print("C")
             self._sync_sql_table_to_directory(self.rawDir, 'raw_frames', recursive=False)
+        print("D")
 
         self.log.debug('completed the ``_sync_raw_frames`` method')
         return None
