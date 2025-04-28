@@ -1091,8 +1091,8 @@ class data_organiser(object):
 
         incomplete = False
 
-        if series['eso seq arm'].upper() == "ACQ":
-            return series
+        # if series['eso seq arm'].upper() in ["ACQ", "--"]:
+        #     return series
 
         sofName = []
         matchDict = {}
@@ -1232,10 +1232,12 @@ class data_organiser(object):
                 # mask = (calibrationTables[k].isin([v]))
                 try:
                     mask = (calibrationTables[k].isin([v]))
-                except:
+                except Exception as e:
                     print(series)
                     print(k, v)
+                    print(e)
                     sys.exit(0)
+
             calibrationTables = calibrationTables.loc[mask]
 
         # NIGHT START
@@ -1524,6 +1526,8 @@ class data_organiser(object):
             "sof": [series['sof']] * len(tags),
         }
 
+        print(incomplete)
+
         if incomplete:
             series["complete"] = 0
         else:
@@ -1569,6 +1573,10 @@ class data_organiser(object):
 
         import pandas as pd
         import time
+
+        if series['eso seq arm'].upper() in ["ACQ", "--"]:
+            print(reductionOrder.lower())
+            return series
 
         if series["eso dpr type"].lower() != reductionOrder.lower():
             return series
