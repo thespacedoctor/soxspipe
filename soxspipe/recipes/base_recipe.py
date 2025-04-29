@@ -69,12 +69,18 @@ class base_recipe(object):
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
-            # print(self.productPath)
 
             if os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
                 print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 raise FileExistsError
+            else:
+                errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
+                if os.path.exists(errorLog) and not overwrite:
+                    basename = os.path.basename(errorLog)
+                    print(f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x).")
+                    raise FileExistsError
+
             self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:
             self.sofName = False
