@@ -1106,7 +1106,7 @@ class data_organiser(object):
         matchDict = {}
         sofName.append(series['eso seq arm'].upper())
         matchDict['eso seq arm'] = series['eso seq arm'].upper()
-        filteredFrames = rawFrames.copy()
+        filteredFrames = rawFrames
 
         if series["eso dpr type"].lower() != reductionOrder.lower():
             return series
