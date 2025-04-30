@@ -1,5 +1,15 @@
 # Release Notes
 
+## v0.13.4 - April 29, 2025
+
+* **REFACTOR:** small performance gain in prep command
+* **ENHANCEMENT:** pipeline no longer attempts to rerun failed recipes (unless forced)
+* **ENHANCEMENT:** recipes are now run in chronological order
+
+## v0.13.3 - April 28, 2025
+
+* **FIXED:** soxspipe prep command with the `--vlt` option was having issues when the workspace being prepared was on a separate mount from the data
+
 ## v0.13.2 - April 24, 2025
 
 * **FEATURE:** response curves and efficiency plots generated for flux standards in nodding mode

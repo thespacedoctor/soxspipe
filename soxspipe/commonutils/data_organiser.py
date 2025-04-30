@@ -440,6 +440,7 @@ class data_organiser(object):
 
                 rawFrames.to_sql('raw_frames', con=self.conn,
                                  index=False, if_exists='append')
+
                 filepaths = rawFrames['filepath']
                 filenames = rawFrames['file']
                 for p, n in zip(filepaths, filenames):
@@ -449,7 +450,12 @@ class data_organiser(object):
                         if not os.path.exists(parentDirectory):
                             os.makedirs(parentDirectory)
                     if os.path.exists(self.rootDir + "/" + n):
-                        shutil.move(self.rootDir + "/" + n, p)
+                        realSource = os.path.realpath(self.rootDir + "/" + n)
+                        realDest = os.path.realpath(p)
+                        if realSource != realDest:
+                            shutil.move(realSource, realDest)
+                        if os.path.islink(self.rootDir + "/" + n):
+                            os.remove(self.rootDir + "/" + n)
 
         if not skipSqlSync:
             self._sync_sql_table_to_directory(self.rawDir, 'raw_frames', recursive=False)
@@ -782,7 +788,9 @@ class data_organiser(object):
                 if extension.lower() != ".fits":
                     pass
                 elif self.rootDir in f:
-                    shutil.move(os.path.abspath(f), os.path.abspath(self.rootDir) + "/" + basename)
+                    exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
+                    if not exists:
+                        os.symlink(os.path.realpath(f), os.path.abspath(self.rootDir) + "/" + basename)
                 else:
                     shutil.move(self.rootDir + "/" + f, self.rootDir)
             self._sync_raw_frames(skipSqlSync=True)
@@ -1098,7 +1106,7 @@ class data_organiser(object):
         matchDict = {}
         sofName.append(series['eso seq arm'].upper())
         matchDict['eso seq arm'] = series['eso seq arm'].upper()
-        filteredFrames = rawFrames.copy()
+        filteredFrames = rawFrames
 
         if series["eso dpr type"].lower() != reductionOrder.lower():
             return series
