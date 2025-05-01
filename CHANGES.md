@@ -1,5 +1,7 @@
 # Release Notes
 
+huge speed gain on data organiser prep command
+
 ## v0.13.4 - April 29, 2025
 
 * **REFACTOR:** small performance gain in prep command
