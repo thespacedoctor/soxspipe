@@ -9,6 +9,7 @@ Author
 Date Created
 : March  9, 2023
 """
+from line_profiler import profile
 from fundamentals import tools
 from builtins import object
 import sys
@@ -352,7 +353,9 @@ class data_organiser(object):
 
         i = 0
         while i < 6:
-            self._populate_product_frames_db_table()
+            completeCount = self._populate_product_frames_db_table()
+            if completeCount:
+                break
             i += 1
         self._write_sof_files()
 
@@ -973,9 +976,16 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
         import time
+        from collections import defaultdict
 
         conn = self.conn
         rawFrames = pd.read_sql('SELECT * FROM raw_frames', con=conn)
+
+        c = conn.cursor()
+        sqlQuery = "select count(*) from raw_frame_sets where complete = 1"
+        c.execute(sqlQuery)
+        completeCountStart = c.fetchall()[0][0]
+        c.close()
 
         rawFrames.fillna("--", inplace=True)
         filterKeywordsRaw = self.filterKeywords[:]
@@ -1043,7 +1053,7 @@ class data_organiser(object):
         calibrationTables = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationTables.fillna("--", inplace=True)
 
-        # _generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
+        # _generate_sof_and_product_names_by_row SHOULD TAKE ROW OF DF AS INPUT
 
         # SEND TO DATABASE
         c = self.conn.cursor()
@@ -1051,11 +1061,22 @@ class data_organiser(object):
         c.execute(sqlQuery)
         c.close()
 
-        for o in self.reductionOrder:
-            rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
-            rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
+        if "complete" not in rawGroups.columns:
+            rawGroups["complete"] = None
+        if "recipe_order" not in rawGroups.columns:
+            rawGroups["recipe_order"] = None
 
-        # xpd-update-filter-dataframe-column-values
+        for o in self.reductionOrder:
+
+            rawGroups = self.generate_sof_and_product_names(reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables, rawGroups=rawGroups)
+
+            rawGroups = self.populate_products_table(reductionOrder=o, rawGroups=rawGroups)
+
+        mask = (rawGroups['complete'] == 1)
+        completeCountEnd = len(rawGroups.loc[mask].index)
+
+        if completeCountStart == completeCountEnd:
+            return completeCountStart
 
         # SEND TO DATABASE
         c = self.conn.cursor()
@@ -1078,10 +1099,10 @@ class data_organiser(object):
         self.log.debug('completed the ``_populate_product_frames_db_table`` method')
         return None
 
-    def _generate_sof_and_product_names(
+    @profile
+    def _generate_sof_and_product_names_by_row(
             self,
             series,
-            reductionOrder,
             rawFrames,
             calibrationFrames,
             calibrationTables):
@@ -1099,28 +1120,19 @@ class data_organiser(object):
 
         incomplete = False
 
-        # if series['eso seq arm'].upper() in ["ACQ", "--"]:
-        #     return series
-
         sofName = []
         matchDict = {}
         sofName.append(series['eso seq arm'].upper())
         matchDict['eso seq arm'] = series['eso seq arm'].upper()
         filteredFrames = rawFrames
 
-        if series["eso dpr type"].lower() != reductionOrder.lower():
-            return series
-
         # FILTER BY TEMPLATE NAME
-        mask = (filteredFrames["template"].isin([series["template"]]))
-        filteredFrames = filteredFrames.loc[mask]
+        # mask = (filteredFrames["template"].isin([series["template"]]))
+        # filteredFrames = filteredFrames.loc[mask]
 
         # FILTER BY TYPE FIRST
         if "FLAT" in series["eso dpr type"].upper():
-            mask = ((filteredFrames["eso dpr type"].str.contains("FLAT")) & (filteredFrames["slit"] == series["slit"]))
-        else:
-            mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
-        filteredFrames = filteredFrames.loc[mask]
+            filteredFrames = filteredFrames.loc[(filteredFrames["slit"] == series["slit"])]
 
         seriesRecipe = None
 
@@ -1131,9 +1143,7 @@ class data_organiser(object):
                 rowSlit = [item.upper() for item in row["slitmask"]]
                 if not match and series["slitmask"] in rowSlit:
                     match = True
-
-                    mask = (filteredFrames["slitmask"].isin(rowSlit))
-                    filteredFrames = filteredFrames.loc[mask]
+                    filteredFrames = filteredFrames.loc[(filteredFrames["slitmask"].isin(rowSlit))]
                     seriesRecipe = row["recipe"]
             if not match:
                 return series
@@ -1161,7 +1171,6 @@ class data_organiser(object):
             matchDict['rospeed'] = series["rospeed"]
             sofName.append(series["rospeed"])
         if series["eso dpr type"].lower() in self.typeMap:
-            matchDict['eso dpr type'] = series["eso dpr type"]
             for i in self.typeMap[series["eso dpr type"].lower()]:
                 if i["recipe"] == seriesRecipe:
                     sofName.append(i["recipe"].replace("_centres", "_locations"))
@@ -1192,7 +1201,6 @@ class data_organiser(object):
         sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
-
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
                 mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP"]))
             else:
@@ -1317,8 +1325,6 @@ class data_organiser(object):
             mask = ((filteredFrames['eso dpr type'] == "LAMP,DFLAT") & (filteredFrames['exptime'] == dexptime)) | ((filteredFrames['eso dpr type'] == "LAMP,QFLAT") & (filteredFrames['exptime'] == qexptime))
             filteredFrames = filteredFrames.loc[mask]
 
-        # ADDING TAG FOR SOF FILES
-        filteredFrames["tag"] = filteredFrames["eso dpr type"].replace(",", "_") + "_" + filteredFrames["eso seq arm"]
         # LAMP ON AND OFF TAGS
         if series["eso seq arm"].lower() == "nir":
             if seriesRecipe in ["disp_sol", "order_centres", "mflat", "spat_sol"]:
@@ -1326,32 +1332,9 @@ class data_organiser(object):
                 filteredFrames.loc[mask, "tag"] += ",OFF"
                 filteredFrames.loc[~mask, "tag"] += ",ON"
 
-        # SORT BY COLUMN NAME
-        filteredFrames.sort_values(['tag', 'filepath', 'file'],
-                                   ascending=[True, True, True], inplace=True)
-
         files = filteredFrames["file"].values
         filepaths = filteredFrames["filepath"].values
         tags = filteredFrames["tag"].values
-
-        # if series["eso seq arm"].lower() in ("uvb", "vis") and seriesRecipe in ["disp_sol", "order_centres", "spat_sol", "stare"]:
-        #     if series['eso dpr type'].lower() == "std,flux":
-        #         files = [files[0]]
-        #         tags = [tags[0]]
-        #         filepaths = [filepaths[0]]
-
-        # if series["eso seq arm"].lower() == "nir" and seriesRecipe in ["disp_sol", "order_centres", "spat_sol", "stare"]:
-        #     if series["eso seq arm"].lower() == "std,flux":
-        #         files = [files[0]]
-        #         tags = [tags[0]]
-        #         filepaths = [filepaths[0]]
-        #     else:
-        #         if len(files) > 1:
-        #             files = files[:2]
-        #             tags = tags[:2]
-        #             filepaths = filepaths[:2]
-        #         else:
-        #             return series
 
         if seriesRecipe in ("stare", "nod", "offset"):
             objectt = filteredFrames['object'].values[0].replace(" ", "_")[:8]
@@ -1534,8 +1517,6 @@ class data_organiser(object):
             "sof": [series['sof']] * len(tags),
         }
 
-        print(incomplete)
-
         if incomplete:
             series["complete"] = 0
         else:
@@ -1546,22 +1527,11 @@ class data_organiser(object):
         else:
             myDict["complete"] = [1] * len(tags)
 
-        sofMap = pd.DataFrame(myDict)
-
-        keepTrying = 0
-        while keepTrying < 6:
-            try:
-                sofMap.to_sql(f'sof_map_{self.sessionId}', con=self.conn,
-                              index=False, if_exists='append')
-                keepTrying = 10
-            except Exception as e:
-                if keepTrying > 5:
-                    raise Exception(e)
-                keepTrying += 1
+        self.sofMaps.append(myDict)
 
         return series
 
-    def _populate_products_table(
+    def _populate_products_table_by_row(
             self,
             series,
             reductionOrder):
@@ -1577,36 +1547,17 @@ class data_organiser(object):
         - None
 
         """
-        self.log.debug('starting the ``_populate_products_table`` method')
+        self.log.debug('starting the ``_populate_products_table_by_row`` method')
 
         import pandas as pd
         import time
 
-        if series['eso seq arm'].upper() in ["ACQ", "--"]:
-            print(reductionOrder.lower())
-            return series
+        products = series.to_dict()
 
-        if series["eso dpr type"].lower() != reductionOrder.lower():
-            return series
-
-        if series["complete"] == 0:
-            return series
-
-        template = series.copy()
-        removeColumns = ["counts", "product", "command", "complete"]
-
-        if template["recipe"] and template["recipe"].lower() in self.productMap:
-            for i in removeColumns:
-                if i in template:
-                    template.pop(i)
-            template["eso pro catg"] = template.pop("eso dpr catg")
-            template["eso pro tech"] = template.pop("eso dpr tech")
-            template["eso pro type"] = template.pop("eso dpr type")
-
-            for i in self.productMap[template["recipe"].lower()]:
+        if products["recipe"] and products["recipe"].lower() in self.productMap:
+            for i in self.productMap[products["recipe"].lower()]:
                 # if template["recipe"].lower() == "mflat" and template["binning"] in ["1x2", "2x2"] and i[2] == "ORDER_TAB":
                 #     continue
-                products = template.copy()
                 products["eso pro type"] = i[0]
                 products["eso pro tech"] = i[1]
                 products["eso pro catg"] = i[2] + f"_{products['eso seq arm'].upper()}"
@@ -1616,22 +1567,9 @@ class data_organiser(object):
                     products["file"] = products["file"].replace(".fits.fits", ".fits")
                 products["filepath"] = f"./reduced/{products['night start date']}/" + i[6] + "/" + products["file"]
                 myDict = {k: [v] for k, v in products.items()}
-                products = pd.DataFrame(myDict)
+                self.products.append(myDict)
 
-                keepTrying = 0
-                while keepTrying < 6:
-                    try:
-                        products.to_sql('product_frames', con=self.conn,
-                                        index=False, if_exists='append')
-                        keepTrying = 10
-                    except Exception as e:
-
-                        if keepTrying > 5:
-                            raise Exception(e)
-                        time.sleep(1)
-                        keepTrying += 1
-
-        self.log.debug('completed the ``_populate_products_table`` method')
+        self.log.debug('completed the ``_populate_products_table_by_row`` method')
         return series
 
     def _move_misc_files(
@@ -2135,6 +2073,150 @@ class data_organiser(object):
 
         self.log.debug('completed the ``use_vlt_environment_folders`` method')
         return vltReduced
+
+    def generate_sof_and_product_names(
+            self,
+            reductionOrder,
+            rawFrames,
+            calibrationFrames,
+            calibrationTables,
+            rawGroups):
+        """*generate sof and product names*
+
+        **Key Arguments:**
+            - ``reductionOrder`` -- what files are we generating SOF sets for?
+            - ``rawFrames`` -- dataframe of raw frames
+            - ``calibrationFrames`` -- dataframe of calibration frames
+            - ``calibrationTables`` -- dataframe of calibration tables
+            - ``rawGroups`` -- raw frames grouped together          
+
+        **Return:**
+            - ``rawGroups`` -- updated rawGroups
+
+        **Usage:**
+
+        ```python
+        rawGroups = self.generate_sof_and_product_names(reductionOrder=reductionOrder, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables, rawGroups=rawGroups)
+        ```
+        """
+        self.log.debug('starting the ``generate_sof_and_product_names`` method')
+
+        from collections import defaultdict
+        import pandas as pd
+
+        self.sofMaps = []
+
+        # FIRST CREATE THE MASK
+        mask = ((rawGroups['eso dpr type'].str.contains(reductionOrder, case=False)) & ~(rawGroups['eso seq arm'].str.contains("ACQ|--", case=False, regex=True)))
+        rawGroupsFiltered = rawGroups.loc[mask]
+
+        rawFrames["tag"] = rawFrames["eso dpr type"].replace(",", "_") + "_" + rawFrames["eso seq arm"]
+        if "FLAT" in reductionOrder.upper():
+            mask2 = (rawFrames["eso dpr type"].str.contains("FLAT"))
+            rawFrames = rawFrames.loc[mask2]
+        else:
+            mask2 = (rawFrames['eso dpr type'].str.contains(reductionOrder, case=False))
+            rawFrames = rawFrames.loc[mask2]
+
+        # GET UNIQUE VALUES IN COLUMN
+        uniqueTemplateNames = rawGroupsFiltered['template'].unique()
+        if len(uniqueTemplateNames):
+            # FILTER DATA FRAME
+            # FIRST CREATE THE MASK
+            mask2 = (rawFrames['template'].isin(uniqueTemplateNames))
+            rawFrames = rawFrames.loc[mask2]
+
+        # xpd-update-filter-dataframe-column-values
+        rawGroupsFiltered = rawGroupsFiltered.apply(self._generate_sof_and_product_names_by_row, axis=1, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
+
+        rawGroups.loc[mask] = rawGroupsFiltered
+
+        if len(self.sofMaps):
+            # FLATTENING THE LIST OF DICTIONARIES
+            flattened_dict = defaultdict(list)
+            for record in self.sofMaps:
+                for key in record:
+                    flattened_dict[key].extend(record[key])
+            # CONVERT DEFAULTDICT BACK TO A REGULAR DICT (OPTIONAL)
+            self.sofMaps = pd.DataFrame(dict(flattened_dict))
+            keepTrying = 0
+            while keepTrying < 6:
+                try:
+                    self.sofMaps.to_sql(f'sof_map_{self.sessionId}', con=self.conn,
+                                         index=False, if_exists='append')
+                    keepTrying = 10
+                except Exception as e:
+                    if keepTrying > 5:
+                        raise Exception(e)
+                    keepTrying += 1
+
+        self.log.debug('completed the ``generate_sof_and_product_names`` method')
+        return rawGroups
+
+    def populate_products_table(
+            self,
+            reductionOrder,
+            rawGroups):
+        """*populate products table*
+
+        **Key Arguments:**
+            - ``reductionOrder`` -- what files are we generating SOF sets for?
+            - ``rawGroups`` -- raw frames grouped together          
+
+        **Return:**
+            - ``rawGroups`` -- updated rawGroups
+
+        **Usage:**
+
+        ```python
+        rawGroups = self.populate_products_table(reductionOrder=reductionOrder, rawGroups=rawGroups)
+        ```
+        """
+        self.log.debug('starting the ``populate_products_table`` method')
+
+        from collections import defaultdict
+        import pandas as pd
+
+        self.products = []
+
+        # FIRST CREATE THE MASK
+        mask = ((rawGroups['eso dpr type'].str.contains(reductionOrder, case=False)) & ~(rawGroups['eso seq arm'].str.contains("ACQ|--", case=False, regex=True)) & (rawGroups['complete'] == 1))
+        rawGroupsFiltered = rawGroups.loc[mask]
+
+        rawGroupsFiltered = rawGroupsFiltered.apply(self._populate_products_table_by_row, axis=1, reductionOrder=reductionOrder)
+        rawGroups.loc[mask] = rawGroupsFiltered
+
+        if len(self.products):
+            # FLATTENING THE LIST OF DICTIONARIES
+            flattened_dict = defaultdict(list)
+            for record in self.products:
+                for key in record:
+                    flattened_dict[key].extend(record[key])
+            # CONVERT DEFAULTDICT BACK TO A REGULAR DICT (OPTIONAL)
+            self.products = pd.DataFrame(dict(flattened_dict))
+            # REMOVE COLUMN FROM DATA FRAME
+            self.products.drop(columns=["eso dpr catg", "eso dpr tech", "eso dpr type", "counts", "complete"], inplace=True)
+
+            try:
+                self.products.drop(columns=["product", "command"], inplace=True)
+            except:
+                pass
+
+            keepTrying = 0
+            while keepTrying < 6:
+                try:
+                    self.products.to_sql('product_frames', con=self.conn,
+                                         index=False, if_exists='append')
+                    keepTrying = 10
+                except Exception as e:
+
+                    if keepTrying > 5:
+                        raise Exception(e)
+                    time.sleep(1)
+                    keepTrying += 1
+
+        self.log.debug('completed the ``populate_products_table`` method')
+        return rawGroups
 
     # use the tab-trigger below for new method
     # xt-class-method
