@@ -9,7 +9,6 @@ Author
 Date Created
 : March  9, 2023
 """
-from line_profiler import profile
 from fundamentals import tools
 from builtins import object
 import sys
@@ -1099,7 +1098,6 @@ class data_organiser(object):
         self.log.debug('completed the ``_populate_product_frames_db_table`` method')
         return None
 
-    @profile
     def _generate_sof_and_product_names_by_row(
             self,
             series,
