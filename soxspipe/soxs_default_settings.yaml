@@ -217,7 +217,7 @@ soxs-stare:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 30
+            slice-length: 40
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
