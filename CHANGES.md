@@ -1,6 +1,7 @@
 # Release Notes
 
 huge speed gain on data organiser prep command
+Increasing the default SOXS slice height to detect continuum in VIS
 
 ## v0.13.4 - April 29, 2025
 
