@@ -133,7 +133,6 @@ class data_organiser(object):
             "TPL_NEXP",
             "TPL_EXPNO",
             "ACFW_ID",
-            "ACQS_ID",
             "RA",
             "DEC",
             "DET"
@@ -169,7 +168,6 @@ class data_organiser(object):
             "eso tpl nexp",
             "eso tpl expno",
             "filter",
-            "eso ins acqs id",
             "eso det3 cam name",
             "ra",
             "dec"
@@ -460,8 +458,8 @@ class data_organiser(object):
             if len(rawFrames.index):
                 rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames['night start date'] + "/" + rawFrames['file']
 
-                rawFrames.to_sql('raw_frames', con=self.conn,
-                                 index=False, if_exists='append')
+                rawFrames.replace(['--', -99.99], None).to_sql('raw_frames', con=self.conn,
+                                                               index=False, if_exists='append')
 
                 filepaths = rawFrames['filepath']
                 filenames = rawFrames['file']
@@ -1009,6 +1007,7 @@ class data_organiser(object):
         completeCountStart = c.fetchall()[0][0]
         c.close()
 
+        rawFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}, inplace=True)
         rawFrames.fillna("--", inplace=True)
         filterKeywordsRaw = self.filterKeywords[:]
 
