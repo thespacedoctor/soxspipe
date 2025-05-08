@@ -1,6 +1,7 @@
 # Release Notes
 
 huge speed gain on data organiser prep command
+added a few more keyword to the data organiser database
 
 ## v0.13.4 - April 29, 2025
 
