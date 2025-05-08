@@ -132,7 +132,11 @@ class data_organiser(object):
             "TPL_NAME",
             "TPL_NEXP",
             "TPL_EXPNO",
-            "ACFW_ID"
+            "ACFW_ID",
+            "ACQS_ID",
+            "RA",
+            "DEC",
+            "DET"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -163,7 +167,12 @@ class data_organiser(object):
             "absrot",
             "eso tpl name",
             "eso tpl nexp",
-            "eso tpl expno"
+            "eso tpl expno",
+            "filter",
+            "eso ins acqs id",
+            "eso det3 cam name",
+            "ra",
+            "dec"
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
@@ -242,7 +251,7 @@ class data_organiser(object):
         # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
         # INDEXES
         self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template', 'eso obs name']
+                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template', 'eso obs name', 'eso tpl name', 'filter']
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
         self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT", "OBJECT,ASYNC"]
@@ -680,6 +689,9 @@ class data_organiser(object):
 
         if self.kw("TPL_ID").lower() in masterTable.colnames:
             masterTable["template"] = np.copy(masterTable[self.kw("TPL_ID").lower()])
+
+        if self.kw("ACFW_ID").lower() in masterTable.colnames:
+            masterTable["filter"] = np.copy(masterTable[self.kw("ACFW_ID").lower()])
 
         if "naxis" in masterTable.colnames:
             masterTable["table"] = np.copy(masterTable["naxis"]).astype(str)
