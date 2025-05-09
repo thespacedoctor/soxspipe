@@ -3,6 +3,7 @@
 huge speed gain on data organiser prep command
 Increasing the default SOXS slice height to detect continuum in VIS
 added a few more keyword to the data organiser database
+many updates to the data-organiser to start handling ACQ camera data
 
 ## v0.13.4 - April 29, 2025
 
