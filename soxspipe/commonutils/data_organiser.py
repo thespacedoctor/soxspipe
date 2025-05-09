@@ -168,7 +168,6 @@ class data_organiser(object):
             "eso tpl nexp",
             "eso tpl expno",
             "filter",
-            "eso det3 cam name",
             "ra",
             "dec"
         ]
@@ -209,11 +208,11 @@ class data_organiser(object):
             "lamp,qflat": [{"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}],
             "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
             "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
-            "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "object,async": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
+            "object": [{"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}],
+            "object,async": [{"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}],
+            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}],
+            "std": [{"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}],
+            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}]
         }
 
         # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULTS FROM REDUCING EACH SOFs
@@ -620,10 +619,16 @@ class data_organiser(object):
                     masterTable[fil].fill_value = "--"
         masterTable = masterTable.filled()
 
-        # FIX ACQ CAM EXPTIME
+        # FIX ACQ CAM EXPTIME & ARM & FILTER
         if "SOXS" in self.instrument.upper():
             matches = ((masterTable["exptime"] == -99.99) & (masterTable[self.kw("EXPTIME2").lower()] != -99.99))
             masterTable["exptime"][matches] = masterTable[self.kw("EXPTIME2").lower()][matches]
+            matches = ((masterTable['eso seq arm'] == "--") & (masterTable[self.kw("DET").lower()] == "ACQ"))
+            masterTable['eso seq arm'][matches] = "ACQ"
+            matches = ((masterTable['eso seq arm'] != "ACQ") & (masterTable[self.kw("ACFW_ID").lower()] != "--"))
+            masterTable[self.kw("ACFW_ID").lower()][matches] = "--"
+            matches = ((masterTable['eso seq arm'] == "ACQ") & ((masterTable["eso dpr type"] == "BIAS") | (masterTable["eso dpr type"] == "DARK")))
+            masterTable[self.kw("ACFW_ID").lower()][matches] = "--"
 
         # FILTER OUT FRAMES WITH NO MJD
         matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--") | (masterTable["exptime"] == -99.99))
@@ -1052,6 +1057,7 @@ class data_organiser(object):
             rawPinholeFrames = pd.read_sql(
                 "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE')", con=conn)
 
+        rawPinholeFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}, inplace=True)
         rawPinholeFrames.fillna("--", inplace=True)
         rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
@@ -2225,8 +2231,8 @@ class data_organiser(object):
             keepTrying = 0
             while keepTrying < 6:
                 try:
-                    self.products.to_sql('product_frames', con=self.conn,
-                                         index=False, if_exists='append')
+                    self.products.replace(['--'], None).to_sql('product_frames', con=self.conn,
+                                                               index=False, if_exists='append')
                     keepTrying = 10
                 except Exception as e:
 
