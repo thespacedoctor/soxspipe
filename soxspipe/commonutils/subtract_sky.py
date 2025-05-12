@@ -392,8 +392,16 @@ class subtract_sky(object):
         violet = "#6c71c4"
         purple = "purple"
 
+        # ROTATE THE IMAGE FOR BETTER LAYOUT
+        rotateImage = self.detectorParams["rotate-qc-plot"]
+        flipImage = self.detectorParams["flip-qc-plot"]
+
         # MAKE A COPY OF THE FRAME TO NOT ALTER ORIGINAL DATA
         frame = self.objectFrame.copy()
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=frame, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
 
         # SETUP THE PLOT SUB-PANELS
         # print("FIX ME")
@@ -418,7 +426,10 @@ class subtract_sky(object):
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(frame.data)
         for x, y in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB]):
-            nonOrderMask[y][x] = 0
+            if self.detectorParams["dispersion-axis"] == "x":
+                nonOrderMask[y][x] = 0
+            else:
+                nonOrderMask[x][y] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
         nonOrderMask = ma.make_mask(nonOrderMask)
@@ -1039,13 +1050,21 @@ class subtract_sky(object):
         self.log.debug('starting the ``add_data_to_placeholder_images`` method')
 
         for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_model"]):
-            skymodelCCDData.data[y][x] = skypixel
+            if self.detectorParams["dispersion-axis"] == "x":
+                skymodelCCDData.data[y][x] = skypixel
+            else:
+                skymodelCCDData.data[x][y] = skypixel
 
         for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_subtracted_flux"]):
-            skySubtractedCCDData.data[y][x] = skypixel
-
+            if self.detectorParams["dispersion-axis"] == "x":
+                skySubtractedCCDData.data[y][x] = skypixel
+            else:
+                skySubtractedCCDData.data[x][y] = skypixel
         for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_subtracted_flux"] / imageMapOrderDF["error"]):
-            skySubtractedResidualsCCDData.data[y][x] = skypixel
+            if self.detectorParams["dispersion-axis"] == "x":
+                skySubtractedResidualsCCDData.data[y][x] = skypixel
+            else:
+                skySubtractedResidualsCCDData.data[x][y] = skypixel
 
         self.log.debug('completed the ``add_data_to_placeholder_images`` method')
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData
