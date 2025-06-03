@@ -1057,7 +1057,8 @@ class data_organiser(object):
             rawPinholeFrames = pd.read_sql(
                 "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE')", con=conn)
 
-        rawPinholeFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}, inplace=True)
+        with pd.option_context("future.no_silent_downcasting", True):
+            rawPinholeFrames = rawPinholeFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}).infer_objects(copy=False)
         rawPinholeFrames.fillna("--", inplace=True)
         rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
