@@ -96,28 +96,38 @@ class response_function(object):
         kw = self.kw
 
         stdNames = ["LTT7987", "EG274", "LTT3218", "EG21"]
-        stdAkas = ["CD-3017706" "CD-3810980", "CD-325613", "CPD-69177"]
+        stdAkas = ["CD-3017706", "CD-3810980", "CD-325613", "CPD-69177"]
 
         hdul = fits.open(self.stdExtractionPath)
         self.header = hdul[0].header
         self.dateObs = self.header[kw("DATE_OBS")]
         self.texp = float(self.header[kw("EXPTIME")])
-        self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()  # Name is in the format 'EG 274'
+        if self.instrument == 'xsh':
+            self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()  # Name is in the format 'EG 274'
+        else:
+            self.std_objName = self.header[kw("OBJECT")].strip().upper()  # Name is in the format 'EG 274'
         self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")
 
         if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
             #STD STAR GIVEN, READING THE NON FLAT FIELDED SPECTRUM
             self.stdExtractionNotFlatDF = Table.read(stdNotFlatExtractionPath, format='fits')
             self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF.to_pandas()
-
+        print(f"Solving akas for {self.std_objName} ")
         if self.std_objName in stdAkas:
+            print(f"Starting solving akas for {self.std_objName} ")
             for s, a in zip(stdNames, stdAkas):
                 if self.std_objName == a:
-                    self.std_objName = s
 
+                    self.std_objName = s
+        print(f"Solved akas for {self.std_objName} ")            
         # USING THE AVERAGE AIR MASS
-        airmass_start = float(self.header[kw("AIRM_START")])
-        airmass_end = float(self.header[kw("AIRM_END")])
+        if self.instrument == "soxs":
+            #NEED TO UPDATE THE LOOKUP TABLE EVENTUALLY
+            airmass_start = float(self.header["HIERARCH ESO TEL AIRM START"])
+            airmass_end = float(self.header["HIERARCH ESO TEL AIRM END"])
+        else:
+            airmass_start = float(self.header[kw("AIRM_START")])
+            airmass_end = float(self.header[kw("AIRM_END")])
         self.airmass = (airmass_start + airmass_end) / 2
         self.arm = self.header[kw("SEQ_ARM")].strip().upper()  # KW lookup
 
@@ -171,8 +181,9 @@ class response_function(object):
             self.std_wavelength_to_abs_flux = interp1d(np.array(stdAbsFluxDF['WAVE']), np.array(stdAbsFluxDF[self.std_objName])  * 10**17, kind='next', fill_value="extrapolate")
         except Exception as e:
             self.log.error(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {stdAbsFluxDF.columns[1:]}")
-            raise Exception(e)
-            sys.exit(1)
+            #raise Exception(e)
+            #sys.exit(1)
+            return None,None
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
         excludeRegions = [(200, 400), (590, 600), (405, 416), (426, 440), (460, 475), (563, 574), (478, 495), (528, 538), (620, 640), (648, 666), (754, 770), (800, 810), (836, 845), (1100, 1190), (1300, 1500), (1800, 1900), (1850, 2700)]
@@ -195,6 +206,7 @@ class response_function(object):
         stdEfficiencyEstimate = None
         #USING THE STD STAR SPECTRUM THAT IS NOT CORRECTED BY FLAT
         try:
+
             extWave_noflat = self.stdExtractionNotFlatDF['WAVE'].values
             dispersion_nf = self.stdExtractionNotFlatDF['WAVE'].values - np.roll(self.stdExtractionNotFlatDF['WAVE'].values,1)
             dispersion_nf = dispersion_nf*10 #CONVERTING IN ANG
@@ -207,7 +219,10 @@ class response_function(object):
             self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF / self.texp
 
             stdEfficiencyEstimate = (self.stdExtractionNotFlatDF) / (stdAbsPhotonFlux)
-        except:
+            #sys.exit(0)
+        except Exception as e:
+            print(e)
+            #sys.exit(0)
             #LANDING HERE NO STD STAR SPECTRUM WITHOUT FLAT CORRECTION IS PROVIDED
             stdEfficiencyEstimate = None
             pass

@@ -201,10 +201,10 @@ class soxs_nod(base_recipe):
                     self.masterHeaderFrame = singleFrame.copy()
             if len(allObjectFrames):
                 break
-
         if t == 'STD,FLUX':
             self.generateReponseCurve = True
 
+        #self.generateReponseCurve = True
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
