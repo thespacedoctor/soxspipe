@@ -647,6 +647,7 @@ class horne_extraction(object):
         from astropy.nddata import VarianceUncertainty
         from specutils.manipulation import median_smooth
         from astropy.stats import sigma_clipped_stats
+        from scipy.interpolate import interp1d
 
         # ASTROPY HAS RESET LOGGING LEVEL -- FIX
         import logging
@@ -735,13 +736,13 @@ class horne_extraction(object):
         # DEFINE THE WAVELENGTH ARRAY
         wave_resample_grid = np.arange(float(format(np.min(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, float(format(np.max(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
         wave_resample_grid = wave_resample_grid * u.nm
+        # SAVE THE COUNTS BY DIVING FOR THE PROPER PIXEL SIZE IN WAVELENGTH SPACE - COUNTS ARE THEN E-/NM
 
-        # INTERPOLATE THE ORDER SPECTRUM INTO THIS NEW ARRAY WITH A SINGLE STEP SIZE
-        if "PAE" in self.settings and self.settings["PAE"] and True:
-            flux_orig = extractedOrdersDF['extractedFluxBoxcarRobust'].values * u.electron
-        else:
-            flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
-        # PASS ORIGINAL RAW SPECTRUM AND RESAMPLE
+        extractedOrdersDF['extractedFluxOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values / extractedOrdersDF['pixelScaleNm'].values
+        extractedOrdersDF['extractedFluxBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values / extractedOrdersDF['pixelScaleNm'].values
+        extractedOrdersDF['extractedFluxBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values / extractedOrdersDF['pixelScaleNm'].values
+
+        flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
         spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values * u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values))
 
         resampler = FluxConservingResampler()
@@ -750,6 +751,14 @@ class horne_extraction(object):
         merged_orders = pd.DataFrame()
         merged_orders['WAVE'] = flux_resampled.spectral_axis
         merged_orders['FLUX_COUNTS'] = flux_resampled.flux
+
+        if False:
+            # PLOTTING THE RESAMPLED AND ORIGINAL SPECTRUM
+            import matplotlib.pyplot as plt
+            plt.plot(extractedOrdersDF['wavelengthMedian'], extractedOrdersDF['extractedFluxOptimal'].values, label='Original')
+            plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], label='Resampled')
+            plt.legend()
+            plt.show()
 
         self.plot_merged_spectrum_qc(merged_orders)
 

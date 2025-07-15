@@ -106,7 +106,7 @@ class response_function(object):
             self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()  # Name is in the format 'EG 274'
         else:
             self.std_objName = self.header[kw("OBJECT")].strip().upper()  # Name is in the format 'EG 274'
-        self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")
+        self.std_objName = self.std_objName.split(" V")[0].replace(" ", "") # Hack to reduce xsh data
 
         if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
             #STD STAR GIVEN, READING THE NON FLAT FIELDED SPECTRUM
@@ -155,6 +155,7 @@ class response_function(object):
         import pandas as pd
         from scipy.interpolate import interp1d
         import numpy as np
+        from scipy.signal import savgol_filter
 
         from astropy.table import Table
 
@@ -188,14 +189,8 @@ class response_function(object):
         # STRONG SKY ABS REGION TO BE EXCLUDED
         excludeRegions = [(200, 400), (590, 600), (405, 416), (426, 440), (460, 475), (563, 574), (478, 495), (528, 538), (620, 640), (648, 666), (754, 770), (800, 810), (836, 845), (1100, 1190), (1300, 1500), (1800, 1900), (1850, 2700)]
 
-        # INTEGRATING THE EXTRACTED STANDARD IN xx nm BIN-WIDE FILTERS
-        # CONVERT FLUX_COUNTS TO FLUX_COUNTS / NM BY DIVIDING BY THE PIXEL SIZE
-        dispersion = stdExtWave - np.roll(stdExtWave, 1)
-        dispersion[0] = dispersion[1]  # first element will be out
-
-        #CONVERTING TO ANG
-        dispersion = dispersion * 10
-        stdExtFlux = stdExtFlux / dispersion
+        # INTEGRATING THE EXTRACTED STANDARD IN xx nm BIN-WIDE FILTERS (CONVERTING BACK IN A/PX)
+        stdExtFlux = stdExtFlux / 10 
 
         # NOW DIVIDING FOR THE EXPOSURE TIME
         stdExtFlux = stdExtFlux / self.texp
@@ -206,23 +201,23 @@ class response_function(object):
         stdEfficiencyEstimate = None
         #USING THE STD STAR SPECTRUM THAT IS NOT CORRECTED BY FLAT
         try:
-
+            #self.stdExtractionNotFlatDF['FLUX_COUNTS'] = self.stdExtractionNotFlatDF['FLUX_COUNTS'] / 10
             extWave_noflat = self.stdExtractionNotFlatDF['WAVE'].values
-            dispersion_nf = self.stdExtractionNotFlatDF['WAVE'].values - np.roll(self.stdExtractionNotFlatDF['WAVE'].values,1)
-            dispersion_nf = dispersion_nf*10 #CONVERTING IN ANG
-            dispersion_nf[0] =  dispersion_nf[1] 
-            area = 400*400*3.14
             c = 3*10**10
             h = 6.63*10**-27
-            stdAbsPhotonFlux = ((self.std_wavelength_to_abs_flux(self.stdExtractionNotFlatDF['WAVE'].values)*10**-17*self.stdExtractionNotFlatDF['WAVE'].values*10**-7)/(h*c))*area
-            self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF['FLUX_COUNTS'].values/dispersion_nf
-            self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF / self.texp
 
-            stdEfficiencyEstimate = (self.stdExtractionNotFlatDF) / (stdAbsPhotonFlux)
-            #sys.exit(0)
+            if self.instrument == 'xsh':
+                area = 400*400*3.14
+                
+            else:
+                area = 179*179*3.14
+            stdAbsPhotonFlux = ((self.std_wavelength_to_abs_flux(self.stdExtractionNotFlatDF['WAVE'].values)*10**-17*self.stdExtractionNotFlatDF['WAVE'].values*10**-7)/(h*c))*area
+
+
+            stdEfficiencyEstimate = (stdExtFlux) / (stdAbsPhotonFlux)
+            stdEfficiencyEstimate = savgol_filter(stdEfficiencyEstimate, 21, 2)
         except Exception as e:
             print(e)
-            #sys.exit(0)
             #LANDING HERE NO STD STAR SPECTRUM WITHOUT FLAT CORRECTION IS PROVIDED
             stdEfficiencyEstimate = None
             pass

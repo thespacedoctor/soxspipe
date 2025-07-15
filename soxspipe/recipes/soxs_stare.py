@@ -205,6 +205,7 @@ class soxs_stare(base_recipe):
 
         productPath = None
         master_bias = False
+        master_flat = False
         dark = False
 
         self.subtractSky = self.recipeSettings["sky-subtraction"]["subtract_sky"]

@@ -184,6 +184,7 @@ class soxs_nod(base_recipe):
         dp = self.detectorParams
 
         productPath = None
+        master_flat = None
 
         # OBJECT/STANDARD FRAMES
         types = ['OBJECT', 'STD,FLUX', 'STD,TELLURIC']
@@ -201,8 +202,13 @@ class soxs_nod(base_recipe):
                     self.masterHeaderFrame = singleFrame.copy()
             if len(allObjectFrames):
                 break
+        
         if t == 'STD,FLUX':
+            # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
             self.generateReponseCurve = True
+
+
+        #self.generateReponseCurve = True
 
         #self.generateReponseCurve = True
         # UVB/VIS/NIR FLAT
@@ -210,6 +216,8 @@ class soxs_nod(base_recipe):
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             master_flat = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            print('Added master flat')
+            sys.exit(0)
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
@@ -223,19 +231,6 @@ class soxs_nod(base_recipe):
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
-        # DETREND ALL NODDING IMAGES - CHECK IF WE NEED TO COMPUTE THE RESPONSE FUNCTION
-        # IN THAT CASE, WE NEED TO EXTRACT THE OBJECT SPECTRUM *ALSO* WITH NOT-FLATFIELD CORRECTED FRAME
-
-        if self.generateReponseCurve:
-            allFrameA = allObjectFrames[0]
-            allFrameB = allObjectFrames[1]
-
-            # NOW COMPUTE A SINGLE A-B CYCLE
-            mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat = self.process_single_ab_nodding_cycle(aFrame=allFrameA, bFrame=allFrameB, locationSetIndex=1, orderTablePath=orderTablePath)
-            stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat], "NOTFLAT")
-
-        if self.recipeSettings["use_flat"]:
-            allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
 
         quicklook_image(
             log=self.log, CCDObject=allObjectFrames[0], show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
@@ -271,6 +266,12 @@ class soxs_nod(base_recipe):
         self.log.print(f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS")
 
         if len(allFrameAOffsets) > 1 and len(uniqueOffsets) > 1:
+
+            # DETRENDING HERE THE FRAMES - IN THIS CASE, NO RESPONSE FUNCTION WILL BE COMPUTED.
+
+            if self.recipeSettings["use_flat"] and master_flat: # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLATFIELD FRAMES
+                allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
+
             allSpectrumA = []
             allSpectrumB = []
             sequenceCount = 1
@@ -322,6 +323,27 @@ class soxs_nod(base_recipe):
 
         else:
 
+            if self.generateReponseCurve:
+                aFrame = self.clip_and_stack(
+                    frames=allFrameA,
+                    recipe="soxs_nod",
+                    ignore_input_masks=False,
+                    post_stack_clipping=True)
+
+                bFrame = self.clip_and_stack(
+                    frames=allFrameB,
+                    recipe="soxs_nod",
+                    ignore_input_masks=False,
+                    post_stack_clipping=True)
+                mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
+                stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat], "NOTFLAT")
+
+
+
+            if self.recipeSettings["use_flat"] and master_flat: # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLATFIELD FRAMES
+                allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
+
+
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
                 frames=allFrameA,
@@ -342,21 +364,21 @@ class soxs_nod(base_recipe):
             mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
             stackedSpectrum, extractionPath = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
 
-        if self.generateReponseCurve:
-            from soxspipe.commonutils import response_function
-            print('Now extracting response at path ' + extractionPath_notflat)
-            response = response_function(
-                log=self.log,
-                settings=self.settings,
-                recipeName=self.recipeName,
-                sofName=self.sofName,
-                stdExtractionPath=extractionPath,
-                qcTable=self.qc,
-                productsTable=self.products,
-                startNightDate=self.startNightDate,
-                stdNotFlatExtractionPath=extractionPath_notflat,
-            )
-            self.qc, self.products = response.get()
+            if self.generateReponseCurve:
+                # GETTING THE RESPONSE
+                from soxspipe.commonutils import response_function
+                response = response_function(
+                    log=self.log,
+                    settings=self.settings,
+                    recipeName=self.recipeName,
+                    sofName=self.sofName,
+                    stdExtractionPath=extractionPath,
+                    qcTable=self.qc,
+                    productsTable=self.products,
+                    startNightDate=self.startNightDate,
+                    stdNotFlatExtractionPath=extractionPath_notflat,
+                )
+                self.qc, self.products = response.get()
 
         self.plot_stacked_spectrum_qc(stackedSpectrum)
         self.clean_up()
