@@ -381,8 +381,7 @@ def main(arguments=None):
                 from soxspipe.commonutils import data_organiser
                 do = data_organiser(
                     log=thisLog,
-                    rootDir=pwd,
-                    vlt=True
+                    rootDir=pwd
                 )
                 do.prepare()
 
