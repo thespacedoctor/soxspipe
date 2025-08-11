@@ -202,11 +202,10 @@ class soxs_nod(base_recipe):
                     self.masterHeaderFrame = singleFrame.copy()
             if len(allObjectFrames):
                 break
-        
+
         if t == 'STD,FLUX':
             # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
             self.generateReponseCurve = True
-
 
         #self.generateReponseCurve = True
 
@@ -230,7 +229,6 @@ class soxs_nod(base_recipe):
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
-
 
         quicklook_image(
             log=self.log, CCDObject=allObjectFrames[0], show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
@@ -269,7 +267,7 @@ class soxs_nod(base_recipe):
 
             # DETRENDING HERE THE FRAMES - IN THIS CASE, NO RESPONSE FUNCTION WILL BE COMPUTED.
 
-            if self.recipeSettings["use_flat"] and master_flat: # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLATFIELD FRAMES
+            if self.recipeSettings["use_flat"] and master_flat:  # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLATFIELD FRAMES
                 allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
 
             allSpectrumA = []
@@ -338,11 +336,8 @@ class soxs_nod(base_recipe):
                 mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
                 stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat], "NOTFLAT")
 
-
-
-            if self.recipeSettings["use_flat"] and master_flat: # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLATFIELD FRAMES
+            if self.recipeSettings["use_flat"] and master_flat:  # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLATFIELD FRAMES
                 allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
-
 
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
@@ -367,6 +362,7 @@ class soxs_nod(base_recipe):
             if self.generateReponseCurve:
                 # GETTING THE RESPONSE
                 from soxspipe.commonutils import response_function
+                print('Now extracting response at path ' + extractionPath_notflat)
                 response = response_function(
                     log=self.log,
                     settings=self.settings,

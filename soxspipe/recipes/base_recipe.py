@@ -1224,10 +1224,8 @@ class base_recipe(object):
             self.products.drop(columns=['file_path'], inplace=True)
 
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
-        try:
-            self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
-        except:
-            return None
+        self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
+
         # SORT BY COLUMN NAME
         self.qc.sort_values(['qc_name'], inplace=True)
         columns = list(self.qc.columns)
