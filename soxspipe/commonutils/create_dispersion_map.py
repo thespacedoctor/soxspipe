@@ -851,6 +851,9 @@ class create_dispersion_map(object):
         if iraf:
             predictedLines["fwhm_pin_px"] = []
 
+        # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
+        import matplotlib.pyplot as plt
+        plt.switch_backend('Agg')
         from fundamentals import fmultiprocess
         # DEFINE AN INPUT ARRAY
         results = fmultiprocess(log=self.log, function=measure_line_position,
@@ -1766,6 +1769,10 @@ class create_dispersion_map(object):
         os.environ['OPENBLAS_NUM_THREADS'] = numThreads
         os.environ['OMP_NUM_THREADS'] = numThreads
         os.environ['BLAS_NUM_THREADS'] = numThreads
+
+        # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
+        import matplotlib.pyplot as plt
+        plt.switch_backend('Agg')
 
         results = fmultiprocess(log=self.log, function=self.order_to_image,
                                 inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=False)
@@ -2911,6 +2918,7 @@ def measure_line_position(
                 print(x, y)
                 # if ran == 1:
                 import matplotlib.pyplot as plt
+                plt.switch_backend('Agg')  # Ensure thread-safe backend
                 plt.clf()
                 plt.imshow(stamp)
                 # plt.show()
