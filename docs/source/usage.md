@@ -5,7 +5,7 @@
     Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
     
     Usage:
-        soxspipe prep <workspaceDirectory>
+        soxspipe prep <workspaceDirectory> [--vlt]
         soxspipe [-qw] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
         soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
         soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
@@ -48,6 +48,7 @@
         -x, --overwrite                        more verbose output
         -w, --watch                            watch the workspace and reduce new raw data as it is added (similar to 'watch' mode but runs in the foreground)
         --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
+        --vlt                                  only use this flag if setting up a workspace on a VLT environment workstation
     
 
 ```
