@@ -1228,11 +1228,6 @@ class data_organiser(object):
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
-        # REMOVE UNNEEDED FRAMES FROM GROUPS
-        # mask = (rawGroups['slitmask'].isin(["PH", "MPH"])) & (
-        #     rawGroups['binning'].isin(["2x1", "2x2", "1x2"]))
-        # rawGroups = rawGroups.loc[~mask]
-
         calibrationFrames = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` not like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationFrames.fillna("--", inplace=True)
 
@@ -1307,10 +1302,6 @@ class data_organiser(object):
         sofName.append(series['eso seq arm'].upper())
         matchDict['eso seq arm'] = series['eso seq arm'].upper()
         filteredFrames = rawFrames
-
-        # FILTER BY TEMPLATE NAME
-        # mask = (filteredFrames["template"].isin([series["template"]]))
-        # filteredFrames = filteredFrames.loc[mask]
 
         # FILTER BY TYPE FIRST
         if "FLAT" in series["eso dpr type"].upper():
@@ -1427,7 +1418,6 @@ class data_organiser(object):
             elif "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
                 mask = (calibrationTables['eso pro catg'].str.contains("_TAB_"))
             else:
-                # mask = (calibrationTables[k].isin([v]))
                 try:
                     mask = (calibrationTables[k].isin([v]))
                 except Exception as e:
