@@ -1130,8 +1130,11 @@ class base_recipe(object):
         if dark != False and (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence):
             processedFrame = ccdproc.subtract_bias(processedFrame, dark)
         elif dark != False:
-            self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
-            processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
+            if self.inst == "SOXS":
+                self.log.warning(f"MDARK does not have an equivalent exposure time. As the SOXS dark noise does not scale linearly, scaling the dark to the same exposure time as the input frame does not work. Skipping dark subtraction.")
+            else:
+                self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
+                processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
 
         doSubtraction = True
         if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
