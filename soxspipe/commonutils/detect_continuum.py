@@ -13,9 +13,14 @@ Date Created
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
 from soxspipe.commonutils.toolkit import get_calibration_lamp
-from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
+    dispersion_map_to_pixel_arrays,
+)
 from soxspipe.commonutils.filenamer import filenamer
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
+from soxspipe.commonutils.polynomials import (
+    chebyshev_xy_polynomial,
+    chebyshev_order_xy_polynomials,
+)
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 import collections
@@ -30,19 +35,15 @@ from io import StringIO
 import copy
 from contextlib import suppress
 from datetime import datetime
-os.environ['TERM'] = 'vt100'
+
+os.environ["TERM"] = "vt100"
 
 
 class _base_detect(object):
 
     def fit_order_polynomial(
-            self,
-            pixelList,
-            order,
-            axisBDeg,
-            axisACol,
-            axisBCol,
-            exponentsIncluded=False):
+        self, pixelList, order, axisBDeg, axisACol, axisBCol, exponentsIncluded=False
+    ):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
         **Key Arguments:**
@@ -59,7 +60,7 @@ class _base_detect(object):
         - ``coeffs`` -- the coefficients of the polynomial fit
         - ``pixelList`` -- the pixel list but now with fits and residuals included
         """
-        self.log.debug('starting the ``fit_order_polynomial`` method')
+        self.log.debug("starting the ``fit_order_polynomial`` method")
 
         import numpy as np
         from astropy.stats import sigma_clip
@@ -71,15 +72,17 @@ class _base_detect(object):
         clippedCount = 1
 
         poly = chebyshev_xy_polynomial(
-            log=self.log, axisBCol=axisBCol, axisBDeg=self.axisBDeg, exponentsIncluded=exponentsIncluded).poly
+            log=self.log,
+            axisBCol=axisBCol,
+            axisBDeg=self.axisBDeg,
+            exponentsIncluded=exponentsIncluded,
+        ).poly
 
-        clippingSigma = self.recipeSettings[
-            "poly-fitting-residual-clipping-sigma"]
-        clippingIterationLimit = self.recipeSettings[
-            "poly-clipping-iteration-limit"]
+        clippingSigma = self.recipeSettings["poly-fitting-residual-clipping-sigma"]
+        clippingIterationLimit = self.recipeSettings["poly-clipping-iteration-limit"]
 
         iteration = 0
-        mask = (pixelList['order'] == order)
+        mask = pixelList["order"] == order
         pixelListFiltered = pixelList.loc[mask]
 
         coeff = np.ones((self.axisBDeg + 1))
@@ -93,7 +96,12 @@ class _base_detect(object):
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelListFiltered, ydata=pixelListFiltered[axisACol].values, p0=coeff, maxfev=30000)
+                    poly,
+                    xdata=pixelListFiltered,
+                    ydata=pixelListFiltered[axisACol].values,
+                    p0=coeff,
+                    maxfev=30000,
+                )
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 pixelList = pixelList.loc[~mask]
@@ -106,37 +114,47 @@ class _base_detect(object):
                 orderPixelTable=pixelListFiltered,
                 coeff=coeff,
                 axisACol=axisACol,
-                axisBCol=axisBCol)
+                axisBCol=axisBCol,
+            )
 
             pixelList.loc[mask, "x_fit_res"] = res
             pixelList.loc[mask, "x_fit"] = xfit
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                res,
+                sigma_lower=clippingSigma,
+                sigma_upper=clippingSigma,
+                maxiters=1,
+                cenfunc="median",
+                stdfunc="mad_std",
+            )
             pixelList.loc[mask, "mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
-            removeMask = (pixelList["mask"] == True)
+            removeMask = pixelList["mask"] == True
             pixelList = pixelList.loc[~removeMask]
             pixelListFiltered = pixelList.loc[mask]
             clippedCount = startCount - len(pixelListFiltered.index)
 
             sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print(f'\t\tORDER {order:0.0f}: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+            self.log.print(
+                f"\t\tORDER {order:0.0f}: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial"
+            )
 
-        self.log.debug('completed the ``fit_order_polynomial`` method')
+        self.log.debug("completed the ``fit_order_polynomial`` method")
         return coeff, pixelList
 
     def fit_global_polynomial(
-            self,
-            pixelList,
-            axisACol="cont_x",
-            axisBCol="cont_y",
-            orderCol="order",
-            exponentsIncluded=False,
-            writeQCs=False):
+        self,
+        pixelList,
+        axisACol="cont_x",
+        axisBCol="cont_y",
+        orderCol="order",
+        exponentsIncluded=False,
+        writeQCs=False,
+    ):
         """*iteratively fit the global polynomial to the data, fitting axisA as a function of axisB, clipping residuals with each iteration*
 
         **Key Arguments:**
@@ -150,7 +168,7 @@ class _base_detect(object):
         - ``pixelList`` -- the pixel list but now with fits and residuals included
         - ``allClipped`` -- data that was sigma-clipped
         """
-        self.log.debug('starting the ``fit_global_polynomial`` method')
+        self.log.debug("starting the ``fit_global_polynomial`` method")
 
         import numpy as np
         from astropy.stats import sigma_clip
@@ -161,12 +179,18 @@ class _base_detect(object):
 
         clippedCount = 1
 
-        poly = chebyshev_order_xy_polynomials(log=self.log, axisBCol=axisBCol, orderCol=orderCol, orderDeg=self.orderDeg, axisBDeg=self.axisBDeg, axisB=self.axisB, exponentsIncluded=exponentsIncluded).poly
+        poly = chebyshev_order_xy_polynomials(
+            log=self.log,
+            axisBCol=axisBCol,
+            orderCol=orderCol,
+            orderDeg=self.orderDeg,
+            axisBDeg=self.axisBDeg,
+            axisB=self.axisB,
+            exponentsIncluded=exponentsIncluded,
+        ).poly
 
-        clippingSigmaHigh = self.recipeSettings[
-            "poly-fitting-residual-clipping-sigma"]
-        clippingIterationLimit = self.recipeSettings[
-            "poly-clipping-iteration-limit"]
+        clippingSigmaHigh = self.recipeSettings["poly-fitting-residual-clipping-sigma"]
+        clippingIterationLimit = self.recipeSettings["poly-clipping-iteration-limit"]
 
         if axisACol == "stddev":
             clippingSigmaLow = clippingSigmaHigh
@@ -179,8 +203,8 @@ class _base_detect(object):
         allClipped = []
 
         # REMOVE FILTERED ROWS FROM DATA FRAME
-        if 'pre-clipped' in pixelList.columns:
-            removeMask = (pixelList['pre-clipped'] == True)
+        if "pre-clipped" in pixelList.columns:
+            removeMask = pixelList["pre-clipped"] == True
             allClipped.append(pixelList.loc[removeMask])
             pixelList = pixelList.loc[~removeMask]
 
@@ -201,7 +225,12 @@ class _base_detect(object):
 
             try:
                 coeff, pcov_x = curve_fit(
-                    poly, xdata=pixelList, ydata=pixelList[axisACol].values, p0=coeff, maxfev=30000)
+                    poly,
+                    xdata=pixelList,
+                    ydata=pixelList[axisACol].values,
+                    p0=coeff,
+                    maxfev=30000,
+                )
             except TypeError as e:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 coeff = None
@@ -214,18 +243,25 @@ class _base_detect(object):
                 coeff=coeff,
                 orderCol=orderCol,
                 axisACol=axisACol,
-                axisBCol=axisBCol)
+                axisBCol=axisBCol,
+            )
 
             pixelList[f"{axisACol}_fit_res"] = res
             pixelList[f"{axisACol}_fit"] = xfit
 
             # SIGMA-CLIP THE DATA
             masked_residuals = sigma_clip(
-                res, sigma_lower=clippingSigmaLow, sigma_upper=clippingSigmaHigh, maxiters=2, cenfunc='mean', stdfunc='std')
+                res,
+                sigma_lower=clippingSigmaLow,
+                sigma_upper=clippingSigmaHigh,
+                maxiters=2,
+                cenfunc="mean",
+                stdfunc="std",
+            )
             pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
-            removeMask = (pixelList["mask"] == True)
+            removeMask = pixelList["mask"] == True
             allClipped.append(pixelList.loc[removeMask])
             pixelList = pixelList.loc[~removeMask]
             clippedCount = startCount - len(pixelList.index)
@@ -233,7 +269,9 @@ class _base_detect(object):
             if iteration > 1:
                 sys.stdout.flush()
                 sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print(f'\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial')
+            self.log.print(
+                f"\t\tGLOBAL FIT: {clippedCount} pixel positions where clipped in iteration {iteration} of fitting the polynomial"
+            )
 
         if len(allClipped):
             allClipped = pd.concat(allClipped, ignore_index=True)
@@ -244,19 +282,15 @@ class _base_detect(object):
             orderCol=orderCol,
             axisACol=axisACol,
             axisBCol=axisBCol,
-            writeQCs=writeQCs)
+            writeQCs=writeQCs,
+        )
 
-        self.log.debug('completed the ``fit_global_polynomial`` method')
+        self.log.debug("completed the ``fit_global_polynomial`` method")
         return coeff, pixelList, allClipped
 
     def calculate_residuals(
-            self,
-            orderPixelTable,
-            coeff,
-            axisACol,
-            axisBCol,
-            orderCol=False,
-            writeQCs=False):
+        self, orderPixelTable, coeff, axisACol, axisBCol, orderCol=False, writeQCs=False
+    ):
         """*calculate residuals of the polynomial fits against the observed line postions*
 
         **Key Arguments:**
@@ -276,7 +310,7 @@ class _base_detect(object):
         - ``median`` -- the median of the residuals
         - ``xfit`` -- fitted x values
         """
-        self.log.debug('starting the ``calculate_residuals`` method')
+        self.log.debug("starting the ``calculate_residuals`` method")
 
         import numpy as np
         import pandas as pd
@@ -284,16 +318,20 @@ class _base_detect(object):
         arm = self.arm
 
         poly = chebyshev_order_xy_polynomials(
-            log=self.log, axisBCol=axisBCol, orderCol=orderCol, orderDeg=self.orderDeg, axisBDeg=self.axisBDeg).poly
+            log=self.log,
+            axisBCol=axisBCol,
+            orderCol=orderCol,
+            orderDeg=self.orderDeg,
+            axisBDeg=self.axisBDeg,
+        ).poly
 
         # CALCULATE RESIDUALS BETWEEN GAUSSIAN PEAK LINE POSITIONS AND POLY
         # FITTED POSITIONS
-        thisFit = poly(
-            orderPixelTable, *coeff)
+        thisFit = poly(orderPixelTable, *coeff)
         res = thisFit - orderPixelTable[axisACol].values
 
         # GET UNIQUE VALUES IN COLUMN
-        uniqueorders = len(orderPixelTable['order'].unique())
+        uniqueorders = len(orderPixelTable["order"].unique())
 
         # CALCULATE COMBINED RESIDUALS AND STATS
         res_mean = np.ma.mean(res)
@@ -308,61 +346,97 @@ class _base_detect(object):
             if "order-centre" in self.recipeName.lower():
                 tag = "order centre"
 
-            self.qc = pd.concat([self.qc, pd.Series({
-                "soxspipe_recipe": self.recipeName,
-                "qc_name": f"{self.axisA.upper()}RESMIN",
-                "qc_value": f"{res.min():0.2f}",
-                "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
-                "qc_unit": "px",
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "to_header": True
-            }).to_frame().T], ignore_index=True)
-            self.qc = pd.concat([self.qc, pd.Series({
-                "soxspipe_recipe": self.recipeName,
-                "qc_name": f"{self.axisA.upper()}RESMAX",
-                "qc_value": f"{res.max():0.2f}",
-                "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
-                "qc_unit": "px",
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "to_header": True
-            }).to_frame().T], ignore_index=True)
-            self.qc = pd.concat([self.qc, pd.Series({
-                "soxspipe_recipe": self.recipeName,
-                "qc_name": f"{self.axisA.upper()}RESRMS",
-                "qc_value": f"{res_std:0.2f}",
-                "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
-                "qc_unit": "px",
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "to_header": True
-            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": f"{self.axisA.upper()}RESMIN",
+                            "qc_value": f"{res.min():0.2f}",
+                            "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
+                            "qc_unit": "px",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": f"{self.axisA.upper()}RESMAX",
+                            "qc_value": f"{res.max():0.2f}",
+                            "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
+                            "qc_unit": "px",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": f"{self.axisA.upper()}RESRMS",
+                            "qc_value": f"{res_std:0.2f}",
+                            "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
+                            "qc_unit": "px",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
 
             if "order" in self.recipeName.lower():
                 c = f"Number of order centre traces found"
             else:
                 c = f"Number of orders containing an object trace"
 
-            self.qc = pd.concat([self.qc, pd.Series({
-                "soxspipe_recipe": self.recipeName,
-                "qc_name": "NORDERS",
-                "qc_value": uniqueorders,
-                "qc_comment": c,
-                "qc_unit": None,
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "to_header": True
-            }).to_frame().T], ignore_index=True)
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "NORDERS",
+                            "qc_value": uniqueorders,
+                            "qc_comment": c,
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
 
-        self.log.debug('completed the ``calculate_residuals`` method')
+        self.log.debug("completed the ``calculate_residuals`` method")
         return res, res_mean, res_std, res_median, thisFit
 
-    def write_order_table_to_file(
-            self,
-            frame,
-            orderPolyTable,
-            orderMetaTable):
+    def write_order_table_to_file(self, frame, orderPolyTable, orderMetaTable):
         """*write out the fitted polynomial solution coefficients to file*
 
         **Key Arguments:**
@@ -377,17 +451,14 @@ class _base_detect(object):
         """
         from astropy.table import Table
         from astropy.io import fits
-        self.log.debug('starting the ``write_order_table_to_file`` method')
+
+        self.log.debug("starting the ``write_order_table_to_file`` method")
 
         arm = self.arm
         kw = self.kw
 
         if not self.sofName:
-            filename = filenamer(
-                log=self.log,
-                frame=frame,
-                settings=self.settings
-            )
+            filename = filenamer(log=self.log, frame=frame, settings=self.settings)
 
         else:
             filename = self.sofName + ".fits"
@@ -403,7 +474,12 @@ class _base_detect(object):
             filename = filename.upper().split(".FITS")[0] + "_OBJTRACE.fits"
         elif "nod" in self.recipeName.lower():
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
-            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + ".fits"
+            filename = (
+                filename.upper().split(".FITS")[0]
+                + "_OBJTRACE"
+                + self.noddingSequence
+                + ".fits"
+            )
 
         if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
@@ -435,7 +511,11 @@ class _base_detect(object):
 
         header[kw("SEQ_ARM")] = arm
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
-        if "stare" not in self.recipeName.lower() and "nod" not in self.recipeName.lower() and "offset" not in self.recipeName.lower():
+        if (
+            "stare" not in self.recipeName.lower()
+            and "nod" not in self.recipeName.lower()
+            and "offset" not in self.recipeName.lower()
+        ):
             header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
         else:
             header["HIERARCH " + kw("PRO_CATG")] = f"OBJECT_TAB_{arm}".upper()
@@ -444,7 +524,7 @@ class _base_detect(object):
         hduList = fits.HDUList([priHDU, BinTableHDU, BinTableHDU2])
         hduList.writeto(order_table_path, checksum=True, overwrite=True)
 
-        self.log.debug('completed the ``write_order_table_to_file`` method')
+        self.log.debug("completed the ``write_order_table_to_file`` method")
         return order_table_path
 
 
@@ -488,22 +568,22 @@ class detect_continuum(_base_detect):
     """
 
     def __init__(
-            self,
-            log,
-            traceFrame,
-            dispersion_map,
-            settings=False,
-            recipeSettings=False,
-            recipeName=False,
-            qcTable=False,
-            productsTable=False,
-            sofName=False,
-            binx=1,
-            biny=1,
-            lampTag=False,
-            locationSetIndex=False,
-            orderPixelTable=False,
-            startNightDate=""
+        self,
+        log,
+        traceFrame,
+        dispersion_map,
+        settings=False,
+        recipeSettings=False,
+        recipeName=False,
+        qcTable=False,
+        productsTable=False,
+        sofName=False,
+        binx=1,
+        biny=1,
+        lampTag=False,
+        locationSetIndex=False,
+        orderPixelTable=False,
+        startNightDate="",
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -512,7 +592,11 @@ class detect_continuum(_base_detect):
 
         self.settings = settings
         try:
-            self.noddingSequence = "_A" if int(traceFrame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "_B"
+            self.noddingSequence = (
+                "_A"
+                if int(traceFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0)
+                else "_B"
+            )
             if locationSetIndex:
                 self.noddingSequence += str(locationSetIndex)
         except:
@@ -533,10 +617,7 @@ class detect_continuum(_base_detect):
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
-        self.kw = keyword_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get
+        self.kw = keyword_lookup(log=self.log, settings=self.settings).get
         self.arm = traceFrame.header[self.kw("SEQ_ARM")]
         self.dateObs = traceFrame.header[self.kw("DATE_OBS")]
         self.inst = traceFrame.header[self.kw("INSTRUME")]
@@ -546,10 +627,7 @@ class detect_continuum(_base_detect):
         #     raise Exception("too low")
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
-        self.detectorParams = detector_lookup(
-            log=log,
-            settings=settings
-        ).get(self.arm)
+        self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
         self.axisBDeg = self.recipeSettings["disp-axis-deg"]
@@ -558,19 +636,29 @@ class detect_continuum(_base_detect):
         self.lamp = get_calibration_lamp(log=log, frame=traceFrame, kw=self.kw)
 
         from soxspipe.commonutils.toolkit import utility_setup
-        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
+
+        self.qcDir, self.productDir = utility_setup(
+            log=self.log,
+            settings=settings,
+            recipeName=recipeName,
+            startNightDate=startNightDate,
+        )
 
         # SET IMAGE ORIENTATION
         if self.detectorParams["dispersion-axis"] == "x":
             self.axisA = "x"
             self.axisB = "y"
-            self.coeff_dict = {"degorder_cent": self.orderDeg,
-                               "degy_cent": self.axisBDeg}
+            self.coeff_dict = {
+                "degorder_cent": self.orderDeg,
+                "degy_cent": self.axisBDeg,
+            }
         else:
             self.axisA = "y"
             self.axisB = "x"
-            self.coeff_dict = {"degorder_cent": self.orderDeg,
-                               "degx_cent": self.axisBDeg}
+            self.coeff_dict = {
+                "degorder_cent": self.orderDeg,
+                "degx_cent": self.axisBDeg,
+            }
 
         return None
 
@@ -582,7 +670,7 @@ class detect_continuum(_base_detect):
 
         - ``order_table_path`` -- file path to the order centre table giving polynomial coeffs to each order fit
         """
-        self.log.debug('starting the ``get`` method')
+        self.log.debug("starting the ``get`` method")
 
         import numpy as np
         import pandas as pd
@@ -596,14 +684,16 @@ class detect_continuum(_base_detect):
         else:
             orderPixelTable = self.orderPixelTable
 
-        self.log.print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
+        self.log.print(
+            "\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n"
+        )
 
         # GET UNIQUE VALUES IN COLUMN
-        uniqueOrders = orderPixelTable['order'].unique()
+        uniqueOrders = orderPixelTable["order"].unique()
 
         orderLocations = {}
-        orderPixelTable[f'cont_{self.axisA}_fit'] = np.nan
-        orderPixelTable[f'cont_{self.axisA}_fit_res'] = np.nan
+        orderPixelTable[f"cont_{self.axisA}_fit"] = np.nan
+        orderPixelTable[f"cont_{self.axisA}_fit_res"] = np.nan
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
         fitFound = False
@@ -612,7 +702,9 @@ class detect_continuum(_base_detect):
         while not fitFound and tryCount < 5:
             # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
             for i in range(0, self.axisBDeg + 1):
-                orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"cont_{self.axisB}"].pow(i)
+                orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[
+                    f"cont_{self.axisB}"
+                ].pow(i)
             for i in range(0, self.orderDeg + 1):
                 orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
             try:
@@ -622,9 +714,11 @@ class detect_continuum(_base_detect):
                     axisACol=f"cont_{self.axisA}",
                     axisBCol=f"cont_{self.axisB}",
                     exponentsIncluded=True,
-                    writeQCs=True
+                    writeQCs=True,
                 )
-                mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
+                mean_res = np.mean(
+                    np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
+                )
 
                 if "order" in self.recipeName.lower() and mean_res > 2:
                     orderPixelTable = backupOrderPixelTable
@@ -637,7 +731,7 @@ class detect_continuum(_base_detect):
                 n_coeff = 0
                 for i in range(0, self.orderDeg + 1):
                     for j in range(0, self.axisBDeg + 1):
-                        coeff_dict[f'cent_{i}{j}'] = coeff[n_coeff]
+                        coeff_dict[f"cent_{i}{j}"] = coeff[n_coeff]
                         n_coeff += 1
 
                 # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
@@ -645,11 +739,13 @@ class detect_continuum(_base_detect):
                     pixelList=orderPixelTable,
                     axisACol="gauss_stddev",
                     axisBCol=f"cont_{self.axisB}",
-                    exponentsIncluded=True
+                    exponentsIncluded=True,
                 )
 
                 if len(clippedData) and len(clippedData.index):
-                    clippedData = pd.concat([clippedDataCentre, clippedData], ignore_index=True)
+                    clippedData = pd.concat(
+                        [clippedDataCentre, clippedData], ignore_index=True
+                    )
                 else:
                     clippedData = clippedDataCentre
                 fitFound = True
@@ -660,12 +756,16 @@ class detect_continuum(_base_detect):
                 self.axisBDeg, self.orderDeg = degList
                 coeff_dict["degorder_cent"] = self.orderDeg
                 coeff_dict[f"deg{self.axisB}_cent"] = self.axisBDeg
-                self.log.print(f"{self.axisB} and Order fitting orders reduced to {self.axisBDeg}, {self.orderDeg} to try and successfully fit the continuum.")
+                self.log.print(
+                    f"{self.axisB} and Order fitting orders reduced to {self.axisBDeg}, {self.orderDeg} to try and successfully fit the continuum."
+                )
                 self.recipeSettings["disp-axis-deg"] = self.axisBDeg
                 self.recipeSettings["order-deg"] = self.orderDeg
                 tryCount += 1
                 if tryCount == 5:
-                    self.log.print(f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters.")
+                    self.log.print(
+                        f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters."
+                    )
                     raise e
                 if self.settings["tune-pipeline"]:
                     raise e
@@ -677,16 +777,26 @@ class detect_continuum(_base_detect):
             CSAMP = len(clippedData.index)
         except:
             CSAMP = 0
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "CSAMP",
-            "qc_value": CSAMP,
-            "qc_comment": "Number of continuum sample clipped during solution fitting",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
+        self.qc = pd.concat(
+            [
+                self.qc,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "qc_name": "CSAMP",
+                        "qc_value": CSAMP,
+                        "qc_comment": "Number of continuum sample clipped during solution fitting",
+                        "qc_unit": None,
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
         # orderLocations[o] = coeff
         coeff_dict["degorder_std"] = self.orderDeg
@@ -694,19 +804,19 @@ class detect_continuum(_base_detect):
         n_coeff = 0
         for i in range(0, self.orderDeg + 1):
             for j in range(0, self.axisBDeg + 1):
-                coeff_dict[f'std_{i}{j}'] = coeff[n_coeff]
+                coeff_dict[f"std_{i}{j}"] = coeff[n_coeff]
                 n_coeff += 1
         coeffColumns = coeff_dict.keys()
 
         orderPolyTable = pd.DataFrame([coeff_dict])
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
-        orderPixelTable.drop(columns=['mask'], inplace=True)
+        orderPixelTable.drop(columns=["mask"], inplace=True)
 
         plotPath, orderMetaTable = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
-            clippedData=clippedData
+            clippedData=clippedData,
         )
 
         utcnow = datetime.utcnow()
@@ -722,32 +832,54 @@ class detect_continuum(_base_detect):
             product_desc = f"Residuals of the object trace polynomial fit"
 
         if not isinstance(self.products, bool):
-            self.products = pd.concat([self.products, pd.Series({
-                "soxspipe_recipe": self.recipeName,
-                "product_label": label + self.noddingSequence,
-                "file_name": basename,
-                "file_type": "PDF",
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "product_desc": product_desc,
-                "file_path": plotPath,
-                "label": "QC"
-            }).to_frame().T], ignore_index=True)
+            self.products = pd.concat(
+                [
+                    self.products,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": label + self.noddingSequence,
+                            "file_name": basename,
+                            "file_type": "PDF",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "product_desc": product_desc,
+                            "file_path": plotPath,
+                            "label": "QC",
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
             # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
             order_table_path = self.write_order_table_to_file(
-                frame=self.traceFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+                frame=self.traceFrame,
+                orderPolyTable=orderPolyTable,
+                orderMetaTable=orderMetaTable,
+            )
         else:
             order_table_path = self.write_order_table_to_file(
-                frame=self.traceFrame, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+                frame=self.traceFrame,
+                orderPolyTable=orderPolyTable,
+                orderMetaTable=orderMetaTable,
+            )
 
         # mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         # std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
 
-        self.log.debug('completed the ``get`` method')
-        return order_table_path, self.qc, self.products, orderPolyTable, orderPixelTable, orderMetaTable
+        self.log.debug("completed the ``get`` method")
+        return (
+            order_table_path,
+            self.qc,
+            self.products,
+            orderPolyTable,
+            orderPixelTable,
+            orderMetaTable,
+        )
 
-    def create_pixel_arrays(
-            self):
+    def create_pixel_arrays(self):
         """*create a pixel array for the approximate centre of each order*
 
         **Return:**
@@ -756,7 +888,7 @@ class detect_continuum(_base_detect):
         - `dmBinx` -- the dispersion map binning in x
         - `dmBiny` -- the dispersion map binning in y
         """
-        self.log.debug('starting the ``create_pixel_arrays`` method')
+        self.log.debug("starting the ``create_pixel_arrays`` method")
 
         import numpy as np
         import pandas as pd
@@ -764,7 +896,11 @@ class detect_continuum(_base_detect):
 
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
-            log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersion_map)
+            log=self.log,
+            settings=self.settings,
+            arm=self.arm,
+            dispersionMap=self.dispersion_map,
+        )
 
         # READ ORDER SAMPLING RESOLUTION FROM SETTINGS
         sampleCount = self.recipeSettings["order-sample-count"]
@@ -781,27 +917,28 @@ class detect_continuum(_base_detect):
         myDict = {
             "order": np.asarray([]),
             "wavelength": np.asarray([]),
-            "slit_position": np.asarray([])
+            "slit_position": np.asarray([]),
         }
 
-        for o, wmin, wmax, pixelRange in zip(orderNums, waveLengthMin, waveLengthMax, orderPixelRanges):
+        for o, wmin, wmax, pixelRange in zip(
+            orderNums, waveLengthMin, waveLengthMax, orderPixelRanges
+        ):
 
             orderSampleCount = int(pixelRange / samplePixelSep)
             wrange = wmax - wmin
 
-            wlArray = np.arange(
-                wmin, wmax, (wmax - wmin) / orderSampleCount)
+            wlArray = np.arange(wmin, wmax, (wmax - wmin) / orderSampleCount)
             myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
-            myDict["order"] = np.append(
-                myDict["order"], np.ones(len(wlArray)) * o)
+            myDict["order"] = np.append(myDict["order"], np.ones(len(wlArray)) * o)
             myDict["slit_position"] = np.append(
-                myDict["slit_position"], np.zeros(len(wlArray)))
+                myDict["slit_position"], np.zeros(len(wlArray))
+            )
 
         orderPixelTable = pd.DataFrame(myDict)
         orderPixelTable = dispersion_map_to_pixel_arrays(
             log=self.log,
             dispersionMapPath=self.dispersion_map,
-            orderPixelTable=orderPixelTable
+            orderPixelTable=orderPixelTable,
         )
 
         # GRAB HEADER FROM DISPERSION MAP
@@ -809,20 +946,18 @@ class detect_continuum(_base_detect):
             header = hdul[0].header
 
         try:
-            dmBinx = header[self.kw('WIN_BINX')]
-            dmBiny = header[self.kw('WIN_BINY')]
+            dmBinx = header[self.kw("WIN_BINX")]
+            dmBiny = header[self.kw("WIN_BINY")]
         except:
             dmBinx = 1
             dmBiny = 1
 
-        self.log.debug('completed the ``create_pixel_arrays`` method')
+        self.log.debug("completed the ``create_pixel_arrays`` method")
         return orderPixelTable, dmBinx, dmBiny
 
     def fit_1d_gaussian_to_slices(
-            self,
-            orderPixelTable,
-            sliceLength,
-            medianStddev=False):
+        self, orderPixelTable, sliceLength, medianStddev=False
+    ):
         """*cut a slice from the pinhole flat along the cross-dispersion direction centred on pixel position, fit 1D gaussian and return the peak pixel position*
 
         **Key Arguments:**
@@ -833,7 +968,7 @@ class detect_continuum(_base_detect):
 
         - ``orderPixelTable`` -- the pixel table dataframe with order centre trace
         """
-        self.log.debug('starting the ``fit_1d_gaussian_to_slice`` method')
+        self.log.debug("starting the ``fit_1d_gaussian_to_slice`` method")
 
         import numpy as np
         from astropy.stats import mad_std
@@ -856,10 +991,29 @@ class detect_continuum(_base_detect):
 
         fitx = orderPixelTable["fit_x"]
         fity = orderPixelTable["fit_y"]
-        contSliceAxis, contSliceAntiAxis, gauss_amplitude, gauss_stddev, gauss_mean = [], [], [], [], []
+        contSliceAxis, contSliceAntiAxis, gauss_amplitude, gauss_stddev, gauss_mean = (
+            [],
+            [],
+            [],
+            [],
+            [],
+        )
 
         slices = []
-        slices[:] = [cut_image_slice(log=self.log, frame=self.traceFrame, width=self.sliceWidth, length=sliceLength, x=x, y=y, sliceAxis=sliceAxis, median=True, plot=False) for x, y in zip(fitx, fity)]
+        slices[:] = [
+            cut_image_slice(
+                log=self.log,
+                frame=self.traceFrame,
+                width=self.sliceWidth,
+                length=sliceLength,
+                x=x,
+                y=y,
+                sliceAxis=sliceAxis,
+                median=True,
+                plot=False,
+            )
+            for x, y in zip(fitx, fity)
+        ]
 
         for s in slices:
             slice, slice_length_offset, slice_width_centre = s[0], s[1], s[2]
@@ -875,11 +1029,12 @@ class detect_continuum(_base_detect):
             # CHECK THE SLICE POINTS IF NEEDED
             if 1 == 0:
                 import matplotlib.pyplot as plt
+
                 x = np.arange(0, len(slice))
                 plt.figure(figsize=(8, 5))
-                plt.plot(x, slice, 'ko')
-                plt.xlabel('Position')
-                plt.ylabel('Flux')
+                plt.plot(x, slice, "ko")
+                plt.xlabel("Position")
+                plt.ylabel("Flux")
                 plt.show()
 
             origSlice = slice.copy()
@@ -901,27 +1056,30 @@ class detect_continuum(_base_detect):
                 gauss_mean.append(np.nan)
                 continue
 
-            peaks, _ = find_peaks(slice, height=median_r +
-                                  self.peakSigmaLimit * std_r, width=1)
+            peaks, _ = find_peaks(
+                slice, height=median_r + self.peakSigmaLimit * std_r, width=1
+            )
 
             # CHECK PEAK HAS BEEN FOUND
             if peaks is None or len(peaks) <= 0:
                 # CHECK THE SLICE POINTS IF NEEDED
                 if False:
                     import matplotlib.pyplot as plt
+
                     x = np.arange(0, len(origSlice))
                     plt.figure(figsize=(8, 5))
-                    plt.plot(x, slice, 'ko')
-                    plt.xlabel('Position')
-                    plt.ylabel('Flux')
+                    plt.plot(x, slice, "ko")
+                    plt.xlabel("Position")
+                    plt.ylabel("Flux")
                     plt.show()
                     print(median_r, std_r)
                     import matplotlib.pyplot as plt
+
                     x = np.arange(0, len(slice))
                     plt.figure(figsize=(8, 5))
-                    plt.plot(x, slice, 'ko')
-                    plt.xlabel('Position')
-                    plt.ylabel('Flux')
+                    plt.plot(x, slice, "ko")
+                    plt.xlabel("Position")
+                    plt.ylabel("Flux")
                     plt.show()
                 contSliceAxis.append(np.nan)
                 contSliceAntiAxis.append(np.nan)
@@ -932,9 +1090,13 @@ class detect_continuum(_base_detect):
 
             if len(peaks) > 1:
                 closest = peaks[0]
-                smallest_diff = abs(sliceLength / 2. - closest)  # Initialize the smallest difference
+                smallest_diff = abs(
+                    sliceLength / 2.0 - closest
+                )  # Initialize the smallest difference
                 for num in peaks:
-                    current_diff = abs(sliceLength / 2. - num)  # Calculate the difference
+                    current_diff = abs(
+                        sliceLength / 2.0 - num
+                    )  # Calculate the difference
                     if current_diff < smallest_diff:  # Check if current is closer
                         smallest_diff = current_diff
                         closest = num  # Update closest integer
@@ -947,7 +1109,8 @@ class detect_continuum(_base_detect):
             # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
             # CENTRE THE GAUSSIAN ON THE PEAK
             g_init = models.Gaussian1D(
-                amplitude=slice[peaks[0]], mean=peaks[0], stddev=medianStddev)
+                amplitude=slice[peaks[0]], mean=peaks[0], stddev=medianStddev
+            )
             fit_g = fitting.LevMarLSQFitter()
 
             # NOW FIT
@@ -972,8 +1135,7 @@ class detect_continuum(_base_detect):
                 gauss_mean.append(np.nan)
                 continue
 
-            contSliceAxis.append(g.mean.value +
-                                 max(0, slice_length_offset))
+            contSliceAxis.append(g.mean.value + max(0, slice_length_offset))
             contSliceAntiAxis.append(slice_width_centre)
             gauss_amplitude.append(g.amplitude.value)
             gauss_stddev.append(g.stddev.value)
@@ -982,13 +1144,18 @@ class detect_continuum(_base_detect):
             # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAID
             if False and random() < 0.02:
                 import matplotlib.pyplot as plt
+
                 x = np.arange(0, len(slice))
                 plt.figure(figsize=(8, 5))
-                plt.plot(x, slice, 'ko')
-                plt.xlabel('Position')
-                plt.ylabel('Flux')
+                plt.plot(x, slice, "ko")
+                plt.xlabel("Position")
+                plt.ylabel("Flux")
                 gaussx = np.arange(0, max(x), 0.05)
-                plt.plot(gaussx, g(gaussx), label=f'Mean = {g.mean.value:0.2f}, std = {g.stddev.value:0.2f}, cont_{self.axisA} = {pixelPostion[f"cont_{self.axisA}"]:0.2f}, fit_{self.axisA} = {pixelPostion[f"fit_{self.axisA}"]:0.2f},cont_{self.axisB} = {pixelPostion[f"cont_{self.axisB}"]:0.2f},fit_y = {pixelPostion[f"fit_{self.axisB}"]:0.2f}')
+                plt.plot(
+                    gaussx,
+                    g(gaussx),
+                    label=f'Mean = {g.mean.value:0.2f}, std = {g.stddev.value:0.2f}, cont_{self.axisA} = {pixelPostion[f"cont_{self.axisA}"]:0.2f}, fit_{self.axisA} = {pixelPostion[f"fit_{self.axisA}"]:0.2f},cont_{self.axisB} = {pixelPostion[f"cont_{self.axisB}"]:0.2f},fit_y = {pixelPostion[f"fit_{self.axisB}"]:0.2f}',
+                )
                 plt.legend()
                 plt.show()
 
@@ -998,15 +1165,11 @@ class detect_continuum(_base_detect):
         orderPixelTable[f"gauss_stddev"] = gauss_stddev
         orderPixelTable[f"gauss_mean"] = gauss_mean
 
-        self.log.debug('completed the ``fit_1d_gaussian_to_slice`` method')
+        self.log.debug("completed the ``fit_1d_gaussian_to_slice`` method")
 
         return orderPixelTable
 
-    def plot_results(
-            self,
-            orderPixelTable,
-            orderPolyTable,
-            clippedData):
+    def plot_results(self, orderPixelTable, orderPolyTable, clippedData):
         """*generate a plot of the polynomial fits and residuals*
 
         **Key Arguments:**
@@ -1020,7 +1183,7 @@ class detect_continuum(_base_detect):
         - ``filePath`` -- path to the plot pdf
         - ``orderMetaTable`` -- dataframe of useful order fit metadata
         """
-        self.log.debug('starting the ``plot_results`` method')
+        self.log.debug("starting the ``plot_results`` method")
 
         import numpy as np
         import pandas as pd
@@ -1041,8 +1204,12 @@ class detect_continuum(_base_detect):
             rotatedImg = np.flipud(rotatedImg)
             if not rotateImage:
                 aLen = rotatedImg.shape[0]
-                orderPixelTable[f"cont_{self.axisA}"] = aLen - orderPixelTable[f"cont_{self.axisA}"]
-                clippedData[f"cont_{self.axisA}"] = aLen - clippedData[f"cont_{self.axisA}"]
+                orderPixelTable[f"cont_{self.axisA}"] = (
+                    aLen - orderPixelTable[f"cont_{self.axisA}"]
+                )
+                clippedData[f"cont_{self.axisA}"] = (
+                    aLen - clippedData[f"cont_{self.axisA}"]
+                )
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
             fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
@@ -1067,23 +1234,38 @@ class detect_continuum(_base_detect):
             settingsAx = fig.add_subplot(gs[7:, 2:])
             qcAx = fig.add_subplot(gs[7:, 0:2])
 
-        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
-        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap='gray', alpha=0.5)
-        toprow.set_title(
-            "1D gaussian peak positions (post-clipping)", fontsize=10)
-        toprow.scatter(orderPixelTable[f"cont_{self.axisB}"], orderPixelTable[f"cont_{self.axisA}"], marker='o', c='green', s=0.3, alpha=0.6, label="cross-dispersion 1D gaussian peak-position")
-        toprow.scatter(clippedData[f"cont_{self.axisB}"], clippedData[f"cont_{self.axisA}"], marker='x', c='red', s=5, alpha=0.6, linewidths=0.5, label="peaks clipped during continuum fitting")
+        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5)
+        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5)
+        toprow.set_title("1D gaussian peak positions (post-clipping)", fontsize=10)
+        toprow.scatter(
+            orderPixelTable[f"cont_{self.axisB}"],
+            orderPixelTable[f"cont_{self.axisA}"],
+            marker="o",
+            c="green",
+            s=0.3,
+            alpha=0.6,
+            label="cross-dispersion 1D gaussian peak-position",
+        )
+        toprow.scatter(
+            clippedData[f"cont_{self.axisB}"],
+            clippedData[f"cont_{self.axisA}"],
+            marker="x",
+            c="red",
+            s=5,
+            alpha=0.6,
+            linewidths=0.5,
+            label="peaks clipped during continuum fitting",
+        )
         # Put a legend below current axis
 
-        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
-                      fontsize=4)
+        toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.1), fontsize=4)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
 
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        toprow.tick_params(axis='both', which='major', labelsize=9)
+        toprow.tick_params(axis="both", which="major", labelsize=9)
         toprow.set_xlim([0, rotatedImg.shape[1]])
 
         if self.detectorParams["dispersion-axis"] == "x":
@@ -1093,11 +1275,9 @@ class detect_continuum(_base_detect):
         midrow.set_ylim([0, rotatedImg.shape[0]])
 
         if "order" in self.recipeName.lower():
-            midrow.set_title(
-                "order-location fit solutions", fontsize=10)
+            midrow.set_title("order-location fit solutions", fontsize=10)
         else:
-            midrow.set_title(
-                "global polynomal fit of order-centres", fontsize=10)
+            midrow.set_title("global polynomal fit of order-centres", fontsize=10)
         if self.axisB == "y":
             axisALength = self.traceFrame.data.shape[1]
             axisBLength = self.traceFrame.data.shape[0]
@@ -1108,12 +1288,17 @@ class detect_continuum(_base_detect):
         axisBlinelist = np.arange(0, axisBLength, 3)
 
         poly = chebyshev_order_xy_polynomials(
-            log=self.log, axisBCol=self.axisB, orderCol="order", orderDeg=self.orderDeg, axisBDeg=self.axisBDeg).poly
+            log=self.log,
+            axisBCol=self.axisB,
+            orderCol="order",
+            orderDeg=self.orderDeg,
+            axisBDeg=self.axisBDeg,
+        ).poly
         for index, row in orderPolyTable.iterrows():
             cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
             std_coeff = [float(v) for k, v in row.items() if "std_" in k]
 
-        uniqueOrders = orderPixelTable['order'].unique()
+        uniqueOrders = orderPixelTable["order"].unique()
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {f"{self.axisB}": axisBlinelist}
         df = pd.DataFrame(myDict)
@@ -1132,7 +1317,12 @@ class detect_continuum(_base_detect):
 
             try:
                 xfit, yfit, stdfit, lower, upper = zip(
-                    *[(x, y, std, x - 3 * std, x + 3 * std) for x, y, std in zip(xfit, axisBlinelist, stdfit) if x > 0 and x < (axisALength) - 10])
+                    *[
+                        (x, y, std, x - 3 * std, x + 3 * std)
+                        for x, y, std in zip(xfit, axisBlinelist, stdfit)
+                        if x > 0 and x < (axisALength) - 10
+                    ]
+                )
             except:
                 continue
             if flipImage and not rotateImage:
@@ -1151,14 +1341,23 @@ class detect_continuum(_base_detect):
                 label2 = None
             c = midrow.plot(yfit, xfit, linewidth=0.7, label=label2)
 
-            midrow.fill_between(yfit, lower, upper, color=c[0].get_color(), alpha=0.3, label=label1)
+            midrow.fill_between(
+                yfit, lower, upper, color=c[0].get_color(), alpha=0.3, label=label1
+            )
             colors.append(c[0].get_color())
             ymin.append(min(yfit))
             ymax.append(max(yfit))
             xmin.append(axisALength - max(xfit))
             xmax.append(axisALength - min(xfit))
             try:
-                midrow.text(yfit[10], xfit[10] + 10, int(o), fontsize=6, c=c[0].get_color(), verticalalignment='bottom')
+                midrow.text(
+                    yfit[10],
+                    xfit[10] + 10,
+                    int(o),
+                    fontsize=6,
+                    c=c[0].get_color(),
+                    verticalalignment="bottom",
+                )
             except:
                 pass
 
@@ -1179,76 +1378,125 @@ class detect_continuum(_base_detect):
         # midrow.set_xticklabels([])
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        midrow.tick_params(axis='both', which='major', labelsize=9)
+        midrow.tick_params(axis="both", which="major", labelsize=9)
 
-        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.1),
-                      fontsize=4)
+        midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.1), fontsize=4)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         for o, c in zip(uniqueOrders, colors):
-            mask = (orderPixelTable['order'] == o)
-            bottomleft.scatter(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values, orderPixelTable.loc[mask][
-                f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1, c=c)
+            mask = orderPixelTable["order"] == o
+            bottomleft.scatter(
+                orderPixelTable.loc[mask][f"cont_{self.axisA}"].values,
+                orderPixelTable.loc[mask][f"cont_{self.axisA}_fit_res"].values,
+                alpha=0.2,
+                s=1,
+                c=c,
+            )
             if len(orderPixelTable.loc[mask].index) > 10:
                 labelIndex = 10
             else:
                 labelIndex = 1
             try:
-                bottomleft.text(orderPixelTable.loc[mask][f'cont_{self.axisA}'].values[labelIndex], orderPixelTable.loc[mask][f'cont_{self.axisA}_fit_res'].values[labelIndex], int(o), fontsize=8, c=c, verticalalignment='bottom')
+                bottomleft.text(
+                    orderPixelTable.loc[mask][f"cont_{self.axisA}"].values[labelIndex],
+                    orderPixelTable.loc[mask][f"cont_{self.axisA}_fit_res"].values[
+                        labelIndex
+                    ],
+                    int(o),
+                    fontsize=8,
+                    c=c,
+                    verticalalignment="bottom",
+                )
             except:
                 pass
 
-        bottomleft.set_xlabel(f'{self.axisA} pixel position', fontsize=10)
-        bottomleft.set_ylabel(f'{self.axisA} residual', fontsize=10)
-        bottomleft.tick_params(axis='both', which='major', labelsize=9)
+        bottomleft.set_xlabel(f"{self.axisA} pixel position", fontsize=10)
+        bottomleft.set_ylabel(f"{self.axisA} residual", fontsize=10)
+        bottomleft.tick_params(axis="both", which="major", labelsize=9)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
         for o, c in zip(uniqueOrders, colors):
-            mask = (orderPixelTable['order'] == o)
-            bottomright.scatter(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values, orderPixelTable.loc[mask][
-                f'cont_{self.axisA}_fit_res'].values, alpha=0.2, s=1, c=c)
+            mask = orderPixelTable["order"] == o
+            bottomright.scatter(
+                orderPixelTable.loc[mask][f"cont_{self.axisB}"].values,
+                orderPixelTable.loc[mask][f"cont_{self.axisA}_fit_res"].values,
+                alpha=0.2,
+                s=1,
+                c=c,
+            )
             if len(orderPixelTable.loc[mask].index) > 10:
                 labelIndex = 10
             else:
                 labelIndex = 1
             try:
-                bottomright.text(orderPixelTable.loc[mask][f'cont_{self.axisB}'].values[labelIndex], orderPixelTable.loc[mask][
-                    f'cont_{self.axisA}_fit_res'].values[labelIndex], int(o), fontsize=8, c=c, verticalalignment='bottom')
+                bottomright.text(
+                    orderPixelTable.loc[mask][f"cont_{self.axisB}"].values[labelIndex],
+                    orderPixelTable.loc[mask][f"cont_{self.axisA}_fit_res"].values[
+                        labelIndex
+                    ],
+                    int(o),
+                    fontsize=8,
+                    c=c,
+                    verticalalignment="bottom",
+                )
             except:
                 pass
 
-        bottomright.set_xlabel(f'{self.axisB} pixel position', fontsize=10)
-        bottomright.tick_params(axis='both', which='major', labelsize=9)
+        bottomright.set_xlabel(f"{self.axisB} pixel position", fontsize=10)
+        bottomright.tick_params(axis="both", which="major", labelsize=9)
         # bottomright.set_ylabel('x residual')
         bottomright.set_yticklabels([])
 
-        stdToFwhm = 2 * (2 * math.log(2))**0.5
+        stdToFwhm = 2 * (2 * math.log(2)) ** 0.5
         for o, c in zip(uniqueOrders, colors):
-            mask = (orderPixelTable['order'] == o)
-            fwhmaxis.scatter(orderPixelTable.loc[mask]['wavelength'].values, orderPixelTable.loc[mask]['gauss_stddev_fit'].values * stdToFwhm, alpha=0.2, s=1, c=c)
+            mask = orderPixelTable["order"] == o
+            fwhmaxis.scatter(
+                orderPixelTable.loc[mask]["wavelength"].values,
+                orderPixelTable.loc[mask]["gauss_stddev_fit"].values * stdToFwhm,
+                alpha=0.2,
+                s=1,
+                c=c,
+            )
             if len(orderPixelTable.loc[mask].index) > 10:
                 labelIndex = 10
             else:
                 labelIndex = 1
             try:
-                fwhmaxis.text(orderPixelTable.loc[mask]['wavelength'].values[labelIndex], orderPixelTable.loc[mask]['gauss_stddev_fit'].values[labelIndex] * stdToFwhm, int(o), fontsize=8, c=c, verticalalignment='bottom')
+                fwhmaxis.text(
+                    orderPixelTable.loc[mask]["wavelength"].values[labelIndex],
+                    orderPixelTable.loc[mask]["gauss_stddev_fit"].values[labelIndex]
+                    * stdToFwhm,
+                    int(o),
+                    fontsize=8,
+                    c=c,
+                    verticalalignment="bottom",
+                )
             except:
                 pass
-        fwhmaxis.set_xlabel('wavelength (nm)', fontsize=10)
-        fwhmaxis.set_ylabel('Cross-dispersion\nFWHM (pixels)', fontsize=10)
+        fwhmaxis.set_xlabel("wavelength (nm)", fontsize=10)
+        fwhmaxis.set_ylabel("Cross-dispersion\nFWHM (pixels)", fontsize=10)
 
-        fwhmaxis.set_ylim(orderPixelTable['gauss_stddev_fit'].min() * stdToFwhm * 0.5, orderPixelTable['gauss_stddev_fit'].max() * stdToFwhm * 1.2)
+        fwhmaxis.set_ylim(
+            orderPixelTable["gauss_stddev_fit"].min() * stdToFwhm * 0.5,
+            orderPixelTable["gauss_stddev_fit"].max() * stdToFwhm * 1.2,
+        )
 
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
-        self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
-        qc_settings_plot_tables(log=self.log, qc=self.qc, qcAx=qcAx, settings={**self.recipeSettings, **{"exptime": self.exptime}}, settingsAx=settingsAx)
+        self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
+        qc_settings_plot_tables(
+            log=self.log,
+            qc=self.qc,
+            qcAx=qcAx,
+            settings={**self.recipeSettings, **{"exptime": self.exptime}},
+            settingsAx=settingsAx,
+        )
 
-        mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
-        std_res = np.std(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
-        res_min = np.min(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
-        res_max = np.max(orderPixelTable[f'cont_{self.axisA}_fit_res'].values)
+        mean_res = np.mean(np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
+        std_res = np.std(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
+        res_min = np.min(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
+        res_max = np.max(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_range = res_max - res_min
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
@@ -1256,7 +1504,11 @@ class detect_continuum(_base_detect):
         if self.lamp:
             lamp = f" {self.lamp} lamp"
         if "order" in self.recipeName.lower():
-            fig.suptitle(f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}", fontsize=12, y=0.99)
+            fig.suptitle(
+                f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}",
+                fontsize=12,
+                y=0.99,
+            )
         else:
             fig.suptitle(f"{arm} object trace locations\n{subtitle}", fontsize=12)
 
@@ -1267,15 +1519,18 @@ class detect_continuum(_base_detect):
         # plt.show()
         if not self.sofName:
             filename = filenamer(
-                log=self.log,
-                frame=self.traceFrame,
-                settings=self.settings
+                log=self.log, frame=self.traceFrame, settings=self.settings
             )
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
         elif "order" in self.recipeName.lower():
             filename = self.sofName + f"_residuals_{polyOrders}.pdf"
         elif "nod" in self.recipeName.lower():
-            filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + f"_{polyOrders}.pdf"
+            filename = (
+                self.sofName
+                + "_OBJECT_TRACE_residuals"
+                + self.noddingSequence
+                + f"_{polyOrders}.pdf"
+            )
         else:
             filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
 
@@ -1288,26 +1543,30 @@ class detect_continuum(_base_detect):
 
         if self.settings["tune-pipeline"]:
             import codecs
+
             filePath = f"residuals.txt"
             exists = os.path.exists(filePath)
             if not exists:
-                with codecs.open(filePath, encoding='utf-8', mode='w') as writeFile:
-                    writeFile.write(f"polyOrders,mean_res,std_res,res_min,res_max,res_range \n")
-            with codecs.open(filePath, encoding='utf-8', mode='a') as writeFile:
-                writeFile.write(f"{polyOrders},{mean_res:2.4f},{std_res:2.4f},{res_min:2.4f},{res_max:2.4f},{res_range:2.4f}\n")
+                with codecs.open(filePath, encoding="utf-8", mode="w") as writeFile:
+                    writeFile.write(
+                        f"polyOrders,mean_res,std_res,res_min,res_max,res_range \n"
+                    )
+            with codecs.open(filePath, encoding="utf-8", mode="a") as writeFile:
+                writeFile.write(
+                    f"{polyOrders},{mean_res:2.4f},{std_res:2.4f},{res_min:2.4f},{res_max:2.4f},{res_range:2.4f}\n"
+                )
 
-        self.log.debug('completed the ``plot_results`` method')
+        self.log.debug("completed the ``plot_results`` method")
         return filePath, orderMetaTable
 
-    def sample_trace(
-            self):
+    def sample_trace(self):
         """*take many cross-dispersion samples across each order to try and find an object trace*
 
         **Return:**
 
         - ``orderPixelTable`` -- the detector locations at which a trace was found
         """
-        self.log.debug('starting the ``sample_trace`` method')
+        self.log.debug("starting the ``sample_trace`` method")
 
         import pandas as pd
         import numpy as np
@@ -1325,98 +1584,146 @@ class detect_continuum(_base_detect):
             pass
 
         # FIT_X AND FIT_Y FROM DISP-SOLUTION
-        orderPixelTable['fit_x'] = orderPixelTable['fit_x'] / binx
-        orderPixelTable['fit_y'] = orderPixelTable['fit_y'] / biny
+        orderPixelTable["fit_x"] = orderPixelTable["fit_x"] / binx
+        orderPixelTable["fit_y"] = orderPixelTable["fit_y"] / biny
 
         # SLICE LENGTH TO SAMPLE TRACES IN THE CROSS-DISPERSION DIRECTION
         self.sliceLength = self.recipeSettings["slice-length"]
         self.peakSigmaLimit = self.recipeSettings["peak-sigma-limit"]
         self.sliceWidth = self.recipeSettings["slice-width"]
 
-        if self.kw("DPR_TYPE").upper() in self.traceFrame.header and "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper() and self.sliceWidth > 3:
+        if (
+            self.kw("DPR_TYPE").upper() in self.traceFrame.header
+            and "STD" in self.traceFrame.header[self.kw("DPR_TYPE")].upper()
+            and self.sliceWidth > 3
+        ):
             self.sliceWidth = 3
 
         # PREP LISTS WITH NAN VALUE IN CONT_X AND CONT_Y BEFORE FITTING
-        orderPixelTable[f'cont_{self.axisA}'] = np.nan
-        orderPixelTable[f'cont_{self.axisB}'] = np.nan
+        orderPixelTable[f"cont_{self.axisA}"] = np.nan
+        orderPixelTable[f"cont_{self.axisB}"] = np.nan
 
         # FOR EACH ORDER, FOR EACH PIXEL POSITION SAMPLE, FIT A 1D GAUSSIAN IN
         # CROSS-DISPERSION DIRECTION. RETURN PEAK POSITIONS
         from soxspipe.commonutils.toolkit import quicklook_image
+
         quicklook_image(
-            log=self.log, CCDObject=self.traceFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=False)
+            log=self.log,
+            CCDObject=self.traceFrame,
+            show=False,
+            ext="data",
+            stdWindow=3,
+            title=False,
+            surfacePlot=False,
+        )
 
         if "order" in self.recipeName.lower():
             self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
         else:
             self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
 
-        def find_centre_points(
-                orderPixelTable,
-                medianShift=False,
-                medianStddev=False):
-            """*find the central peak of the continuum trace*
-            """
+        def find_centre_points(orderPixelTable, medianShift=False, medianStddev=False):
+            """*find the central peak of the continuum trace*"""
             from astropy.stats import sigma_clip, mad_std
 
             sliceLength = self.sliceLength
             if medianShift:
-                orderPixelTable[f"fit_{self.axisA}"] = orderPixelTable[f"fit_{self.axisA}"] - medianShift
+                orderPixelTable[f"fit_{self.axisA}"] = (
+                    orderPixelTable[f"fit_{self.axisA}"] - medianShift
+                )
                 if sliceLength > medianStddev * 7 + 5:
                     sliceLength = int(medianStddev * 7 + 5)
 
-            orderPixelTable = self.fit_1d_gaussian_to_slices(orderPixelTable=orderPixelTable, sliceLength=sliceLength, medianStddev=medianStddev)
+            orderPixelTable = self.fit_1d_gaussian_to_slices(
+                orderPixelTable=orderPixelTable,
+                sliceLength=sliceLength,
+                medianStddev=medianStddev,
+            )
 
             # FILTER DATA FRAME
             # FIRST CREATE THE MASK
-            mask = (orderPixelTable['cont_x'] < 0)
-            orderPixelTable.loc[mask, 'cont_x'] = np.nan
-            mask = (orderPixelTable['cont_y'] < 0)
-            orderPixelTable.loc[mask, 'cont_y'] = np.nan
+            mask = orderPixelTable["cont_x"] < 0
+            orderPixelTable.loc[mask, "cont_x"] = np.nan
+            mask = orderPixelTable["cont_y"] < 0
+            orderPixelTable.loc[mask, "cont_y"] = np.nan
 
             # DROP ROWS WITH NAN VALUES
-            orderPixelTable.dropna(axis='index', how='any',
-                                   subset=['cont_x'], inplace=True)
-            orderPixelTable.dropna(axis='index', how='any',
-                                   subset=['cont_y'], inplace=True)
+            orderPixelTable.dropna(
+                axis="index", how="any", subset=["cont_x"], inplace=True
+            )
+            orderPixelTable.dropna(
+                axis="index", how="any", subset=["cont_y"], inplace=True
+            )
 
             # FIND HOW FAR AWAY FROM THE CENTRE THE CONTINUUM WAS FOUND
-            orderPixelTable["centre_shift"] = orderPixelTable[f"fit_{self.axisA}"] - orderPixelTable[f"cont_{self.axisA}"]
+            orderPixelTable["centre_shift"] = (
+                orderPixelTable[f"fit_{self.axisA}"]
+                - orderPixelTable[f"cont_{self.axisA}"]
+            )
 
             # SIGMA-CLIP THE DATA ON STDDEV
             if "centre" not in self.recipeName:
                 masked_residuals = sigma_clip(
-                    orderPixelTable["centre_shift"], sigma_lower=3, sigma_upper=3, maxiters=5, cenfunc='mean', stdfunc='std')
+                    orderPixelTable["centre_shift"],
+                    sigma_lower=3,
+                    sigma_upper=3,
+                    maxiters=5,
+                    cenfunc="mean",
+                    stdfunc="std",
+                )
                 orderPixelTable["pre-clipped"] = masked_residuals.mask
             else:
                 orderPixelTable["pre-clipped"] = False
 
-            mask = (orderPixelTable['pre-clipped'] == False)
+            mask = orderPixelTable["pre-clipped"] == False
             filteredDf = orderPixelTable.loc[mask]
             medianShift = filteredDf["centre_shift"].median()
             medianStddev = filteredDf["gauss_stddev"].median()
 
             if False:
                 import matplotlib.pyplot as plt
+
                 plt.figure(figsize=(8, 5))
-                plt.scatter(orderPixelTable["wavelength"], orderPixelTable["centre_shift"], marker='o', s=30, label=f'Median Shift={medianShift:2.1f}, Median STD={medianStddev:2.1f}')
+                plt.scatter(
+                    orderPixelTable["wavelength"],
+                    orderPixelTable["centre_shift"],
+                    marker="o",
+                    s=30,
+                    label=f"Median Shift={medianShift:2.1f}, Median STD={medianStddev:2.1f}",
+                )
                 filteredDf = orderPixelTable.loc[~mask]
-                plt.scatter(filteredDf["wavelength"], filteredDf["centre_shift"], marker='x', s=30)
+                plt.scatter(
+                    filteredDf["wavelength"],
+                    filteredDf["centre_shift"],
+                    marker="x",
+                    s=30,
+                )
                 plt.legend()
                 plt.show()
 
             if False:
                 import matplotlib.pyplot as plt
+
                 plt.figure(figsize=(8, 5))
-                plt.scatter(orderPixelTable["wavelength"], orderPixelTable["gauss_stddev"], marker='o', s=30)
-                mask = (orderPixelTable['pre-clipped'] == True)
+                plt.scatter(
+                    orderPixelTable["wavelength"],
+                    orderPixelTable["gauss_stddev"],
+                    marker="o",
+                    s=30,
+                )
+                mask = orderPixelTable["pre-clipped"] == True
                 filteredDf = orderPixelTable.loc[mask]
-                plt.scatter(filteredDf["wavelength"], filteredDf["gauss_stddev"], marker='x', s=30)
+                plt.scatter(
+                    filteredDf["wavelength"],
+                    filteredDf["gauss_stddev"],
+                    marker="x",
+                    s=30,
+                )
                 plt.show()
 
             # DROP THE MASKED PEAKS?
             if False:
-                mask = (orderPixelTable['pre-clipped'] == False)
+                mask = orderPixelTable["pre-clipped"] == False
                 orderPixelTable = orderPixelTable.loc[mask]
                 # REMOVE COLUMN FROM DATA FRAME
                 # orderPixelTable.drop(columns=['mask'], inplace=True)
@@ -1425,12 +1732,18 @@ class detect_continuum(_base_detect):
 
         allLines = len(orderPixelTable.index)
         tmpOrderPixelTable = orderPixelTable.copy()
-        orderPixelTable, medianShift, medianStddev = find_centre_points(orderPixelTable=tmpOrderPixelTable, medianShift=False, medianStddev=False)
+        orderPixelTable, medianShift, medianStddev = find_centre_points(
+            orderPixelTable=tmpOrderPixelTable, medianShift=False, medianStddev=False
+        )
 
         # VIS PSEUDO-ORDERS SHIFT IN DIFFERENT DIRECTIONS .. POSSIBLY REVISIT TO TREAT u&g AND r&i SEPARATELY
         if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
             medianShift = False
-        orderPixelTable, medianShift, medianStddev = find_centre_points(orderPixelTable=tmpOrderPixelTable, medianShift=medianShift, medianStddev=medianStddev)
+        orderPixelTable, medianShift, medianStddev = find_centre_points(
+            orderPixelTable=tmpOrderPixelTable,
+            medianShift=medianShift,
+            medianStddev=medianStddev,
+        )
 
         foundLines = len(orderPixelTable.index)
         percent = 100 * foundLines / allLines
@@ -1438,43 +1751,75 @@ class detect_continuum(_base_detect):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "TSAMP",
-            "qc_value": allLines,
-            "qc_comment": "Total number of samples along orders",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
+        self.qc = pd.concat(
+            [
+                self.qc,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "qc_name": "TSAMP",
+                        "qc_value": allLines,
+                        "qc_comment": "Total number of samples along orders",
+                        "qc_unit": None,
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "NSAMP",
-            "qc_value": foundLines,
-            "qc_comment": "Number of samples where a continuum is detected",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
+        self.qc = pd.concat(
+            [
+                self.qc,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "qc_name": "NSAMP",
+                        "qc_value": foundLines,
+                        "qc_comment": "Number of samples where a continuum is detected",
+                        "qc_unit": None,
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
         self.psamp = percent / 100
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "PSAMP",
-            "qc_value": f"{self.psamp:0.3f}",
-            "qc_comment": "Proportion of samples where a continuum is detected",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
+        self.qc = pd.concat(
+            [
+                self.qc,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "qc_name": "PSAMP",
+                        "qc_value": f"{self.psamp:0.3f}",
+                        "qc_comment": "Proportion of samples where a continuum is detected",
+                        "qc_unit": None,
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
-        self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
+        self.log.print(
+            f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)"
+        )
 
-        self.log.debug('completed the ``sample_trace`` method')
+        self.log.debug("completed the ``sample_trace`` method")
 
         return orderPixelTable
 
