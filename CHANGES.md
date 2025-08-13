@@ -1,5 +1,6 @@
 # Release Notes
 
+ignore SOXS Deut flats by default (too many lines seen in the orders)
 huge speed gain on data organiser prep command
 Increasing the default SOXS slice height to detect continuum in VIS
 added a few more keyword to the data organiser database
