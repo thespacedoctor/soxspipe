@@ -61,3 +61,5 @@ nirMerate.py
 
 soxspipe/resources/static_calibrations/soxs/SOXS_MPH_TAB_NIR_Xe_ORIG.fits
 soxspipe/resources/static_calibrations/soxs/SOXS_SPH_TAB_NIR_Xe_ORIG.fits
+
+__pycache__
