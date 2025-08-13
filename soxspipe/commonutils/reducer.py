@@ -13,7 +13,8 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-os.environ['TERM'] = 'vt100'
+
+os.environ["TERM"] = "vt100"
 
 
 class reducer(object):
@@ -45,15 +46,14 @@ class reducer(object):
     """
 
     def __init__(
-            self,
-            log,
-            workspaceDirectory,
-            settings=False,
-            pathToSettings=False,
-            quitOnFail=False,
-            overwrite=False,
-            daemon=False
-
+        self,
+        log,
+        workspaceDirectory,
+        settings=False,
+        pathToSettings=False,
+        quitOnFail=False,
+        overwrite=False,
+        daemon=False,
     ):
         self.log = log
         log.debug("instantiating a new 'reducer' object")
@@ -66,6 +66,7 @@ class reducer(object):
 
         # REQUEST THE WORKSPACE PARAMETERS FROM THE DATA-ORGANISER
         from soxspipe.commonutils import data_organiser
+
         do = data_organiser(
             log=log,
             rootDir=workspaceDirectory,
@@ -84,10 +85,12 @@ class reducer(object):
         """
         *reduce the selected data*
         """
-        self.log.debug('starting the ``reduce`` method')
+        self.log.debug("starting the ``reduce`` method")
 
         if self.sessionId is None:
-            print("Please prepare this workspace using `soxspipe prep` before attempting to reduce the data.")
+            print(
+                "Please prepare this workspace using `soxspipe prep` before attempting to reduce the data."
+            )
             return None
 
         from fundamentals import times
@@ -107,17 +110,17 @@ class reducer(object):
                 continue
             except Exception as e:
                 # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                self.log.error(
+                    f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}"
+                )
                 self.log.error(f'\nRecipe Command: {row["command"]}\n\n')
 
                 if self.quitOnFail:
                     sys.exit(0)
 
                 from soxspipe.commonutils import data_organiser
-                do = data_organiser(
-                    log=self.log,
-                    rootDir=self.workspaceDirectory
-                )
+
+                do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
                 do.session_refresh()
                 if not self.daemon:
                     print(f"{'='*70}\n")
@@ -129,15 +132,14 @@ class reducer(object):
             sys.argv[0] = os.path.basename(sys.argv[0])
 
             self.log.print(f'\nRecipe Command: {row["command"]} ')
-            self.log.print(f'Recipe Run Time: {runningTime}\n\n')
+            self.log.print(f"Recipe Run Time: {runningTime}\n\n")
             if not self.daemon:
                 print(f"{'='*70}\n")
 
-        self.log.debug('completed the ``reduce`` method')
+        self.log.debug("completed the ``reduce`` method")
         return None
 
-    def select_sof_files_to_process(
-            self):
+    def select_sof_files_to_process(self):
         """*select all of the SOF files still requiring processing*
 
         **Key Arguments:**
@@ -153,29 +155,29 @@ class reducer(object):
         rawGroups = reducer.select_sof_files_to_process()
         ```
         """
-        self.log.debug('starting the ``select_sof_files_to_process`` method')
+        self.log.debug("starting the ``select_sof_files_to_process`` method")
 
         import pandas as pd
         import sqlite3 as sql
-        conn = sql.connect(
-            self.sessionDB)
+
+        conn = sql.connect(self.sessionDB)
 
         # GET THE GROUPS OF FILES NEEDING REDUCED, ASSIGN THE CORRECT COMMAND TO EXECUTE THE RECIPE
         rawGroups = pd.read_sql(
-            'SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 order by recipe_order, sof', con=conn)
-        rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
+            "SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 order by recipe_order, sof",
+            con=conn,
+        )
+        rawGroups["command"] = (
+            "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
+        )
         if self.pathToSettings:
             rawGroups["command"] += f" -s {self.pathToSettings}"
         conn.close()
 
-        self.log.debug('completed the ``select_sof_files_to_process`` method')
-        return rawGroups[['recipe', 'sof', 'command']].drop_duplicates()
+        self.log.debug("completed the ``select_sof_files_to_process`` method")
+        return rawGroups[["recipe", "sof", "command"]].drop_duplicates()
 
-    def run_recipe(
-            self,
-            recipe,
-            sof,
-            command=False):
+    def run_recipe(self, recipe, sof, command=False):
         """*execute a pipeline recipe*
 
         **Key Arguments:**
@@ -190,96 +192,104 @@ class reducer(object):
         reducer.run_recipe("mbias", "/path/to/sofs/my_bias_files.sof")
         ```
         """
-        self.log.debug('starting the ``run_recipe`` method')
+        self.log.debug("starting the ``run_recipe`` method")
 
         sof = self.sessionPath + "/sof/" + sof
 
         if recipe == "mbias":
             from soxspipe.recipes import soxs_mbias
+
             recipe = soxs_mbias(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
-                command=command
+                command=command,
             )
             mbiasFrame = recipe.produce_product()
 
         if recipe == "mdark":
             from soxspipe.recipes import soxs_mdark
+
             recipe = soxs_mdark(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
-                command=command
+                command=command,
             )
             mdarkFrame = recipe.produce_product()
 
         if recipe == "disp_sol":
             from soxspipe.recipes import soxs_disp_solution
+
             disp_map = soxs_disp_solution(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
-                command=command
+                command=command,
             ).produce_product()
 
         if recipe == "order_centres":
             from soxspipe.recipes import soxs_order_centres
+
             order_table = soxs_order_centres(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
-                command=command
+                command=command,
             ).produce_product()
 
         if recipe == "mflat":
             from soxspipe.recipes import soxs_mflat
+
             recipe = soxs_mflat(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
-                command=command
+                command=command,
             )
             mflatFrame = recipe.produce_product()
 
         if recipe == "spat_sol":
             from soxspipe.recipes import soxs_spatial_solution
+
             disp_map, mapImage2D, res_plots = soxs_spatial_solution(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
-                command=command
+                command=command,
             ).produce_product()
 
         if recipe == "stare":
             from soxspipe.recipes import soxs_stare
+
             recipe = soxs_stare(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
-                command=command
+                command=command,
             )
             reducedStare = recipe.produce_product()
 
         if recipe == "nod":
             from soxspipe.recipes import soxs_nod
+
             recipe = soxs_nod(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
-                command=command
+                command=command,
             )
             reducedNod = recipe.produce_product()
 
-        self.log.debug('completed the ``run_recipe`` method')
+        self.log.debug("completed the ``run_recipe`` method")
         return None
 
     # use the tab-trigger below for new method

@@ -1225,6 +1225,7 @@ class base_recipe(object):
 
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
         self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
+
         # SORT BY COLUMN NAME
         self.qc.sort_values(['qc_name'], inplace=True)
         columns = list(self.qc.columns)

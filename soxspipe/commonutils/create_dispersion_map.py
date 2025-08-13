@@ -24,7 +24,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 os.environ['TERM'] = 'vt100'
 
@@ -313,7 +313,7 @@ class create_dispersion_map(object):
             percentageDetectedLines = (float(detectedLines) / float(totalLines))
             percentageDetectedLines = float("{:.6f}".format(percentageDetectedLines))
 
-            utcnow = datetime.utcnow()
+            utcnow = datetime.now(timezone.utc)
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
             if "DISP" in self.recipeName.upper():
@@ -2078,6 +2078,7 @@ class create_dispersion_map(object):
         import pandas as pd
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
         from astropy.stats import sigma_clipped_stats
+        import matplotlib
 
         arm = self.arm
         kw = self.kw

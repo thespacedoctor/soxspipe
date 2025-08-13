@@ -8,6 +8,7 @@ instrument: soxs
 data-extension: 0
 
 PAE: False
+ignore-dflats: True
 
 soxs-mbias:
     # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.

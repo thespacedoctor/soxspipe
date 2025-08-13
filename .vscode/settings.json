@@ -1,0 +1,8 @@
+{
+    "editor.fontSize": 14,
+    "python.testing.pytestArgs": [
+        "soxspipe"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}
