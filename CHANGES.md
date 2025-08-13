@@ -1,5 +1,6 @@
 # Release Notes
 
+do not scale SOXS darks if exptimes are not equivalent (dark does not scale linearly). Instead, do not subtract dark and warn the user. fixes #376
 ignore SOXS Deut flats by default (too many lines seen in the orders)
 huge speed gain on data organiser prep command
 Increasing the default SOXS slice height to detect continuum in VIS
