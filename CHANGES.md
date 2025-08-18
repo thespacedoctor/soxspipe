@@ -1,5 +1,6 @@
 # Release Notes
 
+The pipeline can now detect and fail gracefully whenever fewer than 9 pinholes are found in any given order. This will stop the pipeline from propagating bad dispersion solutions if there is a problem with the data. fixes #379
 do not scale SOXS darks if exptimes are not equivalent (dark does not scale linearly). Instead, do not subtract dark and warn the user. fixes #376
 ignore SOXS Deut flats by default (too many lines seen in the orders)
 huge speed gain on data organiser prep command
