@@ -244,7 +244,7 @@ class create_dispersion_map(object):
                         sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 10)
                         self.windowHalf = windowSize
                     else:
-                        self.windowHalf = round(windowSize / 2)
+                        self.windowHalf = 3
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
 
                     # print(self.windowHalf, sigmaLimit)
@@ -310,6 +310,24 @@ class create_dispersion_map(object):
                 'observed_x'], inplace=True)
 
             detectedLines = len(orderPixelTable.index)
+
+            detectedLineGroups = orderPixelTable.groupby(['wavelength', 'order']).size().reset_index(name='count')
+            
+            # FIND THE MODE COUNT FOR EACH ORDER
+            modeCounts = detectedLineGroups.groupby('order')['count'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0).reset_index(name='pinhole count')
+            # IF ANY MODE IS LESS THAN 9 PRINT SHIT
+            if (modeCounts['pinhole count'] < 9).any():
+                from tabulate import tabulate
+                self.log.print("\n")
+                self.log.print(tabulate(modeCounts, headers='keys', tablefmt='psql'))
+                self.log.print("\n")
+                raise AttributeError(f"All 9 pinholes cannot be seen in the data. A dispersion solution cannot be created.")
+                
+
+
+            
+            
+
             percentageDetectedLines = (float(detectedLines) / float(totalLines))
             percentageDetectedLines = float("{:.6f}".format(percentageDetectedLines))
 
@@ -753,7 +771,7 @@ class create_dispersion_map(object):
             orderPixelTable.drop(columns=['fit_x', 'fit_y',
                                           'shift_x', 'shift_y'], inplace=True)
 
-            # DROP MPH SETS THAT DON'T CONTAIN AlL SLIT-POSITIONS
+            # DROP MPH SETS THAT DON'T CONTAIN ALL SLIT-POSITIONS
             lineGroups = orderPixelTable.groupby(['wavelength', 'order'])
             lineGroups = lineGroups.size().to_frame(name='count').reset_index()
             fullSet = lineGroups['count'].max()
@@ -816,7 +834,7 @@ class create_dispersion_map(object):
         orderArray = orderPixelTable['order']
         wlArray = orderPixelTable['wavelength']
 
-        # CLIP A STAMP FROM IMAGE AROUNDS PREDICTED POSITION
+        # CLIP A STAMP FROM IMAGE AROUND PREDICTED POSITION
         xlows = xArray - windowHalf
         xlows[xlows < 0] = 0
         xlows = np.round(xlows).astype(int)
@@ -1069,7 +1087,7 @@ class create_dispersion_map(object):
 
         arm = self.arm
 
-        utcnow = datetime.utcnow()
+        utcnow = datetime.now(timezone.utc)
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
         # ADD EXPONENTS TO ORDERTABLE UP-FRONT
@@ -2217,9 +2235,9 @@ class create_dispersion_map(object):
             if len(allClippedLines.index):
                 mask = (allClippedLines['dropped'] == True)
                 if self.firstGuessMap:
-                    toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='blue', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped multi-pinhole set")
+                    toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"observed_{self.axisA}"], marker='o', c='blue', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped multi-pinhole set")
                 else:
-                    toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"detector_{self.axisA}"], marker='o', c='blue', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped pinhole")
+                    toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"observed_{self.axisA}"], marker='o', c='blue', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped pinhole")
                 toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.3 * alphaBoost, linewidths=0.5 * alphaBoost, )
                 toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="clipped during dispersion solution fitting")
             if len(orderPixelTable.index):
@@ -2410,7 +2428,7 @@ class create_dispersion_map(object):
         resAx.set_ylim([lowerR, upperR])
         resAx.set_xlim(x_limits)
 
-        utcnow = datetime.utcnow()
+        utcnow = datetime.now(timezone.utc)
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
         # GET FILENAME FOR THE RESIDUAL PLOT
@@ -2451,7 +2469,7 @@ class create_dispersion_map(object):
         qc_settings_plot_tables(log=self.log, qc=self.qc, qcAx=qcAx, settings={**self.recipeSettings, **{"exptime": self.exptime}}, settingsAx=settingsAx)
 
         plt.tight_layout()
-        # plt.show()
+        plt.show()
         if not self.settings["tune-pipeline"]:
             plt.savefig(filePath, dpi=720)
 
