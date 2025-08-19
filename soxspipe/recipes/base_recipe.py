@@ -125,6 +125,10 @@ class base_recipe(object):
         # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
         if self.conn:
             c = self.conn.cursor()
+            sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"
+            c.execute(sqlQuery)
+            self.status = c.fetchone()['status']
+
             sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
@@ -732,10 +736,18 @@ class base_recipe(object):
 
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
+
             c = self.conn.cursor()
             sqlQuery = f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
+
+            # PREVIOUSLY FAILED RECIPE THAT HAS NOW PASSED
+            if self.status == "fail":
+                from soxspipe.commonutils import data_organiser
+                do = data_organiser(log=self.log, rootDir=self.workspaceRootPath)
+                do.session_refresh(failure=False)
+
 
         outDir = self.workspaceRootPath + "/tmp"
 

@@ -2116,7 +2116,8 @@ class data_organiser(object):
 
     def session_refresh(
             self,
-            silent=False):
+            silent=False,
+            failure=True):
         """*refresh a session's SOF files (needed if a recipe fails)*
 
         **Usage:**
@@ -2132,8 +2133,10 @@ class data_organiser(object):
         """
         self.log.debug('starting the ``session_refresh`` method')
 
-        self.log.print("Refeshing SOF file due to recipe failure\n")
-
+        if failure:
+            self.log.print("\nRefeshing SOF files due to recipe failure\n")
+        else:
+            self.log.print("\nRefreshing SOF files, as a previously failed recipe is now passing.\n")
         import codecs
         import sqlite3 as sql
 
