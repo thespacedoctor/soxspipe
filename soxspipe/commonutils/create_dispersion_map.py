@@ -311,21 +311,19 @@ class create_dispersion_map(object):
 
             detectedLines = len(orderPixelTable.index)
 
-            detectedLineGroups = orderPixelTable.groupby(['wavelength', 'order']).size().reset_index(name='count')
-            
-            # FIND THE MODE COUNT FOR EACH ORDER
-            modeCounts = detectedLineGroups.groupby('order')['count'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0).reset_index(name='pinhole count')
-            # IF ANY MODE IS LESS THAN 9 PRINT SHIT
-            if (modeCounts['pinhole count'] < 9).any():
-                from tabulate import tabulate
-                self.log.print("\n")
-                self.log.print(tabulate(modeCounts, headers='keys', tablefmt='psql'))
-                self.log.print("\n")
-                raise AttributeError(f"All 9 pinholes cannot be seen in the data. A dispersion solution cannot be created.")
+            if self.firstGuessMap:
+                detectedLineGroups = orderPixelTable.groupby(['wavelength', 'order']).size().reset_index(name='count')
+
                 
-
-
-            
+                # FIND THE MODE COUNT FOR EACH ORDER
+                modeCounts = detectedLineGroups.groupby('order')['count'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0).reset_index(name='pinhole count')
+                # IF ANY MODE IS LESS THAN 9, FAIL GRACEFULLY
+                if (modeCounts['pinhole count'] < 9).any():
+                    from tabulate import tabulate
+                    self.log.print("\n")
+                    self.log.print(tabulate(modeCounts, headers='keys', tablefmt='psql'))
+                    self.log.print("\n")
+                    raise AttributeError(f"All 9 pinholes cannot be seen in the data. A dispersion solution cannot be created.")
             
 
             percentageDetectedLines = (float(detectedLines) / float(totalLines))
