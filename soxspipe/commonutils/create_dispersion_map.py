@@ -169,6 +169,7 @@ class create_dispersion_map(object):
         orderDeg = self.recipeSettings["order-deg"]
         wavelengthDeg = self.recipeSettings["wavelength-deg"]
 
+
         # WHICH RECIPE ARE WE WORKING WITH?
         if self.firstGuessMap:
             slitDeg = self.recipeSettings["slit-deg"]
@@ -178,8 +179,10 @@ class create_dispersion_map(object):
             else:
                 slitDeg = 0
 
+    
         # READ PREDICTED LINE POSITIONS FROM FILE - RETURNED AS DATAFRAME
         orderPixelTable = self.get_predicted_line_list()
+        originalOrderPixelTable = orderPixelTable.copy()
         totalLines = len(orderPixelTable.index)
         self.uniqueSlitPos = orderPixelTable['slit_position'].unique()
 
@@ -314,9 +317,14 @@ class create_dispersion_map(object):
             if self.firstGuessMap:
                 detectedLineGroups = orderPixelTable.groupby(['wavelength', 'order']).size().reset_index(name='count')
 
-                
+                if False:
+                    orderPixelTable = orderPixelTable.groupby(['wavelength', 'order']).apply(straighten_mph_sets).reset_index(drop=True)
+
                 # FIND THE MODE COUNT FOR EACH ORDER
                 modeCounts = detectedLineGroups.groupby('order')['count'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0).reset_index(name='pinhole count')
+                if self.inst.upper() == "SOXS":
+                    # REMOVE ORDER = 10
+                    modeCounts = modeCounts[modeCounts['order'] != 10]
                 # IF ANY MODE IS LESS THAN 9, FAIL GRACEFULLY
                 if (modeCounts['pinhole count'] < 9).any():
                     from tabulate import tabulate
@@ -324,7 +332,6 @@ class create_dispersion_map(object):
                     self.log.print(tabulate(modeCounts, headers='keys', tablefmt='psql'))
                     self.log.print("\n")
                     raise AttributeError(f"All 9 pinholes cannot be seen in the data. A dispersion solution cannot be created.")
-            
 
             percentageDetectedLines = (float(detectedLines) / float(totalLines))
             percentageDetectedLines = float("{:.6f}".format(percentageDetectedLines))
@@ -423,12 +430,11 @@ class create_dispersion_map(object):
                 # WRITE THE MAP TO FILE
                 mapPath = self.write_map_to_file(
                     popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
+                # orderPixelTable = self.update_static_line_list_detector_positions(originalOrderPixelTable, mapPath)
                 orderPixelTable = self.create_new_static_line_list(dispersionMapPath=mapPath)
 
                 boost = True
                 bootstrap_dispersion_solution = False
-                from tabulate import tabulate
-                print(tabulate(orderPixelTable, headers='keys', tablefmt='psql'))
 
         # GET FILENAME FOR THE LINE LISTS
         if not self.sofName:
@@ -607,8 +613,8 @@ class create_dispersion_map(object):
         orderPixelTable.columns = [d.lower() if d.lower() in [
             "order", "wavelength"] else d for d in orderPixelTable.columns]
 
-        floats = ["wavelength", 'slit_position', 'detector_x', 'detector_y']
-        ints = ['order', 'slit_index']
+        floats = ["wavelength", 'slit_position', 'detector_x', 'detector_y', 'order']
+        ints = ['slit_index']
         strings = ['ion']
         for f in floats:
             try:
@@ -653,70 +659,6 @@ class create_dispersion_map(object):
                 orderPixelTable["detector_y"] -= science_pixels["rows"]["start"]
             if arm == "NIR":
                 pass
-                # THIS IS TEMPORARALLY NEEDED TO ADJUST OLD LINE LIST
-                # orderPixelTable["detector_x"] += 7
-                # orderPixelTable["detector_y"] -= 9
-                # mask = (orderPixelTable['order'] == 24)
-                # orderPixelTable.loc[mask, "detector_x"] += 1
-                # orderPixelTable.loc[mask, "detector_y"] += 1
-                # mask = (orderPixelTable['order'] == 23)
-                # orderPixelTable.loc[mask, "detector_x"] += 1
-                # orderPixelTable.loc[mask, "detector_y"] += 1
-                # mask = (orderPixelTable['order'] == 22)
-                # orderPixelTable.loc[mask, "detector_x"] += 1
-                # orderPixelTable.loc[mask, "detector_y"] += 1
-                # mask = (orderPixelTable['order'] == 21)
-                # orderPixelTable.loc[mask, "detector_x"] += 1
-                # orderPixelTable.loc[mask, "detector_y"] += 2
-                # mask = (orderPixelTable['order'] == 20)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 2
-                # mask = (orderPixelTable['order'] == 19)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 2
-                # mask = (orderPixelTable['order'] == 18)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 2
-                # mask = (orderPixelTable['order'] == 17)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # mask = (orderPixelTable['order'] == 16)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # mask = (orderPixelTable['order'] == 15)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # mask = (orderPixelTable['order'] == 14)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # mask = (orderPixelTable['order'] == 13)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # mask = (orderPixelTable['order'] == 12)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # mask = (orderPixelTable['order'] == 11)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # mask = (orderPixelTable['order'] == 10)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # mask = (orderPixelTable['order'] == 9)
-                # orderPixelTable.loc[mask, "detector_x"] += 2
-                # orderPixelTable.loc[mask, "detector_y"] += 3
-                # # mask = (orderPixelTable['order'] == 2)
-                # # orderPixelTable.loc[mask, "detector_x"] -= 23
-                # # orderPixelTable.loc[mask, "detector_y"] -= 0
-                # # mask = (orderPixelTable['order'] == 3)
-                # # orderPixelTable.loc[mask, "detector_x"] -= 25
-                # # orderPixelTable.loc[mask, "detector_y"] -= 0
-                # # mask = (orderPixelTable['order'] == 4)
-                # # orderPixelTable.loc[mask, "detector_x"] -= 10
-                # # orderPixelTable.loc[mask, "detector_y"] -= 2
-                # from astropy.table import Table
-                # t = Table.from_pandas(orderPixelTable)
-                # # t.write("Xe.fits", overwrite=True)
-                # t.write("ArHgNeXe_clean_within_2.0pixel.fits", overwrite=True)
 
         if not self.firstGuessMap:
             slitIndex = int(dp["mid_slit_index"])
@@ -870,6 +812,7 @@ class create_dispersion_map(object):
         # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
         import matplotlib.pyplot as plt
         plt.switch_backend('Agg')
+        # plt.switch_backend('macosx')
         from fundamentals import fmultiprocess
         # DEFINE AN INPUT ARRAY
         results = fmultiprocess(log=self.log, function=measure_line_position,
@@ -1029,6 +972,10 @@ class create_dispersion_map(object):
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         if False:
+            # MAKE RELATIVE HOME PATH ABSOLUTE
+            from os.path import expanduser
+            home = expanduser("~")
+            
             cache = self.settings["workspace-root-dir"].replace("~", home) + "/.cache"
             # Recursively create missing directories
             if not os.path.exists(cache):
@@ -1114,6 +1061,8 @@ class create_dispersion_map(object):
         orderPixelTable["fit_x"] = polyx(orderPixelTable, *xcoeff)
         orderPixelTable["fit_y"] = polyy(orderPixelTable, *ycoeff)
 
+
+
         if pixelRange == True:
             polyx = chebyshev_order_wavelength_polynomials(
                 log=self.log, orderDeg=orderDegx, wavelengthDeg=wavelengthDegx, slitDeg=slitDegx, exponentsIncluded=False, axis="x").poly
@@ -1155,25 +1104,25 @@ class create_dispersion_map(object):
         combined_res_std = np.std(orderPixelTable["residuals_xy"])
         combined_res_median = np.median(orderPixelTable["residuals_xy"])
 
-        # orderPixelTable['tilt'] = 0.0
-        # orderPixelTable['distance_to_middle'] = 0.0
-
-        # COMPUTING THE TILT ON THE SLIT IMAGE
-
-        # for index, row in orderPixelTable.iterrows():
-        # GETTING THE OBSERVED_X AND OBSERVED_Y POSITION IN THE MIDDLE OF THE SLIT
-        #    if row['slit_index'] == 4:
-        #        orderPixelTable.at[index,'tilt'] = 0.0
-        #        orderPixelTable.at[index,'distance_to_middle'] = 0.0
-        #    else:
-        #        current_wave = row['wavelength']
-        #        current_order = row['order']
-        #        middle_row = orderPixelTable.query('wavelength == @current_wave and order == @current_order and slit_index == 4 ')
-        #        middle_row = middle_row.iloc[0]#
-
-        #        current_tilt = np.arctan((row['observed_y'] - middle_row['observed_y'])/(row['observed_x'] - middle_row['observed_x']))
-        #        orderPixelTable.at[index,'tilt'] = np.pi/2 + float(current_tilt)
-        #        orderPixelTable.at[index,'distance_to_middle'] = np.sqrt(float( (row['observed_x'] - middle_row['observed_x'])**2 + (row['observed_y'] - middle_row['observed_y'])**2))
+        if False:
+            import sqlite3 as sql
+            
+            # REGISTER SQL CONVERTERS
+            sql.register_adapter(list, lambda arr: str(arr.tolist()))
+            sql.register_adapter(np.array, lambda arr: str(arr.tolist()))
+            sql.register_adapter(np.ndarray, lambda arr: str(arr.tolist()))
+            sql.register_adapter(np.float64, lambda this: this.item())
+            sql.register_adapter(np.ma.core.MaskedArray, lambda arr: str(arr.tolist()))
+            
+            # CONNECT TO THE DATABASE
+            conn = sql.connect("pandas_export.db")
+            # SEND TO DATABASE
+            orderPixelTable.to_sql('my_export_table', con=conn,
+                            index=False, if_exists='replace')
+            conn.commit()
+            conn.close()
+            sys.exit()
+            print("HERE")
 
         if self.arcFrame:
             self.slitWidth = self.arcFrame.header[self.kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
@@ -1440,6 +1389,9 @@ class create_dispersion_map(object):
         tmpDF = orderPixelTable.copy()
         mean_res = 100.
 
+        # orderPixelTable["observed_x"]=orderPixelTable["tilt_corrected_x"]
+        # orderPixelTable["observed_y"]=orderPixelTable["tilt_corrected_y"]
+
         orderPixelTable['sigma_clipped'] = False
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
@@ -1456,7 +1408,8 @@ class create_dispersion_map(object):
                     recipeName=self.recipeName,
                     orderDeg=orderDeg,
                     wavelengthDeg=wavelengthDeg,
-                    slitDeg=slitDeg
+                    slitDeg=slitDeg,
+                    reset=True
                 )
 
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
@@ -1516,17 +1469,17 @@ class create_dispersion_map(object):
 
                 # SIGMA-CLIP THE DATA ON SCATTER
                 masked_residuals = sigma_clip(
-                    lineGroups["residuals_x"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaX, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                    lineGroups["residuals_x"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaX, maxiters=1, cenfunc='mean', stdfunc='std')
                 lineGroups["sigma_clipped_x"] = masked_residuals.mask
                 masked_residuals = sigma_clip(
-                    lineGroups["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                    lineGroups["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY, maxiters=1, cenfunc='mean', stdfunc='std')
                 lineGroups["sigma_clipped_y"] = masked_residuals.mask
                 lineGroups.loc[((lineGroups["sigma_clipped_y"] == True) | (lineGroups["sigma_clipped_x"] == True)), "sigma_clipped"] = True
 
                 if True:
                     # CLIP ALSO ON COMBINED RESIDUALS
                     masked_residuals = sigma_clip(
-                        lineGroups["residuals_xy"], sigma_lower=5000, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                        lineGroups["residuals_xy"], sigma_lower=5000, sigma_upper=clippingSigma, maxiters=1, cenfunc='mean', stdfunc='std')
                     lineGroups["sigma_clipped_xy"] = masked_residuals.mask
                     lineGroups.loc[((lineGroups["sigma_clipped_y"] == True) | (lineGroups["sigma_clipped_x"] == True) | (lineGroups["sigma_clipped_xy"] == True)), "sigma_clipped"] = True
 
@@ -1543,31 +1496,34 @@ class create_dispersion_map(object):
                 # CLIP THE MOST DEVIATE SINGLE PINHOLES
                 if iteration == 1 and True:
                     masked_residuals = sigma_clip(
-                        orderPixelTable["residuals_x"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaX * 3, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                        orderPixelTable["residuals_x"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaX * 3, maxiters=1, cenfunc='mean', stdfunc='std')
                     orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
                     masked_residuals = sigma_clip(
-                        orderPixelTable["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY * 3, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                        orderPixelTable["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY * 3, maxiters=1, cenfunc='mean', stdfunc='std')
                     orderPixelTable["sigma_clipped_y"] = masked_residuals.mask
                     masked_residuals = sigma_clip(
-                        orderPixelTable["R_pin"], sigma_lower=3000, sigma_upper=10, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                        orderPixelTable["R_pin"], sigma_lower=3000, sigma_upper=10, maxiters=1, cenfunc='mean', stdfunc='std')
                     orderPixelTable["sigma_clipped_R"] = masked_residuals.mask
                     orderPixelTable.loc[((orderPixelTable["sigma_clipped_y"] == True) | (orderPixelTable["sigma_clipped_x"] == True) | (orderPixelTable["sigma_clipped_R"] == True)), "sigma_clipped"] = True
 
             else:
-                masked_residuals = sigma_clip(
-                    orderPixelTable["residuals_x"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaX, maxiters=1, cenfunc='median', stdfunc='mad_std')
-                orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
-                masked_residuals = sigma_clip(
-                    orderPixelTable["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY, maxiters=1, cenfunc='median', stdfunc='mad_std')
-                orderPixelTable["sigma_clipped_y"] = masked_residuals.mask
-                orderPixelTable.loc[((orderPixelTable["sigma_clipped_y"] == True) | (orderPixelTable["sigma_clipped_x"] == True)), "sigma_clipped"] = True
+                # masked_residuals = sigma_clip(
+                #     orderPixelTable["residuals_x"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaX, maxiters=1, cenfunc='mean', stdfunc='std')
+                # orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
+                # masked_residuals = sigma_clip(
+                #     orderPixelTable["residuals_y"].abs(), sigma_lower=3000, sigma_upper=clippingSigmaY, maxiters=1, cenfunc='mean', stdfunc='std')
+                # orderPixelTable["sigma_clipped_y"] = masked_residuals.mask
+                # orderPixelTable.loc[((orderPixelTable["sigma_clipped_y"] == True) | (orderPixelTable["sigma_clipped_x"] == True)), "sigma_clipped"] = True
 
-                if False:
+                if True:
                     # CLIP ALSO ON COMBINED RESIDUALS
                     masked_residuals = sigma_clip(
-                        orderPixelTable["residuals_xy"], sigma_lower=clippingSigma, sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                        orderPixelTable["residuals_xy"], sigma_lower=5000, sigma_upper=clippingSigma, maxiters=3, cenfunc='mean', stdfunc='std')
                     orderPixelTable["sigma_clipped_xy"] = masked_residuals.mask
-                    orderPixelTable.loc[((orderPixelTable["sigma_clipped_y"] == True) | (orderPixelTable["sigma_clipped_x"] == True) | (orderPixelTable["sigma_clipped_xy"] == True)), "sigma_clipped"] = True
+                    try:
+                        orderPixelTable.loc[((orderPixelTable["sigma_clipped_y"] == True) | (orderPixelTable["sigma_clipped_x"] == True) | (orderPixelTable["sigma_clipped_xy"] == True)), "sigma_clipped"] = True
+                    except:
+                        orderPixelTable.loc[(orderPixelTable["sigma_clipped_xy"] == True), "sigma_clipped"] = True
 
             # COUNT THE CLIPPED LINES
             mask = (orderPixelTable['sigma_clipped'] == True)
@@ -1789,6 +1745,7 @@ class create_dispersion_map(object):
         # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
         import matplotlib.pyplot as plt
         plt.switch_backend('Agg')
+        # plt.switch_backend('macosx')
 
         results = fmultiprocess(log=self.log, function=self.order_to_image,
                                 inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=False)
@@ -2236,10 +2193,13 @@ class create_dispersion_map(object):
                     toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"observed_{self.axisA}"], marker='o', c='blue', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped multi-pinhole set")
                 else:
                     toprow.scatter(allClippedLines.loc[mask][f"observed_{self.axisB}"], allClippedLines.loc[mask][f"observed_{self.axisA}"], marker='o', c='blue', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="dropped pinhole")
+                
                 toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.3 * alphaBoost, linewidths=0.5 * alphaBoost, )
                 toprow.scatter(allClippedLines.loc[~mask][f"observed_{self.axisB}"], allClippedLines.loc[~mask][f"observed_{self.axisA}"], marker='x', c='red', s=5, alpha=0.3 * alphaBoost, linewidths=0.5, label="clipped during dispersion solution fitting")
+                
             if len(orderPixelTable.index):
                 toprow.scatter(orderPixelTable[f"observed_{self.axisB}"], orderPixelTable[f"observed_{self.axisA}"], marker='o', c='green', s=5, alpha=0.3 * alphaBoost, linewidths=0.5 * alphaBoost, label="detected line location")
+                # toprow.scatter(orderPixelTable[f"tilt_corrected_{self.axisB}"], orderPixelTable[f"tilt_corrected_{self.axisA}"], marker='o', c='purple', s=8, alpha=0.3 * alphaBoost, linewidths=0.5 * alphaBoost, )
 
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
@@ -2261,8 +2221,10 @@ class create_dispersion_map(object):
                 mask = (gridLinePixelTable['line'] == l)
                 if l == 1:
                     midrow.plot(gridLinePixelTable.loc[mask][f"fit_{self.axisB}"], gridLinePixelTable.loc[mask][f"fit_{self.axisA}"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue", label="dispersion solution")
+                    toprow.plot(gridLinePixelTable.loc[mask][f"fit_{self.axisB}"], gridLinePixelTable.loc[mask][f"fit_{self.axisA}"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue", label="dispersion solution")
                 else:
                     midrow.plot(gridLinePixelTable.loc[mask][f"fit_{self.axisB}"], gridLinePixelTable.loc[mask][f"fit_{self.axisA}"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue")
+                    toprow.plot(gridLinePixelTable.loc[mask][f"fit_{self.axisB}"], gridLinePixelTable.loc[mask][f"fit_{self.axisA}"], "w-", linewidth=0.2, alpha=0.5 * alphaBoost, color="blue")
         else:
             midrow.scatter(orderPixelTable[f"fit_{self.axisB}"],
                            orderPixelTable[f"fit_{self.axisA}"], marker='o', c='blue', s=orderPixelTable[f"residuals_xy"] * 30, alpha=0.1 * alphaBoost, label="fitted line (size proportional to line-fit residual)")
@@ -2468,6 +2430,7 @@ class create_dispersion_map(object):
 
         plt.tight_layout()
         plt.show()
+
         if not self.settings["tune-pipeline"]:
             plt.savefig(filePath, dpi=720)
 
@@ -2712,11 +2675,75 @@ class create_dispersion_map(object):
         orderPixelTable["droppedOnPeak"] = s["dropped"].values
         orderPixelTable.loc[(orderPixelTable["droppedOnPeak"] == True), "dropped"] = True
 
+
         # plt.show()
         plt.close("all")
 
         self.log.debug('completed the ``_clip_on_measured_line_metrics`` method')
         return orderPixelTable
+    
+    def update_static_line_list_detector_positions(
+            self,
+            originalOrderPixelTable,
+            dispersionMapPath):
+        """*using a first pass dispersion solution, update the original static line list*
+
+        **Key Arguments:**
+
+        - `originalOrderPixelTable` -- original order pixel table
+        - `dispersionMapPath` -- path to the first pass dispersion solution
+
+        **Return:**
+
+        - `updatedLineList` -- updated static line list
+        """
+        self.log.debug('starting the ``update_static_line_list_detector_positions`` method')
+
+        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
+        from soxspipe.commonutils.toolkit import read_spectral_format
+        import pandas as pd
+        from astropy.table import Table
+
+        # GET UNIQUE VALUES OF order AND WAVELENGTH
+        uniquecolNames = originalOrderPixelTable[['order','wavelength']].drop_duplicates()
+        orders = uniquecolNames['order']
+        wavelengths = uniquecolNames['wavelength']
+        slit_positions = self.uniqueSlitPos
+        slit_indexes = list(range(0, len(self.uniqueSlitPos), 1))
+
+        dfCollection = []
+        for si, sp in zip(slit_indexes, slit_positions):
+            myDict = {
+                "order": orders,
+                "wavelength": wavelengths,
+                "slit_position": [sp] * len(orders),
+                "slit_index": [si] * len(orders)
+            }
+
+            orderPixelTable = pd.DataFrame(myDict)
+            floats = ["wavelength", 'slit_position']
+            ints = ['order', 'slit_index']
+            for f in floats:
+                orderPixelTable[f] = orderPixelTable[f].astype(float)
+            for i in ints:
+                orderPixelTable[i] = orderPixelTable[i].astype(int)
+
+            orderPixelTable = dispersion_map_to_pixel_arrays(
+                log=self.log,
+                dispersionMapPath=dispersionMapPath,
+                orderPixelTable=orderPixelTable,
+                removeOffDetectorLocation=False
+            )
+
+            orderPixelTable.rename(columns={"fit_x": "detector_x", "fit_y": "detector_y"}, inplace=True)
+            orderPixelTable = orderPixelTable[['wavelength', 'order', 'slit_index', 'slit_position', 'detector_x', 'detector_y']]
+
+            dfCollection.append(orderPixelTable)
+
+        updatedLineList = pd.concat(dfCollection, ignore_index=True)
+
+        self.log.debug('completed the ``update_static_line_list_detector_positions`` method')
+        return updatedLineList
 
     def create_new_static_line_list(
             self,
@@ -2769,6 +2796,18 @@ class create_dispersion_map(object):
         # # mask = (lineAtlas['ion'].isin(["Ar", "ArI", "ArII", "ArIII", 'UNK']))
         # lineAtlas = lineAtlas.loc[mask]
 
+        # ORDER BY MOST INTENSE LINES
+        lineAtlas.sort_values(['amplitude'],
+                                ascending=[False], inplace=True)
+        lineAtlas = lineAtlas.head(120)
+
+
+        # try:
+        #     # FILTER DATAFRAME TO EXCLUDE source = "NIST" and amplitude > 1000
+        #     mask = (lineAtlas['source'] != "NIST") & (lineAtlas['amplitude'] > 1000)    
+        #     lineAtlas = lineAtlas.loc[mask]
+        # except:
+        #     pass
         dfCollection = []
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
 
@@ -2946,6 +2985,7 @@ def measure_line_position(
                 plt.text(2, 2, f"{sigmaLimit}$\\sigma$, order {order}{iterationText}\n{wl:0.1f},{detectionSigma:0.1f}", fontsize=16, c="white", verticalalignment='bottom')
                 plt.show()
 
+
     # plt.show()
     predictedLine = {}
     keepValues = ["sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux"]
@@ -2964,5 +3004,48 @@ def measure_line_position(
     log.debug('completed the ``measure_line_position`` function')
     return predictedLine
 
-# use the tab-trigger below for new function
-# xt-def-function
+
+def straighten_mph_sets(group):
+    import numpy as np
+    x = group['observed_x'].values
+    y = group['observed_y'].values
+
+    # Fit y = m*x + c
+    A = np.vstack([x, np.ones_like(x)]).T
+    m, c = np.linalg.lstsq(A, y, rcond=None)[0]
+
+    # For each (x0, y0), find closest point (xp, yp) on the line
+    # The line: y = m*x + c
+    # The perpendicular from (x0, y0) to the line has:
+    #   xp = (m*(y0 - c) + x0) / (m**2 + 1)
+    #   yp = m*xp + c
+    xp = (m * (y - c) + x) / (m**2 + 1)
+    yp = m * xp + c
+
+    group = group.copy()
+    group['tilt_corrected_x'] = xp
+    group['tilt_corrected_y'] = yp
+
+    if False:
+        import matplotlib.pyplot as plt
+        # Plot original points, fitted line, tilt-corrected points, and detector_x/y_shifted
+        plt.figure(figsize=(6, 4))
+        plt.scatter(x, y, color='blue', label='Original points')
+        plt.plot(x, m * x + c, color='green', label='Fitted line')
+        plt.scatter(xp, yp, color='red', marker='x', label='Tilt-corrected points')
+        if 'detector_x_shifted' in group.columns and 'detector_y_shifted' in group.columns:
+            plt.scatter(group['detector_x_shifted'], group['detector_y_shifted'], color='orange', marker='^', label='Detector shifted')
+        # Label each original data-point with its slit_index
+        for xi, yi, slit_idx in zip(x, y, group['slit_index'].values):
+            plt.text(xi, yi, str(slit_idx), fontsize=8, color='black', ha='center', va='bottom')
+        
+        plt.xlabel('observed_x')
+        plt.ylabel('observed_y')
+        plt.legend()
+        plt.title('Straighten Multi-Pinhole Set')
+        plt.tight_layout()
+        # Add count of original coordinates as a text label
+        plt.text(0.95, 0.95, f'N={len(x)}', transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', color='blue')
+        plt.show()
+
+    return group

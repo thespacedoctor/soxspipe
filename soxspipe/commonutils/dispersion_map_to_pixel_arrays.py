@@ -185,14 +185,15 @@ def get_cached_coeffs(
     else:
         if isinstance(orderDeg, list):
             coeff['x'] = np.ones((orderDeg[0] + 1) *
-                                 (wavelengthDeg[0] + 1) * (slitDeg[0] + 1))
+                                 (wavelengthDeg[0] + 1) * (slitDeg[0] + 1), dtype=float)
             coeff['y'] = np.ones((orderDeg[1] + 1) *
-                                 (wavelengthDeg[1] + 1) * (slitDeg[1] + 1))
+                                 (wavelengthDeg[1] + 1) * (slitDeg[1] + 1), dtype=float)
         else:
             coeff['x'] = np.ones((orderDeg + 1) *
-                                 (wavelengthDeg + 1) * (slitDeg + 1))
+                                 (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
             coeff['y'] = np.ones((orderDeg + 1) *
-                                 (wavelengthDeg + 1) * (slitDeg + 1))
+                                 (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
+
 
     log.debug('completed the ``get_cached_coeffs`` function')
     return coeff['x'], coeff['y']
