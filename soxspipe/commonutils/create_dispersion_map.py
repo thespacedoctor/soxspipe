@@ -240,19 +240,23 @@ class create_dispersion_map(object):
                     if tightFit:
                         self.windowHalf = round(windowSize / 2)
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
+                        brightest = False
                     elif iteration == 0:
                         sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 10)
                         self.windowHalf = round(windowSize * 2)
+                        brightest = True
                     elif iteration == 1:
                         sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 10)
                         self.windowHalf = windowSize
+                        brightest = True
                     else:
                         self.windowHalf = 3
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
+                        brightest = False
 
                     # print(self.windowHalf, sigmaLimit)
 
-                    orderPixelTable = self.detect_pinhole_arc_lines(orderPixelTable=orderPixelTable, iraf=iraf, sigmaLimit=sigmaLimit, iteration=iteration)
+                    orderPixelTable = self.detect_pinhole_arc_lines(orderPixelTable=orderPixelTable, iraf=iraf, sigmaLimit=sigmaLimit, iteration=iteration, brightest=brightest)
 
                     iteration += 1
 
@@ -270,20 +274,26 @@ class create_dispersion_map(object):
                     # FIND THE GLOBAL SHIFT SEEN BETWEEN PREDICTED AND OBSERVED PIXEL POSITIONS IN EACH ORDER ... THE MOVE TO A NEW SET OF PREDICTED LINE POSITIONS USING THAT SHIFT
                     uniqueorders = orderPixelTable['order'].unique()
                     for o in uniqueorders:
-                        mask = (orderPixelTable['order'] == o)
+                        mask = ((orderPixelTable['order'] == o) & (orderPixelTable['observed_x'].notnull()))
 
-                        meanx, medianx, stdx = sigma_clipped_stats(orderPixelTable.loc[mask]['x_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
-                        meany, mediany, stdy = sigma_clipped_stats(orderPixelTable.loc[mask]['y_diff'], sigma=3.0, stdfunc="mad_std", cenfunc="median")
+
+
+                        meanx, medianx, stdx = sigma_clipped_stats(orderPixelTable.loc[mask]['x_diff'], sigma=1.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+                        meany, mediany, stdy = sigma_clipped_stats(orderPixelTable.loc[mask]['y_diff'], sigma=1.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
                         if np.isnan(medianx) or np.isnan(mediany):
                             self.log.warning(f"Could not find any arc lines in order {o}.")
                             continue
 
-                        orderPixelTable.loc[mask, 'detector_x_shifted'] = orderPixelTable.loc[mask]['detector_x_shifted'] - medianx
-                        orderPixelTable.loc[mask, 'detector_y_shifted'] = orderPixelTable.loc[mask]['detector_y_shifted'] - mediany
+                        if stdx < 1.:
+                            orderPixelTable.loc[mask, 'detector_x_shifted'] = orderPixelTable.loc[mask]['detector_x_shifted'] - medianx
+                        if stdy < 1.:
+                            orderPixelTable.loc[mask, 'detector_y_shifted'] = orderPixelTable.loc[mask]['detector_y_shifted'] - mediany
+                        
+                            
                         orderPixelTable.loc[mask, 'xy_diff'] = np.sqrt(np.square(orderPixelTable.loc[mask]["x_diff"]) + np.square(orderPixelTable.loc[mask]["y_diff"]))
                         sys.stdout.flush()
                         sys.stdout.write("\x1b[1A\x1b[2K")
-                        self.log.print(f"\t ITERATION {iteration}: Median X Y difference between predicted and measured positions: {medianx:0.5f},{mediany:0.5f} (order {o})")
+                        self.log.print(f"\t ITERATION {iteration}: Median X Y difference between predicted and measured positions: {medianx:0.5f},{mediany:0.5f} (stdx,stdy = {stdx:0.2f},{stdy:0.2f}) (order {o})")
 
             # MAKE A CLEAN COPY OF THE DETECTION TABLE ... USED FOR PIPELINE TUNING ONLY
             lineDetectionTable = orderPixelTable.copy()
@@ -733,15 +743,17 @@ class create_dispersion_map(object):
             orderPixelTable,
             iraf=True,
             sigmaLimit=3,
-            iteration=False):
+            iteration=False,
+            brightest=False):
         """*detect the observed position of an arc-line given the predicted pixel positions*
 
         **Key Arguments:**
 
-        - ``orderPixelTable`` -- the inital line list
+        - ``orderPixelTable`` -- the initial line list
         - ``iraf`` -- use IRAF star finder to generate a FWHM
         - ``sigmaLimit`` -- the lower sigma limit for arc line to be considered detected
         - ``iteration`` -- which detect and shift iteration are we on?
+        - ``brightest`` -- find the brightest source?
 
         **Return:**
 
@@ -816,7 +828,7 @@ class create_dispersion_map(object):
         from fundamentals import fmultiprocess
         # DEFINE AN INPUT ARRAY
         results = fmultiprocess(log=self.log, function=measure_line_position,
-                                inputArray=stamps, poolSize=False, timeout=300, mute=True, progressBar=False, windowHalf=self.windowHalf, iraf=iraf, sigmaLimit=sigmaLimit)
+                                inputArray=stamps, poolSize=False, timeout=300, mute=True, progressBar=False, windowHalf=self.windowHalf, iraf=iraf, sigmaLimit=sigmaLimit, brightest=brightest)
 
         for r in results:
             for k, v in predictedLines.items():
@@ -2186,7 +2198,9 @@ class create_dispersion_map(object):
         else:
 
             if isinstance(missingLines, pd.core.frame.DataFrame):
-                toprow.scatter(missingLines[f"detector_{self.axisB}"], missingLines[f"detector_{self.axisA}"], marker='o', c='black', s=20, alpha=0.1 * alphaBoost, linewidths=0.5, label="undetected line location")
+                toprow.scatter(missingLines[f"detector_{self.axisB}_shifted"], missingLines[f"detector_{self.axisA}_shifted"], marker='o', c='black', s=20, alpha=0.1 * alphaBoost, linewidths=0.5, label="undetected line location")
+                toprow.scatter(orderPixelTable[f"detector_{self.axisB}_shifted"], orderPixelTable[f"detector_{self.axisA}_shifted"], marker='o', c='black', s=20, alpha=0.1 * alphaBoost, linewidths=0.5, label="undetected line location")
+                toprow.scatter(allClippedLines[f"detector_{self.axisB}_shifted"], allClippedLines[f"detector_{self.axisA}_shifted"], marker='o', c='black', s=20, alpha=0.1 * alphaBoost, linewidths=0.5, label="undetected line location")
             if len(allClippedLines.index):
                 mask = (allClippedLines['dropped'] == True)
                 if self.firstGuessMap:
@@ -2883,7 +2897,8 @@ def measure_line_position(
         log,
         windowHalf,
         iraf,
-        sigmaLimit):
+        sigmaLimit,
+        brightest=False):
     """*measure the line position on a given stamp*
 
     **Key Arguments:**
@@ -2892,7 +2907,8 @@ def measure_line_position(
     - `log` -- logger
     - `windowHalf` -- half of the stamp side
     - `iraf` -- run IRAF source detection to get FWHM?
-    - `sigmaLimit` -- stamp source detection minimum sigma   
+    - `sigmaLimit` -- stamp source detection minimum sigma
+    - `brightest` -- find the brightest source?
     """
     log.debug('starting the ``measure_line_position`` function')
 
@@ -2925,6 +2941,7 @@ def measure_line_position(
     observed_x = np.nan
     observed_y = np.nan
     fwhm = np.nan
+    old_detectionSigma = 0.
 
     if sources:
         # FIND SOURCE CLOSEST TO CENTRE
@@ -2934,7 +2951,8 @@ def measure_line_position(
                 tmp_y = source['ycentroid']
                 new_resid = ((windowHalf - tmp_x)**2 +
                              (windowHalf - tmp_y)**2)**0.5
-                if new_resid < old_resid:
+                detectionSigma = source['peak'] / std
+                if (brightest and detectionSigma > old_detectionSigma) or (not brightest and new_resid < old_resid):
                     observed_x = tmp_x + xlow
                     observed_y = tmp_y + ylow
                     stamp_x = tmp_x
@@ -2942,6 +2960,7 @@ def measure_line_position(
                     old_resid = new_resid
                     selectedSource = source
                     detectionSigma = source['peak'] / std
+                    old_detectionSigma = detectionSigma
 
         else:
             observed_x = sources[0]['xcentroid'] + xlow
