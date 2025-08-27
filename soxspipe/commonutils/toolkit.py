@@ -1197,7 +1197,8 @@ def create_dispersion_solution_grid_lines_for_plot(
         associatedFrame,
         kw,
         skylines=False,
-        slitPositions=False):
+        slitPositions=False,
+        slit_length=11):
     """*given a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
 
     **Key Arguments:**
@@ -1209,12 +1210,18 @@ def create_dispersion_solution_grid_lines_for_plot(
     - `kw` -- fits header kw dictionary
     - `skylines` -- a list of skylines to use as the grid. Default *False*
     - `slitPositions` -- slit positions to plot (else plot min and max)
+    - `slit_length` -- length of the slit to use for the dispersion map dataframe (default 11)
+
+    **Returns:**
+
+    - `orderPixelTable` -- DataFrame containing the pixel coordinates for grid lines to plot.
+    - `interOrderMask` -- Mask array indicating inter-order regions.
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import create_dispersion_solution_grid_lines_for_plot
-    gridLinePixelTable = create_dispersion_solution_grid_lines_for_plot(
+    gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
         log=log,
         dispMap=dispMap,
         dispMapImage=dispMapImage,
@@ -1233,7 +1240,7 @@ def create_dispersion_solution_grid_lines_for_plot(
     import numpy as np
     import pandas as pd
 
-    dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
+    dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, slit_length=slit_length, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
 
     uniqueOrders = dispMapDF['order'].unique()
     wlLims = []
@@ -1241,13 +1248,15 @@ def create_dispersion_solution_grid_lines_for_plot(
 
     for o in uniqueOrders:
         filDF = dispMapDF.loc[dispMapDF["order"] == o]
-        wlLims.append((filDF['wavelength'].min() - 200, filDF['wavelength'].max() + 200))
+        wlRange = filDF['wavelength'].max() - filDF['wavelength'].min()
+        wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
         if isinstance(slitPositions, bool):
             sPos.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
         else:
             sPos.append(slitPositions)
 
     lineNumber = 0
+    orderPixelTable_list = []
     for o, wlLim, spLim in zip(uniqueOrders, wlLims, sPos):
         wlRange = np.arange(wlLim[0], wlLim[1], 1)
         wlRange = np.append(wlRange, [wlLim[1]])
@@ -1258,11 +1267,7 @@ def create_dispersion_solution_grid_lines_for_plot(
                 "wavelength": wlRange,
                 "slit_position": np.full_like(wlRange, e)
             }
-            if lineNumber == 0:
-                orderPixelTable = pd.DataFrame(myDict)
-            else:
-                orderPixelTableNew = pd.DataFrame(myDict)
-                orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
+            orderPixelTable_list.append(pd.DataFrame(myDict))
             lineNumber += 1
 
         spRange = np.arange(min(spLim), max(spLim), 1)
@@ -1271,7 +1276,7 @@ def create_dispersion_solution_grid_lines_for_plot(
             mask = skylines['WAVELENGTH'].between(wlLim[0], wlLim[1])
             wlRange = skylines.loc[mask]['WAVELENGTH'].values
         else:
-            step = int(wlLim[1] - wlLim[0]) / 400
+            step = max(1, int((wlLim[1] - wlLim[0]) // 400))
             wlRange = np.arange(wlLim[0], wlLim[1], step)
         wlRange = np.append(wlRange, [wlLim[1]])
 
@@ -1282,9 +1287,10 @@ def create_dispersion_solution_grid_lines_for_plot(
                 "wavelength": np.full_like(spRange, l),
                 "slit_position": spRange
             }
-            orderPixelTableNew = pd.DataFrame(myDict)
-            orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
+            orderPixelTable_list.append(pd.DataFrame(myDict))
             lineNumber += 1
+
+    orderPixelTable = pd.concat(orderPixelTable_list, ignore_index=True)
 
     orderPixelTable = dispersion_map_to_pixel_arrays(
         log=log,

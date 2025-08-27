@@ -315,7 +315,7 @@ class soxs_spatial_solution(base_recipe):
             from itertools import product
             order = [2, 3, 4, 5]
             wavelength = [2, 3, 4, 5]
-            slit = [1, 2, 3, 4, 5]
+            slit = [1, 2, 3]
             # perm = product([self.recipeSettings["order-deg"][0]], [self.recipeSettings["order-deg"][1]], [self.recipeSettings["wavelength-deg"][0]], [self.recipeSettings["wavelength-deg"][1]], slit, slit)
             perm = product(order, order, wavelength, wavelength, slit, slit)
             try:

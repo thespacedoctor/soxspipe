@@ -7,7 +7,6 @@ save-intermediate-products: False
 instrument: soxs
 data-extension: 0
 
-
 PAE: False
 ignore-dflats: True
 
@@ -31,13 +30,13 @@ soxs-mdark:
 soxs-disp-solution:
     vis:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
-        pixel-window-size: 10
+        pixel-window-size: 14        
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
-        pinhole-detection-thres-sigma: 3
+        pinhole-detection-thres-sigma: 2
         # DEGREE OF ORDER TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
         order-deg: [3,3]
         # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
-        wavelength-deg: [4,5] 
+        wavelength-deg: [5,5] 
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
@@ -46,15 +45,15 @@ soxs-disp-solution:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
         pixel-window-size: 10
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
-        pinhole-detection-thres-sigma: 5
+        pinhole-detection-thres-sigma: 2
         # DEGREE OF ORDER TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
         order-deg: [5,3]
         # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
         wavelength-deg: [4,5] 
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
-        poly-fitting-residual-clipping-sigma: 7
+        poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 7
+        poly-clipping-iteration-limit: 5
 
 soxs-order-centre:
     vis:
@@ -155,7 +154,7 @@ soxs-spatial-solution:
         # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
         pixel-window-size: 10
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
-        pinhole-detection-thres-sigma: 3
+        pinhole-detection-thres-sigma: 2
         # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
         order-deg: [3,3]
         # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
@@ -163,8 +162,8 @@ soxs-spatial-solution:
         # DEGREE OF SLIT POSITION COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
         slit-deg: [1,1]
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 3
-        poly-fitting-residual-clipping-sigma: 4
+        poly-clipping-iteration-limit: 5
+        poly-fitting-residual-clipping-sigma: 5
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: False
         # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
@@ -173,25 +172,25 @@ soxs-spatial-solution:
         mph_line_set_min: 7
     nir:
         # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
-        pixel-window-size: 10
+        pixel-window-size: 5
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
-        pinhole-detection-thres-sigma: 5
+        pinhole-detection-thres-sigma: 3
         # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
         order-deg: [4,4]
         # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
-        wavelength-deg: [5,5]
+        wavelength-deg: [5,4]
         # DEGREE OF SLIT POSITION COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
-        slit-deg: [5,4]
+        slit-deg: [1,2]
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 7
+        poly-clipping-iteration-limit: 5
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
-        poly-clipping-pinhole-sets: True
+        poly-clipping-pinhole-sets: False
         # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
-        mph_line_set_min: 9
+        mph_line_set_min: 7
     
 bootstrap_dispersion_solution: False
 
@@ -385,6 +384,7 @@ soxs-response:
 background-subtraction:
     bspline-deg: 2
     gaussian-blur-sigma: 65
+
 
 logging settings:
     formatters:
