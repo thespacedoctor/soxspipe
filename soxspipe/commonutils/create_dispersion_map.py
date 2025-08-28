@@ -247,24 +247,25 @@ class create_dispersion_map(object):
                         self.windowHalf = min(round(self.windowSize * 3), 20)
                         brightest = True
                         exclude_border = False
+                        if self.firstGuessMap:
+                            sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 4)
+                            self.windowHalf = min(round(self.windowSize * 3), 20)
+                            brightest =False
+                        
                     elif iteration == 1:
                         sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 4)
                         self.windowHalf = min(round(self.windowSize * 2), 10)
                         brightest = True
                         exclude_border = False
+                        if self.firstGuessMap:
+                            sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 4)
+                            self.windowHalf = min(round(self.windowSize * 3), 10)
+                            brightest =False
                     else:
                         self.windowHalf = round(self.windowSize / 2)
                         sigmaLimit = self.recipeSettings['pinhole-detection-thres-sigma']
                         brightest = True
                         exclude_border = True
-
-                    # if self.firstGuessMap:
-                    #     brightest = False
-                    #     sigmaLimit = max(self.recipeSettings['pinhole-detection-thres-sigma'], 3)
-
-                    # print(self.windowHalf, sigmaLimit)
-
-                    
 
                     orderPixelTable = self.detect_pinhole_arc_lines(orderPixelTable=orderPixelTable, iraf=iraf, sigmaLimit=sigmaLimit, iteration=iteration, brightest=brightest, exclude_border=exclude_border)
 
@@ -288,7 +289,7 @@ class create_dispersion_map(object):
                         mask = ((orderPixelTable['order'] == o) & (orderPixelTable['observed_x'].notnull()))
 
 
-                        meanxy, medianxy, stdxy = sigma_clipped_stats(orderPixelTable.loc[mask]['xy_diff'], sigma=1.5, stdfunc="mad_std", cenfunc="median", maxiters=3)
+                        meanxy, medianxy, stdxy = sigma_clipped_stats(orderPixelTable.loc[mask]['xy_diff'], sigma=1.5, stdfunc="mad_std", cenfunc="median", maxiters=2)
                         meanx, medianx, stdx = sigma_clipped_stats(orderPixelTable.loc[mask]['x_diff'], sigma=1.0, stdfunc="mad_std", cenfunc="median", maxiters=50)
                         meany, mediany, stdy = sigma_clipped_stats(orderPixelTable.loc[mask]['y_diff'], sigma=1.0, stdfunc="mad_std", cenfunc="median", maxiters=50)
                         if np.isnan(medianx) or np.isnan(mediany):
@@ -296,13 +297,13 @@ class create_dispersion_map(object):
                             continue
 
                         # RETURN
-                        print(iteration, o,stdx,stdy)
-                        print(iteration, o, meanxy, medianxy, stdxy)
-                        if stdxy < 3.0:
-                            print(str(o),"shifted")
+                        # print(iteration, o,stdx,stdy)
+                        # print(iteration, o, meanxy, medianxy, stdxy)
+                        if (stdxy < 3.0 and not self.firstGuessMap) or (stdxy < 2.0 and self.firstGuessMap):
+                            # print(str(o),"shifted")
                             orderPixelTable.loc[mask, 'detector_x_shifted'] = orderPixelTable.loc[mask]['detector_x_shifted'] - medianx
                             orderPixelTable.loc[mask, 'detector_y_shifted'] = orderPixelTable.loc[mask]['detector_y_shifted'] - mediany
-                        else:
+                        elif not self.firstGuessMap:
                             if stdx < 0.1:
                                 orderPixelTable.loc[mask, 'detector_x_shifted'] = orderPixelTable.loc[mask]['detector_x_shifted'] - medianx
                             if stdy < 0.1:
@@ -400,6 +401,21 @@ class create_dispersion_map(object):
             if True:
                 orderPixelTable = self._clip_on_measured_line_metrics(orderPixelTable)
 
+            if self.firstGuessMap:
+                detectedLineGroups = orderPixelTable.groupby(['wavelength', 'order']).size().reset_index(name='count')
+                # FIND THE MODE COUNT FOR EACH ORDER
+                modeCounts = detectedLineGroups.groupby('order')['count'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0).reset_index(name='pinhole count')
+                if self.inst.upper() == "SOXS":
+                    # REMOVE ORDER = 10
+                    modeCounts = modeCounts[~modeCounts['order'].isin([10,11,12])]
+                # IF ANY MODE IS LESS THAN 9, FAIL GRACEFULLY
+                if (modeCounts['pinhole count'] < 9).any():
+                    from tabulate import tabulate
+                    self.log.print("\n")
+                    self.log.print(tabulate(modeCounts, headers='keys', tablefmt='psql'))
+                    self.log.print("\n")
+                    raise AttributeError(f"All 9 pinholes cannot be seen in the data. A dispersion solution cannot be created.")
+
             # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
             fitFound = False
             tryCount = 0
@@ -413,20 +429,7 @@ class create_dispersion_map(object):
                     missingLines=missingLines
                 )
 
-                if self.firstGuessMap:
-                    detectedLineGroups = goodLinesTable.groupby(['wavelength', 'order']).size().reset_index(name='count')
-                    # FIND THE MODE COUNT FOR EACH ORDER
-                    modeCounts = detectedLineGroups.groupby('order')['count'].agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0).reset_index(name='pinhole count')
-                    if self.inst.upper() == "SOXS":
-                        # REMOVE ORDER = 10
-                        modeCounts = modeCounts[~modeCounts['order'].isin([10,11,12])]
-                    # IF ANY MODE IS LESS THAN 9, FAIL GRACEFULLY
-                    if (modeCounts['pinhole count'] < 9).any():
-                        from tabulate import tabulate
-                        self.log.print("\n")
-                        self.log.print(tabulate(modeCounts, headers='keys', tablefmt='psql'))
-                        self.log.print("\n")
-                        raise AttributeError(f"All 9 pinholes cannot be seen in the data. A dispersion solution cannot be created.")
+                
 
                 if isinstance(popt_x, np.ndarray) and isinstance(popt_y, np.ndarray):
                     fitFound = True
@@ -583,7 +586,9 @@ class create_dispersion_map(object):
                 dispMapImage=mapImagePath
             )
             # RETURN
-            if self.CLINE > 160:
+            if self.CLINE > 160 and self.arm == "VIS":
+                raise ValueError(f"Total number of clipped lines {self.CLINE} is above threshold.")
+            elif self.CLINE > 2000 and self.arm == "NIR":
                 raise ValueError(f"Total number of clipped lines {self.CLINE} is above threshold.")
             return mapPath, mapImagePath, res_plots, self.qc, self.products, lineDetectionTable
 
@@ -743,24 +748,25 @@ class create_dispersion_map(object):
             uniqueOrders = orderPixelTable['order'].unique()
             for o in uniqueOrders:
                 mask = (tmpList['order'] == o)                
-                meanxy, medianxy, stdxy = sigma_clipped_stats(tmpList.loc[mask, 'shift_xy'], sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=1)
-                meanx, medianx, stdx = sigma_clipped_stats(tmpList.loc[mask, 'shift_x'].abs(), sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=1)
-                meany, mediany, stdy = sigma_clipped_stats(tmpList.loc[mask, 'shift_y'].abs(), sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=1)
-
-                maxy = tmpList.loc[mask, 'shift_y'].abs().max()-meany
-                maxx = tmpList.loc[mask, 'shift_x'].abs().max()-meanx
-                maxxy = tmpList.loc[mask, 'shift_xy'].max()-meanxy
+                meanxy, medianxy, stdxy = sigma_clipped_stats(tmpList.loc[mask, 'shift_xy'], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+                meanx, medianx, stdx = sigma_clipped_stats(tmpList.loc[mask, 'shift_x'], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=1)
+                meany, mediany, stdy = sigma_clipped_stats(tmpList.loc[mask, 'shift_y'], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=1)
 
                 # RETURN
-                print(o, meanx, medianx, stdx,maxx)
-                print(o, meany, mediany, stdy,maxy)
-                print(o, meanxy, medianxy, stdxy,maxxy)
-                print()
+                # print(o, meanx, medianx, stdx)
+                # print(o, meany, mediany, stdy)
+                # print(o, meanxy, medianxy, stdxy)
+
 
                 if (stdxy > 1.5):
-                    print("MEDIAN", str(o))
+                    # print("MEDIAN", str(o))
                     tmpList.loc[mask, 'shift_y'] = mediany
                     tmpList.loc[mask, 'shift_x'] = medianx
+                else:
+                    pass
+                    # print("FIT USED", str(o))
+                # print()
+                
                 
 
             orderPixelTable = orderPixelTable.merge(tmpList, on=[
@@ -1472,7 +1478,7 @@ class create_dispersion_map(object):
             observed_x = orderPixelTable["observed_x"].to_numpy()
             observed_y = orderPixelTable["observed_y"].to_numpy()
 
-            # IF mean_res < 10 WE WANT TO START FROM SCRATCH AGAIN SO NOT TO INFLUENCE THE FINAL RESULT
+            # IF mean_res > 10 WE WANT TO START FROM SCRATCH AGAIN SO NOT TO INFLUENCE THE FINAL RESULT
             if True and mean_res > 10:
                 # FIND CACHED COEFF ELSE RETURN ARRAYS OF 1s
                 xcoeff, ycoeff = get_cached_coeffs(
@@ -2060,7 +2066,6 @@ class create_dispersion_map(object):
             self.log.print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted.")
         except:
             pass
-        # print(f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted. Fit found for {len(newPixelValue.index)} new pixels, {len(remainingCount.index)} image pixel remain to be constrained ({np.count_nonzero(np.isnan(wlMap.data))} nans in place-holder image)")
 
         if plots:
             from matplotlib import cm
@@ -2432,13 +2437,8 @@ class create_dispersion_map(object):
                         mask = orderGeoTable['order'] == thisOrder + 1
                         order_u = orderGeoTable[mask]
                         if len(order_l.index) and len(order_u.index):
-                            # print(order_10)
-                            # print(order_9)
                             merged_ul = order_l.merge(order_u, on=[self.axisB], suffixes=('_l', '_u'))
-
                             merged_ul['order_distance'] = merged_ul[f"{self.axisA}coord_edgelow_u"] - merged_ul[f"{self.axisA}coord_edgeup_l"]
-                            # print(merged_ul)
-                            # sys.exit(0)
                             pixel_scale_mean = (merged_ul['pixelScale_l'] + merged_ul['pixelScale_u']) / (2.0)
                             gapAx.plot(merged_ul['wavelength_l'], merged_ul['order_distance'] * pixel_scale_mean, label=thisOrder)
                             gapAx.set_xlabel('wavelength (nm)', fontsize=9)
