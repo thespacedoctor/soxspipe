@@ -548,10 +548,16 @@ class detect_order_edges(_base_detect):
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         if arm.upper() == "UVB":
             toprow.xaxis.set_label_coords(0.2, -0.13)
+        elif arm.upper() == "VIS":
+            toprow.xaxis.set_label_coords(0.5, -0.3)
         else:
             toprow.xaxis.set_label_coords(0.4, -0.13)
         toprow.tick_params(axis='both', which='major', labelsize=9)
-        toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.13),
+        if arm.upper() == "VIS":
+            toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.3),
+                        fontsize=4)
+        else: 
+            toprow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.13),
                       fontsize=4)
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
@@ -661,11 +667,17 @@ class detect_order_edges(_base_detect):
         # midrow.set_xticklabels([])
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        midrow.xaxis.set_label_coords(0.5, -0.12)
+        if arm.upper() == "VIS":
+            midrow.xaxis.set_label_coords(0.5, -0.3)
+            midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.3),
+                      fontsize=4)
+        else:
+            midrow.xaxis.set_label_coords(0.5, -0.12)
+            midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.12),
+                      fontsize=4)
         midrow.tick_params(axis='both', which='major', labelsize=9)
 
-        midrow.legend(loc='upper right', bbox_to_anchor=(1.0, -0.12),
-                      fontsize=4)
+        
 
         # PLOT THE FINAL RESULTS:
         if False:

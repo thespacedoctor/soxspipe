@@ -33,6 +33,7 @@ VIS:
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 12 #arcsec
   line-atlas: ThAr.fits
+  line-atlas: thar_murphy.fits
   dispersion-axis: x
   rotate-qc-plot: 90
   flip-qc-plot: 1
