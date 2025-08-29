@@ -12,16 +12,15 @@ formats: all
 build:
   os: "ubuntu-22.04"
   tools:
-    python: "3.11"
+    python: "3.9"
   apt_packages:
     - inkscape
 
 python:
   install:
-    - method: pip
+    - requirements: docs/requirements.txt
+    - method: setuptools
       path: .
-      extra_requirements:
-        - docs
 
 submodules:
   include: all
