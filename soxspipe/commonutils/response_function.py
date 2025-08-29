@@ -12,7 +12,6 @@
 import sys
 import os
 from builtins import object
-from matplotlib.pyplot import figure
 os.environ['TERM'] = 'vt100'
 
 
