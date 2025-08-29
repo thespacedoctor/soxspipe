@@ -41,7 +41,8 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
-    'sphinxcontrib.inkscapeconverter',
+    "sphinxcontrib.svg2pdfconverter",
+    # 'sphinxcontrib.inkscapeconverter',
     'sphinx.ext.autosectionlabel',
     # External stuff
     "sphinxext.opengraph",
