@@ -204,7 +204,7 @@ soxs-stare:
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-iterations: 5
     # USE LA COMSIC TO REMOVE CRHs BEFORE EXTRACTION
-    use_lacosmic: True
+    use_lacosmic: True 
     vis:
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 20
@@ -218,13 +218,13 @@ soxs-stare:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 40
+            slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
-            slice-width: 5
+            slice-width: 7
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 2
+            peak-sigma-limit: 1.5
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
-            disp-axis-deg: 6
+            disp-axis-deg: 3
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             order-deg: 3
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
@@ -237,9 +237,9 @@ soxs-stare:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_iterations: 7
+            percentile_clipping_iterations: 15
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
-            percentile_rolling_window_size: 35
+            percentile_rolling_window_size: 25
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
             clip-slit-edge-fraction: 0.01
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
@@ -271,17 +271,17 @@ soxs-stare:
         horne-extraction-profile-clipping-iteration-count: 10
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
-            order-sample-count: 100
+            order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 30
+            slice-length: 50
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 5
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 1.5
+            peak-sigma-limit: 2.
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
             order-deg: 6
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
-            disp-axis-deg: 5
+            disp-axis-deg: 4
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-fitting-residual-clipping-sigma: 5
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
@@ -384,6 +384,7 @@ soxs-response:
 background-subtraction:
     bspline-deg: 2
     gaussian-blur-sigma: 65
+
 
 logging settings:
     formatters:

@@ -98,6 +98,16 @@ def cut_image_slice(
         sliceFull = frame[slice_length_offset:int(axisA + halfSlice), int(axisB - halfwidth):int(axisB + halfwidth + 1)]
     slice_width_centre = (int(axisB + halfwidth + 1) + int(axisB - halfwidth)) / 2
 
+
+    
+    # # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+    # maskedDataArray = np.ma.array(sliceFull.data, mask=sliceFull.mask)
+    # try:
+    #     sliceFull.data=sliceFull.data - np.percentile(maskedDataArray, 30)
+    # except:
+    #     pass
+    
+
     if median:
         if sliceAxis == "y":
             slice = ma.median(sliceFull, axis=1)
@@ -240,7 +250,10 @@ def quicklook_image(
             mask = (frame.mask == 1) | (interOrderMask == 1)
         except:
             mask = interOrderMask == 1
-        frame.mask = mask
+        try:
+            frame.mask = mask
+        except:
+            pass
 
     if inst == "SOXS":
         rotatedImg = np.flipud(frame)
@@ -323,8 +336,10 @@ def quicklook_image(
 
         ax2 = fig.add_subplot(122)
     else:
-        fig = plt.figure(figsize=(12, 5))
-
+        if rotatedImg.shape[0] - rotatedImg.shape[1] > 1000:
+            fig = plt.figure(figsize=(5, 12))
+        else:
+            fig = plt.figure(figsize=(12, 5))
         # palette.set_over('r', 1.0)
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
@@ -338,7 +353,11 @@ def quicklook_image(
             else:
                 ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
 
-    ax2.set_box_aspect(0.5)
+
+    if rotatedImg.shape[0] - rotatedImg.shape[1] > 1000:
+        ax2.set_box_aspect(2.0)
+    else:
+        ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
                               cmap=palette, alpha=1, aspect='auto')
 

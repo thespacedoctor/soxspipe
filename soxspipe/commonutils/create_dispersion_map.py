@@ -296,7 +296,7 @@ class create_dispersion_map(object):
                             self.log.warning(f"Could not find any arc lines in order {o}.")
                             continue
 
-                        # RETURN
+ 
                         # print(iteration, o,stdx,stdy)
                         # print(iteration, o, meanxy, medianxy, stdxy)
                         if (stdxy < 3.0 and not self.firstGuessMap) or (stdxy < 2.0 and self.firstGuessMap):
@@ -381,7 +381,7 @@ class create_dispersion_map(object):
                 "to_header": True
             }).to_frame().T], ignore_index=True)
 
-            # RETURN
+
             # if percentageDetectedLines < 0.97:
             #     raise ValueError(f"Detected lines percentage {percentageDetectedLines} is below threshold.")
             
@@ -585,11 +585,11 @@ class create_dispersion_map(object):
                 dispMap=mapPath,
                 dispMapImage=mapImagePath
             )
-            # RETURN
-            if self.CLINE > 160 and self.arm == "VIS":
-                raise ValueError(f"Total number of clipped lines {self.CLINE} is above threshold.")
-            elif self.CLINE > 2000 and self.arm == "NIR":
-                raise ValueError(f"Total number of clipped lines {self.CLINE} is above threshold.")
+    
+            # if self.CLINE > 160 and self.arm == "VIS":
+            #     raise ValueError(f"Total number of clipped lines {self.CLINE} is above threshold.")
+            # elif self.CLINE > 2000 and self.arm == "NIR":
+            #     raise ValueError(f"Total number of clipped lines {self.CLINE} is above threshold.")
             return mapPath, mapImagePath, res_plots, self.qc, self.products, lineDetectionTable
 
         res_plots = self._create_dispersion_map_qc_plot(
@@ -752,7 +752,7 @@ class create_dispersion_map(object):
                 meanx, medianx, stdx = sigma_clipped_stats(tmpList.loc[mask, 'shift_x'], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=1)
                 meany, mediany, stdy = sigma_clipped_stats(tmpList.loc[mask, 'shift_y'], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=1)
 
-                # RETURN
+
                 # print(o, meanx, medianx, stdx)
                 # print(o, meany, mediany, stdy)
                 # print(o, meanxy, medianxy, stdxy)

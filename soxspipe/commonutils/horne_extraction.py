@@ -16,6 +16,7 @@ import sys
 import os
 
 
+
 os.environ['TERM'] = 'vt100'
 
 
@@ -98,7 +99,8 @@ class horne_extraction(object):
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import unpack_order_table
         from soxspipe.commonutils import detector_lookup
-        from ccdproc import cosmicray_lacosmic
+        from ccdproc import cosmicray_lacosmic, cosmicray_median
+        from matplotlib import pyplot as plt
 
         self.log = log
         log.debug("instantiating a new 'horne_extraction' object")
@@ -141,9 +143,13 @@ class horne_extraction(object):
         if True and self.recipeSettings["use_lacosmic"]:
             oldCount = self.skySubtractedFrame.mask.sum()
             oldMask = self.skySubtractedFrame.mask.copy()
-            self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=4.0, gain_apply=False, niter=5, cleantype="meanmask")
+            self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=18.0, gain_apply=False, niter=5, cleantype="meanmask", objlim=5.0,invar=self.skySubtractedFrame.uncertainty.array.astype("float32"),verbose=False)
             newCount = self.skySubtractedFrame.mask.sum()
-            self.skySubtractedFrame.mask = oldMask
+            self.laCosmicClippedCount = newCount - oldCount
+            # self.skySubtractedFrame.mask = oldMask
+            from soxspipe.commonutils.toolkit import quicklook_image
+            quicklook_image(log=self.log, CCDObject=self.skySubtractedFrame, show=False, ext='mask', stdWindow=3, title=False, surfacePlot=False, dispMap=dispersionMap, dispMapImage=twoDMapPath, settings=self.settings, skylines=False)
+
 
         # CHECK SKY MODEL FRAME IS USED (ONLY IN STARE MODE)
         if skyModelFrame == False:
