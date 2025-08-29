@@ -1,5 +1,21 @@
 # Release Notes
 
+## v0.13.5 - August 29, 2025
+
+* **REFACTOR:** do not scale SOXS darks if exptimes are not equivalent (dark does not scale linearly). Instead, do not subtract dark and warn the user. fixes #376
+* **REFACTOR:** huge speed gain on data organiser prep command
+* **REFACTOR:** ignore SOXS Deut flats by default (too many lines seen in the orders)
+* **REFACTOR:** improved order edge detection (especially VIS u-band). fixes #378
+* **REFACTOR:** Increasing the default SOXS slice height to detect continuum in VIS
+* **REFACTOR:** much improved dispersion SOXS VIS solution
+* **REFACTOR:** object tracing improved
+* **ENHANCEMENT:** added a few more keyword to the data organiser database
+* **ENHANCEMENT:** If a previously failed recipe is rerun and succeeds, update SOF files to re-add the product. closes #380
+* **ENHANCEMENT:** many updates to the data-organiser to start handling ACQ camera data
+* **ENHANCEMENT:** object clipping during VIS sky-subtraction now adjusts some variables dynamically to get an improved result
+* **ENHANCEMENT:** The pipeline can now detect and fail gracefully whenever fewer than 9 pinholes are found in any given order. This will stop the pipeline from propagating bad dispersion solutions if there is a problem with the data. fixes #379
+
+
 ## v0.13.4 - April 29, 2025
 
 * **REFACTOR:** small performance gain in prep command

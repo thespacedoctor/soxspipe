@@ -125,6 +125,10 @@ class base_recipe(object):
         # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
         if self.conn:
             c = self.conn.cursor()
+            sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"
+            c.execute(sqlQuery)
+            self.status = c.fetchone()['status']
+
             sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
@@ -732,10 +736,18 @@ class base_recipe(object):
 
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
+
             c = self.conn.cursor()
             sqlQuery = f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
             c.close()
+
+            # PREVIOUSLY FAILED RECIPE THAT HAS NOW PASSED
+            if self.status == "fail":
+                from soxspipe.commonutils import data_organiser
+                do = data_organiser(log=self.log, rootDir=self.workspaceRootPath)
+                do.session_refresh(failure=False)
+
 
         outDir = self.workspaceRootPath + "/tmp"
 
@@ -1130,8 +1142,12 @@ class base_recipe(object):
         if dark != False and (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence):
             processedFrame = ccdproc.subtract_bias(processedFrame, dark)
         elif dark != False:
-            self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
-            processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
+            if self.inst == "SOXS":
+
+                self.log.warning(f"Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction.")
+            else:
+                self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
+                processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
 
         doSubtraction = True
         if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
@@ -1225,6 +1241,7 @@ class base_recipe(object):
 
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
         self.qc = self.qc.drop_duplicates(subset=['qc_name'], keep='last')
+
         # SORT BY COLUMN NAME
         self.qc.sort_values(['qc_name'], inplace=True)
         columns = list(self.qc.columns)

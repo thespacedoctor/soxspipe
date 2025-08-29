@@ -42,7 +42,6 @@ class data_organiser(object):
     )
     do.prepare()
     ```
-
     """
 
     def __init__(
@@ -55,20 +54,14 @@ class data_organiser(object):
         import codecs
         from fundamentals.logs import emptyLogger
         import warnings
-
         from astropy.utils.exceptions import AstropyWarning
         warnings.simplefilter('ignore', AstropyWarning)
 
         self.vlt = vlt
-
         self.PAE = False
-
         log.debug("instantiating a new 'data_organiser' object")
-
         self.log = log
 
-        # if rootDir == ".":
-        #     rootDir = os.getcwd()
         # MAKE RELATIVE HOME PATH ABSOLUTE
         if rootDir[0] == "~":
             home = expanduser("~")
@@ -84,9 +77,6 @@ class data_organiser(object):
 
         # SESSION ID PLACEHOLDER FILE
         self.sessionIdFile = self.sessionsDir + "/.sessionid"
-
-        self.rootDbPath = rootDir + "/soxspipe.db"
-
         exists = os.path.exists(self.sessionIdFile)
         if exists:
             with codecs.open(self.sessionIdFile, encoding='utf-8', mode='r') as readFile:
@@ -94,6 +84,10 @@ class data_organiser(object):
                 self.sessionPath = self.sessionsDir + "/" + sessionId
                 self.sessionId = sessionId
 
+        # DATABASE FILE
+        self.rootDbPath = rootDir + "/soxspipe.db"
+
+        # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE USED TO IDENTIFY RELEVANT DATA IN THE FITS FILES
         self.keyword_lookups = [
             'MJDOBS',
             'DATE_OBS',
@@ -128,10 +122,18 @@ class data_organiser(object):
             "TPL_ID",
             "INSTRUME",
             "ABSROT",
-            "EXPTIME2"
+            "EXPTIME2",
+            "TPL_NAME",
+            "TPL_NEXP",
+            "TPL_EXPNO",
+            "ACFW_ID",
+            "RA",
+            "DEC",
+            "DET"
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
+        # USED IN GROUPING RAW FRAMES
         self.keywordsTerse = [
             'file',
             'eso seq arm',
@@ -156,52 +158,188 @@ class data_organiser(object):
             'object',
             "template",
             "instrume",
-            "absrot"
+            "absrot",
+            "eso tpl name",
+            "eso tpl nexp",
+            "eso tpl expno",
+            "filter",
+            "ra",
+            "dec"
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
         self.typeMapXSH = {
-            "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
-            "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,orderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,dorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,qorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,flat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
-            "flat,lamp": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
-            "lamp,dflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
-            "lamp,qflat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],
-            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}],
-            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
-            "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
+            "bias": [
+                {"tech": None, "slitmask": None, "recipe": "mbias"}
+            ],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
+
+            "dark": [
+                {"tech": None, "slitmask": None, "recipe": "mdark"}
+            ],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,fmtchk": [
+                {"tech": None, "slitmask": None, "recipe": "disp_sol"}
+            ],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,orderdef": [
+                {"tech": None, "slitmask": None, "recipe": "order_centres"}
+            ],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,dorderdef": [
+                {"tech": None, "slitmask": None, "recipe": "order_centres"}
+            ],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,qorderdef": [
+                {"tech": None, "slitmask": None, "recipe": "order_centres"}
+            ],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,flat": [
+                {"tech": None, "slitmask": None, "recipe": "mflat"}
+            ],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
+
+            "flat,lamp": [
+                {"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}
+            ],
+
+            "lamp,dflat": [
+                {"tech": None, "slitmask": None, "recipe": "mflat"}
+            ],
+
+            "lamp,qflat": [
+                {"tech": None, "slitmask": None, "recipe": "mflat"}
+            ],
+
+            "lamp,wave": [
+                {"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}
+            ],
+
+            "wave,lamp": [
+                {"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}
+            ],
+
+            "object": [
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
+            ],
+
+            "std,flux": [
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
+            ],
+
+            "std": [
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
+            ],
+
+            "std,telluric": [
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
+            ],
+
+            "std,sky": [
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
+            ]
         }
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
         self.typeMapSOXS = {
-            "bias": [{"tech": None, "slitmask": None, "recipe": "mbias"}],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
-            "dark": [{"tech": None, "slitmask": None, "recipe": "mdark"}],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,fmtchk": [{"tech": None, "slitmask": None, "recipe": "disp_sol"}],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,orderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,dorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,qorderdef": [{"tech": None, "slitmask": None, "recipe": "order_centres"}],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
-            # "lamp,flat": [{"tech": None, "slitmask": None, "recipe": "mflat"}],  # XSH flats CAN BE DEFINED WITH JUST DPR TYPE
-            "lamp,flat": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
-            "flat,lamp": [{"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
-            "lamp,dflat": [{"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}],
-            "lamp,qflat": [{"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"}, {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}],
-            "lamp,wave": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}],
-            "wave,lamp": [{"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"}, {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}],
-            "object": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "object,async": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std,flux": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}],
-            "std,telluric": [{"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"}, {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"}, {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}]
+            "bias": [
+                {"tech": None, "slitmask": None, "recipe": "mbias"}
+            ],  # XSH/SOXS BIAS CAN BE DEFINED WITH JUST DPR TYPE
+
+            "dark": [
+                {"tech": None, "slitmask": None, "recipe": "mdark"}
+            ],  # XSH/SOXS DARK CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,fmtchk": [
+                {"tech": None, "slitmask": None, "recipe": "disp_sol"}
+            ],  # XSH disp_sol CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,orderdef": [
+                {"tech": None, "slitmask": None, "recipe": "order_centres"}
+            ],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,dorderdef": [
+                {"tech": None, "slitmask": None, "recipe": "order_centres"}
+            ],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,qorderdef": [
+                {"tech": None, "slitmask": None, "recipe": "order_centres"}
+            ],  # XSH order_centres CAN BE DEFINED WITH JUST DPR TYPE
+
+            "lamp,flat": [
+                {"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}
+            ],
+
+            "flat,lamp": [
+                {"tech": ["echelle,slit", "image"], "slitmask": ["SLIT"], "recipe": "mflat"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}
+            ],
+
+            "lamp,dflat": [
+                {"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"},
+                {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}
+            ],
+
+            "lamp,qflat": [
+                {"tech": None, "slitmask": ["SLIT"], "recipe": "mflat"},
+                {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"}
+            ],
+
+            "lamp,wave": [
+                {"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"}
+            ],
+
+            "wave,lamp": [
+                {"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"}
+            ],
+
+            "object": [
+                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+            ],
+
+            "object,async": [
+                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+            ],
+
+            "std,flux": [
+                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+            ],
+
+            "std": [
+                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+            ],
+
+            "std,telluric": [
+                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+            ]
         }
 
-        # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULTS FROM REDUCING EACH SOFs
+        # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULT FROM REDUCING EACH SOF
         # LIST ORDER: ['pro type kw', 'pro tech kw', 'pro catg kw', "pixels/table", "find in sof", "replace/suffix in sof", "recipe"]
         self.productMap = {
             "mbias": [
@@ -229,18 +367,69 @@ class data_organiser(object):
             ],
         }
 
-        self.proKeywords = ['eso pro type', 'eso pro tech', 'eso pro catg']
+        self.proKeywords = [
+            'eso pro type',
+            'eso pro tech',
+            'eso pro catg'
+        ]
 
-        # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE
-        # INDEXES
-        self.filterKeywords = ['eso seq arm', 'eso dpr catg',
-                               'eso dpr tech', 'eso dpr type', 'eso pro catg', 'eso pro tech', 'eso pro type', 'exptime', 'rospeed', 'slit', 'slitmask', 'binning', 'night start mjd', 'night start date', 'instrume', "lamp", 'template', 'eso obs name']
+        # THESE ARE KEYS WE NEED TO FILTER ON, AND SO NEED TO CREATE ASTROPY TABLE INDEXES
+        self.filterKeywords = [
+            'eso seq arm',
+            'eso dpr catg',
+            'eso dpr tech',
+            'eso dpr type',
+            'eso pro catg',
+            'eso pro tech',
+            'eso pro type',
+            'exptime',
+            'rospeed',
+            'slit',
+            'slitmask',
+            'binning',
+            'night start mjd',
+            'night start date',
+            'instrume',
+            'lamp',
+            'template',
+            'eso obs name',
+            'eso tpl name',
+            'filter'
+        ]
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
-        self.reductionOrder = ["BIAS", "DARK", "LAMP,FMTCHK", "LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF", "LAMP,FLAT", "FLAT,LAMP", "LAMP,DFLAT", "LAMP,QFLAT", "WAVE,LAMP", "LAMP,WAVE", "STD,FLUX", "STD", "STD,TELLURIC", "OBJECT", "OBJECT,ASYNC"]
+        self.reductionOrder = [
+            "BIAS",
+            "DARK",
+            "LAMP,FMTCHK",
+            "LAMP,ORDERDEF",
+            "LAMP,DORDERDEF",
+            "LAMP,QORDERDEF",
+            "LAMP,FLAT",
+            "FLAT,LAMP",
+            "LAMP,DFLAT",
+            "LAMP,QFLAT",
+            "WAVE,LAMP",
+            "LAMP,WAVE",
+            "STD,FLUX",
+            "STD",
+            "STD,TELLURIC",
+            "OBJECT",
+            "OBJECT,ASYNC"
+        ]
 
         # THIS IS THE ORDER THE RECIPES NEED TO BE RUN IN (MAKE SURE THE REDUCTION SCRIPT HAS RECIPES IN THE CORRECT ORDER)
-        self.recipeOrder = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
+        self.recipeOrder = [
+            "mbias",
+            "mdark",
+            "disp_sol",
+            "order_centres",
+            "mflat",
+            "spat_sol",
+            "stare",
+            "nod",
+            "offset"
+        ]
 
         # DECOMPRESS .Z FILES
         from soxspipe.commonutils import uncompress
@@ -261,27 +450,8 @@ class data_organiser(object):
         import sqlite3 as sql
 
         # TEST FITS FILES OR raw_frames DIRECT EXISTS
-        fitsExist = False
-        exists = os.path.exists(self.rawDir)
-        if exists:
-            from fundamentals.files import recursive_directory_listing
-            theseFiles = recursive_directory_listing(
-                log=self.log,
-                baseFolderPath=self.rawDir,
-                whatToList="files"  # all | files | dirs
-            )
-            for f in theseFiles:
-                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f):
-                    fitsExist = True
-                    break
-        if not fitsExist:
-            for d in os.listdir(self.rootDir):
-                filepath = os.path.join(self.rootDir, d)
-                if os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)):
-                    fitsExist = True
-                    break
-
-        # EXIST IF NO FITS FILES EXIST - SOME PROTECT AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
+        fitsExist = self._fits_files_exist()
+        # EXIST IF NO FITS FILES EXIST - SOME PROTECTION AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
         if fitsExist == False:
             print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
             return None
@@ -291,31 +461,9 @@ class data_organiser(object):
             os.makedirs(self.rawDir)
 
         # TEST FOR SQLITE DATABASE - ADD IF MISSING
-        try:
-            with open(self.rootDbPath):
-                pass
-            self.freshRun = False
-        except IOError:
-            try:
-                os.remove(self.sessionIdFile)
-            except:
-                pass
-            self.freshRun = True
-            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
-            shutil.copyfile(emptyDb, self.rootDbPath)
+        self.conn = self._get_or_create_db_connection()
 
-        def dict_factory(cursor, row):
-            d = {}
-            for idx, col in enumerate(cursor.description):
-                d[col[0]] = row[idx]
-            return d
-
-        # CREATE THE DATABASE CONNECTION
-        self.conn = sql.connect(
-            self.rootDbPath)
-        # self.conn.row_factory = dict_factory
-
-        # SELECT INSTR
+        # SELECT INSTRUMENT
         try:
             c = self.conn.cursor()
             sqlQuery = "select instrume from raw_frames where instrume is not null limit 1"
@@ -350,9 +498,40 @@ class data_organiser(object):
                 sessionId = readFile.read()
                 self.sessionPath = self.sessionsDir + "/" + sessionId
 
+        # GET SETTINGS
+        settingsPath = self.sessionPath + "/soxspipe.yaml"
+        su = tools(
+            arguments={"<workspaceDirectory>": self.sessionPath, "settingsFile": settingsPath},
+            docString=False,
+            logLevel="WARNING",
+            options_first=False,
+            projectName="soxspipe",
+            createLogger=False
+        )
+        arguments, self.settings, replacedLog, dbConn = su.setup()
+
+        # FLAG FILES TO IGNORE
+        c = self.conn.cursor()
+        theseKeywords = "','".join(self.reductionOrder)
+        sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ('{theseKeywords}')"
+        c.execute(sqlQuery)
+        self.conn.commit()
+        c.close()
+
+        if self.settings["ignore-dflats"]:
+            # IF THE USER WANTS TO IGNORE DFLATS, WE NEED TO REMOVE THEM FROM THE RAW FRAMES TABLE
+            c = self.conn.cursor()
+            sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DFLAT%'"
+            c.execute(sqlQuery)
+            self.conn.commit()
+            c.close()
+
+        # POPULATION OF THE PRODUCT FRAMES NEEDS TO BE LOOPED TO ACCOUNT FOR AlL THE REDUCTION STAGES
         i = 0
         while i < 6:
-            self._populate_product_frames_db_table()
+            completeCount = self._populate_product_frames_db_table()
+            if completeCount:
+                break
             i += 1
         self._write_sof_files()
 
@@ -372,7 +551,7 @@ class data_organiser(object):
     def _sync_raw_frames(
             self,
             skipSqlSync=False):
-        """*sync the raw frames between the project folder and the database *
+        """*sync the raw frames between the project folder and the database*
 
         **Key Arguments:**
 
@@ -399,7 +578,7 @@ class data_organiser(object):
         import shutil
         import pandas as pd
 
-        # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
+        # GENERATE AN ASTROPY TABLE OF FITS FRAMES WITH ALL INDEXES NEEDED
         filteredFrames, fitsPaths, fitsNames = self._create_directory_table(pathToDirectory=self.rootDir, filterKeys=self.filterKeywords)
 
         if fitsPaths:
@@ -410,16 +589,13 @@ class data_organiser(object):
             # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
             rawFrames, reducedFramesPixels, reducedFramesTables = self._categorise_frames(filteredFrames)
 
-            # FILTER DATA FRAME
+            # THIS IS USED TO DUPLICATE ORDER TRACING FRAMES AS SCIENCE FRAMES TO TEST EXTRAcTION DURING PAE
             if self.PAE and self.instrument.upper() == "SOXS":
                 mask = ((rawFrames["eso dpr tech"] == "ECHELLE,PINHOLE") & (rawFrames["eso dpr type"] == "LAMP,FLAT"))
                 filteredDf = rawFrames.loc[mask]
                 filteredDf["eso dpr tech"] = "ECHELLE,SLIT,STARE"
                 filteredDf["eso dpr type"] = "OBJECT"
-
                 rawFrames = pd.concat([rawFrames, filteredDf], ignore_index=True)
-
-            # xpd-update-filter-dataframe-column-values
 
             # FIND AND REMOVE DUPLICATE FILES
             if len(rawFrames.index):
@@ -432,14 +608,15 @@ class data_organiser(object):
                             os.remove(file)
                         except:
                             pass
-                    # FIND RECORDS IN rawFrames NOT IN rawFrames
+                    # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
                     rawFrames = rawFrames[~rawFrames.set_index(['file', 'eso dpr tech']).index.isin(knownRawFrames.set_index(['file', 'eso dpr tech']).index)]
 
+            # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
             if len(rawFrames.index):
                 rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames['night start date'] + "/" + rawFrames['file']
 
-                rawFrames.to_sql('raw_frames', con=self.conn,
-                                 index=False, if_exists='append')
+                rawFrames.replace(['--', -99.99], None).to_sql('raw_frames', con=self.conn,
+                                                               index=False, if_exists='append')
 
                 filepaths = rawFrames['filepath']
                 filenames = rawFrames['file']
@@ -600,10 +777,16 @@ class data_organiser(object):
                     masterTable[fil].fill_value = "--"
         masterTable = masterTable.filled()
 
-        # FIX ACQ CAM EXPTIME
+        # FIX ACQ CAM EXPTIME & ARM & FILTER
         if "SOXS" in self.instrument.upper():
             matches = ((masterTable["exptime"] == -99.99) & (masterTable[self.kw("EXPTIME2").lower()] != -99.99))
             masterTable["exptime"][matches] = masterTable[self.kw("EXPTIME2").lower()][matches]
+            matches = ((masterTable['eso seq arm'] == "--") & (masterTable[self.kw("DET").lower()] == "ACQ"))
+            masterTable['eso seq arm'][matches] = "ACQ"
+            matches = ((masterTable['eso seq arm'] != "ACQ") & (masterTable[self.kw("ACFW_ID").lower()] != "--"))
+            masterTable[self.kw("ACFW_ID").lower()][matches] = "--"
+            matches = ((masterTable['eso seq arm'] == "ACQ") & ((masterTable["eso dpr type"] == "BIAS") | (masterTable["eso dpr type"] == "DARK")))
+            masterTable[self.kw("ACFW_ID").lower()][matches] = "--"
 
         # FILTER OUT FRAMES WITH NO MJD
         matches = ((masterTable["mjd-obs"] == -99.99) | (masterTable["eso dpr catg"] == "--") | (masterTable["eso dpr tech"] == "--") | (masterTable["eso dpr type"] == "--") | (masterTable["exptime"] == -99.99))
@@ -667,6 +850,9 @@ class data_organiser(object):
 
         if self.kw("TPL_ID").lower() in masterTable.colnames:
             masterTable["template"] = np.copy(masterTable[self.kw("TPL_ID").lower()])
+
+        if self.kw("ACFW_ID").lower() in masterTable.colnames:
+            masterTable["filter"] = np.copy(masterTable[self.kw("ACFW_ID").lower()])
 
         if "naxis" in masterTable.colnames:
             masterTable["table"] = np.copy(masterTable["naxis"]).astype(str)
@@ -973,10 +1159,18 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
         import time
+        from collections import defaultdict
 
         conn = self.conn
-        rawFrames = pd.read_sql('SELECT * FROM raw_frames', con=conn)
+        rawFrames = pd.read_sql('SELECT * FROM raw_frames_valid', con=conn)
 
+        c = conn.cursor()
+        sqlQuery = "select count(*) from raw_frame_sets where complete = 1"
+        c.execute(sqlQuery)
+        completeCountStart = c.fetchall()[0][0]
+        c.close()
+
+        rawFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}, inplace=True)
         rawFrames.fillna("--", inplace=True)
         filterKeywordsRaw = self.filterKeywords[:]
 
@@ -1000,7 +1194,7 @@ class data_organiser(object):
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = pd.read_sql(
-            "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,SLIT,STARE')", con=conn)
+            "SELECT * FROM raw_frames_valid where `eso dpr tech` in ('ECHELLE,SLIT,STARE')", con=conn)
 
         rawScienceFrames.fillna("--", inplace=True)
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
@@ -1016,11 +1210,13 @@ class data_organiser(object):
         # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
         if self.instrument.upper() == "SOXS":
             rawPinholeFrames = pd.read_sql(
-                "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE') and ('eso seq arm' = 'NIR' or ('lamp' not in ('Xe', 'Ar', 'Hg', 'Ne', 'ArNeHgXe' )))", con=conn)
+                "SELECT * FROM raw_frames_valid where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE') and ('eso seq arm' = 'NIR' or ('lamp' not in ('Xe', 'Ar', 'Hg', 'Ne', 'ArNeHgXe' )))", con=conn)
         else:
             rawPinholeFrames = pd.read_sql(
-                "SELECT * FROM raw_frames where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE')", con=conn)
+                "SELECT * FROM raw_frames_valid where `eso dpr tech` in ('ECHELLE,PINHOLE','ECHELLE,MULTI-PINHOLE')", con=conn)
 
+        with pd.option_context("future.no_silent_downcasting", True):
+            rawPinholeFrames = rawPinholeFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}).infer_objects(copy=False)
         rawPinholeFrames.fillna("--", inplace=True)
         rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawPinholeFrames = rawPinholeFrames.size().reset_index(name='counts')
@@ -1032,18 +1228,11 @@ class data_organiser(object):
         rawGroups['recipe'] = None
         rawGroups['sof'] = None
 
-        # REMOVE UNNEEDED FRAMES FROM GROUPS
-        # mask = (rawGroups['slitmask'].isin(["PH", "MPH"])) & (
-        #     rawGroups['binning'].isin(["2x1", "2x2", "1x2"]))
-        # rawGroups = rawGroups.loc[~mask]
-
         calibrationFrames = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` not like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationFrames.fillna("--", inplace=True)
 
         calibrationTables = pd.read_sql(f"SELECT * FROM product_frames where `eso pro catg` like '%_TAB_%' and (status_{self.sessionId} != 'fail' or status_{self.sessionId} is null)", con=conn)
         calibrationTables.fillna("--", inplace=True)
-
-        # _generate_sof_and_product_names SHOULD TAKE ROW OF DF AS INPUT
 
         # SEND TO DATABASE
         c = self.conn.cursor()
@@ -1051,11 +1240,22 @@ class data_organiser(object):
         c.execute(sqlQuery)
         c.close()
 
-        for o in self.reductionOrder:
-            rawGroups = rawGroups.apply(self._generate_sof_and_product_names, axis=1, reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
-            rawGroups = rawGroups.apply(self._populate_products_table, axis=1, reductionOrder=o)
+        if "complete" not in rawGroups.columns:
+            rawGroups["complete"] = None
+        if "recipe_order" not in rawGroups.columns:
+            rawGroups["recipe_order"] = None
 
-        # xpd-update-filter-dataframe-column-values
+        for o in self.reductionOrder:
+
+            rawGroups = self.generate_sof_and_product_names(reductionOrder=o, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables, rawGroups=rawGroups)
+
+            rawGroups = self.populate_products_table(reductionOrder=o, rawGroups=rawGroups)
+
+        mask = (rawGroups['complete'] == 1)
+        completeCountEnd = len(rawGroups.loc[mask].index)
+
+        if completeCountStart == completeCountEnd:
+            return completeCountStart
 
         # SEND TO DATABASE
         c = self.conn.cursor()
@@ -1078,10 +1278,9 @@ class data_organiser(object):
         self.log.debug('completed the ``_populate_product_frames_db_table`` method')
         return None
 
-    def _generate_sof_and_product_names(
+    def _generate_sof_and_product_names_by_row(
             self,
             series,
-            reductionOrder,
             rawFrames,
             calibrationFrames,
             calibrationTables):
@@ -1095,12 +1294,8 @@ class data_organiser(object):
         import pandas as pd
         import astropy
         import numpy as np
-        import time
 
         incomplete = False
-
-        if series['eso seq arm'].upper() == "ACQ":
-            return series
 
         sofName = []
         matchDict = {}
@@ -1108,19 +1303,9 @@ class data_organiser(object):
         matchDict['eso seq arm'] = series['eso seq arm'].upper()
         filteredFrames = rawFrames
 
-        if series["eso dpr type"].lower() != reductionOrder.lower():
-            return series
-
-        # FILTER BY TEMPLATE NAME
-        mask = (filteredFrames["template"].isin([series["template"]]))
-        filteredFrames = filteredFrames.loc[mask]
-
         # FILTER BY TYPE FIRST
         if "FLAT" in series["eso dpr type"].upper():
-            mask = ((filteredFrames["eso dpr type"].str.contains("FLAT")) & (filteredFrames["slit"] == series["slit"]))
-        else:
-            mask = (filteredFrames["eso dpr type"].isin([series["eso dpr type"].upper()]))
-        filteredFrames = filteredFrames.loc[mask]
+            filteredFrames = filteredFrames.loc[(filteredFrames["slit"] == series["slit"])]
 
         seriesRecipe = None
 
@@ -1131,9 +1316,7 @@ class data_organiser(object):
                 rowSlit = [item.upper() for item in row["slitmask"]]
                 if not match and series["slitmask"] in rowSlit:
                     match = True
-
-                    mask = (filteredFrames["slitmask"].isin(rowSlit))
-                    filteredFrames = filteredFrames.loc[mask]
+                    filteredFrames = filteredFrames.loc[(filteredFrames["slitmask"].isin(rowSlit))]
                     seriesRecipe = row["recipe"]
             if not match:
                 return series
@@ -1153,7 +1336,7 @@ class data_organiser(object):
         elif not seriesRecipe:
             seriesRecipe = self.typeMap[series["eso dpr type"].lower()][0]["recipe"]
 
-        # GENEREATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
+        # GENERATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
         if series["binning"] != "--":
             matchDict['binning'] = series["binning"]
             sofName.append(series['binning'].upper())
@@ -1161,7 +1344,6 @@ class data_organiser(object):
             matchDict['rospeed'] = series["rospeed"]
             sofName.append(series["rospeed"])
         if series["eso dpr type"].lower() in self.typeMap:
-            matchDict['eso dpr type'] = series["eso dpr type"]
             for i in self.typeMap[series["eso dpr type"].lower()]:
                 if i["recipe"] == seriesRecipe:
                     sofName.append(i["recipe"].replace("_centres", "_locations"))
@@ -1192,7 +1374,6 @@ class data_organiser(object):
         sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
-
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
                 mask = (filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP"]))
             else:
@@ -1237,13 +1418,14 @@ class data_organiser(object):
             elif "type" in k.lower() and series['eso seq arm'] in ["UVB", "VIS", "NIR"]:
                 mask = (calibrationTables['eso pro catg'].str.contains("_TAB_"))
             else:
-                # mask = (calibrationTables[k].isin([v]))
                 try:
                     mask = (calibrationTables[k].isin([v]))
-                except:
+                except Exception as e:
                     print(series)
                     print(k, v)
+                    print(e)
                     sys.exit(0)
+
             calibrationTables = calibrationTables.loc[mask]
 
         # NIGHT START
@@ -1293,6 +1475,7 @@ class data_organiser(object):
             calibrationTables["obs-delta"] = calibrationTables["obs-delta"].abs()
             # dispImages["obs-delta"] = dispImages["obs-delta"].abs()
             if isinstance(filteredFrames, astropy.table.row.Row):
+                from astropy.table import Table
                 filteredFrames = Table(filteredFrames)
 
             if seriesRecipe not in ["mbias", "mdark"]:
@@ -1315,8 +1498,6 @@ class data_organiser(object):
             mask = ((filteredFrames['eso dpr type'] == "LAMP,DFLAT") & (filteredFrames['exptime'] == dexptime)) | ((filteredFrames['eso dpr type'] == "LAMP,QFLAT") & (filteredFrames['exptime'] == qexptime))
             filteredFrames = filteredFrames.loc[mask]
 
-        # ADDING TAG FOR SOF FILES
-        filteredFrames["tag"] = filteredFrames["eso dpr type"].replace(",", "_") + "_" + filteredFrames["eso seq arm"]
         # LAMP ON AND OFF TAGS
         if series["eso seq arm"].lower() == "nir":
             if seriesRecipe in ["disp_sol", "order_centres", "mflat", "spat_sol"]:
@@ -1324,32 +1505,9 @@ class data_organiser(object):
                 filteredFrames.loc[mask, "tag"] += ",OFF"
                 filteredFrames.loc[~mask, "tag"] += ",ON"
 
-        # SORT BY COLUMN NAME
-        filteredFrames.sort_values(['tag', 'filepath', 'file'],
-                                   ascending=[True, True, True], inplace=True)
-
         files = filteredFrames["file"].values
         filepaths = filteredFrames["filepath"].values
         tags = filteredFrames["tag"].values
-
-        # if series["eso seq arm"].lower() in ("uvb", "vis") and seriesRecipe in ["disp_sol", "order_centres", "spat_sol", "stare"]:
-        #     if series['eso dpr type'].lower() == "std,flux":
-        #         files = [files[0]]
-        #         tags = [tags[0]]
-        #         filepaths = [filepaths[0]]
-
-        # if series["eso seq arm"].lower() == "nir" and seriesRecipe in ["disp_sol", "order_centres", "spat_sol", "stare"]:
-        #     if series["eso seq arm"].lower() == "std,flux":
-        #         files = [files[0]]
-        #         tags = [tags[0]]
-        #         filepaths = [filepaths[0]]
-        #     else:
-        #         if len(files) > 1:
-        #             files = files[:2]
-        #             tags = tags[:2]
-        #             filepaths = filepaths[:2]
-        #         else:
-        #             return series
 
         if seriesRecipe in ("stare", "nod", "offset"):
             objectt = filteredFrames['object'].values[0].replace(" ", "_")[:8]
@@ -1542,22 +1700,11 @@ class data_organiser(object):
         else:
             myDict["complete"] = [1] * len(tags)
 
-        sofMap = pd.DataFrame(myDict)
-
-        keepTrying = 0
-        while keepTrying < 6:
-            try:
-                sofMap.to_sql(f'sof_map_{self.sessionId}', con=self.conn,
-                              index=False, if_exists='append')
-                keepTrying = 10
-            except Exception as e:
-                if keepTrying > 5:
-                    raise Exception(e)
-                keepTrying += 1
+        self.sofMaps.append(myDict)
 
         return series
 
-    def _populate_products_table(
+    def _populate_products_table_by_row(
             self,
             series,
             reductionOrder):
@@ -1573,32 +1720,17 @@ class data_organiser(object):
         - None
 
         """
-        self.log.debug('starting the ``_populate_products_table`` method')
+        self.log.debug('starting the ``_populate_products_table_by_row`` method')
 
         import pandas as pd
         import time
 
-        if series["eso dpr type"].lower() != reductionOrder.lower():
-            return series
+        products = series.to_dict()
 
-        if series["complete"] == 0:
-            return series
-
-        template = series.copy()
-        removeColumns = ["counts", "product", "command", "complete"]
-
-        if template["recipe"] and template["recipe"].lower() in self.productMap:
-            for i in removeColumns:
-                if i in template:
-                    template.pop(i)
-            template["eso pro catg"] = template.pop("eso dpr catg")
-            template["eso pro tech"] = template.pop("eso dpr tech")
-            template["eso pro type"] = template.pop("eso dpr type")
-
-            for i in self.productMap[template["recipe"].lower()]:
+        if products["recipe"] and products["recipe"].lower() in self.productMap:
+            for i in self.productMap[products["recipe"].lower()]:
                 # if template["recipe"].lower() == "mflat" and template["binning"] in ["1x2", "2x2"] and i[2] == "ORDER_TAB":
                 #     continue
-                products = template.copy()
                 products["eso pro type"] = i[0]
                 products["eso pro tech"] = i[1]
                 products["eso pro catg"] = i[2] + f"_{products['eso seq arm'].upper()}"
@@ -1608,22 +1740,9 @@ class data_organiser(object):
                     products["file"] = products["file"].replace(".fits.fits", ".fits")
                 products["filepath"] = f"./reduced/{products['night start date']}/" + i[6] + "/" + products["file"]
                 myDict = {k: [v] for k, v in products.items()}
-                products = pd.DataFrame(myDict)
+                self.products.append(myDict)
 
-                keepTrying = 0
-                while keepTrying < 6:
-                    try:
-                        products.to_sql('product_frames', con=self.conn,
-                                        index=False, if_exists='append')
-                        keepTrying = 10
-                    except Exception as e:
-
-                        if keepTrying > 5:
-                            raise Exception(e)
-                        time.sleep(1)
-                        keepTrying += 1
-
-        self.log.debug('completed the ``_populate_products_table`` method')
+        self.log.debug('completed the ``_populate_products_table_by_row`` method')
         return series
 
     def _move_misc_files(
@@ -1996,7 +2115,9 @@ class data_organiser(object):
         return None
 
     def session_refresh(
-            self):
+            self,
+            silent=False,
+            failure=True):
         """*refresh a session's SOF files (needed if a recipe fails)*
 
         **Usage:**
@@ -2012,8 +2133,10 @@ class data_organiser(object):
         """
         self.log.debug('starting the ``session_refresh`` method')
 
-        self.log.print("Refeshing SOF file due to recipe failure\n")
-
+        if failure:
+            self.log.print("\nRefeshing SOF files due to recipe failure\n")
+        else:
+            self.log.print("\nRefreshing SOF files, as a previously failed recipe is now passing.\n")
         import codecs
         import sqlite3 as sql
 
@@ -2127,6 +2250,191 @@ class data_organiser(object):
 
         self.log.debug('completed the ``use_vlt_environment_folders`` method')
         return vltReduced
+
+    def generate_sof_and_product_names(
+            self,
+            reductionOrder,
+            rawFrames,
+            calibrationFrames,
+            calibrationTables,
+            rawGroups):
+        """*generate sof and product names*
+
+        **Key Arguments:**
+            - ``reductionOrder`` -- what files are we generating SOF sets for?
+            - ``rawFrames`` -- dataframe of raw frames
+            - ``calibrationFrames`` -- dataframe of calibration frames
+            - ``calibrationTables`` -- dataframe of calibration tables
+            - ``rawGroups`` -- raw frames grouped together          
+
+        **Return:**
+            - ``rawGroups`` -- updated rawGroups
+
+        **Usage:**
+
+        ```python
+        rawGroups = self.generate_sof_and_product_names(reductionOrder=reductionOrder, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables, rawGroups=rawGroups)
+        ```
+        """
+        self.log.debug('starting the ``generate_sof_and_product_names`` method')
+
+        from collections import defaultdict
+        import pandas as pd
+
+        self.sofMaps = []
+
+        # FIRST CREATE THE MASK
+        mask = ((rawGroups['eso dpr type'].str.contains(reductionOrder, case=False)) & ~(rawGroups['eso seq arm'].str.contains("ACQ|--", case=False, regex=True)))
+        rawGroupsFiltered = rawGroups.loc[mask]
+
+        rawFrames["tag"] = rawFrames["eso dpr type"].replace(",", "_") + "_" + rawFrames["eso seq arm"]
+        if "FLAT" in reductionOrder.upper():
+            mask2 = (rawFrames["eso dpr type"].str.contains("FLAT"))
+            rawFrames = rawFrames.loc[mask2]
+        else:
+            mask2 = (rawFrames['eso dpr type'].str.contains(reductionOrder, case=False))
+            rawFrames = rawFrames.loc[mask2]
+
+        # GET UNIQUE VALUES IN COLUMN
+        uniqueTemplateNames = rawGroupsFiltered['template'].unique()
+        if len(uniqueTemplateNames):
+            # FILTER DATA FRAME
+            # FIRST CREATE THE MASK
+            mask2 = (rawFrames['template'].isin(uniqueTemplateNames))
+            rawFrames = rawFrames.loc[mask2]
+
+        rawGroupsFiltered = rawGroupsFiltered.apply(self._generate_sof_and_product_names_by_row, axis=1, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables)
+
+        rawGroups.loc[mask] = rawGroupsFiltered
+
+        if len(self.sofMaps):
+            # FLATTENING THE LIST OF DICTIONARIES
+            flattened_dict = defaultdict(list)
+            for record in self.sofMaps:
+                for key in record:
+                    flattened_dict[key].extend(record[key])
+            # CONVERT DEFAULTDICT BACK TO A REGULAR DICT (OPTIONAL)
+            self.sofMaps = pd.DataFrame(dict(flattened_dict))
+            keepTrying = 0
+            while keepTrying < 6:
+                try:
+                    self.sofMaps.to_sql(f'sof_map_{self.sessionId}', con=self.conn,
+                                         index=False, if_exists='append')
+                    keepTrying = 10
+                except Exception as e:
+                    if keepTrying > 5:
+                        raise Exception(e)
+                    keepTrying += 1
+
+        self.log.debug('completed the ``generate_sof_and_product_names`` method')
+        return rawGroups
+
+    def populate_products_table(
+            self,
+            reductionOrder,
+            rawGroups):
+        """*populate products table*
+
+        **Key Arguments:**
+            - ``reductionOrder`` -- what files are we generating SOF sets for?
+            - ``rawGroups`` -- raw frames grouped together          
+
+        **Return:**
+            - ``rawGroups`` -- updated rawGroups
+
+        **Usage:**
+
+        ```python
+        rawGroups = self.populate_products_table(reductionOrder=reductionOrder, rawGroups=rawGroups)
+        ```
+        """
+        self.log.debug('starting the ``populate_products_table`` method')
+
+        from collections import defaultdict
+        import pandas as pd
+        import time
+
+        self.products = []
+
+        # FIRST CREATE THE MASK
+        mask = ((rawGroups['eso dpr type'].str.contains(reductionOrder, case=False)) & ~(rawGroups['eso seq arm'].str.contains("ACQ|--", case=False, regex=True)) & (rawGroups['complete'] == 1))
+        rawGroupsFiltered = rawGroups.loc[mask]
+
+        rawGroupsFiltered = rawGroupsFiltered.apply(self._populate_products_table_by_row, axis=1, reductionOrder=reductionOrder)
+        rawGroups.loc[mask] = rawGroupsFiltered
+
+        if len(self.products):
+            # FLATTENING THE LIST OF DICTIONARIES
+            flattened_dict = defaultdict(list)
+            for record in self.products:
+                for key in record:
+                    flattened_dict[key].extend(record[key])
+            # CONVERT DEFAULTDICT BACK TO A REGULAR DICT (OPTIONAL)
+            self.products = pd.DataFrame(dict(flattened_dict))
+            # REMOVE COLUMN FROM DATA FRAME
+            self.products.drop(columns=["eso dpr catg", "eso dpr tech", "eso dpr type", "counts", "complete"], inplace=True)
+
+            try:
+                self.products.drop(columns=["product", "command"], inplace=True)
+            except:
+                pass
+
+            keepTrying = 0
+            while keepTrying < 6:
+                try:
+                    self.products.replace(['--'], None).to_sql('product_frames', con=self.conn,
+                                                               index=False, if_exists='append')
+                    keepTrying = 10
+                except Exception as e:
+
+                    if keepTrying > 5:
+                        raise Exception(e)
+                    time.sleep(1)
+                    keepTrying += 1
+
+        self.log.debug('completed the ``populate_products_table`` method')
+        return rawGroups
+
+    def _fits_files_exist(self):
+        """Check if any FITS files exist in rawDir or rootDir."""
+        fitsExist = False
+        exists = os.path.exists(self.rawDir)
+        if exists:
+            from fundamentals.files import recursive_directory_listing
+            theseFiles = recursive_directory_listing(
+                log=self.log,
+                baseFolderPath=self.rawDir,
+                whatToList="files"  # all | files | dirs
+            )
+            for f in theseFiles:
+                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f):
+                    fitsExist = True
+                    break
+        if not fitsExist:
+            for d in os.listdir(self.rootDir):
+                filepath = os.path.join(self.rootDir, d)
+                if os.path.isfile(filepath) and (os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)):
+                    fitsExist = True
+                    break
+        return fitsExist
+
+    def _get_or_create_db_connection(self):
+        """Private method to get or create the SQLite database connection, copying the template if missing."""
+        import shutil
+        import sqlite3 as sql
+        try:
+            with open(self.rootDbPath):
+                pass
+            self.freshRun = False
+        except IOError:
+            try:
+                os.remove(self.sessionIdFile)
+            except Exception:
+                pass
+            self.freshRun = True
+            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
+            shutil.copyfile(emptyDb, self.rootDbPath)
+        return sql.connect(self.rootDbPath)
 
     # use the tab-trigger below for new method
     # xt-class-method

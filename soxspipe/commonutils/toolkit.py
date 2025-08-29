@@ -98,6 +98,16 @@ def cut_image_slice(
         sliceFull = frame[slice_length_offset:int(axisA + halfSlice), int(axisB - halfwidth):int(axisB + halfwidth + 1)]
     slice_width_centre = (int(axisB + halfwidth + 1) + int(axisB - halfwidth)) / 2
 
+
+    
+    # # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+    # maskedDataArray = np.ma.array(sliceFull.data, mask=sliceFull.mask)
+    # try:
+    #     sliceFull.data=sliceFull.data - np.percentile(maskedDataArray, 30)
+    # except:
+    #     pass
+    
+
     if median:
         if sliceAxis == "y":
             slice = ma.median(sliceFull, axis=1)
@@ -240,7 +250,10 @@ def quicklook_image(
             mask = (frame.mask == 1) | (interOrderMask == 1)
         except:
             mask = interOrderMask == 1
-        frame.mask = mask
+        try:
+            frame.mask = mask
+        except:
+            pass
 
     if inst == "SOXS":
         rotatedImg = np.flipud(frame)
@@ -323,8 +336,10 @@ def quicklook_image(
 
         ax2 = fig.add_subplot(122)
     else:
-        fig = plt.figure(figsize=(12, 5))
-
+        if rotatedImg.shape[0] - rotatedImg.shape[1] > 1000:
+            fig = plt.figure(figsize=(5, 12))
+        else:
+            fig = plt.figure(figsize=(12, 5))
         # palette.set_over('r', 1.0)
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
@@ -338,7 +353,11 @@ def quicklook_image(
             else:
                 ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
 
-    ax2.set_box_aspect(0.5)
+
+    if rotatedImg.shape[0] - rotatedImg.shape[1] > 1000:
+        ax2.set_box_aspect(2.0)
+    else:
+        ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax,
                               cmap=palette, alpha=1, aspect='auto')
 
@@ -1197,7 +1216,8 @@ def create_dispersion_solution_grid_lines_for_plot(
         associatedFrame,
         kw,
         skylines=False,
-        slitPositions=False):
+        slitPositions=False,
+        slit_length=11):
     """*given a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
 
     **Key Arguments:**
@@ -1209,12 +1229,18 @@ def create_dispersion_solution_grid_lines_for_plot(
     - `kw` -- fits header kw dictionary
     - `skylines` -- a list of skylines to use as the grid. Default *False*
     - `slitPositions` -- slit positions to plot (else plot min and max)
+    - `slit_length` -- length of the slit to use for the dispersion map dataframe (default 11)
+
+    **Returns:**
+
+    - `orderPixelTable` -- DataFrame containing the pixel coordinates for grid lines to plot.
+    - `interOrderMask` -- Mask array indicating inter-order regions.
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import create_dispersion_solution_grid_lines_for_plot
-    gridLinePixelTable = create_dispersion_solution_grid_lines_for_plot(
+    gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
         log=log,
         dispMap=dispMap,
         dispMapImage=dispMapImage,
@@ -1233,7 +1259,7 @@ def create_dispersion_solution_grid_lines_for_plot(
     import numpy as np
     import pandas as pd
 
-    dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, slit_length=11, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
+    dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, slit_length=slit_length, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
 
     uniqueOrders = dispMapDF['order'].unique()
     wlLims = []
@@ -1241,13 +1267,15 @@ def create_dispersion_solution_grid_lines_for_plot(
 
     for o in uniqueOrders:
         filDF = dispMapDF.loc[dispMapDF["order"] == o]
-        wlLims.append((filDF['wavelength'].min() - 200, filDF['wavelength'].max() + 200))
+        wlRange = filDF['wavelength'].max() - filDF['wavelength'].min()
+        wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
         if isinstance(slitPositions, bool):
             sPos.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
         else:
             sPos.append(slitPositions)
 
     lineNumber = 0
+    orderPixelTable_list = []
     for o, wlLim, spLim in zip(uniqueOrders, wlLims, sPos):
         wlRange = np.arange(wlLim[0], wlLim[1], 1)
         wlRange = np.append(wlRange, [wlLim[1]])
@@ -1258,11 +1286,7 @@ def create_dispersion_solution_grid_lines_for_plot(
                 "wavelength": wlRange,
                 "slit_position": np.full_like(wlRange, e)
             }
-            if lineNumber == 0:
-                orderPixelTable = pd.DataFrame(myDict)
-            else:
-                orderPixelTableNew = pd.DataFrame(myDict)
-                orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
+            orderPixelTable_list.append(pd.DataFrame(myDict))
             lineNumber += 1
 
         spRange = np.arange(min(spLim), max(spLim), 1)
@@ -1271,7 +1295,7 @@ def create_dispersion_solution_grid_lines_for_plot(
             mask = skylines['WAVELENGTH'].between(wlLim[0], wlLim[1])
             wlRange = skylines.loc[mask]['WAVELENGTH'].values
         else:
-            step = int(wlLim[1] - wlLim[0]) / 400
+            step = max(1, int((wlLim[1] - wlLim[0]) // 400))
             wlRange = np.arange(wlLim[0], wlLim[1], step)
         wlRange = np.append(wlRange, [wlLim[1]])
 
@@ -1282,9 +1306,10 @@ def create_dispersion_solution_grid_lines_for_plot(
                 "wavelength": np.full_like(spRange, l),
                 "slit_position": spRange
             }
-            orderPixelTableNew = pd.DataFrame(myDict)
-            orderPixelTable = pd.concat([orderPixelTable, orderPixelTableNew], ignore_index=True)
+            orderPixelTable_list.append(pd.DataFrame(myDict))
             lineNumber += 1
+
+    orderPixelTable = pd.concat(orderPixelTable_list, ignore_index=True)
 
     orderPixelTable = dispersion_map_to_pixel_arrays(
         log=log,

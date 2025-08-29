@@ -190,7 +190,7 @@ class subtract_sky(object):
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         #print("FIX ME")
         self.qcPlotOrder = int(np.median(uniqueOrders)) - 1
-        #self.qcPlotOrder = 16
+        self.qcPlotOrder = 2
         # uniqueOrders = [qcPlotOrder]
 
         allimageMapOrder = []
@@ -382,6 +382,9 @@ class subtract_sky(object):
         from matplotlib import colors
         from copy import copy
 
+        plt.switch_backend('Agg')
+        # plt.switch_backend('macosx')
+
         # SET COLOURS FOR VARIOUS STAGES
         red = "#dc322f"
         blue = "#268bd2"
@@ -392,8 +395,16 @@ class subtract_sky(object):
         violet = "#6c71c4"
         purple = "purple"
 
+        # ROTATE THE IMAGE FOR BETTER LAYOUT
+        rotateImage = self.detectorParams["rotate-qc-plot"]
+        flipImage = self.detectorParams["flip-qc-plot"]
+
         # MAKE A COPY OF THE FRAME TO NOT ALTER ORIGINAL DATA
         frame = self.objectFrame.copy()
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=frame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
 
         # SETUP THE PLOT SUB-PANELS
         # print("FIX ME")
@@ -418,7 +429,10 @@ class subtract_sky(object):
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(frame.data)
         for x, y in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB]):
-            nonOrderMask[y][x] = 0
+            if self.detectorParams["dispersion-axis"] == "x":
+                nonOrderMask[y][x] = 0
+            else:
+                nonOrderMask[x][y] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
         nonOrderMask = ma.make_mask(nonOrderMask)
@@ -727,12 +741,13 @@ class subtract_sky(object):
         order = imageMapOrderDF["order"].values[0]
 
         iteration = 0
+        quantile = 0.3
 
         while iteration < max_iterations:
             iteration += 1
             # CALCULATE PERCENTILE SMOOTH DATA & RESIDUALS
             notClippedOrObjectMask = ((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False))
-            imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux"].rolling(window=windowSize, center=True).quantile(.30)
+            imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux"].rolling(window=windowSize, center=True).quantile(quantile)
             imageMapOrderDF.loc[notClippedOrObjectMask, "flux_std"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux"].rolling(window=windowSize, center=True).std()
             imageMapOrderDF["flux_minus_smoothed_residual"] = imageMapOrderDF["flux"] - imageMapOrderDF["flux_smoothed"]
             notClippedOrObjectMask = ((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False))
@@ -742,13 +757,33 @@ class subtract_sky(object):
             masked = (imageMapOrderDF.loc[notClippedOrObjectMask, "flux"] < imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"] - 1. * imageMapOrderDF.loc[notClippedOrObjectMask, "flux_std"])
             imageMapOrderDF.loc[(notClippedOrObjectMask & masked), "object"] = True
 
+            if iteration == max_iterations and self.arm.upper() in ("VIS"):
+                totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
+                percent = (float(totalClipped) / float(allPixels)) * 100.
+                if percent < 20:
+                    imageMapOrderDF["object"] = False
+                    sigma_clip_limit-=0.1
+                    if quantile > 0.1:
+                        quantile -= 0.05
+                    iteration = 0
+
+
+
+
+            
+
         totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
         percent = (float(totalClipped) / float(allPixels)) * 100.
 
-        sys.stdout.flush()
-        sys.stdout.write("\x1b[1A\x1b[2K")
+        # sys.stdout.flush()
+        # sys.stdout.write("\x1b[1A\x1b[2K")
         percent = (float(totalClipped) / float(allPixels)) * 100.
         self.log.print(f'\tORDER {order}: {totalClipped} pixels clipped in total = {percent:1.1f}%)')
+
+        if percent > 85.:
+            imageMapOrderDF["object"] = False
+            self.log.warning(f"ORDER {order}: More than 85% of pixels flagged to be clipped ({percent:1.1f}%). Clipping 0% instead.")
+           
 
         std = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_minus_smoothed_residual"].std()
         imageMapOrderDF["residual_global_sigma"] = imageMapOrderDF["flux_minus_smoothed_residual"] / std
@@ -1039,13 +1074,21 @@ class subtract_sky(object):
         self.log.debug('starting the ``add_data_to_placeholder_images`` method')
 
         for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_model"]):
-            skymodelCCDData.data[y][x] = skypixel
+            if self.detectorParams["dispersion-axis"] == "x":
+                skymodelCCDData.data[y][x] = skypixel
+            else:
+                skymodelCCDData.data[x][y] = skypixel
 
         for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_subtracted_flux"]):
-            skySubtractedCCDData.data[y][x] = skypixel
-
+            if self.detectorParams["dispersion-axis"] == "x":
+                skySubtractedCCDData.data[y][x] = skypixel
+            else:
+                skySubtractedCCDData.data[x][y] = skypixel
         for x, y, skypixel in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB], imageMapOrderDF["sky_subtracted_flux"] / imageMapOrderDF["error"]):
-            skySubtractedResidualsCCDData.data[y][x] = skypixel
+            if self.detectorParams["dispersion-axis"] == "x":
+                skySubtractedResidualsCCDData.data[y][x] = skypixel
+            else:
+                skySubtractedResidualsCCDData.data[x][y] = skypixel
 
         self.log.debug('completed the ``add_data_to_placeholder_images`` method')
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData

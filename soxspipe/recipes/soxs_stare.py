@@ -198,6 +198,7 @@ class soxs_stare(base_recipe):
         from astropy import units as u
         import pandas as pd
         from datetime import datetime
+        from ccdproc import cosmicray_lacosmic, cosmicray_median
 
         arm = self.arm
         kw = self.kw
@@ -205,6 +206,7 @@ class soxs_stare(base_recipe):
 
         productPath = None
         master_bias = False
+        master_flat = False
         dark = False
 
         self.subtractSky = self.recipeSettings["sky-subtraction"]["subtract_sky"]
@@ -328,6 +330,7 @@ class soxs_stare(base_recipe):
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
             log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=3, title=False, surfacePlot=False, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=False)
+    
 
         if self.subtractSky:
 
@@ -437,7 +440,7 @@ class soxs_stare(base_recipe):
             sofName=self.sofName,
             startNightDate=self.startNightDate
         )
-        self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()
+        # self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()
 
         if self.generateReponseCurve and False:
             from soxspipe.commonutils import response_function
