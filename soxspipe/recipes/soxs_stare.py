@@ -440,7 +440,7 @@ class soxs_stare(base_recipe):
             sofName=self.sofName,
             startNightDate=self.startNightDate
         )
-        # self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()
+        self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()
 
         if self.generateReponseCurve and False:
             from soxspipe.commonutils import response_function
