@@ -1,5 +1,9 @@
 # Release Notes
 
+## v0.13.6 - August 30, 2025
+
+* **FIXED:** Final extraction was switched off accidentally. Fixed now.
+
 ## v0.13.5 - August 29, 2025
 
 * **REFACTOR:** do not scale SOXS darks if exptimes are not equivalent (dark does not scale linearly). Instead, do not subtract dark and warn the user. fixes #376
