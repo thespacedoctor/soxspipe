@@ -618,8 +618,11 @@ class base_recipe(object):
             gain = self.inputFrames.values(
                 keyword=kw("CONAD"), unique=True)
         else:
-            gain = self.inputFrames.values(
-                keyword=kw("GAIN"), unique=True)
+            a = self.inputFrames.values(
+                keyword=kw("CONAD"))
+            b = self.inputFrames.values(
+                keyword=kw("GAIN"))
+            gain = list(set((max(a,b))))
 
         with suppress(ValueError):
             gain.remove(None)

@@ -382,7 +382,9 @@ class horne_extraction(object):
         if self.arm == "NIR":
             self.gain = self.detectorParams["gain"]
         elif self.inst.upper() == "SOXS":
-            self.gain = self.skySubtractedFrame.header[kw("GAIN")]
+            a = self.skySubtractedFrame.header[kw("CONAD")]
+            b = self.skySubtractedFrame.header[kw("GAIN")]
+            self.gain = max(a,b)
         else:
             self.gain = self.skySubtractedFrame.header[kw("CONAD")]
 

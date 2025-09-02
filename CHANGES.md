@@ -1,8 +1,10 @@
 # Release Notes
 
+* **REFACTOR:** Data-organiser and recipes can now determine if CONAD or GAIN keyword values should be used as e-/ADU. Basically `gain = max(CONAD,GAIN)`.
+* **FIXED:** standard star names can be resolved from OBJECT *or* TARGET keywords
 * **FIXED:** The data organiser is now differentiating between stare, nod, and offset modes again. Fixes #383 
 * **REFACTOR:** u-band object tracing is now very robust. Fixes #360
-* **REFACTOR:** clipping NaN flux value before modelling the sky (was making ~1 in 300 images fail)
+* **REFACTOR:** clipping the NaN flux value before modelling the sky (was making ~1 in 300 images fail)
 
 ## v0.13.6 - August 30, 2025
 
