@@ -1,6 +1,7 @@
 # Release Notes
 
-* **REFACTOR:** u-band object tracing is now very robust. fixes #360
+* **FIXED:** The data organiser is now differentiating between stare, nod, and offset modes again. Fixes #383 
+* **REFACTOR:** u-band object tracing is now very robust. Fixes #360
 
 ## v0.13.6 - August 30, 2025
 
