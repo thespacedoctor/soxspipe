@@ -309,33 +309,33 @@ class data_organiser(object):
             ],
 
             "object": [
-                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
-                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
-                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
             ],
 
             "object,async": [
-                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
-                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
-                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
             ],
 
             "std,flux": [
-                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
-                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
-                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
             ],
 
             "std": [
-                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
-                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
-                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
             ],
 
             "std,telluric": [
-                {"tech": ["echelle,slit,stare"], "slitmask": ["SLIT"], "recipe": "stare"},
-                {"tech": ["echelle,slit,nodding"], "slitmask": ["SLIT"], "recipe": "nod"},
-                {"tech": ["echelle,slit,offset"], "slitmask": ["SLIT"], "recipe": "offset"}
+                {"tech": ["echelle,slit,stare"], "slitmask": None, "recipe": "stare"},
+                {"tech": ["echelle,slit,nodding"], "slitmask": None, "recipe": "nod"},
+                {"tech": ["echelle,slit,offset"], "slitmask": None, "recipe": "offset"}
             ]
         }
 
