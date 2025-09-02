@@ -629,8 +629,9 @@ class base_recipe(object):
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
+            # gain = np.unique(gain)
             raise TypeError(
-                "Input frames are a mix of gain" % locals())
+                f"Input frames are a mix of gain {gain}" % locals())
         if len(gain) and gain[0]:
             # UVB & VIS
             self.detectorParams["gain"] = gain[0] * u.electron / u.adu

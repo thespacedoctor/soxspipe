@@ -743,11 +743,12 @@ class subtract_sky(object):
         iteration = 0
         quantile = 0.3
 
-        while iteration < max_iterations:
+        while iteration < max_iterations:        
             iteration += 1
             # CALCULATE PERCENTILE SMOOTH DATA & RESIDUALS
             notClippedOrObjectMask = ((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False))
             imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux"].rolling(window=windowSize, center=True).quantile(quantile)
+
             imageMapOrderDF.loc[notClippedOrObjectMask, "flux_std"] = imageMapOrderDF.loc[notClippedOrObjectMask, "flux"].rolling(window=windowSize, center=True).std()
             imageMapOrderDF["flux_minus_smoothed_residual"] = imageMapOrderDF["flux"] - imageMapOrderDF["flux_smoothed"]
             notClippedOrObjectMask = ((imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False))
@@ -757,16 +758,22 @@ class subtract_sky(object):
             masked = (imageMapOrderDF.loc[notClippedOrObjectMask, "flux"] < imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"] - 1. * imageMapOrderDF.loc[notClippedOrObjectMask, "flux_std"])
             imageMapOrderDF.loc[(notClippedOrObjectMask & masked), "object"] = True
 
-            if iteration == max_iterations and self.arm.upper() in ("VIS"):
+            if iteration == 5 and self.arm.upper() in ("VIS"):
                 totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
                 percent = (float(totalClipped) / float(allPixels)) * 100.
-                if percent < 20:
+                if percent < 10:
                     imageMapOrderDF["object"] = False
                     sigma_clip_limit-=0.1
                     if quantile > 0.1:
                         quantile -= 0.05
                     iteration = 0
-
+                elif percent > 70:
+                    imageMapOrderDF["object"] = False
+                    windowSize = windowSize-1
+                    if max_iterations > 2:
+                        max_iterations /= 1.5
+                        max_iterations = int(max_iterations)
+                    iteration = 0
 
 
 
