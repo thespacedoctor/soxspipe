@@ -2,6 +2,7 @@
 
 * **FIXED:** The data organiser is now differentiating between stare, nod, and offset modes again. Fixes #383 
 * **REFACTOR:** u-band object tracing is now very robust. Fixes #360
+* **REFACTOR:** clipping NaN flux value before modelling the sky (was making ~1 in 300 images fail)
 
 ## v0.13.6 - August 30, 2025
 

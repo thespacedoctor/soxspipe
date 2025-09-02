@@ -896,6 +896,10 @@ class subtract_sky(object):
         slitCorrectIterationLimit = 2
         slitCorrectIterations = 0
 
+        # CLIP NAN FLUX 
+        imageMapOrder.loc[imageMapOrder["flux"].isnull() , "clipped"] = True
+
+
         while iterationCount < bsplineIterations:
             iterationCount += 1
 
@@ -973,7 +977,10 @@ class subtract_sky(object):
                 # if order == self.qcPlotOrder:
                 #     print(f"EXTRA KNOTS: {len(newKnots)} .... {len(allKnots)} ... {iterationCount}")
 
-            tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=allKnots, k=self.bspline_order, w=goodWeights, full_output=True)
+            try:
+                tck, fp, ier, msg = ip.splrep(goodWl, goodFlux, t=allKnots, k=self.bspline_order, w=goodWeights, full_output=True)
+            except:
+                raise ValueError(f"BSpline fit failed for order {order} on iteration {iterationCount}. Possibly too many knots ({len(allKnots)}) for the number of data points ({goodWl.values.shape[0]}).")
             t, c, k = tck
 
             if ier == 10:
@@ -986,6 +993,7 @@ class subtract_sky(object):
             if iterationCount == -1:
                 # FIRST PASS SIGMA CLIPPING OF BSPLINE
                 residuals = imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_subtracted_flux"]
+
                 masked_residuals = sigma_clip(
                     residuals, sigma_lower=bsplineSigma, sigma_upper=bsplineSigma, maxiters=3, cenfunc='mean', stdfunc='std')
                 imageMapOrder.loc[imageMapOrder["clipped"] == False, "bspline_clipped"] = masked_residuals.mask
@@ -1008,8 +1016,10 @@ class subtract_sky(object):
 
             sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print(f'\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
-            # self.log.print(fp, ier, msg)
+            try:
+                self.log.print(f'\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}')
+            except:
+                pass
 
         imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
         imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
