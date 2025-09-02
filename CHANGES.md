@@ -6,6 +6,10 @@
 * **REFACTOR:** if a standard star observed in NODDING mode is not in the static calibration std-star library, the pipeline will issue a warning rather than failing.
 * **FIXED:** standard star names can be resolved from OBJECT *or* TARGET keywords
 * **FIXED:** The data organiser is now differentiating between stare, nod, and offset modes again. Fixes #383 
+* **DOCS:** Added a warning for the user:
+
+    > A typical user will not need to use the watch command. It is included in the pipeline to allow for automatic/autonomous reductions as data is flowing into a directory. Most users will only need to use the reduce command.
+
 
 ## v0.13.6 - August 30, 2025
 

@@ -42,7 +42,7 @@
 ```
 ````
 
-`````{py:class} soxs_spatial_solution(log, settings=False, inputFrames=[], verbose=False, overwrite=False, create2DMap=True, polyOrders=False)
+`````{py:class} soxs_spatial_solution(log, settings=False, inputFrames=[], verbose=False, overwrite=False, create2DMap=True, polyOrders=False, command=False)
 :canonical: soxspipe.recipes.soxs_spatial_solution.soxs_spatial_solution
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`

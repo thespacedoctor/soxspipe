@@ -1,5 +1,9 @@
 # Automatic Reductions Using a Watched Workspace
 
+:::{warning}
+A typical user will not need to use the watch command. It is included in the pipeline to allow for automatic/autonomous reductions as data is flowing into a directory. Most users will only need to use the [`reduce`](./reduce_command.md) command.
+:::
+
 With soxspipe, it is possible to create a 'watched' workspace. When data is added to a watched workspace, soxspipe will attempt to reduce the data automatically.
 
 First, create the directory you are going to designate as the watched workspace:

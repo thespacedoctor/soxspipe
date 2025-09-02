@@ -45,7 +45,7 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} run_recipe(recipe, sof)
+````{py:method} run_recipe(recipe, sof, command=False)
 :canonical: soxspipe.commonutils.reducer.reducer.run_recipe
 
 ```{autodoc2-docstring} soxspipe.commonutils.reducer.reducer.run_recipe

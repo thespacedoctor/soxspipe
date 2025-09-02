@@ -42,7 +42,7 @@
 ```
 ````
 
-`````{py:class} soxs_order_centres(log, settings=False, inputFrames=[], verbose=False, overwrite=False, polyOrders=False)
+`````{py:class} soxs_order_centres(log, settings=False, inputFrames=[], verbose=False, overwrite=False, polyOrders=False, command=False)
 :canonical: soxspipe.recipes.soxs_order_centres.soxs_order_centres
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`

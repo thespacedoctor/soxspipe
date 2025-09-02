@@ -21,6 +21,22 @@
     ```
 ````
 
+### Functions
+
+````{list-table}
+:class: autosummary longtable
+:align: left
+
+* - {py:obj}`measure_line_position <soxspipe.commonutils.create_dispersion_map.measure_line_position>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.measure_line_position
+    :summary:
+    ```
+* - {py:obj}`straighten_mph_sets <soxspipe.commonutils.create_dispersion_map.straighten_mph_sets>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.straighten_mph_sets
+    :summary:
+    ```
+````
+
 ### API
 
 `````{py:class} create_dispersion_map(log, settings, recipeSettings, pinholeFrame, firstGuessMap=False, orderTable=False, qcTable=False, productsTable=False, sofName=False, create2DMap=True, lineDetectionTable=False, startNightDate='', arcFrame=None)
@@ -69,10 +85,10 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} detect_pinhole_arc_line(predictedLine, iraf=True, sigmaLimit=3, iteration=False)
-:canonical: soxspipe.commonutils.create_dispersion_map.create_dispersion_map.detect_pinhole_arc_line
+````{py:method} detect_pinhole_arc_lines(orderPixelTable, iraf=True, sigmaLimit=3, iteration=False, brightest=False, exclude_border=False)
+:canonical: soxspipe.commonutils.create_dispersion_map.create_dispersion_map.detect_pinhole_arc_lines
 
-```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.create_dispersion_map.detect_pinhole_arc_line
+```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.create_dispersion_map.detect_pinhole_arc_lines
 ```
 
 ````
@@ -117,6 +133,14 @@ Bases: {py:obj}`object`
 
 ````
 
+````{py:method} update_static_line_list_detector_positions(originalOrderPixelTable, dispersionMapPath)
+:canonical: soxspipe.commonutils.create_dispersion_map.create_dispersion_map.update_static_line_list_detector_positions
+
+```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.create_dispersion_map.update_static_line_list_detector_positions
+```
+
+````
+
 ````{py:method} write_map_to_file(xcoeff, ycoeff, orderDeg, wavelengthDeg, slitDeg)
 :canonical: soxspipe.commonutils.create_dispersion_map.create_dispersion_map.write_map_to_file
 
@@ -126,3 +150,17 @@ Bases: {py:obj}`object`
 ````
 
 `````
+
+````{py:function} measure_line_position(stampInfo, log, windowHalf, iraf, sigmaLimit, brightest=False, exclude_border=False)
+:canonical: soxspipe.commonutils.create_dispersion_map.measure_line_position
+
+```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.measure_line_position
+```
+````
+
+````{py:function} straighten_mph_sets(group)
+:canonical: soxspipe.commonutils.create_dispersion_map.straighten_mph_sets
+
+```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.straighten_mph_sets
+```
+````

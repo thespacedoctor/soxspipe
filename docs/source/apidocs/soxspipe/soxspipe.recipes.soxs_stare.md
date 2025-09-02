@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} soxs_stare(log, settings=False, inputFrames=[], verbose=False, overwrite=False)
+`````{py:class} soxs_stare(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False)
 :canonical: soxspipe.recipes.soxs_stare.soxs_stare
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`

@@ -79,6 +79,10 @@
   - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.unpack_order_table
     :summary:
     ```
+* - {py:obj}`utility_setup <soxspipe.commonutils.toolkit.utility_setup>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.utility_setup
+    :summary:
+    ```
 ````
 
 ### API
@@ -112,7 +116,7 @@
 ```
 ````
 
-````{py:function} create_dispersion_solution_grid_lines_for_plot(log, dispMap, dispMapImage, associatedFrame, kw, skylines=False, slitPositions=False)
+````{py:function} create_dispersion_solution_grid_lines_for_plot(log, dispMap, dispMapImage, associatedFrame, kw, skylines=False, slitPositions=False, slit_length=11)
 :canonical: soxspipe.commonutils.toolkit.create_dispersion_solution_grid_lines_for_plot
 
 ```{autodoc2-docstring} soxspipe.commonutils.toolkit.create_dispersion_solution_grid_lines_for_plot
@@ -193,5 +197,12 @@
 :canonical: soxspipe.commonutils.toolkit.unpack_order_table
 
 ```{autodoc2-docstring} soxspipe.commonutils.toolkit.unpack_order_table
+```
+````
+
+````{py:function} utility_setup(log, settings, recipeName, startNightDate)
+:canonical: soxspipe.commonutils.toolkit.utility_setup
+
+```{autodoc2-docstring} soxspipe.commonutils.toolkit.utility_setup
 ```
 ````

@@ -42,7 +42,7 @@
 ```
 ````
 
-`````{py:class} soxs_disp_solution(log, settings=False, inputFrames=[], verbose=False, overwrite=False, polyOrders=False)
+`````{py:class} soxs_disp_solution(log, settings=False, inputFrames=[], verbose=False, overwrite=False, polyOrders=False, command=False)
 :canonical: soxspipe.recipes.soxs_disp_solution.soxs_disp_solution
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`

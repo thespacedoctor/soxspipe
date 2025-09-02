@@ -42,7 +42,7 @@
 ```
 ````
 
-`````{py:class} soxs_mflat(log, settings=False, inputFrames=[], verbose=False, overwrite=False)
+`````{py:class} soxs_mflat(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False)
 :canonical: soxspipe.recipes.soxs_mflat.soxs_mflat
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`

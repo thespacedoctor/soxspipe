@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} soxs_mbias(log, settings=False, inputFrames=[], verbose=False, overwrite=False)
+`````{py:class} soxs_mbias(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False)
 :canonical: soxspipe.recipes.soxs_mbias.soxs_mbias
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
