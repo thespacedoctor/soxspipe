@@ -185,10 +185,10 @@ class response_function(object):
         try:
             self.std_wavelength_to_abs_flux = interp1d(np.array(stdAbsFluxDF['WAVE']), np.array(stdAbsFluxDF[self.std_objName])  * 10**17, kind='next', fill_value="extrapolate")
         except Exception as e:
-            self.log.error(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {stdAbsFluxDF.columns[1:]}")
+            self.log.warning(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {(", ").join(stdAbsFluxDF.columns[1:])}")
             #raise Exception(e)
             #sys.exit(1)
-            return None,None
+            return self.qc, self.products
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
         excludeRegions = [(200, 400), (590, 600), (405, 416), (426, 440), (460, 475), (563, 574), (478, 495), (528, 538), (620, 640), (648, 666), (754, 770), (800, 810), (836, 845), (1100, 1190), (1300, 1500), (1800, 1900), (1850, 2700)]

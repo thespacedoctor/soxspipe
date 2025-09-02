@@ -360,7 +360,7 @@ class soxs_nod(base_recipe):
             if self.generateReponseCurve:
                 # GETTING THE RESPONSE
                 from soxspipe.commonutils import response_function
-                print('Now extracting response at path ' + extractionPath_notflat)
+                self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
                 response = response_function(
                     log=self.log,
                     settings=self.settings,

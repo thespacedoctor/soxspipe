@@ -1,10 +1,11 @@
 # Release Notes
 
-* **REFACTOR:** Data-organiser and recipes can now determine if CONAD or GAIN keyword values should be used as e-/ADU. Basically `gain = max(CONAD,GAIN)`.
-* **FIXED:** standard star names can be resolved from OBJECT *or* TARGET keywords
-* **FIXED:** The data organiser is now differentiating between stare, nod, and offset modes again. Fixes #383 
+* **REFACTOR:** Data-organiser and recipes can now determine if CONAD or GAIN keyword values should be used as e-/ADU. Basically `gain = max(CONAD,GAIN)`. Fixes #385
 * **REFACTOR:** u-band object tracing is now very robust. Fixes #360
 * **REFACTOR:** clipping the NaN flux value before modelling the sky (was making ~1 in 300 images fail)
+* **REFACTOR:** if a standard star observed in NODDING mode is not in the static calibration std-star library, the pipeline will issue a warning rather than failing.
+* **FIXED:** standard star names can be resolved from OBJECT *or* TARGET keywords
+* **FIXED:** The data organiser is now differentiating between stare, nod, and offset modes again. Fixes #383 
 
 ## v0.13.6 - August 30, 2025
 
