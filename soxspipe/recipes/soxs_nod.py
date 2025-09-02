@@ -215,8 +215,6 @@ class soxs_nod(base_recipe):
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             master_flat = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                        hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
-            print('Added master flat')
-            sys.exit(0)
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}

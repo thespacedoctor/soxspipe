@@ -105,20 +105,25 @@ class response_function(object):
             self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()  # Name is in the format 'EG 274'
         else:
             self.std_objName = self.header[kw("OBJECT")].strip().upper()  # Name is in the format 'EG 274'
+            if "STD," in self.std_objName:
+                try:
+                    self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper() 
+                except:
+                    pass
+        
         self.std_objName = self.std_objName.split(" V")[0].replace(" ", "") # Hack to reduce xsh data
 
         if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
             #STD STAR GIVEN, READING THE NON FLAT FIELDED SPECTRUM
             self.stdExtractionNotFlatDF = Table.read(stdNotFlatExtractionPath, format='fits')
             self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF.to_pandas()
-        print(f"Solving akas for {self.std_objName} ")
         if self.std_objName in stdAkas:
-            print(f"Starting solving akas for {self.std_objName} ")
             for s, a in zip(stdNames, stdAkas):
                 if self.std_objName == a:
 
                     self.std_objName = s
-        print(f"Solved akas for {self.std_objName} ")            
+
+        self.log.print(f"Standard-Star Name: {self.std_objName}")            
         # USING THE AVERAGE AIR MASS
         if self.instrument == "soxs":
             #NEED TO UPDATE THE LOOKUP TABLE EVENTUALLY

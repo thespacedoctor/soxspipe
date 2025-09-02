@@ -365,6 +365,9 @@ class data_organiser(object):
             "stare": [
                 ["REDUCED", "ECHELLE,SLIT,STARE", "OBJECT_TAB", "TABLE", None, None, "soxs-stare"]
             ],
+            "nod": [
+                ["REDUCED", "ECHELLE,SLIT,NODDING", "OBJECT_TAB", "TABLE", None, None, "soxs-nod"]
+            ],
         }
 
         self.proKeywords = [
