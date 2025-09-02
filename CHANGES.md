@@ -1,5 +1,7 @@
 # Release Notes
 
+* **REFACTOR:** u-band object tracing is now very robust. fixes #360
+
 ## v0.13.6 - August 30, 2025
 
 * **FIXED:** Final extraction was switched off accidentally. Fixed now.
