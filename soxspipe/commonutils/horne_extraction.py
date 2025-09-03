@@ -1090,13 +1090,15 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         a = [fractions, wave_px, weights]
         fractions, wave_px, weights = [np.ma.compressed(np.ma.masked_array(
             i, mask)) for i in a]
+    
 
         startCount = len(fractions)
         while (iteration < clippingIterationLimit) and (clipped_count > 0):
-
+            # FIT A 2ND ORDER POLYNOMIAL TO THE FRACTIONAL FLUXES
             if len(wave_px):
                 coeff = np.polyfit(wave_px, fractions, deg=2)
             else:
+                coeff = []
                 break
             residuals = fractions - np.polyval(coeff, wave_px)
 
@@ -1114,10 +1116,14 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
             #     sys.stdout.flush()
             #     sys.stdout.write("\x1b[1A\x1b[2K")
 
+
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
-        profile = np.polyval(coeff, crossDispersionSlices[f"{axisB}coord"])
-        # REMOVE -VE VALUE
-        profile[profile < 0] = 0
+        if len(coeff):
+            profile = np.polyval(coeff, crossDispersionSlices[f"{axisB}coord"])
+            # REMOVE -VE VALUE
+            profile[profile < 0] = 0
+        else:
+            profile = np.zeros_like(crossDispersionSlices[f"{axisB}coord"])
         crossSlitProfiles.append(profile)
 
         if False:
