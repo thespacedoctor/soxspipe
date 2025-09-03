@@ -963,6 +963,11 @@ class data_organiser(object):
         # DELETED FILES
         filesNotInDB = set(fitsPaths) - set(dbFiles)
         filesNotInFS = set(dbFiles) - set(fitsPaths)
+        
+        print(filesNotInDB)
+        print(filesNotInFS)
+
+        sys.exit()
 
         if len(filesNotInFS):
             filesNotInFS = ("','").join(filesNotInFS)
