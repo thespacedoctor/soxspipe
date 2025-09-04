@@ -143,7 +143,10 @@ class horne_extraction(object):
         if True and self.recipeSettings["use_lacosmic"]:
             oldCount = self.skySubtractedFrame.mask.sum()
             oldMask = self.skySubtractedFrame.mask.copy()
-            self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=18.0, gain_apply=False, niter=5, cleantype="meanmask", objlim=5.0,invar=self.skySubtractedFrame.uncertainty.array.astype("float32"),verbose=False)
+            if "nod" in recipeName:
+                self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=18.0, gain_apply=False, niter=5, cleantype="meanmask", objlim=5.0,invar=self.skySubtractedFrame.uncertainty.array.astype("float32"),verbose=False)
+            else:
+                self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=36.0, gain_apply=False, niter=5, cleantype="meanmask", objlim=5.0,invar=self.skySubtractedFrame.uncertainty.array.astype("float32"),verbose=False)
             newCount = self.skySubtractedFrame.mask.sum()
             self.laCosmicClippedCount = newCount - oldCount
             # self.skySubtractedFrame.mask = oldMask
