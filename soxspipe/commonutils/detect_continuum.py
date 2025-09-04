@@ -1003,7 +1003,6 @@ class detect_continuum(_base_detect):
             [],
         )
 
-
         slices = []
         slices[:] = [
             cut_image_slice(
@@ -1047,6 +1046,7 @@ class detect_continuum(_base_detect):
 
             # EVALUATING THE 30th PERCENTILE AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
             # CONTAINING JUST NOISE
+            baseline = np.nanpercentile(np.array(slice), 30)
             try:
                 baseline = np.nanpercentile(np.array(slice), 30)
                 std_r = mad_std(np.array(slice), ignore_nan=True)

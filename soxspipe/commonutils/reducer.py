@@ -75,6 +75,8 @@ class reducer(object):
 
         if self.sessionId is None:
             return None
+        
+        self.recipeList = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
         self.sessionDB = workspaceDirectory + "/soxspipe.db"
@@ -95,55 +97,65 @@ class reducer(object):
 
         from fundamentals import times
         import traceback
+        from soxspipe.commonutils import data_organiser
 
-        # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
-        # THE ENTRIES ARE SELECTED IN THE ORDER THEY NEED TO RUN
-        rawGroups = self.select_sof_files_to_process()
 
-        for index, row in rawGroups.iterrows():
-            recipe = row["recipe"]
-            sof = row["sof"]
-            startTime = times.get_now_sql_datetime()
-            try:
-                self.run_recipe(recipe, sof, command=row["command"])
-            except FileExistsError as e:
-                continue
-            except Exception as e:
-                # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                self.log.error(
-                    f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}"
-                )
-                self.log.error(f'\nRecipe Command: {row["command"]}\n\n')
+        for recipe in self.recipeList:
+            # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
+            rawGroups = self.select_sof_files_to_process(recipe=recipe)
 
-                if self.quitOnFail:
-                    sys.exit(0)
+            for index, row in rawGroups.iterrows():
+                recipe = row["recipe"]
+                sof = row["sof"]
+                startTime = times.get_now_sql_datetime()
+                try:
+                    self.run_recipe(recipe, sof, command=row["command"])
+                except FileExistsError as e:
+                    continue
+                except Exception as e:
+                    # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                    self.log.error(
+                        f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}"
+                    )
+                    self.log.error(f'\nRecipe Command: {row["command"]}\n\n')
 
-                from soxspipe.commonutils import data_organiser
+                    if self.quitOnFail:
+                        sys.exit(0)
 
-                do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-                do.session_refresh()
+                    
+
+                    do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                    do.session_refresh()
+                    if not self.daemon:
+                        print(f"{'='*70}\n")
+                    continue
+
+                ## FINISH LOGGING ##
+                endTime = times.get_now_sql_datetime()
+                runningTime = times.calculate_time_difference(startTime, endTime)
+                sys.argv[0] = os.path.basename(sys.argv[0])
+
+                self.log.print(f'\nRecipe Command: {row["command"]} ')
+                self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                 if not self.daemon:
                     print(f"{'='*70}\n")
-                continue
 
-            ## FINISH LOGGING ##
-            endTime = times.get_now_sql_datetime()
-            runningTime = times.calculate_time_difference(startTime, endTime)
-            sys.argv[0] = os.path.basename(sys.argv[0])
+        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+        incompleteSets = do.get_incomplete_raw_frames_set()
+        if len(incompleteSets.index):
+            from tabulate import tabulate
+            print("\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:")
+            print(tabulate(incompleteSets, headers='keys', tablefmt='psql', showindex=False))
 
-            self.log.print(f'\nRecipe Command: {row["command"]} ')
-            self.log.print(f"Recipe Run Time: {runningTime}\n\n")
-            if not self.daemon:
-                print(f"{'='*70}\n")
 
         self.log.debug("completed the ``reduce`` method")
         return None
 
-    def select_sof_files_to_process(self):
+    def select_sof_files_to_process(self, recipe=False):
         """*select all of the SOF files still requiring processing*
 
         **Key Arguments:**
-            # -
+            - ``recipe`` -- the name of the recipe to filter by (optional)
 
         **Return:**
 
@@ -163,8 +175,12 @@ class reducer(object):
         conn = sql.connect(self.sessionDB)
 
         # GET THE GROUPS OF FILES NEEDING REDUCED, ASSIGN THE CORRECT COMMAND TO EXECUTE THE RECIPE
+        if not recipe:
+            recipe = "is not null"
+        else:
+            recipe = f"= '{recipe}'"
         rawGroups = pd.read_sql(
-            "SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 order by recipe_order, sof",
+            f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipe} order by recipe_order, sof",
             con=conn,
         )
         rawGroups["command"] = (
