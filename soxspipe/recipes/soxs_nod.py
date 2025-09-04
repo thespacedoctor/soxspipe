@@ -265,13 +265,13 @@ class soxs_nod(base_recipe):
 
             # DETRENDING HERE THE FRAMES - IN THIS CASE, NO RESPONSE FUNCTION WILL BE COMPUTED.
 
-            if self.recipeSettings["use_flat"] and master_flat:  # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLATFIELD FRAMES
+            if self.recipeSettings["use_flat"] and master_flat:  # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLAT-FIELD FRAMES
                 allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
 
             allSpectrumA = []
             allSpectrumB = []
             sequenceCount = 1
-            # SORT frameA and frameB looing at their MJDOBS keyword in the header in order to the closest A and B frames in time
+            # SORT frameA and frameB looping at their MJDOBS keyword in the header in order to the closest A and B frames in time
             allFrameA.sort(key=lambda x: x.header["MJD-OBS"])
             allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
 
