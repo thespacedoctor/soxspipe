@@ -380,6 +380,13 @@ soxs-response:
     poly_order: 7
 
 
+
+# UTILS
+background-subtraction:
+    bspline-deg: 2
+    gaussian-blur-sigma: 65
+
+
 logging settings:
     formatters:
         file_style:
