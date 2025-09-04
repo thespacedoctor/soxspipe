@@ -88,10 +88,12 @@ class data_organiser(object):
         # DATABASE FILE
         self.rootDbPath = rootDir + "/soxspipe.db"
 
-        try:
+
+        exists = os.path.exists(self.rootDbPath)
+        if exists:
             self.conn = sql.connect(
                 self.rootDbPath)
-        except:
+        else:
             self.conn = None
 
         # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE USED TO IDENTIFY RELEVANT DATA IN THE FITS FILES
