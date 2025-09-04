@@ -55,6 +55,7 @@ class data_organiser(object):
         from fundamentals.logs import emptyLogger
         import warnings
         from astropy.utils.exceptions import AstropyWarning
+        import sqlite3 as sql
         warnings.simplefilter('ignore', AstropyWarning)
 
         self.vlt = vlt
@@ -86,6 +87,12 @@ class data_organiser(object):
 
         # DATABASE FILE
         self.rootDbPath = rootDir + "/soxspipe.db"
+
+        try:
+            self.conn = sql.connect(
+                self.rootDbPath)
+        except:
+            self.conn = None
 
         # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE USED TO IDENTIFY RELEVANT DATA IN THE FITS FILES
         self.keyword_lookups = [
@@ -396,6 +403,7 @@ class data_organiser(object):
             'lamp',
             'template',
             'eso obs name',
+            'eso obs id',
             'eso tpl name',
             'filter'
         ]
@@ -546,6 +554,13 @@ class data_organiser(object):
         print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
         print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
 
+
+        incompleteSets = self.get_incomplete_raw_frames_set()
+        if len(incompleteSets.index):
+            from tabulate import tabulate
+            print("SOME CALIBRATION FRAMES ARE NOT PRESENT FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:")
+            print(tabulate(incompleteSets, headers='keys', tablefmt='psql', showindex=False))
+        
         self.conn.close()
 
         self.log.debug('completed the ``prepare`` method')
@@ -1386,7 +1401,7 @@ class data_organiser(object):
         # INITIAL CALIBRATIONS FILTERING
         if series['eso seq arm'].upper() in ["UVB", "VIS"]:
             for k, v in matchDict.items():
-                if k in ["exptime", "lamp", "eso obs name"]:
+                if k in ["exptime", "lamp", "eso obs name", "eso obs id"]:
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_")) | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE"))
@@ -1400,7 +1415,7 @@ class data_organiser(object):
 
         elif series['eso seq arm'].upper() in ["NIR"]:
             for k, v in matchDict.items():
-                if k in ["binning", "rospeed", "exptime", "lamp", "eso obs name"]:
+                if k in ["binning", "rospeed", "exptime", "lamp", "eso obs name",  "eso obs id"]:
                     continue
                 if "type" in k.lower():
                     mask = (calibrationFrames['eso pro catg'].str.contains("MASTER_") | (calibrationFrames['eso pro catg'].str.contains("DISP_IMAGE")))
@@ -1412,7 +1427,7 @@ class data_organiser(object):
 
         # EXTRA CALIBRATION TABLES
         for k, v in matchDict.items():
-            if k in ["rospeed", "exptime", "lamp", "eso obs name", "slit"]:
+            if k in ["rospeed", "exptime", "lamp", "eso obs name", "slit", "eso obs id"]:
                 continue
             if k in ["binning"] and seriesRecipe in ["mflat"]:
                 continue
@@ -2371,6 +2386,7 @@ class data_organiser(object):
             flattened_dict = defaultdict(list)
             for record in self.products:
                 for key in record:
+
                     flattened_dict[key].extend(record[key])
             # CONVERT DEFAULTDICT BACK TO A REGULAR DICT (OPTIONAL)
             self.products = pd.DataFrame(dict(flattened_dict))
@@ -2381,6 +2397,7 @@ class data_organiser(object):
                 self.products.drop(columns=["product", "command"], inplace=True)
             except:
                 pass
+
 
             keepTrying = 0
             while keepTrying < 6:
@@ -2439,5 +2456,8 @@ class data_organiser(object):
             shutil.copyfile(emptyDb, self.rootDbPath)
         return sql.connect(self.rootDbPath)
 
-    # use the tab-trigger below for new method
-    # xt-class-method
+    # METHOD TO RETURN ALL THE RAW FRAME SETS THAT ARE NOT COMPLETE FROM THE DATABASE AS A PANDAS TABLE
+    def get_incomplete_raw_frames_set(self):
+        import pandas as pd
+        query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod","stare","offset")'
+        return pd.read_sql(query, con=self.conn)
