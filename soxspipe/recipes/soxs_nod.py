@@ -203,13 +203,10 @@ class soxs_nod(base_recipe):
             if len(allObjectFrames):
                 break
 
-        if t == 'STD,FLUX':
+        if t == 'STD,FLUX' or 'STD_stare' in allObjectFrames[0].meta[kw("OBS_NAME")]:
             # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
             self.generateReponseCurve = True
 
-        #self.generateReponseCurve = True
-
-        #self.generateReponseCurve = True
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): 'MASTER_FLAT_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
