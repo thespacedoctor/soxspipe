@@ -8,6 +8,7 @@
 * **REFACTOR:** clipping the NaN flux value before modelling the sky (was making ~1 in 300 images fail)
 * **REFACTOR:** if a standard star observed in NODDING mode is not in the static calibration std-star library, the pipeline will issue a warning rather than failing.
 * **REFACTOR:** la-cosmic parameters changed to differ for stare vs nod. This improves object tracing in nodding mode. Fixes #390
+* **FIXED:** tighter clipping when stacking the flats helps reduce noise in the VIS u-band
 * **FIXED:** standard star names can be resolved from OBJECT *or* TARGET keywords
 * **FIXED:** The data organiser is now differentiating between stare, nod, and offset modes again. Fixes #383 
 * **FIXED:** If one of the cross-dispersion profiles used in the Horne extraction is completely masked, the recipe can skip this profile and continue.
