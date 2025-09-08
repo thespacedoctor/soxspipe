@@ -163,6 +163,8 @@ class create_dispersion_map(object):
         from astropy.stats import sigma_clipped_stats
         from astropy.stats import sigma_clip
 
+
+
         bootstrap_dispersion_solution = self.settings["bootstrap_dispersion_solution"]
         tightFit = self.settings["bootstrap_dispersion_solution"]
 
@@ -1479,7 +1481,7 @@ class create_dispersion_map(object):
             observed_y = orderPixelTable["observed_y"].to_numpy()
 
             # IF mean_res > 10 WE WANT TO START FROM SCRATCH AGAIN SO NOT TO INFLUENCE THE FINAL RESULT
-            if True and mean_res > 10:
+            if True or mean_res > 10:
                 # FIND CACHED COEFF ELSE RETURN ARRAYS OF 1s
                 xcoeff, ycoeff = get_cached_coeffs(
                     log=self.log,
@@ -2888,7 +2890,7 @@ class create_dispersion_map(object):
         # ORDER BY MOST INTENSE LINES
         lineAtlas.sort_values(['amplitude'],
                                 ascending=[False], inplace=True)
-        lineAtlas = lineAtlas.head(120)
+        lineAtlas = lineAtlas.head(500)
 
 
         # try:
