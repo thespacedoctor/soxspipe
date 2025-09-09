@@ -177,14 +177,16 @@ class soxs_nod(base_recipe):
         from astropy import units as u
         import pandas as pd
         from datetime import datetime
-        from soxspipe.commonutils.toolkit import quicklook_image
-
+        from soxspipe.commonutils.toolkit import quicklook_image, plot_merged_spectrum_qc
+        
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
 
         productPath = None
-        master_flat = None
+        master_bias = False
+        master_flat = False
+        dark = False
 
         # OBJECT/STANDARD FRAMES
         types = ['OBJECT', 'STD,FLUX', 'STD,TELLURIC']
@@ -231,6 +233,10 @@ class soxs_nod(base_recipe):
         # DIVIDING IN A AND B SEQUENCES
         allFrameA, allFrameB, allFrameAOffsets, allFrameBOffsets, allFrameANames, allFrameBNames = [], [], [], [], [], []
 
+        if self.recipeSettings["use_flat"] and master_flat:
+                allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
+
+
         # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
         for frame, filename in zip(allObjectFrames, allFilenames):
             # offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSET{self.axisA.upper()}")]
@@ -246,6 +252,8 @@ class soxs_nod(base_recipe):
                 allFrameB.append(frame)
                 allFrameBNames.append(filename)
 
+        
+
         uniqueOffsets = list(set(allFrameAOffsets))
         if len(uniqueOffsets) == 0:
             error = f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
@@ -259,11 +267,6 @@ class soxs_nod(base_recipe):
         self.log.print(f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS")
 
         if len(allFrameAOffsets) > 1 and len(uniqueOffsets) > 1:
-
-            # DETRENDING HERE THE FRAMES - IN THIS CASE, NO RESPONSE FUNCTION WILL BE COMPUTED.
-
-            if self.recipeSettings["use_flat"] and master_flat:  # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLAT-FIELD FRAMES
-                allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
 
             allSpectrumA = []
             allSpectrumB = []
@@ -331,9 +334,7 @@ class soxs_nod(base_recipe):
                 mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
                 stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat], "NOTFLAT")
 
-            if self.recipeSettings["use_flat"] and master_flat:  # ADDED TO COPE WITH JULIA's DATASET AND MISSING FLATFIELD FRAMES
-                allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
-
+            
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
                 frames=allFrameA,
@@ -371,7 +372,21 @@ class soxs_nod(base_recipe):
                 )
                 self.qc, self.products = response.get()
 
-        self.plot_stacked_spectrum_qc(stackedSpectrum)
+        
+        self.products, filePath = plot_merged_spectrum_qc(
+            merged_orders=stackedSpectrum,
+            products=self.products,
+            log=self.log,
+            qcDir=self.qcDir,
+            filenameTemplate=self.filenameTemplate,
+            noddingSequence=False,
+            dateObs=self.dateObs,
+            arm=self.arm,
+            recipeName=self.recipeName
+        )
+
+
+
         self.clean_up()
         self.report_output()
 
@@ -608,6 +623,8 @@ class soxs_nod(base_recipe):
         """
         self.log.debug('starting the ``plot_stacked_spectrum_qc`` method')
 
+        print("plot_stacked_spectrum_qc - NODDING")
+
         import matplotlib.pyplot as plt
         from astropy.stats import sigma_clipped_stats
         import pandas as pd
@@ -633,7 +650,7 @@ class soxs_nod(base_recipe):
         plt.savefig(filePath, dpi='figure')
 
         self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
+            "soxspipe_recipe": "soxs-nod",
             "product_label": f"EXTRACTED_MERGED_QC_PLOT",
             "file_name": filename,
             "file_type": "PDF",

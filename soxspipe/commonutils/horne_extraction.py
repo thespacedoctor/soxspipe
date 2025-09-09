@@ -663,6 +663,8 @@ class horne_extraction(object):
         from astropy.stats import sigma_clipped_stats
         from scipy.interpolate import interp1d
 
+        from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
+
         # ASTROPY HAS RESET LOGGING LEVEL -- FIX
         import logging
         logging.getLogger().setLevel(logging.INFO + 5)
@@ -779,7 +781,17 @@ class horne_extraction(object):
             plt.legend()
             plt.show()
 
-        self.plot_merged_spectrum_qc(merged_orders)
+        self.products, filePath = plot_merged_spectrum_qc(
+            merged_orders=merged_orders,
+            products=self.products,
+            log=self.log,
+            qcDir=self.qcDir,
+            filenameTemplate=self.filenameTemplate,
+            noddingSequence=self.noddingSequence,
+            dateObs=self.dateObs,
+            arm=self.arm,
+            recipeName=self.recipeName
+        )
 
         return merged_orders
 
@@ -889,92 +901,7 @@ class horne_extraction(object):
         self.log.debug('completed the ``plot_extracted_spectrum_qc`` method')
         return None
 
-    def plot_merged_spectrum_qc(
-            self,
-            merged_orders):
-        """*plot merged spectrum QC plot*
-
-        **Key Arguments:**
-
-        - ``merged_orders`` -- the dataframe containing the merged order spectrum.
-
-        **Usage:**
-
-        ```python
-        optimalExtractor.plot_merged_spectrum_qc(merged_orders)
-        ```
-        """
-        self.log.debug('starting the ``plot_merged_spectrum_qc`` method')
-
-        # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
-        if isinstance(self.products, bool) and not self.products:
-            return
-
-        import matplotlib.pyplot as plt
-        plt.switch_backend('Agg')
-        # plt.switch_backend('macosx')
-        from datetime import datetime
-        import pandas as pd
-        from astropy import units as u
-        from astropy.stats import sigma_clipped_stats
-
-        fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=320)
-        gs = fig.add_gridspec(1, 1)
-        toprow = fig.add_subplot(gs[0:1, :])
-        # toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
-        #               fontsize=8)
-        toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
-        toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
-        toprow.set_title(
-            f"Optimally Extracted Order-Merged Object Spectrum ({self.arm.upper()})", fontsize=11)
-        
-        plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
-
-
-        # ATTEMPTING TO FIND A GOOD Y-AXIS RANGE
-        from fundamentals.stats import rolling_window_sigma_clip
-        arrayMask = rolling_window_sigma_clip(
-            log=self.log,
-            array=merged_orders['FLUX_COUNTS'],
-            clippingSigma=5.0,
-            windowSize=50)
-        ## JUST KEEP UNMASKED VALUES
-        try:
-            myArray = [e.value for e, m in zip(
-                merged_orders['FLUX_COUNTS'], arrayMask) if m == False]
-        except:
-            myArray = []
-        mean, median, std = sigma_clipped_stats(myArray, sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
-        maxFlux = max(myArray) + std
-
-        plt.ylim(-200, maxFlux)
-        try:
-            plt.xlim(merged_orders['WAVE'].min().value, merged_orders['WAVE'].max().value)
-        except:
-            plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
-
-        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}.pdf")
-        filePath = f"{self.qcDir}/{filename}"
-        # plt.show()
-        plt.savefig(filePath, dpi='figure', bbox_inches='tight')
-
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": f"EXTRACTED_MERGED_QC_PLOT{self.noddingSequence}",
-            "file_name": filename,
-            "file_type": "PDF",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"QC plot of extracted order-merged source",
-            "file_path": filePath,
-            "label": "QC"
-        }).to_frame().T], ignore_index=True)
-
-        self.log.debug('completed the ``plot_merged_spectrum_qc`` method')
-        return None
-
+    
     # use the tab-trigger below for new method
     # xt-class-method
 
@@ -1330,3 +1257,7 @@ def create_cross_dispersion_slices(
     crossDispersionSlices["wavelengthMask"] = maskedArrays
 
     return crossDispersionSlices
+
+
+
+

@@ -9,7 +9,8 @@
 * **REFACTOR:** clipping the NaN flux value before modelling the sky (was making ~1 in 300 images fail)
 * **REFACTOR:** if a standard star observed in NODDING mode is not in the static calibration std-star library, the pipeline will issue a warning rather than failing.
 * **REFACTOR:** la-cosmic parameters changed to differ for stare vs nod. This improves object tracing in nodding mode. Fixes #390
-* **FIXED:** discontinuity issue when stitching orders together. Fixes #392
+* **FIXED:** discontinuity issue when stitching stare orders together. Fixes #392
+* **FIXED:** master flat not getting used during nodding reductions. 
 * **FIXED:** numbering of orders in the unmerged VIS spectrum plots was wrong. Orders are now labelled correctly.
 * **FIXED:** tighter clipping when stacking the flats helps reduce noise in the VIS u-band.
 * **FIXED:** standard star names can be resolved from OBJECT *or* TARGET keywords

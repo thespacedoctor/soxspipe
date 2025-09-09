@@ -1489,3 +1489,89 @@ def utility_setup(
 
     log.debug('completed the ``utility_setup`` function')
     return qcDir, productDir
+
+
+def plot_merged_spectrum_qc(
+    merged_orders,
+    products,
+    log,
+    qcDir,
+    filenameTemplate,
+    noddingSequence,
+    dateObs,
+    arm,
+    recipeName
+):
+    """
+    Plot merged spectrum QC plot as a standalone function.
+
+    Returns:
+        products (pd.DataFrame): Updated products table.
+        filePath (str): Path to the saved QC plot PDF.
+    """
+    log.debug('starting the ``plot_merged_spectrum_qc`` function')
+
+    # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
+    if isinstance(products, bool) and not products:
+        return products, None
+
+    import matplotlib.pyplot as plt
+    plt.switch_backend('Agg')
+    from datetime import datetime
+    import pandas as pd
+    from astropy import units as u
+    from astropy.stats import sigma_clipped_stats
+
+    if not noddingSequence:
+        noddingSequence = ""
+
+    fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=320)
+    gs = fig.add_gridspec(1, 1)
+    toprow = fig.add_subplot(gs[0:1, :])
+    toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
+    toprow.set_xlabel('wavelength (nm)', fontsize=10)
+    toprow.set_title(
+        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
+
+    plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
+
+    # ATTEMPTING TO FIND A GOOD Y-AXIS RANGE
+    from fundamentals.stats import rolling_window_sigma_clip
+    arrayMask = rolling_window_sigma_clip(
+        log=log,
+        array=merged_orders['FLUX_COUNTS'],
+        clippingSigma=5.0,
+        windowSize=50)
+    
+    try:
+        myArray = [e.value for e, m in zip(merged_orders['FLUX_COUNTS'], arrayMask) if m == False]
+    except Exception:
+        myArray = [e for e, m in zip(merged_orders['FLUX_COUNTS'], arrayMask) if m == False]
+    mean, median, std = sigma_clipped_stats(myArray, sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+    maxFlux = max(myArray) + std
+
+    plt.ylim(-200, maxFlux)
+    try:
+        plt.xlim(merged_orders['WAVE'].min().value, merged_orders['WAVE'].max().value)
+    except Exception:
+        plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+
+    filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
+    filePath = f"{qcDir}/{filename}"
+    plt.savefig(filePath, dpi='figure', bbox_inches='tight')
+
+    utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    products = pd.concat([products, pd.Series({
+        "soxspipe_recipe": recipeName,
+        "product_label": f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}",
+        "file_name": filename,
+        "file_type": "PDF",
+        "obs_date_utc": dateObs,
+        "reduction_date_utc": utcnow,
+        "product_desc": "QC plot of extracted order-merged source",
+        "file_path": filePath,
+        "label": "QC"
+    }).to_frame().T], ignore_index=True)
+
+    log.debug('completed the ``plot_merged_spectrum_qc`` function')
+    return products, filePath
