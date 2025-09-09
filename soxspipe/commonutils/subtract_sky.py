@@ -190,7 +190,7 @@ class subtract_sky(object):
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         #print("FIX ME")
         self.qcPlotOrder = int(np.median(uniqueOrders)) - 1
-        self.qcPlotOrder = 2
+        # self.qcPlotOrder = 3
         # uniqueOrders = [qcPlotOrder]
 
         allimageMapOrder = []
@@ -758,22 +758,26 @@ class subtract_sky(object):
             masked = (imageMapOrderDF.loc[notClippedOrObjectMask, "flux"] < imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"] - 1. * imageMapOrderDF.loc[notClippedOrObjectMask, "flux_std"])
             imageMapOrderDF.loc[(notClippedOrObjectMask & masked), "object"] = True
 
-            if iteration == 5 and self.arm.upper() in ("VIS"):
-                totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
-                percent = (float(totalClipped) / float(allPixels)) * 100.
-                if percent < 10:
-                    imageMapOrderDF["object"] = False
-                    sigma_clip_limit-=0.1
-                    if quantile > 0.1:
-                        quantile -= 0.05
-                    iteration = 0
-                elif percent > 70:
-                    imageMapOrderDF["object"] = False
-                    windowSize = windowSize-1
-                    if max_iterations > 2:
-                        max_iterations /= 1.5
-                        max_iterations = int(max_iterations)
-                    iteration = 0
+            totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
+            percent = (float(totalClipped) / float(allPixels)) * 100.
+
+            if self.arm.upper() in ("VIS"):
+                if iteration == 5:
+                    totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
+                    percent = (float(totalClipped) / float(allPixels)) * 100.
+                    if percent < 2:
+                        imageMapOrderDF["object"] = False
+                        sigma_clip_limit-=0.1
+                        if quantile > 0.1:
+                            quantile -= 0.05
+                        iteration = 0
+                if iteration == max_iterations: 
+                    totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
+                    percent = (float(totalClipped) / float(allPixels)) * 100.
+                    if percent > 70:
+                        imageMapOrderDF["object"] = False
+                        windowSize = windowSize+1
+                        iteration = 0
 
 
 
@@ -1603,7 +1607,7 @@ class subtract_sky(object):
         iteration = 0
         spCopy = np.copy(sp)
         fxCopy = np.copy(fx)
-        while iteration < 3:
+        while iteration < 3 and False:
             iteration += 1
             coeff = np.polyfit(spCopy, fxCopy, deg=slit_illumination_order)
             residuals = fxCopy - np.polyval(coeff, spCopy)
@@ -1635,7 +1639,8 @@ class subtract_sky(object):
 
         # USE THE SLIT-ILLUMINATION FUNCTION TO CREATE A FLUX-NORMALISATION
 
-        orderDF['flux'] -= np.polyval(coeff, orderDF['slit_position'].values)
+        if False:
+                orderDF['flux'] -= np.polyval(coeff, orderDF['slit_position'].values)
         # orderDF['flux'] -= ip.splev(orderDF['slit_position'].values, tck)
         orderDF['slit_normalisation_ratio'] = 1
 

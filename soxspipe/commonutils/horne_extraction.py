@@ -101,6 +101,8 @@ class horne_extraction(object):
         from soxspipe.commonutils import detector_lookup
         from ccdproc import cosmicray_lacosmic, cosmicray_median
         from matplotlib import pyplot as plt
+        plt.switch_backend('Agg')
+        # plt.switch_backend('macosx')
 
         self.log = log
         log.debug("instantiating a new 'horne_extraction' object")
@@ -345,6 +347,8 @@ class horne_extraction(object):
         self.log.debug('starting the ``extract`` method')
 
         import matplotlib.pyplot as plt
+        plt.switch_backend('Agg')
+        # plt.switch_backend('macosx')
         import pandas as pd
         from astropy.table import Table
         import copy
@@ -495,7 +499,7 @@ class horne_extraction(object):
 
         extractions = updatedExtractions
 
-        self.plot_extracted_spectrum_qc(extractions=extractions, uniqueOrders=uniqueOrders)
+        self.plot_extracted_spectrum_qc(extractions=extractions)
 
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
@@ -650,6 +654,8 @@ class horne_extraction(object):
         import pandas as pd
         from astropy.io import fits
         import matplotlib.pyplot as plt
+        plt.switch_backend('Agg')
+        # plt.switch_backend('macosx')
         import matplotlib
         from datetime import datetime
         from astropy.nddata import VarianceUncertainty
@@ -665,7 +671,7 @@ class horne_extraction(object):
         arm = self.arm
 
         # PARAMETERS FROM INPUT FILE
-        # THIS IS THE STEP SIZE IN NM (0.06 nm IS SIMILAR TO XHSOOTER EXTRACTION)
+        # THIS IS THE STEP SIZE IN NM (0.06 nm IS SIMILAR TO XSHOOTER EXTRACTION)
         if self.arm.upper() == "NIR":
             stepWavelengthOrderMerge = 0.06
         elif self.arm.upper() == "UVB":
@@ -676,25 +682,20 @@ class horne_extraction(object):
         ratio = 1 / stepWavelengthOrderMerge
         order_list = []
 
-        # A FIX FOR SORTING OF SOXS VIS ORDERSK
-        mask = (extractedOrdersDF['order'] == 4)
-        extractedOrdersDF.loc[mask, 'order'] = 11
-        mask = (extractedOrdersDF['order'] == 3)
-        extractedOrdersDF.loc[mask, 'order'] = 13
-        mask = (extractedOrdersDF['order'] == 2)
-        extractedOrdersDF.loc[mask, 'order'] = 14
-        mask = (extractedOrdersDF['order'] == 1)
-        extractedOrdersDF.loc[mask, 'order'] = 12
-        extractedOrdersDF['order'] = extractedOrdersDF['order'] - 10
+        # A FIX FOR SORTING OF SOXS VIS ORDERS
+        if self.arm.upper() in ["VIS"]:
+            mask = (extractedOrdersDF['order'] == 4)
+            extractedOrdersDF.loc[mask, 'order'] = 11
+            mask = (extractedOrdersDF['order'] == 3)
+            extractedOrdersDF.loc[mask, 'order'] = 13
+            mask = (extractedOrdersDF['order'] == 2)
+            extractedOrdersDF.loc[mask, 'order'] = 14
+            mask = (extractedOrdersDF['order'] == 1)
+            extractedOrdersDF.loc[mask, 'order'] = 12
+            extractedOrdersDF['order'] = extractedOrdersDF['order'] - 10
 
-        # MORE CAREFUL TREATMENT OF UVB ORDER MERGING
-        # if self.arm.upper() in ["UVB", "NIR"]:
+
         uniqueOrders = np.sort(extractedOrdersDF['order'].unique())
-
-        # self.inst = self.skySubtractedFrame.header[self.kw("INSTRUME")]
-        # if self.arm.upper() == "VIS" and self.inst.upper() == "SOXS":
-        #     uniqueOrders = [4, 1, 3, 2]
-
         lastOrderMin = False
         orderJoins = {}
         orderGaps = {}
@@ -707,7 +708,9 @@ class horne_extraction(object):
                 orderGaps[f'{o-1}{o}'] = gap
                 # print(f"ORDER: {o}, JOIN: {order_join_wl}, GAP: {gap}")
             lastOrderMin = extractedOrdersDF.loc[mask]['wavelengthMedian'].min()
+  
 
+    
         # A FIX FOR THE UV XSHOOTER DATA (FLATS TAKEN WITH DIFFERENT LAMPS)
         # GET UNIQUE VALUES IN COLUMN
         if self.arm.upper() == "UVB":
@@ -722,15 +725,17 @@ class horne_extraction(object):
                 mask = (extractedOrdersDF['order'] == o - 1)
                 gap = orderGaps[f'{o-1}{o}']
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
+                    maxwl = orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio
                     mask = ((extractedOrdersDF['order'] == o - 1) & (extractedOrdersDF['wavelengthMedian'] <= orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio))
                     extractedOrdersDF = extractedOrdersDF.loc[~mask]
 
                 if f'{o}{o+1}' in orderGaps.keys():
                     gap = orderGaps[f'{o-1}{o}']
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
-                    mask = (extractedOrdersDF['order'] == o)
+                    minwl = orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
                     mask = ((extractedOrdersDF['order'] == o) & (extractedOrdersDF['wavelengthMedian'] > orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio))
                     extractedOrdersDF = extractedOrdersDF.loc[~mask]
+
 
         if self.arm.upper() == "UVB":
             # CLIP DICHROICH REGION
@@ -746,9 +751,15 @@ class horne_extraction(object):
         wave_resample_grid = wave_resample_grid * u.nm
         # SAVE THE COUNTS BY DIVING FOR THE PROPER PIXEL SIZE IN WAVELENGTH SPACE - COUNTS ARE THEN E-/NM
 
-        extractedOrdersDF['extractedFluxOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values / extractedOrdersDF['pixelScaleNm'].values
-        extractedOrdersDF['extractedFluxBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values / extractedOrdersDF['pixelScaleNm'].values
-        extractedOrdersDF['extractedFluxBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values / extractedOrdersDF['pixelScaleNm'].values
+
+        # MARCO RETURN HERE ... DAVE HAD TO REMOVE THE DIVISION BY PIXEL SCALE TO FIX ORDER STITCHING. MIGHT EFFECT RESPONSE CURVE CALCULATIONS
+        # extractedOrdersDF['extractedFluxOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values / extractedOrdersDF['pixelScaleNm'].values
+        # extractedOrdersDF['extractedFluxBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values / extractedOrdersDF['pixelScaleNm'].values
+        # extractedOrdersDF['extractedFluxBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values / extractedOrdersDF['pixelScaleNm'].values
+
+        extractedOrdersDF['extractedFluxOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
+        extractedOrdersDF['extractedFluxBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values * u.electron
+        extractedOrdersDF['extractedFluxBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values * u.electron
 
         flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
         spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values * u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values))
@@ -774,19 +785,17 @@ class horne_extraction(object):
 
     def plot_extracted_spectrum_qc(
             self,
-            uniqueOrders,
             extractions):
         """*plot extracted spectrum QC plot*
 
         **Key Arguments:**
 
-        - ``uniqueOrders`` -- the unique orders of extraction
         - ``extractions`` -- dataframes hosting order extractions
 
         **Usage:**
 
         ```python
-        optimalExtractor.plot_extracted_spectrum_qc(uniqueOrders, extractions)
+        optimalExtractor.plot_extracted_spectrum_qc(extractions)
         ```
 
         """
@@ -797,6 +806,8 @@ class horne_extraction(object):
             return
 
         import matplotlib.pyplot as plt
+        plt.switch_backend('Agg')
+        # plt.switch_backend('macosx')
         from datetime import datetime
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
@@ -814,7 +825,9 @@ class horne_extraction(object):
         # if maxFlux > median + 5 * std:
         #     maxFlux = median + 5 * std
 
-        for df, o in zip(extractions, uniqueOrders):
+        for df in extractions:
+
+            o = df["order"].values[0]
 
             extracted_wave_spectrum = df["wavelengthMedian"]
             extracted_spectrum = df["extractedFluxOptimal"]
@@ -898,8 +911,11 @@ class horne_extraction(object):
             return
 
         import matplotlib.pyplot as plt
+        plt.switch_backend('Agg')
+        # plt.switch_backend('macosx')
         from datetime import datetime
         import pandas as pd
+        from astropy import units as u
         from astropy.stats import sigma_clipped_stats
 
         fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=320)
@@ -911,19 +927,25 @@ class horne_extraction(object):
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
         toprow.set_title(
             f"Optimally Extracted Order-Merged Object Spectrum ({self.arm.upper()})", fontsize=11)
-
-        # for order in extractedOrdersDF['order'].unique():
-        #     # LIMIT DATAFRAME TO JUST THIS ORDER
-        #     orderDF = extractedOrdersDF.loc[extractedOrdersDF['order'] == order]
-        #     plt.plot(orderDF['wavelengthMedian'], orderDF['extractedFluxOptimal'])
-
-        mean, median, std = sigma_clipped_stats(merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+        
         plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
-        # sys.exit(0)
 
-        maxFlux = merged_orders['FLUX_COUNTS'].max() + std
-        # if maxFlux > median + 5 * std:
-        #     maxFlux = median + 5 * std
+
+        # ATTEMPTING TO FIND A GOOD Y-AXIS RANGE
+        from fundamentals.stats import rolling_window_sigma_clip
+        arrayMask = rolling_window_sigma_clip(
+            log=self.log,
+            array=merged_orders['FLUX_COUNTS'],
+            clippingSigma=5.0,
+            windowSize=50)
+        ## JUST KEEP UNMASKED VALUES
+        try:
+            myArray = [e.value for e, m in zip(
+                merged_orders['FLUX_COUNTS'], arrayMask) if m == False]
+        except:
+            myArray = []
+        mean, median, std = sigma_clipped_stats(myArray, sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+        maxFlux = max(myArray) + std
 
         plt.ylim(-200, maxFlux)
         try:
@@ -972,6 +994,8 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     import numpy as np
     from astropy.stats import sigma_clip
     import matplotlib.pyplot as plt
+    plt.switch_backend('Agg')
+    # plt.switch_backend('macosx')
 
     # WE ARE BUILDING A SET OF CROSS-SLIT OBJECT PROFILES
     # ALONG THE DISPERSION AXIS
