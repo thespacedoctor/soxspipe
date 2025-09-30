@@ -2,6 +2,8 @@
 
 * **ENHANCEMENT:** After each reduction run, the pipeline will now report a table of frames that could not be reduced due to a lack of calibration frames. Closes #389 
 * **ENHANCEMENT:** Pushing VIS extractions to the very edge of the detector to increase order overlap regions and overall wavelength coverage.
+* **REFACTOR:**  new algorithm has been added to 'dither' the line-lists for each order (both arms) to attempt to successfully find lines if a significant shift is seen between the detector coordinates in the static line-list and those observed on the detector.
+* **REFACTOR:** Adjusted all line-lists to reflect the formats now seen in La Silla.
 * **REFACTOR:** Nodding parameters changed for robustness. Fixes #390
 * **REFACTOR:** Data organiser needs to rebuild the cache of SOF it needs to process after each recipe's specific set is completed. Closes #388 
 * **REFACTOR:** Data-organiser and recipes can now determine if CONAD or GAIN keyword values should be used as e-/ADU. Basically `gain = max(CONAD,GAIN)`. Fixes #385

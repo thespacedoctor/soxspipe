@@ -30,7 +30,7 @@ soxs-mdark:
 soxs-disp-solution:
     vis:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
-        pixel-window-size: 14        
+        pixel-window-size: 12        
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
         pinhole-detection-thres-sigma: 2
         # DEGREE OF ORDER TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
@@ -43,9 +43,9 @@ soxs-disp-solution:
         poly-clipping-iteration-limit: 5
     nir:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
-        pixel-window-size: 10
+        pixel-window-size: 12
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
-        pinhole-detection-thres-sigma: 2
+        pinhole-detection-thres-sigma: 4
         # DEGREE OF ORDER TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
         order-deg: [5,3]
         # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
@@ -241,7 +241,7 @@ soxs-stare:
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
             percentile_rolling_window_size: 25
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.01
+            clip-slit-edge-fraction: 0.03
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: False
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
@@ -373,6 +373,8 @@ soxs-nod:
             poly-fitting-residual-clipping-sigma: 5
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 7
+
+
 
 
 soxs-response:

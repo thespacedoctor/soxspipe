@@ -15,6 +15,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+# from line_profiler import profile
 
 os.environ['TERM'] = 'vt100'
 
@@ -62,6 +63,7 @@ class chebyshev_order_wavelength_polynomials():
 
         return None
 
+    # @profile
     def poly(self, orderPixelTable, *coeff):
         """the polynomial definition
 
@@ -104,7 +106,9 @@ class chebyshev_order_wavelength_polynomials():
             for i in range(0, orderDeg + 1):
                 for j in range(0, wavelengthDeg + 1):
                     for k in range(0, slitDeg + 1):
-                        lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{self.axis}{i}"].values.astype("float") * orderPixelTable[f"wavelength_pow_{self.axis}{j}"].values.astype("float") * orderPixelTable[f"slit_position_pow_{self.axis}{k}"].values.astype("float")
+                        # OPTIMISE: 95%
+                        lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{self.axis}{i}"].values.astype("float") * orderPixelTable[f"wavelength_pow_{self.axis}{j}"].values.astype(
+                            "float") * orderPixelTable[f"slit_position_pow_{self.axis}{k}"].values.astype("float")
                         n_coeff += 1
 
         self.log.debug('completed the ``poly`` method')
@@ -177,7 +181,8 @@ class chebyshev_xy_polynomial():
                 n_coeff += 1
         else:
             for i in range(0, self.y_deg + 1):
-                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype('float')
+                lhsVals += coeff[n_coeff] * \
+                    orderPixelTable[f"y_pow_{i}"].values.astype('float')
                 n_coeff += 1
 
         self.log.info('completed the ``poly`` method')
@@ -265,7 +270,8 @@ class chebyshev_order_xy_polynomials():
         else:
             for i in range(0, orderDeg + 1):
                 for j in range(0, axisBDeg + 1):
-                    lhsVals += float(coeff[n_coeff]) * orderPixelTable[f"order_pow_{i}"].values.astype('float') * orderPixelTable[f"{axisB}_pow_{j}"].values.astype('float')
+                    lhsVals += float(coeff[n_coeff]) * orderPixelTable[f"order_pow_{i}"].values.astype(
+                        'float') * orderPixelTable[f"{axisB}_pow_{j}"].values.astype('float')
                     n_coeff += 1
 
         self.log.debug('completed the ``poly`` method')

@@ -75,8 +75,9 @@ class reducer(object):
 
         if self.sessionId is None:
             return None
-        
-        self.recipeList = ["mbias", "mdark", "disp_sol", "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
+
+        self.recipeList = ["mbias", "mdark", "disp_sol",
+                           "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
         self.sessionDB = workspaceDirectory + "/soxspipe.db"
@@ -98,7 +99,6 @@ class reducer(object):
         from fundamentals import times
         import traceback
         from soxspipe.commonutils import data_organiser
-
 
         for recipe in self.recipeList:
             # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
@@ -122,9 +122,8 @@ class reducer(object):
                     if self.quitOnFail:
                         sys.exit(0)
 
-                    
-
-                    do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                    do = data_organiser(
+                        log=self.log, rootDir=self.workspaceDirectory)
                     do.session_refresh()
                     if not self.daemon:
                         print(f"{'='*70}\n")
@@ -132,7 +131,8 @@ class reducer(object):
 
                 ## FINISH LOGGING ##
                 endTime = times.get_now_sql_datetime()
-                runningTime = times.calculate_time_difference(startTime, endTime)
+                runningTime = times.calculate_time_difference(
+                    startTime, endTime)
                 sys.argv[0] = os.path.basename(sys.argv[0])
 
                 self.log.print(f'\nRecipe Command: {row["command"]} ')
@@ -145,8 +145,8 @@ class reducer(object):
         if len(incompleteSets.index):
             from tabulate import tabulate
             print("\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:")
-            print(tabulate(incompleteSets, headers='keys', tablefmt='psql', showindex=False))
-
+            print(tabulate(incompleteSets, headers='keys',
+                  tablefmt='psql', showindex=False))
 
         self.log.debug("completed the ``reduce`` method")
         return None
