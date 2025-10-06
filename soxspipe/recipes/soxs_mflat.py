@@ -455,7 +455,7 @@ class soxs_mflat(base_recipe):
 
             # WRITE MFLAT TO FILE
             productPath = self._write(
-                mflat.copy(), outDir, filename=self.sofName + tag + ".fits", overwrite=True)
+                mflat.copy(), outDir, filename=self.sofName + ".fits", overwrite=True)
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -814,6 +814,10 @@ class soxs_mflat(base_recipe):
             ORDEXP10 = np.median(ORDEXP10list)
             ORDEXP50 = np.median(ORDEXP50list)
             ORDEXP90 = np.median(ORDEXP90list)
+
+            if ORDEXP50 < 100:
+                raise ValueError(
+                    "FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")

@@ -1163,10 +1163,10 @@ class data_organiser(object):
             filteredFrames['slitmask'] == "--")), "slitmask"] = "SLIT"
 
         lampLong = ["argo", "merc", "neon",
-                    "xeno", "qth", "deut", "thar", "DOME,FLAT"]
-        lampEle = ["Ar", "Hg", "Ne", "Xe", "QTH", "D", "ThAr", "DOME"]
+                    "xeno", "qth", "deut", "thar"]
+        lampEle = ["Ar", "Hg", "Ne", "Xe", "QTH", "D", "ThAr"]
 
-        for i in [1, 2, 3, 4, 5, 6, 7, 8]:
+        for i in [1, 2, 3, 4, 5, 6, 7]:
             lamp = self.kw(f"LAMP{i}").lower()
 
             if self.instrument.lower() == "soxs":
@@ -1177,6 +1177,9 @@ class data_organiser(object):
                 )] != -99.99) & (filteredFrames["lamp"] != "--")), "lamp"] += lamp
                 filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower(
                 )] != -99.99) & (filteredFrames["lamp"] == "--")), "lamp"] = lamp
+                filteredFrames.loc[((filteredFrames[self.kw("DPR_TYPE").lower(
+                )] == "DOME,FLAT") & (filteredFrames["lamp"] == "--")), "lamp"] = "DOME"
+
             else:
                 filteredFrames.loc[((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), "lamp"] = filteredFrames.loc[(
                     (filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), self.kw(f"LAMP{i}").lower()]
@@ -1420,8 +1423,6 @@ class data_organiser(object):
         c.execute(sqlQuery)
         c.close()
 
-        print("HERE")
-
         keepTrying = 0
         while keepTrying < 6:
             try:
@@ -1516,10 +1517,11 @@ class data_organiser(object):
                 sofName.append("dlamp")
             if "QORDER" in series["eso dpr type"].upper():
                 sofName.append("qlamp")
-        if True and ("PINHOLE" in series["eso dpr tech"].upper() or (series["instrume"] == "SOXS" and "FLAT" in series["eso dpr type"].upper())):
+        # if True and ("PINHOLE" in series["eso dpr tech"].upper() or (series["instrume"] == "SOXS" and "FLAT" in series["eso dpr type"].upper())):
+        if True and (series["instrume"] == "SOXS" and "FLAT" in series["eso dpr type"].upper()):
             if series["lamp"] != "--":
                 matchDict['lamp'] = series["lamp"]
-                # sofName.append(series["lamp"])
+                sofName.append(series["lamp"])
 
         if series["instrume"] == "SOXS":
             sofName.append(series["slit"])
@@ -1825,6 +1827,11 @@ class data_organiser(object):
                     else:
                         df = df.loc[(
                             df["slit"] == filteredFrames["slit"].values[0])]
+
+            # FAVOUR DOME FLATS IF AVAILABLE
+            mask = (df['lamp'] == 'DOME')
+            if len(df.loc[mask].index):
+                df = df.loc[mask]
 
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
