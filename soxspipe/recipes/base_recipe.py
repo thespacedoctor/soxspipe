@@ -19,7 +19,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-# from line_profiler import profile
+from line_profiler import profile
 
 os.environ['TERM'] = 'vt100'
 
@@ -194,7 +194,7 @@ class base_recipe(object):
 
         return None
 
-    # @profile
+    @profile
     def _prepare_single_frame(
             self,
             frame,
@@ -254,6 +254,7 @@ class base_recipe(object):
 
         # MANIPULATE XSH DATA
         frame = self.xsh2soxs(frame)
+        # OPTIMISE: 8%
         frame = self._trim_frame(frame)
 
         # FUDGE BAD-PIXEL MAP CREATION
@@ -270,6 +271,7 @@ class base_recipe(object):
         #                 overwrite=True, checksum=True)
 
         # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
+        # OPTIMIZE: 8%
         frame = ccdproc.gain_correct(frame, dp["gain"])
 
         # GENERATE UNCERTAINTY MAP AS EXTENSION
@@ -355,6 +357,7 @@ class base_recipe(object):
             filenameNoExtension + "_pre" + extension
 
         # SAVE TO DISK
+        # OPTIMISE: 25%
         self._write(
             frame=frame,
             filedir=outDir,
@@ -850,6 +853,7 @@ class base_recipe(object):
         self.log.debug('completed the ``_trim_frame`` method')
         return trimmed_frame
 
+    @profile
     def _write(
             self,
             frame,

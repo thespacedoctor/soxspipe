@@ -178,7 +178,7 @@ class soxs_nod(base_recipe):
         import pandas as pd
         from datetime import datetime
         from soxspipe.commonutils.toolkit import quicklook_image, plot_merged_spectrum_qc
-        
+
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
@@ -217,15 +217,18 @@ class soxs_nod(base_recipe):
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        orderTablePath = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
 
         # FIND THE 2D MAP TABLE
         filterDict = {kw("PRO_CATG"): f"DISP_TAB_{arm}"}
-        self.dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        self.dispMap = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
 
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
-        self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        self.twoDMap = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
 
         quicklook_image(
             log=self.log, CCDObject=allObjectFrames[0], show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
@@ -234,8 +237,8 @@ class soxs_nod(base_recipe):
         allFrameA, allFrameB, allFrameAOffsets, allFrameBOffsets, allFrameANames, allFrameBNames = [], [], [], [], [], []
 
         if self.recipeSettings["use_flat"] and master_flat:
-                allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False, master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
-
+            allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False,
+                                               master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
 
         # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
         for frame, filename in zip(allObjectFrames, allFilenames):
@@ -252,19 +255,19 @@ class soxs_nod(base_recipe):
                 allFrameB.append(frame)
                 allFrameBNames.append(filename)
 
-        
-
         uniqueOffsets = list(set(allFrameAOffsets))
         if len(uniqueOffsets) == 0:
             error = f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
-            self.log.error(f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames.")
+            self.log.error(
+                f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames.")
             raise Exception(error)
 
         elif len(uniqueOffsets) > 1:
             s = "S"
         else:
             s = ""
-        self.log.print(f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS")
+        self.log.print(
+            f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS")
 
         if len(allFrameAOffsets) > 1 and len(uniqueOffsets) > 1:
 
@@ -277,10 +280,13 @@ class soxs_nod(base_recipe):
 
             for frameA, frameB, frameAName, frameBName in zip(allFrameA, allFrameB, allFrameANames, allFrameBNames):
 
-                self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
+                self.log.print(
+                    f"Processing AB Nodding Sequence {sequenceCount}")
                 if False:
-                    quicklook_image(log=self.log, CCDObject=frameA, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
-                    quicklook_image(log=self.log, CCDObject=frameB, show=False, ext='data', stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
+                    quicklook_image(log=self.log, CCDObject=frameA, show=False, ext='data',
+                                    stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
+                    quicklook_image(log=self.log, CCDObject=frameB, show=False, ext='data',
+                                    stdWindow=1, title=False, surfacePlot=False, saveToPath=False)
                     # Save frameA and frameB to disk in temporary file
                     home = expanduser("~")
                     filenameA = self.sofName + f"_A_{sequenceCount}.fits"
@@ -306,35 +312,23 @@ class soxs_nod(base_recipe):
                 self.update_fits_keywords(frame=frameB, rawFrames=rawFrames)
 
                 # PROCESSING SINGLE SEQUENCE
-                mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=frameA, bFrame=frameB, locationSetIndex=sequenceCount, orderTablePath=orderTablePath)
+                mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(
+                    aFrame=frameA, bFrame=frameB, locationSetIndex=sequenceCount, orderTablePath=orderTablePath)
                 if sequenceCount == 1:
                     allSpectrumA = mergedSpectrumDF_A
                     allSpectrumB = mergedSpectrumDF_B
                 else:
-                    allSpectrumA = pd.concat([allSpectrumA, mergedSpectrumDF_A])
-                    allSpectrumB = pd.concat([allSpectrumB, mergedSpectrumDF_B])
+                    allSpectrumA = pd.concat(
+                        [allSpectrumA, mergedSpectrumDF_A])
+                    allSpectrumB = pd.concat(
+                        [allSpectrumB, mergedSpectrumDF_B])
 
                 sequenceCount += 1
-            stackedSpectrum, extractionPath = self.stack_extractions([allSpectrumA, allSpectrumB])
+            stackedSpectrum, extractionPath = self.stack_extractions(
+                [allSpectrumA, allSpectrumB])
 
         else:
 
-            if self.generateReponseCurve:
-                aFrame = self.clip_and_stack(
-                    frames=allFrameA,
-                    recipe="soxs_nod",
-                    ignore_input_masks=False,
-                    post_stack_clipping=True)
-
-                bFrame = self.clip_and_stack(
-                    frames=allFrameB,
-                    recipe="soxs_nod",
-                    ignore_input_masks=False,
-                    post_stack_clipping=True)
-                mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
-                stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions([mergedSpectrumDF_A_notflat, mergedSpectrumDF_B_notflat], "NOTFLAT")
-
-            
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
                 frames=allFrameA,
@@ -348,14 +342,24 @@ class soxs_nod(base_recipe):
                 ignore_input_masks=False,
                 post_stack_clipping=True)
 
+            mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(
+                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
+
+            if self.generateReponseCurve:
+                stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions(
+                    [mergedSpectrumDF_A, mergedSpectrumDF_B], "NOTFLAT")
+
             # INJECT KEYWORDS INTO HEADER
             self.update_fits_keywords(frame=aFrame)
             self.update_fits_keywords(frame=bFrame)
 
-            mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
-            stackedSpectrum, extractionPath = self.stack_extractions([mergedSpectrumDF_A, mergedSpectrumDF_B])
+            mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(
+                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
+            stackedSpectrum, extractionPath = self.stack_extractions(
+                [mergedSpectrumDF_A, mergedSpectrumDF_B])
 
             if self.generateReponseCurve:
+
                 # GETTING THE RESPONSE
                 from soxspipe.commonutils import response_function
                 self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
@@ -372,7 +376,6 @@ class soxs_nod(base_recipe):
                 )
                 self.qc, self.products = response.get()
 
-        
         self.products, filePath = plot_merged_spectrum_qc(
             merged_orders=stackedSpectrum,
             products=self.products,
@@ -385,12 +388,11 @@ class soxs_nod(base_recipe):
             recipeName=self.recipeName
         )
 
-
-
         self.clean_up()
         self.report_output()
 
         self.log.debug('completed the ``produce_product`` method')
+
         return productPath
 
     def process_single_ab_nodding_cycle(
@@ -419,7 +421,8 @@ class soxs_nod(base_recipe):
         mergedSpectrumDF_A, mergedSpectrumDF_B = soxs_nod.process_single_ab_nodding_cycle(aFrame=aFrame, bFrame=bFrame, locationSetIndex=1)
         ```
         """
-        self.log.debug('starting the ``process_single_ab_nodding_cycle`` method')
+        self.log.debug(
+            'starting the ``process_single_ab_nodding_cycle`` method')
 
         from soxspipe.commonutils import horne_extraction
         import pandas as pd
@@ -435,6 +438,8 @@ class soxs_nod(base_recipe):
         B_minus_A.header = hdr_B
 
         # WRITE IN A FITS FILE THE A-B AND B-A FRAMES
+        self.log.print(
+            f"\n# PROCESSING AB NODDING CYCLE {locationSetIndex}")
         home = expanduser("~")
         filename = self.sofName + f"_AB_{locationSetIndex}.fits"
         filePath = f"{self.productDir}/{filename}"
@@ -503,7 +508,8 @@ class soxs_nod(base_recipe):
         if self.recipeSettings["save_single_frame_extractions"] == True:
             self.products = theseProducts
 
-        self.log.debug('completed the ``process_single_ab_nodding_cycle`` method')
+        self.log.debug(
+            'completed the ``process_single_ab_nodding_cycle`` method')
         return mergedSpectrumDF_A, mergedSpectrumDF_B
 
     def stack_extractions(
@@ -540,8 +546,10 @@ class soxs_nod(base_recipe):
 
         merged_dataframe = pd.concat(dataFrameList)
         # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGHT TO THE 4 DIGITS
-        merged_dataframe['WAVE'] = merged_dataframe['WAVE'].apply(lambda x: round(float(x.value), 4))
-        groupedDataframe = merged_dataframe.groupby(by='WAVE', as_index=False).median()
+        merged_dataframe['WAVE'] = merged_dataframe['WAVE'].apply(
+            lambda x: round(float(x.value), 4))
+        groupedDataframe = merged_dataframe.groupby(
+            by='WAVE', as_index=False).median()
 
         self.filenameTemplate = self.sofName + ".fits"
 
@@ -556,7 +564,8 @@ class soxs_nod(base_recipe):
         header = self.masterHeaderFrame.header
 
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
-        header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+        header["HIERARCH " + kw("PRO_CATG")
+               ] = f"SCI_SLIT_FLUX_{self.arm}".upper()
 
         # PREPARING THE HDU
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)
@@ -566,12 +575,14 @@ class soxs_nod(base_recipe):
 
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
-        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
+        filename = self.filenameTemplate.replace(
+            ".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
-        asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")
+        asciiFilename = self.filenameTemplate.replace(
+            ".fits", "_EXTRACTED_MERGED" + postfix + ".txt")
         asciiFilePath = f"{self.productDir}/{asciiFilename}"
         stackedSpectrum.write(asciiFilePath, format='ascii', overwrite=True)
 
@@ -639,12 +650,15 @@ class soxs_nod(base_recipe):
         toprow.set_title(
             f"Optimally Extracted Order-Merged Object Spectrum ({self.arm.upper()})", fontsize=11)
 
-        mean, median, std = sigma_clipped_stats(stackedSpectrum['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
-        plt.plot(stackedSpectrum['WAVE'], stackedSpectrum['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
+        mean, median, std = sigma_clipped_stats(
+            stackedSpectrum['FLUX_COUNTS'], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+        plt.plot(
+            stackedSpectrum['WAVE'], stackedSpectrum['FLUX_COUNTS'], linewidth=0.2, color="#dc322f")
         plt.ylim(-200, median + 20 * std)
         plt.xlim(stackedSpectrum['WAVE'].min(), stackedSpectrum['WAVE'].max())
 
-        filename = self.filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
+        filename = self.filenameTemplate.replace(
+            ".fits", f"_EXTRACTED_MERGED_QC_PLOT.pdf")
         filePath = f"{self.qcDir}/{filename}"
         # plt.show()
         plt.savefig(filePath, dpi='figure')

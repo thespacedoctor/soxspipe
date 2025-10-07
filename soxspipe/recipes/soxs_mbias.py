@@ -17,6 +17,7 @@ from soxspipe.commonutils import keyword_lookup
 from .base_recipe import base_recipe
 from fundamentals import tools
 from builtins import object
+from line_profiler import profile
 import sys
 import os
 
@@ -61,7 +62,8 @@ class soxs_mbias(base_recipe):
             command=False
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        this = super(soxs_mbias, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias", command=command)
+        this = super(soxs_mbias, self).__init__(log=log, settings=settings,
+                                                inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias", command=command)
         log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
@@ -132,6 +134,7 @@ class soxs_mbias(base_recipe):
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
 
+    @profile
     def produce_product(
             self):
         """*generate a master bias frame*
@@ -150,24 +153,32 @@ class soxs_mbias(base_recipe):
         dp = self.detectorParams
 
         # LIST OF CCDDATA OBJECTS
-        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        # OPTIMISE: 9%
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
+                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
+        # OPTIMISE: 33%
+        meanBiasLevels, rons, noiseFrames = zip(
+            *[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
 
+        # OPTIMISE: 19%
         combined_noise = self.clip_and_stack(
             frames=list(noiseFrames), recipe="soxs_mbias", ignore_input_masks=True, post_stack_clipping=True)
 
         masterRon = np.std(combined_noise.data)
 
         # USE COMBINED NOISE MASK AS MBIAS MASK
-        combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
-        combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
+        combined_noise.data = np.ma.array(
+            combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
+        combined_noise.uncertainty = np.ma.array(
+            combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
         combined_bias_mean = combined_noise
         combined_bias_mean.mask = combined_noise.mask
 
+        # OPTIMISE: 24%
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
 
         self.qc_ron(
@@ -335,7 +346,8 @@ class soxs_mbias(base_recipe):
         from ccdproc import block_reduce
 
         # LIST OF CCDDATA OBJECTS
-        ccds = [c for c in frames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        ccds = [c for c in frames.ccds(ccd_kwargs={
+                                       "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
         ratios = []
         for frame in ccds:
@@ -343,7 +355,8 @@ class soxs_mbias(base_recipe):
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
             # BIN THE FRAME TO INCREASE SPEED
             maskedDataArray = block_reduce(maskedDataArray, 5, np.mean)
-            dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
+            dark_image_grey_fourier = np.fft.fftshift(
+                np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
 
             # SIGMA-CLIP THE DATA
             masked_dark_image_grey_fourier = sigma_clip(
