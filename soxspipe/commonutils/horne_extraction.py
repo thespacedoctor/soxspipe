@@ -1345,8 +1345,7 @@ def create_cross_dispersion_slices(
     sliceRawFluxMasked.data[sliceRawFluxMasked.mask] = 0
 
     # OPTIMISE: 1.6s
-    maskedArrays = np.ma.MaskedArray(
-        sliceRawFluxMasked, mask=sliceRawFluxMasked.mask)
+    maskedArrays = [np.ma.masked_array(row) for row in sliceRawFluxMasked]
 
     # FULL SLICE MASK IF MORE THAN 1(?) PIXEL CLIPPED
     fullColumnMask = []
