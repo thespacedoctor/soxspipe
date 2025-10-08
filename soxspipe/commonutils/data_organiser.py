@@ -2337,7 +2337,7 @@ class data_organiser(object):
             'completed the ``_symlink_session_assets_to_workspace_root`` method')
         return None
 
-    @profile
+    # @profile
     def session_refresh(
             self,
             silent=False,
@@ -2477,7 +2477,7 @@ class data_organiser(object):
         self.log.debug('completed the ``use_vlt_environment_folders`` method')
         return vltReduced
 
-    @profile
+    # @profile
     def generate_sof_and_product_names(
             self,
             reductionOrder,

@@ -902,6 +902,7 @@ class base_recipe(object):
                 if k == "COMMENT":
                     frame.header[k] = v
                 else:
+                    # OPTIMISE: 20%
                     frame.header[k] = (v, c)
 
         if not filename and self.sofName:
@@ -939,14 +940,16 @@ class base_recipe(object):
         if "NAXIS" in frame.header and frame.header["NAXIS"] != 0 and "INHERIT" in frame.header:
             del frame.header["INHERIT"]
 
+        # OPTIMISE: 10%
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
         if product:
-
+            # OPTIMISE: 20%
             HDUList.writeto(filepath, output_verify='fix+warn',
                             overwrite=overwrite, checksum=True)
         else:
+            # OPTIMISE: 40%
             HDUList.writeto(filepath,
                             overwrite=overwrite, checksum=False)
 

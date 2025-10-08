@@ -35,6 +35,7 @@ from io import StringIO
 import copy
 from contextlib import suppress
 from datetime import datetime
+from line_profiler import profile
 
 os.environ["TERM"] = "vt100"
 
@@ -668,6 +669,7 @@ class detect_continuum(_base_detect):
 
         return None
 
+    @profile
     def get(self):
         """
         *return the order centre table filepath*
@@ -686,6 +688,7 @@ class detect_continuum(_base_detect):
         coeff_dict = self.coeff_dict
 
         if isinstance(self.orderPixelTable, bool):
+            # OPTIMISE: 14s 4 hits
             orderPixelTable = self.sample_trace()
         else:
             orderPixelTable = self.orderPixelTable
@@ -821,6 +824,7 @@ class detect_continuum(_base_detect):
         # HERE IS THE LINE LIST IF NEEDED FOR QC
         orderPixelTable.drop(columns=["mask"], inplace=True)
 
+        # OPTIMISE: 10s 8 hits
         plotPath, orderMetaTable = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
@@ -964,6 +968,7 @@ class detect_continuum(_base_detect):
         self.log.debug("completed the ``create_pixel_arrays`` method")
         return orderPixelTable, dmBinx, dmBiny
 
+    @profile
     def fit_1d_gaussian_to_slices(
         self, orderPixelTable, sliceLength, medianStddev=False
     ):
@@ -1119,6 +1124,7 @@ class detect_continuum(_base_detect):
 
             # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
             # CENTRE THE GAUSSIAN ON THE PEAK
+            # OPTIMISE: 1s - 6370 hits
             g_init = models.Gaussian1D(
                 amplitude=slice[peaks[0]], mean=peaks[0], stddev=medianStddev
             )
@@ -1128,6 +1134,7 @@ class detect_continuum(_base_detect):
             try:
                 # MASK OUT NAN VALUES
                 mask = np.isfinite(slice)
+                # OPTIMISE: 8.4s - 3185 hits
                 g = fit_g(g_init, np.arange(0, len(slice))[mask], slice[mask])
             except:
                 contSliceAxis.append(np.nan)
@@ -1606,6 +1613,7 @@ class detect_continuum(_base_detect):
         self.log.debug("completed the ``plot_results`` method")
         return filePath, orderMetaTable
 
+    @profile
     def sample_trace(self):
         """*take many cross-dispersion samples across each order to try and find an object trace*
 
@@ -1670,6 +1678,7 @@ class detect_continuum(_base_detect):
         else:
             self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
 
+        @profile
         def find_centre_points(orderPixelTable, medianShift=False, medianStddev=False):
             """*find the central peak of the continuum trace*"""
             from astropy.stats import sigma_clip, mad_std
@@ -1682,6 +1691,7 @@ class detect_continuum(_base_detect):
                 if sliceLength > medianStddev * 7 + 5:
                     sliceLength = int(medianStddev * 7 + 5)
 
+            # OPTIMISE: 3.4s - 8 hits
             orderPixelTable = self.fit_1d_gaussian_to_slices(
                 orderPixelTable=orderPixelTable,
                 sliceLength=sliceLength,
@@ -1787,9 +1797,11 @@ class detect_continuum(_base_detect):
             orderPixelTable_14 = tmpOrderPixelTable.loc[mask_14].copy()
 
             # PROCESS 2 & 3
+            # OPTIMISE: 4s - 8 hits
             orderPixelTable_23, medianShift_23, medianStddev_23 = find_centre_points(
                 orderPixelTable=orderPixelTable_23, medianShift=False, medianStddev=False
             )
+            # OPTIMISE: 3s - 8 hits
             orderPixelTable_23, medianShift_23, medianStddev_23 = find_centre_points(
                 orderPixelTable=orderPixelTable_23,
                 medianShift=medianShift_23,
@@ -1797,9 +1809,11 @@ class detect_continuum(_base_detect):
             )
 
             # PROCESS 1 & 4
+            # OPTIMISE: 3s - 8 hits
             orderPixelTable_14, medianShift_14, medianStddev_14 = find_centre_points(
                 orderPixelTable=orderPixelTable_14, medianShift=False, medianStddev=False
             )
+            # OPTIMISE: 2.9s - 8 hits
             orderPixelTable_14, medianShift_14, medianStddev_14 = find_centre_points(
                 orderPixelTable=orderPixelTable_14,
                 medianShift=medianShift_14,

@@ -236,10 +236,6 @@ class soxs_nod(base_recipe):
         # DIVIDING IN A AND B SEQUENCES
         allFrameA, allFrameB, allFrameAOffsets, allFrameBOffsets, allFrameANames, allFrameBNames = [], [], [], [], [], []
 
-        if self.recipeSettings["use_flat"] and master_flat:
-            allObjectFrames[:] = [self.detrend(inputFrame=f, master_bias=False, dark=False,
-                                               master_flat=master_flat, order_table=orderTablePath) for f in allObjectFrames]
-
         # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
         for frame, filename in zip(allObjectFrames, allFilenames):
             # offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSET{self.axisA.upper()}")]
@@ -342,19 +338,24 @@ class soxs_nod(base_recipe):
                 ignore_input_masks=False,
                 post_stack_clipping=True)
 
-            mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(
-                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
-
-            if self.generateReponseCurve:
-                stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions(
-                    [mergedSpectrumDF_A, mergedSpectrumDF_B], "NOTFLAT")
-
             # INJECT KEYWORDS INTO HEADER
             self.update_fits_keywords(frame=aFrame)
             self.update_fits_keywords(frame=bFrame)
 
-            mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(
-                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
+            if self.generateReponseCurve:
+                mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(
+                    aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
+                stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions(
+                    [mergedSpectrumDF_A, mergedSpectrumDF_B], "NOTFLAT")
+
+            if self.recipeSettings["use_flat"] and master_flat:
+                bFrame = self.detrend(inputFrame=bFrame, master_bias=False, dark=False,
+                                      master_flat=master_flat, order_table=orderTablePath)
+                aFrame = self.detrend(inputFrame=aFrame, master_bias=False, dark=False,
+                                      master_flat=master_flat, order_table=orderTablePath)
+                mergedSpectrumDF_A, mergedSpectrumDF_B = self.process_single_ab_nodding_cycle(
+                    aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath)
+
             stackedSpectrum, extractionPath = self.stack_extractions(
                 [mergedSpectrumDF_A, mergedSpectrumDF_B])
 
@@ -640,7 +641,7 @@ class soxs_nod(base_recipe):
         from astropy.stats import sigma_clipped_stats
         import pandas as pd
 
-        fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=320)
+        fig = plt.figure(figsize=(16, 2), constrained_layout=True, dpi=150)
         gs = fig.add_gridspec(1, 1)
         toprow = fig.add_subplot(gs[0:1, :])
         toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),

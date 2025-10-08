@@ -134,7 +134,7 @@ class soxs_mbias(base_recipe):
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
 
-    @profile
+    # @profile
     def produce_product(
             self):
         """*generate a master bias frame*

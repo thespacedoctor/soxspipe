@@ -14,7 +14,7 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-
+from line_profiler import profile
 
 os.environ['TERM'] = 'vt100'
 
@@ -71,6 +71,7 @@ class horne_extraction(object):
 
     """
 
+    @profile
     def __init__(
             self,
             log,
@@ -147,6 +148,7 @@ class horne_extraction(object):
         if True and self.recipeSettings["use_lacosmic"]:
             oldCount = self.skySubtractedFrame.mask.sum()
             oldMask = self.skySubtractedFrame.mask.copy()
+            # OPTIMISE: 18s- hit 8 times
             self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=18.0, gain_apply=False, niter=5,
                                                          cleantype="meanmask", objlim=5.0, invar=self.skySubtractedFrame.uncertainty.array.astype("float32"), verbose=False)
             newCount = self.skySubtractedFrame.mask.sum()
@@ -321,6 +323,7 @@ class horne_extraction(object):
             locationSetIndex=locationSetIndex,
             startNightDate=self.startNightDate
         )
+        # OPTIMISEL 24s 4 hits
         productPath, self.qc, self.products, orderPolyTable, self.orderPixelTable, orderMetaTable = detector.get()
 
         # UNPACK THE ORDER TABLE
@@ -345,6 +348,7 @@ class horne_extraction(object):
 
         # xpd-update-filter-dataframe-column-values
 
+    @profile
     def extract(self):
         """*extract the full spectrum order-by-order and return FITS Binary table containing order-merged spectrum*
 
@@ -527,6 +531,7 @@ class horne_extraction(object):
                 wlMinMax.append((wlmin, wlmax))
 
         from fundamentals import fmultiprocess
+        # OPTIMISE: 24s 8 hits
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
                                     inputArray=orderSlices, poolSize=False, timeout=300, funclog=self.log, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, gain=self.gain, turnOffMP=True)
 
@@ -547,6 +552,7 @@ class horne_extraction(object):
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
 
+        # OPTIMISE: 14s
         mergedSpectumDF = self.merge_extracted_orders(extractedOrdersDF)
 
         if not isinstance(self.products, bool):
@@ -670,6 +676,7 @@ class horne_extraction(object):
 
         return group['FLUX_COUNTS']
 
+    @profile
     def merge_extracted_orders(
             self,
             extractedOrdersDF):
@@ -806,27 +813,34 @@ class horne_extraction(object):
         # SAVE THE COUNTS BY DIVING FOR THE PROPER PIXEL SIZE IN WAVELENGTH SPACE - COUNTS ARE THEN E-/NM
 
         # MARCO RETURN HERE ... DAVE HAD TO REMOVE THE DIVISION BY PIXEL SCALE TO FIX ORDER STITCHING. MIGHT EFFECT RESPONSE CURVE CALCULATIONS
-        extractedOrdersDF['extractedFluxOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values / \
-            extractedOrdersDF['pixelScaleNm'].values
-        extractedOrdersDF['extractedFluxBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values / \
-            extractedOrdersDF['pixelScaleNm'].values
-        extractedOrdersDF['extractedFluxBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values / \
-            extractedOrdersDF['pixelScaleNm'].values
+        extractedOrdersDF['extractedFluxOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
+        extractedOrdersDF['extractedFluxBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values * u.electron
+        extractedOrdersDF['extractedFluxBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values * u.electron
 
-        # extractedOrdersDF['extractedFluxOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
-        # extractedOrdersDF['extractedFluxBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values * u.electron
-        # extractedOrdersDF['extractedFluxBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values * u.electron
+        extractedOrdersDF['extractedFluxDensityOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values / \
+            extractedOrdersDF['pixelScaleNm'].values
+        extractedOrdersDF['extractedFluxDensityBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values / \
+            extractedOrdersDF['pixelScaleNm'].values
+        extractedOrdersDF['extractedFluxDensityBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values / \
+            extractedOrdersDF['pixelScaleNm'].values
 
         flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
         spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values *
                                    u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values))
+        fluxDensity_orig = extractedOrdersDF['extractedFluxDensityOptimal'].values * u.electron
+        spectrumFD_orig = Spectrum1D(flux=fluxDensity_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values *
+                                     u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values))
 
         resampler = FluxConservingResampler()
+        # OPTIMISE: 7s
         flux_resampled = resampler(spectrum_orig, wave_resample_grid)
+        # OPTIMISE: 6s
+        fluxDensity_resampled = resampler(spectrumFD_orig, wave_resample_grid)
         # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
         merged_orders['WAVE'] = flux_resampled.spectral_axis
         merged_orders['FLUX_COUNTS'] = flux_resampled.flux
+        merged_orders['FLUX_DENSITY_COUNTS'] = fluxDensity_resampled.flux
 
         if False:
             # PLOTTING THE RESAMPLED AND ORIGINAL SPECTRUM
@@ -881,7 +895,7 @@ class horne_extraction(object):
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
 
-        fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=320)
+        fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=150)
         gs = fig.add_gridspec(1, 1)
         toprow = fig.add_subplot(gs[0:1, :])
         addedLegend = True
@@ -969,6 +983,7 @@ class horne_extraction(object):
     # xt-class-method
 
 
+@profile
 def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, gain=1.0):
     """
     *extract the object spectrum for a single order*
@@ -1006,6 +1021,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
                                  "sliceRawFlux"], inplace=True)
 
     # MASK THE MOST DEVIANT PIXELS IN EACH SLICE
+    # OPTIMISE: 5s
     crossDispersionSlices = create_cross_dispersion_slices(
         crossDispersionSlices=crossDispersionSlices)
 
@@ -1209,6 +1225,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         crossDispersionSlices["sliceFittedProfileNormalisedGood"], 2) / crossDispersionSlices["sliceVarianceGood"]
     crossDispersionSlices['horneDenominatorSum'] = [
         x.sum() for x in crossDispersionSlices["horneDenominator"]]
+    # OPTIMISE: 9s
     crossDispersionSlices["wavelengthMedian"] = [np.ma.median(
         x) for x in crossDispersionSlices["wavelengthMask"]]
     crossDispersionSlices["fudged"] = False
@@ -1240,6 +1257,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         crossDispersionSlices["horneDenominatorSum"]
     crossDispersionSlices["extractedFluxOptimal"] = crossDispersionSlices["horneNumeratorSum"] / \
         crossDispersionSlices["horneDenominatorSum"]
+    # OPTIMISE: 1s
     crossDispersionSlices["extractedFluxBoxcar"] = [
         x.sum() for x in crossDispersionSlices["sliceRawFlux"]]
     crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices["sliceRawFluxMaskedSum"]
@@ -1299,6 +1317,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     return crossDispersionSlices[['order', f'{axisA}coord_centre', f'{axisB}coord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
 
+@profile
 def create_cross_dispersion_slices(
         crossDispersionSlices):
     """This function is used to create a single, 1-pixel wide cross-dispersion slices of object data. When applied to the dataframe, a single slice is created for each discrete pixel position in the dispersion direction
@@ -1325,7 +1344,9 @@ def create_cross_dispersion_slices(
         sliceRawFluxMasked, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std", axis=1)
     sliceRawFluxMasked.data[sliceRawFluxMasked.mask] = 0
 
-    maskedArrays = [np.ma.masked_array(row) for row in sliceRawFluxMasked]
+    # OPTIMISE: 1.6s
+    maskedArrays = np.ma.MaskedArray(
+        sliceRawFluxMasked, mask=sliceRawFluxMasked.mask)
 
     # FULL SLICE MASK IF MORE THAN 1(?) PIXEL CLIPPED
     fullColumnMask = []
@@ -1348,6 +1369,7 @@ def create_cross_dispersion_slices(
     crossDispersionSlices["sliceFluxNormalised"] = [
         row for row in sliceFluxNormalised]
     sliceFluxNormalisedSum = sliceFluxNormalised.sum(axis=1)
+    # OPTIMISE 16% - 59012 hits
     crossDispersionSlices["sliceFluxNormalisedSum"] = [
         row for row in sliceFluxNormalisedSum]
 
@@ -1363,6 +1385,7 @@ def create_cross_dispersion_slices(
     maskedImage = np.ma.array(wlArray, mask=wlMask)
     maskedImage = sigma_clip(
         maskedImage, sigma_lower=1, sigma_upper=1, maxiters=3, cenfunc='mean', stdfunc="std", axis=1)
+    # OPTIMISE 2s
     maskedArrays = [np.ma.masked_array(row) for row in maskedImage]
     crossDispersionSlices["wavelengthMask"] = maskedArrays
 
