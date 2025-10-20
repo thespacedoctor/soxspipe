@@ -1,6 +1,6 @@
 # Release Notes
 
-## v0.14.0 - October 20, 2025
+## v0.14.1 - October 20, 2025
 
 * **FEATURE:** Dome flats are now recognised by the data-organiser and are combined into master flats.
 * **FEATURE:** Efficiency estimates now also done in stare-mode (alongside nodding).
