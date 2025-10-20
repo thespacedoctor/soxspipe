@@ -33,6 +33,7 @@ class soxs_stare(base_recipe):
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- show debug plots. Default *False*
 
 
 
@@ -47,17 +48,19 @@ class soxs_stare(base_recipe):
             inputFrames=[],
             verbose=False,
             overwrite=False,
-            command=False
+            command=False,
+            debug=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_stare, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-stare", command=command)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-stare", command=command, debug=debug)
         self.log = log
         log.debug("instantiating a new 'soxs_stare' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
+        self.recipeSettings = settings[self.recipeName]
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
@@ -126,7 +129,8 @@ class soxs_stare(base_recipe):
 
         if self.arm == "NIR":
             if not error:
-                okList = ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX", "STD,TELLURIC", "OBJECT,ASYNC"]
+                okList = ["OBJECT", "LAMP,FLAT", "DARK",
+                          "STD,FLUX", "STD,TELLURIC", "OBJECT,ASYNC"]
                 if "PAE" in self.settings and self.settings["PAE"]:
                     okList.append("FLAT,LAMP")
                 for i in imageTypes:
@@ -136,7 +140,8 @@ class soxs_stare(base_recipe):
 
             if not error:
                 for i in imageTech:
-                    okList = ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]
+                    okList = ['ECHELLE,SLIT,STARE', "IMAGE", "ECHELLE,SLIT",
+                              "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]
                     if "PAE" in self.settings and self.settings["PAE"]:
                         okList.append("ECHELLE,PINHOLE")
                     if i not in okList:
@@ -214,7 +219,8 @@ class soxs_stare(base_recipe):
         # OBJECT FRAMES
         filter_list = [
             {kw("DPR_TYPE"): 'OBJECT', kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'},
-            {kw("DPR_TYPE"): 'OBJECT,ASYNC', kw("DPR_TECH"): 'ECHELLE,SLIT,STARE'}
+            {kw("DPR_TYPE"): 'OBJECT,ASYNC', kw(
+                "DPR_TECH"): 'ECHELLE,SLIT,STARE'}
         ]
         allObjectFrames = []
         for add_filters in filter_list:
@@ -252,7 +258,8 @@ class soxs_stare(base_recipe):
                 singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
-            self.log.warning("Processing a ORDER-TRACE frame with the stare-mode recipe")
+            self.log.warning(
+                "Processing a ORDER-TRACE frame with the stare-mode recipe")
             self.subtractSky = False
 
         if "PAE" in self.settings and self.settings["PAE"]:
@@ -266,11 +273,12 @@ class soxs_stare(base_recipe):
                 singleFrame = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
                                            hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
                 allObjectFrames.append(singleFrame)
-            self.log.warning("Processing a NODDING frame with the stare-mode recipe")
+            self.log.warning(
+                "Processing a NODDING frame with the stare-mode recipe")
 
-        combined_object = self.clip_and_stack(
+        combined_object_notflattened = self.clip_and_stack(
             frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=True, post_stack_clipping=False)
-        self.dateObs = combined_object.header[kw("DATE_OBS")]
+        self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
 
         add_filters = {kw("PRO_CATG"): 'MASTER_BIAS_' + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -306,15 +314,18 @@ class soxs_stare(base_recipe):
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        orderTablePath = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
 
         # FIND THE 2D MAP TABLE
         filterDict = {kw("PRO_CATG"): f"DISP_TAB_{arm}"}
-        dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        dispMap = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
 
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
-        twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        twoDMap = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
         try:
             if not self.recipeSettings["use_flat"]:
                 master_flat = False
@@ -322,7 +333,7 @@ class soxs_stare(base_recipe):
             master_flat = False
 
         combined_object = self.detrend(
-            inputFrame=combined_object, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
+            inputFrame=combined_object_notflattened, master_bias=master_bias, dark=dark, master_flat=master_flat, order_table=orderTablePath)
 
         # INJECT KEYWORDS INTO HEADER
         self.update_fits_keywords(frame=combined_object)
@@ -330,7 +341,6 @@ class soxs_stare(base_recipe):
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
             log=self.log, CCDObject=combined_object, show=False, ext=False, stdWindow=3, title=False, surfacePlot=False, dispMap=dispMap, dispMapImage=twoDMap, settings=self.settings, skylines=False)
-    
 
         if self.subtractSky:
 
@@ -396,7 +406,8 @@ class soxs_stare(base_recipe):
 
             if True:
                 # WRITE SKY-MODEL TO DISK
-                filename = self.filenameTemplate.replace(".fits", "_SKYSUB_RESIDUALS.fits")
+                filename = self.filenameTemplate.replace(
+                    ".fits", "_SKYSUB_RESIDUALS.fits")
                 productPath = self._write(
                     frame=skySubtractedResidualsCCDData,
                     filedir=self.workspaceRootPath,
@@ -430,6 +441,7 @@ class soxs_stare(base_recipe):
             log=self.log,
             skyModelFrame=skymodelCCDData,
             skySubtractedFrame=skySubtractedCCDData,
+            unflattenedFrame=combined_object_notflattened,
             twoDMapPath=twoDMap,
             settings=self.settings,
             recipeSettings=self.recipeSettings,
@@ -438,12 +450,50 @@ class soxs_stare(base_recipe):
             productsTable=self.products,
             dispersionMap=dispMap,
             sofName=self.sofName,
-            startNightDate=self.startNightDate
+            startNightDate=self.startNightDate,
+            debug=self.debug
         )
-        self.qc, self.products, mergedSpectumDF = optimalExtractor.extract()
+        self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
 
-        if self.generateReponseCurve and False:
+        if self.generateReponseCurve:
+            if self.subtractSky:
+                skymodel = subtract_sky(
+                    log=self.log,
+                    settings=self.settings,
+                    recipeSettings=self.recipeSettings,
+                    objectFrame=combined_object_notflattened,
+                    twoDMap=twoDMap,
+                    qcTable=self.qc,
+                    productsTable=self.products,
+                    dispMap=dispMap,
+                    sofName=self.sofName,
+                    recipeName=self.recipeName,
+                    startNightDate=self.startNightDate
+                )
+                skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, self.qc, self.products = skymodel.subtract()
+
+            optimalExtractor = horne_extraction(
+                log=self.log,
+                skyModelFrame=skymodelCCDData,
+                skySubtractedFrame=skySubtractedCCDData,
+                unflattenedFrame=skySubtractedCCDData,
+                twoDMapPath=twoDMap,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                recipeName=self.recipeName,
+                qcTable=self.qc,
+                productsTable=self.products,
+                dispersionMap=dispMap,
+                sofName=self.sofName,
+                startNightDate=self.startNightDate,
+                debug=self.debug,
+                notFlattened=True
+            )
+            self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath_notflat = optimalExtractor.extract()
+
+            # GETTING THE RESPONSE
             from soxspipe.commonutils import response_function
+            self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
             response = response_function(
                 log=self.log,
                 settings=self.settings,
@@ -452,7 +502,8 @@ class soxs_stare(base_recipe):
                 stdExtractionPath=extractionPath,
                 qcTable=self.qc,
                 productsTable=self.products,
-                startNightDate=self.startNightDate
+                startNightDate=self.startNightDate,
+                stdNotFlatExtractionPath=extractionPath_notflat,
             )
             self.qc, self.products = response.get()
 

@@ -36,6 +36,7 @@ class soxs_disp_solution(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*.
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
 
     **Usage**
 
@@ -57,12 +58,13 @@ class soxs_disp_solution(base_recipe):
             verbose=False,
             overwrite=False,
             polyOrders=False,
-            command=False
+            command=False,
+            debug=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_disp_solution, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-disp-solution", command=command)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-disp-solution", command=command, debug=debug)
         self.log = log
         log.debug("instantiating a new 'soxs_disp_solution' object")
         self.settings = settings
@@ -222,9 +224,11 @@ class soxs_disp_solution(base_recipe):
 
         # NIR DARK
         if self.inst.lower() == "soxs":
-            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP', kw("DPR_TECH"): 'IMAGE'}
+            add_filters = {kw("DPR_TYPE"): 'WAVE,LAMP',
+                           kw("DPR_TECH"): 'IMAGE'}
         else:
-            add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK', kw("DPR_TECH"): 'IMAGE'}
+            add_filters = {kw("DPR_TYPE"): 'LAMP,FMTCHK',
+                           kw("DPR_TECH"): 'IMAGE'}
         # from tabulate import tabulate
         # self.log.print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
         # self.log.print(self.inputFrames.files_filtered(include_path=True, **add_filters))
@@ -236,7 +240,8 @@ class soxs_disp_solution(base_recipe):
 
         if self.inst.lower() == "soxs":
             filter_list = [
-                {kw("DPR_TYPE"): 'LAMP,WAVE', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'LAMP,WAVE', kw(
+                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
                 {kw("DPR_TYPE"): 'WAVE,LAMP', kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
             ]
         else:
@@ -303,7 +308,8 @@ class soxs_disp_solution(base_recipe):
         else:
             if self.polyOrders:
                 self.polyOrders = str(self.polyOrders)
-                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+                self.polyOrders = [int(digit)
+                                   for digit in str(self.polyOrders)]
                 self.recipeSettings["order-deg"] = self.polyOrders[:2]
                 self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
 

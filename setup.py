@@ -13,7 +13,7 @@ def readme():
 install_requires = [
     'pyyaml==6.0.2',
     'soxspipe',
-    'fundamentals==2.7.2',
+    'fundamentals==2.7.6',
     'astropy==6.1.2 ',
     'ccdproc==2.4.2',
     'docopt==0.6.2',
@@ -26,7 +26,10 @@ install_requires = [
     'bottleneck==1.4.0',
     'multiprocess==0.70.16',
     'specutils==1.16.0',
-    'humanize==4.11.0'
+    'humanize==4.11.0',
+    'line_profiler',
+    'memory_profiler'
+    'scikit-learn'
 ]
 
 # READ THE DOCS SERVERS

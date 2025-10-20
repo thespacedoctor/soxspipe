@@ -27,8 +27,8 @@
 :class: autosummary longtable
 :align: left
 
-* - {py:obj}`create_cross_dispersion_slice <soxspipe.commonutils.horne_extraction.create_cross_dispersion_slice>`
-  - ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.create_cross_dispersion_slice
+* - {py:obj}`create_cross_dispersion_slices <soxspipe.commonutils.horne_extraction.create_cross_dispersion_slices>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.create_cross_dispersion_slices
     :summary:
     ```
 * - {py:obj}`extract_single_order <soxspipe.commonutils.horne_extraction.extract_single_order>`
@@ -39,14 +39,14 @@
 
 ### API
 
-````{py:function} create_cross_dispersion_slice(series)
-:canonical: soxspipe.commonutils.horne_extraction.create_cross_dispersion_slice
+````{py:function} create_cross_dispersion_slices(crossDispersionSlices)
+:canonical: soxspipe.commonutils.horne_extraction.create_cross_dispersion_slices
 
-```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.create_cross_dispersion_slice
+```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.create_cross_dispersion_slices
 ```
 ````
 
-````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB)
+````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, gain=1.0)
 :canonical: soxspipe.commonutils.horne_extraction.extract_single_order
 
 ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.extract_single_order

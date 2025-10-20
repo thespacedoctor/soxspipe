@@ -35,6 +35,7 @@ class soxs_mdark(base_recipe):
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
 
 
     **Usage**
@@ -58,11 +59,13 @@ class soxs_mdark(base_recipe):
             inputFrames=[],
             verbose=False,
             overwrite=False,
-            command=False
+            command=False,
+            debug=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_mdark, self).__init__(log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mdark", command=command)
+        super(soxs_mdark, self).__init__(log=log, settings=settings, inputFrames=inputFrames,
+                                         overwrite=overwrite, recipeName="soxs-mdark", command=command, debug=debug)
         self.log = log
         log.debug("instantiating a new 'soxs_mdark' object")
         self.settings = settings
@@ -134,7 +137,8 @@ class soxs_mdark(base_recipe):
             if len(exptimes) > 1:
                 exptimes = [str(e) for e in exptimes]
                 exptimes = " and ".join(exptimes)
-                error = "Input frames have differing exposure-times %(exptimes)s" % locals()
+                error = "Input frames have differing exposure-times %(exptimes)s" % locals(
+                )
 
         if error:
             sys.stdout.flush()
@@ -166,9 +170,11 @@ class soxs_mdark(base_recipe):
         dp = self.detectorParams
 
         # LIST OF CCDDATA OBJECTS
-        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={"hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
+                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
 
-        meanFluxLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
+        meanFluxLevels, rons, noiseFrames = zip(
+            *[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanFluxLevel = np.mean(meanFluxLevels)
         masterMedianFluxLevel = np.median(meanFluxLevels)
         rawRon = np.mean(rons)
@@ -176,12 +182,15 @@ class soxs_mdark(base_recipe):
         combined_noise = self.clip_and_stack(
             frames=list(noiseFrames), recipe="soxs_mdark", ignore_input_masks=False, post_stack_clipping=True)
 
-        maskedDataArray = np.ma.array(combined_noise.data, mask=combined_noise.mask)
+        maskedDataArray = np.ma.array(
+            combined_noise.data, mask=combined_noise.mask)
         masterRon = np.std(maskedDataArray)
 
         # FILL MASKED PIXELS WITH 0
-        combined_noise.data = np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanFluxLevel
-        combined_noise.uncertainty = np.ma.array(combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
+        combined_noise.data = np.ma.array(
+            combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanFluxLevel
+        combined_noise.uncertainty = np.ma.array(
+            combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
         combined_dark_mean = combined_noise
         combined_dark_mean.mask = combined_noise.mask
 

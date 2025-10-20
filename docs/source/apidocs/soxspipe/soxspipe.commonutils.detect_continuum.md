@@ -50,10 +50,10 @@ Bases: {py:obj}`soxspipe.commonutils.detect_continuum._base_detect`
 
 ````
 
-````{py:method} fit_1d_gaussian_to_slice(pixelPostion)
-:canonical: soxspipe.commonutils.detect_continuum.detect_continuum.fit_1d_gaussian_to_slice
+````{py:method} fit_1d_gaussian_to_slices(orderPixelTable, sliceLength, medianStddev=False)
+:canonical: soxspipe.commonutils.detect_continuum.detect_continuum.fit_1d_gaussian_to_slices
 
-```{autodoc2-docstring} soxspipe.commonutils.detect_continuum.detect_continuum.fit_1d_gaussian_to_slice
+```{autodoc2-docstring} soxspipe.commonutils.detect_continuum.detect_continuum.fit_1d_gaussian_to_slices
 ```
 
 ````

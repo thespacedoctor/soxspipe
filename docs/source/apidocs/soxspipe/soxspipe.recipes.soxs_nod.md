@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} soxs_nod(log, settings=False, inputFrames=[], verbose=False, overwrite=False)
+`````{py:class} soxs_nod(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False)
 :canonical: soxspipe.recipes.soxs_nod.soxs_nod
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
@@ -101,7 +101,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````
 
-````{py:method} stack_extractions(dataFrameList)
+````{py:method} stack_extractions(dataFrameList, postfix='')
 :canonical: soxspipe.recipes.soxs_nod.soxs_nod.stack_extractions
 
 ```{autodoc2-docstring} soxspipe.recipes.soxs_nod.soxs_nod.stack_extractions

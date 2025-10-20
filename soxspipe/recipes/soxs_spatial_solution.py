@@ -33,6 +33,7 @@ class soxs_spatial_solution(base_recipe):
     - ``create2DMap`` -- create the 2D image map of wavelength, slit-position and order from disp solution.
     - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345435 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4, slit_x=3 ,slit_y=5. Default *False*. 
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
 
 
     See `produce_product` method for usage.
@@ -49,11 +50,12 @@ class soxs_spatial_solution(base_recipe):
             overwrite=False,
             create2DMap=True,
             polyOrders=False,
-            command=False
+            command=False,
+            debug=False
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_spatial_solution, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-spatial-solution", command=command)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-spatial-solution", command=command, debug=debug)
         self.log = log
         log.debug("instantiating a new 'soxs_spatial_solution' object")
         self.settings = settings
@@ -278,7 +280,8 @@ class soxs_spatial_solution(base_recipe):
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        order_table = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        order_table = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
 
         add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -309,7 +312,8 @@ class soxs_spatial_solution(base_recipe):
             fileDir = self.workspaceRootPath
             filepath = self._write(
                 self.multiPinholeFrame, fileDir, filename=False, overwrite=True, product=False)
-            self.log.print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
+            self.log.print(
+                f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
 
         if self.settings["tune-pipeline"]:
             from itertools import product
@@ -351,7 +355,8 @@ class soxs_spatial_solution(base_recipe):
         else:
             if self.polyOrders:
                 self.polyOrders = str(self.polyOrders)
-                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+                self.polyOrders = [int(digit)
+                                   for digit in str(self.polyOrders)]
                 self.recipeSettings["order-deg"] = self.polyOrders[:2]
                 self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
                 self.recipeSettings["slit-deg"] = self.polyOrders[4:]

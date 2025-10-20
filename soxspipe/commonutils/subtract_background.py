@@ -110,7 +110,8 @@ class subtract_background(object):
             self.axisB = "x"
 
         from soxspipe.commonutils.toolkit import utility_setup
-        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
+        self.qcDir, self.productDir = utility_setup(
+            log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
 
         quicklook_image(
             log=self.log, CCDObject=self.frame, show=False, ext='data', stdWindow=3, surfacePlot=True, title="Initial input frame needing scattered light subtraction")
@@ -135,7 +136,8 @@ class subtract_background(object):
         imageTech = self.frame.header[kw("DPR_TECH")].replace(",", "-")
         imageCat = self.frame.header[kw("DPR_CATG")].replace(",", "-")
 
-        self.log.print(f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
+        self.log.print(
+            f"\n# FITTING AND SUBTRACTING SCATTERED LIGHT BACKGROUND FROM {self.arm} {imageCat} {imageTech} {imageType} FRAME")
 
         binx = 1
         biny = 1
@@ -172,7 +174,7 @@ class subtract_background(object):
         # GET FILENAME FOR THE RESIDUAL PLOT
         saveToPath = False
         if self.sofName:
-            backgroundQCImage = self.sofName + f"_BKGROUND{self.lamp}.pdf"
+            backgroundQCImage = self.sofName + f"_BKGROUND.pdf"
             saveToPath = self.qcDir + "/" + backgroundQCImage
 
         quicklook_image(
@@ -189,7 +191,7 @@ class subtract_background(object):
                 "file_type": "PDF",
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
-                "product_desc": f"Fitted intra-order image background{self.lamp.replace('_',' ')}",
+                "product_desc": f"Fitted intra-order image background{self.lamp.replace('_', ' ')}",
                 "file_path": saveToPath,
                 "label": "QC"
             }).to_frame().T], ignore_index=True)
@@ -254,7 +256,8 @@ class subtract_background(object):
             axisAcoord_edgeup += expandTop
             axisAcoord_edgelow -= expandBottom
 
-            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(*[(x1, x2, b) for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord) if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen])
+            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(*[(x1, x2, b) for x1, x2, b in zip(
+                axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord) if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen])
             for b, u, l in zip(axisBcoord, np.ceil(axisAcoord_edgeup).astype(int), np.floor(axisAcoord_edgelow).astype(int)):
                 if l < 0:
                     l = 0
@@ -331,7 +334,8 @@ class subtract_background(object):
 
         import skimage
         from skimage.morphology import disk
-        maskedAsNanImage = skimage.filters.median(maskedAsNanImage, footprint=disk(3))
+        maskedAsNanImage = skimage.filters.median(
+            maskedAsNanImage, footprint=disk(3))
 
         # REMOVE -VE VALUES
         maskedAsNanImage = np.where(maskedAsNanImage < 0, 0, maskedAsNanImage)
@@ -366,20 +370,24 @@ class subtract_background(object):
             hw = math.floor(window / 2)
             # rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).quantile(.1)
             try:
-                rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
+                rowmaskedSmoothed = pd.Series(rowmasked).rolling(
+                    window=window, center=True).median()
             except:
                 rowmasked = rowmasked.astype(float)
                 # rowmasked = rowmasked.byteswap().newbyteorder() ## REMOVE IF ABOVE .astype(float) WORKS
-                rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
+                rowmaskedSmoothed = pd.Series(rowmasked).rolling(
+                    window=window, center=True).median()
             rowmaskedSmoothed[:hw] = rowmaskedSmoothed.iloc[hw + 1]
             rowmaskedSmoothed[-hw:] = rowmaskedSmoothed.iloc[-hw - 1]
             rowmasked[:hw] = rowmasked[hw + 1]
             rowmasked[-hw:] = rowmasked[-hw - 1]
 
-            rowmaskedSmoothed = np.where(rowmaskedSmoothed < 0, 0, rowmaskedSmoothed)
+            rowmaskedSmoothed = np.where(
+                rowmaskedSmoothed < 0, 0, rowmaskedSmoothed)
 
             seedKnots = xmasked[1:-1:window * 2]
-            tck, fp, ier, msg = splrep(xmasked, rowmaskedSmoothed, t=seedKnots, k=rowFitOrder, full_output=True)
+            tck, fp, ier, msg = splrep(
+                xmasked, rowmaskedSmoothed, t=seedKnots, k=rowFitOrder, full_output=True)
             t, c, k = tck
 
             if ier == 10:
@@ -403,7 +411,8 @@ class subtract_background(object):
         quicklook_image(
             log=self.log, CCDObject=backgroundMap, show=False, ext=None, surfacePlot=True, title="Scattered light background image")
 
-        backgroundMap = scipy.ndimage.filters.gaussian_filter(backgroundMap, gaussianSigma, truncate=2, axes=0)
+        backgroundMap = scipy.ndimage.filters.gaussian_filter(
+            backgroundMap, gaussianSigma, truncate=2, axes=0)
 
         # SET -VE T0 ZERO
         backgroundMap = np.where(backgroundMap < 0, 0, backgroundMap)

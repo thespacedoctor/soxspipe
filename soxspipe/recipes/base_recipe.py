@@ -20,7 +20,6 @@ from builtins import object
 import sys
 import os
 
-
 os.environ['TERM'] = 'vt100'
 
 
@@ -37,6 +36,7 @@ class base_recipe(object):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
 
 
     **Usage**
@@ -52,7 +52,8 @@ class base_recipe(object):
             verbose=False,
             overwrite=False,
             recipeName=False,
-            command=False
+            command=False,
+            debug=False
     ):
         import yaml
         import pandas as pd
@@ -62,23 +63,27 @@ class base_recipe(object):
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
         self.settings = settings
+        self.debug = debug
         self.workspaceRootPath = self._absolute_path(
             settings["workspace-root-dir"])
 
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
-            self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
+            self.productPath, self.startNightDate = toolkit.predict_product_path(
+                inputFrames, self.recipeName)
 
             if os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
-                print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                print(
+                    f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 raise FileExistsError
             else:
                 errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
                 if os.path.exists(errorLog) and not overwrite:
                     basename = os.path.basename(errorLog)
-                    print(f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x).")
+                    print(
+                        f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x).")
                     raise FileExistsError
 
             self.log = toolkit.add_recipe_logger(log, self.productPath)
@@ -91,7 +96,8 @@ class base_recipe(object):
             self.log.print(f'\nRecipe Command: {command}')
 
         from soxspipe.commonutils.toolkit import get_calibrations_path
-        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+        self.calibrationRootPath = get_calibrations_path(
+            log=self.log, settings=self.settings)
 
         self.verbose = verbose
         # SET LATER WHEN VERIFYING FRAMES
@@ -112,7 +118,8 @@ class base_recipe(object):
         # INITIATE A DB CONNECTION
         self.conn = None
         if self.currentSession and self.sofName:
-            self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
+            self.sessionDb = self.settings["workspace-root-dir"].replace(
+                "~", home) + "/soxspipe.db"
 
             def dict_factory(cursor, row):
                 d = {}
@@ -127,10 +134,13 @@ class base_recipe(object):
             c = self.conn.cursor()
             sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
-            self.status = c.fetchone()['status']
+            try:
+                self.status = c.fetchone()['status']
+                sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
+                c.execute(sqlQuery)
+            except:
+                self.status = None
 
-            sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
-            c.execute(sqlQuery)
             c.close()
 
         # COLLECT ADVANCED SETTINGS IF AVAILABLE
@@ -184,7 +194,10 @@ class base_recipe(object):
         ).get
 
         from soxspipe.commonutils.toolkit import utility_setup
-        self.qcDir, self.productDir = utility_setup(log=self.log, settings=settings, recipeName=self.recipeName, startNightDate=self.startNightDate)
+        self.qcDir, self.productDir = utility_setup(
+            log=self.log, settings=settings, recipeName=self.recipeName, startNightDate=self.startNightDate)
+
+        self.generateReponseCurve = False
 
         return None
 
@@ -286,7 +299,8 @@ class base_recipe(object):
             binx = 1
             biny = 1
 
-        bitMapPath = self.calibrationRootPath + "/" + dp["bad-pixel map"][f"{binx}x{biny}"]
+        bitMapPath = self.calibrationRootPath + "/" + \
+            dp["bad-pixel map"][f"{binx}x{biny}"]
 
         if not os.path.exists(bitMapPath):
             message = "the path to the bitMapPath %s does not exist on this machine" % (
@@ -323,6 +337,25 @@ class base_recipe(object):
             boolMask = arr
 
         frame.mask = boolMask
+
+        if self.recipeName in ["soxs-nod", "soxs-stare"] and self.recipeSettings["use_flat"]:
+            # OBJECT/STANDARD FRAMES
+            if frame.meta[kw("DPR_TYPE")] == 'STD,FLUX' or 'STD_stare' in frame.meta[kw("OBS_NAME")]:
+                # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
+                self.generateReponseCurve = True
+
+        if "use_lacosmic" in self.recipeSettings and self.recipeSettings["use_lacosmic"]:
+            # oldCount = frame.mask.sum()
+            # oldMask = frame.mask.copy()
+            from ccdproc import cosmicray_lacosmic
+            frame = cosmicray_lacosmic(frame, sigclip=15.0, sigfrac=0.3, objlim=10., gain_apply=False, niter=2, verbose=False,
+                                       cleantype="meanmask")
+            # newCount = self.skySubtractedFrame.mask.sum()
+            # self.laCosmicClippedCount = newCount - oldCount
+            # frame.mask = oldMask | frame.mask
+            from soxspipe.commonutils.toolkit import quicklook_image
+            quicklook_image(log=self.log, CCDObject=frame, show=self.debug, ext=False, stdWindow=3, title="L.A.Cosmic cleaned (red = masked)",
+                            surfacePlot=False,  settings=self.settings, skylines=False)
 
         if save:
             outDir = self.workspaceRootPath
@@ -417,7 +450,13 @@ class base_recipe(object):
 
         frameCount = len(filepaths)
 
-        self.log.print("\n# PREPARING %(frameCount)s RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
+        if "use_lacosmic" in self.recipeSettings and self.recipeSettings["use_lacosmic"]:
+            laC = ", RUNNING L.A.COSMIC"
+        else:
+            laC = ""
+
+        self.log.print(
+            f"\n# PREPARING {frameCount} RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS{laC} AND APPENDING DEFAULT BAD-PIXEL MASK")
         preframes = []
         preframes[:] = [self._prepare_single_frame(
             frame=frame, save=save) for frame in filepaths]
@@ -446,18 +485,24 @@ class base_recipe(object):
         for i in range(7):
             thisLamp = kw(f"LAMP{i+1}")
             # FIRST FIND THE NAME OF THE LAMP
-            newLamp = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
+            newLamp = preframes.summary[thisLamp][np.where(
+                preframes.summary[thisLamp].filled(999) != 999)]
             if len(newLamp):
                 newLamp = newLamp[0]
                 newLamp = newLamp.replace("_Lamp", "")
-                newLamp = newLamp.replace("Argo", "Ar").replace("Neon", "Ne").replace("Merc", "Hg").replace("Xeno", "Xe")
+                newLamp = newLamp.replace("Argo", "Ar").replace(
+                    "Neon", "Ne").replace("Merc", "Hg").replace("Xeno", "Xe")
 
-                updatedList = list(preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)].data)
-                updatedList[:] = [u.replace("-", "") + newLamp for u in updatedList]
-                preframes.summary["LAMP"][np.where(preframes.summary[thisLamp].filled(999) != 999)] = updatedList
+                updatedList = list(preframes.summary["LAMP"][np.where(
+                    preframes.summary[thisLamp].filled(999) != 999)].data)
+                updatedList[:] = [
+                    u.replace("-", "") + newLamp for u in updatedList]
+                preframes.summary["LAMP"][np.where(
+                    preframes.summary[thisLamp].filled(999) != 999)] = updatedList
             columns.remove(thisLamp)
 
-        preframes.summary["LAMP"][np.where(preframes.summary["LAMP"] == "------------")] = "--"
+        preframes.summary["LAMP"][np.where(
+            preframes.summary["LAMP"] == "------------")] = "--"
 
         try:
             columns.remove(kw("SLIT_NIR"))
@@ -534,6 +579,9 @@ class base_recipe(object):
         arm = self.inputFrames.values(
             keyword=kw("SEQ_ARM"), unique=True)
 
+        # SORT RECIPE AND ARM SETTINGS
+        self.recipeSettings = self.get_recipe_settings()
+
         inst = self.inputFrames.values(kw("INSTRUME"), unique=True)
         with suppress(ValueError):
             inst.remove(None)
@@ -569,7 +617,8 @@ class base_recipe(object):
             self.axisB = "x"
 
         # BE CAREFUL WHAT TO MATCH WHEN INSPECTING BINNING ... DON'T BE TO STRICT
-        matches = ((self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"ORDER_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_IMAGE_{self.arm}".upper()))
+        matches = ((self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw(
+            "PRO_CATG")] != f"ORDER_TAB_{self.arm}".upper()) & (self.inputFrames.summary[kw("PRO_CATG")] != f"DISP_IMAGE_{self.arm}".upper()))
         binningMatch = self.inputFrames.summary[matches]
 
         # MIXED BINNING IS BAD
@@ -618,8 +667,13 @@ class base_recipe(object):
             gain = self.inputFrames.values(
                 keyword=kw("CONAD"), unique=True)
         else:
-            gain = self.inputFrames.values(
-                keyword=kw("GAIN"), unique=True)
+            a = self.inputFrames.values(
+                keyword=kw("CONAD"))
+            b = self.inputFrames.values(
+                keyword=kw("GAIN"))
+            gain = [max(x, y) for x, y in zip(a, b)
+                    if x is not None and y is not None]
+            gain = list(set(gain))
 
         with suppress(ValueError):
             gain.remove(None)
@@ -629,21 +683,25 @@ class base_recipe(object):
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
+            # gain = np.unique(gain)
             raise TypeError(
-                "Input frames are a mix of gain" % locals())
+                f"Input frames are a mix of gain {gain}" % locals())
         if len(gain) and gain[0]:
             # UVB & VIS
             self.detectorParams["gain"] = gain[0] * u.electron / u.adu
         else:
             # NIR
-            self.log.print("\n\tGain is being read from the detector parameter file (not the FITS header)\n")
+            self.log.print(
+                "\n\tGain is being read from the detector parameter file (not the FITS header)\n")
             self.detectorParams["gain"] = self.detectorParams[
                 "gain"] * u.electron / u.adu
 
         # CONVERT TO DATAFRAME AND FILTER TO CHECK SLIT WIDTHS
         filteredDf = self.inputFrames.summary.to_pandas()
-        matchList = ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT", "OBJECT", "STD,FLUX", f"MASTER_FLAT_{self.arm}"]
-        mask = (filteredDf[kw("DPR_TYPE")].isin(matchList)) | (filteredDf[kw("PRO_CATG")].isin(matchList))
+        matchList = ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT",
+                     "OBJECT", "STD,FLUX", f"MASTER_FLAT_{self.arm}"]
+        mask = (filteredDf[kw("DPR_TYPE")].isin(matchList)) | (
+            filteredDf[kw("PRO_CATG")].isin(matchList))
         filteredDf = filteredDf.loc[mask]
 
         # MIXED SLIT-WIDTH IS BAD
@@ -681,7 +739,8 @@ class base_recipe(object):
             sys.stdout.write("\x1b[1A\x1b[2K")
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
-            raise TypeError(f"Input frames are a mix of readnoise. {ron}" % locals())
+            raise TypeError(
+                f"Input frames are a mix of readnoise. {ron}" % locals())
         if len(ron) and ron[0]:
             # UVB & VIS
             self.detectorParams["ron"] = ron[0] * u.electron
@@ -745,9 +804,9 @@ class base_recipe(object):
             # PREVIOUSLY FAILED RECIPE THAT HAS NOW PASSED
             if self.status == "fail":
                 from soxspipe.commonutils import data_organiser
-                do = data_organiser(log=self.log, rootDir=self.workspaceRootPath)
+                do = data_organiser(
+                    log=self.log, rootDir=self.workspaceRootPath)
                 do.session_refresh(failure=False)
-
 
         outDir = self.workspaceRootPath + "/tmp"
 
@@ -904,7 +963,8 @@ class base_recipe(object):
 
         # SET BAD-PIXELS TO 0 IN DATA FRAME
         if maskToZero:
-            self.log.print(f"\nSetting {frame.mask.sum()} bad-pixels to a value of 0 while saving '{filename}'.")
+            self.log.print(
+                f"\nSetting {frame.mask.sum()} bad-pixels to a value of 0 while saving '{filename}'.")
             frame.data[frame.mask] = 1
 
         if "NAXIS" in frame.header and frame.header["NAXIS"] != 0 and "INHERIT" in frame.header:
@@ -914,7 +974,6 @@ class base_recipe(object):
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
         if product:
-
             HDUList.writeto(filepath, output_verify='fix+warn',
                             overwrite=overwrite, checksum=True)
         else:
@@ -962,8 +1021,14 @@ class base_recipe(object):
         import numpy as np
 
         if len(frames) == 1:
-            self.log.info("Only 1 frame was sent to the clip and stack method. Returning the frame with no further processing.")
+            self.log.info(
+                "Only 1 frame was sent to the clip and stack method. Returning the frame with no further processing.")
             return frames[0]
+        elif len(frames) == 0:
+            self.log.critical(
+                "No frames were sent to the clip and stack method. Cannot proceed.")
+            raise ValueError(
+                "No frames were sent to the clip and stack method.")
 
         arm = self.arm
         kw = self.kw
@@ -988,7 +1053,8 @@ class base_recipe(object):
         imageTech = ccds[0].header[kw("DPR_TECH")].replace(",", "-")
         imageCat = ccds[0].header[kw("DPR_CATG")].replace(",", "-")
 
-        self.log.print(f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
+        self.log.print(
+            f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
 
         # COMBINE MASKS AND THEN RESET
         combinedMask = ccds[0].mask
@@ -1008,7 +1074,8 @@ class base_recipe(object):
         totalPixels = np.size(combinedMask)
         percent = (float(badCount) / float(totalPixels)) * 100.
         if imageType != "BIAS":
-            self.log.print(f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
+            self.log.print(
+                f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)")
 
         # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INPUT FRAMES - USING
         # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
@@ -1035,7 +1102,8 @@ class base_recipe(object):
         diff = new_n_masked - old_n_masked
         if self.verbose:
             percent = 100 * combiner.data_arr.mask[0].sum() / totalPixels
-            self.log.print(f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)")
+            self.log.print(
+                f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)")
 
         # GENERATE THE COMBINED MEAN
         # self.log.print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
@@ -1052,7 +1120,8 @@ class base_recipe(object):
         for i, ccd in enumerate(ccds):
             combiner.data_arr.data[i] = ccd.uncertainty.array
         combined_uncertainty = combiner.average_combine()
-        combined_frame.uncertainty = combined_uncertainty.data / (np.sqrt(len(new_individual_masks) - masked_values))
+        combined_frame.uncertainty = combined_uncertainty.data / \
+            (np.sqrt(len(new_individual_masks) - masked_values))
 
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
         # IMAGES
@@ -1068,7 +1137,8 @@ class base_recipe(object):
             diff = newBadCount - badCount
             totalPixels = np.size(combinedMask)
             percent = (float(newBadCount) / float(totalPixels)) * 100.
-            self.log.print(f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
+            self.log.print(
+                f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)")
 
         self.log.debug('completed the ``clip_and_stack`` method')
         return combined_frame
@@ -1127,7 +1197,8 @@ class base_recipe(object):
             raise TypeError(
                 "detrend method needs at least a master-bias frame, a dark frame or a master flat frame")
         if master_bias == False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
-            self.log.warning("Dark and science/calibration frame have differing exposure-times.")
+            self.log.warning(
+                "Dark and science/calibration frame have differing exposure-times.")
         if master_bias != False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             raise AttributeError(
                 "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME")
@@ -1144,10 +1215,13 @@ class base_recipe(object):
         elif dark != False:
             if self.inst == "SOXS":
 
-                self.log.warning(f"Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction.")
+                self.log.warning(
+                    f"Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction.")
             else:
-                self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
-                processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True)
+                self.log.print(
+                    f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
+                processedFrame = ccdproc.subtract_dark(processedFrame, dark, exposure_time=kw(
+                    "EXPTIME"), exposure_unit=u.second, scale=True)
 
         doSubtraction = True
         if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
@@ -1181,9 +1255,11 @@ class base_recipe(object):
                 home = expanduser("~")
 
                 if self.currentSession:
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/sessions/{self.currentSession}/qc/{self.startNightDate}/{self.recipeName}"
+                    outDir = self.settings["workspace-root-dir"].replace(
+                        "~", home) + f"/sessions/{self.currentSession}/qc/{self.startNightDate}/{self.recipeName}"
                 else:
-                    outDir = self.settings["workspace-root-dir"].replace("~", home) + f"/qc/{self.startNightDate}/{self.recipeName}"
+                    outDir = self.settings["workspace-root-dir"].replace(
+                        "~", home) + f"/qc/{self.startNightDate}/{self.recipeName}"
                 outDir = outDir.replace("//", "/")
                 # RECURSIVELY CREATE MISSING DIRECTORIES
                 if not os.path.exists(outDir):
@@ -1193,7 +1269,8 @@ class base_recipe(object):
                 filename = self.sofName + "_BKGROUND.fits"
                 filepath = f"{outDir}/{filename}"
                 header = copy.deepcopy(inputFrame.header)
-                primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
+                primary_hdu = fits.PrimaryHDU(
+                    backgroundFrame.data, header=header)
                 hdul = fits.HDUList([primary_hdu])
                 hdul.writeto(filepath, output_verify='exception',
                              overwrite=True, checksum=True)
@@ -1267,9 +1344,12 @@ class base_recipe(object):
 
         if rformat == "stdout":
             self.log.print(f"\n# {soxspipe_recipe} QC METRICS")
-            self.log.print(tabulate(self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
-            self.log.print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
-            self.log.print(tabulate(self.products[columns2], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
+            self.log.print(tabulate(
+                self.qc[columns], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
+            self.log.print(
+                f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
+            self.log.print(tabulate(
+                self.products[columns2], headers='keys', tablefmt='psql', showindex=False, stralign="right"))
 
         self.log.debug('completed the ``report_output`` method')
         return None
@@ -1335,7 +1415,8 @@ class base_recipe(object):
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
 
-            def imstats(dat): return (dat.min(), dat.max(), dat.mean(), dat.std())
+            def imstats(dat): return (
+                dat.min(), dat.max(), dat.mean(), dat.std())
             dmin, dmax, dmean, dstd = imstats(raw_diff)
 
             # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
@@ -1548,9 +1629,11 @@ class base_recipe(object):
             if rawFrames and f not in rawFrames:
                 continue
             if isinstance(z, float) and math.isnan(z):
-                valueLen = 80 - len(f"ESO PRO REC1 RAW{iterator} NAME" + "HIERARCH  = '")
+                valueLen = 80 - \
+                    len(f"ESO PRO REC1 RAW{iterator} NAME" + "HIERARCH  = '")
                 if len(f) > valueLen:
-                    self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
+                    self.log.warning(
+                        f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
                 frame.header[f"ESO PRO REC1 RAW{iterator} NAME"] = f[:valueLen]
                 frame.header[f"ESO PRO REC1 RAW{iterator} CATG"] = t
                 iterator += 1
@@ -1559,12 +1642,14 @@ class base_recipe(object):
 
         for f, c, z, p in zip(tableData['filename'].values, tableData[kw("PRO_CATG")].values, tableData[kw("PRO_TYPE")].values, tableData["file"].values):
             if not isinstance(z, float) or not math.isnan(z):
-                valueLen = 80 - len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = '")
+                valueLen = 80 - \
+                    len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = '")
                 # if len(f) > valueLen:
                 #     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
                 frame.header[f"ESO PRO REC1 CAL{iterator} NAME"] = f[:valueLen]
                 frame.header[f"ESO PRO REC1 CAL{iterator} CATG"] = c
-                frame.header[f"ESO PRO REC1 CAL{iterator} DATAMD5"] = compute_hash(p)
+                frame.header[f"ESO PRO REC1 CAL{iterator} DATAMD5"] = compute_hash(
+                    p)
                 iterator += 1
 
         iterator = 1

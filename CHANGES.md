@@ -1,5 +1,39 @@
 # Release Notes
 
+## v0.14.0 - October 20, 2025
+
+* **FEATURE:** Dome flats are now recognised by the data-organiser and are combined into master flats.
+* **FEATURE:** Efficiency estimates now also done in stare-mode (alongside nodding).
+* **FEATURE:** Efficiency estimates now written out as a FITS binary table.
+* **FEATURE:** SNR calculated on merged spectra.
+* **ENHANCEMENT:** Spectrum plots now have 3 panels for linear flux, log flux and SNR vs wavelength.
+* **ENHANCEMENT:** Order join locations now plotted in extraction QC plots.
+* **ENHANCEMENT:** If there is no or little flux in the raw flat frames, an ERROR is raised, and the resulting master flat is removed from the reduction cascade.
+* **ENHANCEMENT:** The data organiser will selectively find the nearest dome master flat. If none exists, it will look for a QTH master flat.
+* **ENHANCEMENT:** After each reduction run, the pipeline will now report a table of frames that could not be reduced due to a lack of calibration frames. Closes #389 
+* **ENHANCEMENT:** Pushing VIS extractions to the very edge of the detector to increase order overlap regions and overall wavelength coverage.
+* **REFACTOR:** optimisations to stare and nodding receipes (now ~2x faster)
+* **REFACTOR:** A new algorithm has been added to 'dither' the line-lists for each order (both arms) to attempt to successfully find lines if a significant shift is seen between the detector coordinates in the static line-list and those observed on the detector.
+* **REFACTOR:** Adjusted all line-lists to reflect the formats now seen in La Silla.
+* **REFACTOR:** Nodding parameters changed for robustness. Fixes #390
+* **REFACTOR:** Data organiser needs to rebuild the cache of SOF it needs to process after each recipe's specific set is completed. Closes #388 
+* **REFACTOR:** Data-organiser and recipes can now determine if CONAD or GAIN keyword values should be used as e-/ADU. Basically `gain = max(CONAD,GAIN)`. Fixes #385
+* **REFACTOR:** u-band object tracing is now very robust. Fixes #360
+* **REFACTOR:** clipping the NaN flux value before modelling the sky (was making ~1 in 300 images fail)
+* **REFACTOR:** if a standard star observed in NODDING mode is not in the static calibration std-star library, the pipeline will issue a warning rather than failing.
+* **REFACTOR:** la-cosmic parameters changed to differ for stare vs nod. This improves object tracing in nodding mode. Fixes #390
+* **FIXED:** discontinuity issue when stitching stare orders together. Fixes #392
+* **FIXED:** master flat not getting used during nodding reductions. 
+* **FIXED:** numbering of orders in the unmerged VIS spectrum plots was wrong. Orders are now labelled correctly.
+* **FIXED:** tighter clipping when stacking the flats helps reduce noise in the VIS u-band.
+* **FIXED:** standard star names can be resolved from OBJECT *or* TARGET keywords
+* **FIXED:** The data organiser is now differentiating between stare, nod, and offset modes again. Fixes #383 
+* **FIXED:** If one of the cross-dispersion profiles used in the Horne extraction is completely masked, the recipe can skip this profile and continue.
+* **DOCS:** Added a warning for the user:
+
+    > A typical user will not need to use the watch command. It is included in the pipeline to allow for automatic/autonomous reductions as data is flowing into a directory. Most users will only need to use the reduce command.
+
+
 ## v0.13.6 - August 30, 2025
 
 * **FIXED:** Final extraction was switched off accidentally. Fixed now.

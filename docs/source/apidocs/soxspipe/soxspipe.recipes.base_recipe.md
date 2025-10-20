@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} base_recipe(log, settings=False, inputFrames=False, verbose=False, overwrite=False, recipeName=False)
+`````{py:class} base_recipe(log, settings=False, inputFrames=False, verbose=False, overwrite=False, recipeName=False, command=False)
 :canonical: soxspipe.recipes.base_recipe.base_recipe
 
 Bases: {py:obj}`object`

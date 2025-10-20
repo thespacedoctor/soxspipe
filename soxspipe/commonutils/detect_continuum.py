@@ -35,6 +35,7 @@ from io import StringIO
 import copy
 from contextlib import suppress
 from datetime import datetime
+from line_profiler import profile
 
 os.environ["TERM"] = "vt100"
 
@@ -201,6 +202,10 @@ class _base_detect(object):
         iteration = 0
 
         allClipped = []
+
+        if "cont_x" in pixelList.columns:
+            mask = (pixelList["cont_x"].isna() | pixelList["cont_y"].isna())
+            pixelList.loc[mask, "pre-clipped"] = True
 
         # REMOVE FILTERED ROWS FROM DATA FRAME
         if "pre-clipped" in pixelList.columns:
@@ -458,7 +463,8 @@ class _base_detect(object):
         kw = self.kw
 
         if not self.sofName:
-            filename = filenamer(log=self.log, frame=frame, settings=self.settings)
+            filename = filenamer(log=self.log, frame=frame,
+                                 settings=self.settings)
 
         else:
             filename = self.sofName + ".fits"
@@ -549,6 +555,7 @@ class detect_continuum(_base_detect):
     - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
     - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
+    - ``debug`` -- if *True* then extra debugging information is printed. Default *False*
 
     **Usage:**
 
@@ -584,6 +591,7 @@ class detect_continuum(_base_detect):
         locationSetIndex=False,
         orderPixelTable=False,
         startNightDate="",
+        debug=False
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -614,6 +622,7 @@ class detect_continuum(_base_detect):
         self.lampTag = lampTag
         self.orderPixelTable = orderPixelTable
         self.startNightDate = startNightDate
+        self.debug = debug
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -627,7 +636,18 @@ class detect_continuum(_base_detect):
         #     raise Exception("too low")
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
-        self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
+        self.detectorParams = detector_lookup(
+            log=log, settings=settings).get(self.arm)
+
+        # SET IMAGE ORIENTATION
+        if self.detectorParams["dispersion-axis"] == "x":
+            sliceAxis = "x"
+            sliceAntiAxis = "y"
+        else:
+            sliceAxis = "y"
+            sliceAntiAxis = "x"
+        self.sliceAxis = sliceAxis
+        self.sliceAntiAxis = sliceAntiAxis
 
         # DEG OF THE POLYNOMIALS TO FIT THE ORDER CENTRE LOCATIONS
         self.axisBDeg = self.recipeSettings["disp-axis-deg"]
@@ -706,7 +726,8 @@ class detect_continuum(_base_detect):
                     f"cont_{self.axisB}"
                 ].pow(i)
             for i in range(0, self.orderDeg + 1):
-                orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
+                orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(
+                    i)
             try:
 
                 coeff, orderPixelTable, clippedDataCentre = self.fit_global_polynomial(
@@ -717,7 +738,8 @@ class detect_continuum(_base_detect):
                     writeQCs=True,
                 )
                 mean_res = np.mean(
-                    np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
+                    np.abs(
+                        orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
                 )
 
                 if "order" in self.recipeName.lower() and mean_res > 2:
@@ -813,6 +835,7 @@ class detect_continuum(_base_detect):
         # HERE IS THE LINE LIST IF NEEDED FOR QC
         orderPixelTable.drop(columns=["mask"], inplace=True)
 
+        # OPTIMISE SUPER: 10s 8 hits
         plotPath, orderMetaTable = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
@@ -929,7 +952,8 @@ class detect_continuum(_base_detect):
 
             wlArray = np.arange(wmin, wmax, (wmax - wmin) / orderSampleCount)
             myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
-            myDict["order"] = np.append(myDict["order"], np.ones(len(wlArray)) * o)
+            myDict["order"] = np.append(
+                myDict["order"], np.ones(len(wlArray)) * o)
             myDict["slit_position"] = np.append(
                 myDict["slit_position"], np.zeros(len(wlArray))
             )
@@ -955,52 +979,30 @@ class detect_continuum(_base_detect):
         self.log.debug("completed the ``create_pixel_arrays`` method")
         return orderPixelTable, dmBinx, dmBiny
 
-    def fit_1d_gaussian_to_slices(
-        self, orderPixelTable, sliceLength, medianStddev=False
-    ):
-        """*cut a slice from the pinhole flat along the cross-dispersion direction centred on pixel position, fit 1D gaussian and return the peak pixel position*
-
-        **Key Arguments:**
-
-        - ``orderPixelTable`` -- the pixel table dataframe
-
-        **Return:**
-
-        - ``orderPixelTable`` -- the pixel table dataframe with order centre trace
-        """
-        self.log.debug("starting the ``fit_1d_gaussian_to_slice`` method")
-
+    def fit_1d_gaussian_to_slices(self, orderPixelTable, sliceLength, medianStddev=False):
+        """Optimized version of Gaussian fitting to slices"""
         import numpy as np
         from astropy.stats import mad_std
         from astropy.modeling import models, fitting
         from scipy.signal import find_peaks
 
         if not medianStddev:
-            medianStddev = 2.0
+            medianStddev = 3.0
 
-        # CLIP OUT A SLICE TO INSPECT CENTRED AT POSITION
-        halfSlice = sliceLength
+        # Pre-allocate arrays
+        fitx = orderPixelTable["fit_x"].values
+        fity = orderPixelTable["fit_y"].values
+        n_points = len(fitx)
 
-        # SET IMAGE ORIENTATION
-        if self.detectorParams["dispersion-axis"] == "x":
-            sliceAxis = "x"
-            sliceAntiAxis = "y"
-        else:
-            sliceAxis = "y"
-            sliceAntiAxis = "x"
+        contSliceAxis = np.full(n_points, np.nan)
+        contSliceAntiAxis = np.full(n_points, np.nan)
+        gauss_amplitude = np.full(n_points, np.nan)
+        gauss_stddev = np.full(n_points, np.nan)
+        gauss_mean = np.full(n_points, np.nan)
 
-        fitx = orderPixelTable["fit_x"]
-        fity = orderPixelTable["fit_y"]
-        contSliceAxis, contSliceAntiAxis, gauss_amplitude, gauss_stddev, gauss_mean = (
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
-
-        slices = []
-        slices[:] = [
+        # Create slice array once
+        # OPTIMISE: 1s - 6464 hits
+        slices = [
             cut_image_slice(
                 log=self.log,
                 frame=self.traceFrame,
@@ -1008,164 +1010,79 @@ class detect_continuum(_base_detect):
                 length=sliceLength,
                 x=x,
                 y=y,
-                sliceAxis=sliceAxis,
+                sliceAxis=self.detectorParams["dispersion-axis"],
                 median=True,
-                plot=False,
+                debug=self.debug
             )
             for x, y in zip(fitx, fity)
         ]
 
-        for s in slices:
-            slice, slice_length_offset, slice_width_centre = s[0], s[1], s[2]
+        # Initialize fitter once
+        fit_g = fitting.LevMarLSQFitter()
 
-            if slice is None:
-                contSliceAxis.append(np.nan)
-                contSliceAntiAxis.append(np.nan)
-                gauss_amplitude.append(np.nan)
-                gauss_stddev.append(np.nan)
-                gauss_mean.append(np.nan)
+        # Process each slice
+        for i, s in enumerate(slices):
+            slice_data, slice_length_offset, slice_width_centre = s[0], s[1], s[2]
+
+            if slice_data is None:
                 continue
 
-            # CHECK THE SLICE POINTS IF NEEDED
-            if 1 == 0:
-                import matplotlib.pyplot as plt
+            # Replace values < -500 with NaN
+            slice_data = np.where(slice_data < -50, np.nan, slice_data)
 
-                x = np.arange(0, len(slice))
-                plt.figure(figsize=(8, 5))
-                plt.plot(x, slice, "ko")
-                plt.xlabel("Position")
-                plt.ylabel("Flux")
-                plt.show()
+            # Calculate baseline and std using vectorized operations
+            baseline = np.nanpercentile(slice_data, 20)
+            std_r = mad_std(slice_data, ignore_nan=True)
 
-            origSlice = slice.copy()
-            slice[slice < -500] = np.nan
+            if baseline < 0:
+                baseline = 0
 
-            # EVALUATING THE MEAN AND STD-DEV FOR PEAK FINDING - REMOVES SLICE
-            # CONTAINING JUST NOISE
-            try:
-                median_r = np.nanmedian(slice)
-                std_r = mad_std(slice, ignore_nan=True)
-            except:
-                median_r = None
-
-            if not median_r:
-                contSliceAxis.append(np.nan)
-                contSliceAntiAxis.append(np.nan)
-                gauss_amplitude.append(np.nan)
-                gauss_stddev.append(np.nan)
-                gauss_mean.append(np.nan)
+            if baseline is None:
                 continue
 
+            # Find peaks using vectorized operations
             peaks, _ = find_peaks(
-                slice, height=median_r + self.peakSigmaLimit * std_r, width=1
-            )
+                slice_data, height=baseline + self.peakSigmaLimit * std_r, width=1)
 
-            # CHECK PEAK HAS BEEN FOUND
-            if peaks is None or len(peaks) <= 0:
-                # CHECK THE SLICE POINTS IF NEEDED
-                if False:
-                    import matplotlib.pyplot as plt
-
-                    x = np.arange(0, len(origSlice))
-                    plt.figure(figsize=(8, 5))
-                    plt.plot(x, slice, "ko")
-                    plt.xlabel("Position")
-                    plt.ylabel("Flux")
-                    plt.show()
-                    print(median_r, std_r)
-                    import matplotlib.pyplot as plt
-
-                    x = np.arange(0, len(slice))
-                    plt.figure(figsize=(8, 5))
-                    plt.plot(x, slice, "ko")
-                    plt.xlabel("Position")
-                    plt.ylabel("Flux")
-                    plt.show()
-                contSliceAxis.append(np.nan)
-                contSliceAntiAxis.append(np.nan)
-                gauss_amplitude.append(np.nan)
-                gauss_stddev.append(np.nan)
-                gauss_mean.append(np.nan)
+            if len(peaks) == 0:
                 continue
 
             if len(peaks) > 1:
-                closest = peaks[0]
-                smallest_diff = abs(
-                    sliceLength / 2.0 - closest
-                )  # Initialize the smallest difference
-                for num in peaks:
-                    current_diff = abs(
-                        sliceLength / 2.0 - num
-                    )  # Calculate the difference
-                    if current_diff < smallest_diff:  # Check if current is closer
-                        smallest_diff = current_diff
-                        closest = num  # Update closest integer
-                peaks = [closest]
+                # Vectorized closest peak finding
+                peak_diffs = np.abs(peaks - sliceLength/2.0)
+                peaks = [peaks[np.argmin(peak_diffs)]]
 
-            # MASK DATA FAR FROM PEAK
-            # slice[:peaks[0] - 7] = np.nan
-            # slice[peaks[0] + 7:] = np.nan
-
-            # FIT THE DATA USING A 1D GAUSSIAN - USING astropy.modeling
-            # CENTRE THE GAUSSIAN ON THE PEAK
+            # Initialize and fit Gaussian
+            # OPTIMISE: 1s
             g_init = models.Gaussian1D(
-                amplitude=slice[peaks[0]], mean=peaks[0], stddev=medianStddev
+                amplitude=slice_data[peaks[0]],
+                mean=peaks[0],
+                stddev=medianStddev
             )
-            fit_g = fitting.LevMarLSQFitter()
 
-            # NOW FIT
             try:
-                # MASK OUT NAN VALUES
-                mask = np.isfinite(slice)
-                g = fit_g(g_init, np.arange(0, len(slice))[mask], slice[mask])
+                mask = np.isfinite(slice_data)
+                x_range = np.arange(len(slice_data))
+                # OPTIMISE: 7s - 3185 hits
+                g = fit_g(g_init, x_range[mask], slice_data[mask])
+
+                if 0 <= g.mean.value <= sliceLength and g.stddev.value > 0.5:
+                    contSliceAxis[i] = g.mean.value + \
+                        max(0, slice_length_offset)
+                    contSliceAntiAxis[i] = slice_width_centre
+                    gauss_amplitude[i] = g.amplitude.value
+                    gauss_stddev[i] = g.stddev.value
+                    gauss_mean[i] = g.mean.value
+
             except:
-                contSliceAxis.append(np.nan)
-                contSliceAntiAxis.append(np.nan)
-                gauss_amplitude.append(np.nan)
-                gauss_stddev.append(np.nan)
-                gauss_mean.append(np.nan)
                 continue
 
-            # MEAN FOUND BEYOND THE LENGTH OF THE SLICE?
-            if g.mean.value > sliceLength or g.mean.value < 0:
-                contSliceAxis.append(np.nan)
-                contSliceAntiAxis.append(np.nan)
-                gauss_amplitude.append(np.nan)
-                gauss_stddev.append(np.nan)
-                gauss_mean.append(np.nan)
-                continue
-
-            contSliceAxis.append(g.mean.value + max(0, slice_length_offset))
-            contSliceAntiAxis.append(slice_width_centre)
-            gauss_amplitude.append(g.amplitude.value)
-            gauss_stddev.append(g.stddev.value)
-            gauss_mean.append(g.mean.value)
-
-            # PRINT A FEW PLOTS IF NEEDED - GAUSSIAN FIT OVERLAID
-            if False and random() < 0.02:
-                import matplotlib.pyplot as plt
-
-                x = np.arange(0, len(slice))
-                plt.figure(figsize=(8, 5))
-                plt.plot(x, slice, "ko")
-                plt.xlabel("Position")
-                plt.ylabel("Flux")
-                gaussx = np.arange(0, max(x), 0.05)
-                plt.plot(
-                    gaussx,
-                    g(gaussx),
-                    label=f'Mean = {g.mean.value:0.2f}, std = {g.stddev.value:0.2f}, cont_{self.axisA} = {pixelPostion[f"cont_{self.axisA}"]:0.2f}, fit_{self.axisA} = {pixelPostion[f"fit_{self.axisA}"]:0.2f},cont_{self.axisB} = {pixelPostion[f"cont_{self.axisB}"]:0.2f},fit_y = {pixelPostion[f"fit_{self.axisB}"]:0.2f}',
-                )
-                plt.legend()
-                plt.show()
-
-        orderPixelTable[f"cont_{sliceAxis}"] = contSliceAxis
-        orderPixelTable[f"cont_{sliceAntiAxis}"] = contSliceAntiAxis
-        orderPixelTable[f"gauss_amplitude"] = gauss_amplitude
-        orderPixelTable[f"gauss_stddev"] = gauss_stddev
-        orderPixelTable[f"gauss_mean"] = gauss_mean
-
-        self.log.debug("completed the ``fit_1d_gaussian_to_slice`` method")
+        # Assign results back to DataFrame using vectorized operations
+        orderPixelTable[f"cont_{self.sliceAxis}"] = contSliceAxis
+        orderPixelTable[f"cont_{self.sliceAntiAxis}"] = contSliceAntiAxis
+        orderPixelTable["gauss_amplitude"] = gauss_amplitude
+        orderPixelTable["gauss_stddev"] = gauss_stddev
+        orderPixelTable["gauss_mean"] = gauss_mean
 
         return orderPixelTable
 
@@ -1190,6 +1107,11 @@ class detect_continuum(_base_detect):
         import matplotlib.pyplot as plt
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
+        if self.debug:
+            plt.switch_backend('macOSX')
+        else:
+            plt.switch_backend('Agg')
+
         arm = self.arm
 
         # ROTATE THE IMAGE FOR BETTER LAYOUT
@@ -1209,6 +1131,9 @@ class detect_continuum(_base_detect):
                 )
                 clippedData[f"cont_{self.axisA}"] = (
                     aLen - clippedData[f"cont_{self.axisA}"]
+                )
+                clippedData[f"fit_{self.axisA}"] = (
+                    aLen - clippedData[f"fit_{self.axisA}"]
                 )
 
         if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
@@ -1236,7 +1161,8 @@ class detect_continuum(_base_detect):
 
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5)
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5)
-        toprow.set_title("1D gaussian peak positions (post-clipping)", fontsize=10)
+        toprow.set_title(
+            "1D gaussian peak positions (post-clipping)", fontsize=10)
         toprow.scatter(
             orderPixelTable[f"cont_{self.axisB}"],
             orderPixelTable[f"cont_{self.axisA}"],
@@ -1246,6 +1172,22 @@ class detect_continuum(_base_detect):
             alpha=0.6,
             label="cross-dispersion 1D gaussian peak-position",
         )
+
+        # PLOT WHERE A CONTINUUM WAS NOT FOUND - WITH SLICE LENGTH SHOWN
+        mask = clippedData["cont_x"].isna() | clippedData["cont_y"].isna()
+        for axB, axA in zip(
+            clippedData.loc[mask, f"fit_{self.axisB}"],
+            clippedData.loc[mask, f"fit_{self.axisA}"]
+        ):
+            toprow.plot(
+                [axB, axB],
+                [axA - int(self.sliceLength/2), axA + int(self.sliceLength/2)],
+                color="black",
+                linewidth=.5,
+                alpha=0.3,
+                label="continuum not found" if axB == clippedData.loc[mask,
+                                                                      f"fit_{self.axisB}"].iloc[0] else None
+            )
         toprow.scatter(
             clippedData[f"cont_{self.axisB}"],
             clippedData[f"cont_{self.axisA}"],
@@ -1258,7 +1200,12 @@ class detect_continuum(_base_detect):
         )
         # Put a legend below current axis
 
-        toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.1), fontsize=4)
+        if arm == "VIS":
+            toprow.legend(loc="upper right",
+                          bbox_to_anchor=(1.0, -0.2), fontsize=4)
+        else:
+            toprow.legend(loc="upper right",
+                          bbox_to_anchor=(1.0, -0.1), fontsize=4)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -1277,7 +1224,8 @@ class detect_continuum(_base_detect):
         if "order" in self.recipeName.lower():
             midrow.set_title("order-location fit solutions", fontsize=10)
         else:
-            midrow.set_title("global polynomal fit of order-centres", fontsize=10)
+            midrow.set_title(
+                "global polynomal fit of order-centres", fontsize=10)
         if self.axisB == "y":
             axisALength = self.traceFrame.data.shape[1]
             axisBLength = self.traceFrame.data.shape[0]
@@ -1380,7 +1328,12 @@ class detect_continuum(_base_detect):
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis="both", which="major", labelsize=9)
 
-        midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.1), fontsize=4)
+        if arm == "VIS":
+            midrow.legend(loc="upper right",
+                          bbox_to_anchor=(1.0, -0.2), fontsize=4)
+        else:
+            midrow.legend(loc="upper right",
+                          bbox_to_anchor=(1.0, -0.1), fontsize=4)
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
@@ -1493,7 +1446,8 @@ class detect_continuum(_base_detect):
             settingsAx=settingsAx,
         )
 
-        mean_res = np.mean(np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
+        mean_res = np.mean(
+            np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
         std_res = np.std(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_min = np.min(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_max = np.max(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
@@ -1510,7 +1464,8 @@ class detect_continuum(_base_detect):
                 y=0.99,
             )
         else:
-            fig.suptitle(f"{arm} object trace locations\n{subtitle}", fontsize=12)
+            fig.suptitle(
+                f"{arm} object trace locations\n{subtitle}", fontsize=12)
 
         polyOrders = [self.orderDeg, self.axisBDeg]
         polyOrders[:] = [str(l) for l in polyOrders]
@@ -1521,7 +1476,8 @@ class detect_continuum(_base_detect):
             filename = filenamer(
                 log=self.log, frame=self.traceFrame, settings=self.settings
             )
-            filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
+            filename = filename.split(
+                "FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
         elif "order" in self.recipeName.lower():
             filename = self.sofName + f"_residuals_{polyOrders}.pdf"
         elif "nod" in self.recipeName.lower():
@@ -1532,13 +1488,15 @@ class detect_continuum(_base_detect):
                 + f"_{polyOrders}.pdf"
             )
         else:
-            filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
+            filename = self.sofName + \
+                f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
         if not self.settings["tune-pipeline"]:
-            plt.savefig(filePath, dpi=720)
-        # plt.show()
+            plt.savefig(filePath, dpi=240)
+        if self.debug:
+            plt.show()
         plt.close()
 
         if self.settings["tune-pipeline"]:
@@ -1618,21 +1576,39 @@ class detect_continuum(_base_detect):
         )
 
         if "order" in self.recipeName.lower():
-            self.log.print("\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
+            self.log.print(
+                "\n# FINDING & FITTING ORDER-CENTRE CONTINUUM TRACES\n")
         else:
             self.log.print("\n# FINDING & FITTING OBJECT CONTINUUM TRACES\n")
 
         def find_centre_points(orderPixelTable, medianShift=False, medianStddev=False):
             """*find the central peak of the continuum trace*"""
             from astropy.stats import sigma_clip, mad_std
+            import numpy as np
+
+            # UNIQUE ORDERS
+            uniqueOrders = orderPixelTable["order"].unique()
+            uniqueOrders = "&".join(map(str, sorted(uniqueOrders)))
 
             sliceLength = self.sliceLength
-            if medianShift:
+            if np.isnan(medianShift):
+                sliceLength = sliceLength * 1.2
+                shifted = ""
+            elif medianShift:
+                shifted = f"\nShifted by {medianShift:2.1f} pixels"
                 orderPixelTable[f"fit_{self.axisA}"] = (
                     orderPixelTable[f"fit_{self.axisA}"] - medianShift
                 )
-                if sliceLength > medianStddev * 7 + 5:
-                    sliceLength = int(medianStddev * 7 + 5)
+                sliceLength = sliceLength - int(abs(medianShift))
+                if sliceLength > medianStddev * 5 + 5:
+                    sliceLength = int(medianStddev * 5 + 5)
+                if sliceLength < 7:
+                    sliceLength = 7
+
+            else:
+                shifted = ""
+
+            sliceLengthStr = f"\nSlit Length = {str(sliceLength)} pixels"
 
             orderPixelTable = self.fit_1d_gaussian_to_slices(
                 orderPixelTable=orderPixelTable,
@@ -1640,20 +1616,28 @@ class detect_continuum(_base_detect):
                 medianStddev=medianStddev,
             )
 
+            if "pre-clipped" not in orderPixelTable.columns:
+                orderPixelTable["pre-clipped"] = False
+
             # FILTER DATA FRAME
             # FIRST CREATE THE MASK
+
             mask = orderPixelTable["cont_x"] < 0
             orderPixelTable.loc[mask, "cont_x"] = np.nan
+            orderPixelTable.loc[mask, "pre-clipped"] = True
             mask = orderPixelTable["cont_y"] < 0
             orderPixelTable.loc[mask, "cont_y"] = np.nan
+            orderPixelTable.loc[mask, "pre-clipped"] = True
+            mask = orderPixelTable["gauss_stddev"] < 0.3
+            orderPixelTable.loc[mask, "pre-clipped"] = True
 
-            # DROP ROWS WITH NAN VALUES
-            orderPixelTable.dropna(
-                axis="index", how="any", subset=["cont_x"], inplace=True
-            )
-            orderPixelTable.dropna(
-                axis="index", how="any", subset=["cont_y"], inplace=True
-            )
+            increaseSlitLength = False
+            for o in orderPixelTable["order"].unique():
+                mask = (orderPixelTable["order"] == o) & (
+                    orderPixelTable["pre-clipped"] == False)
+                if len(orderPixelTable.loc[mask].index) < 5:
+                    increaseSlitLength = True
+                    continue
 
             # FIND HOW FAR AWAY FROM THE CENTRE THE CONTINUUM WAS FOUND
             orderPixelTable["centre_shift"] = (
@@ -1663,24 +1647,52 @@ class detect_continuum(_base_detect):
 
             # SIGMA-CLIP THE DATA ON STDDEV
             if "centre" not in self.recipeName:
+                mask = (orderPixelTable["pre-clipped"] == False)
                 masked_residuals = sigma_clip(
-                    orderPixelTable["centre_shift"],
+                    orderPixelTable.loc[mask]["gauss_stddev"],
                     sigma_lower=3,
                     sigma_upper=3,
                     maxiters=5,
                     cenfunc="mean",
                     stdfunc="std",
                 )
-                orderPixelTable["pre-clipped"] = masked_residuals.mask
+                orderPixelTable.loc[mask,
+                                    "pre-clipped"] = masked_residuals.mask
+                mask = (orderPixelTable["pre-clipped"] == False)
+                masked_residuals = sigma_clip(
+                    orderPixelTable.loc[mask]["centre_shift"],
+                    sigma_lower=3,
+                    sigma_upper=3,
+                    maxiters=5,
+                    cenfunc="mean",
+                    stdfunc="std",
+                )
+                orderPixelTable.loc[mask,
+                                    "pre-clipped"] = masked_residuals.mask
             else:
                 orderPixelTable["pre-clipped"] = False
 
             mask = orderPixelTable["pre-clipped"] == False
             filteredDf = orderPixelTable.loc[mask]
             medianShift = filteredDf["centre_shift"].median()
-            medianStddev = filteredDf["gauss_stddev"].median()
+            medianStddev1 = filteredDf["gauss_stddev"].median()
 
-            if False:
+            from astropy.stats import sigma_clipped_stats
+            mean1, medianShift, std1 = sigma_clipped_stats(
+                filteredDf["centre_shift"].values, sigma=2.5, stdfunc="std", cenfunc="mean", maxiters=5)
+
+            mean2, medianStddev, std2 = sigma_clipped_stats(
+                filteredDf["gauss_stddev"].values, sigma=2.5, stdfunc="std", cenfunc="mean", maxiters=5)
+
+            if not std1 or (abs(medianShift/std1) < 6 and medianStddev < 1):
+                medianShift = False
+                medianStddev = False
+            elif abs(medianShift/std1) < 5:
+                medianShift = False
+            elif medianStddev < 1:
+                medianStddev = False
+
+            if self.debug:
                 import matplotlib.pyplot as plt
 
                 plt.figure(figsize=(8, 5))
@@ -1691,6 +1703,13 @@ class detect_continuum(_base_detect):
                     s=30,
                     label=f"Median Shift={medianShift:2.1f}, Median STD={medianStddev:2.1f}",
                 )
+
+                # LABEL X and Y AXES
+                plt.xlabel("Wavelength (nm)", fontsize=12)
+                plt.ylabel(f"{self.axisA} centre shift (pixels)", fontsize=12)
+                plt.title(
+                    f"{self.arm} continuum trace centre shifts (Orders {uniqueOrders}){sliceLengthStr}{shifted} FINDCENTRE", fontsize=14)
+
                 filteredDf = orderPixelTable.loc[~mask]
                 plt.scatter(
                     filteredDf["wavelength"],
@@ -1701,7 +1720,7 @@ class detect_continuum(_base_detect):
                 plt.legend()
                 plt.show()
 
-            if False:
+            if self.debug:
                 import matplotlib.pyplot as plt
 
                 plt.figure(figsize=(8, 5))
@@ -1710,7 +1729,15 @@ class detect_continuum(_base_detect):
                     orderPixelTable["gauss_stddev"],
                     marker="o",
                     s=30,
+                    label=f"Median Shift={medianShift:2.1f}, Median STD={medianStddev:2.1f}",
                 )
+
+                # LABEL X and Y AXES
+                plt.xlabel("Wavelength (nm)", fontsize=12)
+                plt.ylabel("Gaussian stddev (pixels)", fontsize=12)
+                plt.title(
+                    f"{self.arm} continuum trace Gaussian stddevs (Orders {uniqueOrders}){sliceLengthStr}{shifted} FINDCENTRE", fontsize=14)
+
                 mask = orderPixelTable["pre-clipped"] == True
                 filteredDf = orderPixelTable.loc[mask]
                 plt.scatter(
@@ -1719,6 +1746,7 @@ class detect_continuum(_base_detect):
                     marker="x",
                     s=30,
                 )
+                plt.legend()
                 plt.show()
 
             # DROP THE MASKED PEAKS?
@@ -1728,24 +1756,106 @@ class detect_continuum(_base_detect):
                 # REMOVE COLUMN FROM DATA FRAME
                 # orderPixelTable.drop(columns=['mask'], inplace=True)
 
+            if increaseSlitLength:
+                medianShift = np.nan
+
             return orderPixelTable, medianShift, medianStddev
 
         allLines = len(orderPixelTable.index)
         tmpOrderPixelTable = orderPixelTable.copy()
-        orderPixelTable, medianShift, medianStddev = find_centre_points(
-            orderPixelTable=tmpOrderPixelTable, medianShift=False, medianStddev=False
-        )
 
-        # VIS PSEUDO-ORDERS SHIFT IN DIFFERENT DIRECTIONS .. POSSIBLY REVISIT TO TREAT u&g AND r&i SEPARATELY
-        if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
-            medianShift = False
-        orderPixelTable, medianShift, medianStddev = find_centre_points(
-            orderPixelTable=tmpOrderPixelTable,
-            medianShift=medianShift,
-            medianStddev=medianStddev,
-        )
+        everyN = 10
+        sanityCheck = False
 
-        foundLines = len(orderPixelTable.index)
+        while not sanityCheck:
+
+            if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
+                # TREAT ORDERS 2&3 SEPARATELY FROM 1&4 THEN RECOMBINE THE orderPixelTable AT THE END
+                mask_23 = (tmpOrderPixelTable["order"].isin([2, 3]))
+                mask_14 = (tmpOrderPixelTable["order"].isin([1, 4]))
+
+                orderPixelTable_23 = tmpOrderPixelTable.loc[mask_23].copy()
+                orderPixelTable_14 = tmpOrderPixelTable.loc[mask_14].copy()
+
+                # PROCESS 2 & 3
+                junk, medianShift_23, medianStddev_23 = find_centre_points(
+                    orderPixelTable=orderPixelTable_23.iloc[::everyN], medianShift=False, medianStddev=False
+                )
+
+                if np.isnan(medianShift_23):
+                    junk, medianShift_23, medianStddev_23 = find_centre_points(
+                        orderPixelTable=orderPixelTable_23.iloc[::
+                                                                everyN], medianShift=medianShift_23, medianStddev=False
+                    )
+
+                if (not (medianShift_23) or np.isnan(medianShift_23)) and everyN > 1:
+                    sanityCheck = False
+                    everyN = 1
+                    # print("Reducing everyN to 1")
+                    continue
+
+                orderPixelTable_23, medianShift_23, medianStddev_23 = find_centre_points(
+                    orderPixelTable=orderPixelTable_23,
+                    medianShift=medianShift_23,
+                    medianStddev=medianStddev_23,
+                )
+
+                # PROCESS 1 & 4
+                junk, medianShift_14, medianStddev_14 = find_centre_points(
+                    orderPixelTable=orderPixelTable_14.iloc[::everyN], medianShift=False, medianStddev=False
+                )
+
+                if np.isnan(medianShift_14):
+                    junk, medianShift_14, medianStddev_14 = find_centre_points(
+                        orderPixelTable=orderPixelTable_14.iloc[::
+                                                                everyN], medianShift=medianShift_14, medianStddev=False
+                    )
+
+                if (not (medianShift_14) or np.isnan(medianShift_14)) and everyN > 1:
+                    sanityCheck = False
+                    everyN = 1
+                    # print("Reducing everyN to 1")
+                    continue
+
+                orderPixelTable_14, medianShift_14, medianStddev_14 = find_centre_points(
+                    orderPixelTable=orderPixelTable_14,
+                    medianShift=medianShift_14,
+                    medianStddev=medianStddev_14,
+                )
+
+                # RECOMBINE
+                orderPixelTable = pd.concat(
+                    [orderPixelTable_23, orderPixelTable_14], ignore_index=True)
+            else:
+                tmpOrderPixelTable = orderPixelTable.copy()
+                junk, medianShift, medianStddev = find_centre_points(
+                    orderPixelTable=tmpOrderPixelTable.iloc[::everyN], medianShift=False, medianStddev=False
+                )
+
+                if np.isnan(medianShift):
+                    junk, medianShift, medianStddev_14 = find_centre_points(
+                        orderPixelTable=orderPixelTable_14.iloc[::
+                                                                everyN], medianShift=medianShift, medianStddev=False
+                    )
+
+                if not (medianShift) and everyN > 1:
+                    sanityCheck = False
+                    everyN = 1
+                    # print("Reducing everyN to 1")
+                    continue
+
+                orderPixelTable, medianShift, medianStddev = find_centre_points(
+                    orderPixelTable=tmpOrderPixelTable,
+                    medianShift=medianShift,
+                    medianStddev=medianStddev,
+                )
+
+            sanityCheck = True
+
+        # MASK orderPixelTable WHERE cont_x or cont_y is NaN
+        mask = orderPixelTable["cont_x"].isna(
+        ) | orderPixelTable["cont_y"].isna()
+        foundLines = len(orderPixelTable.loc[~mask].index)
         percent = 100 * foundLines / allLines
 
         utcnow = datetime.utcnow()

@@ -13,7 +13,7 @@ Date Created
 
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
-from datetime import datetime
+from datetime import datetime, UTC
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
@@ -21,7 +21,7 @@ from builtins import object
 import sys
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 import os
-
+from line_profiler import profile
 
 os.environ['TERM'] = 'vt100'
 
@@ -35,7 +35,7 @@ def cut_image_slice(
         y,
         sliceAxis="x",
         median=False,
-        plot=False):
+        debug=False):
     """*cut and return an N-pixel wide and M-pixels long slice, centred on a given coordinate from an image frame*
 
     **Key Arguments:**
@@ -48,7 +48,7 @@ def cut_image_slice(
     - ``y`` -- y-coordinate
     - ``sliceAxis`` -- the axis along which slice is to be taken. Default *x*
     - ``median`` -- collapse the slice to a median value across its width
-    - ``plot`` -- generate a plot of slice. Useful for debugging.
+    - ``debug`` -- generate a plot of slice. Useful for debugging.
 
     **Usage:**
 
@@ -95,18 +95,17 @@ def cut_image_slice(
         sliceFull = frame[int(axisB - halfwidth):int(axisB + halfwidth + 1),
                           slice_length_offset:int(axisA + halfSlice)]
     else:
-        sliceFull = frame[slice_length_offset:int(axisA + halfSlice), int(axisB - halfwidth):int(axisB + halfwidth + 1)]
-    slice_width_centre = (int(axisB + halfwidth + 1) + int(axisB - halfwidth)) / 2
+        sliceFull = frame[slice_length_offset:int(
+            axisA + halfSlice), int(axisB - halfwidth):int(axisB + halfwidth + 1)]
+    slice_width_centre = (int(axisB + halfwidth + 1) +
+                          int(axisB - halfwidth)) / 2
 
-
-    
     # # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
     # maskedDataArray = np.ma.array(sliceFull.data, mask=sliceFull.mask)
     # try:
     #     sliceFull.data=sliceFull.data - np.percentile(maskedDataArray, 30)
     # except:
     #     pass
-    
 
     if median:
         if sliceAxis == "y":
@@ -114,7 +113,7 @@ def cut_image_slice(
         else:
             slice = ma.median(sliceFull, axis=0)
 
-    if False and random.randint(1, 101) < 5:
+    if False and debug and random.randint(1, 101) < 5:
         import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
@@ -126,9 +125,11 @@ def cut_image_slice(
         xx = np.arange(0, len(slice))
         plt.figure(figsize=(8, 5))
         if sliceAxis == "y":
-            plt.plot(xx, slice, 'ko', label=f"x={axisB}, y={axisA}, sliceAxis={sliceAxis}")
+            plt.plot(xx, slice, 'ko',
+                     label=f"x={axisB}, y={axisA}, sliceAxis={sliceAxis}")
         if sliceAxis == "x":
-            plt.plot(xx, slice, 'ko', label=f"x={axisA}, y={axisB}, sliceAxis={sliceAxis}")
+            plt.plot(xx, slice, 'ko',
+                     label=f"x={axisA}, y={axisB}, sliceAxis={sliceAxis}")
         plt.xlabel('Position')
         plt.ylabel('Flux')
         plt.legend()
@@ -187,6 +188,7 @@ def quicklook_image(
     from soxspipe.commonutils import detector_lookup
     originalRC = dict(mpl.rcParams)
     import matplotlib.pyplot as plt
+    plt.switch_backend('macosx')
 
     if settings:
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -264,7 +266,8 @@ def quicklook_image(
     rotatedImg = np.flipud(rotatedImg)
 
     from astropy.stats import sigma_clipped_stats
-    mean, median, std = sigma_clipped_stats(frame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+    mean, median, std = sigma_clipped_stats(
+        frame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
 
     # std = np.nanstd(frame)
     # mean = np.nanmean(frame)
@@ -301,8 +304,10 @@ def quicklook_image(
         # ax.w_zaxis.line.set_lw(0.)
         # ax.set_zticks([])
 
-        X, Y = np.meshgrid(np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]), np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]))
-        surface = ax.plot_surface(X=X, Y=Y, Z=rotatedImg, cmap='viridis', antialiased=True, vmin=vmin, vmax=vmax)
+        X, Y = np.meshgrid(np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]), np.linspace(
+            0, rotatedImg.shape[0], rotatedImg.shape[0]))
+        surface = ax.plot_surface(
+            X=X, Y=Y, Z=rotatedImg, cmap='viridis', antialiased=True, vmin=vmin, vmax=vmax)
 
         if inst == "SOXS":
             ax.azim = 70
@@ -349,10 +354,11 @@ def quicklook_image(
         for l in range(int(gridLinePixelTable['line'].max())):
             mask = (gridLinePixelTable['line'] == l)
             if inst == "SOXS":
-                ax2.plot(gridLinePixelTable.loc[mask]["fit_x"], gridLinePixelTable.loc[mask]["fit_y"], "w-", linewidth=0.5, alpha=0.8, color="black")
+                ax2.plot(gridLinePixelTable.loc[mask]["fit_x"], gridLinePixelTable.loc[mask]
+                         ["fit_y"], "w-", linewidth=0.5, alpha=0.8, color="black")
             else:
-                ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
-
+                ax2.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]
+                         ["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
 
     if rotatedImg.shape[0] - rotatedImg.shape[1] > 1000:
         ax2.set_box_aspect(2.0)
@@ -392,7 +398,7 @@ def quicklook_image(
         plt.show()
 
     if saveToPath:
-        plt.savefig(saveToPath, dpi='figure', bbox_inches='tight')
+        plt.savefig(saveToPath, dpi=120, bbox_inches='tight')
         plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
     plt.close()
@@ -477,9 +483,11 @@ def unpack_order_table(
 
     blower = orderMetaTable[f"{axisB}min"].values * ratio
     bupper = orderMetaTable[f"{axisB}max"].values * ratio
-    brange = orderMetaTable[f"{axisB}max"].values * ratio - orderMetaTable[f"{axisB}min"].values * ratio
+    brange = orderMetaTable[f"{axisB}max"].values * \
+        ratio - orderMetaTable[f"{axisB}min"].values * ratio
 
-    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(blower, bupper, brange)]
+    axisBcoords = [np.arange(0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)), 4200 if (math.ceil(
+        u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)), pixelDelta) for l, u, r in zip(blower, bupper, brange)]
 
     orders = [np.full_like(a, o) for a, o in zip(
         axisBcoords, orderMetaTable["order"].values)]
@@ -491,24 +499,35 @@ def unpack_order_table(
     }
     orderPixelTable = pd.DataFrame(myDict)
 
-    cent_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
-    poly = chebyshev_order_xy_polynomials(log=log, axisBCol=f"{axisB}coord", orderCol="order", orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"])).poly
-    orderPixelTable[f"{axisA}coord_centre"] = poly(orderPixelTable, *cent_coeff)
+    cent_coeff = [float(v)
+                  for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
+    poly = chebyshev_order_xy_polynomials(log=log, axisBCol=f"{axisB}coord", orderCol="order", orderDeg=int(
+        orderPolyTable.iloc[0]["degorder_cent"]), axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"])).poly
+    orderPixelTable[f"{axisA}coord_centre"] = poly(
+        orderPixelTable, *cent_coeff)
 
-    std_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "std_" in k]
+    std_coeff = [float(v)
+                 for k, v in orderPolyTable.iloc[0].items() if "std_" in k]
     if len(std_coeff):
-        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", axisBCol=f"{axisB}coord").poly
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"]), orderDeg=int(
+            orderPolyTable.iloc[0]["degorder_cent"]), orderCol="order", axisBCol=f"{axisB}coord").poly
         orderPixelTable["std"] = poly(orderPixelTable, *std_coeff)
 
     if f"deg{axisB}_edgeup" in orderPolyTable.columns:
-        upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]
-        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgeup"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", axisBCol=f"{axisB}coord").poly
-        orderPixelTable[f"{axisA}coord_edgeup"] = poly(orderPixelTable, *upper_coeff)
+        upper_coeff = [
+            float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgeup"]), orderDeg=int(
+            orderPolyTable.iloc[0]["degorder_edgeup"]), orderCol="order", axisBCol=f"{axisB}coord").poly
+        orderPixelTable[f"{axisA}coord_edgeup"] = poly(
+            orderPixelTable, *upper_coeff)
 
     if f"deg{axisB}_edgelow" in orderPolyTable.columns:
-        lower_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
-        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
-        orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *lower_coeff)
+        lower_coeff = [
+            float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
+        poly = chebyshev_order_xy_polynomials(log=log, axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]), orderDeg=int(
+            orderPolyTable.iloc[0]["degorder_edgelow"]), orderCol="order", axisBCol=f"{axisB}coord").poly
+        orderPixelTable[f"{axisA}coord_edgelow"] = poly(
+            orderPixelTable, *lower_coeff)
 
     if axisAbin != 1:
         for c in ["coord_centre", "coord_edgeup", "coord_edgelow"]:
@@ -521,7 +540,8 @@ def unpack_order_table(
         orderPixelTable["std"] /= axisBbin
         mask = (orderPixelTable[f"{axisB}coord"].mod(1) > 0)
         orderPixelTable = orderPixelTable.loc[~mask]
-        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].round().astype('int')
+        orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].round(
+        ).astype('int')
 
     log.debug('completed the ``functionName`` function')
     return orderPolyTable, orderPixelTable, orderMetaTable
@@ -567,7 +587,7 @@ def generic_quality_checks(
 
     # nanCount = np.count_nonzero(np.isnan(frame.data))
 
-    utcnow = datetime.utcnow()
+    utcnow = datetime.now(UTC)
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
     # qcTable = pd.concat([qcTable, pd.Series({
@@ -852,8 +872,10 @@ def read_spectral_format(
         amins = []
         amaxs = []
         for o in orderNums:
-            amin = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].min()
-            amax = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].max()
+            amin = orderPixelTable.loc[orderPixelTable["order"]
+                                       == o, f"fit_{axis}"].min()
+            amax = orderPixelTable.loc[orderPixelTable["order"]
+                                       == o, f"fit_{axis}"].max()
             if amin < 0:
                 amin = 0
             if amax > dp["science-pixels"][rowCol]["end"]:
@@ -958,10 +980,14 @@ def twoD_disp_map_image_to_dataframe(
         binned = True
         from astropy.nddata import block_reduce
         minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
-        hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
-        hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
-        hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
-        minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
+        hdul["WAVELENGTH"].data = block_reduce(
+            hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
+        hdul["SLIT"].data = block_reduce(
+            hdul["SLIT"].data, (biny, binx), func=np.mean)
+        hdul["ORDER"].data = block_reduce(
+            hdul["ORDER"].data, (biny, binx), func=np.mean)
+        minimumBinnedPixelValue = block_reduce(
+            minimumBinnedPixelValue, (biny, binx), func=np.min)
         minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
 
     # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
@@ -1025,10 +1051,12 @@ def twoD_disp_map_image_to_dataframe(
     interOrderMask = np.where(interOrderMask > 0, 0, interOrderMask)
     interOrderMask = np.where(np.isnan(interOrderMask), 1, interOrderMask)
 
-    mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+    mapDF.dropna(how="all", subset=[
+                 "wavelength", "slit_position", "order"], inplace=True)
 
     # REMOVE FILTERED ROWS FROM DATA FRAME
-    mask = ((mapDF['slit_position'] < -slit_length / 2) | (mapDF['slit_position'] > slit_length / 2))
+    mask = ((mapDF['slit_position'] < -slit_length / 2)
+            | (mapDF['slit_position'] > slit_length / 2))
     mapDF = mapDF.loc[~mask]
     mask = (mapDF['min'] == 0)
     mapDF = mapDF.loc[~mask]
@@ -1107,7 +1135,8 @@ def predict_product_path(
         startNightDate = ""
 
         try:
-            obsDate = Time.strptime(obsDate, '%Y.%m.%dT%H.%M.%S.%f', scale='utc')
+            obsDate = Time.strptime(
+                obsDate, '%Y.%m.%dT%H.%M.%S.%f', scale='utc')
             night_start_offset = TimeDelta(15.0 * 60 * 60, format='sec')
             startNightDate = obsDate - night_start_offset
             startNightDate = startNightDate.strftime("%Y-%m-%d")
@@ -1128,7 +1157,9 @@ def predict_product_path(
         sofName += "_EXTRACTED_MERGED"
     if "_NOD_" in sofName:
         sofName += "_EXTRACTED_MERGED"
-    productPath = f"./sessions/{currentSession}/reduced/{startNightDate}/" + recipeName.replace("_", "-").replace("centres", "centre") + "/" + sofName + ".fits"
+    productPath = f"./sessions/{currentSession}/reduced/{startNightDate}/" + \
+        recipeName.replace("_", "-").replace("centres",
+                                             "centre") + "/" + sofName + ".fits"
     if "spatial" not in productPath:
         productPath = productPath.replace("spat", "spatial")
     if "solution" not in productPath:
@@ -1182,7 +1213,8 @@ def add_recipe_logger(
     if not os.path.exists(parentDirectory):
         os.makedirs(parentDirectory)
 
-    recipeLog = logging.FileHandler(loggingPath, mode='a', encoding=None, delay=False)
+    recipeLog = logging.FileHandler(
+        loggingPath, mode='a', encoding=None, delay=False)
     recipeLogFormatter = logging.Formatter("%(message)s")
     recipeLog.set_name("recipeLog")
     recipeLog.setLevel(logging.INFO + 1)
@@ -1190,8 +1222,10 @@ def add_recipe_logger(
     recipeLog.addFilter(MaxFilter(logging.WARNING))
     log.addHandler(recipeLog)
 
-    recipeErr = logging.FileHandler(loggingErrorPath, mode='a', encoding=None, delay=True)
-    recipeErrFormatter = logging.Formatter('%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', '%Y-%m-%d %H:%M:%S')
+    recipeErr = logging.FileHandler(
+        loggingErrorPath, mode='a', encoding=None, delay=True)
+    recipeErrFormatter = logging.Formatter(
+        '%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', '%Y-%m-%d %H:%M:%S')
     recipeErr.set_name("recipeErr")
     recipeErr.setLevel(logging.ERROR)
     recipeErr.setFormatter(recipeErrFormatter)
@@ -1254,12 +1288,14 @@ def create_dispersion_solution_grid_lines_for_plot(
         ax.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
     ```
     """
-    log.debug('starting the ``create_dispersion_solution_grid_lines_for_plot`` function')
+    log.debug(
+        'starting the ``create_dispersion_solution_grid_lines_for_plot`` function')
 
     import numpy as np
     import pandas as pd
 
-    dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, slit_length=slit_length, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
+    dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(
+        log=log, slit_length=slit_length, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw)
 
     uniqueOrders = dispMapDF['order'].unique()
     wlLims = []
@@ -1270,7 +1306,8 @@ def create_dispersion_solution_grid_lines_for_plot(
         wlRange = filDF['wavelength'].max() - filDF['wavelength'].min()
         wlLims.append((filDF['wavelength'].min(), filDF['wavelength'].max()))
         if isinstance(slitPositions, bool):
-            sPos.append((filDF['slit_position'].min(), filDF['slit_position'].max()))
+            sPos.append((filDF['slit_position'].min(),
+                        filDF['slit_position'].max()))
         else:
             sPos.append(slitPositions)
 
@@ -1317,7 +1354,8 @@ def create_dispersion_solution_grid_lines_for_plot(
         orderPixelTable=orderPixelTable
     )
 
-    log.debug('completed the ``create_dispersion_solution_grid_lines_for_plot`` function')
+    log.debug(
+        'completed the ``create_dispersion_solution_grid_lines_for_plot`` function')
     return orderPixelTable, interOrderMask
 
 
@@ -1348,7 +1386,8 @@ def get_calibration_lamp(
     for l in [kw("LAMP1"), kw("LAMP2"), kw("LAMP3"), kw("LAMP4"), kw("LAMP5"), kw("LAMP6"), kw("LAMP7")]:
         if l in frame.header:
             newLamp = frame.header[l]
-            newLamp = newLamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("VIS_", "").replace("UVB_", "").replace("_lamp", "").replace("_Lamp", "").replace("Argo", "Ar").replace("Neon", "Ne").replace("Merc", "Hg").replace("Xeno", "Xe")
+            newLamp = newLamp.replace("UVB_High", "QTH").replace("UVB_Low_", "").replace("NIR_", "").replace("VIS_", "").replace("UVB_", "").replace(
+                "_lamp", "").replace("_Lamp", "").replace("Argo", "Ar").replace("Neon", "Ne").replace("Merc", "Hg").replace("Xeno", "Xe")
             if lamp:
                 lamp += newLamp
             else:
@@ -1392,7 +1431,8 @@ def qc_settings_plot_tables(
 
     qcCopy = qc.copy()
     qcCopy["value"] = qcCopy["qc_value"].astype(str) + " " + qcCopy["qc_unit"]
-    qcCopy.loc[qcCopy['value'].isnull(), "value"] = qcCopy.loc[qcCopy['value'].isnull(), "qc_value"]
+    qcCopy.loc[qcCopy['value'].isnull(
+    ), "value"] = qcCopy.loc[qcCopy['value'].isnull(), "qc_value"]
 
     columns1 = ["value", "qc_comment"]
     colColours = plt.cm.Greys(np.full(len(columns1), 0.1))
@@ -1400,15 +1440,18 @@ def qc_settings_plot_tables(
     rowLabels = qcCopy["qc_name"].values
 
     if len(qcCopy[columns1].values):
-        qcTable = qcAx.table(cellText=qcCopy[columns1].values, colLabels=columns1, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
+        qcTable = qcAx.table(cellText=qcCopy[columns1].values, colLabels=columns1, loc='center', cellLoc='left',
+                             rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
         tables.append(qcTable)
         cols.append(columns1)
     # qcAx.set_title(
     #     "QC Table", fontsize=9)
 
-    settingsCopy = {k: v for k, v in settings.items() if k not in ['nir', 'vis', 'uvb']}
+    settingsCopy = {k: v for k, v in settings.items() if k not in [
+        'nir', 'vis', 'uvb']}
 
-    settingsCopy = {"setting": settingsCopy.keys(), "value": settingsCopy.values()}
+    settingsCopy = {"setting": settingsCopy.keys(),
+                    "value": settingsCopy.values()}
 
     settingsDF = pd.DataFrame(settingsCopy)
 
@@ -1416,7 +1459,8 @@ def qc_settings_plot_tables(
     colColours = plt.cm.Greys(np.full(len(columns2), 0.1))
     rowColours = plt.cm.Greys(np.full(len(settingsDF.index), 0.1))
     rowLabels = settingsDF["setting"].values
-    settingsTable = settingsAx.table(cellText=settingsDF[columns2].values, colLabels=columns2, loc='center', cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
+    settingsTable = settingsAx.table(cellText=settingsDF[columns2].values, colLabels=columns2, loc='center',
+                                     cellLoc='left', rowColours=rowColours, colColours=colColours, rowLabels=rowLabels, rowLoc='right', fontsize=14)
     tables.append(settingsTable)
     cols.append(columns2)
     # settingsAx.set_title(
@@ -1465,7 +1509,10 @@ def utility_setup(
     **Usage:**
 
     ```python
-    usage code 
+    # Example usage with timezone-aware UTC datetime
+    from datetime import datetime, UTC
+    startNightDate = datetime.now(UTC).strftime("%Y-%m-%d")
+    qcDir, productDir = utility_setup(log=log, settings=settings, recipeName="my_recipe", startNightDate=startNightDate)
     ```           
     """
     log.debug('starting the ``utility_setup`` function')
@@ -1474,14 +1521,16 @@ def utility_setup(
     home = expanduser("~")
 
     # QC DIR
-    qcDir = settings["workspace-root-dir"].replace("~", home) + f"/qc/{startNightDate}/{recipeName}/"
+    qcDir = settings["workspace-root-dir"].replace(
+        "~", home) + f"/qc/{startNightDate}/{recipeName}/"
     qcDir = qcDir.replace("//", "/")
     # RECURSIVELY CREATE MISSING DIRECTORIES
     if not os.path.exists(qcDir):
         os.makedirs(qcDir)
 
     # PRODUCT DIR
-    productDir = settings["workspace-root-dir"].replace("~", home) + f"/reduced/{startNightDate}/{recipeName}/"
+    productDir = settings["workspace-root-dir"].replace(
+        "~", home) + f"/reduced/{startNightDate}/{recipeName}/"
     productDir = productDir.replace("//", "/")
     # RECURSIVELY CREATE MISSING DIRECTORIES
     if not os.path.exists(productDir):
@@ -1489,3 +1538,135 @@ def utility_setup(
 
     log.debug('completed the ``utility_setup`` function')
     return qcDir, productDir
+
+
+def plot_merged_spectrum_qc(
+    merged_orders,
+    products,
+    log,
+    qcDir,
+    filenameTemplate,
+    noddingSequence,
+    dateObs,
+    arm,
+    recipeName,
+    orderJoins=False,
+    debug=False
+):
+    """
+    Plot merged spectrum QC plot as a standalone function.
+
+    Returns:
+        products (pd.DataFrame): Updated products table.
+        filePath (str): Path to the saved QC plot PDF.
+    """
+    log.debug('starting the ``plot_merged_spectrum_qc`` function')
+
+    # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
+    if isinstance(products, bool) and not products:
+        return products, None
+
+    import matplotlib.pyplot as plt
+    plt.switch_backend('Agg')
+    from datetime import datetime
+    import pandas as pd
+    from astropy import units as u
+    from astropy.stats import sigma_clipped_stats
+
+    if not noddingSequence:
+        noddingSequence = ""
+
+    fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
+    # Adjusted height ratios
+    gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 0, 0])
+
+    # Top panel with linear scale
+    top_panel = fig.add_subplot(gs[0, :])
+    top_panel.set_ylabel('flux ($e^{-}$)', fontsize=10)
+    top_panel.set_title(
+        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
+
+    top_panel.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'],
+                   linewidth=0.3, color="#dc322f")
+
+    try:
+        top_panel.set_xlim(merged_orders['WAVE'].min().value,
+                           merged_orders['WAVE'].max().value)
+    except Exception:
+        top_panel.set_xlim(
+            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+
+    # Middle panel with log scale
+    middle_panel = fig.add_subplot(gs[1, :])
+    middle_panel.set_ylabel('flux ($e^{-}$)', fontsize=10)
+    middle_panel.set_xlabel('wavelength (nm)', fontsize=10)
+    middle_panel.set_yscale('log')
+
+    middle_panel.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'],
+                      linewidth=0.3, color="#dc322f")
+
+    from astropy.stats import sigma_clip, mad_std
+    # SIGMA-CLIP THE DATA
+    arrayMask = sigma_clip(
+        merged_orders['FLUX_COUNTS'], sigma_lower=300, sigma_upper=7.0, maxiters=3, cenfunc='mean', stdfunc='std')
+    mean, median, std = sigma_clipped_stats(
+        merged_orders['FLUX_COUNTS'], sigma=7.0, stdfunc="std", cenfunc="mean", maxiters=3)
+    maxFlux = arrayMask.max() + 0.5*std
+    minFlux = arrayMask.min() - 0.05*std
+
+    middle_panel.set_ylim(minFlux, maxFlux)
+    top_panel.set_ylim(minFlux, arrayMask.max() + 0.1*std)
+    try:
+        middle_panel.set_xlim(merged_orders['WAVE'].min().value,
+                              merged_orders['WAVE'].max().value)
+    except Exception:
+        middle_panel.set_xlim(
+            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+
+    # Bottom panel with linear scale for SNR
+    bottom_panel = fig.add_subplot(gs[2, :])
+    bottom_panel.set_ylabel('SNR', fontsize=10)
+    bottom_panel.set_xlabel('wavelength (nm)', fontsize=10)
+
+    bottom_panel.plot(merged_orders['WAVE'], merged_orders['SNR'],
+                      linewidth=0.4, color="black")
+
+    if orderJoins:
+        for k, v in orderJoins.items():
+            for panel in [top_panel, middle_panel, bottom_panel]:
+                panel.axvline(v, color="black", linestyle="--",
+                              linewidth=0.5, alpha=0.5)
+                panel.text(v + 5, 0.9*panel.get_ylim()[1], "ORDER JOIN",
+                           rotation=90, verticalalignment='top', fontsize=6, color="black", alpha=0.5)
+
+    try:
+        bottom_panel.set_xlim(merged_orders['WAVE'].min().value,
+                              merged_orders['WAVE'].max().value)
+    except Exception:
+        bottom_panel.set_xlim(
+            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+
+    bottom_panel.set_ylim(0, merged_orders['SNR'].max() * 1.1)
+
+    filename = filenameTemplate.replace(
+        ".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
+    filePath = f"{qcDir}/{filename}"
+    if debug:
+        plt.show()
+    plt.savefig(filePath, dpi=120, bbox_inches='tight')
+
+    utcnow = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    products = pd.concat([products, pd.Series({
+        "soxspipe_recipe": recipeName,
+        "product_label": f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}",
+        "file_name": filename,
+        "file_type": "PDF",
+        "obs_date_utc": dateObs,
+        "reduction_date_utc": utcnow,
+        "product_desc": "QC plot of extracted order-merged source",
+        "file_path": filePath,
+        "label": "QC"
+    }).to_frame().T], ignore_index=True)
+
+    log.debug('completed the ``plot_merged_spectrum_qc`` function')
+    return products, filePath
