@@ -28,7 +28,7 @@ install_requires = [
     'specutils==1.16.0',
     'humanize==4.11.0',
     'line_profiler',
-    'memory_profiler'
+    'memory_profiler',
     'scikit-learn'
 ]
 
