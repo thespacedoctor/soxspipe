@@ -37,6 +37,7 @@ class soxs_mbias(base_recipe):
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
 
 
     **Usage**
@@ -59,11 +60,12 @@ class soxs_mbias(base_recipe):
             inputFrames=[],
             verbose=False,
             overwrite=False,
-            command=False
+            command=False,
+            debug=False
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         this = super(soxs_mbias, self).__init__(log=log, settings=settings,
-                                                inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias", command=command)
+                                                inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias", command=command, debug=debug)
         log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
@@ -134,7 +136,6 @@ class soxs_mbias(base_recipe):
         self.log.debug('completed the ``verify_input_frames`` method')
         return None
 
-    # @profile
     def produce_product(
             self):
         """*generate a master bias frame*

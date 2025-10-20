@@ -63,7 +63,6 @@ class chebyshev_order_wavelength_polynomials():
 
         return None
 
-    # @profile
     def poly(self, orderPixelTable, *coeff):
         """the polynomial definition
 

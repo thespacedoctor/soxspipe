@@ -32,6 +32,7 @@ class soxs_order_centres(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*. 
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
 
 
     **Usage**
@@ -55,12 +56,13 @@ class soxs_order_centres(base_recipe):
             verbose=False,
             overwrite=False,
             polyOrders=False,
-            command=False
+            command=False,
+            debug=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_order_centres, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-order-centre", command=command)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-order-centre", command=command, debug=debug)
         self.log = log
         log.debug("instantiating a new 'soxs_order_centres' object")
         self.settings = settings
@@ -134,7 +136,8 @@ class soxs_order_centres(base_recipe):
             if not error:
                 if len(imageTypes) > 1:
                     imageTypes = " and ".join(imageTypes)
-                    erorr = "Input frames are a mix of %(imageTypes)s" % locals()
+                    erorr = "Input frames are a mix of %(imageTypes)s" % locals(
+                    )
 
             if not error:
                 if self.inst == "SOXS":
@@ -159,10 +162,12 @@ class soxs_order_centres(base_recipe):
                 if self.inst == "SOXS":
                     goodList = ['FLAT,LAMP', 'LAMP,DFLAT', 'LAMP,FLAT']
                 else:
-                    goodList = ["LAMP,ORDERDEF", 'LAMP,DORDERDEF', 'LAMP,QORDERDEF']
+                    goodList = ["LAMP,ORDERDEF",
+                                'LAMP,DORDERDEF', 'LAMP,QORDERDEF']
                 for i in imageTypes:
                     if i not in goodList:
-                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found {i}" % locals()
+                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found {i}" % locals(
+                        )
 
             if not error:
                 for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
@@ -230,9 +235,12 @@ class soxs_order_centres(base_recipe):
 
         if self.inst == "SOXS":
             filter_list = [
-                {kw("DPR_TYPE"): 'FLAT,LAMP', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,FLAT', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,DFLAT', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'FLAT,LAMP', kw(
+                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'LAMP,FLAT', kw(
+                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'LAMP,DFLAT', kw(
+                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
                 # KEYWORD SCREW-UP DURING PAE MEANT WE HAD TO ADD BELOW WITH ECHELLE,SLIT ... SHOULD REMOVE THIS EVENTUALLY
                 {kw("DPR_TYPE"): 'FLAT,LAMP', kw("DPR_TECH"): 'ECHELLE,SLIT'},
                 {kw("DPR_TYPE"): 'LAMP,FLAT', kw("DPR_TECH"): 'ECHELLE,SLIT'},
@@ -241,9 +249,12 @@ class soxs_order_centres(base_recipe):
         else:
             # UVB XSHOOTER - CHECK FOR D2 LAMP FIRST AND IF NOT FOUND USE THE QTH LAMP
             filter_list = [
-                {kw("DPR_TYPE"): 'LAMP,ORDERDEF', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,QORDERDEF', kw("DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,DORDERDEF', kw("DPR_TECH"): 'ECHELLE,PINHOLE'}
+                {kw("DPR_TYPE"): 'LAMP,ORDERDEF', kw(
+                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'LAMP,QORDERDEF', kw(
+                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): 'LAMP,DORDERDEF', kw(
+                    "DPR_TECH"): 'ECHELLE,PINHOLE'}
             ]
 
         for add_filters in filter_list:
@@ -264,7 +275,8 @@ class soxs_order_centres(base_recipe):
             fileDir = self.workspaceRootPath
             filepath = self._write(
                 self.orderFrame, fileDir, filename=False, overwrite=True, product=False)
-            self.log.print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
+            self.log.print(
+                f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
         # FIND THE APPROPRIATE PREDICTED LINE-LIST
         if arm != "NIR" and kw('WIN_BINX') in self.orderFrame.header:
@@ -316,7 +328,8 @@ class soxs_order_centres(base_recipe):
         else:
             if self.polyOrders:
                 self.polyOrders = str(self.polyOrders)
-                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+                self.polyOrders = [int(digit)
+                                   for digit in str(self.polyOrders)]
                 self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
                 self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
 

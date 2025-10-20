@@ -27,7 +27,9 @@ install_requires = [
     'multiprocess==0.70.16',
     'specutils==1.16.0',
     'humanize==4.11.0',
-    'line_profiler'
+    'line_profiler',
+    'memory_profiler'
+    'scikit-learn'
 ]
 
 # READ THE DOCS SERVERS

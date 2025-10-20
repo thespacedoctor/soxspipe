@@ -8,14 +8,14 @@ Usage:
     soxspipe prep <workspaceDirectory> [--vlt]
     soxspipe [-qw] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
-    soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
-    soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
-    soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
-    soxspipe [-Vx] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vx] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vxd] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vxd] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vxd] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
+    soxspipe [-Vxd] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
+    soxspipe [-Vxd] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vxd] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
+    soxspipe [-Vxd] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vxd] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
 
 Options:
@@ -40,13 +40,14 @@ Options:
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
-    -q, --quitOnFail                       stop the pipeline if a recipe fails
+    -d, --debug                            show debugging plots
     -h, --help                             show this help message
-    -v, --version                          show version
+    -q, --quitOnFail                       stop the pipeline if a recipe fails
     -s, --settings <pathToSettingsFile>    the settings file
+    -v, --version                          show version
     -V, --verbose                          more verbose output
-    -x, --overwrite                        more verbose output
     -w, --watch                            watch the workspace and reduce new raw data as it is added (similar to 'watch' mode but runs in the foreground)
+    -x, --overwrite                        more verbose output
     --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
     --vlt                                  only use this flag if setting up a workspace on a VLT environment workstation
 """
@@ -84,10 +85,12 @@ def main(arguments=None):
     if len(sys.argv[1:]) == 2 or len(sys.argv[1:]) == 4:
         if sys.argv[2].split(".")[-1].lower() == "sof":
             from soxspipe.commonutils import toolkit
-            productPath, startNightDate = toolkit.predict_product_path(sys.argv[2])
+            productPath, startNightDate = toolkit.predict_product_path(
+                sys.argv[2])
             if os.path.exists(productPath):
                 basename = os.path.basename(productPath)
-                print(f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
+                print(
+                    f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x).")
                 sys.exit(0)
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
@@ -192,7 +195,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                command=command
+                command=command,
+                debug=a["debugFlag"]
             )
             mbiasFrame = recipe.produce_product()
 
@@ -204,7 +208,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                command=command
+                command=command,
+                debug=a["debugFlag"]
             )
             mdarkFrame = recipe.produce_product()
 
@@ -229,7 +234,8 @@ def main(arguments=None):
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
                 polyOrders=a["polyFlag"],
-                command=command
+                command=command,
+                debug=a["debugFlag"]
             ).produce_product()
 
         if a["spat_sol"]:
@@ -252,7 +258,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                command=command
+                command=command,
+                debug=a["debugFlag"]
             )
             mflatFrame = recipe.produce_product()
 
@@ -264,7 +271,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                command=command
+                command=command,
+                debug=a["debugFlag"]
             )
             reducedStare = recipe.produce_product()
 
@@ -276,7 +284,8 @@ def main(arguments=None):
                 inputFrames=a["inputFrames"],
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
-                command=command
+                command=command,
+                debug=a["debugFlag"]
             )
             reducedNod = recipe.produce_product()
 
@@ -322,7 +331,8 @@ def main(arguments=None):
 
         exists = os.path.exists(a["workspaceDirectory"] + "/soxspipe.db")
         if not exists:
-            print(f"Please run the 'soxspipe prep {a['workspaceDirectory']}' command to prepare your workspace command before attempting to reduce data")
+            print(
+                f"Please run the 'soxspipe prep {a['workspaceDirectory']}' command to prepare your workspace command before attempting to reduce data")
             return
 
         watch = True
@@ -340,7 +350,8 @@ def main(arguments=None):
 
             if a["watchFlag"]:
                 xsec = 15
-                print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
+                print(
+                    f"\nWaiting for {xsec} seconds before next reduction attempt\n")
                 time.sleep(xsec)
 
                 from soxspipe.commonutils import data_organiser
@@ -418,7 +429,8 @@ def main(arguments=None):
                     collection.reduce()
 
                 xsec = 15
-                print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
+                print(
+                    f"\nWaiting for {xsec} seconds before next reduction attempt\n")
                 time.sleep(xsec)
 
             self.log.info('completed the ``action`` method')

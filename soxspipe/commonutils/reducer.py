@@ -9,6 +9,7 @@ Author
 Date Created
 : January 17, 2024
 """
+# from memory_profiler import profile
 from fundamentals import tools
 from builtins import object
 import sys
@@ -77,13 +78,14 @@ class reducer(object):
             return None
 
         self.recipeList = ["mbias", "mdark", "disp_sol",
-                           "order_centres", "mflat", "spat_sol", "stare", "nod", "offset"]
+                           "order_centres", "mflat", "spat_sol", "stare", "nod", "stare", "offset"]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
         self.sessionDB = workspaceDirectory + "/soxspipe.db"
 
         return None
 
+    # @profile
     def reduce(self):
         """
         *reduce the selected data*
@@ -215,31 +217,29 @@ class reducer(object):
         if recipe == "mbias":
             from soxspipe.recipes import soxs_mbias
 
-            recipe = soxs_mbias(
+            soxs_mbias(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
                 command=command,
-            )
-            mbiasFrame = recipe.produce_product()
+            ).produce_product()
 
         if recipe == "mdark":
             from soxspipe.recipes import soxs_mdark
 
-            recipe = soxs_mdark(
+            soxs_mdark(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
                 command=command,
-            )
-            mdarkFrame = recipe.produce_product()
+            ).produce_product()
 
         if recipe == "disp_sol":
             from soxspipe.recipes import soxs_disp_solution
 
-            disp_map = soxs_disp_solution(
+            soxs_disp_solution(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
@@ -250,7 +250,7 @@ class reducer(object):
         if recipe == "order_centres":
             from soxspipe.recipes import soxs_order_centres
 
-            order_table = soxs_order_centres(
+            soxs_order_centres(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
@@ -261,19 +261,18 @@ class reducer(object):
         if recipe == "mflat":
             from soxspipe.recipes import soxs_mflat
 
-            recipe = soxs_mflat(
+            soxs_mflat(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
                 command=command,
-            )
-            mflatFrame = recipe.produce_product()
+            ).produce_product()
 
         if recipe == "spat_sol":
             from soxspipe.recipes import soxs_spatial_solution
 
-            disp_map, mapImage2D, res_plots = soxs_spatial_solution(
+            soxs_spatial_solution(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
@@ -284,26 +283,24 @@ class reducer(object):
         if recipe == "stare":
             from soxspipe.recipes import soxs_stare
 
-            recipe = soxs_stare(
+            soxs_stare(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
                 command=command,
-            )
-            reducedStare = recipe.produce_product()
+            ).produce_product()
 
         if recipe == "nod":
             from soxspipe.recipes import soxs_nod
 
-            recipe = soxs_nod(
+            soxs_nod(
                 log=self.log,
                 settings=self.settings,
                 inputFrames=sof,
                 overwrite=self.overwrite,
                 command=command,
-            )
-            reducedNod = recipe.produce_product()
+            ).produce_product()
 
         self.log.debug("completed the ``run_recipe`` method")
         return None

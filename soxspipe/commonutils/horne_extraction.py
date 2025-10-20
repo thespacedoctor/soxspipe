@@ -37,6 +37,7 @@ class horne_extraction(object):
     - ``recipeSettings`` -- the recipe specific settings
     - ``skyModelFrame`` -- path to sky model frame
     - ``skySubtractedFrame`` -- path to sky subtracted frame
+    - ``unflattenedFrame`` -- path to unflattened frame
     - ``twoDMapPath`` -- path to 2D dispersion map image path
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
     - ``qcTable`` -- the data frame to collect measured QC metrics
@@ -45,6 +46,8 @@ class horne_extraction(object):
     - ``sofName`` -- the set-of-files filename
     - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
+    - ``notFlattened`` -- flag to indicate if the frame is flattened or not. Default *False*
+    - ``debug`` -- flag to indicate if debug mode is on (shows plots). Default *False*
 
     **Usage:**
 
@@ -58,20 +61,24 @@ class horne_extraction(object):
         log=log,
         skyModelFrame=skyModelFrame,
         skySubtractedFrame=skySubtractedFrame,
+        unflattenedFrame=unflattenedFrame,
         twoDMapPath=twoDMap,
         settings=settings,
         recipeName="soxs-stare",
         qcTable=qc,
         productsTable=products,
         dispersionMap=dispMap,
-        sofName=sofName
+        sofName=sofName,
+        locationSetIndex=locationSetIndex,
+        startNightDate=startNightDate,
+        debug=debug
+
     )
     qc, products = optimalExtractor.extract()
     ```
 
     """
 
-    @profile
     def __init__(
             self,
             log,
@@ -79,6 +86,7 @@ class horne_extraction(object):
             recipeSettings,
             skyModelFrame,
             skySubtractedFrame,
+            unflattenedFrame,
             twoDMapPath,
             recipeName=False,
             qcTable=False,
@@ -86,8 +94,9 @@ class horne_extraction(object):
             dispersionMap=False,
             sofName=False,
             locationSetIndex=False,
-            startNightDate=""
-
+            startNightDate="",
+            notFlattened=False,
+            debug=False
     ):
         import numpy as np
         import pandas as pd
@@ -100,9 +109,11 @@ class horne_extraction(object):
         from soxspipe.commonutils.toolkit import unpack_order_table
         from soxspipe.commonutils import detector_lookup
         from ccdproc import cosmicray_lacosmic, cosmicray_median
+        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
         from matplotlib import pyplot as plt
         plt.switch_backend('Agg')
-        # plt.switch_backend('macosx')
+        if debug:
+            plt.switch_backend('macosx')
 
         self.log = log
         log.debug("instantiating a new 'horne_extraction' object")
@@ -116,6 +127,16 @@ class horne_extraction(object):
         self.noddingSequence = ""
         self.recipeSettings = recipeSettings
         self.startNightDate = startNightDate
+        self.debug = debug
+        self.unflattenedFrame = unflattenedFrame
+
+        if notFlattened:
+            self.notFlattened = "_NOTFLAT"
+        else:
+            self.notFlattened = ""
+
+        if notFlattened:
+            self.skySubtractedFrame = unflattenedFrame
 
         # DETECTING SEQUENCE AUTOMATICALLY
         try:
@@ -145,35 +166,6 @@ class horne_extraction(object):
                                                    hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
                                                    key_uncertainty_type='UTYPE')
 
-        if True and self.recipeSettings["use_lacosmic"]:
-            oldCount = self.skySubtractedFrame.mask.sum()
-            oldMask = self.skySubtractedFrame.mask.copy()
-            # OPTIMISE: 18s- hit 8 times
-            self.skySubtractedFrame = cosmicray_lacosmic(self.skySubtractedFrame, sigclip=18.0, gain_apply=False, niter=5,
-                                                         cleantype="meanmask", objlim=5.0, invar=self.skySubtractedFrame.uncertainty.array.astype("float32"), verbose=False)
-            newCount = self.skySubtractedFrame.mask.sum()
-            self.laCosmicClippedCount = newCount - oldCount
-            # self.skySubtractedFrame.mask = oldMask
-            from soxspipe.commonutils.toolkit import quicklook_image
-            quicklook_image(log=self.log, CCDObject=self.skySubtractedFrame, show=False, ext='mask', stdWindow=3, title=False,
-                            surfacePlot=False, dispMap=dispersionMap, dispMapImage=twoDMapPath, settings=self.settings, skylines=False)
-
-        # CHECK SKY MODEL FRAME IS USED (ONLY IN STARE MODE)
-        if skyModelFrame == False:
-            self.skyModelFrame = None
-        else:
-            # OPEN THE SKY-MODEL FRAME
-            if isinstance(skyModelFrame, CCDData):
-                self.skyModelFrame = skyModelFrame
-            else:
-                self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
-                                                  hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
-                                                  key_uncertainty_type='UTYPE')
-
-        from soxspipe.commonutils.toolkit import quicklook_image
-        quicklook_image(
-            log=self.log, CCDObject=self.skySubtractedFrame, show=False, ext='data', stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
-
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
         self.kw = keyword_lookup(
@@ -189,6 +181,24 @@ class horne_extraction(object):
             log=self.log,
             settings=self.settings
         ).get(self.arm)
+
+        if self.twoDMapPath:
+            self.mapDF, self.interOrderMask = twoD_disp_map_image_to_dataframe(
+                log=self.log, slit_length=self.detectorParams["slit_length"], twoDMapPath=twoDMapPath, associatedFrame=self.skySubtractedFrame, kw=kw, dispAxis=self.detectorParams["dispersion-axis"])
+
+            self.skySubtractedFrame.data[self.interOrderMask == 1] = np.nan
+
+        # CHECK SKY MODEL FRAME IS USED (ONLY IN STARE MODE)
+        if skyModelFrame == False:
+            self.skyModelFrame = None
+        else:
+            # OPEN THE SKY-MODEL FRAME
+            if isinstance(skyModelFrame, CCDData):
+                self.skyModelFrame = skyModelFrame
+            else:
+                self.skyModelFrame = CCDData.read(skyModelFrame, hdu=0, unit=u.electron,
+                                                  hdu_uncertainty='ERRS', hdu_mask='QUAL', hdu_flags='FLAGS',
+                                                  key_uncertainty_type='UTYPE')
 
         # SET IMAGE ORIENTATION
         if self.detectorParams["dispersion-axis"] == "x":
@@ -247,7 +257,7 @@ class horne_extraction(object):
         xarray = np.tile(np.arange(0, xdim), ydim)
         yarray = np.repeat(np.arange(0, ydim), xdim)
 
-        self.skySubtractedFrame.data[self.skySubtractedFrame.data == 0] = np.nan
+        # self.skySubtractedFrame.data[self.skySubtractedFrame.data == 0] = np.nan
 
         if binxRatio > 1 or binyRatio > 1:
             from astropy.nddata import block_reduce
@@ -307,12 +317,10 @@ class horne_extraction(object):
             self.imageMap['slit_position'] == 0)
         self.imageMap = self.imageMap.loc[~mask]
 
-        # xpd-update-filter-dataframe-column-values
-
         # FIND THE OBJECT TRACE IN EACH ORDER
         detector = detect_continuum(
             log=self.log,
-            traceFrame=self.skySubtractedFrame,
+            traceFrame=self.unflattenedFrame,
             dispersion_map=self.dispersionMap,
             settings=self.settings,
             recipeSettings=self.recipeSettings,
@@ -321,16 +329,16 @@ class horne_extraction(object):
             qcTable=self.qc,
             productsTable=self.products,
             locationSetIndex=locationSetIndex,
-            startNightDate=self.startNightDate
+            startNightDate=self.startNightDate,
+            debug=self.debug
         )
-        # OPTIMISEL 24s 4 hits
         productPath, self.qc, self.products, orderPolyTable, self.orderPixelTable, orderMetaTable = detector.get()
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=productPath)
 
-        # ORDER CHECK INCASE OF POOR CONTINUUM FITTING
+        # ORDER CHECK IN CASE OF POOR CONTINUUM FITTING
         # GET UNIQUE VALUES IN COLUMN
         self.inst = self.skySubtractedFrame.header[self.kw("INSTRUME")]
         if self.arm.upper() == "VIS" and self.inst.upper() == "SOXS":
@@ -348,7 +356,6 @@ class horne_extraction(object):
 
         # xpd-update-filter-dataframe-column-values
 
-    @profile
     def extract(self):
         """*extract the full spectrum order-by-order and return FITS Binary table containing order-merged spectrum*
 
@@ -362,7 +369,8 @@ class horne_extraction(object):
 
         import matplotlib.pyplot as plt
         plt.switch_backend('Agg')
-        # plt.switch_backend('macosx')
+        if self.debug:
+            plt.switch_backend('macosx')
         import pandas as pd
         from astropy.table import Table
         import copy
@@ -376,6 +384,7 @@ class horne_extraction(object):
         import numpy as np
         import scipy.ndimage
         from astropy.stats import sigma_clip
+        import skimage.transform as skt
 
         kw = self.kw
         arm = self.arm
@@ -387,7 +396,7 @@ class horne_extraction(object):
         extractions = []
 
         self.log.print(
-            "\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)\n")
+            "\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)")
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
         binx = 1
@@ -412,38 +421,47 @@ class horne_extraction(object):
             log=self.log, settings=self.settings, arm=self.arm, dispersionMap=self.dispersionMap, extended=False, binx=binx, biny=biny)
 
         self.log.print(
-            "\tBuilding wavelength, slit-position, flux, error and bad-pixel arrays\n")
+            "\tBuilding wavelength, slit-position, flux, error and bad-pixel arrays")
 
+        # ZOOM IN ON THE DATA TO GET MORE PIXELS ACROSS THE SLIT (NEAREST
+        # NEIGHBOUR INTERPOLATION)
         zoomFactor = 11
         if self.detectorParams["dispersion-axis"] == "x":
             zoomTuple = (1, zoomFactor)
         else:
             zoomTuple = (zoomFactor, 1)
-        wlZoom = scipy.ndimage.zoom(
-            self.twoDMap["WAVELENGTH"].data, zoomTuple, order=0)
-        slitZoom = scipy.ndimage.zoom(
-            self.twoDMap["SLIT"].data, zoomTuple, order=0)
-        rawFluxZoom = scipy.ndimage.zoom(
-            self.skySubtractedFrame.data, zoomTuple, order=0)
+        if self.detectorParams["dispersion-axis"] == "x":
+            output_shape = (self.twoDMap["WAVELENGTH"].data.shape[0],
+                            self.twoDMap["WAVELENGTH"].data.shape[1]*zoomFactor)
+        else:
+            output_shape = (self.twoDMap["WAVELENGTH"].data.shape[0]
+                            * zoomFactor, self.twoDMap["WAVELENGTH"].data.shape[1])
+
+        # NEAREST NEIGHBOUR INTERPOLATION
+        wlZoom = skt.resize(
+            self.twoDMap["WAVELENGTH"].data, output_shape, order=0, preserve_range=True)
+        slitZoom = skt.resize(
+            self.twoDMap["SLIT"].data, output_shape, order=0, preserve_range=True)
+        rawFluxZoom = skt.resize(
+            self.skySubtractedFrame.data, output_shape, order=0, preserve_range=True)
         if self.skyModelFrame:
-            skyZoom = scipy.ndimage.zoom(
-                self.skyModelFrame.data, zoomTuple, order=0)
-        errorZoom = scipy.ndimage.zoom(
-            self.skySubtractedFrame.uncertainty.array, zoomTuple, order=0)
-        bpmZoom = scipy.ndimage.zoom(
-            self.skySubtractedFrame.mask, zoomTuple, order=0)
+            skyZoom = skt.resize(self.skyModelFrame.data,
+                                 output_shape, order=0, preserve_range=True)
+        errorZoom = skt.resize(self.skySubtractedFrame.uncertainty.array,
+                               output_shape, order=0, preserve_range=True)
+        bpmZoom = skt.resize(self.skySubtractedFrame.mask,
+                             output_shape, order=0, preserve_range=True)
 
         def rebin(arr, binx, biny):
-            """Rebin 2D array arr to shape new_shape by averaging."""
-            new_shape = (arr.shape[0] // binx, arr.shape[1] // biny)
-            shape = (new_shape[0], arr.shape[0] // new_shape[0],
-                     new_shape[1], arr.shape[1] // new_shape[1])
-            return arr.reshape(shape).mean(-1).mean(1)
+            """REBIN 2D ARRAY ARR TO SHAPE NEW_SHAPE BY AVERAGING."""
+            new_shape = (arr.shape[0] // binx, binx,
+                         arr.shape[1] // biny, biny)
+            return arr.reshape(new_shape).mean(axis=(1, 3))
 
         def initial_sigma_clipping(
                 rawFluxArray,
                 bpmArray):
-            """Run some initial sigma clipping to catch more bad pixels
+            """RUN SOME INITIAL SIGMA CLIPPING TO CATCH MORE BAD PIXELS
             """
 
             import numpy as np
@@ -455,7 +473,7 @@ class horne_extraction(object):
 
             rawFluxMasked = np.ma.array(rawFluxArray, mask=bpmArray)
             rawFluxMasked = sigma_clip(
-                rawFluxMasked, sigma_lower=2, sigma_upper=5, maxiters=1, cenfunc='mean', stdfunc="std", axis=1)
+                rawFluxMasked, sigma_lower=2, sigma_upper=7, maxiters=1, cenfunc='mean', stdfunc="std", axis=1)
             newBpm = rawFluxMasked.mask
 
             return newBpm
@@ -530,10 +548,12 @@ class horne_extraction(object):
                 orderSlices.append(orderTable)
                 wlMinMax.append((wlmin, wlmax))
 
+        self.log.print(
+            f"\tExtracting {len(orderSlices)} orders\n\n")
+
         from fundamentals import fmultiprocess
-        # OPTIMISE: 24s 8 hits
         extractions = fmultiprocess(log=self.log, function=extract_single_order,
-                                    inputArray=orderSlices, poolSize=False, timeout=300, funclog=self.log, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, gain=self.gain, turnOffMP=True)
+                                    inputArray=orderSlices, poolSize=False, timeout=300, funclog=self.log, ron=self.ron, slitHalfLength=self.slitHalfLength, clippingSigma=self.clippingSigma, clippingIterationLimit=self.clippingIterationLimit, globalClippingSigma=self.globalClippingSigma, axisA=self.axisA, axisB=self.axisB, gain=self.gain, hornePolyOrder=self.recipeSettings["horne-extraction-profile-poly-order"], debug=self.debug, turnOffMP=self.debug, progressBar=True)
 
         updatedExtractions = []
         for e, wlTuple in zip(extractions, wlMinMax):
@@ -551,9 +571,8 @@ class horne_extraction(object):
 
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
-
-        # OPTIMISE: 14s
-        mergedSpectumDF = self.merge_extracted_orders(extractedOrdersDF)
+        mergedSpectumDF, orderJoins = self.merge_extracted_orders(
+            extractedOrdersDF)
 
         if not isinstance(self.products, bool):
 
@@ -584,28 +603,29 @@ class horne_extraction(object):
 
             # DISCRETE ORDERS
             filename = self.filenameTemplate.replace(
-                ".fits", f"_EXTRACTED_ORDERS{self.noddingSequence}.fits")
+                ".fits", f"_EXTRACTED_ORDERS{self.noddingSequence}{self.notFlattened}.fits")
             filePath = f"{self.productDir}/{filename}"
             hduList.writeto(filePath, checksum=True, overwrite=True)
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-            self.products = pd.concat([self.products, pd.Series({
-                "soxspipe_recipe": "soxs-stare",
-                "product_label": f"EXTRACTED_ORDERS_TABLE{self.noddingSequence}",
-                "file_name": filename,
-                "file_type": "FITS",
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "product_desc": f"Table of the extracted source in each order",
-                "file_path": filePath,
-                "label": "PROD"
-            }).to_frame().T], ignore_index=True)
+            if not self.notFlattened:
+                self.products = pd.concat([self.products, pd.Series({
+                    "soxspipe_recipe": "soxs-stare",
+                    "product_label": f"EXTRACTED_ORDERS_TABLE{self.noddingSequence}{self.notFlattened}",
+                    "file_name": filename,
+                    "file_type": "FITS",
+                    "obs_date_utc": self.dateObs,
+                    "reduction_date_utc": utcnow,
+                    "product_desc": f"Table of the extracted source in each order",
+                    "file_path": filePath,
+                    "label": "PROD"
+                }).to_frame().T], ignore_index=True)
 
             # NOW MERGED SPECTRUM
             filename = self.filenameTemplate.replace(
-                ".fits", f"_EXTRACTED_MERGED{self.noddingSequence}.fits")
+                ".fits", f"_EXTRACTED_MERGED{self.noddingSequence}{self.notFlattened}.fits")
             filePath = f"{self.productDir}/{filename}"
             mergedTable = Table.from_pandas(mergedSpectumDF)
             BinTableHDU = fits.table_to_hdu(mergedTable)
@@ -615,9 +635,9 @@ class horne_extraction(object):
             # EXPORTING SPECTRUM IN ASCII FORMAT
 
             # CHECKING IF WE ARE IN A NODDING SEQUENCE
-            if self.noddingSequence or len(self.noddingSequence) > 0:
+            if self.noddingSequence or len(self.noddingSequence) > 0 and not self.notFlattened:
                 pass
-            else:
+            elif not self.notFlattened:
                 # SAVE THE MERGED ASTROPY TABLE TO TXT FILE
                 # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
                 asciiFilepath = filePath.replace(".fits", f".txt")
@@ -626,7 +646,7 @@ class horne_extraction(object):
                     asciiFilepath, format='ascii', overwrite=True)
                 self.products = pd.concat([self.products, pd.Series({
                     "soxspipe_recipe": self.recipeName,
-                    "product_label": "EXTRACTED_MERGED_ASCII",
+                    "product_label": f"EXTRACTED_MERGED_ASCII{self.notFlattened}",
                     "file_name": asciiFilename,
                     "file_type": "TXT",
                     "obs_date_utc": self.dateObs,
@@ -636,20 +656,23 @@ class horne_extraction(object):
                     "label": "PROD"
                 }).to_frame().T], ignore_index=True)
 
-            self.products = pd.concat([self.products, pd.Series({
-                "soxspipe_recipe": "soxs-stare",
-                "product_label": f"EXTRACTED_MERGED_TABLE{self.noddingSequence}",
-                "file_name": filename,
-                "file_type": "FITS",
-                "obs_date_utc": self.dateObs,
-                "reduction_date_utc": utcnow,
-                "product_desc": f"Table of the extracted, order-merged",
-                "file_path": filePath,
-                "label": "PROD"
-            }).to_frame().T], ignore_index=True)
+                self.products = pd.concat([self.products, pd.Series({
+                    "soxspipe_recipe": "soxs-stare",
+                    "product_label": f"EXTRACTED_MERGED_TABLE{self.noddingSequence}{self.notFlattened}",
+                    "file_name": filename,
+                    "file_type": "FITS",
+                    "obs_date_utc": self.dateObs,
+                    "reduction_date_utc": utcnow,
+                    "product_desc": f"Table of the extracted, order-merged",
+                    "file_path": filePath,
+                    "label": "PROD"
+                }).to_frame().T], ignore_index=True)
+            extractionFilepath = filePath
+        else:
+            extractionFilepath = False
 
         self.log.debug('completed the ``extract`` method')
-        return self.qc, self.products, mergedSpectumDF
+        return self.qc, self.products, mergedSpectumDF, orderJoins, extractionFilepath
 
     def weighted_average(self, group):
         import numpy as np
@@ -676,7 +699,6 @@ class horne_extraction(object):
 
         return group['FLUX_COUNTS']
 
-    @profile
     def merge_extracted_orders(
             self,
             extractedOrdersDF):
@@ -710,7 +732,8 @@ class horne_extraction(object):
         from astropy.io import fits
         import matplotlib.pyplot as plt
         plt.switch_backend('Agg')
-        # plt.switch_backend('macosx')
+        if self.debug:
+            plt.switch_backend('macosx')
         import matplotlib
         from datetime import datetime
         from astropy.nddata import VarianceUncertainty
@@ -752,10 +775,12 @@ class horne_extraction(object):
             extractedOrdersDF['order'] = extractedOrdersDF['order'] - 10
 
         uniqueOrders = np.sort(extractedOrdersDF['order'].unique())
+
         lastOrderMin = False
         orderJoins = {}
         orderGaps = {}
         for o in uniqueOrders:
+            o = int(o)
             mask = (extractedOrdersDF['order'] == o)
             if lastOrderMin:
                 order_join_wl = (
@@ -776,7 +801,7 @@ class horne_extraction(object):
         stepRatio = 20
 
         for o in uniqueOrders:
-
+            o = int(o)
             thisKey = f'{o-1}{o}'
             if thisKey in orderJoins.keys():
                 mask = (extractedOrdersDF['order'] == o - 1)
@@ -807,16 +832,36 @@ class horne_extraction(object):
                                       ascending=[True], inplace=True)
 
         # DEFINE THE WAVELENGTH ARRAY
-        wave_resample_grid = np.arange(float(format(np.min(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, float(
-            format(np.max(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
-        wave_resample_grid = wave_resample_grid * u.nm
-        # SAVE THE COUNTS BY DIVING FOR THE PROPER PIXEL SIZE IN WAVELENGTH SPACE - COUNTS ARE THEN E-/NM
+        # ENSURE THE COLUMN IS NOT EMPTY AND CONTAINS VALID NUMERIC VALUES
+        if extractedOrdersDF['wavelengthMedian'].notna().any():
+            min_wavelength = np.min(extractedOrdersDF['wavelengthMedian'])
+            max_wavelength = np.max(extractedOrdersDF['wavelengthMedian'])
 
-        # MARCO RETURN HERE ... DAVE HAD TO REMOVE THE DIVISION BY PIXEL SCALE TO FIX ORDER STITCHING. MIGHT EFFECT RESPONSE CURVE CALCULATIONS
+            # ENSURE THE RANGE IS VALID
+            if min_wavelength < max_wavelength and stepWavelengthOrderMerge > 0:
+                start = float(format(min_wavelength * ratio, '.0f')) / ratio
+                stop = float(format(max_wavelength * ratio, '.0f')) / ratio
+
+                # DEFINE THE WAVELENGTH ARRAY
+                wave_resample_grid = np.arange(
+                    start, stop, step=stepWavelengthOrderMerge)
+            else:
+                raise ValueError(
+                    "Invalid range or step size for wavelength resampling.")
+        else:
+            raise ValueError(
+                "The 'wavelengthMedian' column is empty or contains invalid values.")
+        # wave_resample_grid = np.arange(float(format(np.min(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, float(
+        #     format(np.max(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
+
+        # ADD UNITS TO THE VARIOUS COLUMNS
         extractedOrdersDF['extractedFluxOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
         extractedOrdersDF['extractedFluxBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values * u.electron
         extractedOrdersDF['extractedFluxBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values * u.electron
+        extractedOrdersDF['pixelScaleNm'] = extractedOrdersDF['pixelScaleNm'].values * u.nm
+        extractedOrdersDF['wavelengthMedian'] = extractedOrdersDF['wavelengthMedian'].values * u.nm
 
+        # SAVE THE FLUX DENSITY COUNTS BY DIVING FOR THE PROPER PIXEL SIZE IN WAVELENGTH SPACE - COUNTS ARE THEN E-/NM
         extractedOrdersDF['extractedFluxDensityOptimal'] = extractedOrdersDF['extractedFluxOptimal'].values / \
             extractedOrdersDF['pixelScaleNm'].values
         extractedOrdersDF['extractedFluxDensityBoxcar'] = extractedOrdersDF['extractedFluxBoxcar'].values / \
@@ -824,23 +869,53 @@ class horne_extraction(object):
         extractedOrdersDF['extractedFluxDensityBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values / \
             extractedOrdersDF['pixelScaleNm'].values
 
-        flux_orig = extractedOrdersDF['extractedFluxOptimal'].values * u.electron
-        spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values *
-                                   u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values))
-        fluxDensity_orig = extractedOrdersDF['extractedFluxDensityOptimal'].values * u.electron
-        spectrumFD_orig = Spectrum1D(flux=fluxDensity_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values *
-                                     u.nm, uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values))
+        flux_orig = extractedOrdersDF['extractedFluxOptimal'].values
+        spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values, uncertainty=VarianceUncertainty(
+            extractedOrdersDF["varianceSpectrum"].values), bin_specification="center")
+        fluxDensity_orig = extractedOrdersDF['extractedFluxDensityOptimal'].values
+        spectrumFD_orig = Spectrum1D(
+            flux=fluxDensity_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values, bin_specification="center")
 
         resampler = FluxConservingResampler()
-        # OPTIMISE: 7s
-        flux_resampled = resampler(spectrum_orig, wave_resample_grid)
-        # OPTIMISE: 6s
-        fluxDensity_resampled = resampler(spectrumFD_orig, wave_resample_grid)
+        resampler2 = LinearInterpolatedResampler()
+        # Pre-allocate arrays for efficiency
+        flux_resampled = np.zeros_like(wave_resample_grid)
+        fluxDensity_resampled = np.zeros_like(wave_resample_grid)
+
+        import concurrent.futures
+        import numpy as np
+        # Process in chunks to improve memory usage and potentially parallelize
+        # Adjust based on memory constraints
+        chunk_size = 1000
+        for i in range(0, len(wave_resample_grid), chunk_size):
+            chunk_end = min(i + chunk_size, len(wave_resample_grid))
+            wave_chunk = wave_resample_grid[i:chunk_end]*u.nm
+
+            # Process chunks in parallel using concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                future_flux = executor.submit(
+                    resampler, spectrum_orig, wave_chunk)
+                future_density = executor.submit(
+                    resampler2, spectrumFD_orig, wave_chunk)
+                flux_resampled[i:chunk_end] = future_flux.result().flux
+                fluxDensity_resampled[i:chunk_end] = future_density.result(
+                ).flux
+
         # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
-        merged_orders['WAVE'] = flux_resampled.spectral_axis
-        merged_orders['FLUX_COUNTS'] = flux_resampled.flux
-        merged_orders['FLUX_DENSITY_COUNTS'] = fluxDensity_resampled.flux
+        merged_orders['WAVE'] = wave_resample_grid * u.nm
+        merged_orders['FLUX_COUNTS'] = flux_resampled * u.electron
+        rollingMedian = merged_orders['FLUX_COUNTS'].rolling(
+            window=35, center=True).median().fillna(method='bfill').fillna(method='ffill').values * u.electron
+        merged_orders['SNR'] = merged_orders['FLUX_COUNTS'] - rollingMedian
+        merged_orders['SNR'] = merged_orders['SNR'].rolling(
+            window=35, center=True).std().fillna(method='bfill').fillna(method='ffill').values
+        merged_orders['SNR'] = rollingMedian / merged_orders['SNR']
+        merged_orders['SNR'] = merged_orders['SNR'].rolling(
+            window=70, center=True).median().fillna(method='bfill').fillna(method='ffill').values
+
+        merged_orders['FLUX_DENSITY_COUNTS'] = fluxDensity_resampled * \
+            u.electron / u.nm
 
         if False:
             # PLOTTING THE RESAMPLED AND ORIGINAL SPECTRUM
@@ -852,19 +927,22 @@ class horne_extraction(object):
             plt.legend()
             plt.show()
 
-        self.products, filePath = plot_merged_spectrum_qc(
-            merged_orders=merged_orders,
-            products=self.products,
-            log=self.log,
-            qcDir=self.qcDir,
-            filenameTemplate=self.filenameTemplate,
-            noddingSequence=self.noddingSequence,
-            dateObs=self.dateObs,
-            arm=self.arm,
-            recipeName=self.recipeName
-        )
+        if not self.notFlattened:
+            self.products, filePath = plot_merged_spectrum_qc(
+                merged_orders=merged_orders,
+                products=self.products,
+                log=self.log,
+                qcDir=self.qcDir,
+                filenameTemplate=self.filenameTemplate,
+                noddingSequence=self.noddingSequence,
+                dateObs=self.dateObs,
+                arm=self.arm,
+                recipeName=self.recipeName,
+                orderJoins=orderJoins,
+                debug=self.debug
+            )
 
-        return merged_orders
+        return merged_orders, orderJoins
 
     def plot_extracted_spectrum_qc(
             self,
@@ -884,30 +962,33 @@ class horne_extraction(object):
         """
         self.log.debug('starting the ``plot_extracted_spectrum_qc`` method')
 
+        from astropy.stats import sigma_clip
+
         # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
         if isinstance(self.products, bool) and not self.products:
             return
 
         import matplotlib.pyplot as plt
         plt.switch_backend('Agg')
-        # plt.switch_backend('macosx')
+        if self.debug:
+            plt.switch_backend('macosx')
         from datetime import datetime
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
 
-        fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=150)
+        fig = plt.figure(figsize=(14, 7), constrained_layout=True, dpi=180)
         gs = fig.add_gridspec(1, 1)
         toprow = fig.add_subplot(gs[0:1, :])
         addedLegend = True
 
         allExtractions = pd.concat(extractions, ignore_index=True)
 
+        # SIGMA-CLIP THE DATA TO FIND PLOT AXIS LIMITS
+        arrayMask = sigma_clip(
+            allExtractions["extractedFluxBoxcarRobust"], sigma_lower=30000, sigma_upper=5.0, maxiters=3, cenfunc='mean', stdfunc='std')
         mean, median, std = sigma_clipped_stats(
-            allExtractions["extractedFluxBoxcarRobust"], sigma=5., stdfunc="mad_std", cenfunc="median", maxiters=3)
-
-        maxFlux = allExtractions['extractedFluxBoxcarRobust'].max() + std
-        # if maxFlux > median + 5 * std:
-        #     maxFlux = median + 5 * std
+            allExtractions["extractedFluxBoxcarRobust"], sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3)
+        maxFlux = arrayMask.max() + 0.5*std
 
         for df in extractions:
 
@@ -943,18 +1024,15 @@ class horne_extraction(object):
             except:
                 self.log.warning(f"Order skipped: {o}")
 
-        # toprow.legend(loc='lower right', bbox_to_anchor=(1, -0.5),
-        #               fontsize=8)
         toprow.set_title(
             f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
         toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
+        toprow.set_yscale('log')
         toprow.set_xlabel(f'wavelength (nm)', fontsize=10)
 
         plt.ylim(-200, maxFlux)
-        # toprow.set_title(
-        #     f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
         filename = self.filenameTemplate.replace(
-            ".fits", f"_EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}.pdf")
+            ".fits", f"_EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}{self.notFlattened}.pdf")
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
         # plt.show()
@@ -964,17 +1042,18 @@ class horne_extraction(object):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": "soxs-stare",
-            "product_label": f"EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}",
-            "file_name": filename,
-            "file_type": "PDF",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"QC plot of extracted source",
-            "file_path": filePath,
-            "label": "QC"
-        }).to_frame().T], ignore_index=True)
+        if not self.notFlattened:
+            self.products = pd.concat([self.products, pd.Series({
+                "soxspipe_recipe": "soxs-stare",
+                "product_label": f"EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}{self.notFlattened}",
+                "file_name": filename,
+                "file_type": "PDF",
+                "obs_date_utc": self.dateObs,
+                "reduction_date_utc": utcnow,
+                "product_desc": f"QC plot of extracted source",
+                "file_path": filePath,
+                "label": "QC"
+            }).to_frame().T], ignore_index=True)
 
         self.log.debug('completed the ``plot_extracted_spectrum_qc`` method')
         return None
@@ -983,8 +1062,7 @@ class horne_extraction(object):
     # xt-class-method
 
 
-@profile
-def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, gain=1.0):
+def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, gain=1.0, hornePolyOrder=3, debug=False):
     """
     *extract the object spectrum for a single order*
 
@@ -1000,7 +1078,8 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     from astropy.stats import sigma_clip
     import matplotlib.pyplot as plt
     plt.switch_backend('Agg')
-    # plt.switch_backend('macosx')
+    if debug:
+        plt.switch_backend('macosx')
 
     # WE ARE BUILDING A SET OF CROSS-SLIT OBJECT PROFILES
     # ALONG THE DISPERSION AXIS
@@ -1009,11 +1088,6 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
     order = crossDispersionSlices["order"].values[0]
 
-    # CREATE THE SLICES AND DROP SLICES WITH ALL NANs (TYPICALLY PIXELS WITH NANs IN 2D IMAGE MAP)
-    # sys.stdout.flush()
-    # sys.stdout.write("\x1b[1A\x1b[2K")
-    # log.print(f"\t## SLICING ORDER INTO CROSS-DISPERSION SLICES - ORDER {order}")
-
     # REMOVE SLICES WITH ALL NANS
     crossDispersionSlices["sliceRawFlux"] = [np.nan if np.isnan(
         x).all() else x for x in crossDispersionSlices["sliceRawFlux"]]
@@ -1021,13 +1095,13 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
                                  "sliceRawFlux"], inplace=True)
 
     # MASK THE MOST DEVIANT PIXELS IN EACH SLICE
-    # OPTIMISE: 5s
     crossDispersionSlices = create_cross_dispersion_slices(
         crossDispersionSlices=crossDispersionSlices)
 
     # WEIGHTS ARE NOT YET USED
-    crossDispersionSlices["sliceWeights"] = ron + np.abs(crossDispersionSlices["sliceRawFlux"]) / (
-        crossDispersionSlices["sliceRawFluxMaskedSum"].pow(2))
+    sliceRawFluxMaskedSumSquared = crossDispersionSlices["sliceRawFluxMaskedSum"] ** 2
+    crossDispersionSlices["sliceWeights"] = ron + np.abs(
+        crossDispersionSlices["sliceRawFlux"]) / sliceRawFluxMaskedSumSquared
 
     # REMOVE SLICES WITH FULLY MASKED WAVELENGTH
     crossDispersionSlices["wavelength"] = [np.nan if x.mask.sum(
@@ -1042,21 +1116,34 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         return None
 
     # VERTICALLY STACK THE SLICES INTO PSEDUO-RECTIFIED IMAGE
-    fluxRawImage = np.vstack(crossDispersionSlices["sliceRawFlux"])
-    fluxNormalisedImage = np.vstack(
-        crossDispersionSlices["sliceFluxNormalised"])
-    weightImage = np.vstack(crossDispersionSlices["sliceWeights"])
-    maskImage = np.vstack(crossDispersionSlices["sliceMask"])
-    errorImage = np.vstack(crossDispersionSlices["sliceError"])
-    bpMaskImage = np.vstack(crossDispersionSlices["bpMask"])
-    wavelengthImage = np.vstack(crossDispersionSlices["wavelength"])
-    slitImage = np.vstack(crossDispersionSlices["slit"])
+    # Optimized stacking of slices
+    # keys_to_stack = [
+    #     "sliceRawFlux", "sliceFluxNormalised", "sliceWeights", "sliceMask",
+    #     "sliceError", "bpMask", "wavelength", "slit"
+    # ]
+    keys_to_stack = [
+        "sliceRawFlux", "sliceFluxNormalised", "sliceWeights", "sliceMask"
+    ]
+
+    # Preallocate a dictionary for the stacked arrays
+    stacked_images = {key: np.vstack(
+        crossDispersionSlices[key]) for key in keys_to_stack}
+
+    # Assign the stacked arrays to variables
+    fluxRawImage = stacked_images["sliceRawFlux"]
+    fluxNormalisedImage = stacked_images["sliceFluxNormalised"]
+    weightImage = stacked_images["sliceWeights"]
+    maskImage = stacked_images["sliceMask"]
+    # errorImage = stacked_images["sliceError"]
+    # bpMaskImage = stacked_images["bpMask"]
+    # wavelengthImage = stacked_images["wavelength"]
+    # slitImage = stacked_images["slit"]
 
     fluxRawImageMasked = np.ma.masked_array(fluxRawImage, mask=maskImage)
     fluxRawImageMasked = fluxRawImageMasked.filled(np.nan)
 
     # PLOT THE RECTIFIED IMAGES
-    if False:
+    if debug:
 
         from astropy.io import fits
         hdu = fits.PrimaryHDU(data=fluxRawImageMasked.T)
@@ -1068,25 +1155,16 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         # Save the FITS file
         hdu.writeto(f'/tmp/spectrum_image_{order}.fits', overwrite=True)
 
-        # fig = plt.figure(
-        #     num=None,
-        #     figsize=(135, 1),
-        #     dpi=None,
-        #     facecolor=None,
-        #     edgecolor=None,
-        #     frameon=True)
-        # plt.imshow(wavelengthImage.T, interpolation='none', aspect='auto')
-        # plt.show()
-
-        # fig = plt.figure(
-        #     num=None,
-        #     figsize=(135, 1),
-        #     dpi=None,
-        #     facecolor=None,
-        #     edgecolor=None,
-        #     frameon=True)
-        # plt.imshow(maskImage.T, interpolation='none', aspect='auto')
-        # plt.show()
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        fig.suptitle(f"Raw Flux for Order {order}", fontsize=16)
+        plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
+        plt.show()
 
         fig = plt.figure(
             num=None,
@@ -1095,18 +1173,31 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
             facecolor=None,
             edgecolor=None,
             frameon=True)
-        plt.imshow(fluxRawImage.T, interpolation='none', aspect='auto')
+        fig.suptitle(f"Normalise Flux for Order {order}", fontsize=16)
+        plt.imshow(fluxNormalisedImage.T, interpolation='none', aspect='auto')
         plt.show()
 
-        # fig = plt.figure(
-        #     num=None,
-        #     figsize=(135, 1),
-        #     dpi=None,
-        #     facecolor=None,
-        #     edgecolor=None,
-        #     frameon=True)
-        # plt.imshow(fluxNormalisedImage.T, interpolation='none', aspect='auto')
-        # plt.show()
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        fig.suptitle(f"Mask for Order {order}", fontsize=16)
+        plt.imshow(maskImage.T, interpolation='none', aspect='auto')
+        plt.show()
+
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True)
+        fig.suptitle(f"Raw Flux & Mask for Order {order}", fontsize=16)
+        plt.imshow(fluxRawImageMasked.T, interpolation='none', aspect='auto')
+        plt.show()
 
     # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
@@ -1130,10 +1221,11 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
             i, mask)) for i in a]
 
         startCount = len(fractions)
+
         while (iteration < clippingIterationLimit) and (clipped_count > 0):
-            # FIT A 2ND ORDER POLYNOMIAL TO THE FRACTIONAL FLUXES
+            # FIT A POLYNOMIAL TO THE FRACTIONAL FLUXES
             if len(wave_px):
-                coeff = np.polyfit(wave_px, fractions, deg=2)
+                coeff = np.polyfit(wave_px, fractions, deg=hornePolyOrder)
             else:
                 coeff = []
                 break
@@ -1141,7 +1233,7 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
 
             # REMOVE REMAINING OUTLIERS
             masked_residuals = sigma_clip(residuals, sigma_lower=clippingSigma,
-                                          sigma_upper=clippingSigma, maxiters=1, cenfunc='median', stdfunc='mad_std')
+                                          sigma_upper=clippingSigma, maxiters=1, cenfunc='mean', stdfunc='std')
             # REDUCE ARRAYS TO NON-MASKED VALUES
             a = [fractions, wave_px, weights]
             fractions, wave_px, weights = [np.ma.compressed(np.ma.masked_array(
@@ -1163,9 +1255,10 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
             profile = np.zeros_like(crossDispersionSlices[f"{axisB}coord"])
         crossSlitProfiles.append(profile)
 
-        if False:
+        if debug:
             plt.scatter(wave_px, fractions, alpha=0.2)
             plt.plot(wave_px, np.polyval(coeff, wave_px), color='red')
+            plt.title(f"Fitted Profile for Order {order}")
             plt.ylim([-1, 1])
             plt.show()
 
@@ -1189,8 +1282,11 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     crossDispersionSlices["sliceVariance"] = ron + np.abs(crossDispersionSlices["sliceRawFlux"] *
                                                           crossDispersionSlices["sliceFittedProfileNormalised"] + crossDispersionSlices["sliceSky"]) / gain
     # VARIANCE REJECTION NUMBER FROM HORNE 86 PAPER
-    sliceRejection = np.power((crossDispersionSlices["sliceRawFlux"] - crossDispersionSlices["sliceRawFluxMaskedSum"]
-                              * crossDispersionSlices["sliceFittedProfileNormalised"]), 2) / crossDispersionSlices["sliceVariance"]
+    fitted_flux = crossDispersionSlices["sliceRawFluxMaskedSum"] * \
+        crossDispersionSlices["sliceFittedProfileNormalised"]
+    residuals = crossDispersionSlices["sliceRawFlux"] - fitted_flux
+    sliceRejection = np.square(residuals) / \
+        crossDispersionSlices["sliceVariance"]
     # CREATE A MASK FOR PIXELS WHERE VARIANCE IS TOO HIGH
     mask = np.zeros_like(np.stack(sliceRejection, axis=0))
     mask[np.stack(sliceRejection, axis=0) > globalClippingSigma] = 1
@@ -1225,9 +1321,11 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         crossDispersionSlices["sliceFittedProfileNormalisedGood"], 2) / crossDispersionSlices["sliceVarianceGood"]
     crossDispersionSlices['horneDenominatorSum'] = [
         x.sum() for x in crossDispersionSlices["horneDenominator"]]
-    # OPTIMISE: 9s
-    crossDispersionSlices["wavelengthMedian"] = [np.ma.median(
-        x) for x in crossDispersionSlices["wavelengthMask"]]
+    wavelengthMasks = np.stack(crossDispersionSlices["wavelengthMask"].values)
+    crossDispersionSlices["wavelengthMedian"] = np.ma.median(
+        wavelengthMasks, axis=1)
+    # crossDispersionSlices["wavelengthMedian"] = [np.ma.median(
+    #     x) for x in crossDispersionSlices["wavelengthMask"]]
     crossDispersionSlices["fudged"] = False
 
     if False:
@@ -1257,9 +1355,8 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
         crossDispersionSlices["horneDenominatorSum"]
     crossDispersionSlices["extractedFluxOptimal"] = crossDispersionSlices["horneNumeratorSum"] / \
         crossDispersionSlices["horneDenominatorSum"]
-    # OPTIMISE: 1s
-    crossDispersionSlices["extractedFluxBoxcar"] = [
-        x.sum() for x in crossDispersionSlices["sliceRawFlux"]]
+    fluxStack = np.vstack(crossDispersionSlices["sliceRawFlux"])
+    crossDispersionSlices["extractedFluxBoxcar"] = fluxStack.sum(axis=1)
     crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices["sliceRawFluxMaskedSum"]
     crossDispersionSlices["snr"] = crossDispersionSlices["extractedFluxOptimal"] / \
         np.power(crossDispersionSlices["varianceSpectrum"], 0.5)
@@ -1317,7 +1414,6 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     return crossDispersionSlices[['order', f'{axisA}coord_centre', f'{axisB}coord', 'wavelengthMedian', 'pixelScaleNm', 'varianceSpectrum', 'snr', 'extractedFluxOptimal', 'extractedFluxBoxcar', 'extractedFluxBoxcarRobust']]
 
 
-@profile
 def create_cross_dispersion_slices(
         crossDispersionSlices):
     """This function is used to create a single, 1-pixel wide cross-dispersion slices of object data. When applied to the dataframe, a single slice is created for each discrete pixel position in the dispersion direction
@@ -1337,15 +1433,19 @@ def create_cross_dispersion_slices(
     # VERTICALLY STACK THE SLICES INTO PSEDUO-RECTIFIED IMAGE
     bpMask = np.vstack(crossDispersionSlices["bpMask"])
     sliceRawFlux = np.vstack(crossDispersionSlices["sliceRawFlux"])
+    sliceIndexArray = np.tile(
+        np.abs(np.arange(sliceRawFlux.shape[1])-sliceRawFlux.shape[1]//2)*50+1, (sliceRawFlux.shape[0], 1))
     bpMask[bpMask > 1] = 1
 
-    sliceRawFluxMasked = np.ma.array(sliceRawFlux, mask=bpMask)
-    sliceRawFluxMasked = sigma_clip(
-        sliceRawFluxMasked, sigma_lower=3, sigma_upper=5, maxiters=2, cenfunc='mean', stdfunc="std", axis=1)
-    sliceRawFluxMasked.data[sliceRawFluxMasked.mask] = 0
+    sliceRawFluxMasked = np.ma.array(
+        sliceRawFlux, mask=np.isnan(sliceRawFlux) | bpMask)
 
-    # OPTIMISE: 1.6s
-    maskedArrays = [np.ma.masked_array(row) for row in sliceRawFluxMasked]
+    sliceIndexArrayMasked = sigma_clip(
+        sliceRawFluxMasked*sliceIndexArray, sigma_lower=3000, sigma_upper=7, maxiters=3, cenfunc='mean', stdfunc="std", axis=1)
+    sliceRawFluxMasked.data[sliceIndexArrayMasked.mask] = 0
+
+    maskedArrays = [np.ma.masked_array(row, mask=sliceIndexArrayMasked.mask[i])
+                    for i, row in enumerate(sliceRawFluxMasked.data)]
 
     # FULL SLICE MASK IF MORE THAN 1(?) PIXEL CLIPPED
     fullColumnMask = []
@@ -1368,7 +1468,6 @@ def create_cross_dispersion_slices(
     crossDispersionSlices["sliceFluxNormalised"] = [
         row for row in sliceFluxNormalised]
     sliceFluxNormalisedSum = sliceFluxNormalised.sum(axis=1)
-    # OPTIMISE 16% - 59012 hits
     crossDispersionSlices["sliceFluxNormalisedSum"] = [
         row for row in sliceFluxNormalisedSum]
 
@@ -1384,8 +1483,8 @@ def create_cross_dispersion_slices(
     maskedImage = np.ma.array(wlArray, mask=wlMask)
     maskedImage = sigma_clip(
         maskedImage, sigma_lower=1, sigma_upper=1, maxiters=3, cenfunc='mean', stdfunc="std", axis=1)
-    # OPTIMISE 2s
-    maskedArrays = [np.ma.masked_array(row) for row in maskedImage]
+    maskedArrays = [np.ma.masked_array(row, mask=maskedImage.mask[i])
+                    for i, row in enumerate(maskedImage.data)]
     crossDispersionSlices["wavelengthMask"] = maskedArrays
 
     return crossDispersionSlices

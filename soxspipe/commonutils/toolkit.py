@@ -13,7 +13,7 @@ Date Created
 
 from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
-from datetime import datetime
+from datetime import datetime, UTC
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
 from fundamentals import tools
@@ -35,7 +35,7 @@ def cut_image_slice(
         y,
         sliceAxis="x",
         median=False,
-        plot=False):
+        debug=False):
     """*cut and return an N-pixel wide and M-pixels long slice, centred on a given coordinate from an image frame*
 
     **Key Arguments:**
@@ -48,7 +48,7 @@ def cut_image_slice(
     - ``y`` -- y-coordinate
     - ``sliceAxis`` -- the axis along which slice is to be taken. Default *x*
     - ``median`` -- collapse the slice to a median value across its width
-    - ``plot`` -- generate a plot of slice. Useful for debugging.
+    - ``debug`` -- generate a plot of slice. Useful for debugging.
 
     **Usage:**
 
@@ -113,7 +113,7 @@ def cut_image_slice(
         else:
             slice = ma.median(sliceFull, axis=0)
 
-    if False and random.randint(1, 101) < 5:
+    if False and debug and random.randint(1, 101) < 5:
         import matplotlib.pyplot as plt
         # CHECK THE SLICE POINTS IF NEEDED
         if sliceAxis == "y":
@@ -188,6 +188,7 @@ def quicklook_image(
     from soxspipe.commonutils import detector_lookup
     originalRC = dict(mpl.rcParams)
     import matplotlib.pyplot as plt
+    plt.switch_backend('macosx')
 
     if settings:
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -397,7 +398,7 @@ def quicklook_image(
         plt.show()
 
     if saveToPath:
-        plt.savefig(saveToPath, dpi='figure', bbox_inches='tight')
+        plt.savefig(saveToPath, dpi=120, bbox_inches='tight')
         plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
     plt.close()
@@ -586,7 +587,7 @@ def generic_quality_checks(
 
     # nanCount = np.count_nonzero(np.isnan(frame.data))
 
-    utcnow = datetime.utcnow()
+    utcnow = datetime.now(UTC)
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
     # qcTable = pd.concat([qcTable, pd.Series({
@@ -1508,7 +1509,10 @@ def utility_setup(
     **Usage:**
 
     ```python
-    usage code 
+    # Example usage with timezone-aware UTC datetime
+    from datetime import datetime, UTC
+    startNightDate = datetime.now(UTC).strftime("%Y-%m-%d")
+    qcDir, productDir = utility_setup(log=log, settings=settings, recipeName="my_recipe", startNightDate=startNightDate)
     ```           
     """
     log.debug('starting the ``utility_setup`` function')
@@ -1536,7 +1540,6 @@ def utility_setup(
     return qcDir, productDir
 
 
-# @profile
 def plot_merged_spectrum_qc(
     merged_orders,
     products,
@@ -1546,7 +1549,9 @@ def plot_merged_spectrum_qc(
     noddingSequence,
     dateObs,
     arm,
-    recipeName
+    recipeName,
+    orderJoins=False,
+    debug=False
 ):
     """
     Plot merged spectrum QC plot as a standalone function.
@@ -1571,48 +1576,86 @@ def plot_merged_spectrum_qc(
     if not noddingSequence:
         noddingSequence = ""
 
-    fig = plt.figure(figsize=(7, 7), constrained_layout=True, dpi=320)
-    gs = fig.add_gridspec(1, 1)
-    toprow = fig.add_subplot(gs[0:1, :])
-    toprow.set_ylabel('flux ($e^{-}$)', fontsize=10)
-    toprow.set_xlabel('wavelength (nm)', fontsize=10)
-    toprow.set_title(
+    fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
+    # Adjusted height ratios
+    gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 0, 0])
+
+    # Top panel with linear scale
+    top_panel = fig.add_subplot(gs[0, :])
+    top_panel.set_ylabel('flux ($e^{-}$)', fontsize=10)
+    top_panel.set_title(
         f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
 
-    plt.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'],
-             linewidth=0.2, color="#dc322f")
-
-    # ATTEMPTING TO FIND A GOOD Y-AXIS RANGE
-    from fundamentals.stats import rolling_window_sigma_clip
-    arrayMask = rolling_window_sigma_clip(
-        log=log,
-        array=merged_orders['FLUX_COUNTS'],
-        clippingSigma=5.0,
-        windowSize=50)
+    top_panel.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'],
+                   linewidth=0.3, color="#dc322f")
 
     try:
-        myArray = [e.value for e, m in zip(
-            merged_orders['FLUX_COUNTS'], arrayMask) if m == False]
+        top_panel.set_xlim(merged_orders['WAVE'].min().value,
+                           merged_orders['WAVE'].max().value)
     except Exception:
-        myArray = [e for e, m in zip(
-            merged_orders['FLUX_COUNTS'], arrayMask) if m == False]
+        top_panel.set_xlim(
+            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+
+    # Middle panel with log scale
+    middle_panel = fig.add_subplot(gs[1, :])
+    middle_panel.set_ylabel('flux ($e^{-}$)', fontsize=10)
+    middle_panel.set_xlabel('wavelength (nm)', fontsize=10)
+    middle_panel.set_yscale('log')
+
+    middle_panel.plot(merged_orders['WAVE'], merged_orders['FLUX_COUNTS'],
+                      linewidth=0.3, color="#dc322f")
+
+    from astropy.stats import sigma_clip, mad_std
+    # SIGMA-CLIP THE DATA
+    arrayMask = sigma_clip(
+        merged_orders['FLUX_COUNTS'], sigma_lower=300, sigma_upper=7.0, maxiters=3, cenfunc='mean', stdfunc='std')
     mean, median, std = sigma_clipped_stats(
-        myArray, sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
-    maxFlux = max(myArray) + std
+        merged_orders['FLUX_COUNTS'], sigma=7.0, stdfunc="std", cenfunc="mean", maxiters=3)
+    maxFlux = arrayMask.max() + 0.5*std
+    minFlux = arrayMask.min() - 0.05*std
 
-    plt.ylim(-200, maxFlux)
+    middle_panel.set_ylim(minFlux, maxFlux)
+    top_panel.set_ylim(minFlux, arrayMask.max() + 0.1*std)
     try:
-        plt.xlim(merged_orders['WAVE'].min().value,
-                 merged_orders['WAVE'].max().value)
+        middle_panel.set_xlim(merged_orders['WAVE'].min().value,
+                              merged_orders['WAVE'].max().value)
     except Exception:
-        plt.xlim(merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+        middle_panel.set_xlim(
+            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+
+    # Bottom panel with linear scale for SNR
+    bottom_panel = fig.add_subplot(gs[2, :])
+    bottom_panel.set_ylabel('SNR', fontsize=10)
+    bottom_panel.set_xlabel('wavelength (nm)', fontsize=10)
+
+    bottom_panel.plot(merged_orders['WAVE'], merged_orders['SNR'],
+                      linewidth=0.4, color="black")
+
+    if orderJoins:
+        for k, v in orderJoins.items():
+            for panel in [top_panel, middle_panel, bottom_panel]:
+                panel.axvline(v, color="black", linestyle="--",
+                              linewidth=0.5, alpha=0.5)
+                panel.text(v + 5, 0.9*panel.get_ylim()[1], "ORDER JOIN",
+                           rotation=90, verticalalignment='top', fontsize=6, color="black", alpha=0.5)
+
+    try:
+        bottom_panel.set_xlim(merged_orders['WAVE'].min().value,
+                              merged_orders['WAVE'].max().value)
+    except Exception:
+        bottom_panel.set_xlim(
+            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+
+    bottom_panel.set_ylim(0, merged_orders['SNR'].max() * 1.1)
 
     filename = filenameTemplate.replace(
         ".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
     filePath = f"{qcDir}/{filename}"
-    plt.savefig(filePath, dpi='figure', bbox_inches='tight')
+    if debug:
+        plt.show()
+    plt.savefig(filePath, dpi=120, bbox_inches='tight')
 
-    utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    utcnow = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
     products = pd.concat([products, pd.Series({
         "soxspipe_recipe": recipeName,
         "product_label": f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}",

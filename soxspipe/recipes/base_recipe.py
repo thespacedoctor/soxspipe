@@ -19,7 +19,6 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-from line_profiler import profile
 
 os.environ['TERM'] = 'vt100'
 
@@ -37,6 +36,7 @@ class base_recipe(object):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
 
 
     **Usage**
@@ -52,7 +52,8 @@ class base_recipe(object):
             verbose=False,
             overwrite=False,
             recipeName=False,
-            command=False
+            command=False,
+            debug=False
     ):
         import yaml
         import pandas as pd
@@ -62,6 +63,7 @@ class base_recipe(object):
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
         self.settings = settings
+        self.debug = debug
         self.workspaceRootPath = self._absolute_path(
             settings["workspace-root-dir"])
 
@@ -132,10 +134,13 @@ class base_recipe(object):
             c = self.conn.cursor()
             sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"
             c.execute(sqlQuery)
-            self.status = c.fetchone()['status']
+            try:
+                self.status = c.fetchone()['status']
+                sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
+                c.execute(sqlQuery)
+            except:
+                self.status = None
 
-            sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
-            c.execute(sqlQuery)
             c.close()
 
         # COLLECT ADVANCED SETTINGS IF AVAILABLE
@@ -192,9 +197,10 @@ class base_recipe(object):
         self.qcDir, self.productDir = utility_setup(
             log=self.log, settings=settings, recipeName=self.recipeName, startNightDate=self.startNightDate)
 
+        self.generateReponseCurve = False
+
         return None
 
-    @profile
     def _prepare_single_frame(
             self,
             frame,
@@ -248,13 +254,11 @@ class base_recipe(object):
 
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SXSPRE" DOES NOT
         # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
-        # OPTIMISE: 22%
         if len(frame.to_hdu()) > 1 or "SXSPRE" in frame.header:
             return filepath
 
         # MANIPULATE XSH DATA
         frame = self.xsh2soxs(frame)
-        # OPTIMISE: 8%
         frame = self._trim_frame(frame)
 
         # FUDGE BAD-PIXEL MAP CREATION
@@ -271,7 +275,6 @@ class base_recipe(object):
         #                 overwrite=True, checksum=True)
 
         # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
-        # OPTIMIZE: 8%
         frame = ccdproc.gain_correct(frame, dp["gain"])
 
         # GENERATE UNCERTAINTY MAP AS EXTENSION
@@ -335,6 +338,25 @@ class base_recipe(object):
 
         frame.mask = boolMask
 
+        if self.recipeName in ["soxs-nod", "soxs-stare"] and self.recipeSettings["use_flat"]:
+            # OBJECT/STANDARD FRAMES
+            if frame.meta[kw("DPR_TYPE")] == 'STD,FLUX' or 'STD_stare' in frame.meta[kw("OBS_NAME")]:
+                # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
+                self.generateReponseCurve = True
+
+        if "use_lacosmic" in self.recipeSettings and self.recipeSettings["use_lacosmic"]:
+            # oldCount = frame.mask.sum()
+            # oldMask = frame.mask.copy()
+            from ccdproc import cosmicray_lacosmic
+            frame = cosmicray_lacosmic(frame, sigclip=15.0, sigfrac=0.3, objlim=10., gain_apply=False, niter=2, verbose=False,
+                                       cleantype="meanmask")
+            # newCount = self.skySubtractedFrame.mask.sum()
+            # self.laCosmicClippedCount = newCount - oldCount
+            # frame.mask = oldMask | frame.mask
+            from soxspipe.commonutils.toolkit import quicklook_image
+            quicklook_image(log=self.log, CCDObject=frame, show=self.debug, ext=False, stdWindow=3, title="L.A.Cosmic cleaned (red = masked)",
+                            surfacePlot=False,  settings=self.settings, skylines=False)
+
         if save:
             outDir = self.workspaceRootPath
         else:
@@ -357,7 +379,6 @@ class base_recipe(object):
             filenameNoExtension + "_pre" + extension
 
         # SAVE TO DISK
-        # OPTIMISE: 25%
         self._write(
             frame=frame,
             filedir=outDir,
@@ -429,7 +450,13 @@ class base_recipe(object):
 
         frameCount = len(filepaths)
 
-        self.log.print("\n# PREPARING %(frameCount)s RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK" % locals())
+        if "use_lacosmic" in self.recipeSettings and self.recipeSettings["use_lacosmic"]:
+            laC = ", RUNNING L.A.COSMIC"
+        else:
+            laC = ""
+
+        self.log.print(
+            f"\n# PREPARING {frameCount} RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS{laC} AND APPENDING DEFAULT BAD-PIXEL MASK")
         preframes = []
         preframes[:] = [self._prepare_single_frame(
             frame=frame, save=save) for frame in filepaths]
@@ -552,6 +579,9 @@ class base_recipe(object):
         arm = self.inputFrames.values(
             keyword=kw("SEQ_ARM"), unique=True)
 
+        # SORT RECIPE AND ARM SETTINGS
+        self.recipeSettings = self.get_recipe_settings()
+
         inst = self.inputFrames.values(kw("INSTRUME"), unique=True)
         with suppress(ValueError):
             inst.remove(None)
@@ -641,7 +671,9 @@ class base_recipe(object):
                 keyword=kw("CONAD"))
             b = self.inputFrames.values(
                 keyword=kw("GAIN"))
-            gain = list(set((max(a, b))))
+            gain = [max(x, y) for x, y in zip(a, b)
+                    if x is not None and y is not None]
+            gain = list(set(gain))
 
         with suppress(ValueError):
             gain.remove(None)
@@ -853,7 +885,6 @@ class base_recipe(object):
         self.log.debug('completed the ``_trim_frame`` method')
         return trimmed_frame
 
-    @profile
     def _write(
             self,
             frame,
@@ -902,7 +933,6 @@ class base_recipe(object):
                 if k == "COMMENT":
                     frame.header[k] = v
                 else:
-                    # OPTIMISE: 20%
                     frame.header[k] = (v, c)
 
         if not filename and self.sofName:
@@ -940,16 +970,13 @@ class base_recipe(object):
         if "NAXIS" in frame.header and frame.header["NAXIS"] != 0 and "INHERIT" in frame.header:
             del frame.header["INHERIT"]
 
-        # OPTIMISE: 10%
         HDUList = frame.to_hdu(
             hdu_mask='QUAL', hdu_uncertainty='ERRS', hdu_flags=None)
         HDUList[0].name = "FLUX"
         if product:
-            # OPTIMISE: 20%
             HDUList.writeto(filepath, output_verify='fix+warn',
                             overwrite=overwrite, checksum=True)
         else:
-            # OPTIMISE: 40%
             HDUList.writeto(filepath,
                             overwrite=overwrite, checksum=False)
 
@@ -997,6 +1024,11 @@ class base_recipe(object):
             self.log.info(
                 "Only 1 frame was sent to the clip and stack method. Returning the frame with no further processing.")
             return frames[0]
+        elif len(frames) == 0:
+            self.log.critical(
+                "No frames were sent to the clip and stack method. Cannot proceed.")
+            raise ValueError(
+                "No frames were sent to the clip and stack method.")
 
         arm = self.arm
         kw = self.kw

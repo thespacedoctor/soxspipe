@@ -1089,7 +1089,7 @@ class create_dispersion_map(object):
         # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
         import matplotlib.pyplot as plt
         plt.switch_backend('Agg')
-        # plt.switch_backend('macosx')
+
         from fundamentals import fmultiprocess
         # DEFINE AN INPUT ARRAY
         results = fmultiprocess(log=self.log, function=measure_line_position,
@@ -2055,7 +2055,6 @@ class create_dispersion_map(object):
         # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
         import matplotlib.pyplot as plt
         plt.switch_backend('Agg')
-        # plt.switch_backend('macosx')
 
         results = fmultiprocess(log=self.log, function=self.order_to_image,
                                 inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=False)
@@ -2842,7 +2841,7 @@ class create_dispersion_map(object):
         # plt.show()
 
         if not self.settings["tune-pipeline"]:
-            plt.savefig(filePath, dpi=150)
+            plt.savefig(filePath, dpi=240)
 
         plt.clf()
         plt.close(fig)

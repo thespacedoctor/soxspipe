@@ -40,6 +40,7 @@ class soxs_mflat(base_recipe):
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
+    - ``debug`` -- generate debug plots. Default *False*
 
 
     **Usage**
@@ -62,12 +63,13 @@ class soxs_mflat(base_recipe):
             inputFrames=[],
             verbose=False,
             overwrite=False,
-            command=False
+            command=False,
+            debug=False
 
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_mflat, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mflat", command=command)
+            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mflat", command=command, debug=debug)
         self.log = log
         log.debug("instantiating a new 'soxs_mflat' object")
         self.settings = settings

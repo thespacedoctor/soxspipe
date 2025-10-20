@@ -1829,9 +1829,10 @@ class data_organiser(object):
                             df["slit"] == filteredFrames["slit"].values[0])]
 
             # FAVOUR DOME FLATS IF AVAILABLE
-            mask = (df['lamp'] == 'DOME')
-            if len(df.loc[mask].index):
-                df = df.loc[mask]
+            if False:
+                mask = (df['lamp'] == 'DOME')
+                if len(df.loc[mask].index):
+                    df = df.loc[mask]
 
             if len(df.index):
                 df.sort_values(by=['obs-delta'], inplace=True)
@@ -2337,7 +2338,6 @@ class data_organiser(object):
             'completed the ``_symlink_session_assets_to_workspace_root`` method')
         return None
 
-    # @profile
     def session_refresh(
             self,
             silent=False,
@@ -2477,7 +2477,6 @@ class data_organiser(object):
         self.log.debug('completed the ``use_vlt_environment_folders`` method')
         return vltReduced
 
-    # @profile
     def generate_sof_and_product_names(
             self,
             reductionOrder,
