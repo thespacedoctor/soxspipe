@@ -1,5 +1,7 @@
 # Release Notes
 
+* **FIXED**: added jinja2 to setup.py
+
 ## v0.14.1 - October 20, 2025
 
 * **FEATURE:** Dome flats are now recognised by the data-organiser and are combined into master flats.

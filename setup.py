@@ -29,7 +29,8 @@ install_requires = [
     'humanize==4.11.0',
     'line_profiler',
     'memory_profiler',
-    'scikit-learn'
+    'scikit-learn',
+    'jinja2'
 ]
 
 # READ THE DOCS SERVERS
