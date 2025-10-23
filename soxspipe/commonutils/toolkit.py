@@ -176,7 +176,7 @@ def quicklook_image(
     """
     log.debug('starting the ``quicklook_image`` function')
 
-    if not show and not saveToPath:
+    if not show or not saveToPath:
         return
 
     import pandas as pd
