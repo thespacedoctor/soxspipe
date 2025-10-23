@@ -912,7 +912,10 @@ class horne_extraction(object):
             window=35, center=True).std().fillna(method='bfill').fillna(method='ffill').values
         merged_orders['SNR'] = rollingMedian / merged_orders['SNR']
         merged_orders['SNR'] = merged_orders['SNR'].rolling(
-            window=70, center=True).median().fillna(method='bfill').fillna(method='ffill').values
+            window=25, center=True).median().fillna(method='bfill').fillna(method='ffill').values
+        # APPLY SAVITZKY-GOLAY FILTER TO SMOOTH THE SNR ARRAY
+        from scipy.signal import savgol_filter
+        merged_orders['SNR'] = savgol_filter(merged_orders['SNR'], 300, 2)
 
         merged_orders['FLUX_DENSITY_COUNTS'] = fluxDensity_resampled * \
             u.electron / u.nm
