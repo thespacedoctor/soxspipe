@@ -1608,14 +1608,14 @@ def plot_merged_spectrum_qc(
     from astropy.stats import sigma_clip, mad_std
     # SIGMA-CLIP THE DATA
     arrayMask = sigma_clip(
-        merged_orders['FLUX_COUNTS'], sigma_lower=300, sigma_upper=7.0, maxiters=3, cenfunc='mean', stdfunc='std')
+        merged_orders['FLUX_COUNTS'], sigma_lower=3, sigma_upper=15.0, maxiters=1, cenfunc='mean', stdfunc='std')
     mean, median, std = sigma_clipped_stats(
-        merged_orders['FLUX_COUNTS'], sigma=7.0, stdfunc="std", cenfunc="mean", maxiters=3)
+        merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3)
     maxFlux = arrayMask.max() + 0.5*std
     minFlux = arrayMask.min() - 0.05*std
 
-    middle_panel.set_ylim(minFlux, maxFlux)
-    top_panel.set_ylim(minFlux, arrayMask.max() + 0.1*std)
+    top_panel.set_ylim(minFlux, maxFlux)
+    middle_panel.set_ylim(max(arrayMask.min()*5, 0), arrayMask.max() * 7)
     try:
         middle_panel.set_xlim(merged_orders['WAVE'].min().value,
                               merged_orders['WAVE'].max().value)
