@@ -1,6 +1,9 @@
 # Release Notes
 
 * **FIXED**: added jinja2 to setup.py
+* removed extra stare reductions at the end of `soxspipe reduce all`
+* fixed an issue with the macos matplotlib backend tripping up ubuntu reductions (again)
+* Add a `calculate_rolling_snr` function to robustly compute the SNR ratio across the entire spectrum wavelength range. Algorithm is the [presented here](https://esahubble.org/static/archives/stecfnewsletters/pdf/hst_stecf_0042.pdf).
 
 ## v0.14.1 - October 20, 2025
 

@@ -740,7 +740,7 @@ class horne_extraction(object):
         from specutils.manipulation import median_smooth
         from astropy.stats import sigma_clipped_stats
         from scipy.interpolate import interp1d
-
+        from soxspipe.commonutils.toolkit import calculate_rolling_snr
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
         # ASTROPY HAS RESET LOGGING LEVEL -- FIX
@@ -905,17 +905,9 @@ class horne_extraction(object):
         merged_orders = pd.DataFrame()
         merged_orders['WAVE'] = wave_resample_grid * u.nm
         merged_orders['FLUX_COUNTS'] = flux_resampled * u.electron
-        rollingMedian = merged_orders['FLUX_COUNTS'].rolling(
-            window=35, center=True).median().fillna(method='bfill').fillna(method='ffill').values * u.electron
-        merged_orders['SNR'] = merged_orders['FLUX_COUNTS'] - rollingMedian
-        merged_orders['SNR'] = merged_orders['SNR'].rolling(
-            window=35, center=True).std().fillna(method='bfill').fillna(method='ffill').values
-        merged_orders['SNR'] = rollingMedian / merged_orders['SNR']
-        merged_orders['SNR'] = merged_orders['SNR'].rolling(
-            window=25, center=True).median().fillna(method='bfill').fillna(method='ffill').values
-        # APPLY SAVITZKY-GOLAY FILTER TO SMOOTH THE SNR ARRAY
-        from scipy.signal import savgol_filter
-        merged_orders['SNR'] = savgol_filter(merged_orders['SNR'], 300, 2)
+
+        merged_orders = calculate_rolling_snr(
+            dataframe=merged_orders, flux_column='FLUX_COUNTS', window_size=300)
 
         merged_orders['FLUX_DENSITY_COUNTS'] = fluxDensity_resampled * \
             u.electron / u.nm

@@ -1630,6 +1630,14 @@ def plot_merged_spectrum_qc(
 
     bottom_panel.plot(merged_orders['WAVE'], merged_orders['SNR'],
                       linewidth=0.4, color="black")
+    try:
+        bottom_panel.set_xlim(merged_orders['WAVE'].min().value,
+                              merged_orders['WAVE'].max().value)
+    except Exception:
+        bottom_panel.set_xlim(
+            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+    bottom_panel.set_ylim(0, merged_orders['SNR'].max() * 1.1)
+    print(merged_orders['SNR'].max())
 
     if orderJoins:
         for k, v in orderJoins.items():
@@ -1638,15 +1646,6 @@ def plot_merged_spectrum_qc(
                               linewidth=0.5, alpha=0.5)
                 panel.text(v + 5, 0.9*panel.get_ylim()[1], "ORDER JOIN",
                            rotation=90, verticalalignment='top', fontsize=6, color="black", alpha=0.5)
-
-    try:
-        bottom_panel.set_xlim(merged_orders['WAVE'].min().value,
-                              merged_orders['WAVE'].max().value)
-    except Exception:
-        bottom_panel.set_xlim(
-            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
-
-    bottom_panel.set_ylim(0, merged_orders['SNR'].max() * 1.1)
 
     filename = filenameTemplate.replace(
         ".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
@@ -1670,3 +1669,45 @@ def plot_merged_spectrum_qc(
 
     log.debug('completed the ``plot_merged_spectrum_qc`` function')
     return products, filePath
+
+
+def calculate_rolling_snr(dataframe, flux_column, window_size):
+    """
+    Calculate the rolling Signal-to-Noise Ratio (SNR) for a given column in a pandas DataFrame.
+
+    This function computes the rolling SNR for a specified column in the DataFrame using a custom
+    rolling window function. The SNR is calculated as the ratio of the median signal to the noise,
+    where the noise is estimated using a robust statistical method.
+
+    **Key Arguments:**
+
+        - `dataframe`: The input pandas DataFrame containing the data.
+        - `flux_column`: The name of the column in the DataFrame for which the rolling SNR
+            will be calculated.
+        - `window_size`: The size of the rolling window to use for the calculation.
+
+    **Return:**
+
+        - `dataframe`: The input DataFrame with an additional column 'SNR' containing the
+        calculated rolling SNR values.
+
+    **Usage:**
+
+        ```python
+        from soxspipe.commonutils.toolkit import calculate_rolling_snr
+        df_with_snr = calculate_rolling_snr(dataframe=df, flux_column='flux', window_size=5)
+        ```
+    """
+    import numpy as np
+
+    def rolling_snr(series):
+        n = len(series)
+        signal = np.median(series.values)
+        noise = 0.6052697 * \
+            np.median(
+                np.abs(2.0 * series.values[2:n-2] - series.values[0:n-4] - series.values[4:n]))
+        return signal / noise
+
+    dataframe['SNR'] = dataframe[flux_column].rolling(
+        window=window_size, center=True).apply(rolling_snr)
+    return dataframe
