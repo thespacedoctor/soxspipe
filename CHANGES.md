@@ -1,5 +1,10 @@
 # Release Notes
 
+Move to detect continuum on the unflattened frame in stare mode (to mirror what has been done in nodding)
+Added true NIR gain and RON to detector settings file
+moving management of matplotlib backend to a single location in the base_recipe class (easier to manage)
+massive refactoring of create_dispersion_map to make it more readable and manageable. 
+Move to adjusting the NIR predicted line-locations in detector quadrants rather than order by order 
 * **FIXED**: added jinja2 to setup.py
 * removed extra stare reductions at the end of `soxspipe reduce all`
 * fixed an issue with the macos matplotlib backend tripping up ubuntu reductions (again)

@@ -436,12 +436,31 @@ class soxs_stare(base_recipe):
             skymodelCCDData = False
             skySubtractedCCDData = combined_object
 
+        if self.subtractSky:
+            skymodel = subtract_sky(
+                log=self.log,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                objectFrame=combined_object_notflattened,
+                twoDMap=twoDMap,
+                qcTable=self.qc,
+                productsTable=self.products,
+                dispMap=dispMap,
+                sofName=self.sofName,
+                recipeName=self.recipeName,
+                startNightDate=self.startNightDate
+            )
+            unflattenedSkymodelCCDData, unflattenedSkySubtractedCCDData, unflattenedSkySubtractedResidualsCCDData, self.qc, self.products = skymodel.subtract()
+        else:
+            unflattenedSkySubtractedCCDData = combined_object_notflattened
+            unflattenedSkymodelCCDData = False
+
         from soxspipe.commonutils import horne_extraction
         optimalExtractor = horne_extraction(
             log=self.log,
             skyModelFrame=skymodelCCDData,
             skySubtractedFrame=skySubtractedCCDData,
-            unflattenedFrame=combined_object_notflattened,
+            unflattenedFrame=unflattenedSkySubtractedCCDData,
             twoDMapPath=twoDMap,
             settings=self.settings,
             recipeSettings=self.recipeSettings,
@@ -456,27 +475,11 @@ class soxs_stare(base_recipe):
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
 
         if self.generateReponseCurve:
-            if self.subtractSky:
-                skymodel = subtract_sky(
-                    log=self.log,
-                    settings=self.settings,
-                    recipeSettings=self.recipeSettings,
-                    objectFrame=combined_object_notflattened,
-                    twoDMap=twoDMap,
-                    qcTable=self.qc,
-                    productsTable=self.products,
-                    dispMap=dispMap,
-                    sofName=self.sofName,
-                    recipeName=self.recipeName,
-                    startNightDate=self.startNightDate
-                )
-                skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, self.qc, self.products = skymodel.subtract()
-
             optimalExtractor = horne_extraction(
                 log=self.log,
-                skyModelFrame=skymodelCCDData,
-                skySubtractedFrame=skySubtractedCCDData,
-                unflattenedFrame=skySubtractedCCDData,
+                skyModelFrame=unflattenedSkymodelCCDData,
+                skySubtractedFrame=unflattenedSkySubtractedCCDData,
+                unflattenedFrame=unflattenedSkySubtractedCCDData,
                 twoDMapPath=twoDMap,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
