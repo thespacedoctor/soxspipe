@@ -1104,13 +1104,9 @@ class detect_continuum(_base_detect):
 
         import numpy as np
         import pandas as pd
-        import matplotlib.pyplot as plt
-        from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
-        if self.debug:
-            plt.switch_backend('macOSX')
-        else:
-            plt.switch_backend('Agg')
+        from soxspipe.commonutils.toolkit import qc_settings_plot_tables
+        import matplotlib.pyplot as plt
 
         arm = self.arm
 
@@ -1568,7 +1564,7 @@ class detect_continuum(_base_detect):
         quicklook_image(
             log=self.log,
             CCDObject=self.traceFrame,
-            show=False,
+            show=self.debug,
             ext="data",
             stdWindow=3,
             title=False,
@@ -1684,10 +1680,10 @@ class detect_continuum(_base_detect):
             mean2, medianStddev, std2 = sigma_clipped_stats(
                 filteredDf["gauss_stddev"].values, sigma=2.5, stdfunc="std", cenfunc="mean", maxiters=5)
 
-            if not std1 or (abs(medianShift/std1) < 6 and medianStddev < 1):
+            if not std1 or ((abs(medianShift)+2)/std1 < 6 and medianStddev < 1):
                 medianShift = False
                 medianStddev = False
-            elif abs(medianShift/std1) < 5:
+            elif (abs(medianShift)) < 1.:
                 medianShift = False
             elif medianStddev < 1:
                 medianStddev = False

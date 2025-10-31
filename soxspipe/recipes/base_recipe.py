@@ -67,6 +67,8 @@ class base_recipe(object):
         self.workspaceRootPath = self._absolute_path(
             settings["workspace-root-dir"])
 
+        import matplotlib.pyplot as plt
+
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")

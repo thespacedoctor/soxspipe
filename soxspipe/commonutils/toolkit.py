@@ -176,7 +176,7 @@ def quicklook_image(
     """
     log.debug('starting the ``quicklook_image`` function')
 
-    if not show or not saveToPath:
+    if not show and not saveToPath:
         return
 
     import pandas as pd
@@ -188,7 +188,6 @@ def quicklook_image(
     from soxspipe.commonutils import detector_lookup
     originalRC = dict(mpl.rcParams)
     import matplotlib.pyplot as plt
-    plt.switch_backend('macosx')
 
     if settings:
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -1567,7 +1566,6 @@ def plot_merged_spectrum_qc(
         return products, None
 
     import matplotlib.pyplot as plt
-    plt.switch_backend('Agg')
     from datetime import datetime
     import pandas as pd
     from astropy import units as u
@@ -1636,8 +1634,9 @@ def plot_merged_spectrum_qc(
     except Exception:
         bottom_panel.set_xlim(
             merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
-    bottom_panel.set_ylim(0, merged_orders['SNR'].max() * 1.1)
-    print(merged_orders['SNR'].max())
+    import numpy as np
+
+    bottom_panel.set_ylim(0, np.nanmax(merged_orders['SNR']) * 1.1)
 
     if orderJoins:
         for k, v in orderJoins.items():
@@ -1710,4 +1709,7 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
 
     dataframe['SNR'] = dataframe[flux_column].rolling(
         window=window_size, center=True).apply(rolling_snr)
+    dataframe['SNR'].replace([np.inf, -np.inf], np.nan, inplace=True)
+    dataframe['SNR'].fillna(method='bfill', inplace=True)
+    dataframe['SNR'].fillna(method='ffill', inplace=True)
     return dataframe
