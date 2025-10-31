@@ -63,6 +63,7 @@ class soxs_spatial_solution(base_recipe):
         self.verbose = verbose
         self.create2DMap = create2DMap
         self.polyOrders = polyOrders
+        self.debug = debug
 
         if self.polyOrders:
             try:
@@ -339,7 +340,8 @@ class soxs_spatial_solution(base_recipe):
                 productsTable=self.products,
                 sofName=self.sofName,
                 create2DMap=False,
-                startNightDate=self.startNightDate
+                startNightDate=self.startNightDate,
+                debug=self.debug
             ).get()
 
             print("\n\nTUNING SOXSPIPE\n")
@@ -350,7 +352,7 @@ class soxs_spatial_solution(base_recipe):
             from fundamentals import fmultiprocess
             # DEFINE AN INPUT ARRAY
             results = fmultiprocess(log=self.log, function=parameterTuning,
-                                    inputArray=list(perm), poolSize=False, timeout=360000, recipeSettings=self.recipeSettings, settings=self.settings, multiPinholeFrame=self.multiPinholeFrame, disp_map_table=disp_map_table, order_table=order_table, qc=self.qc, products=self.products, sofName=self.sofName, lineDetectionTable=lineDetectionTable, turnOffMP=False, mute=True, progressBar=True)
+                                    inputArray=list(perm), poolSize=False, timeout=360000, recipeSettings=self.recipeSettings, settings=self.settings, multiPinholeFrame=self.multiPinholeFrame, disp_map_table=disp_map_table, order_table=order_table, qc=self.qc, products=self.products, sofName=self.sofName, lineDetectionTable=lineDetectionTable, turnOffMP=self.debug, mute=True, progressBar=True)
             return None, None, None
         else:
             if self.polyOrders:
@@ -360,6 +362,10 @@ class soxs_spatial_solution(base_recipe):
                 self.recipeSettings["order-deg"] = self.polyOrders[:2]
                 self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
                 self.recipeSettings["slit-deg"] = self.polyOrders[4:]
+
+            if self.debug:
+                self.create2DMap = False
+                self.slit_arc = False
 
             # GENERATE AN UPDATED DISPERSION MAP
             mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
@@ -374,7 +380,8 @@ class soxs_spatial_solution(base_recipe):
                 sofName=self.sofName,
                 create2DMap=self.create2DMap,
                 startNightDate=self.startNightDate,
-                arcFrame=self.slit_arc
+                arcFrame=self.slit_arc,
+                debug=self.debug
             ).get()
 
         from datetime import datetime
@@ -445,7 +452,8 @@ def parameterTuning(p, log, recipeSettings, settings, multiPinholeFrame, disp_ma
         sofName=sofName,
         create2DMap=False,
         lineDetectionTable=lineDetectionTable,
-        startNightDate=False
+        startNightDate=False,
+        debug=self.debug
     )
     try:
         productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()

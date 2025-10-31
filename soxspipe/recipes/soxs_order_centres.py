@@ -322,7 +322,7 @@ class soxs_order_centres(base_recipe):
             from fundamentals import fmultiprocess
             # NOTE TO SELF: if having issue with multiprocessing stalling, try and import required modules into the mthod/function running this fmultiprocess function instead of at the module level
             results = fmultiprocess(log=self.log, function=parameterTuning,
-                                    inputArray=list(perm), poolSize=False, timeout=360000, recipeSettings=self.recipeSettings, settings=self.settings, orderFrame=self.orderFrame, disp_map_table=disp_map_table, orderPixelTable=orderPixelTable, qc=self.qc, products=self.products, sofName=self.sofName, binx=binx, biny=biny, turnOffMP=False, mute=True, progressBar=True)
+                                    inputArray=list(perm), poolSize=False, timeout=360000, recipeSettings=self.recipeSettings, settings=self.settings, orderFrame=self.orderFrame, disp_map_table=disp_map_table, orderPixelTable=orderPixelTable, qc=self.qc, products=self.products, sofName=self.sofName, binx=binx, biny=biny, turnOffMP=self.debug, mute=True, progressBar=True)
             return None
 
         else:

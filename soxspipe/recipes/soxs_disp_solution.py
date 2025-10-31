@@ -302,7 +302,7 @@ class soxs_disp_solution(base_recipe):
             print("TUNING SOXSPIPE\n")
 
             results = fmultiprocess(log=self.log, function=parameterTuning,
-                                    inputArray=permList, poolSize=100, timeout=3600, recipeSettings=self.recipeSettings, settings=self.settings, pinholeFrame=self.pinholeFrame, qc=self.qc, products=self.products, sofName=self.sofName, lineDetectionTable=lineDetectionTable, turnOffMP=False, mute=True, progressBar=True)
+                                    inputArray=permList, poolSize=100, timeout=3600, recipeSettings=self.recipeSettings, settings=self.settings, pinholeFrame=self.pinholeFrame, qc=self.qc, products=self.products, sofName=self.sofName, lineDetectionTable=lineDetectionTable, turnOffMP=self.debug, mute=True, progressBar=True)
             productPath = None
 
         else:
