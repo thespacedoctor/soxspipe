@@ -610,6 +610,11 @@ class soxs_nod(base_recipe):
         groupedDataframe = calculate_rolling_snr(
             dataframe=groupedDataframe, flux_column='FLUX_COUNTS', window_size=300)
 
+        # groupedDataframe['signal'] = groupedDataframe['FLUX_COUNTS'].rolling(
+        #     window=15, center=True).median().fillna(method='bfill').fillna(method='ffill').values
+        # groupedDataframe['normalised_flux'] = groupedDataframe['FLUX_COUNTS'] / \
+        #     groupedDataframe['signal']
+
         # PREPARING THE HDU
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)
         BinTableHDU = fits.table_to_hdu(stackedSpectrum)
