@@ -222,7 +222,8 @@ def main(arguments=None):
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
                 polyOrders=a["polyFlag"],
-                command=command
+                command=command,
+                debug=a["debugFlag"]
             ).produce_product()
 
         if a["order_centres"]:
@@ -247,7 +248,8 @@ def main(arguments=None):
                 verbose=verbose,
                 overwrite=a["overwriteFlag"],
                 polyOrders=a["polyFlag"],
-                command=command
+                command=command,
+                debug=a["debugFlag"]
             ).produce_product()
 
         if a["mflat"]:
