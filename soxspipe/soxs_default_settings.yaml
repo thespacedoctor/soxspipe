@@ -74,7 +74,6 @@ soxs-order-centre:
             poly-fitting-residual-clipping-sigma: 7
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
-    # NIR is TUNED
     nir:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
@@ -82,15 +81,15 @@ soxs-order-centre:
             # LENGTH OF EACH SLICE (PIXELS)
             slice-length: 30
             # WIDTH OF EACH SLICE (PIXELS)
-            slice-width: 5
+            slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 2.
+            peak-sigma-limit: 5.
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 5
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             order-deg: 6
             # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
-            poly-fitting-residual-clipping-sigma: 10
+            poly-fitting-residual-clipping-sigma: 7
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
 
@@ -174,7 +173,7 @@ soxs-spatial-solution:
         # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
         pixel-window-size: 10
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
-        pinhole-detection-thres-sigma: 2
+        pinhole-detection-thres-sigma: 5
         # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
         order-deg: [4,4]
         # DEGREE OF WAVELENGTH COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
@@ -279,17 +278,17 @@ soxs-stare:
             # LENGTH OF EACH SLICE (PIXELS)
             slice-length: 50
             # WIDTH OF EACH SLICE (PIXELS)
-            slice-width: 5
+            slice-width: 7
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 2.
+            peak-sigma-limit: 1.5
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
-            order-deg: 6
+            order-deg: 4
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO OBJECT TRACE
             disp-axis-deg: 4
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-fitting-residual-clipping-sigma: 5
+            poly-fitting-residual-clipping-sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-clipping-iteration-limit: 7
+            poly-clipping-iteration-limit: 10
         sky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
