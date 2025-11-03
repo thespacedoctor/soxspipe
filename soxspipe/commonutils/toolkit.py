@@ -1729,7 +1729,6 @@ def extinction_correction_factor(
     # READ THE EXTINCTION CURVE FOR THE OBSERVATORY
     # DATA IS ORGANIZED AS FOLLOWS:
     # FIRST COLUMN, WAVELENGTH (IN ANGSTROM), SECOND COLUMN MAG/AIRMASS
-    print(extinctionTablePath)
     extinctionData = Table.read(
         extinctionTablePath, format='fits')
     extinctionData = extinctionData.to_pandas()
