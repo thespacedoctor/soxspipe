@@ -142,14 +142,6 @@ class flux_calibration(object):
             extinctionCorrectionFactor = extinction_correction_factor(
                 self.extractedSpectrum["WAVE"], self.extinctionPath, self.airmass)
             flux_calibration = countsPerAngstrom * extinctionCorrectionFactor
-            print('Correcting observation for extinction')
-            from matplotlib import pyplot as plt
-            plt.switch_backend('macosx')
-            plt.figure()
-            plt.plot(self.extractedSpectrum["WAVE"], extinctionCorrectionFactor)
-            plt.xlabel("Wavelength (nm)")
-            plt.ylabel("Extinction Correction Factor")
-            plt.show()
         else:
             flux_calibration = countsPerAngstrom
 
