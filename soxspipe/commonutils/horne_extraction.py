@@ -868,6 +868,7 @@ class horne_extraction(object):
             extractedOrdersDF['pixelScaleNm'].values
         extractedOrdersDF['extractedFluxDensityBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values / \
             extractedOrdersDF['pixelScaleNm'].values
+        
 
         flux_orig = extractedOrdersDF['extractedFluxOptimal'].values
         spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values, uncertainty=VarianceUncertainty(
@@ -877,7 +878,7 @@ class horne_extraction(object):
             flux=fluxDensity_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values, bin_specification="center")
 
         resampler = FluxConservingResampler()
-        resampler2 = LinearInterpolatedResampler()
+        resampler2 = FluxConservingResampler() #LinearInterpolatedResampler
         # Pre-allocate arrays for efficiency
         flux_resampled = np.zeros_like(wave_resample_grid)
         fluxDensity_resampled = np.zeros_like(wave_resample_grid)
@@ -907,6 +908,7 @@ class horne_extraction(object):
         merged_orders['FLUX_COUNTS'] = flux_resampled * u.electron
         rollingMedian = merged_orders['FLUX_COUNTS'].rolling(
             window=35, center=True).median().fillna(method='bfill').fillna(method='ffill').values * u.electron
+
         merged_orders['SNR'] = merged_orders['FLUX_COUNTS'] - rollingMedian
         merged_orders['SNR'] = merged_orders['SNR'].rolling(
             window=35, center=True).std().fillna(method='bfill').fillna(method='ffill').values

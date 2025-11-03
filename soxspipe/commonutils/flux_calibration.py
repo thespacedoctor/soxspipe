@@ -9,10 +9,20 @@ Author
 Date Created
 : July 28, 2023
 """
+import datetime
 from fundamentals import tools
 from builtins import object
 import sys
 import os
+from astropy.table import Table
+import numpy as np
+import pandas as pd
+from soxspipe.commonutils import keyword_lookup
+from astropy.io import fits
+import copy
+from contextlib import suppress
+
+from soxspipe.commonutils.toolkit import extinction_correction_factor
 os.environ['TERM'] = 'vt100'
 
 
@@ -59,22 +69,40 @@ class flux_calibration(object):
             responseFunction,
             extractedSpectrum,
             settings=False,
+            airmass=1.0,
+            exptime=1.0,
+            extinctionPath="",
+            arm="",
+            header=None,
+            recipeName="",
+            startNightDate="",
+            sofName="",
+            debug=False
     ):
         self.log = log
         log.debug("instantiating a new 'flux_calibration' object")
         self.settings = settings
         self.responseFunction = responseFunction
         self.extractedSpectrum = extractedSpectrum
+        self.airmass = airmass
+        self.exptime = exptime
+        self.extinctionPath = extinctionPath
+        self.arm = arm
+        self.debug = debug
+        self.header = header
+        self.recipeName = recipeName
+        self.startNightDate = startNightDate
+        self.sofName = sofName
 
-        # xt-self-arg-tmpx
+        self.kw = keyword_lookup(
+            log=self.log,
+            settings=self.settings
+        ).get
 
-        # 2. @flagged: what are the default Attributes each object could have? Add them to variable attribute set here
-        # Variable Data Atrributes
-
-        # 3. @flagged: what variable Attributes need overriden in any baseclass(es) used
-        # Override Variable Data Atrributes
-
-        # Initial Actions
+        from soxspipe.commonutils.toolkit import utility_setup
+        self.qcDir, self.productDir = utility_setup(
+            log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
+        self.products = pd.DataFrame()
 
         return None
 
@@ -104,7 +132,94 @@ class flux_calibration(object):
         flux_calibration = None
 
         self.log.debug('completed the ``calibrate`` method')
-        return flux_calibration
+        # STEP TO DO: 
+
+        # DIVIDE PER EXPOSURE TIME
+        countsPerAngstrom = self.extractedSpectrum["FLUX_COUNTS"] / self.exptime
+
+        # APPLY EXTINCTION CORRECTION FACTOR
+        if self.arm == "UVB" or self.arm == "VIS":
+            extinctionCorrectionFactor = extinction_correction_factor(
+                self.extractedSpectrum["WAVE"], self.extinctionPath, self.airmass)
+            flux_calibration = countsPerAngstrom * extinctionCorrectionFactor
+            print('Correcting observation for extinction')
+            from matplotlib import pyplot as plt
+            plt.switch_backend('macosx')
+            plt.figure()
+            plt.plot(self.extractedSpectrum["WAVE"], extinctionCorrectionFactor)
+            plt.xlabel("Wavelength (nm)")
+            plt.ylabel("Extinction Correction Factor")
+            plt.show()
+        else:
+            flux_calibration = countsPerAngstrom
+
+        # APPLY RESPNSE FUNCTION
+        responseFunctionCoeff = Table.read(self.responseFunction, format='fits')
+        # NOW UNPACK THE COEFFICIENTS
+        polyCoeffs = []
+        for idx_coeff in range(0, int(responseFunctionCoeff['polyOrder'])+1):
+            polyCoeffs.append(responseFunctionCoeff[f"c{idx_coeff}"][0])
+        
+        responseFunctionFactor = np.polyval(polyCoeffs, self.extractedSpectrum["WAVE"])
+        flux_calibration = flux_calibration * responseFunctionFactor*10**-17
+
+        fluxCalSpectrum = pd.DataFrame({
+            "WAVE": self.extractedSpectrum["WAVE"],
+            "FLUX_CALIBRATED": flux_calibration
+        })
+
+        if self.debug:
+            from matplotlib import pyplot as plt
+            plt.switch_backend('macosx')
+            plt.plot(self.extractedSpectrum["WAVE"], flux_calibration*10**-17)
+            plt.xlabel("Wavelength (nm)")
+            plt.ylabel("Flux (erg/cm2/s/Angstrom)")
+            plt.show()
+
+        header = copy.deepcopy(self.header)
+        with suppress(KeyError):
+            header.pop(self.kw("DPR_CATG"))
+        with suppress(KeyError):
+            header.pop(self.kw("DPR_TYPE"))
+        with suppress(KeyError):
+            header.pop(self.kw("DET_READ_SPEED"))
+        with suppress(KeyError):
+            header.pop(self.kw("CONAD"))
+        with suppress(KeyError):
+            header.pop(self.kw("GAIN"))
+        with suppress(KeyError):
+            header.pop(self.kw("RON"))
+
+        fluxcalibratedSpectrum = Table.from_pandas(fluxCalSpectrum)
+        BinTableHDU = fits.table_to_hdu(fluxcalibratedSpectrum)
+        header[self.kw("SEQ_ARM")] = self.arm
+        header["HIERARCH " + self.kw("PRO_TYPE")] = "REDUCED"
+        header["HIERARCH " + self.kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+        priHDU = fits.PrimaryHDU(header=header)
+        hduList = fits.HDUList([priHDU, BinTableHDU])
+
+        filename = f"{self.sofName}_FLUXCAL.fits"
+        filePath = f"{self.productDir}/{filename}"
+        print(f"WRITING TO {filePath}")
+        hduList.writeto(filePath, checksum=True, overwrite=True)
+
+        from datetime import datetime
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        
+        self.products = pd.concat([self.products, pd.Series({
+                    "soxspipe_recipe": self.recipeName,
+                    "product_label": f"EXTRACTED_FLUXCAL_SPECTRUM",
+                    "file_name": filename,
+                    "file_type": "FITS",
+                    "reduction_date_utc": utcnow,
+                    "product_desc": f"Flux calibrated extracted spectrum",
+                    "file_path": filePath,
+                    "obs_date_utc": header["DATE-OBS"],
+                    "label": "PROD"
+                }).to_frame().T], ignore_index=True)
+
+        return filePath, self.products
 
     # xt-class-method
 
