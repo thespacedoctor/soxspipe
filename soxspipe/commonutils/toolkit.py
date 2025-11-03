@@ -188,7 +188,6 @@ def quicklook_image(
     from soxspipe.commonutils import detector_lookup
     originalRC = dict(mpl.rcParams)
     import matplotlib.pyplot as plt
-    plt.switch_backend('macosx')
 
     if settings:
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
@@ -1567,7 +1566,6 @@ def plot_merged_spectrum_qc(
         return products, None
 
     import matplotlib.pyplot as plt
-    plt.switch_backend('Agg')
     from datetime import datetime
     import pandas as pd
     from astropy import units as u
@@ -1608,14 +1606,14 @@ def plot_merged_spectrum_qc(
     from astropy.stats import sigma_clip, mad_std
     # SIGMA-CLIP THE DATA
     arrayMask = sigma_clip(
-        merged_orders['FLUX_COUNTS'], sigma_lower=300, sigma_upper=7.0, maxiters=3, cenfunc='mean', stdfunc='std')
+        merged_orders['FLUX_COUNTS'], sigma_lower=3, sigma_upper=15.0, maxiters=1, cenfunc='mean', stdfunc='std')
     mean, median, std = sigma_clipped_stats(
-        merged_orders['FLUX_COUNTS'], sigma=7.0, stdfunc="std", cenfunc="mean", maxiters=3)
+        merged_orders['FLUX_COUNTS'], sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3)
     maxFlux = arrayMask.max() + 0.5*std
     minFlux = arrayMask.min() - 0.05*std
 
-    middle_panel.set_ylim(minFlux, maxFlux)
-    top_panel.set_ylim(minFlux, arrayMask.max() + 0.1*std)
+    top_panel.set_ylim(minFlux, maxFlux)
+    middle_panel.set_ylim(max(arrayMask.min()*5, 0), arrayMask.max() * 7)
     try:
         middle_panel.set_xlim(merged_orders['WAVE'].min().value,
                               merged_orders['WAVE'].max().value)
@@ -1630,6 +1628,15 @@ def plot_merged_spectrum_qc(
 
     bottom_panel.plot(merged_orders['WAVE'], merged_orders['SNR'],
                       linewidth=0.4, color="black")
+    try:
+        bottom_panel.set_xlim(merged_orders['WAVE'].min().value,
+                              merged_orders['WAVE'].max().value)
+    except Exception:
+        bottom_panel.set_xlim(
+            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
+    import numpy as np
+
+    bottom_panel.set_ylim(0, np.nanmax(merged_orders['SNR']) * 1.1)
 
     if orderJoins:
         for k, v in orderJoins.items():
@@ -1638,15 +1645,6 @@ def plot_merged_spectrum_qc(
                               linewidth=0.5, alpha=0.5)
                 panel.text(v + 5, 0.9*panel.get_ylim()[1], "ORDER JOIN",
                            rotation=90, verticalalignment='top', fontsize=6, color="black", alpha=0.5)
-
-    try:
-        bottom_panel.set_xlim(merged_orders['WAVE'].min().value,
-                              merged_orders['WAVE'].max().value)
-    except Exception:
-        bottom_panel.set_xlim(
-            merged_orders['WAVE'].min(), merged_orders['WAVE'].max())
-
-    bottom_panel.set_ylim(0, merged_orders['SNR'].max() * 1.1)
 
     filename = filenameTemplate.replace(
         ".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
@@ -1670,6 +1668,52 @@ def plot_merged_spectrum_qc(
 
     log.debug('completed the ``plot_merged_spectrum_qc`` function')
     return products, filePath
+
+
+def calculate_rolling_snr(dataframe, flux_column, window_size):
+    """
+    Calculate the rolling Signal-to-Noise Ratio (SNR) for a given column in a pandas DataFrame.
+
+    This function computes the rolling SNR for a specified column in the DataFrame using a custom
+    rolling window function. The SNR is calculated as the ratio of the median signal to the noise,
+    where the noise is estimated using a robust statistical method.
+
+    **Key Arguments:**
+
+        - `dataframe`: The input pandas DataFrame containing the data.
+        - `flux_column`: The name of the column in the DataFrame for which the rolling SNR
+            will be calculated.
+        - `window_size`: The size of the rolling window to use for the calculation.
+
+    **Return:**
+
+        - `dataframe`: The input DataFrame with an additional column 'SNR' containing the
+        calculated rolling SNR values.
+
+    **Usage:**
+
+        ```python
+        from soxspipe.commonutils.toolkit import calculate_rolling_snr
+        df_with_snr = calculate_rolling_snr(dataframe=df, flux_column='flux', window_size=5)
+        ```
+    """
+    import numpy as np
+
+    def rolling_snr(series):
+        n = len(series)
+        signal = np.median(series.values)
+        noise = 0.6052697 * \
+            np.median(
+                np.abs(2.0 * series.values[2:n-2] - series.values[0:n-4] - series.values[4:n]))
+        return signal / noise
+
+    dataframe['SNR'] = dataframe[flux_column].rolling(
+        window=window_size, center=True).apply(rolling_snr)
+    dataframe['SNR'].replace([np.inf, -np.inf], np.nan, inplace=True)
+    dataframe['SNR'].fillna(method='bfill', inplace=True)
+    dataframe['SNR'].fillna(method='ffill', inplace=True)
+    return dataframe
+
 
 
 def extinction_correction_factor(

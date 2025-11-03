@@ -1,5 +1,15 @@
 # Release Notes
 
+Move to detect continuum on the unflattened frame in stare mode (to mirror what has been done in nodding)
+Added true NIR gain and RON to detector settings file
+moving management of matplotlib backend to a single location in the base_recipe class (easier to manage)
+massive refactoring of create_dispersion_map to make it more readable and manageable. 
+Move to adjusting the NIR predicted line-locations in detector quadrants rather than order by order 
+* **FIXED**: added jinja2 to setup.py
+* removed extra stare reductions at the end of `soxspipe reduce all`
+* fixed an issue with the macos matplotlib backend tripping up ubuntu reductions (again)
+* Add a `calculate_rolling_snr` function to robustly compute the SNR ratio across the entire spectrum wavelength range. Algorithm is the [presented here](https://esahubble.org/static/archives/stecfnewsletters/pdf/hst_stecf_0042.pdf).
+
 ## v0.14.1 - October 20, 2025
 
 * **FEATURE:** Dome flats are now recognised by the data-organiser and are combined into master flats.

@@ -605,6 +605,10 @@ class soxs_nod(base_recipe):
         from datetime import datetime
         from astropy.io import fits
         from astropy.table import Table
+        import numpy as np
+        from soxspipe.commonutils.toolkit import calculate_rolling_snr
+        from astropy import units as u
+        from specutils import Spectrum1D
 
         if notFlattened:
             postfix = "_NOTFLAT"
@@ -614,7 +618,7 @@ class soxs_nod(base_recipe):
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND mergedSpectrumDF_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
 
         merged_dataframe = pd.concat(dataFrameList)
-        # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGHT TO THE 4 DIGITS
+        # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGTH TO THE 4 DIGITS
         merged_dataframe['WAVE'] = merged_dataframe['WAVE'].apply(
             lambda x: round(float(x.value), 4))
         groupedDataframe = merged_dataframe.groupby(
@@ -635,6 +639,18 @@ class soxs_nod(base_recipe):
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
         header["HIERARCH " + kw("PRO_CATG")
                ] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+
+        flux_orig = groupedDataframe['FLUX_COUNTS'].values*u.electron
+        spectrum_orig = Spectrum1D(
+            flux=flux_orig, spectral_axis=groupedDataframe['WAVE'].values*u.nm, bin_specification="center")
+
+        groupedDataframe = calculate_rolling_snr(
+            dataframe=groupedDataframe, flux_column='FLUX_COUNTS', window_size=300)
+
+        # groupedDataframe['signal'] = groupedDataframe['FLUX_COUNTS'].rolling(
+        #     window=15, center=True).median().fillna(method='bfill').fillna(method='ffill').values
+        # groupedDataframe['normalised_flux'] = groupedDataframe['FLUX_COUNTS'] / \
+        #     groupedDataframe['signal']
 
         # PREPARING THE HDU
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)

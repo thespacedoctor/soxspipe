@@ -110,10 +110,7 @@ class horne_extraction(object):
         from soxspipe.commonutils import detector_lookup
         from ccdproc import cosmicray_lacosmic, cosmicray_median
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-        from matplotlib import pyplot as plt
-        plt.switch_backend('Agg')
-        if debug:
-            plt.switch_backend('macosx')
+        import matplotlib.pyplot as plt
 
         self.log = log
         log.debug("instantiating a new 'horne_extraction' object")
@@ -368,9 +365,6 @@ class horne_extraction(object):
         self.log.debug('starting the ``extract`` method')
 
         import matplotlib.pyplot as plt
-        plt.switch_backend('Agg')
-        if self.debug:
-            plt.switch_backend('macosx')
         import pandas as pd
         from astropy.table import Table
         import copy
@@ -731,16 +725,14 @@ class horne_extraction(object):
         import pandas as pd
         from astropy.io import fits
         import matplotlib.pyplot as plt
-        plt.switch_backend('Agg')
-        if self.debug:
-            plt.switch_backend('macosx')
+
         import matplotlib
         from datetime import datetime
         from astropy.nddata import VarianceUncertainty
         from specutils.manipulation import median_smooth
         from astropy.stats import sigma_clipped_stats
         from scipy.interpolate import interp1d
-
+        from soxspipe.commonutils.toolkit import calculate_rolling_snr
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
         # ASTROPY HAS RESET LOGGING LEVEL -- FIX
@@ -906,15 +898,9 @@ class horne_extraction(object):
         merged_orders = pd.DataFrame()
         merged_orders['WAVE'] = wave_resample_grid * u.nm
         merged_orders['FLUX_COUNTS'] = flux_resampled * u.electron
-        rollingMedian = merged_orders['FLUX_COUNTS'].rolling(
-            window=35, center=True).median().fillna(method='bfill').fillna(method='ffill').values * u.electron
 
-        merged_orders['SNR'] = merged_orders['FLUX_COUNTS'] - rollingMedian
-        merged_orders['SNR'] = merged_orders['SNR'].rolling(
-            window=35, center=True).std().fillna(method='bfill').fillna(method='ffill').values
-        merged_orders['SNR'] = rollingMedian / merged_orders['SNR']
-        merged_orders['SNR'] = merged_orders['SNR'].rolling(
-            window=70, center=True).median().fillna(method='bfill').fillna(method='ffill').values
+        merged_orders = calculate_rolling_snr(
+            dataframe=merged_orders, flux_column='FLUX_COUNTS', window_size=300)
 
         merged_orders['FLUX_DENSITY_COUNTS'] = fluxDensity_resampled * \
             u.electron / u.nm
@@ -971,9 +957,7 @@ class horne_extraction(object):
             return
 
         import matplotlib.pyplot as plt
-        plt.switch_backend('Agg')
-        if self.debug:
-            plt.switch_backend('macosx')
+
         from datetime import datetime
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
@@ -994,6 +978,8 @@ class horne_extraction(object):
 
         for df in extractions:
 
+            if not len(df["order"].values):
+                continue
             o = df["order"].values[0]
 
             extracted_wave_spectrum = df["wavelengthMedian"]
@@ -1079,9 +1065,6 @@ def extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, cl
     import numpy as np
     from astropy.stats import sigma_clip
     import matplotlib.pyplot as plt
-    plt.switch_backend('Agg')
-    if debug:
-        plt.switch_backend('macosx')
 
     # WE ARE BUILDING A SET OF CROSS-SLIT OBJECT PROFILES
     # ALONG THE DISPERSION AXIS

@@ -78,7 +78,7 @@ class reducer(object):
             return None
 
         self.recipeList = ["mbias", "mdark", "disp_sol",
-                           "order_centres", "mflat", "spat_sol", "stare", "nod", "stare", "offset"]
+                           "order_centres", "mflat", "spat_sol", "nod", "stare", "offset"]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
         self.sessionDB = workspaceDirectory + "/soxspipe.db"

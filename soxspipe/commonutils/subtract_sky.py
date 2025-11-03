@@ -393,17 +393,15 @@ class subtract_sky(object):
         self.log.debug('starting the ``plot_sky_sampling`` method')
 
         import numpy as np
-        import matplotlib.patches as mpatches
-        import matplotlib.pyplot as plt
         import scipy.interpolate as ip
         import numpy.ma as ma
-        from matplotlib import cm
-        from matplotlib import colors
         from copy import copy
 
-        plt.switch_backend('Agg')
-        if self.debug:
-            plt.switch_backend('macosx')
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+        import matplotlib.pyplot as plt
+        from matplotlib import cm
+        from matplotlib import colors
 
         # SET COLOURS FOR VARIOUS STAGES
         red = "#dc322f"
