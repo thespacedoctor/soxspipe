@@ -119,6 +119,7 @@ class soxs_nod(base_recipe):
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
+        print(imageTypes, imageTech, imageCat)
         arm = self.arm
 
         if not error:
