@@ -321,10 +321,26 @@ class response_function(object):
             })
             # WRITE THE EFFICIENCY ESTIMATE TO FITS BINARY TABLE
             from astropy.table import Table
+            import copy
+            from astropy.io import fits
             t = Table.from_pandas(stdEfficiencyEstimateDF)
             filename = f"{self.sofName}_EFFICIENCY.fits"
             filepath = f"{self.productDir}/{filename}"
-            t.write(filepath, overwrite=True)
+
+
+            header = copy.deepcopy(self.header)
+            header[self.kw("SEQ_ARM").upper()] = self.arm
+            header[self.kw("PRO_TYPE").upper()] = "REDUCED"
+            header[self.kw("PRO_CATG").upper()] = f"EFFICIENCY_TAB_{self.arm}".upper()
+
+            BinTableHDU = fits.table_to_hdu(t)
+
+
+            priHDU = fits.PrimaryHDU(header=header)
+
+            hduList = fits.HDUList([priHDU, BinTableHDU])
+            hduList.writeto(filepath, checksum=True, overwrite=True)
+
 
             # ADD TO QC TABLE
             from datetime import datetime
