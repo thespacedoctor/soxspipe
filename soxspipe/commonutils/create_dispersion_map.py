@@ -451,6 +451,7 @@ class create_dispersion_map(object):
         """*FIND CLUSTER CENTER IN SHIFT DISTRIBUTION AND APPLY CORRECTION*"""
         # FIND CLUSTER CENTER IN SHIFT SPACE
         centrex = None
+        centrey = None
         eps = 0.7
         orderLen = len(orderPixelTable.loc[mask].index)
 
