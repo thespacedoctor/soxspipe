@@ -1713,3 +1713,33 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
     dataframe['SNR'].fillna(method='bfill', inplace=True)
     dataframe['SNR'].fillna(method='ffill', inplace=True)
     return dataframe
+
+
+
+def extinction_correction_factor(
+        wave,
+        extinctionTablePath,
+        airmass):
+    from scipy.interpolate import interp1d
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from astropy.table import Table
+
+    # READ THE EXTINCTION CURVE FOR THE OBSERVATORY
+    # DATA IS ORGANIZED AS FOLLOWS:
+    # FIRST COLUMN, WAVELENGTH (IN ANGSTROM), SECOND COLUMN MAG/AIRMASS
+    extinctionData = Table.read(
+        extinctionTablePath, format='fits')
+    extinctionData = extinctionData.to_pandas()
+
+    # CONVERT ANG TO NM
+    wave_ext = extinctionData['WAVE'] / 10
+    # INTERPOLATING ON THE REQUIRED WAVE SCALE
+    refitted_ext = interp1d(np.array(wave_ext),
+                        np.array(extinctionData['MAG_AIRMASS']), kind='next', fill_value='extrapolate')
+
+
+    extCorrectionFactor = 10**(0.4 * refitted_ext(wave) * airmass)
+
+    return extCorrectionFactor

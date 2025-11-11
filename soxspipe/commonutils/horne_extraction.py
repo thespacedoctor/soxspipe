@@ -860,6 +860,7 @@ class horne_extraction(object):
             extractedOrdersDF['pixelScaleNm'].values
         extractedOrdersDF['extractedFluxDensityBoxcarRobust'] = extractedOrdersDF['extractedFluxBoxcarRobust'].values / \
             extractedOrdersDF['pixelScaleNm'].values
+        
 
         flux_orig = extractedOrdersDF['extractedFluxOptimal'].values
         spectrum_orig = Spectrum1D(flux=flux_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values, uncertainty=VarianceUncertainty(
@@ -869,7 +870,7 @@ class horne_extraction(object):
             flux=fluxDensity_orig, spectral_axis=extractedOrdersDF['wavelengthMedian'].values, bin_specification="center")
 
         resampler = FluxConservingResampler()
-        resampler2 = LinearInterpolatedResampler()
+        resampler2 = FluxConservingResampler() #LinearInterpolatedResampler
         # Pre-allocate arrays for efficiency
         flux_resampled = np.zeros_like(wave_resample_grid)
         fluxDensity_resampled = np.zeros_like(wave_resample_grid)

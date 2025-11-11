@@ -10,10 +10,10 @@ Date Created
 : February 28, 2022
 """
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils import detector_lookup, keyword_lookup
 from .base_recipe import base_recipe
 from soxspipe.commonutils import subtract_sky
-from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
+from soxspipe.commonutils.toolkit import generic_quality_checks, get_calibrations_path, spectroscopic_image_quality_checks
 from fundamentals import tools
 from builtins import object
 import sys
@@ -150,6 +150,7 @@ class soxs_stare(base_recipe):
 
         else:
             if not error:
+                print(imageTypes)
                 for i in imageTypes:
                     if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK", "STD,FLUX", "STD,TELLURIC", "OBJECT,ASYNC"]:
                         print("11")
@@ -326,6 +327,16 @@ class soxs_stare(base_recipe):
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         twoDMap = self.inputFrames.filter(
             **filterDict).files_filtered(include_path=True)[0]
+
+        # FIND THE RESPONSE FUNCTION, IF PRESENT
+        try:
+            filterDict = {kw("PRO_CATG"): f"RESP_TAB_{arm}"}
+            responseFunctionPath = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
+
+        except:
+            responseFunctionPath = False
+
         try:
             if not self.recipeSettings["use_flat"]:
                 master_flat = False
@@ -474,6 +485,41 @@ class soxs_stare(base_recipe):
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
 
+         # CHECK IF FLUX CALIBRATION IS NEEDED
+
+        if responseFunctionPath:
+            from soxspipe.commonutils import flux_calibration
+
+            calibrationRootPath = get_calibrations_path(
+            log=self.log, settings=self.settings)
+
+            detectorParams = detector_lookup(
+                log=self.log,
+                settings=self.settings
+            ).get(self.arm)
+            
+            self.log.print(f"# FLUX CALIBRATING THE SPECTRUM\n")
+            fluxCalibrator = flux_calibration(
+                log=self.log,
+                responseFunction=responseFunctionPath,
+                extractedSpectrum=mergedSpectumDF,
+                settings=self.settings,
+                airmass=combined_object.header.get("HIERARCH ESO TEL AIRM END"),
+                exptime=combined_object.header.get("EXPTIME"),
+                extinctionPath=calibrationRootPath + "/" + detectorParams["extinction"],
+                arm=self.arm, 
+                header=combined_object.header,   
+                recipeName=self.recipeName,
+                startNightDate=self.startNightDate,
+                sofName=self.sofName,
+                debug=self.debug
+            )
+            filePath, prod = fluxCalibrator.calibrate()
+            self.products = pd.concat([self.products, prod], ignore_index=True)
+            #self.qc, self.products, calibratedSpectrumDF, calibrationPath = fluxCalibrator.calibrate()
+            self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
+
+
         if self.generateReponseCurve:
             optimalExtractor = horne_extraction(
                 log=self.log,
@@ -509,6 +555,9 @@ class soxs_stare(base_recipe):
                 stdNotFlatExtractionPath=extractionPath_notflat,
             )
             self.qc, self.products = response.get()
+
+       
+
 
         self.clean_up()
         self.report_output()

@@ -12,6 +12,8 @@
 import sys
 import os
 from builtins import object
+
+from soxspipe.commonutils.toolkit import extinction_correction_factor
 os.environ['TERM'] = 'vt100'
 
 
@@ -180,6 +182,7 @@ class response_function(object):
         stdExtWaveNotFlat = self.stdExtractionNotFlatDF['WAVE'].values
         stdExtFluxNotFlat = self.stdExtractionNotFlatDF['FLUX_DENSITY_COUNTS'].values
 
+
         # GET THE ABSOLUTE STANDARD STAR FLUXES, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
         stdAbsFluxDF = Table.read(
             self.calibrationRootPath + "/" + self.detectorParams["flux-standards"], format='fits')
@@ -203,11 +206,10 @@ class response_function(object):
             return self.qc, self.products
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
-        excludeRegions = [(200, 400), (590, 600), (405, 416), (426, 440), (460, 475), (563, 574), (478, 495), (528, 538), (
-            620, 640), (648, 666), (754, 770), (800, 810), (836, 845), (1100, 1190), (1300, 1500), (1800, 1900), (1850, 2700)]
-
+        #xcludeRegions = [(590, 600), (405, 416), (426, 440), (460, 475), (563, 574), (478, 495), (528, 538), (
+        #    620, 640), (648, 666), (754, 770), (800, 810), (836, 845), (1100, 1190), (1300, 1500), (1800, 1900), (1850, 2700)]
+        excludeRegions = [] 
         # INTEGRATING THE EXTRACTED STANDARD IN xx nm BIN-WIDE FILTERS (CONVERTING BACK IN A/PX)
-        stdExtFlux = stdExtFlux / 10.
         stdExtFluxNotFlat = stdExtFluxNotFlat / 10.
 
         # NOW DIVIDING FOR THE EXPOSURE TIME
@@ -254,44 +256,31 @@ class response_function(object):
         # APPLYING EXTINCTION CORRECTION
         if self.arm == 'UVB' or self.arm == 'VIS':
             self.log.print('Applying extinction correction')
-            extCorrectionFactor = self.extinction_correction_factor(stdExtWave)
+            extCorrectionFactor = extinction_correction_factor(stdExtWave, self.calibrationRootPath + "/" + self.detectorParams["extinction"], self.airmass)
+            if False:
+                from matplotlib import pyplot as plt
+                plt.switch_backend('macosx')
+                plt.plot(stdExtWave, extCorrectionFactor)
+                plt.xlabel('Wavelength (nm)')
+                plt.ylabel('Extinction Correction Factor')
+                plt.title('Extinction Correction Factor vs Wavelength')
+                plt.grid()
+                plt.show()
             stdExtFlux = stdExtFlux * extCorrectionFactor
 
-        # GENERATE DISCRETE BINS
-        binWidth = 3
-        binStarts = np.arange(self.stdExtractionDF['WAVE'].min(
-        ), self.stdExtractionDF['WAVE'].max(), binWidth)
-        binEnds = binStarts + binWidth
 
-        # INTEGRATE EXTRACTED STANDARD FLUX OVER THESE BINS
-        binCentreWave = []
-        binIntegratedFlux = []
-        for bStart, bEnd in zip(binStarts, binEnds):
-            bCentre = (bStart + bEnd) / 2
-            # EXCLUDE BRIGHT SKY REGIONS
-            bExclue = any(start <= bStart <= end or start <=
-                          bEnd <= end for start, end in excludeRegions)
+        self.response_function_raw = self.std_wavelength_to_abs_flux(stdExtWave) / stdExtFlux
+        wavelength_response = self.stdExtractionDF['WAVE'].values
 
-            if not bExclue:
-                mask = (stdExtWave >= bStart) & (stdExtWave < bEnd)
-                bFlux = stdExtFlux[mask]
-                bFluxIntegrated = np.trapz(
-                    bFlux, stdExtWave[mask]) / (bEnd - bStart)
-                # COLLECT THE WAVELENGTHS AND INTERGRATED FLUX
-                if not np.isnan(bFluxIntegrated) and bFluxIntegrated > 0:
-                    binCentreWave.append(bCentre)
-                    binIntegratedFlux.append(bFluxIntegrated)
-
-        # FINDING THE FUNCTION S = F/C
-        binCentreWave = np.array(binCentreWave)
-        absToExtFluxRatio = np.array(
-            self.std_wavelength_to_abs_flux(binCentreWave) / binIntegratedFlux)
-
-        # NOW FINDING THE RESPONSE FUNCTION POINTS AND THEN FIT
-        binCentreWaveOriginal = binCentreWave
+        polyOrder = int(self.recipeSettings['poly_order'])
         numIter = 0
         deletedPoints = 1
-        polyOrder = int(self.recipeSettings['poly_order'])
+
+        #REMOVE EXLUCED REGION FROM WAVELENGTH AND RESPONSE FUNCTION
+        for er in excludeRegions:
+            elementsToDelete = np.where((wavelength_response >= er[0]) & (wavelength_response <= er[1]))[0]
+            wavelength_response = np.delete(wavelength_response, elementsToDelete)
+            self.response_function_raw =  np.delete(self.response_function_raw, elementsToDelete)
 
         # FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
         while (numIter < int(self.recipeSettings['max_iteration'])) and (deletedPoints > 0):
@@ -299,15 +288,15 @@ class response_function(object):
                 # FITTING THE DATA
                 elementsToDelete = []
                 responseFuncCoeffs = np.polyfit(
-                    binCentreWave, absToExtFluxRatio, polyOrder)
-                for index, (w, z, zf) in enumerate(zip(binCentreWave, absToExtFluxRatio, np.polyval(responseFuncCoeffs, binCentreWave))):
+                    wavelength_response, self.response_function_raw, polyOrder)
+                for index, (w, z, zf) in enumerate(zip(wavelength_response, self.response_function_raw, np.polyval(responseFuncCoeffs, wavelength_response))):
                     # if np.abs(np.abs(z)-np.abs(zf)) > 0.05:
                     if np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 0.1:
                         elementsToDelete.append(index)
 
-                binCentreWave = np.delete(binCentreWave, elementsToDelete)
-                absToExtFluxRatio = np.delete(
-                    absToExtFluxRatio, elementsToDelete)
+                wavelength_response = np.delete(wavelength_response, elementsToDelete)
+                self.response_function_raw = np.delete(
+                    self.response_function_raw, elementsToDelete)
                 deletedPoints = len(elementsToDelete)
                 numIter = numIter + 1
             except Exception as e:
@@ -316,10 +305,13 @@ class response_function(object):
                 sys.exit(1)
 
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
+        print(responseFuncCoeffs)
         self.write_response_function_to_file(
             responseFuncCoeffs=responseFuncCoeffs,
             polyOrder=polyOrder
         )
+
+
 
         if not isinstance(stdEfficiencyEstimate, bool):
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
@@ -329,10 +321,26 @@ class response_function(object):
             })
             # WRITE THE EFFICIENCY ESTIMATE TO FITS BINARY TABLE
             from astropy.table import Table
+            import copy
+            from astropy.io import fits
             t = Table.from_pandas(stdEfficiencyEstimateDF)
             filename = f"{self.sofName}_EFFICIENCY.fits"
             filepath = f"{self.productDir}/{filename}"
-            t.write(filepath, overwrite=True)
+
+
+            header = copy.deepcopy(self.header)
+            header[self.kw("SEQ_ARM").upper()] = self.arm
+            header[self.kw("PRO_TYPE").upper()] = "REDUCED"
+            header[self.kw("PRO_CATG").upper()] = f"EFFICIENCY_TAB_{self.arm}".upper()
+
+            BinTableHDU = fits.table_to_hdu(t)
+
+
+            priHDU = fits.PrimaryHDU(header=header)
+
+            hduList = fits.HDUList([priHDU, BinTableHDU])
+            hduList.writeto(filepath, checksum=True, overwrite=True)
+
 
             # ADD TO QC TABLE
             from datetime import datetime
@@ -355,51 +363,15 @@ class response_function(object):
             stdExtWave=stdExtWave,
             stdExtWaveNotFlat=stdExtWaveNotFlat,
             stdExtFlux=stdExtFlux,
-            binCentreWave=binCentreWave,
-            binCentreWaveOriginal=binCentreWaveOriginal,
-            binIntegratedFlux=binIntegratedFlux,
-            absToExtFluxRatio=absToExtFluxRatio,
+            binCentreWave=wavelength_response,
+            binCentreWaveOriginal=wavelength_response,
+            binIntegratedFlux=self.response_function_raw,
+            absToExtFluxRatio=None,
             responseFuncCoeffs=responseFuncCoeffs,
             stdEfficiencyEstimate=stdEfficiencyEstimate
         )
 
         return self.qc, self.products
-
-    def extinction_correction_factor(
-            self,
-            wave):
-
-        from scipy.interpolate import interp1d
-        import numpy as np
-        import matplotlib.pyplot as plt
-        import pandas as pd
-        from astropy.table import Table
-
-        # READ THE EXTINCTION CURVE FOR THE OBSERVATORY
-        # DATA IS ORGANIZED AS FOLLOWS:
-        # FIRST COLUMN, WAVELENGTH (IN ANGSTROM), SECOND COLUMN MAG/AIRMASS
-        extinctionData = Table.read(
-            self.calibrationRootPath + "/" + self.detectorParams["extinction"], format='fits')
-        extinctionData = extinctionData.to_pandas()
-
-        # CONVERT ANG TO NM
-        wave_ext = extinctionData['WAVE'] / 10
-        # INTERPOLATING ON THE REQUIRED WAVE SCALE
-        refitted_ext = interp1d(np.array(wave_ext),
-                                np.array(extinctionData['MAG_AIRMASS']), kind='next', fill_value='extrapolate')
-
-        if False:
-            fig, ax = plt.subplots(3)
-            ax[0].plot(wave, refitted_ext(wave))
-            ax[0].plot(wave_ext, extinctionData['MAG_AIRMASS'])
-            ax[1].plot(wave_ext, refitted_ext(wave_ext))
-            ax[2].plot(wave, 10**(0.4 * refitted_ext(wave) * self.airmass))
-            plt.title('Extinction Correction factor')
-            plt.show()
-
-        extCorrectionFactor = 10**(0.4 * refitted_ext(wave) * self.airmass)
-
-        return extCorrectionFactor
 
     def plot_response_curve(
             self,
@@ -451,7 +423,7 @@ class response_function(object):
             sixrow = fig.add_subplot(gs[25:29, :])
 
         onerow.plot(stdExtWave, self.std_wavelength_to_abs_flux(
-            stdExtWave), linewidth=0.2)
+            stdExtWave)* 10**-17, linewidth=0.2)
         onerow.set_title(
             f'{self.std_objName} absolute flux spectrum', fontsize=12)
         onerow.set_xlabel(f"wavelength (nm)", fontsize=9)
@@ -462,21 +434,23 @@ class response_function(object):
         abs_flux = self.std_wavelength_to_abs_flux(stdExtWave)
         min_flux, max_flux = np.min(abs_flux), np.max(abs_flux)
         flux_margin = 0.2 * (max_flux - min_flux)  # Add 10% margin
-        onerow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
+        #onerow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
 
         tworow.scatter(binCentreWaveOriginal, binIntegratedFlux,
                        marker='o', s=10, alpha=0.5)
-        tworow.set_title('Extracted Standard Passband Photometry', fontsize=12)
+        tworow.set_title('Raw ratio', fontsize=12)
         tworow.set_xlabel(f"wavelength (nm)", fontsize=9)
-        tworow.set_ylabel("passband integrated flux", fontsize=9)
+        tworow.set_ylabel("Ratio $ \\frac{F_{\lambda}}{F_c}$", fontsize=9)
         tworow.tick_params(axis='both', which='major', labelsize=9)
 
-        threerow.plot(binCentreWave, absToExtFluxRatio, linewidth=0.5)
-        threerow.set_title('Response function', fontsize=12)
+        #threerow.plot(binCentreWave, absToExtFluxRatio, linewidth=0.5)
+        threerow.set_title('Fitted Response Function', fontsize=12)
         threerow.plot(stdExtWave, np.polyval(responseFuncCoeffs,
-                      stdExtWave), c='red', label="response curve", linewidth=0.7, alpha=0.7)
-        threerow.set_xlim(min(binCentreWave), max(binCentreWave))
-        threerow.set_ylim(min(absToExtFluxRatio), max(absToExtFluxRatio))
+                      stdExtWave), c='red', label="response curve", linewidth=2.5, alpha=0.7)
+        threerow.scatter(binCentreWaveOriginal, binIntegratedFlux,
+                       marker='o', s=10, alpha=0.2)
+        #threerow.set_xlim(min(binCentreWave), max(binCentreWave))
+        #threerow.set_ylim(min(absToExtFluxRatio), max(absToExtFluxRatio))
         threerow.set_xlabel(f"wavelength (nm)", fontsize=9)
         threerow.set_ylabel("absolute-extracted flux ratio", fontsize=9)
         threerow.tick_params(axis='both', which='major', labelsize=9)
@@ -487,15 +461,16 @@ class response_function(object):
         # OTHERWISE, COPY LINES ABOVE
         flux_calib = stdExtFlux * \
             np.polyval(responseFuncCoeffs, stdExtWave)
+        flux_calib = flux_calib * 10**-17  # CONVERTING BACK TO PHYS UNITS
         fourrow.plot(stdExtWave, flux_calib, linewidth=0.2)
         fourrow.set_title('Self calibration of std star', fontsize=12)
         fourrow.set_xlabel(f"wavelength (nm)", fontsize=9)
         fourrow.set_ylabel(
             "flux ($\\mathrm{erg/cm^{2}/s/angstom}$)", fontsize=9)
         fourrow.tick_params(axis='both', which='major', labelsize=9)
-        fourrow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
+        #fourrow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
 
-        fiverow.plot(stdExtWave, (flux_calib - self.std_wavelength_to_abs_flux(
+        fiverow.plot(stdExtWave, (flux_calib* 10**17 - self.std_wavelength_to_abs_flux(
             stdExtWave)) / self.std_wavelength_to_abs_flux(stdExtWave), linewidth=0.2)
         fiverow.set_ylim(-5, 5)
         # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')

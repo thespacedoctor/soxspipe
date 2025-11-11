@@ -12,7 +12,7 @@ Date Created
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
 from .base_recipe import base_recipe
-from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
+from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks, get_calibrations_path
 from fundamentals import tools
 from builtins import object
 import sys
@@ -222,6 +222,16 @@ class soxs_nod(base_recipe):
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         self.twoDMap = self.inputFrames.filter(
             **filterDict).files_filtered(include_path=True)[0]
+        
+
+        # CHECK IF FLUX CALIBRATION IS REQUESTED
+        try:
+            filterDict = {kw("PRO_CATG"): f"RESP_TAB_{arm}"}
+            responseFunctionPath = self.inputFrames.filter(
+            **filterDict).files_filtered(include_path=True)[0]
+
+        except:
+            responseFunctionPath = False
 
         quicklook_image(
             log=self.log, CCDObject=allObjectFrames[0], show=False, ext=False, stdWindow=3, title=False, surfacePlot=True, saveToPath=False)
@@ -380,6 +390,33 @@ class soxs_nod(base_recipe):
                     stdNotFlatExtractionPath=extractionPath_notflat,
                 )
                 self.qc, self.products = response.get()
+
+        # CHECK IF FLUX CALIBRATION IS REQUESTED
+
+        if responseFunctionPath:   
+            calibrationRootPath = get_calibrations_path(
+            log=self.log, settings=self.settings) 
+            from soxspipe.commonutils.flux_calibration import flux_calibration
+            self.log.print(f"# PERFORMING FLUX CALIBRATION\n")
+            #TODO CHECK IF TAKING THE HEADER OF ONE FRAME IS OK
+            fluxCalibrator = flux_calibration(
+                log=self.log,
+                responseFunction=responseFunctionPath,
+                extractedSpectrum=stackedSpectrum,
+                settings=self.settings,
+                airmass=allFrameA[0].header.get("HIERARCH ESO TEL AIRM END"),
+                exptime=allFrameA[0].header.get("EXPTIME"),
+                extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
+                arm=self.arm, 
+                header=allFrameA[0].header,   
+                recipeName=self.recipeName,
+                startNightDate=self.startNightDate,
+                sofName=self.sofName,
+                debug=self.debug
+            )
+            filePath, products = fluxCalibrator.calibrate()
+            self.products = pd.concat([self.products, products], ignore_index=True)
+            self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
 
         self.products, filePath = plot_merged_spectrum_qc(
             merged_orders=stackedSpectrum,
