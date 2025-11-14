@@ -614,14 +614,15 @@ class data_organiser(object):
             i += 1
         self._write_sof_files()
 
-        print(
-            f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
+        print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
         print(f"In this workspace you will find:\n")
         print(f"   - `misc/`: a lost-and-found archive of non-fits files")
-        print(f"   - `{self.rawDir}/`: all raw-frames to be reduced")
+        print(f"   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables.")
+        print(f"   - `{self.rawDir.replace("./","")}/`: nested folders, ordered by date, containing raw-frames.")
         print(f"   - `sessions/`: directory of data-reduction sessions")
         print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
         print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete\n")
+        print(f"   - `reductions/`: nested folders, ordered by date, containing reduced data.")
 
         incompleteSets = self.get_incomplete_raw_frames_set()
         if len(incompleteSets.index):
