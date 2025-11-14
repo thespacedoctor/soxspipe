@@ -132,7 +132,7 @@ class flux_calibration(object):
         flux_calibration = None
 
         self.log.debug('completed the ``calibrate`` method')
-        # STEP TO DO: 
+        # STEP TO DO:
 
         # DIVIDE PER EXPOSURE TIME
         countsPerAngstrom = self.extractedSpectrum["FLUX_COUNTS"] / self.exptime
@@ -146,13 +146,15 @@ class flux_calibration(object):
             flux_calibration = countsPerAngstrom
 
         # APPLY RESPNSE FUNCTION
-        responseFunctionCoeff = Table.read(self.responseFunction, format='fits')
+        responseFunctionCoeff = Table.read(
+            self.responseFunction, format='fits')
         # NOW UNPACK THE COEFFICIENTS
         polyCoeffs = []
         for idx_coeff in range(0, int(responseFunctionCoeff['polyOrder'])+1):
             polyCoeffs.append(responseFunctionCoeff[f"c{idx_coeff}"][0])
-        
-        responseFunctionFactor = np.polyval(polyCoeffs, self.extractedSpectrum["WAVE"])
+
+        responseFunctionFactor = np.polyval(
+            polyCoeffs, self.extractedSpectrum["WAVE"])
         flux_calibration = flux_calibration * responseFunctionFactor*10**-17
 
         fluxCalSpectrum = pd.DataFrame({
@@ -162,7 +164,6 @@ class flux_calibration(object):
 
         if self.debug:
             from matplotlib import pyplot as plt
-            plt.switch_backend('macosx')
             plt.plot(self.extractedSpectrum["WAVE"], flux_calibration*10**-17)
             plt.xlabel("Wavelength (nm)")
             plt.ylabel("Flux (erg/cm2/s/Angstrom)")
@@ -186,7 +187,8 @@ class flux_calibration(object):
         BinTableHDU = fits.table_to_hdu(fluxcalibratedSpectrum)
         header[self.kw("SEQ_ARM")] = self.arm
         header["HIERARCH " + self.kw("PRO_TYPE")] = "REDUCED"
-        header["HIERARCH " + self.kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+        header["HIERARCH " + self.kw("PRO_CATG")
+               ] = f"SCI_SLIT_FLUX_{self.arm}".upper()
         priHDU = fits.PrimaryHDU(header=header)
         hduList = fits.HDUList([priHDU, BinTableHDU])
 
@@ -198,18 +200,18 @@ class flux_calibration(object):
         from datetime import datetime
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-        
+
         self.products = pd.concat([self.products, pd.Series({
-                    "soxspipe_recipe": self.recipeName,
-                    "product_label": f"EXTRACTED_FLUXCAL_SPECTRUM",
-                    "file_name": filename,
-                    "file_type": "FITS",
-                    "reduction_date_utc": utcnow,
-                    "product_desc": f"Flux calibrated extracted spectrum",
-                    "file_path": filePath,
-                    "obs_date_utc": header["DATE-OBS"],
-                    "label": "PROD"
-                }).to_frame().T], ignore_index=True)
+            "soxspipe_recipe": self.recipeName,
+            "product_label": f"EXTRACTED_FLUXCAL_SPECTRUM",
+            "file_name": filename,
+            "file_type": "FITS",
+            "reduction_date_utc": utcnow,
+            "product_desc": f"Flux calibrated extracted spectrum",
+            "file_path": filePath,
+            "obs_date_utc": header["DATE-OBS"],
+            "label": "PROD"
+        }).to_frame().T], ignore_index=True)
 
         return filePath, self.products
 
