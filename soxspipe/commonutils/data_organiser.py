@@ -404,42 +404,49 @@ class data_organiser(object):
         # THIS PRODUCT MAP IS USED TO PREDICT THE PRODUCTS THAT WILL RESULT FROM REDUCING EACH SOF
         # LIST ORDER: ['pro type kw', 'pro tech kw', 'pro catg kw', "pixels/table", "find in sof", "replace/suffix in sof", "recipe"]
         self.productMap = {
-            "mbias": [
+            "mbias": {"ALL": [
                 ["REDUCED", "IMAGE", "MASTER_BIAS",
                     "PIXELS", None, None, "soxs-mbias"]
-            ],
-            "mdark": [
+            ]},
+            "mdark": {"ALL": [
                 ["REDUCED", "IMAGE", "MASTER_DARK",
                     "PIXELS", None, None, "soxs-mdark"]
-            ],
-            "disp_sol": [
+            ]},
+            "disp_sol": {"ALL":  [
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_TAB",
                     "TABLE", None, None, "soxs-disp-solution"]
-            ],
-            "order_centres": [
+            ]},
+            "order_centres": {"ALL":  [
                 ["REDUCED", "ECHELLE,SLIT", "ORDER_TAB",
                     "TABLE", None, None, "soxs-order-centre"]
-            ],
-            "mflat": [
+            ]},
+            "mflat": {"ALL":  [
                 ["REDUCED", "ECHELLE,SLIT", "MASTER_FLAT",
                     "PIXELS", None, None, "soxs-mflat"],
                 ["REDUCED", "ECHELLE,SLIT", "ORDER_TAB",
                     "TABLE", "MFLAT", "OLOC", "soxs-mflat"]
-            ],
-            "spat_sol": [
+            ]},
+            "spat_sol": {"ALL":  [
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_TAB",
                     "TABLE", None, None, "soxs-spatial-solution"],
                 ["REDUCED", "ECHELLE,PINHOLE", "DISP_IMAGE", "PIXELS",
                     ".fits", "_IMAGE.fits", "soxs-spatial-solution"]
-            ],
-            "stare": [
-                ["REDUCED", "ECHELLE,SLIT,STARE", "OBJECT_TAB",
-                    "TABLE", None, None, "soxs-stare"]
-            ],
-            "nod": [
+            ]},
+            "stare": {"ALL": [
+                    ["REDUCED", "ECHELLE,SLIT,STARE", "OBJECT_TAB",
+                        "TABLE", None, None, "soxs-stare"]
+                ], "STD,FLUX": [
+                    ["REDUCED", "ECHELLE,SLIT,STARE", "RESP_TAB",
+                        "TABLE", ".fits", "_RESP.fits", "soxs-stare"]
+                ]
+            },
+            "nod": {"ALL": [
                 ["REDUCED", "ECHELLE,SLIT,NODDING", "OBJECT_TAB",
                     "TABLE", None, None, "soxs-nod"]
-            ],
+            ], "STD,FLUX": [
+                ["REDUCED", "ECHELLE,SLIT,NODDING", "RESP_TAB",
+                    "TABLE", ".fits", "_RESP.fits", "soxs-nod"]
+            ]},
         }
 
         self.proKeywords = [
@@ -1935,23 +1942,24 @@ class data_organiser(object):
         products = series.to_dict()
 
         if products["recipe"] and products["recipe"].lower() in self.productMap:
-            for i in self.productMap[products["recipe"].lower()]:
-                # if template["recipe"].lower() == "mflat" and template["binning"] in ["1x2", "2x2"] and i[2] == "ORDER_TAB":
-                #     continue
-                products["eso pro type"] = i[0]
-                products["eso pro tech"] = i[1]
-                products["eso pro catg"] = i[2] + \
-                    f"_{products['eso seq arm'].upper()}"
-                products["file"] = products["sof"].replace(".sof", ".fits")
-                if i[4] and i[5]:
-                    products["file"] = products["file"].split(
-                        i[4])[0] + i[5] + ".fits"
-                    products["file"] = products["file"].replace(
-                        ".fits.fits", ".fits")
-                products["filepath"] = f"./reduced/{products['night start date']}/" + \
-                    i[6] + "/" + products["file"]
-                myDict = {k: [v] for k, v in products.items()}
-                self.products.append(myDict)
+            
+            for k, v in self.productMap[products["recipe"].lower()].items():
+                if k == "ALL" or k == reductionOrder:            
+                    for i in v:
+                        products["eso pro type"] = i[0]
+                        products["eso pro tech"] = i[1]
+                        products["eso pro catg"] = i[2] + \
+                            f"_{products['eso seq arm'].upper()}"
+                        products["file"] = products["sof"].replace(".sof", ".fits")
+                        if i[4] and i[5]:
+                            products["file"] = products["file"].split(
+                                i[4])[0] + i[5] + ".fits"
+                            products["file"] = products["file"].replace(
+                                ".fits.fits", ".fits")
+                        products["filepath"] = f"./reduced/{products['night start date']}/" + \
+                            i[6] + "/" + products["file"]
+                        myDict = {k: [v] for k, v in products.items()}
+                        self.products.append(myDict)
 
         self.log.debug(
             'completed the ``_populate_products_table_by_row`` method')
