@@ -346,9 +346,7 @@ class soxs_spatial_solution(base_recipe):
 
             print("\n\nTUNING SOXSPIPE\n")
 
-            # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
-            import matplotlib.pyplot as plt
-            plt.switch_backend('Agg')
+
             from fundamentals import fmultiprocess
             # DEFINE AN INPUT ARRAY
             results = fmultiprocess(log=self.log, function=parameterTuning,

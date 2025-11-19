@@ -1493,8 +1493,19 @@ class detect_continuum(_base_detect):
             plt.savefig(filePath, dpi=240)
         if self.debug:
             plt.show()
-        plt.close()
+        plt.close(fig)
+        plt.close('all')
 
+        # REDUCE MEMORY USAGE
+        cleanUp = [toprow, midrow, bottomleft, bottomright, fwhmaxis,
+                   settingsAx, qcAx]
+        for item in cleanUp:
+            try:
+                item.cla()
+                del item
+            except:
+                pass
+           
         if self.settings["tune-pipeline"]:
             import codecs
 

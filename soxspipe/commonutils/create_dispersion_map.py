@@ -2352,10 +2352,6 @@ class create_dispersion_map(object):
         os.environ['OMP_NUM_THREADS'] = numThreads
         os.environ['BLAS_NUM_THREADS'] = numThreads
 
-        # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
-        import matplotlib.pyplot as plt
-        # plt.switch_backend('Agg')
-
         results = fmultiprocess(log=self.log, function=self.order_to_image,
                                 inputArray=inputArray, poolSize=6, timeout=3600, turnOffMP=self.debug)
         del os.environ['OPENBLAS_NUM_THREADS']
@@ -3156,8 +3152,7 @@ class create_dispersion_map(object):
         if not self.settings["tune-pipeline"]:
             plt.savefig(filePath, dpi=240)
 
-        plt.clf()
-        plt.close(fig)
+        plt.close('all')
 
         if self.settings["tune-pipeline"]:
             import codecs

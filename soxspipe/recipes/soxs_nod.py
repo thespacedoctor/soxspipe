@@ -392,8 +392,8 @@ class soxs_nod(base_recipe):
                 self.qc, self.products = response.get()
 
         # CHECK IF FLUX CALIBRATION IS REQUESTED
-
         if responseFunctionPath:   
+
             calibrationRootPath = get_calibrations_path(
             log=self.log, settings=self.settings) 
             from soxspipe.commonutils.flux_calibration import flux_calibration

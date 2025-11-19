@@ -9,20 +9,9 @@ Author
 Date Created
 : July 28, 2023
 """
-import datetime
-from fundamentals import tools
-from builtins import object
-import sys
-import os
-from astropy.table import Table
-import numpy as np
-import pandas as pd
-from soxspipe.commonutils import keyword_lookup
-from astropy.io import fits
-import copy
-from contextlib import suppress
 
-from soxspipe.commonutils.toolkit import extinction_correction_factor
+from builtins import object
+import os
 os.environ['TERM'] = 'vt100'
 
 
@@ -94,12 +83,15 @@ class flux_calibration(object):
         self.startNightDate = startNightDate
         self.sofName = sofName
 
+        import pandas as pd
+        from soxspipe.commonutils.toolkit import utility_setup
+        from soxspipe.commonutils import keyword_lookup
+
         self.kw = keyword_lookup(
             log=self.log,
             settings=self.settings
         ).get
 
-        from soxspipe.commonutils.toolkit import utility_setup
         self.qcDir, self.productDir = utility_setup(
             log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
         self.products = pd.DataFrame()
@@ -128,6 +120,15 @@ class flux_calibration(object):
         ```
         """
         self.log.debug('starting the ``calibrate`` method')
+
+        import copy
+        from contextlib import suppress
+        from astropy.table import Table
+        import numpy as np
+        from astropy.io import fits
+        import pandas as pd
+
+        from soxspipe.commonutils.toolkit import extinction_correction_factor
 
         flux_calibration = None
 
@@ -163,6 +164,8 @@ class flux_calibration(object):
         })
 
         if self.debug:
+            import matplotlib
+            matplotlib.use("TkAgg")
             from matplotlib import pyplot as plt
             plt.plot(self.extractedSpectrum["WAVE"], flux_calibration*10**-17)
             plt.xlabel("Wavelength (nm)")

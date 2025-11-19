@@ -779,7 +779,7 @@ class detect_order_edges(_base_detect):
         plt.tight_layout()
         # plt.show()
         plt.savefig(filePath, dpi=180)
-        plt.close()
+        plt.close('all')
 
         self.log.debug('completed the ``plot_results`` method')
         return filePath

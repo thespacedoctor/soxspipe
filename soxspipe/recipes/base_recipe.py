@@ -59,6 +59,7 @@ class base_recipe(object):
         import pandas as pd
         from soxspipe.commonutils import toolkit
         import sqlite3 as sql
+        import matplotlib
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
@@ -67,7 +68,10 @@ class base_recipe(object):
         self.workspaceRootPath = self._absolute_path(
             settings["workspace-root-dir"])
 
-        import matplotlib.pyplot as plt
+        if self.debug:
+            matplotlib.use('TkAgg')
+        else:
+            matplotlib.use('Agg')
 
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
@@ -721,6 +725,11 @@ class base_recipe(object):
         filteredDf = filteredDf.loc[mask]
 
         # MIXED SLIT-WIDTH IS BAD
+        
+        from tabulate import tabulate
+        print(tabulate(filteredDf, headers='keys', tablefmt='psql'))
+        
+        
         slitWidth = list(filteredDf[kw(f"SLIT_{self.arm}")].unique())
         with suppress(ValueError):
             slitWidth.remove(None)

@@ -542,6 +542,13 @@ class horne_extraction(object):
                 orderSlices.append(orderTable)
                 wlMinMax.append((wlmin, wlmax))
 
+        # REDUCE MEMORY USAGE
+        del slitZoom, wlZoom, rawFluxZoom, errorZoom, bpmZoom
+        try:
+            del skyZoom
+        except:
+            pass
+
         self.log.print(
             f"\tExtracting {len(orderSlices)} orders\n\n")
 
@@ -1025,7 +1032,7 @@ class horne_extraction(object):
         # plt.tight_layout()
         # plt.show()
         plt.savefig(filePath, dpi='figure', bbox_inches='tight')
-        plt.close()
+        plt.close('all')
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")

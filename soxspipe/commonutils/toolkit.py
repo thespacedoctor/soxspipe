@@ -400,7 +400,7 @@ def quicklook_image(
         plt.savefig(saveToPath, dpi=120, bbox_inches='tight')
         plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
-    plt.close()
+    plt.close('all')
 
     log.debug('completed the ``quicklook_image`` function')
     return None
@@ -1652,6 +1652,7 @@ def plot_merged_spectrum_qc(
     if debug:
         plt.show()
     plt.savefig(filePath, dpi=120, bbox_inches='tight')
+    plt.close('all')
 
     utcnow = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
     products = pd.concat([products, pd.Series({

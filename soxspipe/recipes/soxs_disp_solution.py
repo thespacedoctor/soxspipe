@@ -290,9 +290,7 @@ class soxs_disp_solution(base_recipe):
                 startNightDate=self.startNightDate
             ).get()
 
-            # CHANGE MPL BACKEND OR WE HAVE ISSUES WITH MULTIPROCESSING
-            import matplotlib.pyplot as plt
-            plt.switch_backend('Agg')
+
             from fundamentals import fmultiprocess
 
             permList = list(perm)
