@@ -1772,6 +1772,15 @@ class data_organiser(object):
                 files = np.append(files, df["file"].values[0])
                 tags = np.append(tags, df["eso pro catg"].values[0])
                 filepaths = np.append(filepaths, df["filepath"].values[0])
+            if "object" in series["eso dpr type"].lower():
+                mask = (calibrationTables['eso pro catg'].str.contains("RESP_TAB") & calibrationTables['slit'].isin(
+                    [series['slit']]))
+                df = calibrationTables.loc[mask]
+                if len(df.index):
+                    df.sort_values(by=['obs-delta'], inplace=True)
+                    files = np.append(files, df["file"].values[0])
+                    tags = np.append(tags, df["eso pro catg"].values[0])
+                    filepaths = np.append(filepaths, df["filepath"].values[0])
 
         # ORDER TAB
         if series["recipe"] in ["mflat", "spat_sol", "stare", "nod", "offset"]:

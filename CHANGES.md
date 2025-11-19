@@ -1,5 +1,8 @@
 # Release Notes
 
+Moving module level imports into classes & methods to reduce memory footprint.
+Standard star repsonse function now recorded in the products table of the DO database.  
+Cleaned up the text printed after `soxspipe prep`.
 Move to detect continuum on the unflattened frame in stare mode (to mirror what has been done in nodding)
 Added true NIR gain and RON to detector settings file
 moving management of matplotlib backend to a single location in the base_recipe class (easier to manage)

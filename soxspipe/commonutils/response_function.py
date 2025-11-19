@@ -308,7 +308,6 @@ class response_function(object):
                 sys.exit(1)
 
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
-        print(responseFuncCoeffs)
         self.write_response_function_to_file(
             responseFuncCoeffs=responseFuncCoeffs,
             polyOrder=polyOrder
@@ -439,7 +438,7 @@ class response_function(object):
                        marker='o', s=10, alpha=0.5)
         tworow.set_title('Raw ratio', fontsize=12)
         tworow.set_xlabel(f"wavelength (nm)", fontsize=9)
-        tworow.set_ylabel("Ratio $ \\frac{F_{\lambda}}{F_c}$", fontsize=9)
+        tworow.set_ylabel("Ratio $\\frac{F_{\\lambda}}{F_c}$", fontsize=9)
         tworow.tick_params(axis='both', which='major', labelsize=9)
 
         # threerow.plot(binCentreWave, absToExtFluxRatio, linewidth=0.5)
@@ -494,6 +493,7 @@ class response_function(object):
         plotFilename = self.sofName + "_RESPONSE.pdf"
         plotFilePath = f"{self.qcDir}/{plotFilename}"
         plt.savefig(plotFilePath, dpi=120, bbox_inches='tight')
+        plt.close('all')
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
