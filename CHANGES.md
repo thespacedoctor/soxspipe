@@ -1,17 +1,18 @@
 # Release Notes
 
-If the ICS is in simulation mode, data is ignored (e.g. NISE is forced to stay at the 5" slit).
-Dark scaling warning is thrown once per recipe as opposed to once per raw frame to be detrended (resulting in multiple duplicate warnings).
-Checks are in place to determine if darks/pinhole/order trace and flat frames are 'good'. If not, an error is forced the pipeline removes the faulty calibration files from downstream SOF files.
-Integrating flux-calibration into the dataorganiser
-Moving module level imports into classes & methods to reduce memory footprint.
-Standard star repsonse function now recorded in the products table of the DO database.  
-Cleaned up the text printed after `soxspipe prep`.
-Move to detect continuum on the unflattened frame in stare mode (to mirror what has been done in nodding)
-Added true NIR gain and RON to detector settings file
-moving management of matplotlib backend to a single location in the base_recipe class (easier to manage)
-massive refactoring of create_dispersion_map to make it more readable and manageable. 
-Move to adjusting the NIR predicted line-locations in detector quadrants rather than order by order 
+* A single QC file is written for each recipe. This is a plain text file containing all computed QC values for the recipe.
+* If the ICS is in simulation mode, data is ignored (e.g. NISE is forced to stay at the 5" slit).
+* Dark scaling warning is thrown once per recipe as opposed to once per raw frame to be detrended (resulting in multiple duplicate warnings).
+* Checks are in place to determine if darks/pinhole/order trace and flat frames are 'good'. If not, an error is forced the pipeline removes the faulty calibration files from downstream SOF files.
+* Integrating flux-calibration into the dataorganiser
+* Moving module level imports into classes & methods to reduce memory footprint.
+* Standard star repsonse function now recorded in the products table of the DO database.  
+* Cleaned up the text printed after `soxspipe prep`.
+* Move to detect continuum on the unflattened frame in stare mode (to mirror what has been done in nodding)
+* Added true NIR gain and RON to detector settings file
+* moving management of matplotlib backend to a single location in the base_recipe class (easier to manage)
+* massive refactoring of create_dispersion_map to make it more readable and manageable. 
+* Move to adjusting the NIR predicted line-locations in detector quadrants rather than order by order 
 * **FIXED**: added jinja2 to setup.py
 * removed extra stare reductions at the end of `soxspipe reduce all`
 * fixed an issue with the macos matplotlib backend tripping up ubuntu reductions (again)
