@@ -1,5 +1,9 @@
 # Release Notes
 
+If the ICS is in simulation mode, data is ignored (e.g. NISE is forced to stay at the 5" slit).
+Dark scaling warning is thrown once per recipe as opposed to once per raw frame to be detrended (resulting in multiple duplicate warnings).
+Checks are in place to determine if darks/pinhole/order trace and flat frames are 'good'. If not, an error is forced the pipeline removes the faulty calibration files from downstream SOF files.
+Integrating flux-calibration into the dataorganiser
 Moving module level imports into classes & methods to reduce memory footprint.
 Standard star repsonse function now recorded in the products table of the DO database.  
 Cleaned up the text printed after `soxspipe prep`.

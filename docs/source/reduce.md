@@ -8,3 +8,7 @@ soxspipe reduce all .
 ``` 
 
 `soxspipe` will now attempt to reduce all of the data in your workspace. 
+
+## Reducing a Single Science Observation Block (OB)
+
+
