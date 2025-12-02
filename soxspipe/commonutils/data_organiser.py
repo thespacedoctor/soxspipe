@@ -625,68 +625,75 @@ class data_organiser(object):
         import shutil
         import pandas as pd
 
-        # GENERATE AN ASTROPY TABLE OF FITS FRAMES WITH ALL INDEXES NEEDED
-        filteredFrames, fitsPaths, fitsNames = self._create_directory_table(
-            pathToDirectory=self.rootDir, filterKeys=self.filterKeywords
-        )
+        remainingFiles = 1
 
-        if fitsPaths:
+        while remainingFiles > 0:
+            # GENERATE AN ASTROPY TABLE OF FITS FRAMES WITH ALL INDEXES NEEDED
+            filteredFrames, fitsPaths, fitsNames, remainingFiles = self._create_directory_table(
+                pathToDirectory=self.rootDir, filterKeys=self.filterKeywords
+            )
+            if not remainingFiles:
+                remainingFiles = 0
 
-            conn = self.conn
-            knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=conn)
+            print(remainingFiles, "FITS files remaining to be indexed after limit")
 
-            # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
-            rawFrames, reducedFramesPixels, reducedFramesTables = self._categorise_frames(filteredFrames)
+            if fitsPaths:
 
-            # THIS IS USED TO DUPLICATE ORDER TRACING FRAMES AS SCIENCE FRAMES TO TEST EXTRAcTION DURING PAE
-            if self.PAE and self.instrument.upper() == "SOXS":
-                mask = (rawFrames["eso dpr tech"] == "ECHELLE,PINHOLE") & (rawFrames["eso dpr type"] == "LAMP,FLAT")
-                filteredDf = rawFrames.loc[mask]
-                filteredDf["eso dpr tech"] = "ECHELLE,SLIT,STARE"
-                filteredDf["eso dpr type"] = "OBJECT"
-                rawFrames = pd.concat([rawFrames, filteredDf], ignore_index=True)
+                conn = self.conn
+                knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=conn)
 
-            # FIND AND REMOVE DUPLICATE FILES
-            if len(rawFrames.index):
-                rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["night start date"] + "/" + rawFrames["file"]
+                # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
+                rawFrames, reducedFramesPixels, reducedFramesTables = self._categorise_frames(filteredFrames)
+
+                # THIS IS USED TO DUPLICATE ORDER TRACING FRAMES AS SCIENCE FRAMES TO TEST EXTRAcTION DURING PAE
+                if self.PAE and self.instrument.upper() == "SOXS":
+                    mask = (rawFrames["eso dpr tech"] == "ECHELLE,PINHOLE") & (rawFrames["eso dpr type"] == "LAMP,FLAT")
+                    filteredDf = rawFrames.loc[mask]
+                    filteredDf["eso dpr tech"] = "ECHELLE,SLIT,STARE"
+                    filteredDf["eso dpr type"] = "OBJECT"
+                    rawFrames = pd.concat([rawFrames, filteredDf], ignore_index=True)
+
                 # FIND AND REMOVE DUPLICATE FILES
-                matchedFiles = pd.merge(rawFrames, knownRawFrames, on=["file", "eso dpr tech"], how="inner")
-                if len(matchedFiles.index):
-                    for file in matchedFiles["file"]:
-                        try:
-                            os.remove(file)
-                        except:
-                            pass
-                    # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
-                    rawFrames = rawFrames[
-                        ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
-                            knownRawFrames.set_index(["file", "eso dpr tech"]).index
-                        )
-                    ]
+                if len(rawFrames.index):
+                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["night start date"] + "/" + rawFrames["file"]
+                    # FIND AND REMOVE DUPLICATE FILES
+                    matchedFiles = pd.merge(rawFrames, knownRawFrames, on=["file", "eso dpr tech"], how="inner")
+                    if len(matchedFiles.index):
+                        for file in matchedFiles["file"]:
+                            try:
+                                os.remove(file)
+                            except:
+                                pass
+                        # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
+                        rawFrames = rawFrames[
+                            ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
+                                knownRawFrames.set_index(["file", "eso dpr tech"]).index
+                            )
+                        ]
 
-            # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
-            if len(rawFrames.index):
-                rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["night start date"] + "/" + rawFrames["file"]
+                # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
+                if len(rawFrames.index):
+                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["night start date"] + "/" + rawFrames["file"]
 
-                rawFrames.replace(["--", -99.99], None).to_sql(
-                    "raw_frames", con=self.conn, index=False, if_exists="append"
-                )
+                    rawFrames.replace(["--", -99.99], None).to_sql(
+                        "raw_frames", con=self.conn, index=False, if_exists="append"
+                    )
 
-                filepaths = rawFrames["filepath"]
-                filenames = rawFrames["file"]
-                for p, n in zip(filepaths, filenames):
-                    parentDirectory = os.path.dirname(p)
-                    if not os.path.exists(parentDirectory):
-                        # Recursively create missing directories
+                    filepaths = rawFrames["filepath"]
+                    filenames = rawFrames["file"]
+                    for p, n in zip(filepaths, filenames):
+                        parentDirectory = os.path.dirname(p)
                         if not os.path.exists(parentDirectory):
-                            os.makedirs(parentDirectory)
-                    if os.path.exists(self.rootDir + "/" + n):
-                        realSource = os.path.realpath(self.rootDir + "/" + n)
-                        realDest = os.path.realpath(p)
-                        if realSource != realDest:
-                            shutil.move(realSource, realDest)
-                        if os.path.islink(self.rootDir + "/" + n):
-                            os.remove(self.rootDir + "/" + n)
+                            # Recursively create missing directories
+                            if not os.path.exists(parentDirectory):
+                                os.makedirs(parentDirectory)
+                        if os.path.exists(self.rootDir + "/" + n):
+                            realSource = os.path.realpath(self.rootDir + "/" + n)
+                            realDest = os.path.realpath(p)
+                            if realSource != realDest:
+                                shutil.move(realSource, realDest)
+                            if os.path.islink(self.rootDir + "/" + n):
+                                os.remove(self.rootDir + "/" + n)
 
         if not skipSqlSync:
             self._sync_sql_table_to_directory(self.rawDir, "raw_frames", recursive=False)
@@ -694,7 +701,7 @@ class data_organiser(object):
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return None
 
-    def _create_directory_table(self, pathToDirectory, filterKeys):
+    def _create_directory_table(self, pathToDirectory, filterKeys, limit=500):
         """*create an astropy table based on the contents of a directory*
 
         **Key Arguments:**
@@ -743,6 +750,12 @@ class data_organiser(object):
                 fitsPaths.append(filepath)
                 fitsNames.append(d)
 
+        print(len(fitsPaths), "FITS files found in directory")
+
+        remainingFiles = len(fitsPaths) - limit
+        fitsPaths = fitsPaths[:limit]
+        fitsNames = fitsNames[:limit]
+
         recursive = False
         # for d in os.listdir(pathToDirectory):
         #     if os.path.isdir(os.path.join(pathToDirectory, d)) and d in ('raw_frames', 'product'):
@@ -759,7 +772,7 @@ class data_organiser(object):
 
         if len(fitsPaths) == 0:
             # print(f"No fits files found in directory `{pathToDirectory}`")
-            return None, None, None
+            return None, None, None, None
 
         # INSTRUMENT CHECK
         if recursive:
@@ -788,7 +801,8 @@ class data_organiser(object):
 
         if "XSH" in self.instrument.upper() or "SHOOT" in self.instrument.upper():
             self.instrument = "XSH"
-        print(f"The instrument has been set to '{self.instrument}'")
+        if remainingFiles < 1:
+            print(f"The instrument has been set to '{self.instrument}'")
 
         if "SOXS" in self.instrument.upper():
             self.typeMap = self.typeMapSOXS
@@ -984,7 +998,7 @@ class data_organiser(object):
         )
 
         self.log.debug("completed the ``_create_directory_table`` function")
-        return masterTable, fitsPaths, fitsNames
+        return masterTable, fitsPaths, fitsNames, remainingFiles
 
     def _sync_sql_table_to_directory(self, directory, tableName, recursive=False):
         """*sync sql table content to files in a directory (add and delete from table as appropriate)*
