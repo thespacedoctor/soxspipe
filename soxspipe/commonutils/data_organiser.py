@@ -529,6 +529,7 @@ class data_organiser(object):
         # POPULATION OF THE PRODUCT FRAMES NEEDS TO BE LOOPED TO ACCOUNT FOR AlL THE REDUCTION STAGES
         i = 0
         while i < 6:
+
             completeCount = self._populate_product_frames_db_table()
             if completeCount:
                 break
@@ -627,6 +628,8 @@ class data_organiser(object):
 
         remainingFiles = 1
 
+        firstPass = True
+
         while remainingFiles > 0:
             # GENERATE AN ASTROPY TABLE OF FITS FRAMES WITH ALL INDEXES NEEDED
             filteredFrames, fitsPaths, fitsNames, remainingFiles = self._create_directory_table(
@@ -634,8 +637,13 @@ class data_organiser(object):
             )
             if not remainingFiles:
                 remainingFiles = 0
-
-            print(remainingFiles, "FITS files remaining to be indexed after limit")
+            elif remainingFiles > 0:
+                if firstPass:
+                    firstPass = False
+                else:
+                    sys.stdout.flush()
+                    sys.stdout.write("\x1b[1A\x1b[2K")
+                print(remainingFiles, "FITS files remaining to be indexed")
 
             if fitsPaths:
 
@@ -701,7 +709,7 @@ class data_organiser(object):
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return None
 
-    def _create_directory_table(self, pathToDirectory, filterKeys, limit=500):
+    def _create_directory_table(self, pathToDirectory, filterKeys, limit=1000):
         """*create an astropy table based on the contents of a directory*
 
         **Key Arguments:**
@@ -750,35 +758,20 @@ class data_organiser(object):
                 fitsPaths.append(filepath)
                 fitsNames.append(d)
 
-        print(len(fitsPaths), "FITS files found in directory")
-
         remainingFiles = len(fitsPaths) - limit
         fitsPaths = fitsPaths[:limit]
         fitsNames = fitsNames[:limit]
 
         recursive = False
-        # for d in os.listdir(pathToDirectory):
-        #     if os.path.isdir(os.path.join(pathToDirectory, d)) and d in ('raw_frames', 'product'):
-        #         recursive = True
-        #         theseFiles = recursive_directory_listing(
-        #             log=self.log,
-        #             baseFolderPath=os.path.join(pathToDirectory, d),
-        #             whatToList="files"  # all | files | dirs
-        #         )
-        #         newFitsPaths = [n for n in theseFiles if ".fits" in n]
-        #         newFitsNames = [os.path.basename(n) for n in theseFiles if ".fits" in n]
-        #         fitsPaths += newFitsPaths
-        #         fitsNames += newFitsNames
 
         if len(fitsPaths) == 0:
-            # print(f"No fits files found in directory `{pathToDirectory}`")
             return None, None, None, None
 
         # INSTRUMENT CHECK
         if recursive:
             allFrames = ImageFileCollection(filenames=fitsPaths, keywords=["instrume"])
         else:
-            allFrames = ImageFileCollection(location=pathToDirectory, filenames=fitsNames, keywords=["instrume"])
+            allFrames = ImageFileCollection(location=pathToDirectory, filenames=fitsNames[:3], keywords=["instrume"])
 
         tmpTable = allFrames.summary
         tmpTable["instrume"].fill_value = "--"
@@ -1359,7 +1352,7 @@ class data_organiser(object):
             "SELECT * FROM raw_frames_valid where `eso dpr tech` in ('ECHELLE,SLIT,STARE')", con=conn
         )
 
-        rawScienceFrames.fillna("--", inplace=True)
+        # rawScienceFrames.fillna("--", inplace=True)
         rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs"])
         rawScienceFrames = rawScienceFrames.size().reset_index(name="counts")
 
@@ -1666,6 +1659,8 @@ class data_organiser(object):
             except:
                 print(series)
 
+            calibrationFrames = calibrationFrames.copy()
+            calibrationTables = calibrationTables.copy()
             calibrationFrames["obs-delta"] = calibrationFrames["mjd-obs"] - frameMjd
             calibrationTables["obs-delta"] = calibrationTables["mjd-obs"] - frameMjd
             # dispImages["obs-delta"] = dispImages['mjd-obs'] - frameMjd
@@ -1740,7 +1735,7 @@ class data_organiser(object):
             df = calibrationFrames.loc[mask]
 
             if len(df.index):
-                df.sort_values(by=["obs-delta"], inplace=True)
+                df = df.sort_values(by=["obs-delta"])
                 files = np.append(files, df["file"].values[0])
                 tags = np.append(tags, df["eso pro catg"].values[0])
                 filepaths = np.append(filepaths, df["filepath"].values[0])
@@ -1753,7 +1748,7 @@ class data_organiser(object):
             df = calibrationTables.loc[mask]
 
             if len(df.index):
-                df.sort_values(by=["obs-delta"], inplace=True)
+                df = df.sort_values(by=["obs-delta"])
                 if series["recipe"] in ["stare", "nod", "offset"]:
                     mask = df["recipe"] == "spat_sol"
                     if len(df.loc[mask, "file"].index):
@@ -1778,7 +1773,7 @@ class data_organiser(object):
             mask = calibrationFrames["eso pro catg"].str.contains("DISP_IMAGE")
             df = calibrationFrames.loc[mask]
             if len(df.index):
-                df.sort_values(by=["obs-delta"], inplace=True)
+                df = df.sort_values(by=["obs-delta"])
                 files = np.append(files, df["file"].values[0])
                 tags = np.append(tags, df["eso pro catg"].values[0])
                 filepaths = np.append(filepaths, df["filepath"].values[0])
@@ -1788,7 +1783,7 @@ class data_organiser(object):
                 )
                 df = calibrationTables.loc[mask]
                 if len(df.index):
-                    df.sort_values(by=["obs-delta"], inplace=True)
+                    df = df.sort_values(by=["obs-delta"])
                     files = np.append(files, df["file"].values[0])
                     tags = np.append(tags, df["eso pro catg"].values[0])
                     filepaths = np.append(filepaths, df["filepath"].values[0])
@@ -1818,7 +1813,7 @@ class data_organiser(object):
                 df = df.loc[~mask]
 
             if len(df.index):
-                df.sort_values(by=["obs-delta"], inplace=True)
+                df = df.sort_values(by=["obs-delta"])
                 if series["eso seq arm"].upper() in ["UVB"] and series["recipe"] == "mflat":
                     lamps = ["QLAMP", "DLAMP"]
                     for lamp in lamps:
@@ -1871,7 +1866,7 @@ class data_organiser(object):
                     df = df.loc[mask]
 
             if len(df.index):
-                df.sort_values(by=["obs-delta"], inplace=True)
+                df = df.sort_values(by=["obs-delta"])
                 files = np.append(files, df["file"].values[0])
                 tags = np.append(tags, df["eso pro catg"].values[0])
                 filepaths = np.append(filepaths, df["filepath"].values[0])
@@ -1906,7 +1901,7 @@ class data_organiser(object):
             if not moveOn:
                 df = calibrationFrames.loc[mask]
                 if len(df.index):
-                    df.sort_values(by=["obs-delta"], inplace=True)
+                    df = df.sort_values(by=["obs-delta"])
                     files = np.append(files, df["file"].values[0])
                     tags = np.append(tags, df["eso pro catg"].values[0])
                     filepaths = np.append(filepaths, df["filepath"].values[0])
@@ -1931,10 +1926,10 @@ class data_organiser(object):
                     & (rawFrames["eso dpr type"].isin(["LAMP,WAVE", "WAVE,LAMP"]))
                     & (rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT"]))
                 )
-            df = rawFrames.loc[mask]
+            df = rawFrames.loc[mask].copy()
             if len(df.index):
                 df["obs-delta"] = df["mjd-obs"] - series["mjd-obs"]
-                df.sort_values(by=["obs-delta"], inplace=True)
+                df = df.sort_values(by=["obs-delta"])
                 files = np.append(files, df["file"].values[0])
                 tags = np.append(tags, "SLIT_ARC")
                 filepaths = np.append(filepaths, df["filepath"].values[0])
