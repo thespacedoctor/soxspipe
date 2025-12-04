@@ -1415,13 +1415,22 @@ class data_organiser(object):
 
         for o in self.reductionOrder:
 
-            rawGroups = self.generate_sof_and_product_names(
-                reductionOrder=o,
-                rawFrames=rawFrames,
-                calibrationFrames=calibrationFrames,
-                calibrationTables=calibrationTables,
-                rawGroups=rawGroups,
-            )
+            # OPTIMISE: 95%
+            slits = [False]
+            if "FLAT" in o:
+                # GET UNIQUE VALUES IN COLUMN
+                slits = rawFrames["slit"].unique()
+
+            for slit in slits:
+
+                rawGroups = self.generate_sof_and_product_names(
+                    reductionOrder=o,
+                    rawFrames=rawFrames,
+                    calibrationFrames=calibrationFrames,
+                    calibrationTables=calibrationTables,
+                    rawGroups=rawGroups,
+                    slit=slit,
+                )
 
             rawGroups = self.populate_products_table(reductionOrder=o, rawGroups=rawGroups)
 
@@ -1451,6 +1460,7 @@ class data_organiser(object):
         self.log.debug("completed the ``_populate_product_frames_db_table`` method")
         return None
 
+    @profile
     def _generate_sof_and_product_names_by_row(self, series, rawFrames, calibrationFrames, calibrationTables):
         """*add a recipe name and SOF filename to all rows in the raw_frame_sets DB table*
 
@@ -1470,10 +1480,6 @@ class data_organiser(object):
         sofName.append(series["eso seq arm"].upper())
         matchDict["eso seq arm"] = series["eso seq arm"].upper()
         filteredFrames = rawFrames
-
-        # FILTER BY TYPE FIRST
-        if "FLAT" in series["eso dpr type"].upper():
-            filteredFrames = filteredFrames.loc[(filteredFrames["slit"] == series["slit"])]
 
         seriesRecipe = None
 
@@ -2492,7 +2498,7 @@ class data_organiser(object):
         return vltReduced
 
     def generate_sof_and_product_names(
-        self, reductionOrder, rawFrames, calibrationFrames, calibrationTables, rawGroups
+        self, reductionOrder, rawFrames, calibrationFrames, calibrationTables, rawGroups, slit=None
     ):
         """*generate sof and product names*
 
@@ -2502,6 +2508,7 @@ class data_organiser(object):
             - ``calibrationFrames`` -- dataframe of calibration frames
             - ``calibrationTables`` -- dataframe of calibration tables
             - ``rawGroups`` -- raw frames grouped together
+            - ``slit`` -- optional slit to filter by
 
         **Return:**
             - ``rawGroups`` -- updated rawGroups
@@ -2523,15 +2530,21 @@ class data_organiser(object):
         mask = (rawGroups["eso dpr type"].str.contains(reductionOrder, case=False)) & ~(
             rawGroups["eso seq arm"].str.contains("ACQ|--", case=False, regex=True)
         )
+        if slit:
+            mask = mask & (rawGroups["slit"] == slit)
+
         rawGroupsFiltered = rawGroups.loc[mask]
 
+        # FILTER RAW FRAMES
         rawFrames["tag"] = rawFrames["eso dpr type"].replace(",", "_") + "_" + rawFrames["eso seq arm"]
         if "FLAT" in reductionOrder.upper():
             mask2 = rawFrames["eso dpr type"].str.contains("FLAT")
-            rawFrames = rawFrames.loc[mask2]
         else:
             mask2 = rawFrames["eso dpr type"].str.contains(reductionOrder, case=False)
-            rawFrames = rawFrames.loc[mask2]
+
+        if slit:
+            mask2 = mask2 & (rawFrames["slit"] == slit)
+        rawFrames = rawFrames.loc[mask2]
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueTemplateNames = rawGroupsFiltered["template"].unique()
@@ -2542,6 +2555,7 @@ class data_organiser(object):
             rawFrames = rawFrames.loc[mask2]
 
         # OPTIMISE: 95%
+        print(f"MOVE FILTERING FOR {reductionOrder} FRAMES HERE")
         rawGroupsFiltered = rawGroupsFiltered.apply(
             self._generate_sof_and_product_names_by_row,
             axis=1,
