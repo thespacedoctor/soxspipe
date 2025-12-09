@@ -279,9 +279,8 @@ class data_organiser(object):
                 {"tech": None, "slitmask": ["PH"], "recipe": "order_centres"},
             ],
             "lamp,wave": [
-                {"tech": ["echelle,multi-pinhole", "image"], "slitmask": None, "recipe": "spat_sol"},
-                {"tech": ["echelle,pinhole", "image"], "slitmask": None, "recipe": "disp_sol"},
-                {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "order_centres"},
+                {"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"},
+                {"tech": ["echelle,pinhole", "image"], "slitmask": ["PH"], "recipe": "disp_sol"},
             ],
             "wave,lamp": [
                 {"tech": ["echelle,multi-pinhole", "image"], "slitmask": ["MPH"], "recipe": "spat_sol"},
@@ -434,6 +433,7 @@ class data_organiser(object):
         import codecs
         import shutil
         import sqlite3 as sql
+        from soxspipe.commonutils import keyword_lookup
 
         # TEST FITS FILES OR raw_frames DIRECT EXISTS
         fitsExist = self._fits_files_exist()
@@ -456,6 +456,7 @@ class data_organiser(object):
             c.execute(sqlQuery)
             self.instrument = c.fetchall()[0][0]
             c.close()
+            self.kw = keyword_lookup(log=self.log, instrument=self.instrument).get
             if "SOXS" in self.instrument.upper():
                 self.typeMap = self.typeMapSOXS
             else:
@@ -632,7 +633,7 @@ class data_organiser(object):
 
         while remainingFiles > 0:
             # GENERATE AN ASTROPY TABLE OF FITS FRAMES WITH ALL INDEXES NEEDED
-            filteredFrames, fitsPaths, fitsNames, remainingFiles = self._create_directory_table(
+            filteredFrames, fitsPaths, remainingFiles = self._create_directory_table(
                 pathToDirectory=self.rootDir, filterKeys=self.filterKeywords
             )
             if not remainingFiles:
@@ -651,16 +652,7 @@ class data_organiser(object):
                 knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=conn)
 
                 # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
-                rawFrames, reducedFramesPixels, reducedFramesTables = self._categorise_frames(filteredFrames)
-
-                # THIS IS USED TO DUPLICATE ORDER TRACING FRAMES AS SCIENCE FRAMES TO TEST EXTRAcTION DURING PAE
-                if self.PAE and self.instrument.upper() == "SOXS":
-                    mask = (rawFrames["eso dpr tech"] == "ECHELLE,PINHOLE") & (rawFrames["eso dpr type"] == "LAMP,FLAT")
-                    filteredDf = rawFrames.loc[mask]
-                    filteredDf["eso dpr tech"] = "ECHELLE,SLIT,STARE"
-                    filteredDf["eso dpr type"] = "OBJECT"
-                    rawFrames = pd.concat([rawFrames, filteredDf], ignore_index=True)
-
+                rawFrames = self._categorise_frames(filteredFrames)
                 # FIND AND REMOVE DUPLICATE FILES
                 if len(rawFrames.index):
                     rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["night start date"] + "/" + rawFrames["file"]
@@ -709,7 +701,7 @@ class data_organiser(object):
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return None
 
-    def _create_directory_table(self, pathToDirectory, filterKeys, limit=1000):
+    def _create_directory_table(self, pathToDirectory, filterKeys, limit=10000):
         """*create an astropy table based on the contents of a directory*
 
         **Key Arguments:**
@@ -717,18 +709,19 @@ class data_organiser(object):
         - `log` -- logger
         - `pathToDirectory` -- path to the directory containing the FITS frames
         - `filterKeys` -- these are the keywords we want to filter on later
+        - `limit` -- maximum number of files to process in one go (to avoid memory issues)
 
         **Return**
 
         - `masterTable` -- the primary dataframe table listing all FITS files in the directory (including indexes on `filterKeys` columns)
         - `fitsPaths` -- a simple list of all FITS file paths
-        - `fitsNames` -- a simple list of all FITS file name
+        - `remainingFiles` -- number of remaining files not included in the table due to the limit
 
         **Usage:**
 
         ```python
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
-        masterTable, fitsPaths, fitsNames = _create_directory_table(
+        masterTable, fitsPaths, remainingFiles = _create_directory_table(
             log=log,
             pathToDirectory="/my/directory/path",
             keys=["file","mjd-obs", "exptime","cdelt1", "cdelt2"],
@@ -744,32 +737,32 @@ class data_organiser(object):
         from fundamentals.files import recursive_directory_listing
         import pandas as pd
         from soxspipe.commonutils import keyword_lookup
+        from astropy.table import vstack
 
         # GENERATE A LIST OF FITS FILE PATHS
         fitsPaths = []
         fitsNames = []
-        for d in os.listdir(pathToDirectory):
-            filepath = os.path.join(pathToDirectory, d)
+        for entry in os.scandir(pathToDirectory):
             if (
-                d[0] != "."
-                and os.path.isfile(filepath)
-                and (os.path.splitext(filepath)[1] == ".fits" or ".fits.Z" in filepath)
+                not entry.name.startswith(".")
+                and entry.is_file()
+                and (os.path.splitext(entry.name)[1] == ".fits" or ".fits.Z" in entry.name)
             ):
-                fitsPaths.append(filepath)
-                fitsNames.append(d)
+                fitsPaths.append(entry.path)
+                fitsNames.append(entry.name)
 
-        remainingFiles = len(fitsPaths) - limit
+        remainingFiles = max(0, len(fitsPaths) - limit)
         fitsPaths = fitsPaths[:limit]
         fitsNames = fitsNames[:limit]
 
         recursive = False
 
         if len(fitsPaths) == 0:
-            return None, None, None, None
+            return None, None, None
 
         # INSTRUMENT CHECK
         if recursive:
-            allFrames = ImageFileCollection(filenames=fitsPaths, keywords=["instrume"])
+            allFrames = ImageFileCollection(filenames=fitsPaths[:3], keywords=["instrume"])
         else:
             allFrames = ImageFileCollection(location=pathToDirectory, filenames=fitsNames[:3], keywords=["instrume"])
 
@@ -816,148 +809,32 @@ class data_organiser(object):
         # TOP-LEVEL COLLECTIONi
         if recursive:
             allFrames = ImageFileCollection(filenames=fitsPaths, keywords=self.keywords)
+            masterTable = allFrames.summary
         else:
-            allFrames = ImageFileCollection(location=pathToDirectory, filenames=fitsNames, keywords=self.keywords)
+            # Split fitsNames into batches of 100
+            batch_size = 1000
+            batches = [fitsNames[i : i + batch_size] for i in range(0, len(fitsNames), batch_size)]
 
-        masterTable = allFrames.summary
+            from fundamentals import fmultiprocess
 
-        # ADD FILLED VALUES FOR MISSING CELLS
-        for fil in self.keywords:
-            if fil in filterKeys and fil not in ["exptime"]:
-
-                try:
-                    masterTable[fil].fill_value = "--"
-                except:
-                    masterTable.replace_column(fil, masterTable[fil].astype(str))
-                    masterTable[fil].fill_value = "--"
-            # elif fil in ["exptime"]:
-            #     masterTable[fil].fill_value = "--"
-            else:
-                try:
-                    masterTable[fil].fill_value = -99.99
-                except:
-                    masterTable[fil].fill_value = "--"
-        masterTable = masterTable.filled()
-
-        # FIX ACQ CAM EXPTIME & ARM & FILTER
-        if "SOXS" in self.instrument.upper():
-            matches = (masterTable["exptime"] == -99.99) & (masterTable[self.kw("EXPTIME2").lower()] != -99.99)
-            masterTable["exptime"][matches] = masterTable[self.kw("EXPTIME2").lower()][matches]
-            matches = (masterTable["eso seq arm"] == "--") & (masterTable[self.kw("DET").lower()] == "ACQ")
-            masterTable["eso seq arm"][matches] = "ACQ"
-            matches = (masterTable["eso seq arm"] != "ACQ") & (masterTable[self.kw("ACFW_ID").lower()] != "--")
-            masterTable[self.kw("ACFW_ID").lower()][matches] = "--"
-            matches = (masterTable["eso seq arm"] == "ACQ") & (
-                (masterTable["eso dpr type"] == "BIAS") | (masterTable["eso dpr type"] == "DARK")
+            results = fmultiprocess(
+                log=self.log,
+                function=_harvest_fits_headers,
+                inputArray=batches,
+                poolSize=False,
+                timeout=300,
+                pathToDirectory=pathToDirectory,
+                keywords=self.keywords,
+                filterKeys=filterKeys,
+                instrument=self.instrument,
+                kw=self.kw,
+                turnOffMP=False,
+                progressBar=True,
             )
-            masterTable[self.kw("ACFW_ID").lower()][matches] = "--"
-
-        # FILTER OUT FRAMES WITH NO MJD
-        matches = (
-            (masterTable["mjd-obs"] == -99.99)
-            | (masterTable["eso dpr catg"] == "--")
-            | (masterTable["eso dpr tech"] == "--")
-            | (masterTable["eso dpr type"] == "--")
-            | (masterTable["exptime"] == -99.99)
-        )
-        missingMJDFiles = masterTable["file"][matches]
-        if len(missingMJDFiles):
-            print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
-            print(missingMJDFiles)
-            masterTable = masterTable[~matches]
-
-        # SETUP A NEW COLUMN GIVING THE INT MJD THE CHILEAN NIGHT BEGAN ON
-        # 12:00 NOON IN CHILE IS TYPICALLY AT 16:00 UTC (CHILE = UTC - 4)
-        # SO COUNT CHILEAN OBSERVING NIGHTS AS 15:00 UTC-15:00 UTC (11am-11am)
-        if "mjd-obs" in masterTable.colnames:
-            chile_offset = TimeDelta(4.0 * 60 * 60, format="sec")
-            night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
-            masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
-            chileTimes = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset
-            startNightDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - night_start_offset
-            # masterTable["utc-4hrs"] = (masterTable["mjd-obs"] - 2 / 3).astype(int)
-            masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
-            masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
-            masterTable["night start mjd"] = startNightDate.mjd.astype(int)
-            masterTable["boundary"] = startNightDate.mjd - startNightDate.mjd.astype(int)
-            masterTable.add_index("night start date")
-            masterTable.add_index("night start mjd")
-
-        if self.instrument.upper() != "SOXS":
-            if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
-                masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
-                try:
-                    masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
-                except:
-                    masterTable["rospeed"] = masterTable["rospeed"].astype(str)
-                    masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
-                masterTable["rospeed"][masterTable["rospeed"] == "1pt/400k/lg"] = "fast"
-                masterTable["rospeed"][masterTable["rospeed"] == "1pt/400k/lg/AFC"] = "fast"
-                masterTable["rospeed"][masterTable["rospeed"] == "1pt/100k/hg"] = "slow"
-                masterTable["rospeed"][masterTable["rospeed"] == "1pt/100k/hg/AFC"] = "slow"
-                masterTable.add_index("rospeed")
-        else:
-            if self.kw("DET_READ_SPEED").lower() in masterTable.colnames:
-                masterTable["rospeed"] = np.copy(masterTable[self.kw("DET_READ_SPEED").lower()])
-
-                try:
-                    masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
-                except:
-                    masterTable["rospeed"] = masterTable["rospeed"].astype(str)
-                    masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
-
-                masterTable.add_index("rospeed")
-
-        if self.kw("TPL_ID").lower() in masterTable.colnames:
-            masterTable["template"] = np.copy(masterTable[self.kw("TPL_ID").lower()])
-
-        if self.kw("ACFW_ID").lower() in masterTable.colnames:
-            masterTable["filter"] = np.copy(masterTable[self.kw("ACFW_ID").lower()])
-
-        if "naxis" in masterTable.colnames:
-            masterTable["table"] = np.copy(masterTable["naxis"]).astype(str)
-            masterTable["table"][masterTable["table"] == "0"] = "T"
-            masterTable["table"][masterTable["table"] != "T"] = "F"
-
-        if self.kw("WIN_BINX").lower() in masterTable.colnames:
-            masterTable["binning"] = np.core.defchararray.add(
-                masterTable[self.kw("WIN_BINX").lower()].astype("int").astype("str"), "x"
-            )
-            masterTable["binning"] = np.core.defchararray.add(
-                masterTable["binning"], masterTable[self.kw("WIN_BINY").lower()].astype("int").astype("str")
-            )
-            masterTable["binning"][masterTable["binning"] == "-99x-99"] = "--"
-            masterTable["binning"][masterTable["binning"] == "1x-99"] = "--"
-            masterTable.add_index("binning")
-
-        if self.kw("ABSROT").lower() in masterTable.colnames:
-            masterTable["absrot"] = masterTable[self.kw("ABSROT").lower()].astype(float)
-            masterTable.add_index("absrot")
-
-        # ADD INDEXES ON ALL KEYS
-        for k in self.keywords:
-            try:
-                masterTable.add_index(k)
-            except:
-                pass
-
-        # SORT IMAGE COLLECTION
-        masterTable.sort(
-            [
-                "eso pro type",
-                "eso seq arm",
-                "eso dpr catg",
-                "eso dpr tech",
-                "eso dpr type",
-                "eso pro catg",
-                "eso pro tech",
-                "mjd-obs",
-            ]
-        )
+            masterTable = pd.concat(results)
 
         # FIX BOUNDARY GROUP FILES -- MOVE TO NEXT DAY SO THEY GET COMBINED WITH THE REST OF THEIR GROUP
         # E.G. UVB BIASES TAKEN ACROSS THE BOUNDARY BETWEEN 2 NIGHTS
-        masterTable = masterTable.to_pandas(index=False)
         # FIRST FIND END OF NIGHT DATA - AND PUSH TO THE NEXT DAY
         mask = masterTable["boundary"] > 0.96
         filteredDf = masterTable.loc[mask].copy()
@@ -991,7 +868,7 @@ class data_organiser(object):
         )
 
         self.log.debug("completed the ``_create_directory_table`` function")
-        return masterTable, fitsPaths, fitsNames, remainingFiles
+        return masterTable, fitsPaths, remainingFiles
 
     def _sync_sql_table_to_directory(self, directory, tableName, recursive=False):
         """*sync sql table content to files in a directory (add and delete from table as appropriate)*
@@ -1062,7 +939,7 @@ class data_organiser(object):
         return None
 
     def _categorise_frames(self, filteredFrames, verbose=False):
-        """*given a dataframe of frame, categorise frames into raw, reduced pixels, reduced tables*
+        """*given a dataframe of frame, categorise frames into raw*
 
         **Key Arguments:**
 
@@ -1072,13 +949,11 @@ class data_organiser(object):
         **Return:**
 
         - ``rawFrames`` -- dataframe of raw frames only
-        - ``reducedFramesPixels`` -- dataframe of reduced images only
-        - ``reducedFramesTables`` -- dataframe of reduced tables only
 
         **Usage:**
 
         ```python
-        rawFrames, reducedFramesPixels, reducedFramesTables = self._categorise_frames(filteredFrames)
+        rawFrames = self._categorise_frames(filteredFrames)
         ```
         """
         self.log.debug("starting the ``catagorise_frames`` method")
@@ -1090,9 +965,7 @@ class data_organiser(object):
 
         # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
         keywordsTerseRaw = self.keywordsTerse[:]
-        keywordsTerseReduced = self.keywordsTerse[:]
         filterKeywordsRaw = self.filterKeywords[:]
-        filterKeywordsReduced = self.filterKeywords[:]
 
         filteredFrames["slit"] = "--"
         filteredFrames["slitmask"] = "--"
@@ -1194,51 +1067,9 @@ class data_organiser(object):
         rawFrames.loc[(rawFrames["absrot"] == -99.99), "absrot"] = 0.0
 
         rawFrames["exptime"] = rawFrames["exptime"].apply(lambda x: round(x, 2))
-
-        reducedFrames = filteredFrames.loc[~mask]
-        pd.options.display.float_format = "{:,.4f}".format
-
-        mask = reducedFrames["naxis"] == 0
-        reducedFramesTables = reducedFrames.loc[mask]
-        reducedFramesPixels = reducedFrames.loc[~mask]
-
         rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name="counts")
         rawGroups.style.hide(axis="index")
         pd.options.mode.chained_assignment = None
-
-        dprKeywords = ["eso dpr type", "eso dpr tech", "eso dpr catg"]
-        for i in dprKeywords:
-            keywordsTerseReduced.remove(i)
-            filterKeywordsReduced.remove(i)
-        filterKeywordsReducedTable = filterKeywordsReduced[:]
-        filterKeywordsReducedTable.remove("binning")
-        keywordsTerseReducedTable = keywordsTerseReduced[:]
-        keywordsTerseReducedTable.remove("binning")
-
-        reducedPixelsGroups = reducedFramesPixels.groupby(filterKeywordsReduced).size().reset_index(name="counts")
-        reducedPixelsGroups.style.hide(axis="index")
-
-        # SORT BY COLUMN NAME
-        reducedPixelsGroups.sort_values(
-            by=["eso pro type", "eso seq arm", "eso pro catg", "eso pro tech"], inplace=True
-        )
-
-        reducedTablesGroups = reducedFramesTables.groupby(filterKeywordsReducedTable).size().reset_index(name="counts")
-        reducedTablesGroups.style.hide(axis="index")
-        reducedTablesGroups.sort_values(
-            by=["eso pro type", "eso seq arm", "eso pro catg", "eso pro tech"], inplace=True
-        )
-
-        if verbose and (len(reducedPixelsGroups.index) or len(reducedTablesGroups.index)):
-            print("\n# CONTENT SETS INDEX\n")
-
-        if verbose and len(reducedPixelsGroups.index):
-            print("\n## REDUCED PIXEL-FRAME-SET SUMMARY\n")
-            print(tabulate(reducedPixelsGroups, headers="keys", tablefmt="github", showindex=False, stralign="right"))
-
-        if verbose and len(reducedTablesGroups.index):
-            print("\n## REDUCED TABLES-SET SUMMARY\n")
-            print(tabulate(reducedTablesGroups, headers="keys", tablefmt="github", showindex=False, stralign="right"))
 
         if verbose:
             print("\n# CONTENT FILE INDEX\n")
@@ -1255,38 +1086,8 @@ class data_organiser(object):
                 )
             )
 
-        if verbose and len(reducedPixelsGroups.index):
-            print("\n## ALL REDUCED PIXEL-FRAMES\n")
-            print(
-                tabulate(
-                    reducedFramesPixels[keywordsTerseReduced],
-                    headers="keys",
-                    tablefmt="github",
-                    showindex=False,
-                    stralign="right",
-                    floatfmt=".3f",
-                )
-            )
-
-        if verbose and len(reducedTablesGroups.index):
-            print("\n## ALL REDUCED TABLES\n")
-            print(
-                tabulate(
-                    reducedFramesTables[keywordsTerseReducedTable],
-                    headers="keys",
-                    tablefmt="github",
-                    showindex=False,
-                    stralign="right",
-                    floatfmt=".3f",
-                )
-            )
-
         self.log.debug("completed the ``catagorise_frames`` method")
-        return (
-            rawFrames[keywordsTerseRaw].replace(["--"], None),
-            reducedFramesPixels[keywordsTerseReduced],
-            reducedFramesTables[keywordsTerseReducedTable],
-        )
+        return rawFrames[keywordsTerseRaw].replace(["--"], None)
 
     def _populate_product_frames_db_table(self):
         """*scan the raw frame table to generate the listing of products that are expected to be created*
@@ -1310,6 +1111,7 @@ class data_organiser(object):
         import sqlite3 as sql
         import time
         from collections import defaultdict
+        from itertools import product
 
         conn = self.conn
         rawFrames = pd.read_sql("SELECT * FROM raw_frames_valid", con=conn)
@@ -1413,26 +1215,68 @@ class data_organiser(object):
         if "recipe_order" not in rawGroups.columns:
             rawGroups["recipe_order"] = None
 
+        # BULK ADD TAG COLUMN
+        rawFrames["tag"] = rawFrames["eso dpr type"].replace(",", "_") + "_" + rawFrames["eso seq arm"]
+
         for o in self.reductionOrder:
 
-            # OPTIMISE: 95%
-            slits = [False]
             if "FLAT" in o:
+                rawMask = rawFrames["eso dpr type"].str.contains("FLAT")
+            else:
+                rawMask = rawFrames["eso dpr type"].str.contains(o, case=False)
+            rawFramesFiltered = rawFrames.loc[rawMask]
+
+            keywords = ["slit", "eso seq arm", "binning", "rospeed", "eso dpr type", "lamp", "exptime", "slit"]
+            rawFramesSubset = rawFramesFiltered[keywords].drop_duplicates().copy()
+            # EXTRACT VALUES FOR EACH KEYWORD WITHOUT APPLYING UNIQUE FILTERING
+            arms = rawFramesSubset["eso seq arm"]
+            binnings = rawFramesSubset["binning"]
+            rospeeds = rawFramesSubset["rospeed"]
+            types = rawFramesSubset["eso dpr type"]
+            lamps = rawFramesSubset["lamp"]
+            exptimes = rawFramesSubset["exptime"]
+            slits = rawFramesSubset["slit"]
+
+            ## ALSO FILTER CALIBRATIONS
+
+            # OPTIMISE: 95%
+            if not "FLAsT" in o:
                 # GET UNIQUE VALUES IN COLUMN
-                slits = rawFrames["slit"].unique()
+                slits = [False] * len(slits)
 
-            for slit in slits:
+            for row in self.typeMap[o.lower()]:
+                slitmasks = False
+                techs = False
+                if row["slitmask"]:
+                    slitmasks = row["slitmask"]
+                if row["tech"]:
+                    techs = [item.upper() for item in row["tech"]]
+                recipe = row["recipe"]
+                # Iterate over all permutations
+                # for slit, arm, binning, rospeed, type_, lamp, exptime in product(
+                #     slits, arms, binnings, rospeeds, types, lamps, exptimes
+                # ):
+                #     print(slit, arm, binning, rospeed, type_, lamp, exptime)
+                #     pass
 
-                rawGroups = self.generate_sof_and_product_names(
-                    reductionOrder=o,
-                    rawFrames=rawFrames,
-                    calibrationFrames=calibrationFrames,
-                    calibrationTables=calibrationTables,
-                    rawGroups=rawGroups,
-                    slit=slit,
-                )
+                # ITERATE OVER ALL PERMUTATIONS
+                for slit, arm, binning, rospeed in zip(slits, arms, binnings, rospeeds):
 
-            rawGroups = self.populate_products_table(reductionOrder=o, rawGroups=rawGroups)
+                    rawGroups = self.generate_sof_and_product_names(
+                        reductionOrder=o,
+                        rawFrames=rawFramesFiltered,
+                        calibrationFrames=calibrationFrames,
+                        calibrationTables=calibrationTables,
+                        rawGroups=rawGroups,
+                        recipe=recipe,
+                        slit=slit,
+                        slitmasks=slitmasks,
+                        techs=techs,
+                        arm=arm,
+                        binning=binning,
+                        rospeed=rospeed,
+                    )
+                    rawGroups = self.populate_products_table(reductionOrder=o, rawGroups=rawGroups)
 
         mask = rawGroups["complete"] == 1
         completeCountEnd = len(rawGroups.loc[mask].index)
@@ -1461,7 +1305,7 @@ class data_organiser(object):
         return None
 
     @profile
-    def _generate_sof_and_product_names_by_row(self, series, rawFrames, calibrationFrames, calibrationTables):
+    def _generate_sof_and_product_names_by_row(self, series, rawFrames, calibrationFrames, calibrationTables, recipe):
         """*add a recipe name and SOF filename to all rows in the raw_frame_sets DB table*
 
         **Key Arguments:**
@@ -1477,46 +1321,20 @@ class data_organiser(object):
 
         sofName = []
         matchDict = {}
-        sofName.append(series["eso seq arm"].upper())
+        sofName.append(series["sofNameTest"])
         matchDict["eso seq arm"] = series["eso seq arm"].upper()
         filteredFrames = rawFrames
 
-        seriesRecipe = None
+        seriesRecipe = recipe
 
-        # CHECK SLIT
-        if self.typeMap[series["eso dpr type"].lower()][0]["slitmask"]:
-            match = False
-            for row in self.typeMap[series["eso dpr type"].lower()]:
-                rowSlit = [item.upper() for item in row["slitmask"]]
-                if not match and series["slitmask"] in rowSlit:
-                    match = True
-                    filteredFrames = filteredFrames.loc[(filteredFrames["slitmask"].isin(rowSlit))]
-                    seriesRecipe = row["recipe"]
-            if not match:
-                return series
-
-        # CHECK TECH
-        if self.typeMap[series["eso dpr type"].lower()][0]["tech"] and not seriesRecipe:
-            match = False
-            for row in self.typeMap[series["eso dpr type"].lower()]:
-                rowTech = [item.upper() for item in row["tech"]]
-                if not match and series["eso dpr tech"].upper() in rowTech:
-                    match = True
-                    mask = filteredFrames["eso dpr tech"].isin(rowTech)
-                    filteredFrames = filteredFrames.loc[mask]
-                    seriesRecipe = row["recipe"]
-            if not match:
-                return series
-        elif not seriesRecipe:
-            seriesRecipe = self.typeMap[series["eso dpr type"].lower()][0]["recipe"]
+        # print(series["eso dpr type"], series["eso seq arm"], series["eso dpr tech"], series["slitmask"])
 
         # GENERATE SOF FILENAME AND MATCH DICTIONARY TO FILTER ON
-        if series["binning"] != "--":
-            matchDict["binning"] = series["binning"]
-            sofName.append(series["binning"].upper())
         if series["rospeed"] != "--":
             matchDict["rospeed"] = series["rospeed"]
-            sofName.append(series["rospeed"])
+        if series["binning"] != "--":
+            matchDict["binning"] = series["binning"]
+
         if series["eso dpr type"].lower() in self.typeMap:
             for i in self.typeMap[series["eso dpr type"].lower()]:
                 if i["recipe"] == seriesRecipe:
@@ -1559,10 +1377,13 @@ class data_organiser(object):
         sofName.append(str(series["instrume"]))
 
         for k, v in matchDict.items():
+
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
                 mask = filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP", "DOME,FLAT"])
-            else:
+            elif k not in ["rospeed", "binning"]:
                 mask = filteredFrames[k].isin([v])
+            else:
+                continue
             filteredFrames = filteredFrames.loc[mask]
 
         # INITIAL CALIBRATIONS FILTERING
@@ -2498,7 +2319,19 @@ class data_organiser(object):
         return vltReduced
 
     def generate_sof_and_product_names(
-        self, reductionOrder, rawFrames, calibrationFrames, calibrationTables, rawGroups, slit=None
+        self,
+        reductionOrder,
+        rawFrames,
+        calibrationFrames,
+        calibrationTables,
+        rawGroups,
+        recipe,
+        slit=False,
+        slitmasks=False,
+        techs=False,
+        arm=False,
+        binning=False,
+        rospeed=False,
     ):
         """*generate sof and product names*
 
@@ -2508,7 +2341,13 @@ class data_organiser(object):
             - ``calibrationFrames`` -- dataframe of calibration frames
             - ``calibrationTables`` -- dataframe of calibration tables
             - ``rawGroups`` -- raw frames grouped together
+            - ``recipe`` -- recipe name
             - ``slit`` -- optional slit to filter by
+            - ``slitmasks`` -- optional slit masks to filter by
+            - ``techs`` -- optional techs to filter by
+            - ``arm`` -- optional arm to filter by
+            - ``binning`` -- optional binning to filter by
+            - ``rospeed`` -- optional readout speed to filter by
 
         **Return:**
             - ``rawGroups`` -- updated rawGroups
@@ -2525,46 +2364,111 @@ class data_organiser(object):
         import pandas as pd
 
         self.sofMaps = []
+        sofName = []
+
+        armKey = self.kw("SEQ_ARM").lower()
+
+        groupMask = rawGroups[armKey] == arm  # ALL TRUE
+        rawMask = rawFrames[armKey] == arm  # ALL TRUE
+        calibrationFramesMask = calibrationFrames[armKey] == arm  # ALL TRUE
+        calibrationTablesMask = calibrationTables[armKey] == arm  # ALL TRUE
+
+        ## REDUCTION ORDER
+        groupMask = groupMask & rawGroups["eso dpr type"].str.contains(reductionOrder, case=False)
+        if "FLAT" in reductionOrder.upper():
+            rawMask = rawMask & rawFrames["eso dpr type"].str.contains("FLAT")
+        else:
+            rawMask = rawMask & rawFrames["eso dpr type"].str.contains(reductionOrder, case=False)
+
+        filteringMap = {
+            "eso seq arm": {
+                "applyMask": ["sofName", "rawFrames", "calibrationFrames", "calibrationTables"],
+                "value": arm,
+            },
+            "binning": {"applyMask": ["sofName", "rawFrames", "calibrationFrames"], "value": binning},
+            "rospeed": {"applyMask": ["sofName", "rawFrames", "calibrationFrames"], "value": rospeed},
+            "slit": {"applyMask": ["sofName", "rawFrames"], "value": slit},
+        }
+
+        for key, value in filteringMap.items():
+            applyMasks = value["applyMask"]
+            value = value["value"]
+            if value:
+                print(value)
+                groupMask = groupMask & (rawGroups[key] == value)
+
+                if "rawFrames" in applyMasks:
+                    rawMask = rawMask & (rawFrames[key] == value)
+                if "calibrationFrames" in applyMasks:
+                    calibrationFramesMask = calibrationFramesMask & (calibrationFrames[key] == value)
+                if "calibrationTables" in applyMasks:
+                    calibrationTablesMask = calibrationTablesMask & (calibrationTables[key] == value)
+                if "sofName" in applyMasks and value != "--":
+                    if isinstance(value, str):
+                        sofName.append(value.upper())
+                    else:
+                        sofName.append(value)
+
+        ## LIST FILTERS
+        listFilters = {
+            "slitmask": slitmasks,
+            "eso dpr tech": techs,
+        }
+        for key, value in listFilters.items():
+            if value:
+                groupMask = groupMask & (rawGroups[key].isin(value))
+
+        print(reductionOrder, arm, binning, rospeed, slit, slitmasks, techs)
 
         # FIRST CREATE THE MASK
-        mask = (rawGroups["eso dpr type"].str.contains(reductionOrder, case=False)) & ~(
-            rawGroups["eso seq arm"].str.contains("ACQ|--", case=False, regex=True)
-        )
-        if slit:
-            mask = mask & (rawGroups["slit"] == slit)
+        groupMask = groupMask & (~rawGroups["eso seq arm"].str.contains("ACQ|--", case=False, regex=True))
+        calibrationFrameMask = calibrationFrames["eso seq arm"].str.contains(arm, case=False)
+        calibrationTableMask = calibrationTables["eso seq arm"].str.contains(arm, case=False)
 
-        rawGroupsFiltered = rawGroups.loc[mask]
+        rawGroupsFiltered = rawGroups.loc[groupMask]
+        calibrationFramesFiltered = calibrationFrames.loc[calibrationFrameMask]
+        calibrationTablesFiltered = calibrationTables.loc[calibrationTableMask]
 
         # FILTER RAW FRAMES
-        rawFrames["tag"] = rawFrames["eso dpr type"].replace(",", "_") + "_" + rawFrames["eso seq arm"]
-        if "FLAT" in reductionOrder.upper():
-            mask2 = rawFrames["eso dpr type"].str.contains("FLAT")
-        else:
-            mask2 = rawFrames["eso dpr type"].str.contains(reductionOrder, case=False)
 
         if slit:
-            mask2 = mask2 & (rawFrames["slit"] == slit)
-        rawFrames = rawFrames.loc[mask2]
+            rawMask = rawMask & (rawFrames["slit"] == slit)
+        rawFramesFiltered = rawFrames.loc[rawMask]
 
         # GET UNIQUE VALUES IN COLUMN
         uniqueTemplateNames = rawGroupsFiltered["template"].unique()
         if len(uniqueTemplateNames):
             # FILTER DATA FRAME
             # FIRST CREATE THE MASK
-            mask2 = rawFrames["template"].isin(uniqueTemplateNames)
-            rawFrames = rawFrames.loc[mask2]
+            mask2 = rawFramesFiltered["template"].isin(uniqueTemplateNames)
+            rawFramesFiltered = rawFramesFiltered.loc[mask2]
+
+        if not len(rawGroupsFiltered.index):
+            self.log.debug("completed the ``generate_sof_and_product_names`` method")
+            return rawGroups
+
+        # sofName = ("_").join(sofName).replace("-", "").replace(",", "_").upper() + ".sof"
+        sofName = ("_").join(sofName).replace("-", "").replace(",", "_").upper()
+        sofName = sofName.replace("XSHOOTER", "XSH")
+        sofName = sofName.replace("FAST", "F")
+        sofName = sofName.replace("SLOW", "S")
+        sofName = sofName.replace("TELLURIC", "TELL")
+        sofName = sofName.replace("ORDER_LOCATIONS", "OLOC")
+        sofName = sofName.replace("DISP_SOL", "DSOL")
+        sofName = sofName.replace("SPAT_SOL", "SSOL")
+        rawGroupsFiltered["sofNameTest"] = sofName
 
         # OPTIMISE: 95%
-        print(f"MOVE FILTERING FOR {reductionOrder} FRAMES HERE")
         rawGroupsFiltered = rawGroupsFiltered.apply(
             self._generate_sof_and_product_names_by_row,
             axis=1,
-            rawFrames=rawFrames,
-            calibrationFrames=calibrationFrames,
-            calibrationTables=calibrationTables,
+            rawFrames=rawFramesFiltered,
+            calibrationFrames=calibrationFramesFiltered,
+            calibrationTables=calibrationTablesFiltered,
+            recipe=recipe,
         )
 
-        rawGroups.loc[mask] = rawGroupsFiltered
+        rawGroups.loc[groupMask] = rawGroupsFiltered
 
         if len(self.sofMaps):
             # FLATTENING THE LIST OF DICTIONARIES
@@ -2709,3 +2613,146 @@ class data_organiser(object):
 
         query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod","stare","offset")'
         return pd.read_sql(query, con=self.conn)
+
+
+def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, instrument, kw):
+    from ccdproc import ImageFileCollection
+    import numpy as np
+    from astropy.time import Time, TimeDelta
+
+    masterTable = ImageFileCollection(location=pathToDirectory, filenames=batch, keywords=keywords)
+    masterTable = masterTable.summary
+    # ADD FILLED VALUES FOR MISSING CELLS
+    for fil in keywords:
+        if fil in filterKeys and fil not in ["exptime"]:
+
+            try:
+                masterTable[fil].fill_value = "--"
+            except:
+                masterTable.replace_column(fil, masterTable[fil].astype(str))
+                masterTable[fil].fill_value = "--"
+        # elif fil in ["exptime"]:
+        #     masterTable[fil].fill_value = "--"
+        else:
+            try:
+                masterTable[fil].fill_value = -99.99
+            except:
+                masterTable[fil].fill_value = "--"
+    masterTable = masterTable.filled()
+
+    # FIX ACQ CAM EXPTIME & ARM & FILTER
+    if "SOXS" in instrument.upper():
+        matches = (masterTable["exptime"] == -99.99) & (masterTable[kw("EXPTIME2").lower()] != -99.99)
+        masterTable["exptime"][matches] = masterTable[kw("EXPTIME2").lower()][matches]
+        matches = (masterTable["eso seq arm"] == "--") & (masterTable[kw("DET").lower()] == "ACQ")
+        masterTable["eso seq arm"][matches] = "ACQ"
+        matches = (masterTable["eso seq arm"] != "ACQ") & (masterTable[kw("ACFW_ID").lower()] != "--")
+        masterTable[kw("ACFW_ID").lower()][matches] = "--"
+        matches = (masterTable["eso seq arm"] == "ACQ") & (
+            (masterTable["eso dpr type"] == "BIAS") | (masterTable["eso dpr type"] == "DARK")
+        )
+        masterTable[kw("ACFW_ID").lower()][matches] = "--"
+
+    # FILTER OUT FRAMES WITH NO MJD
+    matches = (
+        (masterTable["mjd-obs"] == -99.99)
+        | (masterTable["eso dpr catg"] == "--")
+        | (masterTable["eso dpr tech"] == "--")
+        | (masterTable["eso dpr type"] == "--")
+        | (masterTable["exptime"] == -99.99)
+    )
+    missingMJDFiles = masterTable["file"][matches]
+    if len(missingMJDFiles):
+        print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
+        print(missingMJDFiles)
+        masterTable = masterTable[~matches]
+
+    # SETUP A NEW COLUMN GIVING THE INT MJD THE CHILEAN NIGHT BEGAN ON
+    # 12:00 NOON IN CHILE IS TYPICALLY AT 16:00 UTC (CHILE = UTC - 4)
+    # SO COUNT CHILEAN OBSERVING NIGHTS AS 15:00 UTC-15:00 UTC (11am-11am)
+    if "mjd-obs" in masterTable.colnames:
+        chile_offset = TimeDelta(4.0 * 60 * 60, format="sec")
+        night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
+        masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
+        chileTimes = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset
+        startNightDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - night_start_offset
+        # masterTable["utc-4hrs"] = (masterTable["mjd-obs"] - 2 / 3).astype(int)
+        masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
+        masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
+        masterTable["night start mjd"] = startNightDate.mjd.astype(int)
+        masterTable["boundary"] = startNightDate.mjd - startNightDate.mjd.astype(int)
+        masterTable.add_index("night start date")
+        masterTable.add_index("night start mjd")
+
+    if instrument.upper() != "SOXS":
+        if kw("DET_READ_SPEED").lower() in masterTable.colnames:
+            masterTable["rospeed"] = np.copy(masterTable[kw("DET_READ_SPEED").lower()])
+            try:
+                masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
+            except:
+                masterTable["rospeed"] = masterTable["rospeed"].astype(str)
+                masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
+            masterTable["rospeed"][masterTable["rospeed"] == "1pt/400k/lg"] = "fast"
+            masterTable["rospeed"][masterTable["rospeed"] == "1pt/400k/lg/AFC"] = "fast"
+            masterTable["rospeed"][masterTable["rospeed"] == "1pt/100k/hg"] = "slow"
+            masterTable["rospeed"][masterTable["rospeed"] == "1pt/100k/hg/AFC"] = "slow"
+            masterTable.add_index("rospeed")
+    else:
+        if kw("DET_READ_SPEED").lower() in masterTable.colnames:
+            masterTable["rospeed"] = np.copy(masterTable[kw("DET_READ_SPEED").lower()])
+
+            try:
+                masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
+            except:
+                masterTable["rospeed"] = masterTable["rospeed"].astype(str)
+                masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
+
+            masterTable.add_index("rospeed")
+
+    if kw("TPL_ID").lower() in masterTable.colnames:
+        masterTable["template"] = np.copy(masterTable[kw("TPL_ID").lower()])
+
+    if kw("ACFW_ID").lower() in masterTable.colnames:
+        masterTable["filter"] = np.copy(masterTable[kw("ACFW_ID").lower()])
+
+    if "naxis" in masterTable.colnames:
+        masterTable["table"] = np.copy(masterTable["naxis"]).astype(str)
+        masterTable["table"][masterTable["table"] == "0"] = "T"
+        masterTable["table"][masterTable["table"] != "T"] = "F"
+
+    if kw("WIN_BINX").lower() in masterTable.colnames:
+        masterTable["binning"] = np.core.defchararray.add(
+            masterTable[kw("WIN_BINX").lower()].astype("int").astype("str"), "x"
+        )
+        masterTable["binning"] = np.core.defchararray.add(
+            masterTable["binning"], masterTable[kw("WIN_BINY").lower()].astype("int").astype("str")
+        )
+        masterTable["binning"][masterTable["binning"] == "-99x-99"] = "--"
+        masterTable["binning"][masterTable["binning"] == "1x-99"] = "--"
+        masterTable.add_index("binning")
+
+    if kw("ABSROT").lower() in masterTable.colnames:
+        masterTable["absrot"] = masterTable[kw("ABSROT").lower()].astype(float)
+        masterTable.add_index("absrot")
+
+    # ADD INDEXES ON ALL KEYS
+    for k in keywords:
+        try:
+            masterTable.add_index(k)
+        except:
+            pass
+
+    # SORT IMAGE COLLECTION
+    masterTable.sort(
+        [
+            "eso pro type",
+            "eso seq arm",
+            "eso dpr catg",
+            "eso dpr tech",
+            "eso dpr type",
+            "eso pro catg",
+            "eso pro tech",
+            "mjd-obs",
+        ]
+    )
+    return masterTable.to_pandas(index=False)
