@@ -92,7 +92,8 @@ class data_organiser(object):
         else:
             self.conn = None
 
-        # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE USED TO IDENTIFY RELEVANT DATA IN THE FITS FILES
+        # RETURN HERE: add these to yaml file
+        # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE LIFTED FROM ALL FITS FILES
         self.keyword_lookups = [
             "MJDOBS",
             "DATE_OBS",
@@ -142,7 +143,8 @@ class data_organiser(object):
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
         # USED IN GROUPING RAW FRAMES
-        self.keywordsTerse = [
+        # RETURN HERE: add these to yaml file
+        self.rawFrameGroupKeywords = [
             "file",
             "eso seq arm",
             "eso dpr catg",
@@ -623,17 +625,15 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``_sync_raw_frames`` method")
 
-        import sqlite3 as sql
         import shutil
         import pandas as pd
 
         remainingFiles = 1
-
         firstPass = True
 
         while remainingFiles > 0:
             # GENERATE AN ASTROPY TABLE OF FITS FRAMES WITH ALL INDEXES NEEDED
-            filteredFrames, fitsPaths, remainingFiles = self._create_directory_table(
+            rawFrames, fitsPaths, remainingFiles = self._create_directory_table(
                 pathToDirectory=self.rootDir, filterKeys=self.filterKeywords
             )
             if not remainingFiles:
@@ -652,7 +652,7 @@ class data_organiser(object):
                 knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=conn)
 
                 # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
-                rawFrames = self._categorise_frames(filteredFrames)
+                rawFrames = self._populate_raw_frames_extra_columns(rawFrames)
                 # FIND AND REMOVE DUPLICATE FILES
                 if len(rawFrames.index):
                     rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["night start date"] + "/" + rawFrames["file"]
@@ -713,7 +713,7 @@ class data_organiser(object):
 
         **Return**
 
-        - `masterTable` -- the primary dataframe table listing all FITS files in the directory (including indexes on `filterKeys` columns)
+        - `rawFrames` -- the primary dataframe table listing all FITS files in the directory (including indexes on `filterKeys` columns)
         - `fitsPaths` -- a simple list of all FITS file paths
         - `remainingFiles` -- number of remaining files not included in the table due to the limit
 
@@ -721,7 +721,7 @@ class data_organiser(object):
 
         ```python
         # GENERATE AN ASTROPY TABLES OF FITS FRAMES WITH ALL INDEXES NEEDED
-        masterTable, fitsPaths, remainingFiles = _create_directory_table(
+        rawFrames, fitsPaths, remainingFiles = _create_directory_table(
             log=log,
             pathToDirectory="/my/directory/path",
             keys=["file","mjd-obs", "exptime","cdelt1", "cdelt2"],
@@ -732,12 +732,10 @@ class data_organiser(object):
         self.log.debug("starting the ``_create_directory_table`` function")
 
         from ccdproc import ImageFileCollection
-        from astropy.time import Time, TimeDelta
+        from astropy.time import Time
         import numpy as np
-        from fundamentals.files import recursive_directory_listing
         import pandas as pd
         from soxspipe.commonutils import keyword_lookup
-        from astropy.table import vstack
 
         # GENERATE A LIST OF FITS FILE PATHS
         fitsPaths = []
@@ -809,7 +807,7 @@ class data_organiser(object):
         # TOP-LEVEL COLLECTIONi
         if recursive:
             allFrames = ImageFileCollection(filenames=fitsPaths, keywords=self.keywords)
-            masterTable = allFrames.summary
+            rawFrames = allFrames.summary
         else:
             # Split fitsNames into batches of 100
             batch_size = 1000
@@ -831,19 +829,19 @@ class data_organiser(object):
                 turnOffMP=False,
                 progressBar=True,
             )
-            masterTable = pd.concat(results)
+            rawFrames = pd.concat(results)
 
         # FIX BOUNDARY GROUP FILES -- MOVE TO NEXT DAY SO THEY GET COMBINED WITH THE REST OF THEIR GROUP
         # E.G. UVB BIASES TAKEN ACROSS THE BOUNDARY BETWEEN 2 NIGHTS
         # FIRST FIND END OF NIGHT DATA - AND PUSH TO THE NEXT DAY
-        mask = masterTable["boundary"] > 0.96
-        filteredDf = masterTable.loc[mask].copy()
+        mask = rawFrames["boundary"] > 0.96
+        filteredDf = rawFrames.loc[mask].copy()
         filteredDf["night start mjd"] = filteredDf["night start mjd"] + 1
         mask = filteredDf["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
         filteredDf.loc[mask, "eso dpr type"] = "LAMP,FLAT"
         # NOW FIND START OF NIGHT DATA
-        mask = masterTable["boundary"] < 0.04
-        filteredDf2 = masterTable.loc[mask].copy()
+        mask = rawFrames["boundary"] < 0.04
+        filteredDf2 = rawFrames.loc[mask].copy()
         mask = filteredDf2["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
         filteredDf2.loc[mask, "eso dpr type"] = "LAMP,FLAT"
 
@@ -860,15 +858,13 @@ class data_organiser(object):
         ]
         matched = pd.merge(filteredDf, filteredDf2, on=theseKeys)
         boundaryFiles = np.unique(matched["file_x"].values)
-        mask = masterTable["file"].isin(boundaryFiles)
-        masterTable.loc[mask, "night start mjd"] += 1
+        mask = rawFrames["file"].isin(boundaryFiles)
+        rawFrames.loc[mask, "night start mjd"] += 1
 
-        masterTable["night start date"] = Time(masterTable["night start mjd"], format="mjd").to_value(
-            "iso", subfmt="date"
-        )
+        rawFrames["night start date"] = Time(rawFrames["night start mjd"], format="mjd").to_value("iso", subfmt="date")
 
         self.log.debug("completed the ``_create_directory_table`` function")
-        return masterTable, fitsPaths, remainingFiles
+        return rawFrames, fitsPaths, remainingFiles
 
     def _sync_sql_table_to_directory(self, directory, tableName, recursive=False):
         """*sync sql table content to files in a directory (add and delete from table as appropriate)*
@@ -893,7 +889,6 @@ class data_organiser(object):
 
         import sqlite3 as sql
         import shutil
-        import time
 
         # GENERATE A LIST OF FITS FILE PATHS IN RAW DIR
         from fundamentals.files import recursive_directory_listing
@@ -938,8 +933,8 @@ class data_organiser(object):
         self.log.debug("completed the ``_sync_sql_table_to_directory`` method")
         return None
 
-    def _categorise_frames(self, filteredFrames, verbose=False):
-        """*given a dataframe of frame, categorise frames into raw*
+    def _populate_raw_frames_extra_columns(self, filteredFrames, verbose=False):
+        """*populate extra columns for raw frames to later filter on*
 
         **Key Arguments:**
 
@@ -953,7 +948,7 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        rawFrames = self._categorise_frames(filteredFrames)
+        rawFrames = self._populate_raw_frames_extra_columns(filteredFrames)
         ```
         """
         self.log.debug("starting the ``catagorise_frames`` method")
@@ -964,7 +959,7 @@ class data_organiser(object):
         from tabulate import tabulate
 
         # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
-        keywordsTerseRaw = self.keywordsTerse[:]
+        rawFrameGroupKeywords = self.rawFrameGroupKeywords[:]
         filterKeywordsRaw = self.filterKeywords[:]
 
         filteredFrames["slit"] = "--"
@@ -1038,7 +1033,7 @@ class data_organiser(object):
                 )
         mask = []
         for i in self.proKeywords:
-            keywordsTerseRaw.remove(i)
+            rawFrameGroupKeywords.remove(i)
             filterKeywordsRaw.remove(i)
             if not len(mask):
                 mask = filteredFrames[i] == "--"
@@ -1077,7 +1072,7 @@ class data_organiser(object):
             print("\n## ALL RAW FRAMES\n")
             print(
                 tabulate(
-                    rawFrames[keywordsTerseRaw],
+                    rawFrames[rawFrameGroupKeywords],
                     headers="keys",
                     tablefmt="github",
                     showindex=False,
@@ -1087,7 +1082,7 @@ class data_organiser(object):
             )
 
         self.log.debug("completed the ``catagorise_frames`` method")
-        return rawFrames[keywordsTerseRaw].replace(["--"], None)
+        return rawFrames[rawFrameGroupKeywords].replace(["--"], None)
 
     def _populate_product_frames_db_table(self):
         """*scan the raw frame table to generate the listing of products that are expected to be created*
@@ -1262,7 +1257,7 @@ class data_organiser(object):
                 # ITERATE OVER ALL PERMUTATIONS
                 for slit, arm, binning, rospeed in zip(slits, arms, binnings, rospeeds):
 
-                    rawGroups = self.generate_sof_and_product_names(
+                    rawGroups = self.generate_sof_names_and_maps(
                         reductionOrder=o,
                         rawFrames=rawFramesFiltered,
                         calibrationFrames=calibrationFrames,
@@ -1305,7 +1300,7 @@ class data_organiser(object):
         return None
 
     @profile
-    def _generate_sof_and_product_names_by_row(self, series, rawFrames, calibrationFrames, calibrationTables, recipe):
+    def _generate_sof_name_and_map(self, series, rawFrames, calibrationFrames, calibrationTables, recipe):
         """*add a recipe name and SOF filename to all rows in the raw_frame_sets DB table*
 
         **Key Arguments:**
@@ -1321,7 +1316,7 @@ class data_organiser(object):
 
         sofName = []
         matchDict = {}
-        sofName.append(series["sofNameTest"])
+        sofName.append(self.sofName)
         matchDict["eso seq arm"] = series["eso seq arm"].upper()
         filteredFrames = rawFrames
 
@@ -1380,7 +1375,8 @@ class data_organiser(object):
 
             if "type" in k.lower() and "lamp" in v.lower() and "flat" in v.lower():
                 mask = filteredFrames[k].isin(["LAMP,FLAT", "LAMP,DFLAT", "LAMP,QFLAT", "FLAT,LAMP", "DOME,FLAT"])
-            elif k not in ["rospeed", "binning"]:
+            elif k not in ["rospeed", "binning", "eso seq arm"]:
+                print(k)
                 mask = filteredFrames[k].isin([v])
             else:
                 continue
@@ -2318,7 +2314,7 @@ class data_organiser(object):
         self.log.debug("completed the ``use_vlt_environment_folders`` method")
         return vltReduced
 
-    def generate_sof_and_product_names(
+    def generate_sof_names_and_maps(
         self,
         reductionOrder,
         rawFrames,
@@ -2333,7 +2329,7 @@ class data_organiser(object):
         binning=False,
         rospeed=False,
     ):
-        """*generate sof and product names*
+        """*generate sof names and maps*
 
         **Key Arguments:**
             - ``reductionOrder`` -- what files are we generating SOF sets for?
@@ -2355,23 +2351,25 @@ class data_organiser(object):
         **Usage:**
 
         ```python
-        rawGroups = self.generate_sof_and_product_names(reductionOrder=reductionOrder, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables, rawGroups=rawGroups)
+        rawGroups = self.generate_sof_names_and_maps(reductionOrder=reductionOrder, rawFrames=rawFrames, calibrationFrames=calibrationFrames, calibrationTables=calibrationTables, rawGroups=rawGroups)
         ```
         """
-        self.log.debug("starting the ``generate_sof_and_product_names`` method")
+        self.log.debug("starting the ``generate_sof_names_and_maps`` method")
 
         from collections import defaultdict
         import pandas as pd
 
         self.sofMaps = []
         sofName = []
-
         armKey = self.kw("SEQ_ARM").lower()
 
+        # INITIAL FILTER MASKS
         groupMask = rawGroups[armKey] == arm  # ALL TRUE
         rawMask = rawFrames[armKey] == arm  # ALL TRUE
-        calibrationFramesMask = calibrationFrames[armKey] == arm  # ALL TRUE
-        calibrationTablesMask = calibrationTables[armKey] == arm  # ALL TRUE
+        calibrationFrameMask = calibrationFrames[armKey] == arm  # ALL TRUE
+        calibrationTableMask = calibrationTables[armKey] == arm  # ALL TRUE
+        # REMOVE THIS WHEN PROCESSING ACQUISITION FRAMES
+        groupMask = groupMask & (~rawGroups["eso seq arm"].str.contains("ACQ|--", case=False, regex=True))
 
         ## REDUCTION ORDER
         groupMask = groupMask & rawGroups["eso dpr type"].str.contains(reductionOrder, case=False)
@@ -2400,9 +2398,9 @@ class data_organiser(object):
                 if "rawFrames" in applyMasks:
                     rawMask = rawMask & (rawFrames[key] == value)
                 if "calibrationFrames" in applyMasks:
-                    calibrationFramesMask = calibrationFramesMask & (calibrationFrames[key] == value)
+                    calibrationFrameMask = calibrationFrameMask & (calibrationFrames[key] == value)
                 if "calibrationTables" in applyMasks:
-                    calibrationTablesMask = calibrationTablesMask & (calibrationTables[key] == value)
+                    calibrationTableMask = calibrationTableMask & (calibrationTables[key] == value)
                 if "sofName" in applyMasks and value != "--":
                     if isinstance(value, str):
                         sofName.append(value.upper())
@@ -2420,11 +2418,6 @@ class data_organiser(object):
 
         print(reductionOrder, arm, binning, rospeed, slit, slitmasks, techs)
 
-        # FIRST CREATE THE MASK
-        groupMask = groupMask & (~rawGroups["eso seq arm"].str.contains("ACQ|--", case=False, regex=True))
-        calibrationFrameMask = calibrationFrames["eso seq arm"].str.contains(arm, case=False)
-        calibrationTableMask = calibrationTables["eso seq arm"].str.contains(arm, case=False)
-
         rawGroupsFiltered = rawGroups.loc[groupMask]
         calibrationFramesFiltered = calibrationFrames.loc[calibrationFrameMask]
         calibrationTablesFiltered = calibrationTables.loc[calibrationTableMask]
@@ -2433,6 +2426,7 @@ class data_organiser(object):
 
         if slit:
             rawMask = rawMask & (rawFrames["slit"] == slit)
+        # RETURN HERE: broken
         rawFramesFiltered = rawFrames.loc[rawMask]
 
         # GET UNIQUE VALUES IN COLUMN
@@ -2444,7 +2438,7 @@ class data_organiser(object):
             rawFramesFiltered = rawFramesFiltered.loc[mask2]
 
         if not len(rawGroupsFiltered.index):
-            self.log.debug("completed the ``generate_sof_and_product_names`` method")
+            self.log.debug("completed the ``generate_sof_names_and_maps`` method")
             return rawGroups
 
         # sofName = ("_").join(sofName).replace("-", "").replace(",", "_").upper() + ".sof"
@@ -2456,11 +2450,11 @@ class data_organiser(object):
         sofName = sofName.replace("ORDER_LOCATIONS", "OLOC")
         sofName = sofName.replace("DISP_SOL", "DSOL")
         sofName = sofName.replace("SPAT_SOL", "SSOL")
-        rawGroupsFiltered["sofNameTest"] = sofName
+        self.sofName = sofName
 
         # OPTIMISE: 95%
         rawGroupsFiltered = rawGroupsFiltered.apply(
-            self._generate_sof_and_product_names_by_row,
+            self._generate_sof_name_and_map,
             axis=1,
             rawFrames=rawFramesFiltered,
             calibrationFrames=calibrationFramesFiltered,
@@ -2488,7 +2482,7 @@ class data_organiser(object):
                         raise Exception(e)
                     keepTrying += 1
 
-        self.log.debug("completed the ``generate_sof_and_product_names`` method")
+        self.log.debug("completed the ``generate_sof_names_and_maps`` method")
         return rawGroups
 
     def populate_products_table(self, reductionOrder, rawGroups):
@@ -2523,6 +2517,7 @@ class data_organiser(object):
         )
         rawGroupsFiltered = rawGroups.loc[mask]
 
+        # RETURN HERE: _populate_products_table_by_row does not return anything new (just self.products)
         rawGroupsFiltered = rawGroupsFiltered.apply(
             self._populate_products_table_by_row, axis=1, reductionOrder=reductionOrder
         )
@@ -2542,6 +2537,7 @@ class data_organiser(object):
                 columns=["eso dpr catg", "eso dpr tech", "eso dpr type", "counts", "complete"], inplace=True
             )
 
+            # RETURN HERE: does this still need done?
             try:
                 self.products.drop(columns=["product", "command"], inplace=True)
             except:
