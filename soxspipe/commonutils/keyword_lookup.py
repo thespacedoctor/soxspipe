@@ -14,7 +14,8 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-os.environ['TERM'] = 'vt100'
+
+os.environ["TERM"] = "vt100"
 
 
 class keyword_lookup(object):
@@ -63,14 +64,14 @@ class keyword_lookup(object):
 
     If a tag is not in the list of FITS Header keyword aliases in the configuration file a `LookupError` will be raised.
     """
+
     # Initialisation
 
     def __init__(
-            self,
-            log,
-            instrument=False,
-            settings=False,
-
+        self,
+        log,
+        instrument=False,
+        settings=False,
     ):
         self.log = log
         log.debug("instantiating a new 'keyword_lookup' object")
@@ -90,9 +91,7 @@ class keyword_lookup(object):
 
         return None
 
-    def get(self,
-            tag,
-            index=False):
+    def get(self, tag, index=False):
         """
         *given a tag, and optional keyword index, return the FITS Header keyword for the selected instrument*
 
@@ -109,7 +108,7 @@ class keyword_lookup(object):
 
         See docstring for the class
         """
-        self.log.debug('starting the ``get`` method')
+        self.log.debug("starting the ``get`` method")
 
         # CONVERT STRING TO LIST OF ONE ITEM
         single = False
@@ -134,11 +133,10 @@ class keyword_lookup(object):
         if single:
             keywords = keywords[0]
 
-        self.log.debug('completed the ``get`` method')
+        self.log.debug("completed the ``get`` method")
         return keywords
 
-    def _select_dictionary(
-            self):
+    def _select_dictionary(self):
         """*select the keyword dictionary based on the instrument passed via the settings*
 
         **Return:**
@@ -156,16 +154,18 @@ class keyword_lookup(object):
         kwDict = this._select_dictionary()
         ```
         """
-        self.log.debug('starting the ``_select_dictionary`` method')
+        self.log.debug("starting the ``_select_dictionary`` method")
 
         # GENERATE PATH TO YAML DICTIONARY
-        yamlFilePath = os.path.dirname(os.path.dirname(
-            __file__)) + "/resources/" + self.instrument.lower() + "_keywords.yaml"
+        yamlFilePath = (
+            os.path.dirname(os.path.dirname(__file__)) + "/resources/" + self.instrument.lower() + "_keywords.yaml"
+        )
 
         # YAML CONTENT TO DICTIONARY
         import yaml
-        with open(yamlFilePath, 'r') as stream:
+
+        with open(yamlFilePath, "r") as stream:
             kwDict = yaml.safe_load(stream)
 
-        self.log.debug('completed the ``_select_dictionary`` method')
+        self.log.debug("completed the ``_select_dictionary`` method")
         return kwDict

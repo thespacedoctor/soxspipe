@@ -451,20 +451,7 @@ class data_organiser(object):
         # TEST FOR SQLITE DATABASE - ADD IF MISSING
         self.conn = self._get_or_create_db_connection()
 
-        # SELECT INSTRUMENT
-        try:
-            c = self.conn.cursor()
-            sqlQuery = "select instrume from raw_frames where instrume is not null limit 1"
-            c.execute(sqlQuery)
-            self.instrument = c.fetchall()[0][0]
-            c.close()
-            self.kw = keyword_lookup(log=self.log, instrument=self.instrument).get
-            if "SOXS" in self.instrument.upper():
-                self.typeMap = self.typeMapSOXS
-            else:
-                self.typeMap = self.typeMapXSH
-        except:
-            pass
+        self._select_instrument()
 
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
@@ -499,45 +486,20 @@ class data_organiser(object):
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
-        # FLAG FILES TO IGNORE
-        c = self.conn.cursor()
-        theseKeywords = "','".join(self.reductionOrder)
-        sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ('{theseKeywords}')"
-        c.execute(sqlQuery)
-        self.conn.commit()
-        c.close()
+        self._flag_files_to_ignore()
 
-        # FLAG FILES TO IGNORE
-        c = self.conn.cursor()
-        sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not like '%OBJECT%' and `eso dpr type` not like '%STD%' and simulation = 1"
-        c.execute(sqlQuery)
-        self.conn.commit()
-        c.close()
+        if True:
+            self.build_sof_files()
+        else:
+            # POPULATION OF THE PRODUCT FRAMES NEEDS TO BE LOOPED TO ACCOUNT FOR AlL THE REDUCTION STAGES
+            i = 0
+            while i < 6:
 
-        if self.settings["ignore-dflats"]:
-            # IF THE USER WANTS TO IGNORE DFLATS, WE NEED TO REMOVE THEM FROM THE RAW FRAMES TABLE
-            c = self.conn.cursor()
-            sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DFLAT%'"
-            c.execute(sqlQuery)
-            self.conn.commit()
-            c.close()
-        if self.settings["ignore-dome-flats"]:
-            # IF THE USER WANTS TO IGNORE DOME FLATS, WE NEED TO REMOVE THEM FROM THE RAW FRAMES TABLE
-            c = self.conn.cursor()
-            sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DOME,FLAT%'"
-            c.execute(sqlQuery)
-            self.conn.commit()
-            c.close()
-
-        # POPULATION OF THE PRODUCT FRAMES NEEDS TO BE LOOPED TO ACCOUNT FOR AlL THE REDUCTION STAGES
-        i = 0
-        while i < 6:
-
-            completeCount = self._populate_product_frames_db_table()
-            if completeCount:
-                break
-            i += 1
-        self._write_sof_files()
+                completeCount = self._populate_product_frames_db_table()
+                if completeCount:
+                    break
+                i += 1
+            self._write_sof_files()
 
         print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
         print(f"In this workspace you will find:\n")
@@ -774,7 +736,6 @@ class data_organiser(object):
         if len(instrument) == 2 and "SHOOT" in instrument and "XSHOOTER" in instrument:
             instrument = ["XSH"]
 
-        self.instrument = None
         if len(instrument) > 1:
             self.log.error(
                 f"The directory contains data from a mix of instruments. Please only provide data from either SOXS or XSH"
@@ -783,16 +744,10 @@ class data_organiser(object):
         else:
             self.instrument = instrument[0]
 
-        if "XSH" in self.instrument.upper() or "SHOOT" in self.instrument.upper():
-            self.instrument = "XSH"
+        self._select_instrument(inst=instrument)
+
         if remainingFiles < 1:
             print(f"The instrument has been set to '{self.instrument}'")
-
-        if "SOXS" in self.instrument.upper():
-            self.typeMap = self.typeMapSOXS
-        else:
-            self.typeMap = self.typeMapXSH
-            self.keyword_lookups.remove("EXPTIME2")
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -979,20 +934,21 @@ class data_organiser(object):
         ]
 
         # ADD SIMULATION FLAG FOR SPECTROSCOPIC DATA
-        filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "simulation"] = filteredFrames.loc[
-            (filteredFrames["eso seq arm"] == "NIR"), self.kw("SWSIM_NIR").lower()
-        ]
-        filteredFrames.loc[(filteredFrames["eso seq arm"] == "VIS"), "simulation"] = filteredFrames.loc[
-            (filteredFrames["eso seq arm"] == "VIS"), self.kw("SWSIM_VIS").lower()
-        ]
-        filteredFrames.loc[(filteredFrames["eso seq arm"] == "UVB"), "simulation"] = filteredFrames.loc[
-            (filteredFrames["eso seq arm"] == "UVB"), self.kw("SWSIM_UVB").lower()
-        ]
-        filteredFrames.loc[(filteredFrames["simulation"] == "--"), "simulation"] = 0
-        filteredFrames.loc[(filteredFrames["simulation"] == -99.99), "simulation"] = 0
-        filteredFrames.loc[(filteredFrames["simulation"] == "T"), "simulation"] = 1
-
-        filteredFrames["slit"] = filteredFrames["slit"].str.upper()
+        if self.instrument.lower() == "soxs":
+            filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "simulation"] = filteredFrames.loc[
+                (filteredFrames["eso seq arm"] == "NIR"), self.kw("SWSIM_NIR").lower()
+            ]
+            filteredFrames.loc[(filteredFrames["eso seq arm"] == "VIS"), "simulation"] = filteredFrames.loc[
+                (filteredFrames["eso seq arm"] == "VIS"), self.kw("SWSIM_VIS").lower()
+            ]
+            filteredFrames.loc[(filteredFrames["eso seq arm"] == "UVB"), "simulation"] = filteredFrames.loc[
+                (filteredFrames["eso seq arm"] == "UVB"), self.kw("SWSIM_UVB").lower()
+            ]
+            filteredFrames.loc[(filteredFrames["simulation"] == "--"), "simulation"] = 0
+            filteredFrames.loc[(filteredFrames["simulation"] == -99.99), "simulation"] = 0
+            filteredFrames.loc[(filteredFrames["simulation"] == "T"), "simulation"] = 1
+        else:
+            filteredFrames["simulation"] = 0
 
         filteredFrames.loc[
             ((filteredFrames["slit"].str.contains("MULT")) & (filteredFrames["slitmask"] == "--")), "slitmask"
@@ -1239,6 +1195,9 @@ class data_organiser(object):
                 # GET UNIQUE VALUES IN COLUMN
                 slits = [False] * len(slits)
 
+            if o.lower() not in self.typeMap:
+                continue
+
             for row in self.typeMap[o.lower()]:
                 slitmasks = False
                 techs = False
@@ -1286,7 +1245,7 @@ class data_organiser(object):
         c.close()
 
         keepTrying = 0
-        while keepTrying < 6:
+        while keepTrying < 7:
             try:
                 rawGroups.replace(["--"], None).to_sql("raw_frame_sets", con=self.conn, index=False, if_exists="append")
                 keepTrying = 10
@@ -2219,16 +2178,7 @@ class data_organiser(object):
         self.conn = sql.connect(self.rootDbPath)
 
         # SELECT INSTR
-        c = self.conn.cursor()
-        sqlQuery = "select instrume from raw_frames where instrume is not null limit 1"
-        c.execute(sqlQuery)
-        self.instrument = c.fetchall()[0][0]
-        c.close()
-
-        if "SOXS" in self.instrument.upper():
-            self.typeMap = self.typeMapSOXS
-        else:
-            self.typeMap = self.typeMapXSH
+        self._select_instrument()
 
         # CLEAN UP FAILED FILES
         c = self.conn.cursor()
@@ -2473,7 +2423,7 @@ class data_organiser(object):
             # CONVERT DEFAULTDICT BACK TO A REGULAR DICT (OPTIONAL)
             self.sofMaps = pd.DataFrame(dict(flattened_dict))
             keepTrying = 0
-            while keepTrying < 6:
+            while keepTrying < 7:
                 try:
                     self.sofMaps.to_sql(f"sof_map_{self.sessionId}", con=self.conn, index=False, if_exists="append")
                     keepTrying = 10
@@ -2544,7 +2494,7 @@ class data_organiser(object):
                 pass
 
             keepTrying = 0
-            while keepTrying < 6:
+            while keepTrying < 7:
                 try:
                     self.products.replace(["--"], None).to_sql(
                         "product_frames", con=self.conn, index=False, if_exists="append"
@@ -2609,6 +2559,487 @@ class data_organiser(object):
 
         query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod","stare","offset")'
         return pd.read_sql(query, con=self.conn)
+
+    def _select_instrument(self, inst=False):
+        """Select the instrument and set related attributes."""
+        from soxspipe.commonutils import keyword_lookup
+        import yaml
+
+        if inst:
+            self.instrument = inst
+        else:
+            try:
+                c = self.conn.cursor()
+                sqlQuery = "select instrume from raw_frames where instrume is not null limit 1"
+                c.execute(sqlQuery)
+                self.instrument = c.fetchall()[0][0]
+                c.close()
+            except:
+                return
+
+        if "SOXS" not in self.instrument.upper():
+            self.instrument = "XSH"
+
+        # SETUP THE KEYWORD LOOKUP FUNCTION
+        self.kw = keyword_lookup(log=self.log, instrument=self.instrument).get
+
+        # SETUP SOF MAP
+        yamlFilePath = (
+            os.path.dirname(os.path.dirname(__file__)) + "/resources/" + self.instrument.lower() + "_sof_map.yaml"
+        )
+
+        # YAML CONTENT TO DICTIONARY
+        with open(yamlFilePath, "r") as stream:
+            self.sofMapLookup = yaml.safe_load(stream)
+
+        # RETURN HERE .. delete
+        if "SOXS" in self.instrument.upper():
+            self.typeMap = self.typeMapSOXS
+        else:
+            self.typeMap = self.typeMapXSH
+            if "EXPTIME2" in self.keyword_lookups:
+                self.keyword_lookups.remove("EXPTIME2")
+
+    def _flag_files_to_ignore(self):
+        """*Flag files to ignore based on settings and reduction order*"""
+        import sqlite3 as sql
+
+        # FLAG FILES TO IGNORE BASED ON REDUCTION ORDER
+        c = self.conn.cursor()
+        theseKeywords = "','".join(self.reductionOrder)
+        sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ('{theseKeywords}')"
+        c.execute(sqlQuery)
+        self.conn.commit()
+        c.close()
+
+        # FLAG SIMULATION FILES TO IGNORE
+        c = self.conn.cursor()
+        sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not like '%OBJECT%' and `eso dpr type` not like '%STD%' and simulation = 1"
+        c.execute(sqlQuery)
+        self.conn.commit()
+        c.close()
+
+        # FLAG DFLATS TO IGNORE IF SPECIFIED IN SETTINGS
+        if "ignore-dflats" in self.settings and self.settings["ignore-dflats"]:
+            c = self.conn.cursor()
+            sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DFLAT%'"
+            c.execute(sqlQuery)
+            self.conn.commit()
+            c.close()
+
+        # FLAG DOME FLATS TO IGNORE IF SPECIFIED IN SETTINGS
+        if "ignore-dome-flats" in self.settings and self.settings["ignore-dome-flats"]:
+            c = self.conn.cursor()
+            sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DOME,FLAT%'"
+            c.execute(sqlQuery)
+            self.conn.commit()
+            c.close()
+
+    def build_sof_files(self):
+        """*scan the raw frame table to generate the listing of products that are expected to be created and then write out all of the needed SOF files*
+
+        **Key Arguments:**
+            # -
+
+        **Return:**
+
+        - None
+
+        **Usage:**
+
+        ```python
+        usage code
+        ```
+        """
+        self.log.debug("starting the ``_populate_product_frames_db_table`` method")
+
+        import pandas as pd
+        import sqlite3 as sql
+        import time
+        from collections import defaultdict
+        from itertools import product
+
+        sm = self.sofMapLookup
+        # rawFrames, rawGroups, rawGroupsDB = self.get_raw_frames_and_groups()
+        # calibrationFrames, calibrationTables = self.get_calibration_frames()
+        # RETURN HERE: add completed column to rawGroups from rawGroupsDB
+
+        for recipeOrder, (name, filters) in enumerate(self.sofMapLookup.items()):
+
+            # READ FILTER VARIABLES
+            ttypes = filters["eso dpr type"]
+            tech = filters["eso dpr tech"]
+            productTypes = filters["products"] or []
+            recipe = filters["recipe"]
+            for ttype in ttypes:
+                print()
+                print(name, ttype)
+                rawFrames, rawGroups, rawGroupsDB, rawGroupsCount = self.get_raw_frames_and_groups(
+                    ttype=ttype, tech=tech, recipe=recipe, recipeOrder=recipeOrder
+                )
+                if not len(rawGroups.index):
+                    print("no raw groups")
+                    continue
+
+                self.predict_product_frames(productTypes, rawGroups, recipe)
+
+                # RAW CONTENT OF SOF FILES
+
+                from tabulate import tabulate
+
+                # print(tabulate(rawFrames, headers="keys", tablefmt="psql"))
+                print(tabulate(rawGroups, headers="keys", tablefmt="psql"))
+
+                calibrationFrames, calibrationTables = self.get_calibration_frames()
+
+        return
+
+        # SEND TO DATABASE
+        c = self.conn.cursor()
+        sqlQuery = f"delete from sof_map_{self.sessionId};"
+        c.execute(sqlQuery)
+        c.close()
+
+        # BULK ADD TAG COLUMN
+        rawFrames["tag"] = rawFrames["eso dpr type"].replace(",", "_") + "_" + rawFrames["eso seq arm"]
+
+        for o in self.reductionOrder:
+
+            if "FLAT" in o:
+                rawMask = rawFrames["eso dpr type"].str.contains("FLAT")
+            else:
+                rawMask = rawFrames["eso dpr type"].str.contains(o, case=False)
+            rawFramesFiltered = rawFrames.loc[rawMask]
+
+            keywords = ["slit", "eso seq arm", "binning", "rospeed", "eso dpr type", "lamp", "exptime", "slit"]
+            rawFramesSubset = rawFramesFiltered[keywords].drop_duplicates().copy()
+            # EXTRACT VALUES FOR EACH KEYWORD WITHOUT APPLYING UNIQUE FILTERING
+            arms = rawFramesSubset["eso seq arm"]
+            binnings = rawFramesSubset["binning"]
+            rospeeds = rawFramesSubset["rospeed"]
+            types = rawFramesSubset["eso dpr type"]
+            lamps = rawFramesSubset["lamp"]
+            exptimes = rawFramesSubset["exptime"]
+            slits = rawFramesSubset["slit"]
+
+            ## ALSO FILTER CALIBRATIONS
+
+            # OPTIMISE: 95%
+            if not "FLAsT" in o:
+                # GET UNIQUE VALUES IN COLUMN
+                slits = [False] * len(slits)
+
+            if o.lower() not in self.typeMap:
+                continue
+
+            for row in self.typeMap[o.lower()]:
+                slitmasks = False
+                techs = False
+                if row["slitmask"]:
+                    slitmasks = row["slitmask"]
+                if row["tech"]:
+                    techs = [item.upper() for item in row["tech"]]
+                recipe = row["recipe"]
+                # Iterate over all permutations
+                # for slit, arm, binning, rospeed, type_, lamp, exptime in product(
+                #     slits, arms, binnings, rospeeds, types, lamps, exptimes
+                # ):
+                #     print(slit, arm, binning, rospeed, type_, lamp, exptime)
+                #     pass
+
+                # ITERATE OVER ALL PERMUTATIONS
+                for slit, arm, binning, rospeed in zip(slits, arms, binnings, rospeeds):
+
+                    rawGroups = self.generate_sof_names_and_maps(
+                        reductionOrder=o,
+                        rawFrames=rawFramesFiltered,
+                        calibrationFrames=calibrationFrames,
+                        calibrationTables=calibrationTables,
+                        rawGroups=rawGroups,
+                        recipe=recipe,
+                        slit=slit,
+                        slitmasks=slitmasks,
+                        techs=techs,
+                        arm=arm,
+                        binning=binning,
+                        rospeed=rospeed,
+                    )
+                    rawGroups = self.populate_products_table(reductionOrder=o, rawGroups=rawGroups)
+
+        mask = rawGroups["complete"] == 1
+        completeCountEnd = len(rawGroups.loc[mask].index)
+
+        if completeCountStart == completeCountEnd:
+            return completeCountStart
+
+        # SEND TO DATABASE
+        c = self.conn.cursor()
+        sqlQuery = f"delete from raw_frame_sets;"
+        c.execute(sqlQuery)
+        c.close()
+
+        keepTrying = 0
+        while keepTrying < 7:
+            try:
+                rawGroups.replace(["--"], None).to_sql("raw_frame_sets", con=self.conn, index=False, if_exists="append")
+                keepTrying = 10
+            except Exception as e:
+                if keepTrying > 5:
+                    raise Exception(e)
+                time.sleep(1)
+                keepTrying += 1
+
+        self.log.debug("completed the ``_populate_product_frames_db_table`` method")
+        return None
+
+    def get_raw_frames_and_groups(self, ttype=None, arm=None, tech=None, recipe=None, recipeOrder=None):
+        """*Process raw frames to group and calculate mean MJD values.*
+
+        **Key Arguments:**
+            - ``ttype`` -- optional data product `eso dpr type` to filter by
+            - ``arm`` -- optional instrument `eso seq arm` to filter by
+            - ``tech`` -- optional list of `eso dpr tech` to filter by
+            - ``recipe`` -- recipe name to assign to groups
+            - ``recipeOrder`` -- recipe reduction order
+
+        **Return:**
+            - `rawFrames` -- processed raw frames dataframe
+            - `rawGroups` -- grouped raw frames with calculated MJD values
+            - `rawGroupsDB` -- cached raw frame sets from the database
+            - `rawGroupsCount` -- count of complete raw frame sets for the specified type
+
+        **Usage:**
+
+        ```python
+        rawFrames, rawGroups, rawGroupsDB, rawGroupsCount = self.get_raw_frames_and_groups()
+        ```
+        """
+        import pandas as pd
+
+        # CLEAN DATABASE TABLE
+        c = self.conn.cursor()
+        sqlQueries = [
+            "update raw_frames set lamp = null, slit = null, slitmask = null where `eso dpr type` in ('BIAS','DARK');",
+            "update raw_frames set rospeed = null where rospeed = -1;",
+        ]
+        for sqlQuery in sqlQueries:
+            c.execute(sqlQuery)
+        c.close()
+
+        # IF NONE, SET TO EMPTY STRING
+        ttype, arm, tech = ttype or "", arm or "", tech or ""
+
+        if ttype or arm:
+            where = "where"
+        else:
+            where = ""
+        if ttype:
+            ttype = "and `eso dpr type` = '" + ttype + "'"
+        if arm:
+            arm = "and `eso seq arm` = '" + arm + "'"
+        if tech:
+            # JOIN ITEMS IN TECH LIST TO A COMMA-SEPARATED STRING
+            tech = "and `eso dpr tech` in (" + ",".join(["'" + t + "'" for t in tech]) + ")"
+
+        # READ IN RAW FRAMES TABLE
+        conn = self.conn
+        rawFrames = pd.read_sql(
+            f"SELECT * FROM raw_frames_valid {where} {ttype} {arm} {tech} order by `mjd-obs` asc".replace(
+                "where and", "where"
+            ),
+            con=conn,
+        )
+        rawFrames = rawFrames.astype({"exptime": float, "ra": float, "dec": float})
+        rawFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}, inplace=True)
+        rawFrames.fillna("--", inplace=True)
+        filterKeywordsRaw = self.filterKeywords[:]
+        for i in self.proKeywords:
+            filterKeywordsRaw.remove(i)
+
+        # HIDE OFF FRAMES FROM GROUPS
+        mask = (
+            (rawFrames["eso dpr tech"] == "IMAGE")
+            & (rawFrames["eso seq arm"] == "NIR")
+            & (rawFrames["eso dpr type"] != "DARK")
+        )
+        rawFramesNoOffFrames = rawFrames.loc[~mask]
+        rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw)
+
+        if not len(rawFramesNoOffFrames.index):
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), 0
+
+        mjds = rawGroups.mean(numeric_only=True)["mjd-obs"].values
+        # MANIPULATE ALL STRINGS IN startTime TO BE OF FORMAT YYYY-MM-DDTHH:MM:SS.SSS
+        startTime = rawGroups.min()["date-obs"].values
+        startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
+        rawGroups = rawGroups.size().reset_index(name="counts")
+        rawGroups["mjd-obs"] = mjds
+        rawGroups["date-obs"] = startTime
+
+        # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
+        mask = rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])
+        rawGroups = rawGroups.loc[~mask]
+        # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
+        rawScienceFrames = rawFrames.loc[rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])]
+        rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
+        rawScienceFrames = rawScienceFrames.size().reset_index(name="counts")
+        startTime = rawScienceFrames["date-obs"].values
+        startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
+        rawScienceFrames["date-obs"] = startTime
+        # MERGE DATAFRAMES
+        if len(rawScienceFrames.index):
+            rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+
+        # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
+        mask = rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
+        rawGroups = rawGroups.loc[~mask]
+        # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
+        if self.instrument.upper() == "SOXS":
+            rawPinholeFrames = rawFrames.loc[
+                (rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"]))
+                & (
+                    (rawFrames["eso seq arm"] == "NIR")
+                    | (~rawFrames["lamp"].isin(["Xe", "Ar", "Hg", "Ne", "ArNeHgXe"]))
+                )
+            ]
+        else:
+            rawPinholeFrames = rawFrames.loc[
+                rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
+            ]
+        rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
+        rawPinholeFrames = rawPinholeFrames.size().reset_index(name="counts")
+        startTime = rawPinholeFrames["date-obs"].values
+        startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
+        rawPinholeFrames["date-obs"] = startTime
+
+        # MERGE DATAFRAMES
+        if len(rawPinholeFrames.index):
+            rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
+        rawGroups["recipe"] = recipe
+        if "STD,FLUX" in ttype:
+            recipe += "_std_flux"
+        rawGroups["sof"] = (
+            rawGroups["date-obs"].astype(str)
+            + "_"
+            + rawGroups["eso seq arm"].astype(str)
+            + "_"
+            + rawGroups["binning"].astype(str)
+            + "_"
+            + rawGroups["rospeed"].astype(str)
+            + "_"
+            + recipe
+            + "_"
+            + rawGroups["lamp"].astype(str)
+            + "_"
+            + rawGroups["slit"].astype(str)
+            + "_"
+            + rawGroups["exptime"].astype(str)
+            + "s"
+            + "_"
+            + rawGroups["instrume"].astype(str)
+            + ".sof"
+        )
+        rawGroups["sof"] = rawGroups["sof"].str.upper().str.replace(".SOF", ".sof")
+
+        for _ in range(5):
+            rawGroups["sof"] = rawGroups["sof"].str.replace("_--_", "_", regex=False)
+
+        rawGroups["sof"] = rawGroups["sof"].str.replace("MBIAS_0.0S_", "MBIAS_")
+        rawGroups["sof"] = rawGroups["sof"].str.replace("DISP_SOL_.*?_PINHOLE", "DSOL_PINHOLE", regex=True)
+        rawGroups["sof"] = rawGroups["sof"].str.replace("SPAT_SOL_.*?_MULTPIN", "SSOL_MULTPIN", regex=True)
+        rawGroups["sof"] = rawGroups["sof"].str.replace("ORDER_CENTRES", "OLOC", regex=True)
+        rawGroups["complete"] = None
+        rawGroups["recipe_order"] = recipeOrder
+
+        rawGroupsDB = pd.read_sql("select * from raw_frame_sets", con=conn)
+
+        rawGroupsCount = rawGroupsDB.loc[(rawGroupsDB["eso dpr type"] == ttype) & (rawGroupsDB["complete"] == 1)].shape[
+            0
+        ]
+
+        return rawFrames, rawGroups, rawGroupsDB, rawGroupsCount
+
+    def get_calibration_frames(self):
+        """
+        Fetch calibration frames and tables from the database.
+
+        **Return:**
+        - `calibrationFrames` -- DataFrame containing calibration frames.
+        - `calibrationTables` -- DataFrame containing calibration tables.
+        """
+        import pandas as pd
+
+        conn = self.conn
+
+        calibrationFrames = pd.read_sql(
+            f"SELECT * FROM product_frames WHERE `eso pro catg` NOT LIKE '%_TAB_%' AND (status_{self.sessionId} != 'fail' OR status_{self.sessionId} IS NULL)",
+            con=conn,
+        )
+        calibrationFrames.fillna("--", inplace=True)
+
+        calibrationTables = pd.read_sql(
+            f"SELECT * FROM product_frames WHERE `eso pro catg` LIKE '%_TAB_%' AND (status_{self.sessionId} != 'fail' OR status_{self.sessionId} IS NULL)",
+            con=conn,
+        )
+        calibrationTables.fillna("--", inplace=True)
+
+        return calibrationFrames, calibrationTables
+
+    def predict_product_frames(self, productTypes, rawGroups, recipe):
+        """
+        Process product frames for a given set of product types and raw groups.
+
+        **Key Arguments:**
+        - `productTypes` -- List of product types to process.
+        - `rawGroups` -- DataFrame containing raw groups.
+        - `recipe` -- Recipe name.
+
+        **Return:**
+        - None
+        """
+        import time
+        import pandas as pd
+
+        for product in productTypes:
+            proKeys = list(product.values())[0]
+            product = list(product.keys())[0]
+            productFrames = rawGroups.copy()
+            productFrames.drop(
+                columns=["eso dpr catg", "eso dpr tech", "eso dpr type", "counts", "complete", "date-obs"],
+                inplace=True,
+            )
+
+            productFrames["eso pro type"] = proKeys["eso pro type"]
+            productFrames["eso pro tech"] = proKeys["eso pro tech"]
+            productFrames["eso pro catg"] = proKeys["eso pro catg"]
+            productFrames["eso pro catg"] = (
+                productFrames["eso pro catg"].astype(str) + "_" + productFrames["eso seq arm"].astype(str).str.upper()
+            )
+            if product == "fits image":
+                productFrames["file"] = productFrames["sof"].str.replace(".sof", f".fits")
+            else:
+                productFrames["file"] = "XXXXXX"
+            productFrames["filepath"] = (
+                "./reduced/"
+                + productFrames["night start date"].astype(str)
+                + "/soxs-"
+                + recipe.replace("_", "-")
+                + "/"
+                + productFrames["file"].astype(str)
+            )
+            # TO DATABASE
+            keepTrying = 0
+            while keepTrying < 7:
+                try:
+                    productFrames.replace(["--"], None).to_sql(
+                        "product_frames", con=self.conn, index=False, if_exists="append"
+                    )
+                    keepTrying = 10
+                except Exception as e:
+                    if keepTrying > 5:
+                        raise Exception(e)
+                    time.sleep(1)
+                    keepTrying += 1
 
 
 def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, instrument, kw):
