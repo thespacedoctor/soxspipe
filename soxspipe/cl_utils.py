@@ -6,7 +6,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 Usage:
     soxspipe prep <workspaceDirectory> [--vlt]
     soxspipe [-qw] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
-    soxspipe reduce sof <sofFile> <workspaceDirectory> [-s <pathToSettingsFile>]
+    soxspipe [-x] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe reduce ob <obid> <workspaceDirectory> [-s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe list (obs|sof) <workspaceDirectory> [-s <pathToSettingsFile>]
@@ -349,6 +349,9 @@ def main(arguments=None):
 
     if a["reduce"]:
 
+        if not a["workspaceDirectory"]:
+            a["workspaceDirectory"] = "."
+
         exists = os.path.exists(a["workspaceDirectory"] + "/soxspipe.db")
         if not exists:
             print(
@@ -375,6 +378,7 @@ def main(arguments=None):
                 settings=settings,
                 pathToSettings=arguments["--settings"],
                 quitOnFail=a["quitOnFailFlag"],
+                overwrite=a["overwriteFlag"],
             )
             collection.reduce()
 
