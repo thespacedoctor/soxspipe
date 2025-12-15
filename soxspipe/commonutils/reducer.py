@@ -91,9 +91,9 @@ class reducer(object):
             "nod-std",
             "stare-std",
             "offset-std",
-            # "nod",
-            # "stare",
-            # "offset",
+            "nod",
+            "stare",
+            "offset",
         ]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
@@ -117,6 +117,10 @@ class reducer(object):
         from soxspipe.commonutils import data_organiser
 
         i = 0
+
+        if self.reductionTarget != "all":
+            self.recipeList = [False]
+
         for recipe in self.recipeList:
             # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
             rawGroups = self.select_sof_files_to_process(recipe=recipe, reductionTarget=self.reductionTarget)
@@ -158,15 +162,16 @@ class reducer(object):
                 if not self.daemon:
                     print(f"{'='*70}\n")
 
-        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-        incompleteSets = do.get_incomplete_raw_frames_set()
-        if len(incompleteSets.index):
-            from tabulate import tabulate
+        if self.reductionTarget == "all":
+            do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+            incompleteSets = do.get_incomplete_raw_frames_set()
+            if len(incompleteSets.index):
+                from tabulate import tabulate
 
-            print(
-                "\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:"
-            )
-            print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
+                print(
+                    "\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:"
+                )
+                print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
 
         self.log.debug("completed the ``reduce`` method")
         return None
@@ -212,35 +217,22 @@ class reducer(object):
             )
 
         elif reductionTarget.split(".")[-1].lower() == "sof":
-            sofFiles = [reductionTarget]
-            lastLen = 0
-            i = 0
-            while i < 10:
-                i += 1
-                sofFilesDF = pd.read_sql(
-                    f"SELECT distinct sof, recipe, file FROM product_frames WHERE file IN ( SELECT file FROM sof_map_base WHERE sof in ({','.join(map(repr, sofFiles))})) order by recipe_order;",
-                    con=conn,
-                )
+            sqlQuery = f"'{reductionTarget}'"
 
-                print(
-                    f"SELECT distinct sof, recipe, file FROM product_frames WHERE file IN ( SELECT file FROM sof_map_base WHERE sof in ({','.join(map(repr, sofFiles))})) order by recipe_order;",
-                )
+            for _ in range(4):  # Recursively query up to 5 times
+                sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
 
-                from tabulate import tabulate
+            sqlQuery = (
+                f"SELECT distinct sof, recipe from raw_frame_sets WHERE sof in ({sqlQuery}) order by recipe_order, sof"
+            )
 
-                print(tabulate(sofFilesDF[["recipe", "sof", "file"]], headers="keys", tablefmt="psql"))
-
-                sofFiles = list(set(sofFilesDF["sof"].unique().tolist() + sofFiles))
-                if len(sofFiles) == lastLen:
-                    rawGroups = sofFilesDF
-                    break
-                else:
-                    lastLen = len(sofFiles)
+            rawGroups = pd.read_sql(sqlQuery, con=conn)
 
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
-        mask = rawGroups["recipe"] == recipe.replace("-std", "")
-        rawGroups = rawGroups.loc[mask]
+        if recipe:
+            mask = rawGroups["recipe"] == recipe.replace("-std", "")
+            rawGroups = rawGroups.loc[mask]
 
         rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
         if self.pathToSettings:
