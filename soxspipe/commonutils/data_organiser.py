@@ -455,11 +455,11 @@ class data_organiser(object):
                 os.remove(self.rootDbPath)
                 print("The existing database has been removed to allow a complete refresh of the workspace.")
                 try:
-                    os.remove(self.rootDbPath+"-shm")
+                    os.remove(self.rootDbPath + "-shm")
                 except:
                     pass
                 try:
-                    os.remove(self.rootDbPath+"-wal")
+                    os.remove(self.rootDbPath + "-wal")
                 except:
                     pass
             # DELETE ALL ERROR LOG AND SOF FILES
@@ -2698,6 +2698,8 @@ class data_organiser(object):
         sqlQuery = f"update raw_frames set processed = 0 where processed < 0;"
         c.execute(sqlQuery)
 
+        print("1")
+
         # CLEAN UP FAILED FILES
         # DELETE FROM
         count = 0
@@ -2710,16 +2712,18 @@ class data_organiser(object):
             count = len(compromisedSofs)
 
             sqlQuery = f"update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete is 0)));"
+            print(sqlQuery)
             c.execute(sqlQuery)
 
         sqlQueries = [
             f"update raw_frames set processed = 0 where file in (select file from sof_map where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0))));",
             f"update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0)));",
             f"delete from sof_map_{self.sessionId} where sof in (  select s.sof from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0));",
-            f"update raw_frames set processed = -1 where file in (select distinct s.file from sof_map s, product_frames p where p.sof=s.sof and p.status = 'fail');"
+            f"update raw_frames set processed = -1 where file in (select distinct s.file from sof_map s, product_frames p where p.sof=s.sof and p.status = 'fail');",
         ]
         for sqlQuery in sqlQueries:
             c = self.conn.cursor()
+            print(sqlQuery)
             c.execute(sqlQuery)
             c.close()
 
@@ -2730,7 +2734,6 @@ class data_organiser(object):
                 os.remove(sofPath)
             except:
                 pass
-
 
         # RESET ALL PRODUCTS TO INCOMPLETE
         c = self.conn.cursor()
@@ -2749,6 +2752,7 @@ class data_organiser(object):
                 calibrationTypes = []
 
             for ttype in ttypes:
+                print(tech, ttype, recipe)
                 rawFrames, rawGroups = self.get_raw_frames_and_groups(
                     ttype=ttype,
                     tech=tech,
