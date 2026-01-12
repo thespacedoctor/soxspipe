@@ -666,14 +666,14 @@ class base_recipe(object):
             self.detectorParams["binning"] = [int(cdelt2[0]), int(cdelt1[0])]
 
         # CHECK IF BINNING IS MIXED IF RESPONSE FUNCTION (FLUX CALIBRATION) IS REQUIRED
-
-        mask = self.inputFrames.summary[kw("PRO_CATG")] == f"RESP_TAB_{self.arm}"
-        resp_match = self.inputFrames.summary[mask]
-        if len(resp_match) > 0:
-            if int(resp_match[0][kw("CDELT1")]) == cdelt1[0] and int(resp_match[0][kw("CDELT2")]) == cdelt2[0]:
-                pass
-            else:
-                raise TypeError("Input response function has different binning to science frames" % locals())
+        if self.arm != "NIR":
+            mask = self.inputFrames.summary[kw("PRO_CATG")] == f"RESP_TAB_{self.arm}"
+            resp_match = self.inputFrames.summary[mask]
+            if len(resp_match) > 0:
+                if int(resp_match[0][kw("CDELT1")]) == cdelt1[0] and int(resp_match[0][kw("CDELT2")]) == cdelt2[0]:
+                    pass
+                else:
+                    raise TypeError("Input response function has different binning to science frames" % locals())
 
         # MIXED READOUT SPEEDS IS BAD
         readSpeed = self.inputFrames.values(keyword=kw("DET_READ_SPEED"), unique=True)
