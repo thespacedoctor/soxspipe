@@ -1,0 +1,112 @@
+# SOXSPIPE SET OF FILES SETUP
+bias_frame:
+  recipe: mbias
+  eso dpr tech: 
+  eso dpr type: 
+    BIAS:
+  products: 
+    - fits image:
+        eso pro type: REDUCED
+        eso pro tech: IMAGE
+        eso pro catg: MASTER_BIAS
+# dark_frame: 
+#   recipe: mdark
+#   eso dpr tech: 
+#   eso dpr type: 
+#     DARK:
+#   products: 
+#     - fits image:
+#         eso pro type: REDUCED
+#         eso pro tech: IMAGE
+#         eso pro catg: MASTER_DARK
+# single_pinhole_arc:
+#   recipe: disp_sol
+#   eso dpr tech: ["ECHELLE,PINHOLE", "IMAGE"]
+#   eso dpr type: 
+#     LAMP,WAVE:
+#   products: 
+# order_centre_trace:
+#   recipe: order_centres
+#   eso dpr tech: ["ECHELLE,PINHOLE", "IMAGE"]
+#   eso dpr type: 
+#     LAMP,FLAT:
+#   products: 
+# flat_frame:
+#   recipe: mflat
+#   eso dpr tech: ["ECHELLE,SLIT", "IMAGE"]
+#   eso dpr type:
+#     LAMP,FLAT:
+#   products: 
+#     - fits image:
+#         eso pro type: REDUCED
+#         eso pro tech: IMAGE
+#         eso pro catg: MASTER_FLAT
+# multi_pinhole_arc:
+#   recipe: spat_sol
+#   eso dpr tech: ["ECHELLE,MULTI-PINHOLE", "IMAGE"]
+#   eso dpr type: 
+#     LAMP,WAVE:
+#   products: 
+# flux_standard_stare:
+#   recipe: stare
+#   eso dpr tech: ["ECHELLE,SLIT,STARE"]
+#   eso dpr type: 
+#     STD,FLUX:
+#     STD:
+#   products: 
+# telluric_standard_stare:
+#   recipe: stare
+#   eso dpr tech: ["ECHELLE,SLIT,STARE"]
+#   eso dpr type: 
+#     STD,TELLURIC:
+#     STD,SKY:
+#   products: 
+# flux_standard_nodding:
+#   recipe: nod
+#   eso dpr tech: ["ECHELLE,SLIT,NODDING"]
+#   eso dpr type: 
+#     STD,FLUX:
+#     STD:
+#   products: 
+# telluric_standard_nodding:
+#   recipe: nod
+#   eso dpr tech: ["ECHELLE,SLIT,NODDING"]
+#   eso dpr type: 
+#     STD,TELLURIC:
+#     STD,SKY:
+#   products: 
+# flux_standard_offset:
+#   recipe: offset
+#   eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+#   eso dpr type: 
+#     STD,FLUX:
+#     STD:
+#   products:
+# telluric_standard_offset:
+#   recipe: offset
+#   eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+#   eso dpr type: 
+#     STD,TELLURIC:
+#     STD,SKY:
+#   products: 
+# science_stare:
+#   recipe: stare
+#   eso dpr tech: ["ECHELLE,SLIT,STARE"]
+#   eso dpr type: 
+#     OBJECT:
+#     OBJECT,ASYNC:
+#   products: 
+# science_nodding:
+#   recipe: nod
+#   eso dpr tech: ["ECHELLE,SLIT,NODDING"]
+#   eso dpr type: 
+#     OBJECT:
+#     OBJECT,ASYNC:
+#   products: 
+# science_offset:
+#   recipe: offset
+#   eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+#   eso dpr type: 
+#     OBJECT:
+#     OBJECT,ASYNC:
+#   products: 

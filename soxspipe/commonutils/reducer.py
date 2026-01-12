@@ -84,13 +84,10 @@ class reducer(object):
         self.recipeList = [
             "mbias",
             "mdark",
-            "disp_sol",
+            "disp_solution",
             "order_centres",
             "mflat",
-            "spat_sol",
-            "nod-std",
-            "stare-std",
-            "offset-std",
+            "spat_solution",
             "nod",
             "stare",
             "offset",
@@ -118,46 +115,61 @@ class reducer(object):
 
         i = 0
 
+        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+        do.session_refresh(failure=None)
+
         if self.reductionTarget != "all":
             self.recipeList = [False]
 
-        for recipe in self.recipeList:
+        for rootRecipe in self.recipeList:
             # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
-            rawGroups = self.select_sof_files_to_process(recipe=recipe, reductionTarget=self.reductionTarget)
+            while True:
+                rawGroups = self.select_sof_files_to_process(recipe=rootRecipe, reductionTarget=self.reductionTarget)
 
-            for index, row in rawGroups.iterrows():
-                recipe = row["recipe"]
-                sof = row["sof"]
-                startTime = times.get_now_sql_datetime()
-                sof = self.sessionPath + "/sof/" + sof
+                if rawGroups.empty:
+                    break
 
-                try:
-                    run_recipe(
-                        self.log, recipe, sof, settings=self.settings, overwrite=self.overwrite, command=row["command"]
-                    )
-                    i += 1
-                except FileExistsError as e:
-                    continue
-                except Exception as e:
-                    # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                    self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-                    self.log.error(f'\nRecipe Command: {row["command"]}\n\n')
+                for index, row in rawGroups.iterrows():
+                    recipe = row["recipe"]
+                    sof = row["sof"]
+                    startTime = times.get_now_sql_datetime()
+                    sof = self.sessionPath + "/sof/" + sof
 
-                    if self.quitOnFail:
-                        sys.exit(0)
+                    try:
+                        run_recipe(
+                            self.log,
+                            recipe,
+                            sof,
+                            settings=self.settings,
+                            overwrite=self.overwrite,
+                            command=row["command"],
+                        )
+                        i += 1
+                    except FileExistsError as e:
+                        continue
+                    except Exception as e:
+                        # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                        self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                        self.log.error(f'\nRecipe Command: {row["command"].replace("-obj ", " ")}\n\n')
 
-                    do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-                    do.session_refresh()
-                    if not self.daemon:
-                        print(f"{'='*70}\n")
-                    continue
+                        if self.quitOnFail:
+                            sys.exit(0)
+
+                        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                        do.session_refresh()
+                        if not self.daemon:
+                            print(f"{'='*70}\n")
+                        break
+                else:
+                    # If no break occurred in the loop, exit the while loop
+                    break
 
                 ## FINISH LOGGING ##
                 endTime = times.get_now_sql_datetime()
                 runningTime = times.calculate_time_difference(startTime, endTime)
                 sys.argv[0] = os.path.basename(sys.argv[0])
 
-                self.log.print(f'\nRecipe Command: {row["command"]} ')
+                self.log.print(f'\nRecipe Command: {row["command"].replace("-obj ", " ")} ')
                 self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                 if not self.daemon:
                     print(f"{'='*70}\n")
@@ -211,13 +223,17 @@ class reducer(object):
             else:
                 recipeText = f"= '{recipe}'"
                 std = " AND `eso dpr type` not like '%STD%' "
+            std = ""
             rawGroups = pd.read_sql(
                 f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {std} order by recipe_order, sof",
                 con=conn,
             )
+            print(
+                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {std} order by recipe_order, sof"
+            )
 
         elif reductionTarget.split(".")[-1].lower() == "sof":
-            sqlQuery = f"'{reductionTarget}'"
+            sqlQuery = f"select sof from product_frames where sof = '{reductionTarget}' and complete = 1"
 
             for _ in range(4):  # Recursively query up to 5 times
                 sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
@@ -227,6 +243,11 @@ class reducer(object):
             )
 
             rawGroups = pd.read_sql(sqlQuery, con=conn)
+
+        if not len(rawGroups.index):
+            self.log.warning("The SOF file selected for processing is either missing or incomplete.")
+            conn.close()
+            return pd.DataFrame(columns=["recipe", "sof", "command"])
 
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
@@ -282,7 +303,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             command=command,
         )
 
-    if recipe == "disp_sol":
+    if recipe == "disp_solution":
         from soxspipe.recipes import soxs_disp_solution
 
         soxs_recipe = soxs_disp_solution(
@@ -315,7 +336,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             command=command,
         )
 
-    if recipe == "spat_sol":
+    if recipe == "spat_solution":
         from soxspipe.recipes import soxs_spatial_solution
 
         soxs_recipe = soxs_spatial_solution(
@@ -326,7 +347,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             command=command,
         )
 
-    if recipe == "stare":
+    if "stare" in recipe:
         from soxspipe.recipes import soxs_stare
 
         soxs_recipe = soxs_stare(
@@ -337,7 +358,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             command=command,
         )
 
-    if recipe == "nod":
+    if "nod" in recipe:
         from soxspipe.recipes import soxs_nod
 
         soxs_recipe = soxs_nod(

@@ -212,7 +212,7 @@ class create_dispersion_map(object):
     def _set_recipe_name(self):
         """*Determine recipe name based on whether this is first guess or spatial solution*"""
         if self.firstGuessMap:
-            self.recipeName = "soxs-spatial-solution"
+            self.recipeName = "soxs-spat-solution"
         else:
             self.recipeName = "soxs-disp-solution"
 

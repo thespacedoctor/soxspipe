@@ -21,7 +21,7 @@ instrument: soxs
 #     poly-clipping-iteration-limit: 10
 #     poly-fitting-residual-clipping-sigma: 5
 
-# soxs-order-centre:
+# soxs-order-centres:
 #     order-sample-count: 50
 #     slice-length: 10
 #     peak-sigma-limit: 3
@@ -29,7 +29,7 @@ instrument: soxs
 #     poly-fitting-residual-clipping-sigma: 1.5
 #     poly-clipping-iteration-limit: 5
 
-# soxs-spatial-solution:
+# soxs-spat-solution:
 #     use_flat: False
 #     pixel-window-size: 10
 #     order-deg: 3

@@ -344,8 +344,8 @@ class _base_detect(object):
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
             tag = "continuum"
-            if "order-centre" in self.recipeName.lower():
-                tag = "order centre"
+            if "order-centres" in self.recipeName.lower():
+                tag = "order centres"
 
             self.qc = pd.concat(
                 [
@@ -559,7 +559,7 @@ class detect_continuum(_base_detect):
         traceFrame=traceFrame,
         dispersion_map=dispersion_map,
         settings=settings,
-        recipeName="soxs-order-centre"
+        recipeName="soxs-order-centres"
     )
     order_table_path = detector.get()
     ```

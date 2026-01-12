@@ -88,7 +88,7 @@ class data_organiser(object):
 
         exists = os.path.exists(self.rootDbPath)
         if exists:
-            self.conn = sql.connect(self.rootDbPath)
+            self.conn = self._get_or_create_db_connection()
         else:
             self.conn = None
 
@@ -324,7 +324,7 @@ class data_organiser(object):
                 "ALL": [["REDUCED", "ECHELLE,PINHOLE", "DISP_TAB", "TABLE", None, None, "soxs-disp-solution"]]
             },
             "order_centres": {
-                "ALL": [["REDUCED", "ECHELLE,SLIT", "ORDER_TAB", "TABLE", None, None, "soxs-order-centre"]]
+                "ALL": [["REDUCED", "ECHELLE,SLIT", "ORDER_TAB", "TABLE", None, None, "soxs-order-centres"]]
             },
             "mflat": {
                 "ALL": [
@@ -385,6 +385,14 @@ class data_organiser(object):
             "eso obs id",
             "eso tpl name",
             "filter",
+            "object",
+        ]
+
+        self.productFilterKeywords = [
+            "eso seq arm",
+            "eso pro catg",
+            "eso pro tech",
+            "eso pro type",
         ]
 
         # THIS IS THE ORDER TO PROCESS THE FRAME TYPES
@@ -429,13 +437,38 @@ class data_organiser(object):
 
         return None
 
-    def prepare(self):
-        """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*"""
+    def prepare(self, refresh=False):
+        """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*
+
+        **Key Arguments:**
+        - ``refresh`` -- trigger a complete refresh the workspace during preparation (delete database and do a complete prepare)
+        """
         self.log.debug("starting the ``prepare`` method")
         import codecs
-        import shutil
-        import sqlite3 as sql
-        from soxspipe.commonutils import keyword_lookup
+        import glob
+
+        if refresh:
+            # DELETE THE SQLITE DATABASE IF IT EXISTS
+            exists = os.path.exists(self.rootDbPath)
+            self.conn = None
+            if exists:
+                os.remove(self.rootDbPath)
+                print("The existing database has been removed to allow a complete refresh of the workspace.")
+                try:
+                    os.remove(self.rootDbPath+"-shm")
+                except:
+                    pass
+                try:
+                    os.remove(self.rootDbPath+"-wal")
+                except:
+                    pass
+            # DELETE ALL ERROR LOG AND SOF FILES
+            for root, dirs, files in os.walk(os.path.abspath(self.rootDir)):
+                for file in files:
+                    if file.endswith("ERROR.log") or file.endswith(".sof"):
+                        os.remove(os.path.join(root, file))
+
+        self._select_instrument()
 
         # TEST FITS FILES OR raw_frames DIRECT EXISTS
         fitsExist = self._fits_files_exist()
@@ -450,8 +483,6 @@ class data_organiser(object):
 
         # TEST FOR SQLITE DATABASE - ADD IF MISSING
         self.conn = self._get_or_create_db_connection()
-
-        self._select_instrument()
 
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
@@ -487,19 +518,7 @@ class data_organiser(object):
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
         self._flag_files_to_ignore()
-
-        if True:
-            self.build_sof_files()
-        else:
-            # POPULATION OF THE PRODUCT FRAMES NEEDS TO BE LOOPED TO ACCOUNT FOR AlL THE REDUCTION STAGES
-            i = 0
-            while i < 6:
-
-                completeCount = self._populate_product_frames_db_table()
-                if completeCount:
-                    break
-                i += 1
-            self._write_sof_files()
+        self.build_sof_files()
 
         print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
         print(f"In this workspace you will find:\n")
@@ -531,7 +550,7 @@ class data_organiser(object):
 
         import pandas as pd
 
-        query = 'select distinct "eso seq arm", "night start date", "night start mjd", "eso obs name","eso obs id" from raw_frame_sets where complete = 1 and recipe in ("nod","stare","offset") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
+        query = 'select distinct "eso seq arm", "night start date", "night start mjd", "eso obs name","eso obs id" from raw_frame_sets where complete = 1 and recipe in ("nod-obj","stare-obj","offset-obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
         obsDf = pd.read_sql(query, con=self.conn)
 
         if len(obsDf.index):
@@ -551,7 +570,9 @@ class data_organiser(object):
 
         import pandas as pd
 
-        query = 'select distinct "eso seq arm", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod","stare","offset") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
+        print("HERE")
+
+        query = 'select distinct "eso seq arm", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod-obj","stare-obj","offset-obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
         sofDf = pd.read_sql(query, con=self.conn)
 
         if len(sofDf.index):
@@ -744,7 +765,7 @@ class data_organiser(object):
         else:
             self.instrument = instrument[0]
 
-        self._select_instrument(inst=instrument)
+        self._select_instrument(inst=self.instrument)
 
         if remainingFiles < 1:
             print(f"The instrument has been set to '{self.instrument}'")
@@ -866,6 +887,8 @@ class data_organiser(object):
         if len(filesNotInFS):
             filesNotInFS = ("','").join(filesNotInFS)
             sqlQuery = f"delete from {tableName} where filepath in ('{filesNotInFS}');"
+            c.execute(sqlQuery)
+            sqlQuery = f"delete from sof_map_{self.sessionId} where sof in (select sof from sof_map_{self.sessionId} where filepath in ('{filesNotInFS}'));"
             c.execute(sqlQuery)
 
         if len(filesNotInDB):
@@ -1816,9 +1839,8 @@ class data_organiser(object):
 
         import pandas as pd
         from tabulate import tabulate
-        import sqlite3 as sql
 
-        conn = sql.connect(self.rootDbPath)
+        conn = self._get_or_create_db_connection()
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         self.sofDir = self.sessionPath + "/sof"
@@ -1829,7 +1851,10 @@ class data_organiser(object):
 
         # GROUP RESULTS
         for name, group in df.groupby("sof"):
-            myFile = open(self.sofDir + "/" + name, "w")
+            sofPath = self.sofDir + "/" + name
+            if os.path.exists(sofPath):
+                continue
+            myFile = open(sofPath, "w")
             content = tabulate(group[["filepath", "tag"]], tablefmt="plain", showindex=False)
             myFile.write(content)
             myFile.close()
@@ -1855,7 +1880,7 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
 
-        conn = sql.connect(self.rootDbPath)
+        conn = self._get_or_create_db_connection()
 
         rawGroups = pd.read_sql(
             "SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order", con=conn
@@ -1901,7 +1926,7 @@ class data_organiser(object):
         rootDbExists = os.path.exists(self.rootDbPath)
         if rootDbExists:
             # CREATE THE DATABASE CONNECTION
-            self.conn = sql.connect(self.rootDbPath)
+            self.conn = self._get_or_create_db_connection()
             c = self.conn.cursor()
             sqlQuery = "select distinct instrume from raw_frames"
             c.execute(sqlQuery)
@@ -1968,17 +1993,27 @@ class data_organiser(object):
         # ADD A NEW STATUS COLUMN IN product_frames FOR THIS SESSION
         import sqlite3 as sql
 
-        conn = sql.connect(self.rootDbPath)
+        conn = self._get_or_create_db_connection()
         c = conn.cursor()
         sqlQuery = f"ALTER TABLE product_frames ADD status_{sessionId} TEXT;"
-        c.execute(sqlQuery)
+        try:
+            c.execute(sqlQuery)
+        except:
+            pass
 
         # DUPLICATE TEH SOF_MAP TABLE
-        sqlQuery = "SELECT sql FROM sqlite_master WHERE type='table' AND name='sof_map'"
+        sqlQuery = "SELECT sql FROM sqlite_master WHERE type='table' AND name='z_sof_map'"
         c.execute(sqlQuery)
         sqlQuery = c.fetchall()[0][0]
-        sqlQuery = sqlQuery.replace("sof_map", f"sof_map_{sessionId}")
-        c.execute(sqlQuery)
+        sqlQuery = sqlQuery.replace("z_sof_map", f"sof_map_{sessionId}")
+        try:
+            c.execute(sqlQuery)
+        except:
+            pass
+
+        sqlQueries = [f"DROP VIEW IF EXISTS sof_map;", f"CREATE VIEW sof_map as select * from sof_map_{sessionId};"]
+        for sqlQuery in sqlQueries:
+            c.execute(sqlQuery)
 
         c.close()
 
@@ -2155,12 +2190,15 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``session_refresh`` method")
 
-        if failure:
+        import sys
+        import os
+        import pandas as pd
+
+        if failure is True:
             self.log.print("\nRefeshing SOF files due to recipe failure\n")
-        else:
+        elif failure is False:
             self.log.print("\nRefreshing SOF files, as a previously failed recipe is now passing.\n")
         import codecs
-        import sqlite3 as sql
 
         # IF SESSION ID FILE DOES NOT EXIST, REPORT
         exists = os.path.exists(self.sessionIdFile)
@@ -2175,20 +2213,12 @@ class data_organiser(object):
         self.sessionPath = self.sessionsDir + "/" + sessionId
         self.sessionId = sessionId
 
-        self.conn = sql.connect(self.rootDbPath)
+        self.conn = self._get_or_create_db_connection()
 
         # SELECT INSTR
         self._select_instrument()
 
-        # CLEAN UP FAILED FILES
-        c = self.conn.cursor()
-        sqlQuery = f"delete from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and p.status_{sessionId} = 'fail');"
-        c.execute(sqlQuery)
-        c.close()
-
-        # OPTIMISE: 90%
-        self._populate_product_frames_db_table()
-        self._write_sof_files()
+        self.build_sof_files()
 
         sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
@@ -2540,6 +2570,12 @@ class data_organiser(object):
         import sqlite3 as sql
 
         try:
+            if self.conn:
+                return self.conn
+        except:
+            pass
+
+        try:
             with open(self.rootDbPath):
                 pass
             self.freshRun = False
@@ -2551,13 +2587,20 @@ class data_organiser(object):
             self.freshRun = True
             emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
             shutil.copyfile(emptyDb, self.rootDbPath)
-        return sql.connect(self.rootDbPath)
+
+        conn = sql.connect(self.rootDbPath, timeout=30, autocommit=True)
+        c = conn.cursor()
+        c.execute("PRAGMA busy_timeout=10")
+        c.execute("PRAGMA journal_mode = WAL")
+        c.close()
+
+        return conn
 
     # METHOD TO RETURN ALL THE RAW FRAME SETS THAT ARE NOT COMPLETE FROM THE DATABASE AS A PANDAS TABLE
     def get_incomplete_raw_frames_set(self):
         import pandas as pd
 
-        query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod","stare","offset")'
+        query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod-obj","stare-obj","offset-obj")'
         return pd.read_sql(query, con=self.conn)
 
     def _select_instrument(self, inst=False):
@@ -2610,60 +2653,89 @@ class data_organiser(object):
         sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ('{theseKeywords}')"
         c.execute(sqlQuery)
         self.conn.commit()
-        c.close()
 
         # FLAG SIMULATION FILES TO IGNORE
-        c = self.conn.cursor()
         sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not like '%OBJECT%' and `eso dpr type` not like '%STD%' and simulation = 1"
         c.execute(sqlQuery)
         self.conn.commit()
-        c.close()
 
         # FLAG DFLATS TO IGNORE IF SPECIFIED IN SETTINGS
         if "ignore-dflats" in self.settings and self.settings["ignore-dflats"]:
-            c = self.conn.cursor()
             sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DFLAT%'"
             c.execute(sqlQuery)
             self.conn.commit()
-            c.close()
 
         # FLAG DOME FLATS TO IGNORE IF SPECIFIED IN SETTINGS
         if "ignore-dome-flats" in self.settings and self.settings["ignore-dome-flats"]:
-            c = self.conn.cursor()
             sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DOME,FLAT%'"
             c.execute(sqlQuery)
             self.conn.commit()
-            c.close()
+
+        sqlQueries = ["update raw_frames set ignore = 1 WHERE `slit` = 'UNDEFINED'"]
+        sqlQueries.append("update raw_frames set ignore = 1 WHERE `eso dpr type` like '%FLAT%' and `slit` = 'BLANK'")
+        sqlQueries.append("update raw_frames set ignore = 1 WHERE `eso seq arm` = 'ACQ'")
+        for sqlQuery in sqlQueries:
+            c.execute(sqlQuery)
+            self.conn.commit()
+        c.close()
 
     def build_sof_files(self):
         """*scan the raw frame table to generate the listing of products that are expected to be created and then write out all of the needed SOF files*
 
-        **Key Arguments:**
-            # -
-
-        **Return:**
-
-        - None
-
         **Usage:**
 
         ```python
-        usage code
+        self.build_sof_files()
         ```
         """
         self.log.debug("starting the ``_populate_product_frames_db_table`` method")
 
         import pandas as pd
-        import sqlite3 as sql
-        import time
-        from collections import defaultdict
-        from itertools import product
 
-        sm = self.sofMapLookup
-        # rawFrames, rawGroups, rawGroupsDB = self.get_raw_frames_and_groups()
-        # calibrationFrames, calibrationTables = self.get_calibration_frames()
-        # RETURN HERE: add completed column to rawGroups from rawGroupsDB
+        c = self.conn.cursor()
+        sqlQuery = f"update product_frames set status = status_{self.sessionId};"
+        c.execute(sqlQuery)
+        sqlQuery = f"update raw_frames set processed = 0 where processed < 0;"
+        c.execute(sqlQuery)
 
+        # CLEAN UP FAILED FILES
+        # DELETE FROM
+        count = 0
+        oldCount = -1
+        while count != oldCount:
+            oldCount = count
+            c = self.conn.cursor()
+            sqlQuery = f"select distinct sof from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0));"
+            compromisedSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
+            count = len(compromisedSofs)
+
+            sqlQuery = f"update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete is 0)));"
+            c.execute(sqlQuery)
+
+        sqlQueries = [
+            f"update raw_frames set processed = 0 where file in (select file from sof_map where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0))));",
+            f"update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0)));",
+            f"delete from sof_map_{self.sessionId} where sof in (  select s.sof from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0));",
+            f"update raw_frames set processed = -1 where file in (select distinct s.file from sof_map s, product_frames p where p.sof=s.sof and p.status = 'fail');"
+        ]
+        for sqlQuery in sqlQueries:
+            c = self.conn.cursor()
+            c.execute(sqlQuery)
+            c.close()
+
+        # DELETE COMPROMISED SOF FILES
+        for sof in compromisedSofs:
+            sofPath = self.sessionPath + "/sof/" + sof
+            try:
+                os.remove(sofPath)
+            except:
+                pass
+
+
+        # RESET ALL PRODUCTS TO INCOMPLETE
+        c = self.conn.cursor()
+
+        allRawGroups = []
         for recipeOrder, (name, filters) in enumerate(self.sofMapLookup.items()):
 
             # READ FILTER VARIABLES
@@ -2671,128 +2743,98 @@ class data_organiser(object):
             tech = filters["eso dpr tech"]
             productTypes = filters["products"] or []
             recipe = filters["recipe"]
+            if "calibrations" in filters:
+                calibrationTypes = filters["calibrations"]
+            else:
+                calibrationTypes = []
+
             for ttype in ttypes:
-                print()
-                print(name, ttype)
-                rawFrames, rawGroups, rawGroupsDB, rawGroupsCount = self.get_raw_frames_and_groups(
-                    ttype=ttype, tech=tech, recipe=recipe, recipeOrder=recipeOrder
+                rawFrames, rawGroups = self.get_raw_frames_and_groups(
+                    ttype=ttype,
+                    tech=tech,
+                    recipe=recipe,
+                    recipeOrder=recipeOrder,
+                    filterName=name,
+                    unprocessedOnly=True,
                 )
-                if not len(rawGroups.index):
-                    print("no raw groups")
+
+                # ADD PREDICTED PRODUCT TO PRODUCT TABLE - DETERMINE IF COMPLETE LATER
+                incompleteProducts = self.predict_product_frames(productTypes, rawGroups, recipe)
+
+                if not incompleteProducts:
                     continue
 
-                self.predict_product_frames(productTypes, rawGroups, recipe)
+                allRawGroups.append(rawGroups)
 
-                # RAW CONTENT OF SOF FILES
+                if not len(calibrationTypes):
+                    # MBIAS AND MDARK -- ALWAYS COMPLETE (NO PRIOR CALIBRATION REQUIRED)
+                    sqlQuery = f"select sof from product_frames where recipe = '{recipe}' and complete = 0;"
+                    containerSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
+                    self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
 
-                from tabulate import tabulate
+                    sqlQuery = f"update product_frames set complete = 1 where recipe = '{recipe}' and complete = 0;"
+                    c.execute(sqlQuery)
 
-                # print(tabulate(rawFrames, headers="keys", tablefmt="psql"))
-                print(tabulate(rawGroups, headers="keys", tablefmt="psql"))
+                else:
 
-                calibrationFrames, calibrationTables = self.get_calibration_frames()
+                    if isinstance(calibrationTypes, dict):
+                        for arm, calType in calibrationTypes.items():
+                            ffrom = ", ".join([f"cal_{ct}" for ct in calType])
+                            where1 = " and ".join([f"product_frames.sof=cal_{ct}.sof" for ct in calType])
+                            where2 = " and ".join(
+                                [
+                                    f"(cal_{ct}.upstream_status = 'pass' or cal_{ct}.upstream_status is null)"
+                                    for ct in calType
+                                ]
+                            )
+
+                            sqlQuery = f"""select sof from product_frames where uuid in 
+                            (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete = 0;"""
+                            containerSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
+
+                            self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
+
+                            sqlQuery = f"""update product_frames set complete = 1 where uuid in 
+                            (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete = 0;
+                            """
+                            c.execute(sqlQuery)
+
+                            # FOR COMPLETE PRODUCTS, ADD CALIBRATION FILES TO SOF MAP
+                            # NEED TO ALSO ADD THE RAW FILES TOO ... ADD RAW FRAMES, SET COMPLETE = 1 WHERE PRODUCT FRAMES COMPLETE = 1
+                            for ct in calType:
+                                sqlQuery = f"""select cal_{ct}.file, cal_{ct}.upstream_tag as tag, product_frames.sof, cal_{ct}.filepath, product_frames.complete from product_frames, cal_{ct} where product_frames.complete = 1 and product_frames.sof=cal_{ct}.sof;"""
+                                newSof = pd.read_sql(sqlQuery, con=self.conn)
+
+                                if len(newSof):
+                                    self._dataframe_to_sqlite(newSof, f"sof_map_{self.sessionId}", replace=False)
+
+        self.conn.commit()
+        c.close()
+
+        # CONCAT ALL RAW GROUPS
+        if len(allRawGroups):
+            rawGroups = pd.concat(allRawGroups, ignore_index=True)
+            rawGroups = rawGroups.drop(columns=["filepaths"])
+            self._dataframe_to_sqlite(rawGroups, "raw_frame_sets", replace=False)
+
+        c = self.conn.cursor()
+        sqlQueries = [
+            "update raw_frame_sets set complete = 1 where sof in (select r.sof from raw_frame_sets r, product_frames p where p.sof = r.sof and p.complete = 1);",
+            "update raw_frame_sets set complete = 0 where sof in (select r.sof from raw_frame_sets r, product_frames p where p.sof = r.sof and p.complete = 0);",
+            "update raw_frames set processed = 1 where processed = 0 and filepath in (select filepath from sof_map);",
+        ]
+        for sqlQuery in sqlQueries:
+            c.execute(sqlQuery)
+        self.conn.commit()
+        c.close()
+
+        self._write_sof_files()
 
         return
 
-        # SEND TO DATABASE
-        c = self.conn.cursor()
-        sqlQuery = f"delete from sof_map_{self.sessionId};"
-        c.execute(sqlQuery)
-        c.close()
-
-        # BULK ADD TAG COLUMN
-        rawFrames["tag"] = rawFrames["eso dpr type"].replace(",", "_") + "_" + rawFrames["eso seq arm"]
-
-        for o in self.reductionOrder:
-
-            if "FLAT" in o:
-                rawMask = rawFrames["eso dpr type"].str.contains("FLAT")
-            else:
-                rawMask = rawFrames["eso dpr type"].str.contains(o, case=False)
-            rawFramesFiltered = rawFrames.loc[rawMask]
-
-            keywords = ["slit", "eso seq arm", "binning", "rospeed", "eso dpr type", "lamp", "exptime", "slit"]
-            rawFramesSubset = rawFramesFiltered[keywords].drop_duplicates().copy()
-            # EXTRACT VALUES FOR EACH KEYWORD WITHOUT APPLYING UNIQUE FILTERING
-            arms = rawFramesSubset["eso seq arm"]
-            binnings = rawFramesSubset["binning"]
-            rospeeds = rawFramesSubset["rospeed"]
-            types = rawFramesSubset["eso dpr type"]
-            lamps = rawFramesSubset["lamp"]
-            exptimes = rawFramesSubset["exptime"]
-            slits = rawFramesSubset["slit"]
-
-            ## ALSO FILTER CALIBRATIONS
-
-            # OPTIMISE: 95%
-            if not "FLAsT" in o:
-                # GET UNIQUE VALUES IN COLUMN
-                slits = [False] * len(slits)
-
-            if o.lower() not in self.typeMap:
-                continue
-
-            for row in self.typeMap[o.lower()]:
-                slitmasks = False
-                techs = False
-                if row["slitmask"]:
-                    slitmasks = row["slitmask"]
-                if row["tech"]:
-                    techs = [item.upper() for item in row["tech"]]
-                recipe = row["recipe"]
-                # Iterate over all permutations
-                # for slit, arm, binning, rospeed, type_, lamp, exptime in product(
-                #     slits, arms, binnings, rospeeds, types, lamps, exptimes
-                # ):
-                #     print(slit, arm, binning, rospeed, type_, lamp, exptime)
-                #     pass
-
-                # ITERATE OVER ALL PERMUTATIONS
-                for slit, arm, binning, rospeed in zip(slits, arms, binnings, rospeeds):
-
-                    rawGroups = self.generate_sof_names_and_maps(
-                        reductionOrder=o,
-                        rawFrames=rawFramesFiltered,
-                        calibrationFrames=calibrationFrames,
-                        calibrationTables=calibrationTables,
-                        rawGroups=rawGroups,
-                        recipe=recipe,
-                        slit=slit,
-                        slitmasks=slitmasks,
-                        techs=techs,
-                        arm=arm,
-                        binning=binning,
-                        rospeed=rospeed,
-                    )
-                    rawGroups = self.populate_products_table(reductionOrder=o, rawGroups=rawGroups)
-
-        mask = rawGroups["complete"] == 1
-        completeCountEnd = len(rawGroups.loc[mask].index)
-
-        if completeCountStart == completeCountEnd:
-            return completeCountStart
-
-        # SEND TO DATABASE
-        c = self.conn.cursor()
-        sqlQuery = f"delete from raw_frame_sets;"
-        c.execute(sqlQuery)
-        c.close()
-
-        keepTrying = 0
-        while keepTrying < 7:
-            try:
-                rawGroups.replace(["--"], None).to_sql("raw_frame_sets", con=self.conn, index=False, if_exists="append")
-                keepTrying = 10
-            except Exception as e:
-                if keepTrying > 5:
-                    raise Exception(e)
-                time.sleep(1)
-                keepTrying += 1
-
-        self.log.debug("completed the ``_populate_product_frames_db_table`` method")
-        return None
-
-    def get_raw_frames_and_groups(self, ttype=None, arm=None, tech=None, recipe=None, recipeOrder=None):
+    def get_raw_frames_and_groups(
+        self, ttype=None, arm=None, tech=None, recipe=None, recipeOrder=None, filterName=None, unprocessedOnly=False
+    ):
         """*Process raw frames to group and calculate mean MJD values.*
 
         **Key Arguments:**
@@ -2801,17 +2843,17 @@ class data_organiser(object):
             - ``tech`` -- optional list of `eso dpr tech` to filter by
             - ``recipe`` -- recipe name to assign to groups
             - ``recipeOrder`` -- recipe reduction order
+            - ``filterName`` -- optional name to filter the groups
+            - ``unprocessedOnly`` -- if True, only return unprocessed raw frames
 
         **Return:**
             - `rawFrames` -- processed raw frames dataframe
             - `rawGroups` -- grouped raw frames with calculated MJD values
-            - `rawGroupsDB` -- cached raw frame sets from the database
-            - `rawGroupsCount` -- count of complete raw frame sets for the specified type
 
         **Usage:**
 
         ```python
-        rawFrames, rawGroups, rawGroupsDB, rawGroupsCount = self.get_raw_frames_and_groups()
+        rawFrames, rawGroups = self.get_raw_frames_and_groups()
         ```
         """
         import pandas as pd
@@ -2841,6 +2883,9 @@ class data_organiser(object):
             # JOIN ITEMS IN TECH LIST TO A COMMA-SEPARATED STRING
             tech = "and `eso dpr tech` in (" + ",".join(["'" + t + "'" for t in tech]) + ")"
 
+        if unprocessedOnly:
+            where = where + " and processed = 0"
+
         # READ IN RAW FRAMES TABLE
         conn = self.conn
         rawFrames = pd.read_sql(
@@ -2866,28 +2911,35 @@ class data_organiser(object):
         rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw)
 
         if not len(rawFramesNoOffFrames.index):
-            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), 0
+            return pd.DataFrame(), pd.DataFrame()
 
         mjds = rawGroups.mean(numeric_only=True)["mjd-obs"].values
         # MANIPULATE ALL STRINGS IN startTime TO BE OF FORMAT YYYY-MM-DDTHH:MM:SS.SSS
         startTime = rawGroups.min()["date-obs"].values
+        filepaths = [list(group["filepath"].values) for name, group in rawGroups]
+
+        # PRINT EACH GROUP IN THE GROUPED DATAFRAME
+
         startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
         rawGroups = rawGroups.size().reset_index(name="counts")
         rawGroups["mjd-obs"] = mjds
         rawGroups["date-obs"] = startTime
+        rawGroups["filepaths"] = filepaths
 
         # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
         mask = rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = rawFrames.loc[rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])]
-        rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
-        rawScienceFrames = rawScienceFrames.size().reset_index(name="counts")
-        startTime = rawScienceFrames["date-obs"].values
-        startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
-        rawScienceFrames["date-obs"] = startTime
-        # MERGE DATAFRAMES
         if len(rawScienceFrames.index):
+            rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
+            filepaths = [list(group["filepath"].values) for name, group in rawScienceFrames]
+            rawScienceFrames = rawScienceFrames.size().reset_index(name="counts")
+            rawScienceFrames["filepaths"] = filepaths
+            startTime = rawScienceFrames["date-obs"].values
+            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
+            rawScienceFrames["date-obs"] = startTime
+            # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
         # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
@@ -2906,15 +2958,17 @@ class data_organiser(object):
             rawPinholeFrames = rawFrames.loc[
                 rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
             ]
-        rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
-        rawPinholeFrames = rawPinholeFrames.size().reset_index(name="counts")
-        startTime = rawPinholeFrames["date-obs"].values
-        startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
-        rawPinholeFrames["date-obs"] = startTime
-
-        # MERGE DATAFRAMES
         if len(rawPinholeFrames.index):
+            rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
+            filepaths = [list(group["filepath"].values) for name, group in rawPinholeFrames]
+            rawPinholeFrames = rawPinholeFrames.size().reset_index(name="counts")
+            rawPinholeFrames["filepaths"] = filepaths
+            startTime = rawPinholeFrames["date-obs"].values
+            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
+            rawPinholeFrames["date-obs"] = startTime
+            # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
+
         rawGroups["recipe"] = recipe
         if "STD,FLUX" in ttype:
             recipe += "_std_flux"
@@ -2937,31 +2991,35 @@ class data_organiser(object):
             + "s"
             + "_"
             + rawGroups["instrume"].astype(str)
-            + ".sof"
         )
-        rawGroups["sof"] = rawGroups["sof"].str.upper().str.replace(".SOF", ".sof")
-
+        rawGroups["sof"] = rawGroups["sof"].str.upper()
+        if "science" in filterName.lower():
+            rawGroups["sof"] += "_" + rawGroups["object"].astype(str).replace("-", "_")
         for _ in range(5):
             rawGroups["sof"] = rawGroups["sof"].str.replace("_--_", "_", regex=False)
+            rawGroups["sof"] = rawGroups["sof"].str.replace(" ", "", regex=False)
+            rawGroups["sof"] = rawGroups["sof"].str.replace(".", "_", regex=False)
+            rawGroups["sof"] = rawGroups["sof"].str.replace("__", "_", regex=False)
+        rawGroups["sof"] += ".sof"
 
-        rawGroups["sof"] = rawGroups["sof"].str.replace("MBIAS_0.0S_", "MBIAS_")
-        rawGroups["sof"] = rawGroups["sof"].str.replace("DISP_SOL_.*?_PINHOLE", "DSOL_PINHOLE", regex=True)
-        rawGroups["sof"] = rawGroups["sof"].str.replace("SPAT_SOL_.*?_MULTPIN", "SSOL_MULTPIN", regex=True)
+        rawGroups["sof"] = rawGroups["sof"].str.replace("MBIAS_0_0S_", "MBIAS_")
+        rawGroups["sof"] = rawGroups["sof"].str.replace("DISP_SOLUTION.*?_PINHOLE", "DSOL_PINHOLE", regex=True)
+        rawGroups["sof"] = rawGroups["sof"].str.replace("SPAT_SOLUTION.*?_MULTPIN", "SSOL_MULTPIN", regex=True)
         rawGroups["sof"] = rawGroups["sof"].str.replace("ORDER_CENTRES", "OLOC", regex=True)
-        rawGroups["complete"] = None
+        if recipe in ["mbias", "mdark"]:
+            rawGroups["complete"] = 1
+        else:
+            rawGroups["complete"] = 0
         rawGroups["recipe_order"] = recipeOrder
 
-        rawGroupsDB = pd.read_sql("select * from raw_frame_sets", con=conn)
+        return rawFrames, rawGroups
 
-        rawGroupsCount = rawGroupsDB.loc[(rawGroupsDB["eso dpr type"] == ttype) & (rawGroupsDB["complete"] == 1)].shape[
-            0
-        ]
-
-        return rawFrames, rawGroups, rawGroupsDB, rawGroupsCount
-
-    def get_calibration_frames(self):
+    def get_calibration_frames(self, recipes=None):
         """
         Fetch calibration frames and tables from the database.
+
+        **Key Arguments:**
+        - `recipes` -- Optional list of recipe types to filter calibration frames.
 
         **Return:**
         - `calibrationFrames` -- DataFrame containing calibration frames.
@@ -2969,16 +3027,34 @@ class data_organiser(object):
         """
         import pandas as pd
 
+        if recipes and len(recipes):
+            recipes = f"and recipe in (\'{'\',\''.join(recipes)}\')"
+        else:
+            recipes = ""
+
         conn = self.conn
 
+        # RETURN HERE
         calibrationFrames = pd.read_sql(
-            f"SELECT * FROM product_frames WHERE `eso pro catg` NOT LIKE '%_TAB_%' AND (status_{self.sessionId} != 'fail' OR status_{self.sessionId} IS NULL)",
+            f"SELECT * FROM product_frames WHERE `eso pro catg` NOT LIKE '%_TAB_%' AND (status_{self.sessionId} != 'fail' OR status_{self.sessionId} IS NULL ) {recipes}",
             con=conn,
         )
+        calibrationFrames = pd.read_sql(
+            f"SELECT * FROM product_frames WHERE (status_{self.sessionId} != 'fail' OR status_{self.sessionId} IS NULL ) {recipes}",
+            con=conn,
+        )
+
         calibrationFrames.fillna("--", inplace=True)
+        self.productFilterKeywords = [
+            "eso seq arm",
+            "eso pro catg",
+            "eso pro tech",
+            "eso pro type",
+        ]
+        calibrationFrames = calibrationFrames.groupby(self.productFilterKeywords).size().reset_index(name="counts")
 
         calibrationTables = pd.read_sql(
-            f"SELECT * FROM product_frames WHERE `eso pro catg` LIKE '%_TAB_%' AND (status_{self.sessionId} != 'fail' OR status_{self.sessionId} IS NULL)",
+            f"SELECT * FROM product_frames WHERE `eso pro catg` LIKE '%_TAB_%' AND (status_{self.sessionId} != 'fail' OR status_{self.sessionId} IS NULL) {recipes}",
             con=conn,
         )
         calibrationTables.fillna("--", inplace=True)
@@ -2995,17 +3071,34 @@ class data_organiser(object):
         - `recipe` -- Recipe name.
 
         **Return:**
-        - None
+        - `incompleteProducts` -- Number of incomplete products.
         """
         import time
         import pandas as pd
+
+        if not len(rawGroups.index):
+            sqlQuery = f"select count(*) from product_frames where recipe = '{recipe}' and complete = 0;"
+            c = self.conn.cursor()
+            c.execute(sqlQuery)
+            incompleteProducts = c.fetchall()[0][0]
+            c.close()
+            return incompleteProducts
 
         for product in productTypes:
             proKeys = list(product.values())[0]
             product = list(product.keys())[0]
             productFrames = rawGroups.copy()
+
             productFrames.drop(
-                columns=["eso dpr catg", "eso dpr tech", "eso dpr type", "counts", "complete", "date-obs"],
+                columns=[
+                    "eso dpr catg",
+                    "eso dpr tech",
+                    "eso dpr type",
+                    "counts",
+                    "complete",
+                    "date-obs",
+                    "filepaths",
+                ],
                 inplace=True,
             )
 
@@ -3015,10 +3108,14 @@ class data_organiser(object):
             productFrames["eso pro catg"] = (
                 productFrames["eso pro catg"].astype(str) + "_" + productFrames["eso seq arm"].astype(str).str.upper()
             )
-            if product == "fits image":
+            if product in ["fits image", "fits table"]:
                 productFrames["file"] = productFrames["sof"].str.replace(".sof", f".fits")
+                if "replace" in proKeys:
+                    for item in proKeys["replace"]:
+                        productFrames["file"] = productFrames["file"].str.replace(item["from"], item["to"])
             else:
-                productFrames["file"] = "XXXXXX"
+                productFrames["file"] = "XXXX"
+
             productFrames["filepath"] = (
                 "./reduced/"
                 + productFrames["night start date"].astype(str)
@@ -3027,19 +3124,84 @@ class data_organiser(object):
                 + "/"
                 + productFrames["file"].astype(str)
             )
-            # TO DATABASE
-            keepTrying = 0
-            while keepTrying < 7:
-                try:
-                    productFrames.replace(["--"], None).to_sql(
-                        "product_frames", con=self.conn, index=False, if_exists="append"
-                    )
-                    keepTrying = 10
-                except Exception as e:
-                    if keepTrying > 5:
-                        raise Exception(e)
-                    time.sleep(1)
-                    keepTrying += 1
+
+            self._dataframe_to_sqlite(productFrames, "product_frames")
+
+        return 1
+
+    def raw_frames_to_sof_map(self, rawGroups, containerSofs):
+        """
+        Generate the SOF map from raw groups and complete product SOFs.
+
+        **Key Arguments:**
+        - `rawGroups` -- DataFrame containing raw frame groups.
+        - `containerSofs` -- array of complete product SOFs.
+
+        **Return:**
+        - `sofMapDF` -- DataFrame containing the generated SOF map.
+        """
+        import pandas as pd
+
+        if not len(rawGroups.index):
+            return
+
+        # BUILD SOF MAP TABLE
+        mask = rawGroups["sof"].isin(containerSofs)
+        sofMapDF = rawGroups.loc[mask]
+        sofMapDF = sofMapDF.explode("filepaths")
+        sofMapDF["file"] = sofMapDF["filepaths"].apply(lambda x: os.path.basename(x) if pd.notnull(x) else x)
+        sofMapDF = sofMapDF.rename(columns={"filepaths": "filepath"})
+        sofMapDF["tag"] = sofMapDF["eso dpr type"].replace(",", "_") + "_" + sofMapDF["eso seq arm"]
+        sofMapDF = sofMapDF[["file", "tag", "sof", "filepath", "complete"]]
+        sofMapDF["complete"] = 1
+        # ADD TO DATABASE
+        self._dataframe_to_sqlite(sofMapDF, f"sof_map_{self.sessionId}", replace=False)
+
+        # UPDATE RAW FRAMES AS PROCESSED
+        processedRawFiles = sofMapDF["file"].unique().tolist()
+        if len(processedRawFiles):
+            c = self.conn.cursor()
+            placeholders = ",".join(["?"] * len(processedRawFiles))
+            sqlQuery = f"update raw_frames set processed=1 where file in ({placeholders});"
+            c.execute(sqlQuery, processedRawFiles)
+            self.conn.commit()
+            c.close()
+
+        return
+
+    def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
+        """
+        Retry inserting into the database with a maximum of 7 attempts.
+
+        **Key Arguments:**
+        - `dataframe` -- DataFrame containing rows to insert.
+        - `table_name` -- Name of the database table to insert into.
+        - `replace` -- If True, replace existing entries; otherwise, append.
+
+        **Raises:**
+        - Exception if the insertion fails after 7 attempts.
+        """
+        import time
+
+        if replace:
+            c = self.conn.cursor()
+            sqlQuery = f"delete from {table_name};"
+            try:
+                c.execute(sqlQuery)
+            except:
+                pass
+            c.close()
+
+        keepTrying = 0
+        while keepTrying < 7:
+            try:
+                dataframe.replace(["--"], None).to_sql(table_name, con=self.conn, index=False, if_exists="append")
+                keepTrying = 10
+            except Exception as e:
+                if keepTrying > 5:
+                    raise Exception(e)
+                time.sleep(1)
+                keepTrying += 1
 
 
 def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, instrument, kw):
