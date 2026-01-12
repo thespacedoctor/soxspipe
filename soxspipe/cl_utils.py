@@ -4,18 +4,18 @@
 Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
-    soxspipe prep <workspaceDirectory> [--vlt]
-    soxspipe [-qw] reduce all <workspaceDirectory> [-s <pathToSettingsFile>]
-    soxspipe [-x] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
-    soxspipe reduce ob <obid> <workspaceDirectory> [-s <pathToSettingsFile>]
+    soxspipe prep [<workspaceDirectory> --vlt --refresh]
+    soxspipe [-qw] reduce all [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe [-qx] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe reduce ob <obid> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
-    soxspipe list (obs|sof) <workspaceDirectory> [-s <pathToSettingsFile>]
+    soxspipe list (obs|sof) [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vxd] disp_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
+    soxspipe [-Vxd] disp_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
     soxspipe [-Vxd] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
     soxspipe [-Vxd] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vxd] spat_sol <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
+    soxspipe [-Vxd] spat_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
     soxspipe [-Vxd] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
@@ -34,9 +34,9 @@ Options:
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
     mflat                                  the master flat recipe
-    disp_sol                               the disp solution recipe
+    disp_solution                          the disp solution recipe
     order_centres                          the order centres recipe
-    spat_sol                               the spatial solution recipe
+    spat_solution                          the spatial solution recipe
     stare                                  reduce stare mode science frames
     nod                                    reduce nodding mode science frames
 
@@ -49,6 +49,7 @@ Options:
     -d, --debug                            show debugging plots
     -h, --help                             show this help message
     -q, --quitOnFail                       stop the pipeline if a recipe fails
+    -r, --refresh                          trigger a complete refresh the workspace during preparation (delete database and do a complete prepare)
     -s, --settings <pathToSettingsFile>    the settings file
     -v, --version                          show version
     -V, --verbose                          more verbose output
@@ -66,6 +67,7 @@ import glob
 from docopt import docopt
 from fundamentals import tools, times
 from subprocess import Popen, PIPE, STDOUT
+import pickle
 
 os.environ["TERM"] = "vt100"
 
@@ -157,6 +159,9 @@ def main(arguments=None):
             )
         )
 
+    if not a["workspaceDirectory"]:
+        a["workspaceDirectory"] = "."
+
     ## START LOGGING ##
     startTime = times.get_now_sql_datetime()
     log.debug("--- STARTING TO RUN THE cl_utils.py AT %s" % (startTime,))
@@ -226,7 +231,7 @@ def main(arguments=None):
             )
             mdarkFrame = recipe.produce_product()
 
-        if a["disp_sol"]:
+        if a["disp_solution"]:
             from soxspipe.recipes import soxs_disp_solution
 
             disp_map = soxs_disp_solution(
@@ -254,7 +259,7 @@ def main(arguments=None):
                 debug=a["debugFlag"],
             ).produce_product()
 
-        if a["spat_sol"]:
+        if a["spat_solution"]:
             from soxspipe.recipes import soxs_spatial_solution
 
             disp_map, mapImage2D, res_plots = soxs_spatial_solution(
@@ -312,7 +317,7 @@ def main(arguments=None):
 
         if a["prep"]:
             do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
-            do.prepare()
+            do.prepare(refresh=a["refreshFlag"])
 
         if a["session"] and a["ls"]:
             from soxspipe.commonutils import data_organiser
@@ -348,9 +353,6 @@ def main(arguments=None):
         log.error(f"{e}\n{clCommand}", exc_info=True)
 
     if a["reduce"]:
-
-        if not a["workspaceDirectory"]:
-            a["workspaceDirectory"] = "."
 
         exists = os.path.exists(a["workspaceDirectory"] + "/soxspipe.db")
         if not exists:
