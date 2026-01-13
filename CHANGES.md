@@ -1,5 +1,6 @@
 # Release Notes
 
+* show progress when uncompressing .Z files
 * Corrected validation of response curve files by not checking binning with NIR data (previously this was causing needless fails)
 * Complete refactoring of the data-organiser. Now, much faster and data-organiser dictionaries are located in one yaml file.
 * Added a `--refresh` flag to the prep command. Using this flag will completely refresh the soxspipe.db database, delete all ERROR logs and rebuild all SOF files from scratch. 

@@ -2698,8 +2698,6 @@ class data_organiser(object):
         sqlQuery = f"update raw_frames set processed = 0 where processed < 0;"
         c.execute(sqlQuery)
 
-        print("1")
-
         # CLEAN UP FAILED FILES
         # DELETE FROM
         count = 0
@@ -2712,7 +2710,6 @@ class data_organiser(object):
             count = len(compromisedSofs)
 
             sqlQuery = f"update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete is 0)));"
-            print(sqlQuery)
             c.execute(sqlQuery)
 
         sqlQueries = [
@@ -2723,7 +2720,6 @@ class data_organiser(object):
         ]
         for sqlQuery in sqlQueries:
             c = self.conn.cursor()
-            print(sqlQuery)
             c.execute(sqlQuery)
             c.close()
 
@@ -2752,7 +2748,7 @@ class data_organiser(object):
                 calibrationTypes = []
 
             for ttype in ttypes:
-                print(tech, ttype, recipe)
+
                 rawFrames, rawGroups = self.get_raw_frames_and_groups(
                     ttype=ttype,
                     tech=tech,
@@ -2775,7 +2771,6 @@ class data_organiser(object):
                     sqlQuery = f"select sof from product_frames where recipe = '{recipe}' and complete = 0;"
                     containerSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
                     self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
-
                     sqlQuery = f"update product_frames set complete = 1 where recipe = '{recipe}' and complete = 0;"
                     c.execute(sqlQuery)
 
@@ -2798,7 +2793,7 @@ class data_organiser(object):
 
                             self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
 
-                            sqlQuery = f"""update product_frames set complete = 1 where uuid in 
+                            sqlQuery = f"""update product_frames set complete = -1 where uuid in 
                             (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete = 0;
                             """
                             c.execute(sqlQuery)
@@ -2806,11 +2801,16 @@ class data_organiser(object):
                             # FOR COMPLETE PRODUCTS, ADD CALIBRATION FILES TO SOF MAP
                             # NEED TO ALSO ADD THE RAW FILES TOO ... ADD RAW FRAMES, SET COMPLETE = 1 WHERE PRODUCT FRAMES COMPLETE = 1
                             for ct in calType:
-                                sqlQuery = f"""select cal_{ct}.file, cal_{ct}.upstream_tag as tag, product_frames.sof, cal_{ct}.filepath, product_frames.complete from product_frames, cal_{ct} where product_frames.complete = 1 and product_frames.sof=cal_{ct}.sof;"""
+
+                                sqlQuery = f"""select cal_{ct}.file, cal_{ct}.upstream_tag as tag, product_frames.sof, cal_{ct}.filepath, product_frames.complete from product_frames, cal_{ct} where product_frames.complete = -1 and product_frames.sof=cal_{ct}.sof;"""
                                 newSof = pd.read_sql(sqlQuery, con=self.conn)
 
                                 if len(newSof):
                                     self._dataframe_to_sqlite(newSof, f"sof_map_{self.sessionId}", replace=False)
+
+                            sqlQuery = f"""update product_frames set complete = 1 where complete = -1;
+                            """
+                            c.execute(sqlQuery)
 
         self.conn.commit()
         c.close()
@@ -2818,11 +2818,13 @@ class data_organiser(object):
         # CONCAT ALL RAW GROUPS
         if len(allRawGroups):
             rawGroups = pd.concat(allRawGroups, ignore_index=True)
-            rawGroups = rawGroups.drop(columns=["filepaths"])
-            self._dataframe_to_sqlite(rawGroups, "raw_frame_sets", replace=False)
+            if len(rawGroups.index):
+                rawGroups = rawGroups.drop(columns=["filepaths"])
+                self._dataframe_to_sqlite(rawGroups, "raw_frame_sets", replace=False)
 
         c = self.conn.cursor()
         sqlQueries = [
+            f"update sof_map_{self.sessionId} set complete = 1 where complete = -1;",
             "update raw_frame_sets set complete = 1 where sof in (select r.sof from raw_frame_sets r, product_frames p where p.sof = r.sof and p.complete = 1);",
             "update raw_frame_sets set complete = 0 where sof in (select r.sof from raw_frame_sets r, product_frames p where p.sof = r.sof and p.complete = 0);",
             "update raw_frames set processed = 1 where processed = 0 and filepath in (select filepath from sof_map);",
@@ -3077,11 +3079,10 @@ class data_organiser(object):
         **Return:**
         - `incompleteProducts` -- Number of incomplete products.
         """
-        import time
         import pandas as pd
 
         if not len(rawGroups.index):
-            sqlQuery = f"select count(*) from product_frames where recipe = '{recipe}' and complete = 0;"
+            sqlQuery = f"select count(*) from product_frames where recipe = '{recipe}' and complete< 1;"
             c = self.conn.cursor()
             c.execute(sqlQuery)
             incompleteProducts = c.fetchall()[0][0]
