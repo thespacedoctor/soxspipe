@@ -228,9 +228,6 @@ class reducer(object):
                 f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {std} order by recipe_order, sof",
                 con=conn,
             )
-            print(
-                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {std} order by recipe_order, sof"
-            )
 
         elif reductionTarget.split(".")[-1].lower() == "sof":
             sqlQuery = f"select sof from product_frames where sof = '{reductionTarget}' and complete = 1"
