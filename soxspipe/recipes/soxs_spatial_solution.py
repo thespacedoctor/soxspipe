@@ -64,6 +64,7 @@ class soxs_spatial_solution(base_recipe):
             recipeName="soxs-spat-solution",
             command=command,
             debug=debug,
+            verbose=verbose,
         )
         self.log = log
         log.debug("instantiating a new 'soxs_spatial_solution' object")
@@ -106,7 +107,8 @@ class soxs_spatial_solution(base_recipe):
         self.inputFrames.sort(["MJD-OBS"])
         if self.verbose:
             self.log.print("# RAW INPUT FRAMES - SUMMARY")
-            self.log.print(self.inputFrames.summary, "\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print("\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS

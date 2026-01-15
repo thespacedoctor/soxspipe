@@ -1131,6 +1131,7 @@ def predict_product_path(sofName, recipeName=False):
     log = emptyLogger()
     do = data_organiser(log=log, rootDir=".")
     currentSession, allSessions = do.session_list(silent=True)
+    do.close()
 
     if "_STARE_" in sofName:
         sofName += "_EXTRACTED_MERGED"

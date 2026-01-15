@@ -86,12 +86,6 @@ class data_organiser(object):
         # DATABASE FILE
         self.rootDbPath = rootDir + "/soxspipe.db"
 
-        exists = os.path.exists(self.rootDbPath)
-        if exists:
-            self.conn = self._get_or_create_db_connection()
-        else:
-            self.conn = None
-
         # RETURN HERE: add these to yaml file
         # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE LIFTED FROM ALL FITS FILES
         self.keyword_lookups = [
@@ -435,6 +429,12 @@ class data_organiser(object):
 
         uncompress(log=self.log, directory=self.rootDir)
 
+        exists = os.path.exists(self.rootDbPath)
+        if exists:
+            self.conn, reset = self._get_or_create_db_connection()
+        else:
+            self.conn = None
+
         return None
 
     def prepare(self, refresh=False):
@@ -482,7 +482,7 @@ class data_organiser(object):
             os.makedirs(self.rawDir)
 
         # TEST FOR SQLITE DATABASE - ADD IF MISSING
-        self.conn = self._get_or_create_db_connection()
+        self.conn, reset = self._get_or_create_db_connection()
 
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
@@ -567,10 +567,6 @@ class data_organiser(object):
         import pandas as pd
 
         self.log.debug("starting the ``list_sofs`` method")
-
-        import pandas as pd
-
-        print("HERE")
 
         query = 'select distinct "eso seq arm", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod-obj","stare-obj","offset-obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
         sofDf = pd.read_sql(query, con=self.conn)
@@ -1840,7 +1836,7 @@ class data_organiser(object):
         import pandas as pd
         from tabulate import tabulate
 
-        conn = self._get_or_create_db_connection()
+        conn, reset = self._get_or_create_db_connection()
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         self.sofDir = self.sessionPath + "/sof"
@@ -1880,7 +1876,7 @@ class data_organiser(object):
         import pandas as pd
         import sqlite3 as sql
 
-        conn = self._get_or_create_db_connection()
+        conn, reset = self._get_or_create_db_connection()
 
         rawGroups = pd.read_sql(
             "SELECT * FROM raw_frame_sets where recipe_order is not null order by recipe_order", con=conn
@@ -1926,7 +1922,7 @@ class data_organiser(object):
         rootDbExists = os.path.exists(self.rootDbPath)
         if rootDbExists:
             # CREATE THE DATABASE CONNECTION
-            self.conn = self._get_or_create_db_connection()
+            self.conn, reset = self._get_or_create_db_connection()
             c = self.conn.cursor()
             sqlQuery = "select distinct instrume from raw_frames"
             c.execute(sqlQuery)
@@ -1993,7 +1989,7 @@ class data_organiser(object):
         # ADD A NEW STATUS COLUMN IN product_frames FOR THIS SESSION
         import sqlite3 as sql
 
-        conn = self._get_or_create_db_connection()
+        conn, reset = self._get_or_create_db_connection()
         c = conn.cursor()
         sqlQuery = f"ALTER TABLE product_frames ADD status_{sessionId} TEXT;"
         try:
@@ -2213,19 +2209,39 @@ class data_organiser(object):
         self.sessionPath = self.sessionsDir + "/" + sessionId
         self.sessionId = sessionId
 
-        self.conn = self._get_or_create_db_connection()
+        self.conn, reset = self._get_or_create_db_connection()
 
         # SELECT INSTR
         self._select_instrument()
 
         self.build_sof_files()
 
-        sys.stdout.flush()
-        sys.stdout.write("\x1b[1A\x1b[2K")
-        self.log.print("SOF file refresh complete")
+        if failure in [True, False]:
+            sys.stdout.flush()
+            sys.stdout.write("\x1b[1A\x1b[2K")
+            self.log.print("SOF file refresh complete")
 
         self.log.debug("completed the ``session_refresh`` method")
-        return None
+        return reset
+
+    def close(self):
+        """*close the database connection*
+
+        **Usage:**
+
+        ```python
+        do.close()
+        ```
+        """
+        self.log.debug("starting the ``session_refresh`` method")
+
+        try:
+            self.conn.close()
+        except:
+            pass
+
+        self.log.debug("completed the ``session_refresh`` method")
+        return
 
     def use_vlt_environment_folders(self):
         """*use vlt environment folders*
@@ -2568,33 +2584,67 @@ class data_organiser(object):
         """Private method to get or create the SQLite database connection, copying the template if missing."""
         import shutil
         import sqlite3 as sql
+        import time
 
-        try:
-            if self.conn:
-                return self.conn
-        except:
-            pass
+        reset = False
 
-        try:
-            with open(self.rootDbPath):
-                pass
-            self.freshRun = False
-        except IOError:
+        conn = None
+        i = 0
+
+        while i < 4:
+            if not conn:
+                try:
+                    if self.conn:
+                        conn = self.conn
+                except:
+                    pass
+
+            if not conn:
+                try:
+                    with open(self.rootDbPath):
+                        pass
+                    self.freshRun = False
+                except IOError:
+                    try:
+                        os.remove(self.sessionIdFile)
+                    except Exception:
+                        pass
+                    self.freshRun = True
+                    emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
+                    shutil.copyfile(emptyDb, self.rootDbPath)
+
+                conn = sql.connect(self.rootDbPath, timeout=30, autocommit=True)
+            c = conn.cursor()
+
             try:
-                os.remove(self.sessionIdFile)
-            except Exception:
-                pass
-            self.freshRun = True
-            emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
-            shutil.copyfile(emptyDb, self.rootDbPath)
+                c.execute("PRAGMA integrity_check;")
+                this = c.fetchall()
+                i = 10
+            except Exception as e:
+                # DATABASE IS BROKEN, REPLACE WITH EMPTY ONE
+                i += 1
+                c.close()
+                conn.close()
+                try:
+                    del conn
+                    del self.conn
+                except:
+                    pass
 
-        conn = sql.connect(self.rootDbPath, timeout=30, autocommit=True)
-        c = conn.cursor()
+                time.sleep(1)
+
+                if i > 3:
+                    self.prepare(refresh=True)
+                    if not reset:
+                        reset = True
+                conn = sql.connect(self.rootDbPath, timeout=30, autocommit=True)
+                c = conn.cursor()
+
         c.execute("PRAGMA busy_timeout=10")
         c.execute("PRAGMA journal_mode = WAL")
         c.close()
 
-        return conn
+        return conn, reset
 
     # METHOD TO RETURN ALL THE RAW FRAME SETS THAT ARE NOT COMPLETE FROM THE DATABASE AS A PANDAS TABLE
     def get_incomplete_raw_frames_set(self):
@@ -2705,17 +2755,17 @@ class data_organiser(object):
         while count != oldCount:
             oldCount = count
             c = self.conn.cursor()
-            sqlQuery = f"select distinct sof from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0));"
+            sqlQuery = f"select distinct sof from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1));"
             compromisedSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
             count = len(compromisedSofs)
 
-            sqlQuery = f"update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete is 0)));"
+            sqlQuery = f"update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));"
             c.execute(sqlQuery)
 
         sqlQueries = [
-            f"update raw_frames set processed = 0 where file in (select file from sof_map where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0))));",
-            f"update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0)));",
-            f"delete from sof_map_{self.sessionId} where sof in (  select s.sof from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete = 0));",
+            f"update raw_frames set processed = 0 where file in (select file from sof_map where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1))));",
+            f"update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));",
+            f"delete from sof_map_{self.sessionId} where sof in (  select s.sof from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1));",
             f"update raw_frames set processed = -1 where file in (select distinct s.file from sof_map s, product_frames p where p.sof=s.sof and p.status = 'fail');",
         ]
         for sqlQuery in sqlQueries:
@@ -2788,13 +2838,14 @@ class data_organiser(object):
                             )
 
                             sqlQuery = f"""select sof from product_frames where uuid in 
-                            (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete = 0;"""
+                            (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete < 1;"""
+
                             containerSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
 
                             self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
 
                             sqlQuery = f"""update product_frames set complete = -1 where uuid in 
-                            (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete = 0;
+                            (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete < 1;
                             """
                             c.execute(sqlQuery)
 
@@ -2808,9 +2859,8 @@ class data_organiser(object):
                                 if len(newSof):
                                     self._dataframe_to_sqlite(newSof, f"sof_map_{self.sessionId}", replace=False)
 
-                            sqlQuery = f"""update product_frames set complete = 1 where complete = -1;
-                            """
-                            c.execute(sqlQuery)
+            sqlQuery = f"""update product_frames set complete = 1 where complete = -1;"""
+            c.execute(sqlQuery)
 
         self.conn.commit()
         c.close()
@@ -2900,6 +2950,7 @@ class data_organiser(object):
             ),
             con=conn,
         )
+
         rawFrames = rawFrames.astype({"exptime": float, "ra": float, "dec": float})
         rawFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}, inplace=True)
         rawFrames.fillna("--", inplace=True)

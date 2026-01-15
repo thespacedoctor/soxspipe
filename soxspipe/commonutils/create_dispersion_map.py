@@ -1806,7 +1806,6 @@ class create_dispersion_map(object):
             conn.commit()
             conn.close()
             sys.exit()
-            print("HERE")
 
         if self.arcFrame:
             self.slitWidth = self.arcFrame.header[self.kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]

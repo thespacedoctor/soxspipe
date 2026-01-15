@@ -31,6 +31,8 @@ class reducer(object):
     - ``pathToSettings`` -- path to the settings file.
     - ``quitOnFail`` -- quit the pipeline on any recipe failure
     - ``overwrite`` -- overwrite existing reductions. Default *False*.
+    - ``daemon`` -- run in daemon mode (no terminal output). Default *False*.
+    - ``verbose`` -- print verbose output to terminal. Default *False*.
 
     **Usage:**
 
@@ -58,6 +60,7 @@ class reducer(object):
         quitOnFail=False,
         overwrite=False,
         daemon=False,
+        verbose=False,
     ):
         self.log = log
         log.debug("instantiating a new 'reducer' object")
@@ -68,6 +71,7 @@ class reducer(object):
         self.pathToSettings = pathToSettings
         self.quitOnFail = quitOnFail
         self.daemon = daemon
+        self.verbose = verbose
 
         # REQUEST THE WORKSPACE PARAMETERS FROM THE DATA-ORGANISER
         from soxspipe.commonutils import data_organiser
@@ -77,6 +81,7 @@ class reducer(object):
             rootDir=workspaceDirectory,
         )
         self.sessionId, allSessions = do.session_list(silent=True)
+        do.close()
 
         if self.sessionId is None:
             return None
@@ -112,11 +117,13 @@ class reducer(object):
         from fundamentals import times
         import traceback
         from soxspipe.commonutils import data_organiser
+        import sqlite3
 
         i = 0
 
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
         do.session_refresh(failure=None)
+        do.close()
 
         if self.reductionTarget != "all":
             self.recipeList = [False]
@@ -143,6 +150,7 @@ class reducer(object):
                             settings=self.settings,
                             overwrite=self.overwrite,
                             command=row["command"],
+                            verbose=self.verbose,
                         )
                         i += 1
                     except FileExistsError as e:
@@ -155,8 +163,16 @@ class reducer(object):
                         if self.quitOnFail:
                             sys.exit(0)
 
+                        if self.reductionTarget != "all":
+                            self.overwrite = False
+
                         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-                        do.session_refresh()
+                        reset = do.session_refresh()
+                        do.close()
+                        if reset:
+                            print(f"BACK TO THE START! {rootRecipe}\n\n")
+                            break
+
                         if not self.daemon:
                             print(f"{'='*70}\n")
                         break
@@ -177,6 +193,7 @@ class reducer(object):
         if self.reductionTarget == "all":
             do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
             incompleteSets = do.get_incomplete_raw_frames_set()
+            do.close()
             if len(incompleteSets.index):
                 from tabulate import tabulate
 
@@ -261,7 +278,7 @@ class reducer(object):
         return rawGroups[["recipe", "sof", "command"]].drop_duplicates()
 
 
-def run_recipe(log, recipe, sof, settings, overwrite, command=False):
+def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=False):
     """*execute a pipeline recipe*
 
     **Key Arguments:**
@@ -269,6 +286,9 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
     - ``recipe`` -- the name of the recipe tp execute
     - ``sof`` -- path to the sof file containing the files the recipe requires
     - ``command`` -- the command used to run the recipe
+    - ``settings`` -- the settings dictionary
+    - ``overwrite`` -- overwrite existing reductions. Default *False*.
+    - ``verbose`` -- print verbose output to terminal. Default *False*.
 
     **Usage:**
 
@@ -287,6 +307,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if recipe == "mdark":
@@ -298,6 +319,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if recipe == "disp_solution":
@@ -309,6 +331,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if recipe == "order_centres":
@@ -320,6 +343,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if recipe == "mflat":
@@ -331,6 +355,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if recipe == "spat_solution":
@@ -342,6 +367,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if "stare" in recipe:
@@ -353,6 +379,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if "nod" in recipe:
@@ -364,6 +391,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     soxs_recipe.produce_product()

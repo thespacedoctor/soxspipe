@@ -5,8 +5,8 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe prep [<workspaceDirectory> --vlt --refresh]
-    soxspipe [-qw] reduce all [<workspaceDirectory> -s <pathToSettingsFile>]
-    soxspipe [-qx] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe [-qwV] reduce all [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe [-qxV] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe reduce ob <obid> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe list (obs|sof) [<workspaceDirectory> -s <pathToSettingsFile>]
@@ -381,6 +381,7 @@ def main(arguments=None):
                 pathToSettings=arguments["--settings"],
                 quitOnFail=a["quitOnFailFlag"],
                 overwrite=a["overwriteFlag"],
+                verbose=verbose,
             )
             collection.reduce()
 
@@ -393,6 +394,8 @@ def main(arguments=None):
 
                 do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
                 do.prepare()
+                do.close()
+                del do
             else:
                 watch = False
 
