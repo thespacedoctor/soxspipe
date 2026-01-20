@@ -243,31 +243,11 @@ class soxs_mflat(base_recipe):
         arm = self.arm
         kw = self.kw
 
-        if False:
-            # HOW MUCH MEMORY IS BEING USED?
-            import psutil
-
-            process = psutil.Process()
-            import humanize
-
-            print("HERE")
-            print(humanize.naturalsize(process.memory_info().rss))
-
         home = expanduser("~")
         outDir = self.settings["workspace-root-dir"].replace("~", home)
 
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats, dcalibratedFlats, qcalibratedFlats, domecalibratedFlats = self.calibrate_frame_set()
-
-        if False:
-            # HOW MUCH MEMORY IS BEING USED?
-            import psutil
-
-            process = psutil.Process()
-            import humanize
-
-            print("HERE")
-            print(humanize.naturalsize(process.memory_info().rss))
 
         allCalibratedFlats = calibratedFlats + dcalibratedFlats + qcalibratedFlats + domecalibratedFlats
 
@@ -284,16 +264,6 @@ class soxs_mflat(base_recipe):
 
         productTable = self.products
         qcTable = self.qc
-
-        if False:
-            # HOW MUCH MEMORY IS BEING USED?
-            import psutil
-
-            process = psutil.Process()
-            import humanize
-
-            print("HERE")
-            print(humanize.naturalsize(process.memory_info().rss))
 
         for cf, fk, tag, files in zip(calibratedFlatSet, flatKeywords, lampTag, filelists):
 
@@ -756,6 +726,7 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
+        del flatCollection
         dflats = [
             c
             for c in dflatCollection.ccds(
@@ -767,6 +738,7 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
+        del dflats
         qflats = [
             c
             for c in qflatCollection.ccds(
@@ -778,6 +750,7 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
+        del qflats
         domeflats = [
             c
             for c in domeflatCollection.ccds(
@@ -789,6 +762,7 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
+        del domeflats
 
         # IF NO DARK FRAMES EXIST - JUST A MASTER BIAS. SUBTRACT BIAS.
         calibratedFlats = []
@@ -864,15 +838,9 @@ class soxs_mflat(base_recipe):
         import numpy.ma as ma
         import numpy as np
         import pandas as pd
-        from astropy.stats import sigma_clip
 
         kw = self.kw
         from astropy.io import fits
-
-        import psutil
-
-        process = psutil.Process()
-        import humanize
 
         try:
             self.binx = inputFlats[0].header[kw("WIN_BINX")]
@@ -902,7 +870,7 @@ class soxs_mflat(base_recipe):
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=orderTablePath, binx=self.binx, biny=self.biny
         )
-        mask = np.ones_like(inputFlats[0].data)
+        mask = np.ones((inputFlats[0].data.shape[0], inputFlats[0].data.shape[1]), dtype=bool)
         axisAcoords = orderTablePixels[f"{self.axisA}coord_centre"].values
         axisBcoords = orderTablePixels[f"{self.axisB}coord"].values
         axisAcoords = axisAcoords.astype(int)
@@ -914,7 +882,7 @@ class soxs_mflat(base_recipe):
             for y, x in zip(axisAcoords, axisBcoords):
                 mask[y][x - window : x + window] = 0
         # COMBINE MASK WITH THE BAD PIXEL MASK
-        mask = (mask == 1) | (inputFlats[0].mask == 1)
+        mask = np.logical_or(mask, inputFlats[0].mask)
 
         if not firstPassMasterFlat:
             self.log.print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL - FIRST PASS")
@@ -923,15 +891,17 @@ class soxs_mflat(base_recipe):
             ORDEXP90list = []
 
             for i, frame in enumerate(inputFlats):
+                ## BELOW LINES NEEDED TO AVOID HIGHER MEMORY USAGE WITH LARGE ARRAYS
                 maskedFrame = ma.array(frame.data, mask=mask)
-                maskedData = np.ma.filled(maskedFrame, np.nan)
-                exposureLevel = np.nanpercentile(maskedData, 97)
-                exptime = frame.header[self.kw("EXPTIME")]
-                ORDEXP10list.append(np.nanpercentile(maskedData, 10))
-                ORDEXP50list.append(np.nanpercentile(maskedData, 50))
-                ORDEXP90list.append(np.nanpercentile(maskedData, 90))
+                maskedData = np.empty_like(maskedFrame.data)
+                np.copyto(maskedData, maskedFrame.data, where=~maskedFrame.mask)
+                maskedData[maskedFrame.mask] = np.nan
+
+                ORDEXP10list.append(np.median(np.nanpercentile(maskedData, 10)))
+                ORDEXP50list.append(np.median(np.nanpercentile(maskedData, 50)))
+                ORDEXP90list.append(np.median(np.nanpercentile(maskedData, 90)))
                 # print(f"THE {lamp} FLAT EXPOSURE LEVEL IS {exposureLevel}")
-                normalisedFrame = frame.divide(exposureLevel)
+                normalisedFrame = frame.divide(np.nanpercentile(maskedData, 97))
                 normalisedFrame.header = frame.header
                 normalisedFrames.append(normalisedFrame)
                 # print(humanize.naturalsize(process.memory_info().rss))
@@ -1371,3 +1341,12 @@ def nearest_neighbour(singleValue, listOfValues):
     minIndex = np.where(dist == minDist)[0][0]
     matchValue = listOfValues[minIndex]
     return matchValue, minIndex
+
+
+def print_memory_usage(pprint=False, message=""):
+    if pprint:
+        import psutil
+        import humanize
+
+        process = psutil.Process()
+        print(humanize.naturalsize(process.memory_info().rss), message)
