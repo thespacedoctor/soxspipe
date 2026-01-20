@@ -166,6 +166,7 @@ class soxs_mdark(base_recipe):
 
         import numpy as np
         import pandas as pd
+        from soxspipe.commonutils import toolkit
 
         arm = self.arm
         kw = self.kw
@@ -203,6 +204,7 @@ class soxs_mdark(base_recipe):
         combined_noise.uncertainty = np.ma.array(
             combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon
         ).filled()
+        toolkit.frame_to_32(combined_noise)
         combined_dark_mean = combined_noise
         combined_dark_mean.mask = combined_noise.mask
 

@@ -2631,9 +2631,9 @@ class create_dispersion_map(object):
 
         slitMap, wlMap, orderMap = self.create_placeholder_images(reverse=True)
 
-        combinedSlitImage = Combiner(slitImages)
+        combinedSlitImage = Combiner(slitImages, dtype=np.float32)
         combinedSlitImage = combinedSlitImage.sum_combine()
-        combinedWlImage = Combiner(wlImages)
+        combinedWlImage = Combiner(wlImages, dtype=np.float32)
         combinedWlImage = combinedWlImage.sum_combine()
 
         combinedWlImage.data += wlMap.data

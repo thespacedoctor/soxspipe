@@ -1729,3 +1729,38 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     extCorrectionFactor = 10 ** (0.4 * refitted_ext(wave) * airmass)
 
     return extCorrectionFactor
+
+
+def frame_to_32(frame):
+    """*convert a given frame to 32-bit float format*
+
+    **Key Arguments:**
+
+    - `frame` -- the input frame
+
+    **Returns:**
+
+    - `frame` -- the converted frame
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import frame_to_32
+    frame = frame_to_32(frame)
+    ```
+    """
+    from astropy.nddata import CCDData
+    import numpy as np
+
+    try:
+        if frame.data.dtype != np.float32:
+            frame.data = frame.data.astype(np.float32, copy=False)
+    except:
+        pass
+
+    try:
+        frame.uncertainty.array = frame.uncertainty.array.astype(np.float32, copy=False)
+    except:
+        pass
+
+    return frame

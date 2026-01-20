@@ -15,6 +15,7 @@ from soxspipe.commonutils import filenamer
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils import subtract_background
+
 from fundamentals import tools
 from builtins import object
 import sys
@@ -242,6 +243,7 @@ class base_recipe(object):
         import logging
         import warnings
         from datetime import datetime
+        from soxspipe.commonutils import toolkit
 
         warnings.filterwarnings(action="ignore")
         logging.captureWarnings(True)
@@ -280,21 +282,9 @@ class base_recipe(object):
         frame = self.xsh2soxs(frame)
         frame = self._trim_frame(frame)
 
-        # FUDGE BAD-PIXEL MAP CREATION
-        # bpmData = np.random.rand(frame.data.shape[0], frame.data.shape[1])
-        # bpmData[bpmData < 0.995] = 0
-        # bpmData[bpmData > 0] = 1
-        # bpmData = CCDData(bpmData, unit="adu")
-        # from soxspipe.commonutils.toolkit import quicklook_image
-        # quicklook_image(
-        #     log=self.log, CCDObject=bpmData, show=False, ext='data', stdWindow=3)
-        # HDUList = bpmData.to_hdu()
-        # HDUList[0].name = "BPM"
-        # HDUList.writeto("/Users/Dave/Desktop/tmp.fits", output_verify='exception',
-        #                 overwrite=True, checksum=True)
-
         # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
         frame = ccdproc.gain_correct(frame, dp["gain"])
+        toolkit.frame_to_32(frame)
 
         # GENERATE UNCERTAINTY MAP AS EXTENSION
         if frame.header[kw("DPR_TYPE")] == "BIAS":
@@ -305,6 +295,7 @@ class base_recipe(object):
         else:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
             frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True)
+        toolkit.frame_to_32(frame)
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOT YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
@@ -328,6 +319,7 @@ class base_recipe(object):
                 from astropy.nddata import CCDData
 
                 frame = CCDData(np.full_like(frame.data, 0), unit="adu")
+                toolkit.frame_to_32(frame)
                 # WRITE CCDDATA OBJECT TO FILE
                 HDUList = frame.to_hdu()
                 HDUList.writeto(bitMapPath, output_verify="exception", overwrite=True, checksum=True)
@@ -337,7 +329,7 @@ class base_recipe(object):
 
         bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
 
-        frame.flags = bitMap.data
+        # frame.flags = bitMap.data
 
         # FLATTEN BAD-PIXEL BITMAP TO BOOLEAN FALSE (GOOD) OR TRUE (BAD) AND
         # APPEND AS 'UNCERT' EXTENSION
@@ -375,6 +367,7 @@ class base_recipe(object):
                 verbose=False,
                 cleantype="meanmask",
             )
+            toolkit.frame_to_32(frame)
             # newCount = self.skySubtractedFrame.mask.sum()
             # self.laCosmicClippedCount = newCount - oldCount
             # frame.mask = oldMask | frame.mask
@@ -1039,6 +1032,7 @@ class base_recipe(object):
         from soxspipe.commonutils.combiner import Combiner
         from astropy import units as u
         import numpy as np
+        from soxspipe.commonutils import toolkit
 
         if len(frames) == 1:
             self.log.info(
@@ -1064,7 +1058,7 @@ class base_recipe(object):
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
             ccds = [
-                c
+                toolkit.frame_to_32(c)
                 for c in frames.ccds(
                     ccd_kwargs={
                         "hdu_uncertainty": "ERRS",
@@ -1094,7 +1088,7 @@ class base_recipe(object):
         # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
         # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
         # MASKED IN ALL INDIVIDUAL IMAGES ARE MASK IN THE FINAL COMBINED IMAGE
-        combiner = Combiner(ccds)
+        combiner = Combiner(ccds, dtype=np.float32)
 
         # self.log.print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
         # PRINT SOME INFO FOR USER
@@ -1116,8 +1110,9 @@ class base_recipe(object):
         # preclipped_masks = np.copy(combiner.data_arr.mask)
         totalPixels = np.size(combinedMask)
 
+        ## REDUCING TO FLOAT16 TO SAVE MEMORY DURING CLIPPING
         combiner.data_arr.mask = sigma_clip(
-            combiner.data_arr.data,
+            combiner.data_arr.data.astype(np.float16, copy=False),
             sigma_lower=stacked_clipping_sigma,
             sigma_upper=stacked_clipping_sigma,
             axis=0,
@@ -1127,6 +1122,7 @@ class base_recipe(object):
             stdfunc="mad_std",
             masked=True,
         ).mask
+
         old_n_masked = new_n_masked
         # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
         new_n_masked = combiner.data_arr.mask.sum()
@@ -1153,6 +1149,7 @@ class base_recipe(object):
             combiner.data_arr.data[i] = ccd.uncertainty.array
         combined_uncertainty = combiner.average_combine()
         combined_frame.uncertainty = combined_uncertainty.data / (np.sqrt(len(new_individual_masks) - masked_values))
+        toolkit.frame_to_32(combined_frame)
 
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
         # IMAGES
@@ -1208,6 +1205,7 @@ class base_recipe(object):
         import pandas as pd
         from datetime import datetime
         from os.path import expanduser
+        from soxspipe.commonutils import toolkit
 
         arm = self.arm
         kw = self.kw
@@ -1230,10 +1228,11 @@ class base_recipe(object):
                 "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME"
             )
 
-        processedFrame = inputFrame.copy()
+        processedFrame = inputFrame
 
         if master_bias != False:
             processedFrame = ccdproc.subtract_bias(processedFrame, master_bias)
+            toolkit.frame_to_32(processedFrame)
 
         # DARK WITH MATCHING EXPOSURE TIME
         tolerence = 0.5
@@ -1242,7 +1241,9 @@ class base_recipe(object):
             and (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence)
             and (int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence)
         ):
-            processedFrame = ccdproc.subtract_bias(processedFrame, dark)
+            processedFrame = ccdproc.subtract_dark(
+                processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second
+            )
         elif dark != False:
             if self.inst == "SOXS":
                 if not self.darkDetrendWarningIssued2:
@@ -1260,6 +1261,7 @@ class base_recipe(object):
                 processedFrame = ccdproc.subtract_dark(
                     processedFrame, dark, exposure_time=kw("EXPTIME"), exposure_unit=u.second, scale=True
                 )
+        toolkit.frame_to_32(processedFrame)
 
         doSubtraction = True
         if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
@@ -1347,6 +1349,7 @@ class base_recipe(object):
 
         if master_flat != False:
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
+            toolkit.frame_to_32(processedFrame)
 
         self.log.debug("completed the ``detrend`` method")
         return processedFrame
@@ -1447,6 +1450,7 @@ class base_recipe(object):
         import pandas as pd
         import math
         from datetime import datetime
+        from soxspipe.commonutils import toolkit
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -1469,10 +1473,16 @@ class base_recipe(object):
             raw_one = ccds[0]
             raw_two = ccds[1]
             raw_diff = raw_one.subtract(raw_two)
+            toolkit.frame_to_32(raw_diff)
 
             # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
             masked_diff = sigma_clip(
-                raw_diff, sigma_lower=10, sigma_upper=10, maxiters=2, cenfunc="median", stdfunc="mad_std"
+                raw_diff.data.astype(np.float16),
+                sigma_lower=10,
+                sigma_upper=10,
+                maxiters=2,
+                cenfunc="median",
+                stdfunc="mad_std",
             )
             combinedMask = raw_diff.mask | masked_diff.mask
 
@@ -1655,6 +1665,7 @@ class base_recipe(object):
 
         from astropy.stats import sigma_clip, mad_std
         import numpy as np
+        from soxspipe.commonutils import toolkit
 
         # UNPACK SETTINGS
         clipping_lower_sigma = self.recipeSettings["frame-clipping-sigma"]
@@ -1662,14 +1673,19 @@ class base_recipe(object):
         clipping_iteration_count = self.recipeSettings["frame-clipping-iterations"]
 
         maskedFrame = sigma_clip(
-            rawFrame, sigma=clipping_lower_sigma, maxiters=clipping_iteration_count, cenfunc="median", stdfunc="mad_std"
+            rawFrame.data.astype(np.float16),
+            sigma=clipping_lower_sigma,
+            maxiters=clipping_iteration_count,
+            cenfunc="median",
+            stdfunc="mad_std",
         )
 
         # DETERMINE MEDIAN BIAS LEVEL
-        maskedDataArray = np.ma.array(maskedFrame.data, mask=maskedFrame.mask)
+        maskedDataArray = np.ma.array(maskedFrame.data.astype(np.float16), mask=maskedFrame.mask)
         meanFluxLevel = np.ma.mean(maskedDataArray)
         fluxStd = np.ma.std(maskedDataArray)
         rawFrame.data -= meanFluxLevel
+        toolkit.frame_to_32(rawFrame)
 
         self.log.debug("completed the ``subtract_mean_flux_level`` method")
         return (meanFluxLevel, fluxStd, rawFrame)
