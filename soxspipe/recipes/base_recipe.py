@@ -1112,7 +1112,7 @@ class base_recipe(object):
 
         ## REDUCING TO FLOAT16 TO SAVE MEMORY DURING CLIPPING
         combiner.data_arr.mask = sigma_clip(
-            combiner.data_arr.data.astype(np.float16, copy=False),
+            combiner.data_arr.data.astype(np.float32, copy=False),
             sigma_lower=stacked_clipping_sigma,
             sigma_upper=stacked_clipping_sigma,
             axis=0,
@@ -1477,7 +1477,7 @@ class base_recipe(object):
 
             # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
             masked_diff = sigma_clip(
-                raw_diff.data.astype(np.float16),
+                raw_diff.data.astype(np.float32),
                 sigma_lower=10,
                 sigma_upper=10,
                 maxiters=2,
@@ -1673,7 +1673,7 @@ class base_recipe(object):
         clipping_iteration_count = self.recipeSettings["frame-clipping-iterations"]
 
         maskedFrame = sigma_clip(
-            rawFrame.data.astype(np.float16),
+            rawFrame.data.astype(np.float32),
             sigma=clipping_lower_sigma,
             maxiters=clipping_iteration_count,
             cenfunc="median",
@@ -1681,7 +1681,8 @@ class base_recipe(object):
         )
 
         # DETERMINE MEDIAN BIAS LEVEL
-        maskedDataArray = np.ma.array(maskedFrame.data.astype(np.float16), mask=maskedFrame.mask)
+        maskedDataArray = np.ma.array(maskedFrame.data.astype(np.float32), mask=maskedFrame.mask)
+
         meanFluxLevel = np.ma.mean(maskedDataArray)
         fluxStd = np.ma.std(maskedDataArray)
         rawFrame.data -= meanFluxLevel
