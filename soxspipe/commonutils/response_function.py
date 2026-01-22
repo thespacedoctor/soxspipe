@@ -121,7 +121,13 @@ class response_function(object):
 
         self.std_objName = self.std_objName.split(
             " V")[0].replace(" ", "")  # Hack to reduce xsh data
+
+        #REMOVE SPACES IN NAME 
+        self.std_objName = self.std_objName.replace(" ", "")
+
+        
         self.std_objName = self.std_objName.replace("_NOD", "")
+
 
         if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
             # STD STAR GIVEN, READING THE NON FLAT FIELDED SPECTRUM
@@ -132,6 +138,7 @@ class response_function(object):
             for s, a in zip(stdNames, stdAkas):
                 if self.std_objName == a:
                     self.std_objName = s
+                
 
         self.log.print(f"STANDARD-STAR: {self.std_objName}")
         # USING THE AVERAGE AIR MASS
@@ -174,6 +181,9 @@ class response_function(object):
 
         from astropy.table import Table
 
+        from matplotlib import pyplot as plt
+        # SWITCH BACKEDN TO MACOSX
+
         response_function = None
 
         # GET THE EXTRACTED STANDARD STAR'S WAVELENGTH AND FLUX
@@ -205,9 +215,10 @@ class response_function(object):
             return self.qc, self.products
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
-        # xcludeRegions = [(590, 600), (405, 416), (426, 440), (460, 475), (563, 574), (478, 495), (528, 538), (
-        #    620, 640), (648, 666), (754, 770), (800, 810), (836, 845), (1100, 1190), (1300, 1500), (1800, 1900), (1850, 2700)]
-        excludeRegions = []
+        if self.arm == 'NIR':
+            excludeRegions = [(770,850), (930, 970), (1080, 1200), (1280, 1520), (1785, 1950)]
+        else:
+            excludeRegions = []
         # INTEGRATING THE EXTRACTED STANDARD IN xx nm BIN-WIDE FILTERS (CONVERTING BACK IN A/PX)
         stdExtFluxNotFlat = stdExtFluxNotFlat / 10.
 
@@ -215,6 +226,21 @@ class response_function(object):
         stdExtFlux = stdExtFlux / self.texp
         stdExtFluxNotFlat = stdExtFluxNotFlat / self.texp
 
+        if False:
+            plt.plot(stdExtWave, stdExtFlux)
+            plt.xlabel('Wavelength (nm)')
+            plt.ylabel('Extracted Flux (counts/s)')
+            plt.title('Extracted Standard Star Spectrum')
+            plt.grid()
+            plt.show()
+
+
+            plt.plot(stdAbsFluxDF['WAVE'], stdAbsFluxDF[self.std_objName]*10**17)
+            plt.xlabel('Wavelength (nm)')
+            plt.ylabel('Absolute Flux (erg/s/cm²/Å)')
+            plt.title('Absolute Standard Star Spectrum')
+            plt.grid()
+            plt.show()
         # GETTING EFFICIENCY
         stdEfficiencyEstimate = None
         # USING THE STD STAR SPECTRUM THAT IS NOT CORRECTED BY FLAT
@@ -243,6 +269,22 @@ class response_function(object):
 
             # COMPUTE THE EFFICIENCY ESTIMATE
             stdEfficiencyEstimate = stdExtFluxNotFlat / stdAbsPhotonFlux
+            # Change backend to MacOSX
+            if False:
+                import matplotlib
+                matplotlib.use('MacOSX')
+                from matplotlib import pyplot as plt
+                print(self.texp)
+                plt.plot(wavelength,stdExtFluxNotFlat, label='Extracted Flux (not flat corrected)')
+                plt.plot(wavelength,stdAbsPhotonFlux, label='Absolute Photon Flux')
+                plt.plot(wavelength,stdEfficiencyEstimate, label='Efficiency Estimate')
+                plt.xlabel('Wavelength (nm)')
+                plt.ylabel('Efficiency')
+                plt.title('Efficiency Estimate')
+                plt.grid()
+                plt.legend()
+                plt.show()
+                     
 
             # APPLY SAVITZKY-GOLAY FILTER TO SMOOTH THE EFFICIENCY ESTIMATE
             stdEfficiencyEstimate = savgol_filter(stdEfficiencyEstimate, 21, 2)
@@ -271,7 +313,7 @@ class response_function(object):
             stdExtWave) / stdExtFlux
         wavelength_response = self.stdExtractionDF['WAVE'].values
 
-        polyOrder = int(self.recipeSettings['poly_order'])
+        polyOrder = int(self.recipeSettings[self.arm.lower()]['poly_order'])
         numIter = 0
         deletedPoints = 1
 
@@ -283,9 +325,15 @@ class response_function(object):
                 wavelength_response, elementsToDelete)
             self.response_function_raw = np.delete(
                 self.response_function_raw, elementsToDelete)
-
+            
+        #SMOOTHING DATA IF NIR
+        if self.arm == 'NIR':
+            from scipy.ndimage import gaussian_filter1d
+            self.response_function_raw = gaussian_filter1d(self.response_function_raw, sigma=5)
+        
         # FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
-        while (numIter < int(self.recipeSettings['max_iteration'])) and (deletedPoints > 0):
+
+        while (numIter < int(self.recipeSettings[self.arm.lower()]['max_iteration'])) and (deletedPoints > 0):
             try:
                 # FITTING THE DATA
                 elementsToDelete = []
@@ -293,7 +341,9 @@ class response_function(object):
                     wavelength_response, self.response_function_raw, polyOrder)
                 for index, (w, z, zf) in enumerate(zip(wavelength_response, self.response_function_raw, np.polyval(responseFuncCoeffs, wavelength_response))):
                     # if np.abs(np.abs(z)-np.abs(zf)) > 0.05:
-                    if np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 0.1:
+                    #ff np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 100 or z < 0:
+
+                    if z <0 or np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 0.2:
                         elementsToDelete.append(index)
 
                 wavelength_response = np.delete(
@@ -306,12 +356,15 @@ class response_function(object):
                 raise Exception(
                     'The fitting of response function did not converge!')
                 sys.exit(1)
-
+        if False:
+            plt.plot(wavelength_response, self.response_function_raw)
+            plt.show()
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
         self.write_response_function_to_file(
             responseFuncCoeffs=responseFuncCoeffs,
             polyOrder=polyOrder
         )
+        print("RESP FUNC WRITTEN")
 
         if not isinstance(stdEfficiencyEstimate, bool):
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE

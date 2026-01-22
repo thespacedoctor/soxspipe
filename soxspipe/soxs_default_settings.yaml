@@ -380,12 +380,13 @@ soxs-nod:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 7
 
-
-
-
 soxs-response:
-    max_iteration: 5
-    poly_order: 7
+    vis:
+        max_iteration: 5
+        poly_order: 5
+    nir:        
+        max_iteration: 5
+        poly_order: 7
 
 
 
@@ -393,9 +394,6 @@ soxs-response:
 background-subtraction:
     bspline-deg: 2
     gaussian-blur-sigma: 65
-
-
-
 
 
 logging settings:
