@@ -17,7 +17,8 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
-os.environ['TERM'] = 'vt100'
+
+os.environ["TERM"] = "vt100"
 
 
 class soxs_straighten(base_recipe):
@@ -26,36 +27,33 @@ class soxs_straighten(base_recipe):
 
 
     """
+
     # Initialisation
 
-    def __init__(
-            self,
-            log,
-            settings=False,
-            inputFrames=[],
-            verbose=False,
-            overwrite=False,
-            command=False
-
-    ):
+    def __init__(self, log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_straighten, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-straighten", command=command)
+            log=log,
+            settings=settings,
+            inputFrames=inputFrames,
+            overwrite=overwrite,
+            recipeName="soxs-straighten",
+            command=command,
+            verbose=verbose,
+        )
         self.log = log
         log.debug("instantiating a new 'soxs_straighten' object")
         self.settings = settings
         self.inputFrames = inputFrames
-        self.verbose = verbose        # xt-self-arg-tmpx
+        self.verbose = verbose  # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         from soxspipe.commonutils.set_of_files import set_of_files
+
         sof = set_of_files(
-            log=self.log,
-            settings=self.settings,
-            inputFrames=self.inputFrames,
-            ext=self.settings['data-extension']
+            log=self.log, settings=self.settings, inputFrames=self.inputFrames, ext=self.settings["data-extension"]
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -68,20 +66,19 @@ class soxs_straighten(base_recipe):
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
-        self.inputFrames.sort(['MJD-OBS'])
+        self.inputFrames.sort(["MJD-OBS"])
         if self.verbose:
             self.log.print("# RAW INPUT FRAMES - SUMMARY")
-            self.log.print(self.inputFrames.summary, "\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print("\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
-    def verify_input_frames(
-            self):
+    def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_straighten recipe*
 
         **Return:**
@@ -90,7 +87,7 @@ class soxs_straighten(base_recipe):
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
-        self.log.debug('starting the ``verify_input_frames`` method')
+        self.log.debug("starting the ``verify_input_frames`` method")
 
         kw = self.kw
 
@@ -129,7 +126,8 @@ class soxs_straighten(base_recipe):
         arm = self.arm
         if arm not in self.supplementaryInput or "2D_MAP" not in self.supplementaryInput[arm]:
             raise TypeError(
-                "Need a full dispersion/spatial solution for %(arm)s - none found with the input files" % locals())
+                "Need a full dispersion/spatial solution for %(arm)s - none found with the input files" % locals()
+            )
 
         if error:
             sys.stdout.flush()
@@ -140,11 +138,10 @@ class soxs_straighten(base_recipe):
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
-        self.log.debug('completed the ``verify_input_frames`` method')
+        self.log.debug("completed the ``verify_input_frames`` method")
         return None
 
-    def produce_product(
-            self):
+    def produce_product(self):
         """*The code to generate the product of the soxs_straighten recipe*
 
         **Return:**
@@ -163,7 +160,7 @@ class soxs_straighten(base_recipe):
         straightenFrame = recipe.produce_product()
         ```
         """
-        self.log.debug('starting the ``produce_product`` method')
+        self.log.debug("starting the ``produce_product`` method")
 
         arm = self.arm
         kw = self.kw
@@ -181,7 +178,7 @@ class soxs_straighten(base_recipe):
         self.report_output()
         self.clean_up()
 
-        self.log.debug('completed the ``produce_product`` method')
+        self.log.debug("completed the ``produce_product`` method")
         return productPath
 
     # use the tab-trigger below for new method

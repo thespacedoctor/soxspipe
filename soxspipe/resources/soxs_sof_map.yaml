@@ -1,0 +1,312 @@
+# SOXSPIPE SET OF FILES SETUP
+bias_frame:
+  recipe: mbias
+  eso dpr tech: 
+  eso dpr type: 
+    BIAS:
+  products: 
+    - fits image:
+        eso pro type: REDUCED
+        eso pro tech: IMAGE
+        eso pro catg: MASTER_BIAS
+dark_frame: 
+  recipe: mdark
+  eso dpr tech: 
+  eso dpr type: 
+    DARK:
+  products: 
+    - fits image:
+        eso pro type: REDUCED
+        eso pro tech: IMAGE
+        eso pro catg: MASTER_DARK
+single_pinhole_arc:
+  recipe: disp_solution
+  eso dpr tech: ["ECHELLE,PINHOLE", "IMAGE"]
+  eso dpr type: 
+    LAMP,WAVE:
+  calibrations:
+    VIS:
+      - mbias
+    NIR:
+      - mdark
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,PINHOLE
+        eso pro catg: DISP_TAB
+        replace:
+          - from: DISP_SOLUTION
+            to: DSOL
+order_centre_trace:
+  recipe: order_centres
+  eso dpr tech: ["ECHELLE,PINHOLE", "IMAGE"]
+  eso dpr type: 
+    LAMP,FLAT:
+  calibrations:
+    VIS:
+      - mbias
+      - disp_solution
+    NIR:
+      - mdark
+      - disp_solution
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,PINHOLE
+        eso pro catg: ORDER_TAB
+flat_frame:
+  recipe: mflat
+  eso dpr tech: ["ECHELLE,SLIT", "IMAGE"]
+  eso dpr type:
+    LAMP,FLAT:
+  calibrations:
+    VIS:
+      - mbias
+      - order_centres
+    NIR:
+      - mdark
+      - order_centres
+  products: 
+    - fits image:
+        eso pro type: REDUCED
+        eso pro tech: IMAGE
+        eso pro catg: MASTER_FLAT
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT
+        eso pro catg: ORDER_TAB
+        replace:
+          - from: MFLAT
+            to: OLOC
+multi_pinhole_arc:
+  recipe: spat_solution
+  eso dpr tech: ["ECHELLE,MULTI-PINHOLE", "IMAGE"]
+  eso dpr type: 
+    LAMP,WAVE:
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,MULTI-PINHOLE
+        eso pro catg: DISP_TAB
+        replace:
+          - from: SPAT_SOLUTION
+            to: SSOL
+    - fits image:
+        eso pro type: REDUCED
+        eso pro tech: IMAGE
+        eso pro catg: DISP_IMAGE
+        replace:
+          - from: SPAT_SOLUTION
+            to: SSOL
+          - from: .fits
+            to: _IMAGE.fits
+  calibrations:
+    VIS:
+      - mbias
+      - disp_solution
+      - mflat
+    NIR:
+      - mdark
+      - disp_solution
+      - mflat
+flux_standard_stare:
+  recipe: stare
+  eso dpr tech: ["ECHELLE,SLIT,STARE"]
+  eso dpr type: 
+    STD,FLUX:
+    STD:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+    NIR:
+      - mdark
+      - mflat
+      - spat_solution
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,STARE
+        eso pro catg: OBJECT_TAB
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,STARE
+        eso pro catg: RESP_TAB
+        replace:
+          - from: .fits
+            to: _RESP.fits
+telluric_standard_stare:
+  recipe: stare
+  eso dpr tech: ["ECHELLE,SLIT,STARE"]
+  eso dpr type: 
+    STD,TELLURIC:
+    STD,SKY:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+    NIR:
+      - mdark
+      - mflat
+      - spat_solution
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,STARE
+        eso pro catg: OBJECT_TAB
+flux_standard_nodding:
+  recipe: nod
+  eso dpr tech: ["ECHELLE,SLIT,NODDING"]
+  eso dpr type: 
+    STD,FLUX:
+    STD:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+    NIR:
+      - mflat
+      - spat_solution
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,NODDING
+        eso pro catg: OBJECT_TAB
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,NODDING
+        eso pro catg: RESP_TAB
+        replace:
+          - from: .fits
+            to: _RESP.fits
+telluric_standard_nodding:
+  recipe: nod
+  eso dpr tech: ["ECHELLE,SLIT,NODDING"]
+  eso dpr type: 
+    STD,TELLURIC:
+    STD,SKY:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+    NIR:
+      - mflat
+      - spat_solution
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,NODDING
+        eso pro catg: OBJECT_TAB
+flux_standard_offset:
+  recipe: offset
+  eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+  eso dpr type: 
+    STD,FLUX:
+    STD:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+    NIR:
+      - mflat
+      - spat_solution
+  products:
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,OFFSET
+        eso pro catg: OBJECT_TAB
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,OFFSET
+        eso pro catg: RESP_TAB
+        replace:
+          - from: .fits
+            to: _RESP.fits
+telluric_standard_offset:
+  recipe: offset
+  eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+  eso dpr type: 
+    STD,TELLURIC:
+    STD,SKY:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+    NIR:
+      - mflat
+      - spat_solution
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,OFFSET
+        eso pro catg: OBJECT_TAB
+science_stare:
+  recipe: stare-obj
+  eso dpr tech: ["ECHELLE,SLIT,STARE"]
+  eso dpr type: 
+    OBJECT:
+    OBJECT,ASYNC:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+      - nod
+    NIR:
+      - mdark
+      - mflat
+      - spat_solution
+      - nod
+  products: 
+    - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,STARE
+        eso pro catg: OBJECT_TAB
+science_nodding:
+  recipe: nod-obj
+  eso dpr tech: ["ECHELLE,SLIT,NODDING"]
+  eso dpr type: 
+    OBJECT:
+    OBJECT,ASYNC:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+      - nod
+    NIR:
+      - mflat
+      - spat_solution
+      - nod
+  products: 
+  - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,NODDING
+        eso pro catg: OBJECT_TAB
+science_offset:
+  recipe: offset-obj
+  eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+  eso dpr type: 
+    OBJECT:
+    OBJECT,ASYNC:
+  calibrations:
+    VIS:
+      - mbias
+      - mflat
+      - spat_solution
+      - nod
+    NIR:
+      - mflat
+      - spat_solution
+      - nod
+  products: 
+  - fits table:
+        eso pro type: REDUCED
+        eso pro tech: ECHELLE,SLIT,OFFSET
+        eso pro catg: OBJECT_TAB

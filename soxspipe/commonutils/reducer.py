@@ -31,6 +31,8 @@ class reducer(object):
     - ``pathToSettings`` -- path to the settings file.
     - ``quitOnFail`` -- quit the pipeline on any recipe failure
     - ``overwrite`` -- overwrite existing reductions. Default *False*.
+    - ``daemon`` -- run in daemon mode (no terminal output). Default *False*.
+    - ``verbose`` -- print verbose output to terminal. Default *False*.
 
     **Usage:**
 
@@ -58,6 +60,7 @@ class reducer(object):
         quitOnFail=False,
         overwrite=False,
         daemon=False,
+        verbose=False,
     ):
         self.log = log
         log.debug("instantiating a new 'reducer' object")
@@ -68,6 +71,7 @@ class reducer(object):
         self.pathToSettings = pathToSettings
         self.quitOnFail = quitOnFail
         self.daemon = daemon
+        self.verbose = verbose
 
         # REQUEST THE WORKSPACE PARAMETERS FROM THE DATA-ORGANISER
         from soxspipe.commonutils import data_organiser
@@ -77,6 +81,7 @@ class reducer(object):
             rootDir=workspaceDirectory,
         )
         self.sessionId, allSessions = do.session_list(silent=True)
+        do.close()
 
         if self.sessionId is None:
             return None
@@ -84,16 +89,13 @@ class reducer(object):
         self.recipeList = [
             "mbias",
             "mdark",
-            "disp_sol",
+            "disp_solution",
             "order_centres",
             "mflat",
-            "spat_sol",
-            "nod-std",
-            "stare-std",
-            "offset-std",
-            # "nod",
-            # "stare",
-            # "offset",
+            "spat_solution",
+            "nod",
+            "stare",
+            "offset",
         ]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
@@ -115,58 +117,90 @@ class reducer(object):
         from fundamentals import times
         import traceback
         from soxspipe.commonutils import data_organiser
+        import sqlite3
 
         i = 0
-        for recipe in self.recipeList:
+
+        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+        do.session_refresh(failure=None)
+        do.close()
+
+        if self.reductionTarget != "all":
+            self.recipeList = [False]
+
+        for rootRecipe in self.recipeList:
             # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
-            rawGroups = self.select_sof_files_to_process(recipe=recipe, reductionTarget=self.reductionTarget)
+            while True:
+                rawGroups = self.select_sof_files_to_process(recipe=rootRecipe, reductionTarget=self.reductionTarget)
 
-            for index, row in rawGroups.iterrows():
-                recipe = row["recipe"]
-                sof = row["sof"]
-                startTime = times.get_now_sql_datetime()
-                sof = self.sessionPath + "/sof/" + sof
+                if rawGroups.empty:
+                    break
 
-                try:
-                    run_recipe(
-                        self.log, recipe, sof, settings=self.settings, overwrite=self.overwrite, command=row["command"]
-                    )
-                    i += 1
-                except FileExistsError as e:
-                    continue
-                except Exception as e:
-                    # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                    self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-                    self.log.error(f'\nRecipe Command: {row["command"]}\n\n')
+                for index, row in rawGroups.iterrows():
+                    recipe = row["recipe"]
+                    sof = row["sof"]
+                    startTime = times.get_now_sql_datetime()
+                    sof = self.sessionPath + "/sof/" + sof
 
-                    if self.quitOnFail:
-                        sys.exit(0)
+                    try:
+                        run_recipe(
+                            self.log,
+                            recipe,
+                            sof,
+                            settings=self.settings,
+                            overwrite=self.overwrite,
+                            command=row["command"],
+                            verbose=self.verbose,
+                        )
+                        i += 1
+                    except FileExistsError as e:
+                        continue
+                    except Exception as e:
+                        # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                        self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                        self.log.error(f'\nRecipe Command: {row["command"].replace("-obj ", " ")}\n\n')
 
-                    do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-                    do.session_refresh()
-                    if not self.daemon:
-                        print(f"{'='*70}\n")
-                    continue
+                        if self.quitOnFail:
+                            sys.exit(0)
+
+                        if self.reductionTarget != "all":
+                            self.overwrite = False
+
+                        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                        reset = do.session_refresh()
+                        do.close()
+                        if reset:
+                            print(f"BACK TO THE START! {rootRecipe}\n\n")
+                            break
+
+                        if not self.daemon:
+                            print(f"{'='*70}\n")
+                        break
+                else:
+                    # If no break occurred in the loop, exit the while loop
+                    break
 
                 ## FINISH LOGGING ##
                 endTime = times.get_now_sql_datetime()
                 runningTime = times.calculate_time_difference(startTime, endTime)
                 sys.argv[0] = os.path.basename(sys.argv[0])
 
-                self.log.print(f'\nRecipe Command: {row["command"]} ')
+                self.log.print(f'\nRecipe Command: {row["command"].replace("-obj ", " ")} ')
                 self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                 if not self.daemon:
                     print(f"{'='*70}\n")
 
-        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-        incompleteSets = do.get_incomplete_raw_frames_set()
-        if len(incompleteSets.index):
-            from tabulate import tabulate
+        if self.reductionTarget == "all":
+            do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+            incompleteSets = do.get_incomplete_raw_frames_set()
+            do.close()
+            if len(incompleteSets.index):
+                from tabulate import tabulate
 
-            print(
-                "\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:"
-            )
-            print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
+                print(
+                    "\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:"
+                )
+                print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
 
         self.log.debug("completed the ``reduce`` method")
         return None
@@ -206,41 +240,34 @@ class reducer(object):
             else:
                 recipeText = f"= '{recipe}'"
                 std = " AND `eso dpr type` not like '%STD%' "
+            std = ""
             rawGroups = pd.read_sql(
                 f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {std} order by recipe_order, sof",
                 con=conn,
             )
 
         elif reductionTarget.split(".")[-1].lower() == "sof":
-            sofFiles = [reductionTarget]
-            lastLen = 0
-            i = 0
-            while i < 10:
-                i += 1
-                sofFilesDF = pd.read_sql(
-                    f"SELECT distinct sof, recipe, file FROM product_frames WHERE file IN ( SELECT file FROM sof_map_base WHERE sof in ({','.join(map(repr, sofFiles))})) order by recipe_order;",
-                    con=conn,
-                )
+            sqlQuery = f"select sof from product_frames where sof = '{reductionTarget}' and complete = 1"
 
-                print(
-                    f"SELECT distinct sof, recipe, file FROM product_frames WHERE file IN ( SELECT file FROM sof_map_base WHERE sof in ({','.join(map(repr, sofFiles))})) order by recipe_order;",
-                )
+            for _ in range(4):  # Recursively query up to 5 times
+                sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
 
-                from tabulate import tabulate
+            sqlQuery = (
+                f"SELECT distinct sof, recipe from raw_frame_sets WHERE sof in ({sqlQuery}) order by recipe_order, sof"
+            )
 
-                print(tabulate(sofFilesDF[["recipe", "sof", "file"]], headers="keys", tablefmt="psql"))
+            rawGroups = pd.read_sql(sqlQuery, con=conn)
 
-                sofFiles = list(set(sofFilesDF["sof"].unique().tolist() + sofFiles))
-                if len(sofFiles) == lastLen:
-                    rawGroups = sofFilesDF
-                    break
-                else:
-                    lastLen = len(sofFiles)
+        if not len(rawGroups.index):
+            self.log.warning("The SOF file selected for processing is either missing or incomplete.")
+            conn.close()
+            return pd.DataFrame(columns=["recipe", "sof", "command"])
 
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
-        mask = rawGroups["recipe"] == recipe.replace("-std", "")
-        rawGroups = rawGroups.loc[mask]
+        if recipe:
+            mask = rawGroups["recipe"] == recipe.replace("-std", "")
+            rawGroups = rawGroups.loc[mask]
 
         rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
         if self.pathToSettings:
@@ -251,7 +278,7 @@ class reducer(object):
         return rawGroups[["recipe", "sof", "command"]].drop_duplicates()
 
 
-def run_recipe(log, recipe, sof, settings, overwrite, command=False):
+def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=False):
     """*execute a pipeline recipe*
 
     **Key Arguments:**
@@ -259,6 +286,9 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
     - ``recipe`` -- the name of the recipe tp execute
     - ``sof`` -- path to the sof file containing the files the recipe requires
     - ``command`` -- the command used to run the recipe
+    - ``settings`` -- the settings dictionary
+    - ``overwrite`` -- overwrite existing reductions. Default *False*.
+    - ``verbose`` -- print verbose output to terminal. Default *False*.
 
     **Usage:**
 
@@ -277,6 +307,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if recipe == "mdark":
@@ -288,9 +319,10 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
-    if recipe == "disp_sol":
+    if recipe == "disp_solution":
         from soxspipe.recipes import soxs_disp_solution
 
         soxs_recipe = soxs_disp_solution(
@@ -299,6 +331,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if recipe == "order_centres":
@@ -310,6 +343,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     if recipe == "mflat":
@@ -321,9 +355,10 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
-    if recipe == "spat_sol":
+    if recipe == "spat_solution":
         from soxspipe.recipes import soxs_spatial_solution
 
         soxs_recipe = soxs_spatial_solution(
@@ -332,9 +367,10 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
-    if recipe == "stare":
+    if "stare" in recipe:
         from soxspipe.recipes import soxs_stare
 
         soxs_recipe = soxs_stare(
@@ -343,9 +379,10 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
-    if recipe == "nod":
+    if "nod" in recipe:
         from soxspipe.recipes import soxs_nod
 
         soxs_recipe = soxs_nod(
@@ -354,6 +391,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False):
             inputFrames=sof,
             overwrite=overwrite,
             command=command,
+            verbose=verbose,
         )
 
     soxs_recipe.produce_product()

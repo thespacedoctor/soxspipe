@@ -64,6 +64,7 @@ class soxs_mbias(base_recipe):
             recipeName="soxs-mbias",
             command=command,
             debug=debug,
+            verbose=verbose,
         )
         log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings

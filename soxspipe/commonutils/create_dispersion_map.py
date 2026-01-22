@@ -212,7 +212,7 @@ class create_dispersion_map(object):
     def _set_recipe_name(self):
         """*Determine recipe name based on whether this is first guess or spatial solution*"""
         if self.firstGuessMap:
-            self.recipeName = "soxs-spatial-solution"
+            self.recipeName = "soxs-spat-solution"
         else:
             self.recipeName = "soxs-disp-solution"
 
@@ -1806,7 +1806,6 @@ class create_dispersion_map(object):
             conn.commit()
             conn.close()
             sys.exit()
-            print("HERE")
 
         if self.arcFrame:
             self.slitWidth = self.arcFrame.header[self.kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
@@ -2632,9 +2631,9 @@ class create_dispersion_map(object):
 
         slitMap, wlMap, orderMap = self.create_placeholder_images(reverse=True)
 
-        combinedSlitImage = Combiner(slitImages)
+        combinedSlitImage = Combiner(slitImages, dtype=np.float32)
         combinedSlitImage = combinedSlitImage.sum_combine()
-        combinedWlImage = Combiner(wlImages)
+        combinedWlImage = Combiner(wlImages, dtype=np.float32)
         combinedWlImage = combinedWlImage.sum_combine()
 
         combinedWlImage.data += wlMap.data

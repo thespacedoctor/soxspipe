@@ -16,7 +16,8 @@ from .base_recipe import base_recipe
 from fundamentals import tools
 import sys
 import os
-os.environ['TERM'] = 'vt100'
+
+os.environ["TERM"] = "vt100"
 
 
 class soxs_order_centres(base_recipe):
@@ -30,7 +31,7 @@ class soxs_order_centres(base_recipe):
     - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
     - ``verbose`` -- verbose. True or False. Default *False*
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
-    - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*. 
+    - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*.
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- debug mode. True or False. Default *False*
 
@@ -46,23 +47,31 @@ class soxs_order_centres(base_recipe):
     ).produce_product()
     ```
     """
+
     # Initialisation
 
     def __init__(
-            self,
-            log,
-            settings=False,
-            inputFrames=[],
-            verbose=False,
-            overwrite=False,
-            polyOrders=False,
-            command=False,
-            debug=False
-
+        self,
+        log,
+        settings=False,
+        inputFrames=[],
+        verbose=False,
+        overwrite=False,
+        polyOrders=False,
+        command=False,
+        debug=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_order_centres, self).__init__(
-            log=log, settings=settings, inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-order-centre", command=command, debug=debug)
+            log=log,
+            settings=settings,
+            inputFrames=inputFrames,
+            overwrite=overwrite,
+            recipeName="soxs-order-centres",
+            command=command,
+            debug=debug,
+            verbose=verbose,
+        )
         self.log = log
         log.debug("instantiating a new 'soxs_order_centres' object")
         self.settings = settings
@@ -82,11 +91,9 @@ class soxs_order_centres(base_recipe):
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         from soxspipe.commonutils.set_of_files import set_of_files
+
         sof = set_of_files(
-            log=self.log,
-            settings=self.settings,
-            inputFrames=self.inputFrames,
-            ext=self.settings['data-extension']
+            log=self.log, settings=self.settings, inputFrames=self.inputFrames, ext=self.settings["data-extension"]
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -99,20 +106,19 @@ class soxs_order_centres(base_recipe):
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
-        self.inputFrames.sort(['MJD-OBS'])
+        self.inputFrames.sort(["MJD-OBS"])
         if self.verbose:
             self.log.print("# RAW INPUT FRAMES - SUMMARY")
-            self.log.print(self.inputFrames.summary, "\n")
+            self.log.print(self.inputFrames.summary)
+            self.log.print("\n")
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
-    def verify_input_frames(
-            self):
+    def verify_input_frames(self):
         """*verify input frames match those required by the soxs_order_centres recipe*
 
         **Return:**
@@ -121,7 +127,7 @@ class soxs_order_centres(base_recipe):
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
-        self.log.debug('starting the ``verify_input_frames`` method')
+        self.log.debug("starting the ``verify_input_frames`` method")
 
         kw = self.kw
 
@@ -136,43 +142,55 @@ class soxs_order_centres(base_recipe):
             if not error:
                 if len(imageTypes) > 1:
                     imageTypes = " and ".join(imageTypes)
-                    erorr = "Input frames are a mix of %(imageTypes)s" % locals(
-                    )
+                    erorr = "Input frames are a mix of %(imageTypes)s" % locals()
 
             if not error:
                 if self.inst == "SOXS":
-                    good = 'FLAT'
+                    good = "FLAT"
                 else:
                     good = "LAMP,ORDERDEF"
                 if good not in imageTypes[0]:
-                    error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames and a first-guess dispersion solution table for NIR" % locals()
+                    error = (
+                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames and a first-guess dispersion solution table for NIR"
+                        % locals()
+                    )
 
             if not error:
                 for i in imageTech:
-                    if i not in ['ECHELLE,PINHOLE', 'IMAGE']:
-                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR" % locals()
+                    if i not in ["ECHELLE,PINHOLE", "IMAGE"]:
+                        error = (
+                            "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR"
+                            % locals()
+                        )
 
             if not error:
                 for i in [f"DISP_TAB_{self.arm}"]:
                     if i not in imageCat:
-                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR" % locals()
+                        error = (
+                            "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR"
+                            % locals()
+                        )
 
         else:
             if not error:
                 if self.inst == "SOXS":
-                    goodList = ['FLAT,LAMP', 'LAMP,DFLAT', 'LAMP,FLAT']
+                    goodList = ["FLAT,LAMP", "LAMP,DFLAT", "LAMP,FLAT"]
                 else:
-                    goodList = ["LAMP,ORDERDEF",
-                                'LAMP,DORDERDEF', 'LAMP,QORDERDEF']
+                    goodList = ["LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF"]
                 for i in imageTypes:
                     if i not in goodList:
-                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found {i}" % locals(
+                        error = (
+                            "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found {i}"
+                            % locals()
                         )
 
             if not error:
                 for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
                     if i not in imageCat:
-                        error = "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS." % locals()
+                        error = (
+                            "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS."
+                            % locals()
+                        )
 
         if error:
             sys.stdout.flush()
@@ -183,18 +201,17 @@ class soxs_order_centres(base_recipe):
             raise TypeError(error)
 
         self.imageType = imageTypes[0]
-        self.log.debug('completed the ``verify_input_frames`` method')
+        self.log.debug("completed the ``verify_input_frames`` method")
         return None
 
-    def produce_product(
-            self):
+    def produce_product(self):
         """*generate the order-table with polynomal fits of order-centres*
 
         **Return:**
 
         - ``productPath`` -- the path to the order-table
         """
-        self.log.debug('starting the ``produce_product`` method')
+        self.log.debug("starting the ``produce_product`` method")
 
         from astropy.nddata import CCDData
         from astropy import units as u
@@ -211,83 +228,101 @@ class soxs_order_centres(base_recipe):
         dark = False
         orderDef_image = False
 
-        add_filters = {kw("PRO_CATG"): 'MASTER_BIAS_' + arm}
+        add_filters = {kw("PRO_CATG"): "MASTER_BIAS_" + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            master_bias = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                       hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            master_bias = CCDData.read(
+                i,
+                hdu=0,
+                unit=u.electron,
+                hdu_uncertainty="ERRS",
+                hdu_mask="QUAL",
+                hdu_flags="FLAGS",
+                key_uncertainty_type="UTYPE",
+            )
 
         # UVB/VIS DARK
-        add_filters = {kw("PRO_CATG"): 'MASTER_DARK_' + arm}
+        add_filters = {kw("PRO_CATG"): "MASTER_DARK_" + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            dark = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            dark = CCDData.read(
+                i,
+                hdu=0,
+                unit=u.electron,
+                hdu_uncertainty="ERRS",
+                hdu_mask="QUAL",
+                hdu_flags="FLAGS",
+                key_uncertainty_type="UTYPE",
+            )
 
         # NIR DARK
         if self.inst == "SOXS":
-            add_filters = {kw("DPR_TYPE"): 'FLAT,LAMP',
-                           kw("DPR_TECH"): 'IMAGE'}
+            add_filters = {kw("DPR_TYPE"): "FLAT,LAMP", kw("DPR_TECH"): "IMAGE"}
         else:
-            add_filters = {kw("DPR_TYPE"): 'LAMP,ORDERDEF',
-                           kw("DPR_TECH"): 'IMAGE'}
+            add_filters = {kw("DPR_TYPE"): "LAMP,ORDERDEF", kw("DPR_TECH"): "IMAGE"}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            dark = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            dark = CCDData.read(
+                i,
+                hdu=0,
+                unit=u.electron,
+                hdu_uncertainty="ERRS",
+                hdu_mask="QUAL",
+                hdu_flags="FLAGS",
+                key_uncertainty_type="UTYPE",
+            )
 
         if self.inst == "SOXS":
             filter_list = [
-                {kw("DPR_TYPE"): 'FLAT,LAMP', kw(
-                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,FLAT', kw(
-                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,DFLAT', kw(
-                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
+                {kw("DPR_TYPE"): "FLAT,LAMP", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
+                {kw("DPR_TYPE"): "LAMP,FLAT", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
+                {kw("DPR_TYPE"): "LAMP,DFLAT", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
                 # KEYWORD SCREW-UP DURING PAE MEANT WE HAD TO ADD BELOW WITH ECHELLE,SLIT ... SHOULD REMOVE THIS EVENTUALLY
-                {kw("DPR_TYPE"): 'FLAT,LAMP', kw("DPR_TECH"): 'ECHELLE,SLIT'},
-                {kw("DPR_TYPE"): 'LAMP,FLAT', kw("DPR_TECH"): 'ECHELLE,SLIT'},
-                {kw("DPR_TYPE"): 'LAMP,DFLAT', kw("DPR_TECH"): 'ECHELLE,SLIT'},
+                {kw("DPR_TYPE"): "FLAT,LAMP", kw("DPR_TECH"): "ECHELLE,SLIT"},
+                {kw("DPR_TYPE"): "LAMP,FLAT", kw("DPR_TECH"): "ECHELLE,SLIT"},
+                {kw("DPR_TYPE"): "LAMP,DFLAT", kw("DPR_TECH"): "ECHELLE,SLIT"},
             ]
         else:
             # UVB XSHOOTER - CHECK FOR D2 LAMP FIRST AND IF NOT FOUND USE THE QTH LAMP
             filter_list = [
-                {kw("DPR_TYPE"): 'LAMP,ORDERDEF', kw(
-                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,QORDERDEF', kw(
-                    "DPR_TECH"): 'ECHELLE,PINHOLE'},
-                {kw("DPR_TYPE"): 'LAMP,DORDERDEF', kw(
-                    "DPR_TECH"): 'ECHELLE,PINHOLE'}
+                {kw("DPR_TYPE"): "LAMP,ORDERDEF", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
+                {kw("DPR_TYPE"): "LAMP,QORDERDEF", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
+                {kw("DPR_TYPE"): "LAMP,DORDERDEF", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
             ]
 
         for add_filters in filter_list:
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                orderDef_image = CCDData.read(i, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                              hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+                orderDef_image = CCDData.read(
+                    i,
+                    hdu=0,
+                    unit=u.electron,
+                    hdu_uncertainty="ERRS",
+                    hdu_mask="QUAL",
+                    hdu_flags="FLAGS",
+                    key_uncertainty_type="UTYPE",
+                )
 
         add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             disp_map_table = i
 
-        self.orderFrame = self.detrend(
-            inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
+        self.orderFrame = self.detrend(inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
         self.update_fits_keywords(frame=self.orderFrame)
 
         if self.settings["save-intermediate-products"]:
             fileDir = self.workspaceRootPath
-            filepath = self._write(
-                self.orderFrame, fileDir, filename=False, overwrite=True, product=False)
-            self.log.print(
-                f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
+            filepath = self._write(self.orderFrame, fileDir, filename=False, overwrite=True, product=False)
+            self.log.print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
         # FIND THE APPROPRIATE PREDICTED LINE-LIST
-        if arm != "NIR" and kw('WIN_BINX') in self.orderFrame.header:
-            binx = int(self.orderFrame.header[kw('WIN_BINX')])
-            biny = int(self.orderFrame.header[kw('WIN_BINY')])
+        if arm != "NIR" and kw("WIN_BINX") in self.orderFrame.header:
+            binx = int(self.orderFrame.header[kw("WIN_BINX")])
+            biny = int(self.orderFrame.header[kw("WIN_BINY")])
         else:
             binx = 1
             biny = 1
 
         if self.settings["tune-pipeline"]:
             from itertools import product
+
             digits = [2, 3, 4, 5, 6]
             perm = product(digits, repeat=2)
             try:
@@ -303,31 +338,48 @@ class soxs_order_centres(base_recipe):
                 dispersion_map=disp_map_table,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
-                recipeName="soxs-order-centre",
+                recipeName="soxs-order-centres",
                 qcTable=self.qc,
                 productsTable=self.products,
                 sofName=self.sofName,
                 binx=binx,
                 biny=biny,
-                startNightDate=self.startNightDate
+                startNightDate=self.startNightDate,
             )
             orderPixelTable = detector.sample_trace()
 
             print("\n\nTUNING SOXSPIPE\n")
 
-
             # DEFINE AN INPUT ARRAY
             from fundamentals import fmultiprocess
+
             # NOTE TO SELF: if having issue with multiprocessing stalling, try and import required modules into the mthod/function running this fmultiprocess function instead of at the module level
-            results = fmultiprocess(log=self.log, function=parameterTuning,
-                                    inputArray=list(perm), poolSize=False, timeout=360000, recipeSettings=self.recipeSettings, settings=self.settings, orderFrame=self.orderFrame, disp_map_table=disp_map_table, orderPixelTable=orderPixelTable, qc=self.qc, products=self.products, sofName=self.sofName, binx=binx, biny=biny, turnOffMP=self.debug, mute=True, progressBar=True)
+            results = fmultiprocess(
+                log=self.log,
+                function=parameterTuning,
+                inputArray=list(perm),
+                poolSize=False,
+                timeout=360000,
+                recipeSettings=self.recipeSettings,
+                settings=self.settings,
+                orderFrame=self.orderFrame,
+                disp_map_table=disp_map_table,
+                orderPixelTable=orderPixelTable,
+                qc=self.qc,
+                products=self.products,
+                sofName=self.sofName,
+                binx=binx,
+                biny=biny,
+                turnOffMP=self.debug,
+                mute=True,
+                progressBar=True,
+            )
             return None
 
         else:
             if self.polyOrders:
                 self.polyOrders = str(self.polyOrders)
-                self.polyOrders = [int(digit)
-                                   for digit in str(self.polyOrders)]
+                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
                 self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
                 self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
 
@@ -339,13 +391,13 @@ class soxs_order_centres(base_recipe):
                 dispersion_map=disp_map_table,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
-                recipeName="soxs-order-centre",
+                recipeName="soxs-order-centres",
                 qcTable=self.qc,
                 productsTable=self.products,
                 sofName=self.sofName,
                 binx=binx,
                 biny=biny,
-                startNightDate=self.startNightDate
+                startNightDate=self.startNightDate,
             )
             productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()
 
@@ -358,28 +410,39 @@ class soxs_order_centres(base_recipe):
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
         self.dateObs = self.orderFrame.header[kw("DATE_OBS")]
 
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "product_label": "ORDER_CENTRES",
-            "file_name": filename,
-            "file_type": "FITS",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"{self.arm} order centre traces",
-            "file_path": productPath,
-            "label": "PROD"
-        }).to_frame().T], ignore_index=True)
+        self.products = pd.concat(
+            [
+                self.products,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "product_label": "ORDER_CENTRES",
+                        "file_name": filename,
+                        "file_type": "FITS",
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "product_desc": f"{self.arm} order centre traces",
+                        "file_path": productPath,
+                        "label": "PROD",
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
         self.report_output()
         self.clean_up()
 
-        self.log.debug('completed the ``produce_product`` method')
+        self.log.debug("completed the ``produce_product`` method")
         return productPath
 
 
-def parameterTuning(p, log, recipeSettings, settings, orderFrame, disp_map_table, orderPixelTable, qc, products, sofName, binx, biny):
-    """*tuning the spatial solution*        
-    """
+def parameterTuning(
+    p, log, recipeSettings, settings, orderFrame, disp_map_table, orderPixelTable, qc, products, sofName, binx, biny
+):
+    """*tuning the spatial solution*"""
 
     recipeSettings["detect-continuum"]["order-deg"] = p[0]
     recipeSettings["detect-continuum"]["disp-axis-deg"] = p[1]
@@ -390,14 +453,14 @@ def parameterTuning(p, log, recipeSettings, settings, orderFrame, disp_map_table
         dispersion_map=disp_map_table,
         settings=settings,
         recipeSettings=recipeSettings,
-        recipeName="soxs-order-centre",
+        recipeName="soxs-order-centres",
         qcTable=qc,
         productsTable=products,
         sofName=sofName,
         binx=binx,
         biny=biny,
         orderPixelTable=orderPixelTable,
-        startNightDate=self.startNightDate
+        startNightDate=self.startNightDate,
     )
     try:
         productPath, qcTable, productsTable, orderPolyTable, orderPixelTable, orderMetaTable = detector.get()

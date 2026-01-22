@@ -54,7 +54,7 @@ soxs-disp-solution:
 
     poly-fitting-residual-clipping-sigma: 5
 
-soxs-order-centre:
+soxs-order-centres:
      detect-continuum:
         # NUMBER OF CROSS-ORDER SLICES PER ORDER
         order-sample-count: 200
@@ -73,7 +73,7 @@ soxs-order-centre:
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
         poly-clipping-iteration-limit: 1
 
-soxs-spatial-solution:
+soxs-spat-solution:
     use_flat: False
     pixel-window-size: 10
     pinhole-detection-thres-sigma: 5
