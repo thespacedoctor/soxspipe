@@ -726,7 +726,6 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
-        del flatCollection
         dflats = [
             c
             for c in dflatCollection.ccds(
@@ -738,7 +737,6 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
-        del dflats
         qflats = [
             c
             for c in qflatCollection.ccds(
@@ -750,7 +748,6 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
-        del qflats
         domeflats = [
             c
             for c in domeflatCollection.ccds(
@@ -762,7 +759,6 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
-        del domeflats
 
         # IF NO DARK FRAMES EXIST - JUST A MASTER BIAS. SUBTRACT BIAS.
         calibratedFlats = []

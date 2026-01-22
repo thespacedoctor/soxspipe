@@ -1058,7 +1058,8 @@ class base_recipe(object):
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
             ccds = [
-                toolkit.frame_to_32(c)
+                # toolkit.frame_to_32(c)
+                c
                 for c in frames.ccds(
                     ccd_kwargs={
                         "hdu_uncertainty": "ERRS",
