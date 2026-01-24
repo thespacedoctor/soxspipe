@@ -157,6 +157,7 @@ class data_organiser(object):
             "lamp",
             "night start date",
             "night start mjd",
+            "utc-date",
             "mjd-obs",
             "date-obs",
             "object",
@@ -634,7 +635,7 @@ class data_organiser(object):
                 rawFrames = self._populate_raw_frames_extra_columns(rawFrames)
                 # FIND AND REMOVE DUPLICATE FILES
                 if len(rawFrames.index):
-                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["night start date"] + "/" + rawFrames["file"]
+                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
                     # FIND AND REMOVE DUPLICATE FILES
                     matchedFiles = pd.merge(rawFrames, knownRawFrames, on=["file", "eso dpr tech"], how="inner")
                     if len(matchedFiles.index):
@@ -652,7 +653,8 @@ class data_organiser(object):
 
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
                 if len(rawFrames.index):
-                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["night start date"] + "/" + rawFrames["file"]
+
+                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
 
                     rawFrames.replace(["--", -99.99], None).to_sql(
                         "raw_frames", con=self.conn, index=False, if_exists="append"
@@ -3321,13 +3323,16 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
         masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
         chileTimes = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset
         startNightDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - night_start_offset
+        utcDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc")
         # masterTable["utc-4hrs"] = (masterTable["mjd-obs"] - 2 / 3).astype(int)
+        masterTable["utc-date"] = utcDate.strftime("%Y-%m-%d")
         masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
         masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
         masterTable["night start mjd"] = startNightDate.mjd.astype(int)
         masterTable["boundary"] = startNightDate.mjd - startNightDate.mjd.astype(int)
         masterTable.add_index("night start date")
         masterTable.add_index("night start mjd")
+        masterTable.add_index("utc-date")
 
     if instrument.upper() != "SOXS":
         if kw("DET_READ_SPEED").lower() in masterTable.colnames:
