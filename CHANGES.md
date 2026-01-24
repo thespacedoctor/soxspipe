@@ -1,5 +1,6 @@
 # Release Notes
 
+* raw frames are now sorted into UTC dated folders instead of Chilean time (to match la silla setup)
 * show progress when uncompressing .Z files
 * Corrected validation of response curve files by not checking binning with NIR data (previously this was causing needless fails)
 * Complete refactoring of the data-organiser. Now, much faster and data-organiser dictionaries are located in one yaml file.
