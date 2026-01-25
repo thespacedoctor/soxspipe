@@ -5,7 +5,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
     soxspipe prep [<workspaceDirectory> --vlt --refresh]
-    soxspipe [-qwV] reduce all [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe [-qwpV] reduce all [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe [-qxV] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe reduce ob <obid> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
@@ -48,6 +48,7 @@ Options:
 
     -d, --debug                            show debugging plots
     -h, --help                             show this help message
+    -p, --prep                             prepare a workspace before reducing data
     -q, --quitOnFail                       stop the pipeline if a recipe fails
     -r, --refresh                          trigger a complete refresh the workspace during preparation (delete database and do a complete prepare)
     -s, --settings <pathToSettingsFile>    the settings file
@@ -382,6 +383,7 @@ def main(arguments=None):
                 quitOnFail=a["quitOnFailFlag"],
                 overwrite=a["overwriteFlag"],
                 verbose=verbose,
+                refreshWorkspace=a["prepFlag"],
             )
             collection.reduce()
 

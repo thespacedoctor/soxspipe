@@ -20,33 +20,35 @@ os.environ["TERM"] = "vt100"
 
 class reducer(object):
     """
-    *reduce all the data in a workspace, or target specific obs and files for reduction*
+        *reduce all the data in a workspace, or target specific obs and files for reduction*
 
-    **Key Arguments:**
+        **Key Arguments:**
 
-    - ``log`` -- logger
-    - ``workspaceDirectory`` -- path to the root of the workspace
-    - ``reductionTarget`` -- target for reduction: "all", "sof", "ob" (default: "all")
-    - ``settings`` -- the settings dictionary
-    - ``pathToSettings`` -- path to the settings file.
-    - ``quitOnFail`` -- quit the pipeline on any recipe failure
-    - ``overwrite`` -- overwrite existing reductions. Default *False*.
-    - ``daemon`` -- run in daemon mode (no terminal output). Default *False*.
-    - ``verbose`` -- print verbose output to terminal. Default *False*.
+        - ``log`` -- logger
+        - ``workspaceDirectory`` -- path to the root of the workspace
+        - ``reductionTarget`` -- target for reduction: "all", "sof", "ob" (default: "all")
+        - ``settings`` -- the settings dictionary
+        - ``pathToSettings`` -- path to the settings file.
+        - ``quitOnFail`` -- quit the pipeline on any recipe failure
+        - ``overwrite`` -- overwrite existing reductions. Default *False*.
+        - ``daemon`` -- run in daemon mode (no terminal output). Default *False*.
+        - ``verbose`` -- print verbose output to terminal. Default *False*.
+        - ``refreshWorkspace`` -- refresh the workspace before reducing to collect new files. Default *False*.
+    `
 
-    **Usage:**
+        **Usage:**
 
-    ```python
-    from soxspipe.commonutils import reducer
-    collection = reducer(
-        log=log,
-        workspaceDirectory="/path/to/workspace/root/",
-        reductionTarget="all",
-        settings=settings,
-        pathToSettings="/path/to/settings.yaml"
-    )
-    collection.reduce()
-    ```
+        ```python
+        from soxspipe.commonutils import reducer
+        collection = reducer(
+            log=log,
+            workspaceDirectory="/path/to/workspace/root/",
+            reductionTarget="all",
+            settings=settings,
+            pathToSettings="/path/to/settings.yaml"
+        )
+        collection.reduce()
+        ```
 
     """
 
@@ -61,6 +63,7 @@ class reducer(object):
         overwrite=False,
         daemon=False,
         verbose=False,
+        refreshWorkspace=False,
     ):
         self.log = log
         log.debug("instantiating a new 'reducer' object")
@@ -100,6 +103,12 @@ class reducer(object):
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
         self.sessionDB = workspaceDirectory + "/soxspipe.db"
+
+        if refreshWorkspace:
+            self.log.print("Refreshing the workspace before reduction...")
+            do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+            do.prepare()
+            do.close()
 
         return None
 
