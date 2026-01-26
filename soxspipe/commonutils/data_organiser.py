@@ -157,7 +157,7 @@ class data_organiser(object):
             "lamp",
             "night start date",
             "night start mjd",
-            "utc-date",
+            "mjd-date",
             "mjd-obs",
             "date-obs",
             "object",
@@ -371,7 +371,7 @@ class data_organiser(object):
             "slit",
             "slitmask",
             "binning",
-            "utc-date",
+            "mjd-date",
             "night start mjd",
             "night start date",
             "instrume",
@@ -477,6 +477,7 @@ class data_organiser(object):
         # EXIST IF NO FITS FILES EXIST - SOME PROTECTION AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
         if fitsExist == False:
             print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
+            sys.exit()
             return None
 
         # MK RAW FRAME DIRECTORY
@@ -638,7 +639,7 @@ class data_organiser(object):
                 rawFrames = self._populate_raw_frames_extra_columns(rawFrames)
                 # FIND AND REMOVE DUPLICATE FILES
                 if len(rawFrames.index):
-                    rawFrames["filepath"] = f"./raw/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
+                    rawFrames["filepath"] = f"./raw/" + rawFrames["mjd-date"] + "/" + rawFrames["file"]
                     # FIND AND REMOVE DUPLICATE FILES
                     matchedFiles = pd.merge(rawFrames, knownRawFrames, on=["file", "eso dpr tech"], how="inner")
                     if len(matchedFiles.index):
@@ -658,13 +659,13 @@ class data_organiser(object):
                 if len(rawFrames.index):
 
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
-                    rawFrames["filepath"] = f"./raw/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
+                    rawFrames["filepath"] = f"./raw/" + rawFrames["mjd-date"] + "/" + rawFrames["file"]
                     rawFrames.replace(["--", -99.99], None).to_sql(
                         "raw_frames", con=self.conn, index=False, if_exists="append"
                     )
 
                     # NOW MAKE THE DESTINATION FILEPATHS ABSOLUTE
-                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
+                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["mjd-date"] + "/" + rawFrames["file"]
 
                     # MOVE THE FILES TO THE CORRECT LOCATION
                     filepaths = rawFrames["filepath"]
@@ -3185,7 +3186,7 @@ class data_organiser(object):
 
             productFrames["filepath"] = (
                 "./reduced/"
-                + productFrames["utc-date"].astype(str)
+                + productFrames["mjd-date"].astype(str)
                 + "/soxs-"
                 + recipe.replace("_", "-")
                 + "/"
@@ -3329,19 +3330,21 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     if "mjd-obs" in masterTable.colnames:
         chile_offset = TimeDelta(4.0 * 60 * 60, format="sec")
         night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
+        mjd_ofset = TimeDelta(12.0 * 60 * 60, format="sec")
         masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
         chileTimes = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset
         startNightDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - night_start_offset
         utcDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc")
         # masterTable["utc-4hrs"] = (masterTable["mjd-obs"] - 2 / 3).astype(int)
-        masterTable["utc-date"] = utcDate.strftime("%Y-%m-%d")
+        mjdDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") + mjd_ofset
+        masterTable["mjd-date"] = mjdDate.strftime("%Y-%m-%d")
         masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
         masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
         masterTable["night start mjd"] = startNightDate.mjd.astype(int)
         masterTable["boundary"] = startNightDate.mjd - startNightDate.mjd.astype(int)
         masterTable.add_index("night start date")
         masterTable.add_index("night start mjd")
-        masterTable.add_index("utc-date")
+        masterTable.add_index("mjd-date")
 
     if instrument.upper() != "SOXS":
         if kw("DET_READ_SPEED").lower() in masterTable.colnames:
