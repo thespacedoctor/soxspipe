@@ -85,6 +85,15 @@ def main(arguments=None):
     from fundamentals.logs import emptyLogger
     from soxspipe.commonutils import data_organiser
 
+    arguments = docopt(__doc__)
+    if arguments["<workspaceDirectory>"]:
+        # CHANGE INTO WORKSPACE DIRECTORY
+        os.chdir(arguments["<workspaceDirectory>"])
+    arguments["<workspaceDirectory>"] = "."
+
+    # setup the command-line util settings
+    arguments = None
+
     eLog = emptyLogger()
     do = data_organiser(log=eLog, rootDir=".")
     currentSession, allSessions = do.session_list(silent=True)
@@ -104,15 +113,13 @@ def main(arguments=None):
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
-    # setup the command-line util settings
-    arguments = None
     if "-s" not in sys.argv and "prep" not in sys.argv and "session" not in sys.argv and currentSession:
         settingsFile = f"./sessions/{currentSession}/soxspipe.yaml"
         exists = os.path.exists(settingsFile)
         sys.argv.append("-s")
         sys.argv.append(settingsFile)
 
-    if "prep" in sys.argv or "watch" in sys.argv:
+    if "prep" in sys.argv or "watch" in sys.argv or ("reduce" in sys.argv and "-s" not in sys.argv):
         arguments = docopt(__doc__)
         if "--settings" in arguments.keys():
             del arguments["--settings"]
@@ -126,6 +133,9 @@ def main(arguments=None):
         defaultSettingsFile=False,
     )
     arguments, settings, log, dbConn = su.setup()
+
+    arguments["workspaceDirectory"] = "."
+    arguments["--settings"] = "./soxspipe.yaml"
 
     # SET ASTROPY LOGGING LEVEL
     try:
@@ -159,9 +169,6 @@ def main(arguments=None):
                 val,
             )
         )
-
-    if not a["workspaceDirectory"]:
-        a["workspaceDirectory"] = "."
 
     ## START LOGGING ##
     startTime = times.get_now_sql_datetime()

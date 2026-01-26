@@ -438,7 +438,7 @@ class data_organiser(object):
 
         return None
 
-    def prepare(self, refresh=False):
+    def prepare(self, refresh=False, report=True):
         """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*
 
         **Key Arguments:**
@@ -449,6 +449,7 @@ class data_organiser(object):
         import glob
 
         if refresh:
+            # raise
             # DELETE THE SQLITE DATABASE IF IT EXISTS
             exists = os.path.exists(self.rootDbPath)
             self.conn = None
@@ -521,24 +522,26 @@ class data_organiser(object):
         self._flag_files_to_ignore()
         self.build_sof_files()
 
-        print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
-        print(f"In this workspace you will find:\n")
-        print(f"   - `misc/`: a lost-and-found archive of non-fits files")
-        print(f"   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables.")
-        print(f"   - `{self.rawDir.replace("./","")}/`: nested folders, ordered by date, containing raw-frames.")
-        print(f"   - `sessions/`: directory of data-reduction sessions")
-        print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
-        print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
-        print(f"   - `reductions/`: nested folders, ordered by date, containing reduced data.\n")
+        if report:
 
-        incompleteSets = self.get_incomplete_raw_frames_set()
-        if len(incompleteSets.index):
-            from tabulate import tabulate
+            print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
+            print(f"In this workspace you will find:\n")
+            print(f"   - `misc/`: a lost-and-found archive of non-fits files")
+            print(f"   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables.")
+            print(f"   - `{self.rawDir.replace("./","")}/`: nested folders, ordered by date, containing raw-frames.")
+            print(f"   - `sessions/`: directory of data-reduction sessions")
+            print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
+            print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
+            print(f"   - `reductions/`: nested folders, ordered by date, containing reduced data.\n")
 
-            print("SOME CALIBRATION FRAMES ARE NOT PRESENT FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:")
-            print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
+            incompleteSets = self.get_incomplete_raw_frames_set()
+            if len(incompleteSets.index):
+                from tabulate import tabulate
 
-        self.conn.close()
+                print("SOME CALIBRATION FRAMES ARE NOT PRESENT FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:")
+                print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
+
+            self.conn.close()
 
         self.log.debug("completed the ``prepare`` method")
         return None
@@ -635,7 +638,7 @@ class data_organiser(object):
                 rawFrames = self._populate_raw_frames_extra_columns(rawFrames)
                 # FIND AND REMOVE DUPLICATE FILES
                 if len(rawFrames.index):
-                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
+                    rawFrames["filepath"] = f"./raw/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
                     # FIND AND REMOVE DUPLICATE FILES
                     matchedFiles = pd.merge(rawFrames, knownRawFrames, on=["file", "eso dpr tech"], how="inner")
                     if len(matchedFiles.index):
@@ -654,12 +657,16 @@ class data_organiser(object):
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
                 if len(rawFrames.index):
 
-                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
-
+                    # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
+                    rawFrames["filepath"] = f"./raw/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
                     rawFrames.replace(["--", -99.99], None).to_sql(
                         "raw_frames", con=self.conn, index=False, if_exists="append"
                     )
 
+                    # NOW MAKE THE DESTINATION FILEPATHS ABSOLUTE
+                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["utc-date"] + "/" + rawFrames["file"]
+
+                    # MOVE THE FILES TO THE CORRECT LOCATION
                     filepaths = rawFrames["filepath"]
                     filenames = rawFrames["file"]
                     for p, n in zip(filepaths, filenames):
@@ -876,11 +883,14 @@ class data_organiser(object):
         sqlQuery = f"select filepath from {tableName};"
         c.execute(sqlQuery)
 
-        dbFiles = [r[0] for r in c.fetchall()]
+        # MAKE PATHS ABSOLUTE
+        dbFiles = [r[0].replace("./raw/", self.rawDir).replace("//", "/") for r in c.fetchall()]
 
         # DELETED FILES
         filesNotInDB = set(fitsPaths) - set(dbFiles)
-        filesNotInFS = set(dbFiles) - set(fitsPaths)
+        filesNotInFS = list(set(dbFiles) - set(fitsPaths))
+        # MAKE PATHS RELATIVE TO rawDir
+        filesNotInFS = [f.replace(self.rawDir + "/", "./raw/").replace("//", "/") for f in filesNotInFS]
 
         if len(filesNotInFS):
             filesNotInFS = ("','").join(filesNotInFS)
@@ -2607,15 +2617,14 @@ class data_organiser(object):
                         pass
                     self.freshRun = False
                 except IOError:
-                    try:
-                        os.remove(self.sessionIdFile)
-                    except Exception:
-                        pass
+                    # try:
+                    #     os.remove(self.sessionIdFile)
+                    # except Exception:
+                    #     pass
                     self.freshRun = True
                     emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
                     shutil.copyfile(emptyDb, self.rootDbPath)
-
-                conn = sql.connect(self.rootDbPath, timeout=30, autocommit=True)
+                conn = sql.connect(self.rootDbPath, timeout=30, autocommit=True, check_same_thread=False)
             c = conn.cursor()
 
             try:
@@ -2643,7 +2652,6 @@ class data_organiser(object):
                 c = conn.cursor()
 
         c.execute("PRAGMA busy_timeout=10")
-        c.execute("PRAGMA journal_mode = WAL")
         c.close()
 
         return conn, reset

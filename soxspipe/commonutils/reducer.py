@@ -107,7 +107,7 @@ class reducer(object):
         if refreshWorkspace:
             self.log.print("Refreshing the workspace before reduction...")
             do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-            do.prepare()
+            do.prepare(refresh=False, report=False)
             do.close()
 
         return None
@@ -126,7 +126,6 @@ class reducer(object):
         from fundamentals import times
         import traceback
         from soxspipe.commonutils import data_organiser
-        import sqlite3
 
         i = 0
 
