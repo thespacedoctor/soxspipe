@@ -3354,7 +3354,7 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
         startNightDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - night_start_offset
         utcDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc")
         # masterTable["utc-4hrs"] = (masterTable["mjd-obs"] - 2 / 3).astype(int)
-        mjdDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc")
+        mjdDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") + mjd_ofset
         masterTable["mjd-date"] = mjdDate.strftime("%Y-%m-%d")
         masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
         masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
