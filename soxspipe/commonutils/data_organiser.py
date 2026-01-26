@@ -3204,7 +3204,7 @@ class data_organiser(object):
 
             productFrames["filepath"] = (
                 "./reduced/"
-                + productFrames["mjd-date"].astype(str)
+                + productFrames["night start date"].astype(str)
                 + "/soxs-"
                 + recipe.replace("_", "-")
                 + "/"
@@ -3352,9 +3352,8 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
         masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
         chileTimes = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset
         startNightDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - night_start_offset
-        utcDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc")
         # masterTable["utc-4hrs"] = (masterTable["mjd-obs"] - 2 / 3).astype(int)
-        mjdDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") + mjd_ofset
+        mjdDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - mjd_ofset
         masterTable["mjd-date"] = mjdDate.strftime("%Y-%m-%d")
         masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
         masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
