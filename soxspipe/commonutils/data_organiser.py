@@ -529,7 +529,7 @@ class data_organiser(object):
             print(f"In this workspace you will find:\n")
             print(f"   - `misc/`: a lost-and-found archive of non-fits files")
             print(f"   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables.")
-            print(f"   - `{self.rawDir.replace("./","")}/`: nested folders, ordered by date, containing raw-frames.")
+            print(f"   - `{self.rawDir}/`: nested folders, ordered by date, containing raw-frames.")
             print(f"   - `sessions/`: directory of data-reduction sessions")
             print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
             print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
