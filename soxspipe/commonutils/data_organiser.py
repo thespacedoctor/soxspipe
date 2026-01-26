@@ -611,6 +611,7 @@ class data_organiser(object):
 
         import shutil
         import pandas as pd
+        import re
 
         remainingFiles = 1
         firstPass = True
@@ -656,6 +657,7 @@ class data_organiser(object):
                         ]
 
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
+                databaseDeletes = []
                 if len(rawFrames.index):
 
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
@@ -679,10 +681,24 @@ class data_organiser(object):
                         if os.path.exists(self.rootDir + "/" + n):
                             realSource = os.path.realpath(self.rootDir + "/" + n)
                             realDest = os.path.realpath(p)
-                            if realSource != realDest:
+
+                            matchObject = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource)
+
+                            if matchObject:
+                                # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
+                                databaseDeletes.append(realDest)
+                            elif realSource != realDest:
                                 shutil.move(realSource, realDest)
                             if os.path.islink(self.rootDir + "/" + n):
                                 os.remove(self.rootDir + "/" + n)
+
+                if len(databaseDeletes):
+                    databaseDeletes = (", ").join(databaseDeletes)
+                    c = self.conn.cursor()
+                    sqlQuery = f'delete from raw_frames where filepath in ("{databaseDeletes}");'
+                    print(sqlQuery)
+                    c.execute(sqlQuery)
+                    c.close()
 
         if not skipSqlSync:
             self._sync_sql_table_to_directory(self.rawDir, "raw_frames", recursive=False)
