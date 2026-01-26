@@ -4,6 +4,7 @@
 Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
 Usage:
+    soxspipe --version
     soxspipe prep [<workspaceDirectory> --vlt --refresh]
     soxspipe [-qwpV] reduce all [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe [-qxV] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
