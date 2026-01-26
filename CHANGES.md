@@ -1,6 +1,6 @@
 # Release Notes
 
-## v0.15.1 - January 26, 2026
+## v0.15.2 - January 26, 2026
 
 * conda release issue fixed
 

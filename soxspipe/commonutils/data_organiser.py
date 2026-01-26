@@ -525,11 +525,13 @@ class data_organiser(object):
 
         if report:
 
+            rawDirStr = self.rawDir.replace("./", "")
+
             print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
             print(f"In this workspace you will find:\n")
             print(f"   - `misc/`: a lost-and-found archive of non-fits files")
             print(f"   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables.")
-            print(f"   - `{self.rawDir}/`: nested folders, ordered by date, containing raw-frames.")
+            print(f"   - `{rawDirStr}/`: nested folders, ordered by date, containing raw-frames.")
             print(f"   - `sessions/`: directory of data-reduction sessions")
             print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
             print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
@@ -3112,7 +3114,8 @@ class data_organiser(object):
         import pandas as pd
 
         if recipes and len(recipes):
-            recipes = f"and recipe in (\'{'\',\''.join(recipes)}\')"
+            recipeJoin = "','".join(recipes)
+            recipes = f"and recipe in ('{recipeJoin}')"
         else:
             recipes = ""
 
