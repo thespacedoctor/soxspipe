@@ -1,5 +1,7 @@
 # Release Notes
 
+## v0.15.0 - January 26, 2026
+
 * raw frames are now sorted into UTC dated folders instead of Chilean time (to match la silla setup)
 * show progress when uncompressing .Z files
 * Corrected validation of response curve files by not checking binning with NIR data (previously this was causing needless fails)
