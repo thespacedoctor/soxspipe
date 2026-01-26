@@ -801,7 +801,7 @@ class data_organiser(object):
             except Exception as e:
                 self.log.warning(f"Keyword '{k}' not found in lookup table.")
 
-        # TOP-LEVEL COLLECTIONi
+        # TOP-LEVEL COLLECTION
         if recursive:
             allFrames = ImageFileCollection(filenames=fitsPaths, keywords=self.keywords)
             rawFrames = allFrames.summary
