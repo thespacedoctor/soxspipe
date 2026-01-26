@@ -294,3 +294,6 @@ SDP_COLUMN_ERR_REDUCED_UCD:      "stat.error;phot.flux.density;stat.uncalib"
 ACFW_ID: "ESO INS ACFW ID"
 ACQS_ID: "ESO INS ACQS ID"
 DET: "ESO DET3 CAM NAME"
+SWSIM_NIR: "ASDASDF"
+SWSIM_VIS: False
+SWSIM_UVB: False

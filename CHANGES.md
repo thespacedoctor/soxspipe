@@ -1,5 +1,30 @@
 # Release Notes
 
+## v0.15.0 - January 26, 2026
+
+* raw frames are now sorted into UTC dated folders instead of Chilean time (to match la silla setup)
+* show progress when uncompressing .Z files
+* Corrected validation of response curve files by not checking binning with NIR data (previously this was causing needless fails)
+* Complete refactoring of the data-organiser. Now, much faster and data-organiser dictionaries are located in one yaml file.
+* Added a `--refresh` flag to the prep command. Using this flag will completely refresh the soxspipe.db database, delete all ERROR logs and rebuild all SOF files from scratch. 
+* A single QC file is written for each recipe. This is a plain text file containing all computed QC values for the recipe.
+* If the ICS is in simulation mode, data is ignored (e.g. NISE is forced to stay at the 5" slit).
+* Dark scaling warning is thrown once per recipe as opposed to once per raw frame to be detrended (resulting in multiple duplicate warnings).
+* Checks are in place to determine if darks/pinhole/order trace and flat frames are 'good'. If not, an error is forced the pipeline removes the faulty calibration files from downstream SOF files.
+* Integrating flux-calibration into the dataorganiser
+* Moving module level imports into classes & methods to reduce memory footprint.
+* Standard star repsonse function now recorded in the products table of the DO database.  
+* Cleaned up the text printed after `soxspipe prep`.
+* Move to detect continuum on the unflattened frame in stare mode (to mirror what has been done in nodding)
+* Added true NIR gain and RON to detector settings file
+* moving management of matplotlib backend to a single location in the base_recipe class (easier to manage)
+* massive refactoring of create_dispersion_map to make it more readable and manageable. 
+* Move to adjusting the NIR predicted line-locations in detector quadrants rather than order by order 
+* **FIXED**: added jinja2 to setup.py
+* removed extra stare reductions at the end of `soxspipe reduce all`
+* fixed an issue with the macos matplotlib backend tripping up ubuntu reductions (again)
+* Add a `calculate_rolling_snr` function to robustly compute the SNR ratio across the entire spectrum wavelength range. Algorithm is the [presented here](https://esahubble.org/static/archives/stecfnewsletters/pdf/hst_stecf_0042.pdf).
+
 ## v0.14.1 - October 20, 2025
 
 * **FEATURE:** Dome flats are now recognised by the data-organiser and are combined into master flats.

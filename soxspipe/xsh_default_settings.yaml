@@ -64,7 +64,7 @@ soxs-disp-solution:
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 7
 
-soxs-order-centre:
+soxs-order-centres:
     uvb:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
@@ -194,7 +194,7 @@ soxs-mflat:
         low-sensitivity-clipping-sigma: 2
 
 
-soxs-spatial-solution:
+soxs-spat-solution:
     # DIVIDE IMAGE BY MASTER FLAT FRAME
     use_flat: False
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT

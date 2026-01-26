@@ -10,6 +10,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -23,7 +24,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -53,47 +54,62 @@ class test_detect_continuum(unittest.TestCase):
 
     @pytest.mark.full
     def test_xsh_detect_continuum_function(self):
-        pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
+        pinholeFlatPath = (
+            "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
+        )
         dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
         home = expanduser("~")
         pinholeFlatPath = pinholeFlatPath.replace("~", home)
 
-        pinholeFlat = CCDData.read(pinholeFlatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                   hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+        pinholeFlat = CCDData.read(
+            pinholeFlatPath,
+            hdu=0,
+            unit=u.electron,
+            hdu_uncertainty="ERRS",
+            hdu_mask="QUAL",
+            hdu_flags="FLAGS",
+            key_uncertainty_type="UTYPE",
+        )
 
         import pandas as pd
+
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
-        qc = pd.DataFrame({
-            "soxspipe_recipe": [],
-            "qc_name": [],
-            "qc_value": [],
-            "qc_unit": [],
-            "qc_comment": [],
-            "obs_date_utc": [],
-            "reduction_date_utc": [],
-            "to_header": []
-        })
-        products = pd.DataFrame({
-            "soxspipe_recipe": [],
-            "product_label": [],
-            "file_name": [],
-            "file_type": [],
-            "obs_date_utc": [],
-            "reduction_date_utc": [],
-            "file_path": [],
-            "label": []
-        })
+        qc = pd.DataFrame(
+            {
+                "soxspipe_recipe": [],
+                "qc_name": [],
+                "qc_value": [],
+                "qc_unit": [],
+                "qc_comment": [],
+                "obs_date_utc": [],
+                "reduction_date_utc": [],
+                "to_header": [],
+            }
+        )
+        products = pd.DataFrame(
+            {
+                "soxspipe_recipe": [],
+                "product_label": [],
+                "file_name": [],
+                "file_type": [],
+                "obs_date_utc": [],
+                "reduction_date_utc": [],
+                "file_path": [],
+                "label": [],
+            }
+        )
 
         from soxspipe.commonutils import detect_continuum
+
         this = detect_continuum(
             log=log,
             traceFrame=pinholeFlat,
             dispersion_map=dispersion_map,
             settings=settings,
-            recipeSettings=settings["soxs-order-centre"],
-            recipeName="soxs-order-centre",
+            recipeSettings=settings["soxs-order-centres"],
+            recipeName="soxs-order-centres",
             qcTable=qc,
-            productsTable=products
+            productsTable=products,
         )
         this.get()
 
@@ -101,12 +117,9 @@ class test_detect_continuum(unittest.TestCase):
     def test_soxs_detect_continuum_function_exception(self):
 
         from soxspipe.commonutils import detect_continuum
+
         try:
-            this = detect_continuum(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
-            )
+            this = detect_continuum(log=log, settings=settings, fakeKey="break the code")
             this.get()
             assert False
         except Exception as e:

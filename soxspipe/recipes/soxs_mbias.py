@@ -22,7 +22,7 @@ import sys
 import os
 
 
-os.environ['TERM'] = 'vt100'
+os.environ["TERM"] = "vt100"
 
 
 class soxs_mbias(base_recipe):
@@ -51,21 +51,21 @@ class soxs_mbias(base_recipe):
     ).produce_product()
     ```
     """
+
     # Initialisation
 
-    def __init__(
-            self,
-            log,
-            settings=False,
-            inputFrames=[],
-            verbose=False,
-            overwrite=False,
-            command=False,
-            debug=False
-    ):
+    def __init__(self, log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False, debug=False):
         # INHERIT INITIALISATION FROM  base_recipe
-        this = super(soxs_mbias, self).__init__(log=log, settings=settings,
-                                                inputFrames=inputFrames, overwrite=overwrite, recipeName="soxs-mbias", command=command, debug=debug)
+        this = super(soxs_mbias, self).__init__(
+            log=log,
+            settings=settings,
+            inputFrames=inputFrames,
+            overwrite=overwrite,
+            recipeName="soxs-mbias",
+            command=command,
+            debug=debug,
+            verbose=verbose,
+        )
         log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings
         self.inputFrames = inputFrames
@@ -75,11 +75,9 @@ class soxs_mbias(base_recipe):
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         from soxspipe.commonutils.set_of_files import set_of_files
+
         sof = set_of_files(
-            log=self.log,
-            settings=self.settings,
-            inputFrames=self.inputFrames,
-            ext=self.settings['data-extension']
+            log=self.log, settings=self.settings, inputFrames=self.inputFrames, ext=self.settings["data-extension"]
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -92,22 +90,20 @@ class soxs_mbias(base_recipe):
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
         # SORT IMAGE COLLECTION
-        self.inputFrames.sort(['MJD-OBS'])
+        self.inputFrames.sort(["MJD-OBS"])
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
-    def verify_input_frames(
-            self):
+    def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_mbias recipe*
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
-        self.log.debug('starting the ``verify_input_frames`` method')
+        self.log.debug("starting the ``verify_input_frames`` method")
 
         kw = self.kw
 
@@ -120,7 +116,7 @@ class soxs_mbias(base_recipe):
         if len(imageTypes) > 1:
             error = "Input frames are a mix of %(imageTypes)s" % locals()
         # NON-BIAS INPUT IMAGE TYPES ARE BAD
-        elif imageTypes[0] != 'BIAS':
+        elif imageTypes[0] != "BIAS":
             error = "Input frames not BIAS frames" % locals()
 
         if error:
@@ -133,18 +129,17 @@ class soxs_mbias(base_recipe):
 
         self.imageType = imageTypes[0]
 
-        self.log.debug('completed the ``verify_input_frames`` method')
+        self.log.debug("completed the ``verify_input_frames`` method")
         return None
 
-    def produce_product(
-            self):
+    def produce_product(self):
         """*generate a master bias frame*
 
         **Return:**
 
         - ``productPath`` -- the path to the master bias frame
         """
-        self.log.debug('starting the ``produce_product`` method')
+        self.log.debug("starting the ``produce_product`` method")
 
         import numpy as np
         import pandas as pd
@@ -155,27 +150,38 @@ class soxs_mbias(base_recipe):
 
         # LIST OF CCDDATA OBJECTS
         # OPTIMISE: 9%
-        ccds = [c for c in self.inputFrames.ccds(ccd_kwargs={
-                                                 "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        ccds = [
+            c
+            for c in self.inputFrames.ccds(
+                ccd_kwargs={
+                    "hdu_uncertainty": "ERRS",
+                    "hdu_mask": "QUAL",
+                    "hdu_flags": "FLAGS",
+                    "key_uncertainty_type": "UTYPE",
+                }
+            )
+        ]
 
         # OPTIMISE: 33%
-        meanBiasLevels, rons, noiseFrames = zip(
-            *[self.subtract_mean_flux_level(c) for c in ccds])
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
 
         # OPTIMISE: 19%
         combined_noise = self.clip_and_stack(
-            frames=list(noiseFrames), recipe="soxs_mbias", ignore_input_masks=True, post_stack_clipping=True)
+            frames=list(noiseFrames), recipe="soxs_mbias", ignore_input_masks=True, post_stack_clipping=True
+        )
 
         masterRon = np.std(combined_noise.data)
 
         # USE COMBINED NOISE MASK AS MBIAS MASK
-        combined_noise.data = np.ma.array(
-            combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
+        combined_noise.data = (
+            np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
+        )
         combined_noise.uncertainty = np.ma.array(
-            combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon).filled()
+            combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon
+        ).filled()
         combined_bias_mean = combined_noise
         combined_bias_mean.mask = combined_noise.mask
 
@@ -187,32 +193,25 @@ class soxs_mbias(base_recipe):
             frameName="master bias",
             masterFrame=combined_bias_mean,
             rawRon=rawRon,
-            masterRon=masterRon
+            masterRon=masterRon,
         )
 
         self.qc_bias_structure(combined_bias_mean)
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
-            log=self.log, frame=combined_bias_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc)
+            log=self.log, frame=combined_bias_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc
+        )
 
         medianFlux = self.qc_median_flux_level(
-            frame=combined_bias_mean,
-            frameType="MBIAS",
-            frameName="master bias",
-            medianFlux=masterMedianBiasLevel
+            frame=combined_bias_mean, frameType="MBIAS", frameName="master bias", medianFlux=masterMedianBiasLevel
         )
 
-        self.update_fits_keywords(
-            frame=combined_bias_mean
-        )
+        self.update_fits_keywords(frame=combined_bias_mean)
 
         # WRITE TO DISK
         productPath = self._write(
-            frame=combined_bias_mean,
-            filedir=self.workspaceRootPath,
-            filename=False,
-            overwrite=True
+            frame=combined_bias_mean, filedir=self.workspaceRootPath, filename=False, overwrite=True
         )
         filename = os.path.basename(productPath)
 
@@ -221,27 +220,35 @@ class soxs_mbias(base_recipe):
 
         self.dateObs = combined_bias_mean.header[self.kw("DATE_OBS")]
 
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "product_label": "MBIAS",
-            "file_name": filename,
-            "file_type": "FITS",
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "product_desc": f"{self.arm} Master bias frame",
-            "file_path": productPath,
-            "label": "PROD"
-        }).to_frame().T], ignore_index=True)
+        self.products = pd.concat(
+            [
+                self.products,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "product_label": "MBIAS",
+                        "file_name": filename,
+                        "file_type": "FITS",
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "product_desc": f"{self.arm} Master bias frame",
+                        "file_path": productPath,
+                        "label": "PROD",
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
         self.report_output()
         self.clean_up()
 
-        self.log.debug('completed the ``produce_product`` method')
+        self.log.debug("completed the ``produce_product`` method")
         return productPath
 
-    def qc_bias_structure(
-            self,
-            combined_bias_mean):
+    def qc_bias_structure(self, combined_bias_mean):
         """*calculate the structure of the bias*
 
         **Key Arguments:**
@@ -259,10 +266,11 @@ class soxs_mbias(base_recipe):
         structx, structy = self.qc_bias_structure(combined_bias_mean)
         ```
         """
-        self.log.debug('starting the ``qc_bias_structure`` method')
+        self.log.debug("starting the ``qc_bias_structure`` method")
 
         import numpy as np
         import pandas as pd
+
         plot = False
 
         collaps_ax1 = np.nansum(combined_bias_mean, axis=0)
@@ -277,49 +285,68 @@ class soxs_mbias(base_recipe):
 
         if plot == True:
             import matplotlib.pyplot as plt
+
             plt.plot(x_axis, collaps_ax1)
             plt.plot(x_axis, np.polyval(coeff_ax1, x_axis))
-            plt.xlabel('x-axis')
-            plt.ylabel('Summed Pixel Values')
+            plt.xlabel("x-axis")
+            plt.ylabel("Summed Pixel Values")
             plt.show()
 
             plt.plot(y_axis, collaps_ax2)
             plt.plot(y_axis, np.polyval(coeff_ax2, y_axis))
-            plt.xlabel('y-axis')
-            plt.ylabel('Summed Pixel Values')
+            plt.xlabel("y-axis")
+            plt.ylabel("Summed Pixel Values")
             plt.show()
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "STRUCTX",
-            "qc_value": coeff_ax1[0],
-            "qc_comment": "Slope of BIAS in X direction",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
+        self.qc = pd.concat(
+            [
+                self.qc,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "qc_name": "STRUCTX",
+                        "qc_value": coeff_ax1[0],
+                        "qc_comment": "Slope of BIAS in X direction",
+                        "qc_unit": None,
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "STRUCTY",
-            "qc_value": coeff_ax2[0],
-            "qc_comment": "Slope of BIAS in Y direction",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
+        self.qc = pd.concat(
+            [
+                self.qc,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "qc_name": "STRUCTY",
+                        "qc_value": coeff_ax2[0],
+                        "qc_comment": "Slope of BIAS in Y direction",
+                        "qc_unit": None,
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
-        self.log.debug('completed the ``qc_bias_structure`` method')
+        self.log.debug("completed the ``qc_bias_structure`` method")
         return coeff_ax1[0], coeff_ax2[0]
 
-    def qc_periodic_pattern_noise(
-            self,
-            frames):
+    def qc_periodic_pattern_noise(self, frames):
         """*calculate the periodic pattern noise based on the raw input bias frames*
 
         A 2D FFT is applied to each of the raw bias frames and the standard deviation and median absolute deviation calcualted for each result. The maximum std/mad is then added as the ppnmax QC in the master bias frame header.
@@ -338,7 +365,7 @@ class soxs_mbias(base_recipe):
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
         ```
         """
-        self.log.debug('starting the ``qc_periodic_pattern_noise`` method')
+        self.log.debug("starting the ``qc_periodic_pattern_noise`` method")
 
         from scipy.stats import median_abs_deviation
         from astropy.stats import sigma_clip
@@ -347,8 +374,17 @@ class soxs_mbias(base_recipe):
         from ccdproc import block_reduce
 
         # LIST OF CCDDATA OBJECTS
-        ccds = [c for c in frames.ccds(ccd_kwargs={
-                                       "hdu_uncertainty": 'ERRS', "hdu_mask": 'QUAL', "hdu_flags": 'FLAGS', "key_uncertainty_type": 'UTYPE'})]
+        ccds = [
+            c
+            for c in frames.ccds(
+                ccd_kwargs={
+                    "hdu_uncertainty": "ERRS",
+                    "hdu_mask": "QUAL",
+                    "hdu_flags": "FLAGS",
+                    "key_uncertainty_type": "UTYPE",
+                }
+            )
+        ]
 
         ratios = []
         for frame in ccds:
@@ -356,12 +392,12 @@ class soxs_mbias(base_recipe):
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
             # BIN THE FRAME TO INCREASE SPEED
             maskedDataArray = block_reduce(maskedDataArray, 5, np.mean)
-            dark_image_grey_fourier = np.fft.fftshift(
-                np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
+            dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
 
             # SIGMA-CLIP THE DATA
             masked_dark_image_grey_fourier = sigma_clip(
-                dark_image_grey_fourier, sigma_lower=100, sigma_upper=100, maxiters=1, cenfunc='mean')
+                dark_image_grey_fourier, sigma_lower=100, sigma_upper=100, maxiters=1, cenfunc="mean"
+            )
             goodData = np.ma.compressed(masked_dark_image_grey_fourier)
 
             # frame_mad = median_abs_deviation(dark_image_grey_fourier, axis=None)
@@ -372,10 +408,11 @@ class soxs_mbias(base_recipe):
             frame_std = np.std(goodData)
 
             from soxspipe.commonutils.toolkit import quicklook_image
+
             quicklook_image(
-                log=self.log, CCDObject=abs(masked_dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
-            quicklook_image(
-                log=self.log, CCDObject=abs(dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
+                log=self.log, CCDObject=abs(masked_dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1
+            )
+            quicklook_image(log=self.log, CCDObject=abs(dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
 
             ratios.append(frame_std / frame_mad)
 
@@ -384,18 +421,28 @@ class soxs_mbias(base_recipe):
 
         ppnmax = max(ratios)
 
-        self.qc = pd.concat([self.qc, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "qc_name": "PPNMAX",
-            "qc_value": ppnmax,
-            "qc_comment": "Max periodic pattern noise ratio in raw bias frames",
-            "qc_unit": None,
-            "obs_date_utc": self.dateObs,
-            "reduction_date_utc": utcnow,
-            "to_header": True
-        }).to_frame().T], ignore_index=True)
+        self.qc = pd.concat(
+            [
+                self.qc,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "qc_name": "PPNMAX",
+                        "qc_value": ppnmax,
+                        "qc_comment": "Max periodic pattern noise ratio in raw bias frames",
+                        "qc_unit": None,
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
-        self.log.debug('completed the ``qc_periodic_pattern_noise`` method')
+        self.log.debug("completed the ``qc_periodic_pattern_noise`` method")
         return ppnmax
 
     # use the tab-trigger below for new method

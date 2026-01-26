@@ -56,8 +56,8 @@ NIR:
   # # DEFAULT BINNING [y, x]
   binning: [1, 1]
   # saturation: 2.0e5
-  gain: 1. # e/ADU
-  ron: 7.0 # read noise is exposure time dependent so need to calculate somehow - is this the same for soxs?
+  gain: 2.3 # e/ADU. From commissioning report
+  ron: 16.3 # From commissioning report 
   bad-pixel map:
     1x1: BP_MAP_RP_NIR.fits
   predicted pinhole lines:
