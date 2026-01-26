@@ -113,7 +113,7 @@ class reducer(object):
         return None
 
     # @profile
-    def reduce(self):
+    def reduce(self, batch=False):
         """
         *reduce the selected data*
         """
@@ -127,8 +127,6 @@ class reducer(object):
         import traceback
         from soxspipe.commonutils import data_organiser
 
-        i = 0
-
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
         do.session_refresh(failure=None)
         do.close()
@@ -136,15 +134,25 @@ class reducer(object):
         if self.reductionTarget != "all":
             self.recipeList = [False]
 
+        if not batch:
+            batch = 100000000
+
+        batchCount = 0
         for rootRecipe in self.recipeList:
-            # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
-            while True:
+
+            while True and batchCount < batch:
+
+                # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
                 rawGroups = self.select_sof_files_to_process(recipe=rootRecipe, reductionTarget=self.reductionTarget)
 
                 if rawGroups.empty:
                     break
 
                 for index, row in rawGroups.iterrows():
+                    if batchCount >= batch:
+                        self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
+                        break
+
                     recipe = row["recipe"]
                     sof = row["sof"]
                     startTime = times.get_now_sql_datetime()
@@ -160,7 +168,7 @@ class reducer(object):
                             command=row["command"],
                             verbose=self.verbose,
                         )
-                        i += 1
+                        batchCount += 1
                     except FileExistsError as e:
                         continue
                     except Exception as e:
@@ -213,12 +221,13 @@ class reducer(object):
         self.log.debug("completed the ``reduce`` method")
         return None
 
-    def select_sof_files_to_process(self, recipe=False, reductionTarget=False):
+    def select_sof_files_to_process(self, recipe=False, reductionTarget=False, batch=False):
         """*select all of the SOF files still requiring processing*
 
         **Key Arguments:**
             - ``recipe`` -- the name of the recipe to filter by (optional)
             - ``reductionTarget`` -- target for reduction: "all", "sof", "ob" (default: False)
+            - ``batch`` -- number of SOF files to return (default: False, all)
 
         **Return:**
 
@@ -237,6 +246,11 @@ class reducer(object):
 
         conn = sql.connect(self.sessionDB)
 
+        if batch:
+            limitText = f" LIMIT {batch} "
+        else:
+            limitText = ""
+
         if reductionTarget == "all":
             # GET THE GROUPS OF FILES NEEDING REDUCED, ASSIGN THE CORRECT COMMAND TO EXECUTE THE RECIPE
             if not recipe:
@@ -250,7 +264,7 @@ class reducer(object):
                 std = " AND `eso dpr type` not like '%STD%' "
             std = ""
             rawGroups = pd.read_sql(
-                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {std} order by recipe_order, sof",
+                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {std} order by recipe_order, sof {limitText}",
                 con=conn,
             )
 

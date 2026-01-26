@@ -835,6 +835,7 @@ class create_dispersion_map(object):
             if self.firstGuessMap:
                 detectedLineGroups = orderPixelTable.groupby(["wavelength", "order"]).size().reset_index(name="count")
                 # FIND THE MODE COUNT FOR EACH ORDER
+
                 modeCounts = (
                     detectedLineGroups.groupby("order")["count"]
                     .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0)

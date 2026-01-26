@@ -6,7 +6,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 Usage:
     soxspipe --version
     soxspipe prep [<workspaceDirectory> --vlt --refresh]
-    soxspipe [-qwpV] reduce all [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe [-qwpV] reduce all [<workspaceDirectory> -b <batchSize> -s <pathToSettingsFile>]
     soxspipe [-qxV] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe reduce ob <obid> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
@@ -47,6 +47,7 @@ Options:
 
     inputFrames                            path to a directory of frames or a set-of-files file
 
+    -b, --batch                            reduce data in batches of <batchSize> recipes (only when reducing all data)
     -d, --debug                            show debugging plots
     -h, --help                             show this help message
     -p, --prep                             prepare a workspace before reducing data
@@ -393,7 +394,9 @@ def main(arguments=None):
                 verbose=verbose,
                 refreshWorkspace=a["prepFlag"],
             )
-            collection.reduce()
+            if a["batchSize"]:
+                a["batchSize"] = int(a["batchSize"])
+            collection.reduce(batch=a["batchSize"])
 
             if a["watchFlag"]:
                 xsec = 15

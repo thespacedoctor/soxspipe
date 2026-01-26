@@ -371,6 +371,7 @@ class data_organiser(object):
             "slit",
             "slitmask",
             "binning",
+            "utc-date",
             "night start mjd",
             "night start date",
             "instrume",
@@ -449,7 +450,6 @@ class data_organiser(object):
         import glob
 
         if refresh:
-            # raise
             # DELETE THE SQLITE DATABASE IF IT EXISTS
             exists = os.path.exists(self.rootDbPath)
             self.conn = None
@@ -884,10 +884,10 @@ class data_organiser(object):
         c.execute(sqlQuery)
 
         # MAKE PATHS ABSOLUTE
-        dbFiles = [r[0].replace("./raw/", self.rawDir).replace("//", "/") for r in c.fetchall()]
+        dbFiles = [r[0].replace("//", "/") for r in c.fetchall()]
 
         # DELETED FILES
-        filesNotInDB = set(fitsPaths) - set(dbFiles)
+        filesNotInDB = list(set(fitsPaths) - set(dbFiles))
         filesNotInFS = list(set(dbFiles) - set(fitsPaths))
         # MAKE PATHS RELATIVE TO rawDir
         filesNotInFS = [f.replace(self.rawDir + "/", "./raw/").replace("//", "/") for f in filesNotInFS]
@@ -900,6 +900,7 @@ class data_organiser(object):
             c.execute(sqlQuery)
 
         if len(filesNotInDB):
+
             for f in filesNotInDB:
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 basename = os.path.basename(f)
@@ -3184,7 +3185,7 @@ class data_organiser(object):
 
             productFrames["filepath"] = (
                 "./reduced/"
-                + productFrames["night start date"].astype(str)
+                + productFrames["utc-date"].astype(str)
                 + "/soxs-"
                 + recipe.replace("_", "-")
                 + "/"
