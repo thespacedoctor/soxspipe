@@ -696,7 +696,6 @@ class data_organiser(object):
                     databaseDeletes = (", ").join(databaseDeletes)
                     c = self.conn.cursor()
                     sqlQuery = f'delete from raw_frames where filepath in ("{databaseDeletes}");'
-                    print(sqlQuery)
                     c.execute(sqlQuery)
                     c.close()
 
