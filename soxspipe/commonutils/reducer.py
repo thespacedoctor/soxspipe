@@ -281,7 +281,10 @@ class reducer(object):
             rawGroups = pd.read_sql(sqlQuery, con=conn)
 
         if not len(rawGroups.index):
-            self.log.warning("The SOF file selected for processing is either missing or incomplete.")
+            if reductionTarget != "all":
+                self.log.warning("The SOF file selected for processing is either missing or incomplete.")
+            else:
+                self.log.info("No SOF files require processing.")
             conn.close()
             return pd.DataFrame(columns=["recipe", "sof", "command"])
 

@@ -290,13 +290,16 @@ class subtract_background(object):
             axisAcoord_edgeup += expandTop
             axisAcoord_edgelow -= expandBottom
 
-            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(
-                *[
-                    (x1, x2, b)
-                    for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord)
-                    if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen
-                ]
-            )
+            try:
+                axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(
+                    *[
+                        (x1, x2, b)
+                        for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord)
+                        if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen
+                    ]
+                )
+            except:
+                continue
             for b, u, l in zip(
                 axisBcoord, np.ceil(axisAcoord_edgeup).astype(int), np.floor(axisAcoord_edgelow).astype(int)
             ):

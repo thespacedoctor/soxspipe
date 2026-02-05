@@ -1,5 +1,7 @@
 # Release Notes
 
+creating useful views on the soxspipe.db (sorting products and raw frames by recipe)
+
 ## v0.15.2 - January 26, 2026
 
 * conda release issue fixed
