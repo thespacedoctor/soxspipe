@@ -3449,6 +3449,7 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
 
     # ADD FILEPATHS IF IN ./raw/ FOLDER
     rawFrames["filepath"] = "--"
+    rawFrames["file"] = rawFrames["file"].astype(str).str.replace(r"^.*?(raw/\d{4}-\d{2}-\d{2}.*)$", r"\1", regex=True)
     mask = rawFrames["file"].str.contains(r"\.\/raw\/\d{4}\-\d{2}\-\d{2}.*$", regex=True, na=False)
     rawFrames.loc[mask, "filepath"] = rawFrames.loc[mask, "file"]
 
