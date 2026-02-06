@@ -716,7 +716,9 @@ class base_recipe(object):
         # CONVERT TO DATAFRAME AND FILTER TO CHECK SLIT WIDTHS
         filteredDf = self.inputFrames.summary.to_pandas()
         matchList = ["LAMP,FLAT", "LAMP,QFLAT", "LAMP,DFLAT", "OBJECT", "STD,FLUX", f"MASTER_FLAT_{self.arm}"]
-        mask = (filteredDf[kw("DPR_TYPE")].isin(matchList)) | (filteredDf[kw("PRO_CATG")].isin(matchList))
+        mask = ((filteredDf[kw("DPR_TYPE")].isin(matchList)) | (filteredDf[kw("PRO_CATG")].isin(matchList))) & (
+            ~filteredDf[kw("PRO_CATG")].isin([f"RESP_TAB_{self.arm}"])
+        )
         filteredDf = filteredDf.loc[mask]
 
         # MIXED SLIT-WIDTH IS BAD
