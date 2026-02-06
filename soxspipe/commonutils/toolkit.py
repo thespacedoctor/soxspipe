@@ -1090,12 +1090,12 @@ def predict_product_path(sofName, recipeName=False):
     startNightDate = False
 
     # TRY AND READ startNightDate FROM RAW FRAME DIRECTORY
-    with codecs.open(sofName, encoding="utf-8", mode="r") as readFile:
-        thisData = readFile.read()
-        for l in thisData.split("\n"):
-            if "raw/" in l:
-                startNightDate = l.split("raw/")[1].split("/")[0]
-                break
+    # with codecs.open(sofName, encoding="utf-8", mode="r") as readFile:
+    #     thisData = readFile.read()
+    #     for l in thisData.split("\n"):
+    #         if "raw/" in l:
+    #             startNightDate = l.split("raw/")[1].split("/")[0]
+    #             break
 
     try:
         sofName = os.path.basename(sofName)
