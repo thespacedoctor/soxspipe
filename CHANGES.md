@@ -1,6 +1,7 @@
 # Release Notes
 
 creating useful views on the soxspipe.db (sorting products and raw frames by recipe)
+fixing slit width matching for std response curve files and science frames
 
 ## v0.15.2 - January 26, 2026
 
