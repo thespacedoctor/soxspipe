@@ -647,8 +647,9 @@ class data_organiser(object):
                 if len(rawFrames.index):
                     mask = rawFrames["filepath"] == "--"
                     rawFrames.loc[mask, "filepath"] = (
-                        f"./raw/" + rawFrames.loc[mask, "mjd-date"] + "/" + rawFrames.loc[mask, "file"]
+                        "./raw/" + rawFrames.loc[mask, "mjd-date"] + "/" + rawFrames.loc[mask, "file"]
                     )
+                    print("HERE")
                     # FIND AND REMOVE DUPLICATE FILES
                     matchedFiles = pd.merge(rawFrames, knownRawFrames, on=["file", "eso dpr tech"], how="inner")
                     if len(matchedFiles.index):
