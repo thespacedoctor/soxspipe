@@ -171,6 +171,7 @@ class data_organiser(object):
             "ra",
             "dec",
             "simulation",
+            "filepath",
         ]
 
         # THIS TYPE MAP WILL BE USED TO GROUP SET OF FILES TOGETHER
@@ -623,6 +624,7 @@ class data_organiser(object):
             rawFrames, fitsPaths, remainingFiles = self._create_directory_table(
                 pathToDirectory=self.rootDir, filterKeys=self.filterKeywords
             )
+
             if not remainingFiles:
                 remainingFiles = 0
             elif remainingFiles > 0:
@@ -640,9 +642,13 @@ class data_organiser(object):
 
                 # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
                 rawFrames = self._populate_raw_frames_extra_columns(rawFrames)
+
                 # FIND AND REMOVE DUPLICATE FILES
                 if len(rawFrames.index):
-                    rawFrames["filepath"] = f"./raw/" + rawFrames["mjd-date"] + "/" + rawFrames["file"]
+                    mask = rawFrames["filepath"] == "--"
+                    rawFrames.loc[mask, "filepath"] = (
+                        f"./raw/" + rawFrames.loc[mask, "mjd-date"] + "/" + rawFrames.loc[mask, "file"]
+                    )
                     # FIND AND REMOVE DUPLICATE FILES
                     matchedFiles = pd.merge(rawFrames, knownRawFrames, on=["file", "eso dpr tech"], how="inner")
                     if len(matchedFiles.index):
@@ -663,13 +669,9 @@ class data_organiser(object):
                 if len(rawFrames.index):
 
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
-                    rawFrames["filepath"] = f"./raw/" + rawFrames["mjd-date"] + "/" + rawFrames["file"]
                     rawFrames.replace(["--", -99.99], None).to_sql(
                         "raw_frames", con=self.conn, index=False, if_exists="append"
                     )
-
-                    # NOW MAKE THE DESTINATION FILEPATHS ABSOLUTE
-                    rawFrames["filepath"] = f"{self.rawDir}/" + rawFrames["mjd-date"] + "/" + rawFrames["file"]
 
                     # MOVE THE FILES TO THE CORRECT LOCATION
                     filepaths = rawFrames["filepath"]
@@ -745,6 +747,7 @@ class data_organiser(object):
 
         # GENERATE A LIST OF FITS FILE PATHS
         fitsPaths = []
+        fitsPathsRel = []
         fitsNames = []
         for entry in os.scandir(pathToDirectory):
             if (
@@ -752,7 +755,13 @@ class data_organiser(object):
                 and entry.is_file()
                 and (os.path.splitext(entry.name)[1] == ".fits" or ".fits.Z" in entry.name)
             ):
-                fitsPaths.append(entry.path)
+                # fitsPaths.append(entry.path)
+                if os.path.islink(entry.path):
+                    fp = "./" + os.path.relpath(os.path.realpath(entry.path), pathToDirectory)
+
+                else:
+                    fp = os.path.relpath(entry.path, pathToDirectory)
+                fitsPaths.append(fp)
                 fitsNames.append(entry.name)
 
         remainingFiles = max(0, len(fitsPaths) - limit)
@@ -810,7 +819,7 @@ class data_organiser(object):
         else:
             # Split fitsNames into batches of 100
             batch_size = 1000
-            batches = [fitsNames[i : i + batch_size] for i in range(0, len(fitsNames), batch_size)]
+            batches = [fitsPaths[i : i + batch_size] for i in range(0, len(fitsPaths), batch_size)]
 
             from fundamentals import fmultiprocess
 
@@ -3295,7 +3304,7 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     import numpy as np
     from astropy.time import Time, TimeDelta
 
-    masterTable = ImageFileCollection(location=pathToDirectory, filenames=batch, keywords=keywords)
+    masterTable = ImageFileCollection(filenames=batch, keywords=keywords)
     masterTable = masterTable.summary
     # ADD FILLED VALUES FOR MISSING CELLS
     for fil in keywords:
@@ -3434,4 +3443,15 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
             "mjd-obs",
         ]
     )
-    return masterTable.to_pandas(index=False)
+
+    rawFrames = masterTable.to_pandas(index=False)
+
+    # ADD FILEPATHS IF IN ./raw/ FOLDER
+    rawFrames["filepath"] = "--"
+    mask = rawFrames["file"].str.contains(r"\.\/raw\/\d{4}\-\d{2}\-\d{2}.*$", regex=True, na=False)
+    rawFrames.loc[mask, "filepath"] = rawFrames.loc[mask, "file"]
+
+    # MAKE FILE NAME ONLY THE BASENAME IF IN ./raw/ FOLDER
+    rawFrames.loc[mask, "file"] = rawFrames.loc[mask, "file"].apply(lambda x: os.path.basename(x))
+
+    return rawFrames

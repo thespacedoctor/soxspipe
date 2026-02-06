@@ -257,12 +257,12 @@ science_stare:
       - mbias
       - mflat
       - spat_solution
-      - nod
+      - std_flux
     NIR:
       - mdark
       - mflat
       - spat_solution
-      - nod
+      - std_flux
   products: 
     - fits table:
         eso pro type: REDUCED
@@ -279,11 +279,11 @@ science_nodding:
       - mbias
       - mflat
       - spat_solution
-      - nod
+      - std_flux
     NIR:
       - mflat
       - spat_solution
-      - nod
+      - std_flux
   products: 
   - fits table:
         eso pro type: REDUCED
@@ -300,11 +300,11 @@ science_offset:
       - mbias
       - mflat
       - spat_solution
-      - nod
+      - std_flux
     NIR:
       - mflat
       - spat_solution
-      - nod
+      - std_flux
   products: 
   - fits table:
         eso pro type: REDUCED
