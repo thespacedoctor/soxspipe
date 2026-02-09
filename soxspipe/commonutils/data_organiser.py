@@ -645,7 +645,7 @@ class data_organiser(object):
 
                 # FIND AND REMOVE DUPLICATE FILES
                 if len(rawFrames.index):
-                    mask = rawFrames["filepath"] == "--"
+                    mask = rawFrames["filepath"].isnull()
                     rawFrames.loc[mask, "filepath"] = (
                         "./raw/" + rawFrames.loc[mask, "mjd-date"] + "/" + rawFrames.loc[mask, "file"]
                     )
