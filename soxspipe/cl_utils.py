@@ -8,9 +8,9 @@ Usage:
     soxspipe prep [<workspaceDirectory> --vlt --refresh]
     soxspipe [-qwpV] reduce all [<workspaceDirectory> -b <batchSize> -s <pathToSettingsFile>]
     soxspipe [-qxV] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
-    soxspipe reduce ob <obid> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
-    soxspipe list (obs|sof) [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe list (ob|sof) [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe raw sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] disp_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
@@ -22,7 +22,7 @@ Usage:
     soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
 
 Options:
-    list obs                               list all observations within the workspace
+    list ob                                list all observations within the workspace
     list sof                               list all science object SOF files within the workspace
     prep                                   prepare a folder of raw data (workspace) for data reduction
     session ls                             list all available data-reduction sessions in the workspace
@@ -30,7 +30,7 @@ Options:
     session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
     reduce all                             reduce all of the data in a workspace.
     reduce sof                             reduce a single science object SOF file.
-    reduce ob                              reduce all of the data associated with a single observation ID.
+    raw sof                                export all the raw frames needed to reduce a science object SOF file to a directory called `exported` in the current working directory.
 
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
@@ -351,10 +351,37 @@ def main(arguments=None):
             from soxspipe.commonutils import data_organiser
 
             do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
-            if a["obs"]:
+            if a["ob"]:
                 do.list_obs()
             elif a["sof"]:
                 do.list_sofs()
+
+        if a["raw"]:
+
+            # EXPORT THE RAW FRAMES NEEDED TO REDUCE A SOF FILE TO AN `exported` DIRECTORY IN THE WORKSPACE DIRECTORY
+            from soxspipe.commonutils import data_organiser
+            import shutil
+
+            do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
+            if a["sof"]:
+                rawFramePaths = do.list_raw(a["sofFile"])
+                if len(rawFramePaths) == 0:
+                    print(
+                        f"No raw frames found for the SOF file `{a['sofFile']}`. Please check that the SOF filename is correct."
+                    )
+                else:
+                    exportDir = a["workspaceDirectory"] + "/exported"
+                    if not os.path.exists(exportDir):
+                        os.makedirs(exportDir)
+                    for rawFramePath in rawFramePaths:
+                        basename = os.path.basename(rawFramePath)
+                        exportPath = exportDir + "/" + basename
+                        if not os.path.exists(exportPath):
+                            shutil.copy(rawFramePath, exportPath)
+                    print(
+                        f"Exported {len(rawFramePaths)} raw frames for the SOF file `{a['sofFile']}` to the `exported` directory in the workspace directory."
+                    )
+                return
 
     except FileExistsError as e:
         sys.exit(0)

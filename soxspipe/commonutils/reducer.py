@@ -99,6 +99,9 @@ class reducer(object):
             "nod",
             "stare",
             "offset",
+            "nod-obj",
+            "stare-obj",
+            "offset-obj",
         ]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
@@ -153,7 +156,7 @@ class reducer(object):
                         self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
                         break
 
-                    recipe = row["recipe"]
+                    recipe = row["recipe"].replace("-std", "").replace("-obj", "")
                     sof = row["sof"]
                     startTime = times.get_now_sql_datetime()
                     sof = self.sessionPath + "/sof/" + sof
@@ -255,16 +258,11 @@ class reducer(object):
             # GET THE GROUPS OF FILES NEEDING REDUCED, ASSIGN THE CORRECT COMMAND TO EXECUTE THE RECIPE
             if not recipe:
                 recipeText = "is not null"
-                std = ""
-            elif "std" in recipe:
-                recipeText = f"= '{recipe.replace("-std","")}'"
-                std = " AND `eso dpr type` like '%STD%' "
             else:
                 recipeText = f"= '{recipe}'"
-                std = " AND `eso dpr type` not like '%STD%' "
-            std = ""
+
             rawGroups = pd.read_sql(
-                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {std} order by recipe_order, sof {limitText}",
+                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText}  order by recipe_order, sof {limitText}",
                 con=conn,
             )
 
@@ -291,10 +289,10 @@ class reducer(object):
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
         if recipe:
-            mask = rawGroups["recipe"] == recipe.replace("-std", "")
+            mask = rawGroups["recipe"] == recipe
             rawGroups = rawGroups.loc[mask]
 
-        rawGroups["command"] = "soxspipe " + rawGroups["recipe"] + " sof/" + rawGroups["sof"]
+        rawGroups["command"] = "soxspipe " + rawGroups["recipe"].str.replace("-obj", "") + " sof/" + rawGroups["sof"]
         if self.pathToSettings:
             rawGroups["command"] += f" -s {self.pathToSettings}"
         conn.close()

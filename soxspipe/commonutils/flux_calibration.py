@@ -12,11 +12,13 @@ Date Created
 
 from builtins import object
 import os
-os.environ['TERM'] = 'vt100'
+
+os.environ["TERM"] = "vt100"
 
 
 # OR YOU CAN REMOVE THE CLASS BELOW AND ADD A WORKER FUNCTION ... SNIPPET TRIGGER BELOW
 # xt-worker-def
+
 
 class flux_calibration(object):
     """
@@ -31,7 +33,7 @@ class flux_calibration(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html). 
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html).
 
     To initiate a flux_calibration object, use the following:
 
@@ -44,29 +46,30 @@ class flux_calibration(object):
     :::
 
     ```python
-    usage code 
+    usage code
     ```
 
     """
+
     # Initialisation
     # 1. @flagged: what are the unique Attributes for each object? Add them
     # to __init__
 
     def __init__(
-            self,
-            log,
-            responseFunction,
-            extractedSpectrum,
-            settings=False,
-            airmass=1.0,
-            exptime=1.0,
-            extinctionPath="",
-            arm="",
-            header=None,
-            recipeName="",
-            startNightDate="",
-            sofName="",
-            debug=False
+        self,
+        log,
+        responseFunction,
+        extractedSpectrum,
+        settings=False,
+        airmass=1.0,
+        exptime=1.0,
+        extinctionPath="",
+        arm="",
+        header=None,
+        recipeName="",
+        startNightDate="",
+        sofName="",
+        debug=False,
     ):
         self.log = log
         log.debug("instantiating a new 'flux_calibration' object")
@@ -87,13 +90,11 @@ class flux_calibration(object):
         from soxspipe.commonutils.toolkit import utility_setup
         from soxspipe.commonutils import keyword_lookup
 
-        self.kw = keyword_lookup(
-            log=self.log,
-            settings=self.settings
-        ).get
+        self.kw = keyword_lookup(log=self.log, settings=self.settings).get
 
         self.qcDir, self.productDir = utility_setup(
-            log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate)
+            log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate
+        )
         self.products = pd.DataFrame()
 
         return None
@@ -116,10 +117,10 @@ class flux_calibration(object):
         :::
 
         ```python
-        usage code 
+        usage code
         ```
         """
-        self.log.debug('starting the ``calibrate`` method')
+        self.log.debug("starting the ``calibrate`` method")
 
         import copy
         from contextlib import suppress
@@ -132,7 +133,7 @@ class flux_calibration(object):
 
         flux_calibration = None
 
-        self.log.debug('completed the ``calibrate`` method')
+        self.log.debug("completed the ``calibrate`` method")
         # STEP TO DO:
 
         # DIVIDE PER EXPOSURE TIME
@@ -141,33 +142,31 @@ class flux_calibration(object):
         # APPLY EXTINCTION CORRECTION FACTOR
         if self.arm == "UVB" or self.arm == "VIS":
             extinctionCorrectionFactor = extinction_correction_factor(
-                self.extractedSpectrum["WAVE"], self.extinctionPath, self.airmass)
+                self.extractedSpectrum["WAVE"], self.extinctionPath, self.airmass
+            )
             flux_calibration = countsPerAngstrom * extinctionCorrectionFactor
         else:
             flux_calibration = countsPerAngstrom
 
         # APPLY RESPNSE FUNCTION
-        responseFunctionCoeff = Table.read(
-            self.responseFunction, format='fits')
+        responseFunctionCoeff = Table.read(self.responseFunction, format="fits")
         # NOW UNPACK THE COEFFICIENTS
         polyCoeffs = []
-        for idx_coeff in range(0, int(responseFunctionCoeff['polyOrder'])+1):
+        for idx_coeff in range(0, int(responseFunctionCoeff["polyOrder"]) + 1):
             polyCoeffs.append(responseFunctionCoeff[f"c{idx_coeff}"][0])
 
-        responseFunctionFactor = np.polyval(
-            polyCoeffs, self.extractedSpectrum["WAVE"])
-        flux_calibration = flux_calibration * responseFunctionFactor*10**-17
+        responseFunctionFactor = np.polyval(polyCoeffs, self.extractedSpectrum["WAVE"])
+        flux_calibration = flux_calibration * responseFunctionFactor * 10**-17
 
-        fluxCalSpectrum = pd.DataFrame({
-            "WAVE": self.extractedSpectrum["WAVE"],
-            "FLUX_CALIBRATED": flux_calibration
-        })
+        fluxCalSpectrum = pd.DataFrame({"WAVE": self.extractedSpectrum["WAVE"], "FLUX_CALIBRATED": flux_calibration})
 
         if self.debug:
             import matplotlib
+
             matplotlib.use("TkAgg")
             from matplotlib import pyplot as plt
-            plt.plot(self.extractedSpectrum["WAVE"], flux_calibration*10**-17)
+
+            plt.plot(self.extractedSpectrum["WAVE"], flux_calibration * 10**-17)
             plt.xlabel("Wavelength (nm)")
             plt.ylabel("Flux (erg/cm2/s/Angstrom)")
             plt.show()
@@ -190,31 +189,40 @@ class flux_calibration(object):
         BinTableHDU = fits.table_to_hdu(fluxcalibratedSpectrum)
         header[self.kw("SEQ_ARM")] = self.arm
         header["HIERARCH " + self.kw("PRO_TYPE")] = "REDUCED"
-        header["HIERARCH " + self.kw("PRO_CATG")
-               ] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+        header["HIERARCH " + self.kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
         priHDU = fits.PrimaryHDU(header=header)
         hduList = fits.HDUList([priHDU, BinTableHDU])
 
         filename = f"{self.sofName}_FLUXCAL.fits"
         filePath = f"{self.productDir}/{filename}"
-        print(f"WRITING TO {filePath}")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         from datetime import datetime
+
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        self.products = pd.concat([self.products, pd.Series({
-            "soxspipe_recipe": self.recipeName,
-            "product_label": f"EXTRACTED_FLUXCAL_SPECTRUM",
-            "file_name": filename,
-            "file_type": "FITS",
-            "reduction_date_utc": utcnow,
-            "product_desc": f"Flux calibrated extracted spectrum",
-            "file_path": filePath,
-            "obs_date_utc": header["DATE-OBS"],
-            "label": "PROD"
-        }).to_frame().T], ignore_index=True)
+        self.products = pd.concat(
+            [
+                self.products,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "product_label": f"EXTRACTED_FLUXCAL_SPECTRUM",
+                        "file_name": filename,
+                        "file_type": "FITS",
+                        "reduction_date_utc": utcnow,
+                        "product_desc": f"Flux calibrated extracted spectrum",
+                        "file_path": filePath,
+                        "obs_date_utc": header["DATE-OBS"],
+                        "label": "PROD",
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
 
         return filePath, self.products
 

@@ -1,7 +1,9 @@
 # Release Notes
 
-creating useful views on the soxspipe.db (sorting products and raw frames by recipe)
-fixing slit width matching for std response curve files and science frames
+* **FEATURE:** You can now export all the raw frames needed to reduce a science SOF file (see the `soxspipe raw sof` command and the FAQs in docs).
+* **ENHANCEMENT:** creating useful views on the soxspipe.db (sorting products and raw frames by recipe).
+* **FIXED:** fixing slit width matching for std response curve files and science frames.
+* **FIXED:** science frames are now being reduced again with the reduce all command.
 
 ## v0.15.2 - January 26, 2026
 

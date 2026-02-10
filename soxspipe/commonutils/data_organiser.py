@@ -588,6 +588,24 @@ class data_organiser(object):
         self.log.debug("completed the ``list_sofs`` method")
         return sofDf
 
+    def list_raw(self, sofFile):
+        """*list the all the raw frames associated with a given science object SOF file*"""
+        import pandas as pd
+
+        self.log.debug("starting the ``list_raw`` method")
+
+        sqlQuery = f"select sof from product_frames where sof = '{sofFile}' and complete = 1"
+
+        for _ in range(4):  # Recursively query up to 5 times
+            sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
+
+        sqlQuery = f"SELECT filepath from sof_map WHERE sof in ({sqlQuery}) and filepath like '%./raw/%' order by sof"
+
+        filepaths = pd.read_sql(sqlQuery, con=self.conn)["filepath"].tolist()
+
+        self.log.debug("completed the ``list_raw`` method")
+        return list(set(filepaths))
+
     def _sync_raw_frames(self, skipSqlSync=False):
         """*sync the raw frames between the project folder and the database*
 
