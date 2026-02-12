@@ -255,7 +255,7 @@ class response_function(object):
                 area = 400 * 400 * 3.14
             else:
                 # NTT TELESCOPE AREA (IN CM²)
-                area = 179 * 179 * 3.14
+                area = 89000
 
             # EXTRACT WAVELENGTH VALUES AND COMPUTE ABSOLUTE FLUX
             wavelength = stdExtWaveNotFlat
