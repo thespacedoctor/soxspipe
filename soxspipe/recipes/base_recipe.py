@@ -1381,6 +1381,10 @@ class base_recipe(object):
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
         self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
 
+        # SEND TO DATABASE
+        self.qc["sof_name"] = self.sofName + ".sof"
+        self.qc["obs_date_utc"] = self.dateObs
+
         # SORT BY COLUMN NAME
         self.qc.sort_values(["qc_name"], inplace=True)
         columns = list(self.qc.columns)
@@ -1388,8 +1392,9 @@ class base_recipe(object):
         columns.remove("obs_date_utc")
         columns.remove("reduction_date_utc")
         columns.remove("soxspipe_recipe")
-        csvColumns = list(self.qc.columns)
-        csvColumns.remove("to_header")
+        columns.remove("sof_name")
+        dbColumns = list(self.qc.columns)
+        dbColumns.remove("to_header")
 
         # SORT BY COLUMN NAME
         self.products.sort_values(["label"], ascending=[True], inplace=True)
@@ -1414,8 +1419,7 @@ class base_recipe(object):
             self.log.print(
                 tabulate(self.products[columns2], headers="keys", tablefmt="psql", showindex=False, stralign="right")
             )
-            qcFile = self.qcDir + f"/{self.sofName}_QC.csv"
-            self.qc[csvColumns].to_csv(qcFile, index=False)
+            self.qc[dbColumns].to_sql("quality_control", con=self.conn, index=False, if_exists="append")
 
         self.log.debug("completed the ``report_output`` method")
         return None
