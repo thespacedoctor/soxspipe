@@ -609,6 +609,7 @@ class soxs_stare(base_recipe):
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
 
         # CHECK IF FLUX CALIBRATION IS NEEDED
+        filePath_fluxcal = None
 
         if responseFunctionPath:
             from soxspipe.commonutils import flux_calibration
@@ -633,7 +634,7 @@ class soxs_stare(base_recipe):
                 sofName=self.sofName,
                 debug=self.debug,
             )
-            filePath, prod = fluxCalibrator.calibrate()
+            filePath_fluxcal, prod = fluxCalibrator.calibrate()
             self.products = pd.concat([self.products, prod], ignore_index=True)
             # self.qc, self.products, calibratedSpectrumDF, calibrationPath = fluxCalibrator.calibrate()
             self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
@@ -674,6 +675,47 @@ class soxs_stare(base_recipe):
                 stdNotFlatExtractionPath=extractionPath_notflat,
             )
             self.qc, self.products = response.get()
+        
+        
+        from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
+        self.products, filePath = plot_merged_spectrum_qc(
+                merged_orders=mergedSpectumDF,
+                products=self.products,
+                log=self.log,
+                qcDir=self.qcDir,
+                filenameTemplate=self.filenameTemplate,
+                noddingSequence=None,
+                dateObs=self.dateObs,
+                arm=self.arm,
+                recipeName=self.recipeName,
+                orderJoins=orderJoins,
+                debug=self.debug,
+                fluxCalibrated=False
+            )
+
+        if filePath_fluxcal:
+            from astropy.table import Table
+            from astropy.io import fits
+            from astropy import units as u
+            fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
+            fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"] # BACK COMPATIBILITY WITH THE CODE
+            # ADD THE SNR COLUMN AND COPY VALUES FROM mergedSpectumDF
+            fluxcal_spec["SNR"] = mergedSpectumDF["SNR"]
+            self.products, filePath = plot_merged_spectrum_qc(
+                merged_orders=fluxcal_spec,
+                products=self.products,
+                log=self.log,
+                qcDir=self.qcDir,
+                filenameTemplate=self.filenameTemplate,
+                noddingSequence=None,
+                dateObs=self.dateObs,
+                arm=self.arm,
+                recipeName=self.recipeName,
+                orderJoins=orderJoins,
+                debug=self.debug,
+                fluxCalibrated=True
+            )
 
         self.report_output()
         self.clean_up()

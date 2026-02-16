@@ -450,6 +450,7 @@ class soxs_nod(base_recipe):
                 self.qc, self.products = response.get()
 
         # CHECK IF FLUX CALIBRATION IS REQUESTED
+        filePath_fluxcal = None
         if responseFunctionPath:
 
             calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
@@ -472,7 +473,7 @@ class soxs_nod(base_recipe):
                 sofName=self.sofName,
                 debug=self.debug,
             )
-            filePath, products = fluxCalibrator.calibrate()
+            filePath_fluxcal, products = fluxCalibrator.calibrate()
             self.products = pd.concat([self.products, products], ignore_index=True)
             self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
 
@@ -488,7 +489,34 @@ class soxs_nod(base_recipe):
             recipeName=self.recipeName,
             orderJoins=orderJoins,
             debug=self.debug,
+            fluxCalibrated=False,
         )
+
+        if filePath_fluxcal:
+            from astropy.table import Table
+            from astropy.io import fits
+            from astropy import units as u
+
+            fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
+            fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
+            # ADD THE SNR COLUMN AND COPY VALUES FROM stackedSpectrum
+            fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
+
+            self.products, filePath = plot_merged_spectrum_qc(
+                merged_orders=fluxcal_spec,
+                products=self.products,
+                log=self.log,
+                qcDir=self.qcDir,
+                filenameTemplate=self.filenameTemplate,
+                noddingSequence=False,
+                dateObs=self.dateObs,
+                arm=self.arm,
+                recipeName=self.recipeName,
+                orderJoins=orderJoins,
+                debug=self.debug,
+                fluxCalibrated=True,
+            )
 
         self.report_output()
         self.clean_up()

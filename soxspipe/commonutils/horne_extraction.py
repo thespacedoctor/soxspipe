@@ -973,20 +973,8 @@ class horne_extraction(object):
 
         merged_orders["FLUX_DENSITY_COUNTS"] = fluxDensity_resampled * u.electron / u.nm
 
+
         if False:
-            # PLOTTING THE RESAMPLED AND ORIGINAL SPECTRUM
-            import matplotlib.pyplot as plt
-
-            plt.plot(
-                extractedOrdersDF["wavelengthMedian"],
-                extractedOrdersDF["extractedFluxOptimal"].values,
-                label="Original",
-            )
-            plt.plot(merged_orders["WAVE"], merged_orders["FLUX_COUNTS"], label="Resampled")
-            plt.legend()
-            plt.show()
-
-        if not self.notFlattened:
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=merged_orders,
                 products=self.products,

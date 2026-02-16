@@ -1533,6 +1533,7 @@ def plot_merged_spectrum_qc(
     recipeName,
     orderJoins=False,
     debug=False,
+    fluxCalibrated=False,
 ):
     """
     Plot merged spectrum QC plot as a standalone function.
@@ -1556,16 +1557,21 @@ def plot_merged_spectrum_qc(
     if not noddingSequence:
         noddingSequence = ""
 
+
     fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
     # Adjusted height ratios
     gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 0, 0])
 
     # Top panel with linear scale
     top_panel = fig.add_subplot(gs[0, :])
-    top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
+    if fluxCalibrated:
+        top_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\AA^{-1}$)", fontsize=10)
+    else:
+        top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
+
     top_panel.set_title(f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
 
-    top_panel.plot(merged_orders["WAVE"], merged_orders["FLUX_COUNTS"], linewidth=0.3, color="#dc322f")
+    top_panel.plot(merged_orders["WAVE"], merged_orders["FLUX_COUNTS"], linewidth=0.3, color="#dc322f" if not fluxCalibrated else "#2aa198")
 
     try:
         top_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
@@ -1574,11 +1580,16 @@ def plot_merged_spectrum_qc(
 
     # Middle panel with log scale
     middle_panel = fig.add_subplot(gs[1, :])
-    middle_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
+    if not fluxCalibrated:
+        middle_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
+    else:
+        middle_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\AA^{-1}$)", fontsize=10)
     middle_panel.set_xlabel("wavelength (nm)", fontsize=10)
     middle_panel.set_yscale("log")
 
-    middle_panel.plot(merged_orders["WAVE"], merged_orders["FLUX_COUNTS"], linewidth=0.3, color="#dc322f")
+    middle_panel.plot(merged_orders["WAVE"], merged_orders["FLUX_COUNTS"], linewidth=0.3, color="#dc322f" if not fluxCalibrated else "#2aa198")
+
+
 
     from astropy.stats import sigma_clip, mad_std
 
@@ -1589,11 +1600,12 @@ def plot_merged_spectrum_qc(
     mean, median, std = sigma_clipped_stats(
         merged_orders["FLUX_COUNTS"], sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3
     )
-    maxFlux = arrayMask.max() + 0.5 * std
-    minFlux = arrayMask.min() - 0.05 * std
+    maxFlux = arrayMask.max() + 3 * std
+    minFlux = arrayMask.min() - 3 * std
 
     top_panel.set_ylim(minFlux, maxFlux)
-    middle_panel.set_ylim(max(arrayMask.min() * 5, 0), arrayMask.max() * 7)
+
+    middle_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
     try:
         middle_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
     except Exception:
@@ -1627,8 +1639,10 @@ def plot_merged_spectrum_qc(
                     color="black",
                     alpha=0.5,
                 )
-
-    filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
+    if fluxCalibrated:
+        filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT{noddingSequence}.pdf")
+    else:
+        filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
     filePath = f"{qcDir}/{filename}"
     if debug:
         plt.show()
@@ -1642,7 +1656,7 @@ def plot_merged_spectrum_qc(
             pd.Series(
                 {
                     "soxspipe_recipe": recipeName,
-                    "product_label": f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}",
+                    "product_label": f"EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT{noddingSequence}" if fluxCalibrated else f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}",
                     "file_name": filename,
                     "file_type": "PDF",
                     "obs_date_utc": dateObs,
