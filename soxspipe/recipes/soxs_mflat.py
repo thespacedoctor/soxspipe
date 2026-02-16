@@ -609,8 +609,8 @@ class soxs_mflat(base_recipe):
             orderTablePath=orderTablePath,
         )
 
-        self.clean_up()
         self.report_output()
+        self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
         return productPath

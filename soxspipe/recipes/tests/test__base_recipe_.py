@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -19,7 +20,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -50,20 +51,15 @@ class test_base_recipe(unittest.TestCase):
     @pytest.mark.full
     def test_xshbase_recipe_function(self):
 
-        framePath = settings["test-data-root"] + \
-            "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
+        framePath = settings["test-data-root"] + "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
         interMediatePath = settings["workspace-root-dir"]
         from soxspipe.recipes import base_recipe
-        recipe = base_recipe(
-            log=log,
-            settings=settings
-        )
+
+        recipe = base_recipe(log=log, settings=settings)
 
         from soxspipe.commonutils import detector_lookup
-        recipe.detectorParams = detector_lookup(
-            log=log,
-            settings=settings
-        ).get("UVB")
+
+        recipe.detectorParams = detector_lookup(log=log, settings=settings).get("UVB")
         recipe.detectorParams["gain"] = 1.75
         recipe.detectorParams["ron"] = 4.5
         recipe.arm = "UVB"
@@ -71,8 +67,7 @@ class test_base_recipe(unittest.TestCase):
         preFrame = recipe._prepare_single_frame(frame=framePath)
 
         # NOW TRY SAVING
-        preFrame = recipe._prepare_single_frame(frame=framePath, save=settings[
-            "save-intermediate-products"])
+        preFrame = recipe._prepare_single_frame(frame=framePath, save=settings["save-intermediate-products"])
 
         # NOW CLEAN UP
         recipe.clean_up()
@@ -81,12 +76,9 @@ class test_base_recipe(unittest.TestCase):
     def test_soxsbase_recipe_function_exception(self):
 
         from soxspipe.recipes import base_recipe
+
         try:
-            this = base_recipe(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
-            )
+            this = base_recipe(log=log, settings=settings, fakeKey="break the code")
             this.get()
             assert False
         except Exception as e:
