@@ -1,6 +1,10 @@
 # Release Notes
 
+
+removed VIS darks from the data-organiser (i.e. don't automatically write to SOF files)
+removing cruft from data-oraniser module
 adding 'eso tpl nexp' to the data-organiser database to be abke to filter out incomplete OB datasets
+
 * **FEATURE:** You can now export all the raw frames needed to reduce a science SOF file (see the `soxspipe raw sof` command and the FAQs in docs).
 * **ENHANCEMENT:** creating useful views on the soxspipe.db (sorting products and raw frames by recipe).
 * **FIXED:** fixing slit width matching for std response curve files and science frames.
