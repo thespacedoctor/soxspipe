@@ -41,10 +41,10 @@ XSHOO.2020-10-15T11:47:10.217_pre.fits XSHOOTER 59137.49109048 DARK CALIB IMAGE 
 +-----------------+--------------+-----------+---------------------------------------+
 |         qc_name |     qc_value |   qc_unit |                            qc_comment |
 |-----------------+--------------+-----------+---------------------------------------|
-| FRAC BAD PIXELS |     0.005732 |           |                Fraction of bad pixels |
+| BADPIX FRAC |     0.005732 |           |                Fraction of bad pixels |
 |    MDARK MEDIAN |   280.897    | electrons | [e-] Median flux level of master dark |
-|    N BAD PIXELS | 12349        |           |                  Number of bad pixels |
-|    RON DETECTOR |    14.9194   | electrons |               [e-] RON in single DARK |
+|    BADPIX NUM | 12349        |           |                  Number of bad pixels |
+|    RAW RON |    14.9194   | electrons |               [e-] RON in single DARK |
 +-----------------+--------------+-----------+---------------------------------------+
 
 # SOXS-MDARK RECIPE PRODUCTS & QC OUTPUTS
