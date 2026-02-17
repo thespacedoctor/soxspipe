@@ -584,7 +584,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
 
     # qcTable = pd.concat([qcTable, pd.Series({
     #     "soxspipe_recipe": recipeName,
-    #     "qc_name": "N NAN PIXELS",
+    #     "qc_name": "NANPIX NUM",
     #     "qc_value": nanCount,
     #     "qc_comment": "Number of NaN pixels",
     #     "qc_unit": "",
@@ -605,7 +605,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
             pd.Series(
                 {
                     "soxspipe_recipe": recipeName,
-                    "qc_name": "N BAD PIXELS",
+                    "qc_name": "BADPIX NUM",
                     "qc_value": int(badCount),
                     "qc_comment": "Number of bad pixels",
                     "qc_unit": "",
@@ -626,7 +626,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
             pd.Series(
                 {
                     "soxspipe_recipe": recipeName,
-                    "qc_name": "FRAC BAD PIXELS",
+                    "qc_name": "BADPIX FRAC",
                     "qc_value": percent,
                     "qc_comment": "Fraction of bad pixels",
                     "qc_unit": "",
@@ -1557,7 +1557,6 @@ def plot_merged_spectrum_qc(
     if not noddingSequence:
         noddingSequence = ""
 
-
     fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
     # Adjusted height ratios
     gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 0, 0])
@@ -1571,7 +1570,12 @@ def plot_merged_spectrum_qc(
 
     top_panel.set_title(f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
 
-    top_panel.plot(merged_orders["WAVE"], merged_orders["FLUX_COUNTS"], linewidth=0.3, color="#dc322f" if not fluxCalibrated else "#2aa198")
+    top_panel.plot(
+        merged_orders["WAVE"],
+        merged_orders["FLUX_COUNTS"],
+        linewidth=0.3,
+        color="#dc322f" if not fluxCalibrated else "#2aa198",
+    )
 
     try:
         top_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
@@ -1587,9 +1591,12 @@ def plot_merged_spectrum_qc(
     middle_panel.set_xlabel("wavelength (nm)", fontsize=10)
     middle_panel.set_yscale("log")
 
-    middle_panel.plot(merged_orders["WAVE"], merged_orders["FLUX_COUNTS"], linewidth=0.3, color="#dc322f" if not fluxCalibrated else "#2aa198")
-
-
+    middle_panel.plot(
+        merged_orders["WAVE"],
+        merged_orders["FLUX_COUNTS"],
+        linewidth=0.3,
+        color="#dc322f" if not fluxCalibrated else "#2aa198",
+    )
 
     from astropy.stats import sigma_clip, mad_std
 
@@ -1656,7 +1663,11 @@ def plot_merged_spectrum_qc(
             pd.Series(
                 {
                     "soxspipe_recipe": recipeName,
-                    "product_label": f"EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT{noddingSequence}" if fluxCalibrated else f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}",
+                    "product_label": (
+                        f"EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT{noddingSequence}"
+                        if fluxCalibrated
+                        else f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}"
+                    ),
                     "file_name": filename,
                     "file_type": "PDF",
                     "obs_date_utc": dateObs,

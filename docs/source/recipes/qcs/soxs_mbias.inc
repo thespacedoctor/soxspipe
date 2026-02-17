@@ -3,12 +3,12 @@
 
 | Label | Description | Unit |
 | :------------ | :----------- | ------------- |
-| `FRAC BAD PIXELS` |                Fraction of bad pixels |   -       | 
+| `BADPIX FRAC` |                Fraction of bad pixels |   -       | 
 | `MBIAS MEDIAN` | Median flux level of master bias |electrons | 
-| `N BAD PIXELS` | Number of bad pixels |  -        | 
-| `PPNMAX` | Maximum periodic pattern noise ratio in raw bias frames | - |
-| `RON DETECTOR` | RON in single BIAS |electrons | 
-| `RON MASTER` | Combined RON in MBIAS |electrons | 
+| `BADPIX NUM` | Number of bad pixels |  -        | 
+| `FPN FRACMAX` | Maximum periodic pattern noise ratio in raw bias frames | - |
+| `RAW RON` | RON in single BIAS |electrons | 
+| `MASTER RON` | Combined RON in MBIAS |electrons | 
 | `STRUCTX` | Slope of BIAS in X direction | - |
 | `STRUCTY` | Slope of BIAS in Y direction | - |
 
