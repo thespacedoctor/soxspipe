@@ -427,7 +427,7 @@ class soxs_mbias(base_recipe):
                 pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "qc_name": "PPNMAX",
+                        "qc_name": "FPN FRACMAX",
                         "qc_value": ppnmax,
                         "qc_comment": "Max periodic pattern noise ratio in raw bias frames",
                         "qc_unit": None,

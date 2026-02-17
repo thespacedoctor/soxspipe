@@ -1521,7 +1521,7 @@ class base_recipe(object):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": "RON DETECTOR",
+                            "qc_name": "RAW RON",
                             "qc_value": rawRon,
                             "qc_comment": f"[e-] RON in single {singleFrameType}",
                             "qc_unit": "electrons",
@@ -1555,7 +1555,7 @@ class base_recipe(object):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": "RON MASTER",
+                            "qc_name": "MASTER RON",
                             "qc_value": masterRon,
                             "qc_comment": f"[e-] Combined RON in {frameType}",
                             "qc_unit": "electrons",
