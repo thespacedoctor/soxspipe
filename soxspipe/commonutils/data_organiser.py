@@ -133,6 +133,17 @@ class data_organiser(object):
             "SWSIM_NIR",
             "SWSIM_VIS",
             "SWSIM_UVB",
+            "PAR_ANG_END",
+            "PAR_ANG_START",
+            "AZ_ANG",
+            "ALT_ANG",
+            "SEEING_END",
+            "SEEING_START",
+            "AIRMASS_END",
+            "AIRMASS_START",
+            "TARG_NAME",
+            "OB_TPL_NO",
+            "OB_NTPL",
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -172,6 +183,17 @@ class data_organiser(object):
             "dec",
             "simulation",
             "filepath",
+            "eso tel parang end",
+            "eso tel parang start",
+            "eso tel az",
+            "eso tel alt",
+            "eso tel ambi fwhm end",
+            "eso tel ambi fwhm start",
+            "eso tel airm end",
+            "eso tel airm start",
+            "eso obs targ name",
+            "eso obs tplno",
+            "eso obs ntpl",
         ]
 
         self.proKeywords = ["eso pro type", "eso pro tech", "eso pro catg"]
@@ -190,7 +212,6 @@ class data_organiser(object):
             "slit",
             "slitmask",
             "binning",
-            "mjd-date",
             "night start mjd",
             "night start date",
             "instrume",
@@ -1768,6 +1789,49 @@ class data_organiser(object):
         sqlQueries = [
             "update raw_frames set lamp = null, slit = null, slitmask = null where `eso dpr type` in ('BIAS','DARK');",
             "update raw_frames set rospeed = null where rospeed = -1;",
+            """-- Single optimised CTE that does everything at once
+                WITH s AS (
+                    SELECT
+                        uuid,
+                        "file",
+                        "mjd-obs",
+                        "eso tpl expno" AS expno,
+                        CASE 
+                            WHEN LAG("eso tpl expno") OVER (ORDER BY "mjd-obs") IS NULL THEN 1
+                            WHEN "eso tpl expno" <= LAG("eso tpl expno") OVER (ORDER BY "mjd-obs") THEN 1
+                            WHEN "eso obs id" != LAG("eso obs id") OVER (ORDER BY "mjd-obs") THEN 1
+                            WHEN "eso obs name" != LAG("eso obs name") OVER (ORDER BY "mjd-obs") THEN 1
+                            ELSE 0
+                        END AS new_set
+                    FROM raw_frames
+                ),
+                g AS (
+                    SELECT
+                        uuid,
+                        "file",
+                        SUM(new_set) OVER (ORDER BY "mjd-obs" ROWS UNBOUNDED PRECEDING) AS grp
+                    FROM s
+                ),
+                lab AS (
+                    SELECT
+                        uuid,
+                        FIRST_VALUE("file") OVER (PARTITION BY grp ORDER BY uuid) AS set_file,
+                        grp
+                    FROM g
+                ),
+                -- Pre-calculate set sizes
+                sizes AS (
+                    SELECT
+                        grp,
+                        COUNT(*) AS size
+                    FROM g
+                    GROUP BY grp
+                )
+            UPDATE raw_frames
+                SET 
+                set_first_file = (SELECT set_file FROM lab WHERE lab.uuid = raw_frames.uuid),
+                set_size = (SELECT size FROM sizes WHERE sizes.grp = (SELECT grp FROM lab WHERE lab.uuid = raw_frames.uuid));
+         """,
         ]
         for sqlQuery in sqlQueries:
             c.execute(sqlQuery)
@@ -1917,6 +1981,12 @@ class data_organiser(object):
         else:
             rawGroups["complete"] = 0
         rawGroups["recipe_order"] = recipeOrder
+
+        # FILTER DATA FRAME
+        # FIRST CREATE THE MASK
+        mask = (rawGroups["recipe"].isin(("mbias", "mdark"))) & (rawGroups["counts"] < rawGroups["eso tpl nexp"])
+        mask = mask | ((rawGroups["recipe"] == "mflat") & (rawGroups["counts"] < 5))
+        rawGroups = rawGroups.loc[~mask]
 
         return rawFrames, rawGroups
 
