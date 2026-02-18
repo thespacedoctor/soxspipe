@@ -144,6 +144,8 @@ class data_organiser(object):
             "TARG_NAME",
             "OB_TPL_NO",
             "OB_NTPL",
+            "OB_START",
+            "TPL_START",
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -194,6 +196,8 @@ class data_organiser(object):
             "eso obs targ name",
             "eso obs tplno",
             "eso obs ntpl",
+            "eso tpl start",
+            "eso obs start",
         ]
 
         self.proKeywords = ["eso pro type", "eso pro tech", "eso pro catg"]
@@ -539,15 +543,14 @@ class data_organiser(object):
                         parentDirectory = os.path.dirname(p)
                         if not os.path.exists(parentDirectory):
                             # Recursively create missing directories
-                            if not os.path.exists(parentDirectory):
-                                os.makedirs(parentDirectory)
+                            os.makedirs(parentDirectory)
                         if os.path.exists(self.rootDir + "/" + n):
                             realSource = os.path.realpath(self.rootDir + "/" + n)
                             realDest = os.path.realpath(p)
 
                             matchObject = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource)
 
-                            if matchObject:
+                            if matchObject and realSource != realDest:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
                                 databaseDeletes.append(realDest)
                             elif realSource != realDest:
@@ -1637,6 +1640,54 @@ class data_organiser(object):
             f"update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));",
             f"delete from sof_map_{self.sessionId} where sof in (  select s.sof from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1));",
             f"update raw_frames set processed = -1 where file in (select distinct s.file from sof_map s, product_frames p where p.sof=s.sof and p.status = 'fail');",
+            "update raw_frames set lamp = null, slit = null, slitmask = null where `eso dpr type` in ('BIAS','DARK');",
+            "update raw_frames set rospeed = null where rospeed = -1;",
+            """WITH s AS (
+                    SELECT
+                        uuid,
+                        "file",
+                        "eso tpl start",
+                        "eso tpl expno" AS expno,
+                        CASE
+                            WHEN LAG("eso tpl expno") OVER (ORDER BY "eso tpl start", "eso tpl expno") IS NULL THEN 1
+                            WHEN "eso tpl expno" <= LAG("eso tpl expno") OVER (ORDER BY "eso tpl start", "eso tpl expno") THEN 1
+                            ELSE 0
+                        END AS new_set
+                    FROM raw_frames
+                ),
+                g AS (
+                    SELECT
+                        uuid,
+                        "file",
+                        "eso tpl start", 
+                        expno,
+                        SUM(new_set) OVER (ORDER BY "eso tpl start", expno ROWS UNBOUNDED PRECEDING) AS grp
+                    FROM s
+                ),
+                -- Combine labeling and sizing in one pass
+                set_info AS (
+                    SELECT
+                        grp,
+                        FIRST_VALUE("file") OVER (PARTITION BY grp ORDER BY "eso tpl start", expno) AS set_file,
+                        COUNT(*) OVER (PARTITION BY grp) AS set_size
+                    FROM g
+                ),
+                -- Create final mapping
+                final_mapping AS (
+                    SELECT DISTINCT
+                        g.uuid,
+                        si.set_file,
+                        si.set_size
+                    FROM g
+                    JOIN set_info si ON g.grp = si.grp
+                )
+                UPDATE raw_frames
+                SET
+                    set_first_file = fm.set_file,
+                    set_size = fm.set_size
+                FROM final_mapping fm
+                WHERE raw_frames.uuid = fm.uuid;
+         """,
         ]
         for sqlQuery in sqlQueries:
             c = self.conn.cursor()
@@ -1698,25 +1749,35 @@ class data_organiser(object):
 
                     if isinstance(calibrationTypes, dict):
                         for arm, calType in calibrationTypes.items():
-                            ffrom = ", ".join([f"cal_{ct}" for ct in calType])
-                            where1 = " and ".join([f"product_frames.sof=cal_{ct}.sof" for ct in calType])
-                            where2 = " and ".join(
+
+                            exists = " AND ".join(
                                 [
-                                    f"(cal_{ct}.upstream_status = 'pass' or cal_{ct}.upstream_status is null)"
+                                    f"""EXISTS (
+                                SELECT 1 FROM cal_{ct} 
+                                WHERE cal_{ct}.sof = product_frames.sof 
+                                AND (cal_{ct}.upstream_status = 'pass' OR cal_{ct}.upstream_status IS NULL)
+                            )"""
                                     for ct in calType
                                 ]
                             )
 
-                            sqlQuery = f"""select sof from product_frames where uuid in 
-                            (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete < 1;"""
+                            sqlQuery = f"""select sof from product_frames
+                                WHERE complete < 1 
+                                AND recipe = '{recipe}'
+                                AND "eso seq arm" = '{arm}'
+                                AND {exists};"""
 
                             containerSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
 
                             self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
 
-                            sqlQuery = f"""update product_frames set complete = -1 where uuid in 
-                            (select product_frames.uuid from product_frames, {ffrom} where product_frames.recipe = '{recipe}' and product_frames.'eso seq arm' = '{arm}' and {where1} and {where2}) and complete < 1;
-                            """
+                            sqlQuery = f"""UPDATE product_frames 
+                                SET complete = -1 
+                                WHERE complete < 1 
+                                AND recipe = '{recipe}'
+                                AND "eso seq arm" = '{arm}'
+                                AND {exists};"""
+
                             c.execute(sqlQuery)
 
                             # FOR COMPLETE PRODUCTS, ADD CALIBRATION FILES TO SOF MAP
@@ -1784,59 +1845,6 @@ class data_organiser(object):
         """
         import pandas as pd
 
-        # CLEAN DATABASE TABLE
-        c = self.conn.cursor()
-        sqlQueries = [
-            "update raw_frames set lamp = null, slit = null, slitmask = null where `eso dpr type` in ('BIAS','DARK');",
-            "update raw_frames set rospeed = null where rospeed = -1;",
-            """-- Single optimised CTE that does everything at once
-                WITH s AS (
-                    SELECT
-                        uuid,
-                        "file",
-                        "mjd-obs",
-                        "eso tpl expno" AS expno,
-                        CASE 
-                            WHEN LAG("eso tpl expno") OVER (ORDER BY "mjd-obs") IS NULL THEN 1
-                            WHEN "eso tpl expno" <= LAG("eso tpl expno") OVER (ORDER BY "mjd-obs") THEN 1
-                            WHEN "eso obs id" != LAG("eso obs id") OVER (ORDER BY "mjd-obs") THEN 1
-                            WHEN "eso obs name" != LAG("eso obs name") OVER (ORDER BY "mjd-obs") THEN 1
-                            ELSE 0
-                        END AS new_set
-                    FROM raw_frames
-                ),
-                g AS (
-                    SELECT
-                        uuid,
-                        "file",
-                        SUM(new_set) OVER (ORDER BY "mjd-obs" ROWS UNBOUNDED PRECEDING) AS grp
-                    FROM s
-                ),
-                lab AS (
-                    SELECT
-                        uuid,
-                        FIRST_VALUE("file") OVER (PARTITION BY grp ORDER BY uuid) AS set_file,
-                        grp
-                    FROM g
-                ),
-                -- Pre-calculate set sizes
-                sizes AS (
-                    SELECT
-                        grp,
-                        COUNT(*) AS size
-                    FROM g
-                    GROUP BY grp
-                )
-            UPDATE raw_frames
-                SET 
-                set_first_file = (SELECT set_file FROM lab WHERE lab.uuid = raw_frames.uuid),
-                set_size = (SELECT size FROM sizes WHERE sizes.grp = (SELECT grp FROM lab WHERE lab.uuid = raw_frames.uuid));
-         """,
-        ]
-        for sqlQuery in sqlQueries:
-            c.execute(sqlQuery)
-        c.close()
-
         # IF NONE, SET TO EMPTY STRING
         ttype, arm, tech = ttype or "", arm or "", tech or ""
 
@@ -1864,8 +1872,37 @@ class data_organiser(object):
             con=conn,
         )
 
-        rawFrames = rawFrames.astype({"exptime": float, "ra": float, "dec": float})
-        rawFrames.fillna({"exptime": -99.99, "ra": -99.99, "dec": -99.99}, inplace=True)
+        rawFrames = rawFrames.astype(
+            {
+                "exptime": float,
+                "ra": float,
+                "dec": float,
+                "eso tel parang end": float,
+                "eso tel parang start": float,
+                "eso tel az": float,
+                "eso tel alt": float,
+                "eso tel ambi fwhm end": float,
+                "eso tel ambi fwhm start": float,
+                "eso tel airm end": float,
+                "eso tel airm start": float,
+            }
+        )
+        rawFrames.fillna(
+            {
+                "exptime": -99.99,
+                "ra": -99.99,
+                "dec": -99.99,
+                "eso tel parang end": -99.99,
+                "eso tel parang start": -99.99,
+                "eso tel az": -99.99,
+                "eso tel alt": -99.99,
+                "eso tel ambi fwhm end": -99.99,
+                "eso tel ambi fwhm start": -99.99,
+                "eso tel airm end": -99.99,
+                "eso tel airm start": -99.99,
+            },
+            inplace=True,
+        )
         rawFrames.fillna("--", inplace=True)
         filterKeywordsRaw = self.filterKeywords[:]
         for i in self.proKeywords:
@@ -1878,7 +1915,7 @@ class data_organiser(object):
             & (rawFrames["eso dpr type"] != "DARK")
         )
         rawFramesNoOffFrames = rawFrames.loc[~mask]
-        rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw)
+        rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw + ["set_first_file"])
 
         if not len(rawFramesNoOffFrames.index):
             return pd.DataFrame(), pd.DataFrame()
@@ -2082,7 +2119,6 @@ class data_organiser(object):
         sofMapDF["tag"] = sofMapDF["eso dpr type"].replace(",", "_") + "_" + sofMapDF["eso seq arm"]
         sofMapDF = sofMapDF[["file", "tag", "sof", "filepath", "complete"]]
         sofMapDF["complete"] = 1
-        # ADD TO DATABASE
         self._dataframe_to_sqlite(sofMapDF, f"sof_map_{self.sessionId}", replace=False)
 
         # UPDATE RAW FRAMES AS PROCESSED
