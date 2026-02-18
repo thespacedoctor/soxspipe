@@ -1,6 +1,7 @@
 # Release Notes
 
-
+renamed QC metrics as suggested in RIX 119
+added many more FITS keywords to the `raw_frames` table in soxspipe.db & the data oragniser
 removed VIS darks from the data-organiser (i.e. don't automatically write to SOF files)
 removing cruft from data-oraniser module
 adding 'eso tpl nexp' to the data-organiser database to be abke to filter out incomplete OB datasets
