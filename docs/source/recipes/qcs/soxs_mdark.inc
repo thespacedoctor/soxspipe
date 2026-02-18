@@ -3,9 +3,9 @@
 
 | Label             | Description            | Unit |
 | :---------------- | :--------------------- | ---- |
-| `BADPIX FRAC` |                Fraction of bad pixels | -           |
+| `HOTPIX FRAC` |                Fraction of hot pixels | -           |
 | `MDARK MEDIAN` | Median flux level of master dark | electrons |
-| `BADPIX NUM` |                  Number of bad pixels | -           |
+| `HOTPIX NUM` |                  Number of hot pixels | -           |
 
 :::
 

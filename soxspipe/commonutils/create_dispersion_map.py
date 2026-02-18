@@ -395,7 +395,7 @@ class create_dispersion_map(object):
                 pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "qc_name": "TLINE",
+                        "qc_name": "DETLINES TOT",
                         "qc_value": totalLines,
                         "qc_comment": f"Total number of line in {tag} line-list",
                         "qc_unit": "lines",
@@ -417,7 +417,7 @@ class create_dispersion_map(object):
                 pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "qc_name": "NLINE",
+                        "qc_name": "DETLINES NUM",
                         "qc_value": detectedLines,
                         "qc_comment": f"Number of lines detected in {tag} pinhole frame",
                         "qc_unit": "lines",
@@ -439,7 +439,7 @@ class create_dispersion_map(object):
                 pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "qc_name": "PLINE",
+                        "qc_name": "DETLINES FRAC",
                         "qc_value": percentageDetectedLines,
                         "qc_comment": f"Proportion of input line-list lines detected on {tag} pinhole frame",
                         "qc_unit": None,
@@ -1235,7 +1235,7 @@ class create_dispersion_map(object):
                 pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "qc_name": "CLINE",
+                        "qc_name": "DETLINES CLIP NUM",
                         "qc_value": self.CLINE,
                         "qc_comment": "Total number of detected lines clipped during solution fitting",
                         "qc_unit": "lines",

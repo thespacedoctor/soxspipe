@@ -582,22 +582,21 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     utcnow = datetime.now(UTC)
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-    # qcTable = pd.concat([qcTable, pd.Series({
-    #     "soxspipe_recipe": recipeName,
-    #     "qc_name": "NANPIX NUM",
-    #     "qc_value": nanCount,
-    #     "qc_comment": "Number of NaN pixels",
-    #     "qc_unit": "",
-    #     "obs_date_utc": dateObs,
-    #     "reduction_date_utc": utcnow,
-    #     "to_header": False
-    # }).to_frame().T], ignore_index=True)
-
     # COUNT BAD-PIXELS
     badCount = frame.mask.sum()
     totalPixels = np.size(frame.mask)
     percent = float(badCount) / float(totalPixels)
     percent = float("{:.6f}".format(percent))
+
+    if "dark" in recipeName.lower():
+        qcComment = "Number of hot pixels"
+        qcName = "HOTPIX NUM"
+    elif "flat" in recipeName.lower():
+        qcComment = "Number of cold pixels"
+        qcName = "COLDPIX NUM"
+    else:
+        qcComment = "Number of bad pixels"
+        qcName = "BADPIX NUM"
 
     qcTable = pd.concat(
         [
@@ -605,9 +604,9 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
             pd.Series(
                 {
                     "soxspipe_recipe": recipeName,
-                    "qc_name": "BADPIX NUM",
+                    "qc_name": qcName,
                     "qc_value": int(badCount),
-                    "qc_comment": "Number of bad pixels",
+                    "qc_comment": qcComment,
                     "qc_unit": "",
                     "obs_date_utc": dateObs,
                     "reduction_date_utc": utcnow,
@@ -620,15 +619,25 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
         ignore_index=True,
     )
 
+    if "dark" in recipeName.lower():
+        qcComment = "Fraction of hot pixels"
+        qcName = "HOTPIX FRAC"
+    elif "flat" in recipeName.lower():
+        qcComment = "Fraction of cold pixels"
+        qcName = "COLDPIX FRAC"
+    else:
+        qcComment = "Fraction of bad pixels"
+        qcName = "BADPIX FRAC"
+
     qcTable = pd.concat(
         [
             qcTable,
             pd.Series(
                 {
                     "soxspipe_recipe": recipeName,
-                    "qc_name": "BADPIX FRAC",
+                    "qc_name": qcName,
                     "qc_value": percent,
-                    "qc_comment": "Fraction of bad pixels",
+                    "qc_comment": qcComment,
                     "qc_unit": "",
                     "obs_date_utc": dateObs,
                     "reduction_date_utc": utcnow,

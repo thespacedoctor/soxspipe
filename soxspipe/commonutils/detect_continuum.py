@@ -772,17 +772,17 @@ class detect_continuum(_base_detect):
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
         try:
-            CSAMP = len(clippedData.index)
+            nclip = len(clippedData.index)
         except:
-            CSAMP = 0
+            nclip = 0
         self.qc = pd.concat(
             [
                 self.qc,
                 pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "qc_name": "CSAMP",
-                        "qc_value": CSAMP,
+                        "qc_name": "SAMPLES NCLIP",
+                        "qc_value": nclip,
                         "qc_comment": "Number of continuum sample clipped during solution fitting",
                         "qc_unit": None,
                         "obs_date_utc": self.dateObs,
@@ -1801,7 +1801,7 @@ class detect_continuum(_base_detect):
                 pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "qc_name": "TSAMP",
+                        "qc_name": "SAMPLES TOT",
                         "qc_value": allLines,
                         "qc_comment": "Total number of samples along orders",
                         "qc_unit": None,
@@ -1822,7 +1822,7 @@ class detect_continuum(_base_detect):
                 pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "qc_name": "NSAMP",
+                        "qc_name": "SAMPLES NUM",
                         "qc_value": foundLines,
                         "qc_comment": "Number of samples where a continuum is detected",
                         "qc_unit": None,

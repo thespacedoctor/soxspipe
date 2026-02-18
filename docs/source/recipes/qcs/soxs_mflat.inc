@@ -3,10 +3,10 @@
 
 | Label                | Description                                           | Unit      |
 | -------------------- | ----------------------------------------------------- | --------- |
-| `BADPIX FRAC`      | Fraction of bad pixels                                |           |
+| `COLDPIX FRAC`      | Fraction of colf pixels                                |           |
 | `INNER ORDER PIX MEAN` | Mean inner-order pixel value                     | electrons |
 | `INNER ORDER PIX SUM`  | Sum of all inner-order pixel values              | electrons |
-| `BADPIX NUM `        | Number of bad pixels                                  |           |
+| `COLDPIX NUM `        | Number of cold pixels                                  |           |
 | `NLOWSENS`             | Number of low-sensitivity pixels found in master flat | pixels    |
 | `ORDEXP10`             | 10th percentile inter-order flux                 | electrons |
 | `ORDEXP50`             | 50th percentile inter-order flux                 | electrons |

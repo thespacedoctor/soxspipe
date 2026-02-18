@@ -3,10 +3,10 @@
 
 | Label | Description                                                          | Unit  |
 | :---- | :------------------------------------------------------------------- | ----- |
-| CLINE | Total number of detected lines clipped during solution fitting       | lines |
-| NLINE | Number of lines detected in single pinhole frame                     | lines |
-| PLINE | Proportion of input line-list lines detected on single pinhole frame |       |
-| TLINE | Total number of line in single line-list                             | lines |
+| DETLINES CLIP NUM | Total number of detected lines clipped during solution fitting       | lines |
+| DETLINES NUM | Number of lines detected in single pinhole frame                     | lines |
+| DETLINES FRAC | Proportion of input line-list lines detected on single pinhole frame |       |
+| DETLINES TOT | Total number of line in single line-list                             | lines |
 
 :::
 
