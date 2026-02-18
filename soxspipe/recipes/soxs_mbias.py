@@ -143,6 +143,7 @@ class soxs_mbias(base_recipe):
 
         import numpy as np
         import pandas as pd
+        from soxspipe.commonutils import toolkit
 
         arm = self.arm
         kw = self.kw
@@ -210,6 +211,7 @@ class soxs_mbias(base_recipe):
         self.update_fits_keywords(frame=combined_bias_mean)
 
         # WRITE TO DISK
+        toolkit.frame_to_32(combined_bias_mean)
         productPath = self._write(
             frame=combined_bias_mean, filedir=self.workspaceRootPath, filename=False, overwrite=True
         )

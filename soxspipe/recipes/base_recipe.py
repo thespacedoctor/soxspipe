@@ -289,9 +289,9 @@ class base_recipe(object):
         # GENERATE UNCERTAINTY MAP AS EXTENSION
         if frame.header[kw("DPR_TYPE")] == "BIAS":
             # ERROR IS ONLY FROM READNOISE FOR BIAS FRAMES
-            errorMap = np.ones_like(frame.data) * dp["ron"]
+            errorMap = np.ones_like(frame.data).astype(np.float32) * dp["ron"].astype(np.float32)
             # errorMap = StdDevUncertainty(errorMap)
-            frame.uncertainty = errorMap
+            frame.uncertainty = errorMap.astype(np.float32)
         else:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
             frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True)
@@ -1060,8 +1060,8 @@ class base_recipe(object):
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
             ccds = [
-                # toolkit.frame_to_32(c)
-                c
+                toolkit.frame_to_32(c)
+                # c
                 for c in frames.ccds(
                     ccd_kwargs={
                         "hdu_uncertainty": "ERRS",
@@ -1073,7 +1073,7 @@ class base_recipe(object):
                 )
             ]
         else:
-            ccds = frames
+            ccds = [toolkit.frame_to_32(c) for c in frames]
 
         imageType = ccds[0].header[kw("DPR_TYPE")].replace(",", "-")
         imageTech = ccds[0].header[kw("DPR_TECH")].replace(",", "-")
@@ -1115,7 +1115,7 @@ class base_recipe(object):
 
         ## REDUCING TO FLOAT16 TO SAVE MEMORY DURING CLIPPING
         combiner.data_arr.mask = sigma_clip(
-            combiner.data_arr.data.astype(np.float32, copy=False),
+            combiner.data_arr.data.astype(np.float32),
             sigma_lower=stacked_clipping_sigma,
             sigma_upper=stacked_clipping_sigma,
             axis=0,
@@ -1143,7 +1143,7 @@ class base_recipe(object):
         # RECOMBINE THE COMBINED MASK FROM ABOVE
         combined_frame.mask = combined_frame.mask | combinedMask
 
-        # INVIDUAL UPDATED MASKS (POST CLIPPING)
+        # INDIVIDUAL UPDATED MASKS (POST CLIPPING)
         new_individual_masks = combiner.data_arr.mask
         masked_values = new_individual_masks.sum(axis=0)
 
@@ -1670,7 +1670,7 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``subtract_mean_flux_level`` method")
 
-        from astropy.stats import sigma_clip, mad_std
+        from astropy.stats import sigma_clip
         import numpy as np
         from soxspipe.commonutils import toolkit
 
@@ -1688,7 +1688,7 @@ class base_recipe(object):
         )
 
         # DETERMINE MEDIAN BIAS LEVEL
-        maskedDataArray = np.ma.array(maskedFrame.data.astype(np.float32), mask=maskedFrame.mask)
+        maskedDataArray = np.ma.array(maskedFrame.data, mask=maskedFrame.mask).astype(np.float32)
 
         meanFluxLevel = np.ma.mean(maskedDataArray)
         fluxStd = np.ma.std(maskedDataArray)
