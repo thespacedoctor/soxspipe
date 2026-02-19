@@ -12,9 +12,9 @@
 | SAMPLES NUM                | Number of samples where a continuum is detected            |           |
 | SAMPLES FRAC                | Proportion of samples where a continuum is detected        |           |
 | SAMPLES TOT                | Total number of samples along orders                       |           |
-| XRESMAX              | Maximum residual in continuum fit along x-axis        | px        |
-| XRESMIN              | Minimum residual in continuum fit along x-axis        | px        |
-| XRESRMS              | Std-dev of residual continuum fit along x-axis        | px        |
+| X RES MAX              | Maximum residual in continuum fit along x-axis        | px        |
+| X RES MIN              | Minimum residual in continuum fit along x-axis        | px        |
+| X RES RMS              | Std-dev of residual continuum fit along x-axis        | px        |
 
 
 

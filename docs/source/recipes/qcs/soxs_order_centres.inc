@@ -8,9 +8,9 @@
 | `NSAMP`   | Number of samples where a continuum is detected            |      |
 | `PSAMP`   | Proportion of samples where a continuum is detected        |      |
 | `SAMPLES TOT`   | Total number of samples along orders                       | px   |
-| `XRESMAX` | Maximum residual in order centre fit along x-axis     | px   |
-| `XRESMIN` | Minimum residual in order centre fit along x-axis     | px   |
-| `XRESRMS` | Std-dev of residual order centre fit along x-axis     |      |
+| `X RES MAX` | Maximum residual in order centre fit along x-axis     | px   |
+| `X RES MIN` | Minimum residual in order centre fit along x-axis     | px   |
+| `X RES RMS` | Std-dev of residual order centre fit along x-axis     |      |
 
 
 :::

@@ -11,9 +11,9 @@
 | `ORDEXP10`             | 10th percentile inter-order flux                 | electrons |
 | `ORDEXP50`             | 50th percentile inter-order flux                 | electrons |
 | `ORDEXP90`             | 90th percentile inter-order flux                 | electrons |
-| `XRESMAX`              | Maximum residual in order edge fit along x-axis  | pixels    |
-| `XRESMIN`              | Minimum residual in order edge fit along x-axis  | pixels    |
-| `XRESRMS`              | Std-dev of residual order edge fit along x-axis  | pixels    |
+| `X RES MAX`              | Maximum residual in order edge fit along x-axis  | pixels    |
+| `X RES MIN`              | Minimum residual in order edge fit along x-axis  | pixels    |
+| `X RES RMS`              | Std-dev of residual order edge fit along x-axis  | pixels    |
 
 
 :::
