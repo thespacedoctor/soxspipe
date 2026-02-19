@@ -43,6 +43,7 @@ class soxs_mflat(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- generate debug plots. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
 
 
     **Usage**
@@ -58,7 +59,17 @@ class soxs_mflat(base_recipe):
     ```
     """
 
-    def __init__(self, log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False, debug=False):
+    def __init__(
+        self,
+        log,
+        settings=False,
+        inputFrames=[],
+        verbose=False,
+        overwrite=False,
+        command=False,
+        debug=False,
+        turnOffMP=False,
+    ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_mflat, self).__init__(
             log=log,
@@ -69,6 +80,7 @@ class soxs_mflat(base_recipe):
             command=command,
             debug=debug,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
         self.log = log
         log.debug("instantiating a new 'soxs_mflat' object")
@@ -609,11 +621,11 @@ class soxs_mflat(base_recipe):
             orderTablePath=orderTablePath,
         )
 
-        self.report_output()
+        qcTable = self.report_output()
         self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
-        return productPath
+        return productPath, qcTable
 
     def calibrate_frame_set(self):
         """*given all of the input data calibrate the frames by subtracting bias and/or dark*

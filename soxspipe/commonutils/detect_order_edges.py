@@ -413,7 +413,7 @@ class detect_order_edges(_base_detect):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XRESMIN",
+                            "qc_name": "X RES MIN",
                             "qc_value": f"{min_res:0.2E}",
                             "qc_comment": "[px] Minimum residual in order edge fit along x-axis",
                             "qc_unit": "pixels",
@@ -433,7 +433,7 @@ class detect_order_edges(_base_detect):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XRESMAX",
+                            "qc_name": "X RES MAX",
                             "qc_value": f"{max_res:0.2E}",
                             "qc_comment": "[px] Maximum residual in order edge fit along x-axis",
                             "qc_unit": "pixels",
@@ -453,7 +453,7 @@ class detect_order_edges(_base_detect):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XRESRMS",
+                            "qc_name": "X RES RMS",
                             "qc_value": f"{std_res:0.2E}",
                             "qc_comment": "[px] Std-dev of residual order edge fit along x-axis",
                             "qc_unit": "pixels",

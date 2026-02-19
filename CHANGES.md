@@ -1,5 +1,6 @@
 # Release Notes
 
+reducing size of MBIAS and MDARK (float32 instead of float64)
 renamed QC metrics as suggested in RIX 119
 added many more FITS keywords to the `raw_frames` table in soxspipe.db & the data oragniser
 removed VIS darks from the data-organiser (i.e. don't automatically write to SOF files)

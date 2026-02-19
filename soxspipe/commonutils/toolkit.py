@@ -1138,13 +1138,13 @@ def predict_product_path(sofName, recipeName=False):
     from fundamentals.logs import emptyLogger
 
     log = emptyLogger()
-    do = data_organiser(log=log, rootDir=".")
+    do = data_organiser(log=log, rootDir=".", dbConnect=False)
     currentSession, allSessions = do.session_list(silent=True)
     do.close()
 
-    if "_STARE_" in sofName:
+    if "_STARE" in sofName:
         sofName += "_EXTRACTED_MERGED"
-    if "_NOD_" in sofName:
+    if "_NOD" in sofName:
         sofName += "_EXTRACTED_MERGED"
     productPath = (
         f"./sessions/{currentSession}/reduced/{startNightDate}/"

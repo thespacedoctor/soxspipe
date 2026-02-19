@@ -38,6 +38,7 @@ class base_recipe(object):
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary. Default *False*
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- debug mode. True or False. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*
 
 
     **Usage**
@@ -55,6 +56,7 @@ class base_recipe(object):
         recipeName=False,
         command=False,
         debug=False,
+        turnOffMP=False,
     ):
         import yaml
         import pandas as pd
@@ -67,6 +69,7 @@ class base_recipe(object):
         self.settings = settings
         self.debug = debug
         self.workspaceRootPath = self._absolute_path(settings["workspace-root-dir"])
+        self.turnOffMP = turnOffMP
 
         if self.debug:
             matplotlib.use("TkAgg")
@@ -123,41 +126,44 @@ class base_recipe(object):
         home = expanduser("~")
         from soxspipe.commonutils import data_organiser
 
-        do = data_organiser(log=self.log, rootDir=self.settings["workspace-root-dir"].replace("~", home))
+        do = data_organiser(
+            log=self.log, rootDir=self.settings["workspace-root-dir"].replace("~", home), dbConnect=False
+        )
         self.currentSession, allSessions = do.session_list(silent=True)
         do.close()
 
         # INITIATE A DB CONNECTION
         self.conn = None
-        if self.currentSession and self.sofName:
-            self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
+        if not self.turnOffMP:
+            if self.currentSession and self.sofName:
+                self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
 
-            def dict_factory(cursor, row):
-                d = {}
-                for idx, col in enumerate(cursor.description):
-                    d[col[0]] = row[idx]
-                return d
+                def dict_factory(cursor, row):
+                    d = {}
+                    for idx, col in enumerate(cursor.description):
+                        d[col[0]] = row[idx]
+                    return d
 
-            self.conn = sql.connect(self.sessionDb, isolation_level=None)
-            self.conn.row_factory = dict_factory
+                self.conn = sql.connect(self.sessionDb, check_same_thread=False, timeout=300, autocommit=True)
+                c = self.conn.cursor()
+                c.execute("PRAGMA busy_timeout = 100000")
+                c.execute("PRAGMA synchronous = OFF")
 
-        # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
-        if self.conn:
-            c = self.conn.cursor()
-            sqlQuery = (
-                f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"
-            )
-            c.execute(sqlQuery)
-            try:
-                self.status = c.fetchone()["status"]
-                sqlQuery = (
-                    f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
-                )
+                self.conn.row_factory = dict_factory
+
+            # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
+            if self.conn:
+                c = self.conn.cursor()
+                sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"
                 c.execute(sqlQuery)
-            except:
-                self.status = None
+                try:
+                    self.status = c.fetchone()["status"]
+                    sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
+                    c.execute(sqlQuery)
+                except:
+                    self.status = None
 
-            c.close()
+                c.close()
 
         # COLLECT ADVANCED SETTINGS IF AVAILABLE
         parentDirectory = os.path.dirname(__file__)
@@ -244,6 +250,7 @@ class base_recipe(object):
         import warnings
         from datetime import datetime
         from soxspipe.commonutils import toolkit
+        import random
 
         warnings.filterwarnings(action="ignore")
         logging.captureWarnings(True)
@@ -388,7 +395,8 @@ class base_recipe(object):
         if save:
             outDir = self.workspaceRootPath
         else:
-            outDir = self.workspaceRootPath + "/tmp"
+            outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))
+            self.outDir = outDir
 
         # INJECT THE PRE KEYWORD
         utcnow = datetime.utcnow()
@@ -839,10 +847,8 @@ class base_recipe(object):
 
         del self.conn
 
-        outDir = self.workspaceRootPath + "/tmp"
-
         try:
-            shutil.rmtree(outDir)
+            shutil.rmtree(self.outDir)
         except:
             pass
 
@@ -1419,10 +1425,11 @@ class base_recipe(object):
             self.log.print(
                 tabulate(self.products[columns2], headers="keys", tablefmt="psql", showindex=False, stralign="right")
             )
-            self.qc[dbColumns].to_sql("quality_control", con=self.conn, index=False, if_exists="append")
+            if self.conn:
+                self._dataframe_to_sqlite(self.qc[dbColumns], "quality_control", replace=False)
 
         self.log.debug("completed the ``report_output`` method")
-        return None
+        return self.qc[dbColumns]
 
     def qc_ron(self, frameType=False, frameName=False, masterFrame=False, rawRon=False, masterRon=False):
         """*calculate the read-out-noise from bias/dark frames*
@@ -1834,6 +1841,44 @@ class base_recipe(object):
 
         self.log.debug("completed the ``get_recipe_settings`` method")
         return recipeSettings
+
+    def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
+        """
+        Retry inserting into the database with a maximum of keepTryingMax attempts.
+
+        **Key Arguments:**
+        - `dataframe` -- DataFrame containing rows to insert.
+        - `table_name` -- Name of the database table to insert into.
+        - `replace` -- If True, replace existing entries; otherwise, append.
+
+        **Raises:**
+        - Exception if the insertion fails after 7 attempts.
+        """
+        import time
+
+        if replace:
+            c = self.conn.cursor()
+            sqlQuery = f"delete from {table_name};"
+            try:
+                c.execute(sqlQuery)
+            except:
+                pass
+            c.close()
+
+        keepTrying = 0
+        keepTryingMax = 7
+        while keepTrying < keepTryingMax:
+            try:
+
+                dataframe.replace(["--"], None).to_sql(
+                    table_name, con=self.conn, index=False, if_exists="append", method="multi"
+                )
+                keepTrying = keepTryingMax
+            except Exception as e:
+                if keepTrying > keepTryingMax - 1:
+                    raise Exception(e)
+                time.sleep(1)
+                keepTrying += 1
 
     # use the tab-trigger below for new method
     # xt-class-method

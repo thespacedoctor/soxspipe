@@ -66,6 +66,7 @@ class create_dispersion_map(object):
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
     - ``arcFrame`` -- the calibrated arc frame used to determine spectral resolution. Default *None*
     - ``debug`` -- debug mode. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. Default *False*.
 
     **Usage:**
 
@@ -83,7 +84,8 @@ class create_dispersion_map(object):
         recipeSettings=recipeSettings,
         startNightDate=startNightDate,
         arcFrame=arcFrame,
-        debug=debug
+        debug=debug,
+        turnOffMP=turnOffMP
     ).get()
     ```
     """
@@ -104,6 +106,7 @@ class create_dispersion_map(object):
         startNightDate="",
         arcFrame=None,
         debug=False,
+        turnOffMP=False,
     ):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
@@ -127,6 +130,7 @@ class create_dispersion_map(object):
             arcFrame,
             debug,
             copy,
+            turnOffMP,
         )
 
         # SETUP KEYWORD LOOKUP AND EXTRACT FRAME METADATA
@@ -168,6 +172,7 @@ class create_dispersion_map(object):
         arcFrame,
         debug,
         copy,
+        turnOffMP,
     ):
         """*Store all initialization parameters as instance variables*"""
         self.settings = settings
@@ -183,6 +188,7 @@ class create_dispersion_map(object):
         self.startNightDate = startNightDate
         self.arcFrame = arcFrame
         self.debug = debug
+        self.turnOffMP = turnOffMP
 
     def _setup_keywords_and_metadata(self):
         """*Initialize keyword lookup and extract frame header metadata*"""
@@ -388,71 +394,36 @@ class create_dispersion_map(object):
         # DETERMINE TAG BASED ON RECIPE TYPE
         tag = "single" if "DISP" in self.recipeName.upper() else "multi"
 
-        # WRITE TOTAL LINES QC
-        self.qc = pd.concat(
-            [
-                self.qc,
-                pd.Series(
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "DETLINES TOT",
-                        "qc_value": totalLines,
-                        "qc_comment": f"Total number of line in {tag} line-list",
-                        "qc_unit": "lines",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                )
-                .to_frame()
-                .T,
-            ],
-            ignore_index=True,
-        )
+        qc_names = ["DETLINES TOT", "DETLINES NUM", "DETLINES FRAC"]
+        qc_comments = [
+            f"Total number of line in {tag} line-list",
+            f"Number of lines detected in {tag} pinhole frame",
+            f"Proportion of input line-list lines detected on {tag} pinhole frame",
+        ]
+        qc_values = [totalLines, detectedLines, percentageDetectedLines]
+        qc_units = ["lines", "lines", None]
 
-        # WRITE DETECTED LINES QC
-        self.qc = pd.concat(
-            [
-                self.qc,
-                pd.Series(
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "DETLINES NUM",
-                        "qc_value": detectedLines,
-                        "qc_comment": f"Number of lines detected in {tag} pinhole frame",
-                        "qc_unit": "lines",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                )
-                .to_frame()
-                .T,
-            ],
-            ignore_index=True,
-        )
-
-        # WRITE PERCENTAGE DETECTED QC
-        self.qc = pd.concat(
-            [
-                self.qc,
-                pd.Series(
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "DETLINES FRAC",
-                        "qc_value": percentageDetectedLines,
-                        "qc_comment": f"Proportion of input line-list lines detected on {tag} pinhole frame",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                )
-                .to_frame()
-                .T,
-            ],
-            ignore_index=True,
-        )
+        for qc_name, qc_value, qc_comment, qc_unit in zip(qc_names, qc_values, qc_comments, qc_units):
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": qc_name,
+                            "qc_value": qc_value,
+                            "qc_comment": qc_comment,
+                            "qc_unit": qc_unit,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
 
     def _find_cluster_center_with_fallback(self, x_data, y_data, fallback_median):
         """*FIND CLUSTER CENTER USING DBSCAN WITH AUTOMATIC PARAMETER ADJUSTMENT*"""
@@ -1456,6 +1427,11 @@ class create_dispersion_map(object):
             "fwhm_pin_px": [],  # MEASURED FWHM IN PIXELS
         }
 
+        if self.debug or self.turnOffMP:
+            turnOffMP = True
+        else:
+            turnOffMP = False
+
         # PROCESS ALL STAMPS USING MULTIPROCESSING (OR SERIAL IN DEBUG MODE)
         results = fmultiprocess(
             log=self.log,
@@ -1465,7 +1441,7 @@ class create_dispersion_map(object):
             timeout=300,
             mute=False,
             progressBar=False,
-            turnOffMP=self.debug,  # DISABLE MULTIPROCESSING IN DEBUG MODE
+            turnOffMP=turnOffMP,  # DISABLE MULTIPROCESSING IN DEBUG MODE
             windowHalf=self.windowHalf,
             iraf=iraf,
             sigmaLimit=sigmaLimit,
@@ -1790,24 +1766,6 @@ class create_dispersion_map(object):
         combined_res_std = np.std(orderPixelTable["residuals_xy"])
         combined_res_median = np.median(orderPixelTable["residuals_xy"])
 
-        if False:
-            import sqlite3 as sql
-
-            # REGISTER SQL CONVERTERS
-            sql.register_adapter(list, lambda arr: str(arr.tolist()))
-            sql.register_adapter(np.array, lambda arr: str(arr.tolist()))
-            sql.register_adapter(np.ndarray, lambda arr: str(arr.tolist()))
-            sql.register_adapter(np.float64, lambda this: this.item())
-            sql.register_adapter(np.ma.core.MaskedArray, lambda arr: str(arr.tolist()))
-
-            # CONNECT TO THE DATABASE
-            conn = sql.connect("pandas_export.db")
-            # SEND TO DATABASE
-            orderPixelTable.to_sql("my_export_table", con=conn, index=False, if_exists="replace")
-            conn.commit()
-            conn.close()
-            sys.exit()
-
         if self.arcFrame:
             self.slitWidth = self.arcFrame.header[self.kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
             orderPixelTable[["R_slit", "fwhm_slit_px"]] = orderPixelTable.apply(
@@ -1820,186 +1778,132 @@ class create_dispersion_map(object):
         if writeQCs:
             absx = abs(orderPixelTable["residuals_x"])
             absy = abs(orderPixelTable["residuals_y"])
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XRESMIN",
-                            "qc_value": absx.min(),
-                            "qc_comment": "[px] Minimum residual in dispersion solution fit along x-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
+            orderPixelTable["x_diff"] = orderPixelTable["detector_x"] - orderPixelTable["observed_x"]
+            orderPixelTable["y_diff"] = orderPixelTable["detector_y"] - orderPixelTable["observed_y"]
+            orderPixelTable["xy_diff"] = np.sqrt(
+                np.square(orderPixelTable["x_diff"]) + np.square(orderPixelTable["y_diff"])
             )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XRESMAX",
-                            "qc_value": absx.max(),
-                            "qc_comment": "[px] Maximum residual in dispersion solution fit along x-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XRESRMS",
-                            "qc_value": absx.std(),
-                            "qc_comment": "[px] Std-dev of residual in dispersion solution fit along x-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "YRESMIN",
-                            "qc_value": absy.min(),
-                            "qc_comment": "[px] Minimum residual in dispersion solution fit along y-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "YRESMAX",
-                            "qc_value": absy.max(),
-                            "qc_comment": "[px] Maximum residual in dispersion solution fit along y-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "YRESRMS",
-                            "qc_value": absy.std(),
-                            "qc_comment": "[px] Std-dev of residual in dispersion solution fit along y-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XYRESMIN",
-                            "qc_value": orderPixelTable["residuals_xy"].min(),
-                            "qc_comment": "[px] Minimum residual in dispersion solution fit (XY combined)",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XYRESMAX",
-                            "qc_value": orderPixelTable["residuals_xy"].max(),
-                            "qc_comment": "[px] Maximum residual in dispersion solution fit (XY combined)",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "XYRESRMS",
-                            "qc_value": orderPixelTable["residuals_xy"].std(),
-                            "qc_comment": "[px] Std-dev of residual in dispersion solution (XY combined)",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
+
+            qc_names = [
+                "X RES MIN",
+                "X RES MAX",
+                "X RES RMS",
+                "Y RES MIN",
+                "Y RES MAX",
+                "Y RES RMS",
+                "XY RES MIN",
+                "XY RES MAX",
+                "XY RES RMS",
+                "X DIFF MEDIAN",
+                "Y DIFF MEDIAN",
+                "XY DIFF MEDIAN",
+            ]
+
+            qc_values = [
+                absx.min(),
+                absx.max(),
+                absx.std(),
+                absy.min(),
+                absy.max(),
+                absy.std(),
+                orderPixelTable["residuals_xy"].min(),
+                orderPixelTable["residuals_xy"].max(),
+                orderPixelTable["residuals_xy"].std(),
+                orderPixelTable["x_diff"].median(),
+                orderPixelTable["y_diff"].median(),
+                orderPixelTable["xy_diff"].median(),
+            ]
+
+            qc_units = ["pixels"] * 12
+            qc_comments = [
+                "[px] Minimum residual in dispersion solution fit along x-axis",
+                "[px] Maximum residual in dispersion solution fit along x-axis",
+                "[px] Std-dev of residual in dispersion solution fit along x-axis",
+                "[px] Minimum residual in dispersion solution fit along y-axis",
+                "[px] Maximum residual in dispersion solution fit along y-axis",
+                "[px] Std-dev of residual in dispersion solution fit along y-axis",
+                "[px] Minimum residual in dispersion solution fit (XY combined)",
+                "[px] Maximum residual in dispersion solution fit (XY combined)",
+                "[px] Std-dev of residual in dispersion solution (XY combined)",
+                "[px] Median difference between predicted and observed line positions along x-axis",
+                "[px] Median difference between predicted and observed line positions along y-axis",
+                "[px] Median difference between predicted and observed line positions (XY combined)",
+            ]
+
+            uniqueOrders = orderPixelTable["order"].unique()
+            for o in uniqueOrders:
+                thisOrder = orderPixelTable.loc[orderPixelTable["order"] == o]
+                absx_order = abs(thisOrder["residuals_x"])
+                absy_order = abs(thisOrder["residuals_y"])
+                xdiff = thisOrder["x_diff"].median()
+                ydiff = thisOrder["y_diff"].median()
+                xydiff = np.sqrt(np.square(xdiff) + np.square(ydiff))
+                o = int(o)
+
+                if self.inst == "SOXS" and self.arm == "VIS":
+                    for n, oo in zip(["u", "g", "r", "i"], [2, 3, 1, 4]):
+                        if o == oo:
+                            o = n
+                            break
+                else:
+                    o = f"O{o}"
+
+                qc_names.extend(
+                    [
+                        f"X RES RMS {o}",
+                        f"Y RES RMS {o}",
+                        f"XY RES RMS {o}",
+                        f"X DIFF MEDIAN {o}",
+                        f"Y DIFF MEDIAN {o}",
+                        f"XY DIFF MEDIAN {o}",
+                    ]
+                )
+
+                qc_values.extend(
+                    [
+                        absx_order.std(),
+                        absy_order.std(),
+                        thisOrder["residuals_xy"].std(),
+                        xdiff,
+                        ydiff,
+                        xydiff,
+                    ]
+                )
+
+                qc_units.extend(["pixels"] * 6)
+
+                qc_comments.extend(
+                    [
+                        f"[px] Std-dev of residual in dispersion solution fit along x-axis for order {o}",
+                        f"[px] Std-dev of residual in dispersion solution fit along y-axis for order {o}",
+                        f"[px] Std-dev of residual in dispersion solution (XY combined) for order {o}",
+                        f"[px] Median difference between predicted and observed line positions along x-axis for order {o}",
+                        f"[px] Median difference between predicted and observed line positions along y-axis for order {o}",
+                        f"[px] Median difference between predicted and observed line positions (XY combined) for order {o}",
+                    ]
+                )
+
+            for name, value, unit, comment in zip(qc_names, qc_values, qc_units, qc_comments):
+                self.qc = pd.concat(
+                    [
+                        self.qc,
+                        pd.Series(
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": name,
+                                "qc_value": value,
+                                "qc_comment": comment,
+                                "qc_unit": unit,
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        )
+                        .to_frame()
+                        .T,
+                    ],
+                    ignore_index=True,
+                )
 
         self.log.debug("completed the ``calculate_residuals`` method")
         return combined_res_mean, combined_res_std, combined_res_median, orderPixelTable
@@ -2426,7 +2330,7 @@ class create_dispersion_map(object):
             orderDeg=orderDeg,
             wavelengthDeg=wavelengthDeg,
             slitDeg=slitDeg,
-            writeQCs=False,
+            writeQCs=True,
             pixelRange=True,
         )
 
@@ -2615,13 +2519,18 @@ class create_dispersion_map(object):
         os.environ["OMP_NUM_THREADS"] = numThreads
         os.environ["BLAS_NUM_THREADS"] = numThreads
 
+        if self.debug or self.turnOffMP:
+            turnOffMP = True
+        else:
+            turnOffMP = False
+
         results = fmultiprocess(
             log=self.log,
             function=self.order_to_image,
             inputArray=inputArray,
             poolSize=6,
             timeout=3600,
-            turnOffMP=self.debug,
+            turnOffMP=turnOffMP,
         )
         del os.environ["OPENBLAS_NUM_THREADS"]
         del os.environ["OMP_NUM_THREADS"]

@@ -30,7 +30,17 @@ class soxs_straighten(base_recipe):
 
     # Initialisation
 
-    def __init__(self, log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False):
+    def __init__(
+        self,
+        log,
+        settings=False,
+        inputFrames=[],
+        verbose=False,
+        overwrite=False,
+        command=False,
+        debug=False,
+        turnOffMP=False,
+    ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_straighten, self).__init__(
             log=log,
@@ -40,6 +50,8 @@ class soxs_straighten(base_recipe):
             recipeName="soxs-straighten",
             command=command,
             verbose=verbose,
+            debug=debug,
+            turnOffMP=turnOffMP,
         )
         self.log = log
         log.debug("instantiating a new 'soxs_straighten' object")
@@ -175,11 +187,11 @@ class soxs_straighten(base_recipe):
 
         # xsoxs-append-to-product-report-table
 
-        self.report_output()
+        qcTable = self.report_output()
         self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
-        return productPath
+        return productPath, qcTable
 
     # use the tab-trigger below for new method
     # xt-class-method

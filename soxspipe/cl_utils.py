@@ -6,7 +6,7 @@ Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 Usage:
     soxspipe --version
     soxspipe prep [<workspaceDirectory> --vlt --refresh]
-    soxspipe [-qwpV] reduce all [<workspaceDirectory> -b <batchSize> -s <pathToSettingsFile>]
+    soxspipe [-qwpVm] reduce all [<workspaceDirectory> -b <batchSize> -s <pathToSettingsFile>]
     soxspipe [-qxV] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe list (ob|sof) [<workspaceDirectory> -s <pathToSettingsFile>]
@@ -50,6 +50,7 @@ Options:
     -b, --batch                            reduce data in batches of <batchSize> recipes (only when reducing all data)
     -d, --debug                            show debugging plots
     -h, --help                             show this help message
+    -m, --multiprocess                     run reductions of recipe in parallel (experimental, use with caution and check your results carefully if using this flag)
     -p, --prep                             prepare a workspace before reducing data
     -q, --quitOnFail                       stop the pipeline if a recipe fails
     -r, --refresh                          trigger a complete refresh the workspace during preparation (delete database and do a complete prepare)
@@ -272,7 +273,7 @@ def main(arguments=None):
         if a["spat_solution"]:
             from soxspipe.recipes import soxs_spatial_solution
 
-            disp_map, mapImage2D, res_plots = soxs_spatial_solution(
+            disp_map = soxs_spatial_solution(
                 log=log,
                 settings=settings,
                 inputFrames=a["inputFrames"],
@@ -423,7 +424,7 @@ def main(arguments=None):
             )
             if a["batchSize"]:
                 a["batchSize"] = int(a["batchSize"])
-            collection.reduce(batch=a["batchSize"])
+            collection.reduce(batch=a["batchSize"], multiprocess=a["multiprocessFlag"])
 
             if a["watchFlag"]:
                 xsec = 15

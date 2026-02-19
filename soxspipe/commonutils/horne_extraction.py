@@ -49,6 +49,7 @@ class horne_extraction(object):
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
     - ``notFlattened`` -- flag to indicate if the frame is flattened or not. Default *False*
     - ``debug`` -- flag to indicate if debug mode is on (shows plots). Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
 
     **Usage:**
 
@@ -72,7 +73,8 @@ class horne_extraction(object):
         sofName=sofName,
         locationSetIndex=locationSetIndex,
         startNightDate=startNightDate,
-        debug=debug
+        debug=debug,
+        turnOffMP=turnOffMP
 
     )
     qc, products = optimalExtractor.extract()
@@ -98,6 +100,7 @@ class horne_extraction(object):
         startNightDate="",
         notFlattened=False,
         debug=False,
+        turnOffMP=False,
     ):
         import numpy as np
         import pandas as pd
@@ -127,6 +130,7 @@ class horne_extraction(object):
         self.startNightDate = startNightDate
         self.debug = debug
         self.unflattenedFrame = unflattenedFrame
+        self.turnOffMP = turnOffMP
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -566,6 +570,11 @@ class horne_extraction(object):
 
         from fundamentals import fmultiprocess
 
+        if self.debug or self.turnOffMP:
+            turnOffMP = True
+        else:
+            turnOffMP = False
+
         extractions = fmultiprocess(
             log=self.log,
             function=extract_single_order,
@@ -583,7 +592,7 @@ class horne_extraction(object):
             gain=self.gain,
             hornePolyOrder=self.recipeSettings["horne-extraction-profile-poly-order"],
             debug=self.debug,
-            turnOffMP=self.debug,
+            turnOffMP=turnOffMP,
             progressBar=True,
         )
 

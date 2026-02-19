@@ -37,6 +37,7 @@ class soxs_mdark(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- debug mode. True or False. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
 
 
     **Usage**
@@ -62,6 +63,7 @@ class soxs_mdark(base_recipe):
         overwrite=False,
         command=False,
         debug=False,
+        turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_mdark, self).__init__(
@@ -73,6 +75,7 @@ class soxs_mdark(base_recipe):
             command=command,
             debug=debug,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
         self.log = log
         log.debug("instantiating a new 'soxs_mdark' object")
@@ -254,11 +257,11 @@ class soxs_mdark(base_recipe):
             ignore_index=True,
         )
 
-        self.report_output()
+        qcTable = self.report_output()
         self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
-        return productPath
+        return productPath, qcTable
 
     # use the tab-trigger below for new method
     # xt-class-method

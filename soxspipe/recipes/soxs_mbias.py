@@ -38,7 +38,7 @@ class soxs_mbias(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- debug mode. True or False. Default *False*
-
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
 
     **Usage**
 
@@ -54,7 +54,17 @@ class soxs_mbias(base_recipe):
 
     # Initialisation
 
-    def __init__(self, log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False, debug=False):
+    def __init__(
+        self,
+        log,
+        settings=False,
+        inputFrames=[],
+        verbose=False,
+        overwrite=False,
+        command=False,
+        debug=False,
+        turnOffMP=False,
+    ):
         # INHERIT INITIALISATION FROM  base_recipe
         this = super(soxs_mbias, self).__init__(
             log=log,
@@ -65,6 +75,7 @@ class soxs_mbias(base_recipe):
             command=command,
             debug=debug,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
         log.debug("instantiating a new 'soxs_mbias' object")
         self.settings = settings
@@ -244,11 +255,11 @@ class soxs_mbias(base_recipe):
             ignore_index=True,
         )
 
-        self.report_output()
+        qcTable = self.report_output()
         self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
-        return productPath
+        return productPath, qcTable
 
     def qc_bias_structure(self, combined_bias_mean):
         """*calculate the structure of the bias*

@@ -34,6 +34,7 @@ class soxs_order_centres(base_recipe):
     - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345400 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4. Default *False*.
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- debug mode. True or False. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
 
 
     **Usage**
@@ -60,6 +61,7 @@ class soxs_order_centres(base_recipe):
         polyOrders=False,
         command=False,
         debug=False,
+        turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_order_centres, self).__init__(
@@ -71,6 +73,7 @@ class soxs_order_centres(base_recipe):
             command=command,
             debug=debug,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
         self.log = log
         log.debug("instantiating a new 'soxs_order_centres' object")
@@ -432,11 +435,11 @@ class soxs_order_centres(base_recipe):
             ignore_index=True,
         )
 
-        self.report_output()
+        qcTable = self.report_output()
         self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
-        return productPath
+        return productPath, qcTable
 
 
 def parameterTuning(

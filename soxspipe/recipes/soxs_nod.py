@@ -42,6 +42,7 @@ class soxs_nod(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- generate debug plots. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
 
     **Usage**
 
@@ -64,6 +65,7 @@ class soxs_nod(base_recipe):
         overwrite=False,
         command=False,
         debug=False,
+        turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_nod, self).__init__(
@@ -75,6 +77,7 @@ class soxs_nod(base_recipe):
             command=command,
             debug=debug,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
         self.log = log
         log.debug("instansiating a new 'soxs_nod' object")
@@ -518,12 +521,12 @@ class soxs_nod(base_recipe):
                 fluxCalibrated=True,
             )
 
-        self.report_output()
+        qcTable = self.report_output()
         self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
 
-        return productPath
+        return productPath, qcTable
 
     def process_single_ab_nodding_cycle(
         self, aFrame, bFrame, locationSetIndex, orderTablePath, notFlattened=False, masterFlat=False
@@ -663,6 +666,7 @@ class soxs_nod(base_recipe):
             startNightDate=self.startNightDate,
             debug=self.debug,
             notFlattened=notFlattened,
+            turnOffMP=self.turnOffMP,
         )
 
         self.qc, theseProducts, mergedSpectrumDF_A, orderJoins, extractionFITSPathA = optimalExtractor.extract()
@@ -685,6 +689,7 @@ class soxs_nod(base_recipe):
             startNightDate=self.startNightDate,
             debug=self.debug,
             notFlattened=notFlattened,
+            turnOffMP=self.turnOffMP,
         )
         self.qc, theseProducts, mergedSpectrumDF_B, orderJoins, extractionFITSPathB = optimalExtractor.extract()
 

@@ -188,7 +188,7 @@ class set_of_files(object):
         # GRAB THE WORKSPACE SESSION
         from soxspipe.commonutils import data_organiser
 
-        do = data_organiser(log=self.log, rootDir=".")
+        do = data_organiser(log=self.log, rootDir=".", dbConnect=False)
         self.currentSession, allSessions = do.session_list(silent=True)
         do.close()
 

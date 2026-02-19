@@ -82,6 +82,7 @@ class reducer(object):
         do = data_organiser(
             log=log,
             rootDir=workspaceDirectory,
+            dbConnect=False,
         )
         self.sessionId, allSessions = do.session_list(silent=True)
         do.close()
@@ -115,8 +116,7 @@ class reducer(object):
 
         return None
 
-    # @profile
-    def reduce(self, batch=False):
+    def reduce(self, batch=False, multiprocess=False):
         """
         *reduce the selected data*
         """
@@ -151,63 +151,85 @@ class reducer(object):
                 if rawGroups.empty:
                     break
 
-                for index, row in rawGroups.iterrows():
-                    if batchCount >= batch:
-                        self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
-                        break
+                if multiprocess:
+                    import sqlite3 as sql
 
-                    recipe = row["recipe"].replace("-std", "").replace("-obj", "")
-                    sof = row["sof"]
-                    startTime = times.get_now_sql_datetime()
-                    sof = self.sessionPath + "/sof/" + sof
+                    conn = sql.connect(self.sessionDB, timeout=300, autocommit=True, check_same_thread=False)
+                    c = conn.cursor()
+                    c.execute("PRAGMA busy_timeout = 100000")
+                    c.execute("PRAGMA synchronous = OFF")
 
-                    try:
-                        run_recipe(
-                            self.log,
-                            recipe,
-                            sof,
-                            settings=self.settings,
-                            overwrite=self.overwrite,
-                            command=row["command"],
-                            verbose=self.verbose,
-                        )
-                        batchCount += 1
-                    except FileExistsError as e:
-                        continue
-                    except Exception as e:
-                        # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                        self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-                        self.log.error(f'\nRecipe Command: {row["command"].replace("-obj ", " ")}\n\n')
+                    sofList = rawGroups["sof"].tolist()
+                    sofList = [self.sessionPath + "/sof/" + sof for sof in sofList]
+                    run_recipe_bulk(
+                        log=self.log,
+                        recipe=rootRecipe,
+                        sofList=sofList,
+                        commandList=rawGroups["command"].tolist(),
+                        settings=self.settings,
+                        overwrite=self.overwrite,
+                        workspaceDirectory=self.workspaceDirectory,
+                        conn=conn,
+                        sessionId=self.sessionId,
+                    )
+                    break
+                else:
 
-                        if self.quitOnFail:
-                            sys.exit(0)
-
-                        if self.reductionTarget != "all":
-                            self.overwrite = False
-
-                        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-                        reset = do.session_refresh()
-                        do.close()
-                        if reset:
-                            print(f"BACK TO THE START! {rootRecipe}\n\n")
+                    for index, row in rawGroups.iterrows():
+                        if batchCount >= batch:
+                            self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
                             break
 
+                        recipe = row["recipe"].replace("-std", "").replace("-obj", "")
+                        sof = row["sof"]
+                        startTime = times.get_now_sql_datetime()
+                        sof = self.sessionPath + "/sof/" + sof
+
+                        try:
+                            run_recipe(
+                                self.log,
+                                recipe,
+                                sof,
+                                settings=self.settings,
+                                overwrite=self.overwrite,
+                                command=row["command"],
+                                verbose=self.verbose,
+                            )
+                            batchCount += 1
+                        except FileExistsError as e:
+                            continue
+                        except Exception as e:
+                            # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                            self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                            self.log.error(f'\nRecipe Command: {row["command"].replace("-obj ", " ")}\n\n')
+
+                            if self.quitOnFail:
+                                sys.exit(0)
+
+                            if self.reductionTarget != "all":
+                                self.overwrite = False
+
+                            do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                            reset = do.session_refresh()
+                            do.close()
+                            if reset:
+                                print(f"BACK TO THE START! {rootRecipe}\n\n")
+                                break
+
+                            if not self.daemon:
+                                print(f"{'='*70}\n")
+                            break
+
+                        ## FINISH LOGGING ##
+                        endTime = times.get_now_sql_datetime()
+                        runningTime = times.calculate_time_difference(startTime, endTime)
+                        sys.argv[0] = os.path.basename(sys.argv[0])
+
+                        self.log.print(f'\nRecipe Command: {row["command"].replace("-obj ", " ")} ')
+                        self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                         if not self.daemon:
                             print(f"{'='*70}\n")
-                        break
-                else:
-                    # If no break occurred in the loop, exit the while loop
                     break
-
-                ## FINISH LOGGING ##
-                endTime = times.get_now_sql_datetime()
-                runningTime = times.calculate_time_difference(startTime, endTime)
-                sys.argv[0] = os.path.basename(sys.argv[0])
-
-                self.log.print(f'\nRecipe Command: {row["command"].replace("-obj ", " ")} ')
-                self.log.print(f"Recipe Run Time: {runningTime}\n\n")
-                if not self.daemon:
-                    print(f"{'='*70}\n")
 
         if self.reductionTarget == "all":
             do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
@@ -247,7 +269,10 @@ class reducer(object):
         import pandas as pd
         import sqlite3 as sql
 
-        conn = sql.connect(self.sessionDB)
+        conn = sql.connect(self.sessionDB, timeout=300, autocommit=True, check_same_thread=False)
+        c = conn.cursor()
+        c.execute("PRAGMA busy_timeout = 100000")
+        c.execute("PRAGMA synchronous = OFF")
 
         if batch:
             limitText = f" LIMIT {batch} "
@@ -301,7 +326,7 @@ class reducer(object):
         return rawGroups[["recipe", "sof", "command"]].drop_duplicates()
 
 
-def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=False):
+def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=False, turnOffMP=False):
     """*execute a pipeline recipe*
 
     **Key Arguments:**
@@ -312,6 +337,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     - ``settings`` -- the settings dictionary
     - ``overwrite`` -- overwrite existing reductions. Default *False*.
     - ``verbose`` -- print verbose output to terminal. Default *False*.
+    - ``turnOffMP`` -- turn off multiprocessing mode. Default *False*.
 
     **Usage:**
 
@@ -331,6 +357,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             overwrite=overwrite,
             command=command,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
 
     if recipe == "mdark":
@@ -343,6 +370,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             overwrite=overwrite,
             command=command,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
 
     if recipe == "disp_solution":
@@ -355,6 +383,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             overwrite=overwrite,
             command=command,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
 
     if recipe == "order_centres":
@@ -367,6 +396,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             overwrite=overwrite,
             command=command,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
 
     if recipe == "mflat":
@@ -379,6 +409,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             overwrite=overwrite,
             command=command,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
 
     if recipe == "spat_solution":
@@ -391,6 +422,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             overwrite=overwrite,
             command=command,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
 
     if "stare" in recipe:
@@ -403,6 +435,7 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             overwrite=overwrite,
             command=command,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
 
     if "nod" in recipe:
@@ -415,13 +448,142 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             overwrite=overwrite,
             command=command,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
 
-    soxs_recipe.produce_product()
+    productPath, qcTable = soxs_recipe.produce_product()
     del soxs_recipe
 
     log.debug("completed the ``run_recipe`` method")
-    return None
+    return productPath, qcTable
 
-    # use the tab-trigger below for new method
-    # xt-class-method
+
+def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, workspaceDirectory, conn, sessionId):
+    """*execute a pipeline recipe in multiprocessing mode*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``recipe`` -- the name of the recipe tp execute
+    - ``sofList`` -- a list of paths to the sof files containing the files the recipe requires
+    - ``commandList`` -- a list of the commands used to run the recipe for each
+    - ``settings`` -- the settings dictionary
+    - ``overwrite`` -- overwrite existing reductions. Default *False*.
+    - ``workspaceDirectory`` -- path to the root of the workspace
+    - ``conn`` -- a connection to the workspace database
+    - ``sessionId`` -- the session ID of the workspace
+    """
+    log.debug("starting the ``run_recipe_bulk`` method")
+
+    from fundamentals import fmultiprocess
+    from soxspipe.commonutils import data_organiser
+    import pandas as pd
+
+    def wrapper(inputDict, log, recipe, settings, overwrite, workspaceDirectory, wrapperTurnOffMP=True):
+        import traceback
+
+        returnDict = {
+            "status": None,
+            "sof": inputDict["sof"],
+            "productPath": None,
+            "qcTable": None,
+        }
+
+        try:
+            productPath, qcTable = run_recipe(
+                log=log,
+                recipe=recipe,
+                sof=inputDict["sof"],
+                settings=settings,
+                overwrite=overwrite,
+                command=inputDict["command"],
+                turnOffMP=wrapperTurnOffMP,
+            )
+            returnDict["status"] = "pass"
+            returnDict["productPath"] = productPath
+            returnDict["qcTable"] = qcTable
+        except FileExistsError as e:
+            pass
+        except Exception as e:
+            # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+            log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+            log.error(f'\nRecipe Command: {inputDict["command"].replace("-obj ", " ")}\n\n')
+            returnDict["status"] = "fail"
+
+        return returnDict
+
+    inputDicts = [{"sof": sof, "command": command} for sof, command in zip(sofList, commandList)]
+
+    if ("nod" in recipe or "stare" in recipe) and len(inputDicts) < 4:
+        turnOffMP = True
+        wrapperTurnOffMP = False
+    else:
+        turnOffMP = False
+        wrapperTurnOffMP = True
+
+    log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
+    results = fmultiprocess(
+        log=log,
+        function=wrapper,
+        inputArray=inputDicts,
+        poolSize=False,
+        timeout=36000,
+        settings=settings,
+        overwrite=overwrite,
+        recipe=recipe,
+        workspaceDirectory=workspaceDirectory,
+        wrapperTurnOffMP=wrapperTurnOffMP,
+        turnOffMP=turnOffMP,
+        mute=True,
+        progressBar=True,
+    )
+
+    passing = []
+    failing = []
+    skipped = []
+    qcTables = []
+    sofList = []
+    for result in results:
+        sof = os.path.basename(result["sof"])
+        sofList.append(sof)
+        if result["status"] == "pass":
+            passing.append(sof)
+            qcTables.append(result["qcTable"])
+        elif result["status"] == "fail":
+            failing.append(sof)
+        else:
+            skipped.append(sof)
+
+    print(
+        f"Number of successful {recipe} reductions: {len(passing)}. Number of failed {recipe} reductions: {len(failing)}. Number of pre-existing {recipe} reductions: {len(skipped)}.\n"
+    )
+
+    c = conn.cursor()
+    passingString = "','".join(passing)
+    failingString = "','".join(failing)
+    sqlQuery = f"select count(*) from product_frames where (sof in ('{passingString}') and status_{sessionId} = 'fail') or  (sof in ('{failingString}') and (status_{sessionId} != 'fail' or status_{sessionId} is null))"
+    c.execute(sqlQuery)
+    count = c.fetchone()[0]
+    if len(passing) or len(failing):
+        sqlQueries = [
+            f"update product_frames set status_{sessionId} = 'pass' where sof in ('{passingString}') and (status_{sessionId} != 'pass' or status_{sessionId} is null)",
+            f"update product_frames set status_{sessionId} = 'fail' where sof in ('{failingString}') and (status_{sessionId} != 'fail' or status_{sessionId} is null)",
+        ]
+        for sqlQuery in sqlQueries:
+            c.execute(sqlQuery)
+    c.close()
+    conn.close()
+
+    if count:
+        do = data_organiser(log=log, rootDir=workspaceDirectory)
+        reset = do.session_refresh(failure=True)
+        do.close()
+
+    if len(qcTables):
+        qcTables = pd.concat(qcTables, ignore_index=True)
+        do = data_organiser(log=log, rootDir=workspaceDirectory)
+        do._dataframe_to_sqlite(qcTables, "quality_control", replace=False)
+        do.close()
+
+    log.debug("completed the ``run_recipe_bulk`` method")
+    return None

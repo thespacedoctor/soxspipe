@@ -39,6 +39,7 @@ class soxs_stare(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- show debug plots. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
 
 
 
@@ -56,6 +57,7 @@ class soxs_stare(base_recipe):
         overwrite=False,
         command=False,
         debug=False,
+        turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_stare, self).__init__(
@@ -67,6 +69,7 @@ class soxs_stare(base_recipe):
             command=command,
             debug=debug,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
         self.log = log
         log.debug("instantiating a new 'soxs_stare' object")
@@ -605,6 +608,7 @@ class soxs_stare(base_recipe):
             sofName=self.sofName,
             startNightDate=self.startNightDate,
             debug=self.debug,
+            turnOffMP=self.turnOffMP,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
 
@@ -656,6 +660,7 @@ class soxs_stare(base_recipe):
                 startNightDate=self.startNightDate,
                 debug=self.debug,
                 notFlattened=True,
+                turnOffMP=self.turnOffMP,
             )
             self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath_notflat = optimalExtractor.extract()
 
@@ -717,11 +722,53 @@ class soxs_stare(base_recipe):
                 fluxCalibrated=True
             )
 
-        self.report_output()
+        from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
+
+        self.products, filePath = plot_merged_spectrum_qc(
+            merged_orders=mergedSpectumDF,
+            products=self.products,
+            log=self.log,
+            qcDir=self.qcDir,
+            filenameTemplate=self.filenameTemplate,
+            noddingSequence=None,
+            dateObs=self.dateObs,
+            arm=self.arm,
+            recipeName=self.recipeName,
+            orderJoins=orderJoins,
+            debug=self.debug,
+            fluxCalibrated=False,
+        )
+
+        if filePath_fluxcal:
+            from astropy.table import Table
+            from astropy.io import fits
+            from astropy import units as u
+
+            fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
+            fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
+            # ADD THE SNR COLUMN AND COPY VALUES FROM mergedSpectumDF
+            fluxcal_spec["SNR"] = mergedSpectumDF["SNR"]
+            self.products, filePath = plot_merged_spectrum_qc(
+                merged_orders=fluxcal_spec,
+                products=self.products,
+                log=self.log,
+                qcDir=self.qcDir,
+                filenameTemplate=self.filenameTemplate,
+                noddingSequence=None,
+                dateObs=self.dateObs,
+                arm=self.arm,
+                recipeName=self.recipeName,
+                orderJoins=orderJoins,
+                debug=self.debug,
+                fluxCalibrated=True,
+            )
+
+        qcTable = self.report_output()
         self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
-        return productPath
+        return productPath, qcTable
 
     # use the tab-trigger below for new method
     # xt-class-method

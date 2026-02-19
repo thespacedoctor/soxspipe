@@ -46,7 +46,7 @@ class data_organiser(object):
     ```
     """
 
-    def __init__(self, log, rootDir, vlt=False):
+    def __init__(self, log, rootDir, vlt=False, dbConnect=True):
         from os.path import expanduser
         import codecs
         from fundamentals.logs import emptyLogger
@@ -277,7 +277,7 @@ class data_organiser(object):
         uncompress(log=self.log, directory=self.rootDir)
 
         exists = os.path.exists(self.rootDbPath)
-        if exists:
+        if exists and dbConnect:
             self.conn, reset = self._get_or_create_db_connection()
         else:
             self.conn = None
@@ -977,7 +977,12 @@ class data_organiser(object):
             filepath = os.path.join(pathToDirectory, d)
             if os.path.splitext(filepath)[1] in allowlistExtensions:
                 continue
-            if os.path.isfile(filepath) and os.path.splitext(filepath)[1] != ".db" and "readme." not in d.lower():
+            if (
+                os.path.isfile(filepath)
+                and os.path.splitext(filepath)[1] != ".db"
+                and "readme." not in d.lower()
+                and "soxspipe" not in d.lower()
+            ):
                 shutil.move(filepath, self.miscDir + "/" + d)
 
         self.log.debug("completed the ``_move_misc_files`` method")
@@ -1342,7 +1347,6 @@ class data_organiser(object):
 
         # SELECT INSTR
         self._select_instrument()
-
         self.build_sof_files()
 
         if failure in [True, False]:
@@ -1474,7 +1478,9 @@ class data_organiser(object):
         conn = None
         i = 0
 
-        while i < 4:
+        tries = 50
+
+        while i < tries:
             if not conn:
                 try:
                     if self.conn:
@@ -1488,20 +1494,19 @@ class data_organiser(object):
                         pass
                     self.freshRun = False
                 except IOError:
-                    # try:
-                    #     os.remove(self.sessionIdFile)
-                    # except Exception:
-                    #     pass
                     self.freshRun = True
                     emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
                     shutil.copyfile(emptyDb, self.rootDbPath)
-                conn = sql.connect(self.rootDbPath, timeout=30, autocommit=True, check_same_thread=False)
+                conn = sql.connect(self.rootDbPath, timeout=300, autocommit=True, check_same_thread=False)
             c = conn.cursor()
 
             try:
                 c.execute("PRAGMA integrity_check;")
+                c.execute("PRAGMA busy_timeout = 100000")
+                c.execute("PRAGMA synchronous = OFF")
+
                 this = c.fetchall()
-                i = 10
+                i = tries + 1
             except Exception as e:
                 # DATABASE IS BROKEN, REPLACE WITH EMPTY ONE
                 i += 1
@@ -1515,14 +1520,15 @@ class data_organiser(object):
 
                 time.sleep(1)
 
-                if i > 3:
+                if i > tries - 1:
                     self.prepare(refresh=True)
                     if not reset:
                         reset = True
-                conn = sql.connect(self.rootDbPath, timeout=30, autocommit=True)
+                conn = sql.connect(self.rootDbPath, timeout=300, autocommit=True, check_same_thread=False)
                 c = conn.cursor()
+        c.execute("PRAGMA busy_timeout = 100000")
+        c.execute("PRAGMA synchronous = OFF")
 
-        c.execute("PRAGMA busy_timeout=10")
         c.close()
 
         return conn, reset
@@ -1651,6 +1657,7 @@ class data_organiser(object):
                         CASE
                             WHEN LAG("eso tpl expno") OVER (ORDER BY "eso tpl start", "eso tpl expno") IS NULL THEN 1
                             WHEN "eso tpl expno" <= LAG("eso tpl expno") OVER (ORDER BY "eso tpl start", "eso tpl expno") THEN 1
+                            WHEN "eso tpl name" != LAG("eso tpl name") OVER (ORDER BY "eso tpl start", "eso tpl expno") THEN 1
                             ELSE 0
                         END AS new_set
                     FROM raw_frames

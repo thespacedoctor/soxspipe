@@ -35,6 +35,7 @@ class soxs_spatial_solution(base_recipe):
     - ``polyOrders`` -- the orders of the x-y polynomials used to fit the dispersion solution. Overrides parameters found in the yaml settings file. e.g 345435 is order_x=3, order_y=4 ,wavelength_x=5 ,wavelength_y=4, slit_x=3 ,slit_y=5. Default *False*.
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- debug mode. True or False. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
 
 
     See `produce_product` method for usage.
@@ -54,6 +55,7 @@ class soxs_spatial_solution(base_recipe):
         polyOrders=False,
         command=False,
         debug=False,
+        turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_spatial_solution, self).__init__(
@@ -65,6 +67,7 @@ class soxs_spatial_solution(base_recipe):
             command=command,
             debug=debug,
             verbose=verbose,
+            turnOffMP=turnOffMP,
         )
         self.log = log
         log.debug("instantiating a new 'soxs_spatial_solution' object")
@@ -459,6 +462,7 @@ class soxs_spatial_solution(base_recipe):
                 startNightDate=self.startNightDate,
                 arcFrame=self.slit_arc,
                 debug=self.debug,
+                turnOffMP=self.turnOffMP,
             ).get()
 
         from datetime import datetime
@@ -532,12 +536,11 @@ class soxs_spatial_solution(base_recipe):
             skylines=False,
         )
 
-        self.report_output()
-
+        qcTable = self.report_output()
         self.clean_up()
 
         self.log.debug("completed the ``produce_product`` method")
-        return mapPath, mapImagePath, res_plots
+        return mapImagePath, qcTable
 
 
 def parameterTuning(
