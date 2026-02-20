@@ -63,6 +63,7 @@ class base_recipe(object):
         from soxspipe.commonutils import toolkit
         import sqlite3 as sql
         import matplotlib
+        import random
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
@@ -119,6 +120,8 @@ class base_recipe(object):
         self.arm = None
         self.detectorParams = None
         self.dateObs = None
+
+        self.outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))
 
         # FIND THE CURRENT SESSION
         from os.path import expanduser
@@ -250,7 +253,6 @@ class base_recipe(object):
         import warnings
         from datetime import datetime
         from soxspipe.commonutils import toolkit
-        import random
 
         warnings.filterwarnings(action="ignore")
         logging.captureWarnings(True)
@@ -277,8 +279,14 @@ class base_recipe(object):
                     key_uncertainty_type="UTYPE",
                 )
             except TypeError as e:
-                self.log.info(f"{filepath} is a FITS Binary Table")
-                return filepath
+                if "buffer is too small" in str(e):
+                    self.log.warning(
+                        f"Buffer is too small for frame {filepath}. The frame is likely corrupted and will not be used in the reduction.\n"
+                    )
+                    return None
+                else:
+                    self.log.info(f"{filepath} is a FITS Binary Table")
+                    return filepath
 
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SXSPRE" DOES NOT
         # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
@@ -395,8 +403,7 @@ class base_recipe(object):
         if save:
             outDir = self.workspaceRootPath
         else:
-            outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))
-            self.outDir = outDir
+            outDir = self.outDir
 
         # INJECT THE PRE KEYWORD
         utcnow = datetime.utcnow()
@@ -491,6 +498,7 @@ class base_recipe(object):
         )
         preframes = []
         preframes[:] = [self._prepare_single_frame(frame=frame, save=save) for frame in filepaths]
+        preframes = [f for f in preframes if f is not None]
 
         sof = set_of_files(
             log=self.log,
