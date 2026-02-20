@@ -1,6 +1,6 @@
 # Release Notes
 
-
+the pipeline now checks for corrupt frames, and issues a warning about any corrupt frame before attempting to reduce the data without the offending file
 adding multiprocessing option when reducing all frames
 reducing size of MBIAS and MDARK (float32 instead of float64)
 renamed QC metrics as suggested in RIX 119

@@ -1489,6 +1489,7 @@ class create_dispersion_map(object):
         from contextlib import suppress
         import copy
         import math
+        import numpy as np
 
         arm = self.arm
         kw = self.kw
@@ -1606,7 +1607,7 @@ class create_dispersion_map(object):
             self.qc["qc_comment"].values,
             self.qc["to_header"].values,
         ):
-            if h:
+            if h and v is not np.nan:
                 header[f"ESO QC {n}".upper()] = (v, c)
 
         # CREATE PRIMARY HDU AND WRITE FITS FILE
