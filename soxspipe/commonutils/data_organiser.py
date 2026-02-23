@@ -114,6 +114,7 @@ class data_organiser(object):
             "LAMP7",
             "DET_READ_TYPE",
             "CONAD",
+            "GAIN",
             "RON",
             "OBS_ID",
             "OBS_NAME",
@@ -168,6 +169,7 @@ class data_organiser(object):
             "slit",
             "slitmask",
             "lamp",
+            "gain",
             "night start date",
             "night start mjd",
             "mjd-date",
@@ -215,6 +217,7 @@ class data_organiser(object):
             "rospeed",
             "slit",
             "slitmask",
+            "gain",
             "binning",
             "night start mjd",
             "night start date",
@@ -842,6 +845,7 @@ class data_organiser(object):
         filteredFrames["slitmask"] = "--"
         filteredFrames["lamp"] = "--"
         filteredFrames["simulation"] = "--"
+        filteredFrames["gain"] = -99.99
 
         # ADD SLIT FOR SPECTROSCOPIC DATA
         filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "slit"] = filteredFrames.loc[
@@ -853,6 +857,11 @@ class data_organiser(object):
         filteredFrames.loc[(filteredFrames["eso seq arm"] == "UVB"), "slit"] = filteredFrames.loc[
             (filteredFrames["eso seq arm"] == "UVB"), self.kw("SLIT_UVB").lower()
         ]
+
+        # CHECK GAIN AND CONAD ARE CORRECTLY POPULATED
+        filteredFrames["gain"] = filteredFrames[self.kw("CONAD").lower()]
+        mask = filteredFrames[self.kw("GAIN").lower()] > filteredFrames[self.kw("CONAD").lower()]
+        filteredFrames.loc[mask, "gain"] = filteredFrames.loc[mask, self.kw("GAIN").lower()]
 
         # ADD SIMULATION FLAG FOR SPECTROSCOPIC DATA
         if self.instrument.lower() == "soxs":
@@ -1882,6 +1891,7 @@ class data_organiser(object):
         rawFrames = rawFrames.astype(
             {
                 "exptime": float,
+                "gain": float,
                 "ra": float,
                 "dec": float,
                 "eso tel parang end": float,
@@ -1897,6 +1907,7 @@ class data_organiser(object):
         rawFrames.fillna(
             {
                 "exptime": -99.99,
+                "gain": -99.99,
                 "ra": -99.99,
                 "dec": -99.99,
                 "eso tel parang end": -99.99,
@@ -2166,7 +2177,9 @@ class data_organiser(object):
         keepTrying = 0
         while keepTrying < 7:
             try:
-                dataframe.replace(["--"], None).to_sql(table_name, con=self.conn, index=False, if_exists="append")
+                dataframe.replace(["--", -99.99], None).to_sql(
+                    table_name, con=self.conn, index=False, if_exists="append"
+                )
                 keepTrying = 10
             except Exception as e:
                 if keepTrying > 5:

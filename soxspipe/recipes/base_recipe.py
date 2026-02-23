@@ -91,7 +91,9 @@ class base_recipe(object):
                     print(
                         f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
                     )
-                raise FileExistsError
+                raise FileExistsError(
+                    f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
+                )
             else:
                 errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
                 if os.path.exists(errorLog) and not overwrite:
@@ -100,7 +102,9 @@ class base_recipe(object):
                         print(
                             f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
                         )
-                    raise FileExistsError
+                    raise FileExistsError(
+                        f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
+                    )
 
             self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:

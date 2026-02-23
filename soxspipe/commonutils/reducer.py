@@ -503,7 +503,10 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
             returnDict["productPath"] = productPath
             returnDict["qcTable"] = qcTable
         except FileExistsError as e:
-            pass
+            if "previously failed" in str(e):
+                returnDict["status"] = "previous-fail"
+            else:
+                returnDict["status"] = "previous-pass"
         except Exception as e:
             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
             log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
@@ -557,6 +560,20 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
     print(
         f"Number of successful {recipe} reductions: {len(passing)}. Number of failed {recipe} reductions: {len(failing)}. Number of pre-existing {recipe} reductions: {len(skipped)}.\n"
     )
+
+    ## COLLECT TOGETHER THE RESULTS AND UPDATE THE DATABASE
+    for result in results:
+        sof = os.path.basename(result["sof"])
+        sofList.append(sof)
+        if result["status"] == "pass":
+            passing.append(sof)
+            qcTables.append(result["qcTable"])
+        elif result["status"] == "previous-pass":
+            passing.append(sof)
+        elif result["status"] == "previous-fail":
+            failing.append(sof)
+        elif result["status"] == "fail":
+            failing.append(sof)
 
     c = conn.cursor()
     passingString = "','".join(passing)
