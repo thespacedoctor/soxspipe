@@ -1,5 +1,8 @@
 # Release Notes
 
+added gain to the data organiser
+added median pinhole FWHM and resolution to FITS header QCs
+reduced tpyical mflat recipe memory footprint from ~7GB to ~2GB
 the pipeline now checks for corrupt frames, and issues a warning about any corrupt frame before attempting to reduce the data without the offending file
 adding multiprocessing option when reducing all frames
 reducing size of MBIAS and MDARK (float32 instead of float64)
