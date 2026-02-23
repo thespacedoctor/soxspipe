@@ -1127,9 +1127,9 @@ class base_recipe(object):
         # preclipped_masks = np.copy(combiner.data_arr.mask)
         totalPixels = np.size(combinedMask)
 
-        ## REDUCING TO FLOAT16 TO SAVE MEMORY DURING CLIPPING
+        ## Reduce memory by avoiding an extra full-array copy during clipping
         combiner.data_arr.mask = sigma_clip(
-            combiner.data_arr.data.astype(np.float32),
+            np.asarray(combiner.data_arr.data, dtype=np.float32),
             sigma_lower=stacked_clipping_sigma,
             sigma_upper=stacked_clipping_sigma,
             axis=0,
