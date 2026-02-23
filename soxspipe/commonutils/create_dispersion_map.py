@@ -1779,6 +1779,8 @@ class create_dispersion_map(object):
         if writeQCs:
             absx = abs(orderPixelTable["residuals_x"])
             absy = abs(orderPixelTable["residuals_y"])
+            fwhm = orderPixelTable["fwhm_pin_px"].median()
+            resolution = orderPixelTable["R_pin"].median()
             orderPixelTable["x_diff"] = orderPixelTable["detector_x"] - orderPixelTable["observed_x"]
             orderPixelTable["y_diff"] = orderPixelTable["detector_y"] - orderPixelTable["observed_y"]
             orderPixelTable["xy_diff"] = np.sqrt(
@@ -1798,6 +1800,8 @@ class create_dispersion_map(object):
                 "X DIFF MEDIAN",
                 "Y DIFF MEDIAN",
                 "XY DIFF MEDIAN",
+                "FWHM PIN MEDIAN",
+                "R PIN MEDIAN",
             ]
 
             qc_values = [
@@ -1813,9 +1817,11 @@ class create_dispersion_map(object):
                 orderPixelTable["x_diff"].median(),
                 orderPixelTable["y_diff"].median(),
                 orderPixelTable["xy_diff"].median(),
+                fwhm,
+                resolution,
             ]
 
-            qc_units = ["pixels"] * 12
+            qc_units = ["pixels"] * 13 + [""]
             qc_comments = [
                 "[px] Minimum residual in dispersion solution fit along x-axis",
                 "[px] Maximum residual in dispersion solution fit along x-axis",
@@ -1829,6 +1835,8 @@ class create_dispersion_map(object):
                 "[px] Median difference between predicted and observed line positions along x-axis",
                 "[px] Median difference between predicted and observed line positions along y-axis",
                 "[px] Median difference between predicted and observed line positions (XY combined)",
+                "[px] Median FWHM of detected lines in pinhole frames",
+                "Median spectral resolution measured from detected lines in pinhole frames",
             ]
 
             uniqueOrders = orderPixelTable["order"].unique()
@@ -1836,6 +1844,8 @@ class create_dispersion_map(object):
                 thisOrder = orderPixelTable.loc[orderPixelTable["order"] == o]
                 absx_order = abs(thisOrder["residuals_x"])
                 absy_order = abs(thisOrder["residuals_y"])
+                fwhm_order = thisOrder["fwhm_pin_px"].median()
+                resolution_order = thisOrder["R_pin"].median()
                 xdiff = thisOrder["x_diff"].median()
                 ydiff = thisOrder["y_diff"].median()
                 xydiff = np.sqrt(np.square(xdiff) + np.square(ydiff))
@@ -1857,6 +1867,8 @@ class create_dispersion_map(object):
                         f"X DIFF MEDIAN {o}",
                         f"Y DIFF MEDIAN {o}",
                         f"XY DIFF MEDIAN {o}",
+                        f"FWHM PIN MEDIAN {o}",
+                        f"R PIN MEDIAN {o}",
                     ]
                 )
 
@@ -1868,10 +1880,12 @@ class create_dispersion_map(object):
                         xdiff,
                         ydiff,
                         xydiff,
+                        fwhm_order,
+                        resolution_order,
                     ]
                 )
 
-                qc_units.extend(["pixels"] * 6)
+                qc_units.extend(["pixels"] * 7 + [""])
 
                 qc_comments.extend(
                     [
@@ -1881,6 +1895,8 @@ class create_dispersion_map(object):
                         f"[px] Median difference between predicted and observed line positions along x-axis for order {o}",
                         f"[px] Median difference between predicted and observed line positions along y-axis for order {o}",
                         f"[px] Median difference between predicted and observed line positions (XY combined) for order {o}",
+                        f"[px] Median FWHM of detected lines in pinhole frames for order {o}",
+                        f"Median spectral resolution measured from detected lines in pinhole frames for order {o}",
                     ]
                 )
 
