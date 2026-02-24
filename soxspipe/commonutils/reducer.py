@@ -517,6 +517,7 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
 
     inputDicts = [{"sof": sof, "command": command} for sof, command in zip(sofList, commandList)]
 
+    poolSize = False
     if ("nod" in recipe or "stare" in recipe) and len(inputDicts) < 4:
         turnOffMP = True
         wrapperTurnOffMP = False
@@ -524,12 +525,15 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
         turnOffMP = False
         wrapperTurnOffMP = True
 
+    if "mflat" in recipe:
+        poolSize = 4
+
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
     results = fmultiprocess(
         log=log,
         function=wrapper,
         inputArray=inputDicts,
-        poolSize=False,
+        poolSize=poolSize,
         timeout=36000,
         settings=settings,
         overwrite=overwrite,

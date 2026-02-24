@@ -704,37 +704,37 @@ class data_organiser(object):
             )
             rawFrames = pd.concat(results)
 
-        # FIX BOUNDARY GROUP FILES -- MOVE TO NEXT DAY SO THEY GET COMBINED WITH THE REST OF THEIR GROUP
-        # E.G. UVB BIASES TAKEN ACROSS THE BOUNDARY BETWEEN 2 NIGHTS
-        # FIRST FIND END OF NIGHT DATA - AND PUSH TO THE NEXT DAY
-        mask = rawFrames["boundary"] > 0.96
-        filteredDf = rawFrames.loc[mask].copy()
-        filteredDf["night start mjd"] = filteredDf["night start mjd"] + 1
-        mask = filteredDf["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
-        filteredDf.loc[mask, "eso dpr type"] = "LAMP,FLAT"
-        # NOW FIND START OF NIGHT DATA
-        mask = rawFrames["boundary"] < 0.04
-        filteredDf2 = rawFrames.loc[mask].copy()
-        mask = filteredDf2["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
-        filteredDf2.loc[mask, "eso dpr type"] = "LAMP,FLAT"
+        # # FIX BOUNDARY GROUP FILES -- MOVE TO NEXT DAY SO THEY GET COMBINED WITH THE REST OF THEIR GROUP
+        # # E.G. UVB BIASES TAKEN ACROSS THE BOUNDARY BETWEEN 2 NIGHTS
+        # # FIRST FIND END OF NIGHT DATA - AND PUSH TO THE NEXT DAY
+        # mask = rawFrames["boundary"] > 0.96
+        # filteredDf = rawFrames.loc[mask].copy()
+        # filteredDf["night start mjd"] = filteredDf["night start mjd"] + 1
+        # mask = filteredDf["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
+        # filteredDf.loc[mask, "eso dpr type"] = "LAMP,FLAT"
+        # # NOW FIND START OF NIGHT DATA
+        # mask = rawFrames["boundary"] < 0.04
+        # filteredDf2 = rawFrames.loc[mask].copy()
+        # mask = filteredDf2["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
+        # filteredDf2.loc[mask, "eso dpr type"] = "LAMP,FLAT"
 
-        # NOW FIND MATCHES BETWEEN 2 DATASETS
-        theseKeys = [
-            "eso seq arm",
-            "eso dpr catg",
-            "eso dpr tech",
-            "eso dpr type",
-            "eso pro catg",
-            "eso pro tech",
-            "eso pro type",
-            "night start mjd",
-        ]
-        matched = pd.merge(filteredDf, filteredDf2, on=theseKeys)
-        boundaryFiles = np.unique(matched["file_x"].values)
-        mask = rawFrames["file"].isin(boundaryFiles)
-        rawFrames.loc[mask, "night start mjd"] += 1
+        # # NOW FIND MATCHES BETWEEN 2 DATASETS
+        # theseKeys = [
+        #     "eso seq arm",
+        #     "eso dpr catg",
+        #     "eso dpr tech",
+        #     "eso dpr type",
+        #     "eso pro catg",
+        #     "eso pro tech",
+        #     "eso pro type",
+        #     "night start mjd",
+        # ]
+        # matched = pd.merge(filteredDf, filteredDf2, on=theseKeys)
+        # boundaryFiles = np.unique(matched["file_x"].values)
+        # mask = rawFrames["file"].isin(boundaryFiles)
+        # rawFrames.loc[mask, "night start mjd"] += 1
 
-        rawFrames["night start date"] = Time(rawFrames["night start mjd"], format="mjd").to_value("iso", subfmt="date")
+        # rawFrames["night start date"] = Time(rawFrames["night start mjd"], format="mjd").to_value("iso", subfmt="date")
 
         self.log.debug("completed the ``_create_directory_table`` function")
         return rawFrames, fitsPaths, remainingFiles
@@ -2256,7 +2256,6 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
         masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
         masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
         masterTable["night start mjd"] = startNightDate.mjd.astype(int)
-        masterTable["boundary"] = startNightDate.mjd - startNightDate.mjd.astype(int)
         masterTable.add_index("night start date")
         masterTable.add_index("night start mjd")
         masterTable.add_index("mjd-date")
