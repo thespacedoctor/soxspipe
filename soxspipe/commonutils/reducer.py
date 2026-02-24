@@ -175,6 +175,7 @@ class reducer(object):
                     break
                 else:
 
+                    fail = False
                     for index, row in rawGroups.iterrows():
                         if batchCount >= batch:
                             self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
@@ -202,6 +203,7 @@ class reducer(object):
                             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
                             self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
                             self.log.error(f'\nRecipe Command: {row["command"].replace("-obj ", " ")}\n\n')
+                            fail = True
 
                             if self.quitOnFail:
                                 sys.exit(0)
@@ -209,16 +211,8 @@ class reducer(object):
                             if self.reductionTarget != "all":
                                 self.overwrite = False
 
-                            do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-                            reset = do.session_refresh()
-                            do.close()
-                            if reset:
-                                print(f"BACK TO THE START! {rootRecipe}\n\n")
-                                break
-
                             if not self.daemon:
                                 print(f"{'='*70}\n")
-                            break
 
                         ## FINISH LOGGING ##
                         endTime = times.get_now_sql_datetime()
@@ -229,6 +223,14 @@ class reducer(object):
                         self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                         if not self.daemon:
                             print(f"{'='*70}\n")
+
+                    if fail:
+                        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                        reset = do.session_refresh()
+                        do.close()
+                        if reset:
+                            print(f"BACK TO THE START! {rootRecipe}\n\n")
+                            break
                     break
 
         if self.reductionTarget == "all":
