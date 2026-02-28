@@ -1198,7 +1198,10 @@ def add_recipe_logger(log, productPath):
     # PARENT DIRECTORY PATH NEEDS TO EXIST FOR LOGGER TO WRITE
     parentDirectory = os.path.dirname(loggingPath)
     if not os.path.exists(parentDirectory):
-        os.makedirs(parentDirectory)
+        try:
+            os.makedirs(parentDirectory)
+        except:
+            pass
 
     recipeLog = logging.FileHandler(loggingPath, mode="a", encoding=None, delay=False)
     recipeLogFormatter = logging.Formatter("%(message)s")
@@ -1517,14 +1520,20 @@ def utility_setup(log, settings, recipeName, startNightDate):
     qcDir = qcDir.replace("//", "/")
     # RECURSIVELY CREATE MISSING DIRECTORIES
     if not os.path.exists(qcDir):
-        os.makedirs(qcDir)
+        try:
+            os.makedirs(qcDir)
+        except Exception as e:
+            pass
 
     # PRODUCT DIR
     productDir = settings["workspace-root-dir"].replace("~", home) + f"/reduced/{startNightDate}/{recipeName}/"
     productDir = productDir.replace("//", "/")
     # RECURSIVELY CREATE MISSING DIRECTORIES
     if not os.path.exists(productDir):
-        os.makedirs(productDir)
+        try:
+            os.makedirs(productDir)
+        except Exception as e:
+            pass
 
     log.debug("completed the ``utility_setup`` function")
     return qcDir, productDir
