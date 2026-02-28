@@ -94,15 +94,15 @@ class reducer(object):
             "mbias",
             "mdark",
             "disp_solution",
-            "order_centres",
-            "mflat",
-            "spat_solution",
-            "nod",
-            "stare",
-            "offset",
-            "nod-obj",
-            "stare-obj",
-            "offset-obj",
+            # "order_centres",
+            # "mflat",
+            # "spat_solution",
+            # "nod",
+            # "stare",
+            # "offset",
+            # "nod-obj",
+            # "stare-obj",
+            # "offset-obj",
         ]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
@@ -489,6 +489,7 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
             "sof": inputDict["sof"],
             "productPath": None,
             "qcTable": None,
+            "error_message": None,
         }
 
         try:
@@ -505,15 +506,25 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
             returnDict["productPath"] = productPath
             returnDict["qcTable"] = qcTable
         except FileExistsError as e:
+            print(str(e))
+            print(str(e))
+            print(str(e))
+            print(str(e))
+            print(str(e))
+            print(str(e))
             if "previously failed" in str(e):
                 returnDict["status"] = "previous-fail"
-            else:
+            elif "product of this recipe" in str(e):
                 returnDict["status"] = "previous-pass"
+            else:
+                returnDict["status"] = "fail"
+                returnDict["error_message"] = e
         except Exception as e:
             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
             log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
             log.error(f'\nRecipe Command: {inputDict["command"].replace("-obj ", " ")}\n\n')
             returnDict["status"] = "fail"
+            returnDict["error_message"] = e
 
         return returnDict
 
@@ -552,6 +563,8 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
     skipped = []
     qcTables = []
     sofList = []
+    errorMessages = []
+    errorSOF = []
     for result in results:
         sof = os.path.basename(result["sof"])
         sofList.append(sof)
@@ -561,6 +574,7 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
         elif result["status"] == "fail":
             failing.append(sof)
         else:
+            print(result["error_message"])
             skipped.append(sof)
 
     print(
@@ -580,6 +594,8 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
             failing.append(sof)
         elif result["status"] == "fail":
             failing.append(sof)
+            errorSOF.append(sof)
+            errorMessages.append(result["error_message"])
 
     c = conn.cursor()
     passingString = "','".join(passing)
@@ -594,6 +610,12 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
         ]
         for sqlQuery in sqlQueries:
             c.execute(sqlQuery)
+    if len(errorSOF):
+        error_rows = [(str(error), sof) for sof, error in zip(errorSOF, errorMessages)]
+        c.executemany(
+            "update product_frames set error_message = ? where sof = ?",
+            error_rows,
+        )
     c.close()
     conn.close()
 
