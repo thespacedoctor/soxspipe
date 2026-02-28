@@ -738,7 +738,7 @@ class create_dispersion_map(object):
 
                         # PRINT PROGRESS UPDATE
                         sys.stdout.flush()
-                        sys.stdout.write("\x1b[1A\x1b[2K")
+                        # sys.stdout.write("\x1b[1A\x1b[2K")
                         self.log.print(
                             f"\t ITERATION {iteration}: Median X Y difference between predicted "
                             f"and measured positions: {medianx:0.5f},{mediany:0.5f} "
@@ -1804,6 +1804,8 @@ class create_dispersion_map(object):
                 "R PIN MEDIAN",
             ]
 
+            qc_order = [None] * len(qc_names)
+
             qc_values = [
                 absx.min(),
                 absx.max(),
@@ -1854,23 +1856,27 @@ class create_dispersion_map(object):
                 if self.inst == "SOXS" and self.arm == "VIS":
                     for n, oo in zip(["u", "g", "r", "i"], [2, 3, 1, 4]):
                         if o == oo:
-                            o = n
+                            ostr = n
+                            odb = n
                             break
                 else:
-                    o = f"O{o}"
+                    ostr = f"O{o}"
+                    odb = o
 
-                qc_names.extend(
-                    [
-                        f"X RES RMS {o}",
-                        f"Y RES RMS {o}",
-                        f"XY RES RMS {o}",
-                        f"X DIFF MEDIAN {o}",
-                        f"Y DIFF MEDIAN {o}",
-                        f"XY DIFF MEDIAN {o}",
-                        f"FWHM PIN MEDIAN {o}",
-                        f"R PIN MEDIAN {o}",
-                    ]
-                )
+                arrayOfNames = [
+                    f"X RES RMS",
+                    f"Y RES RMS",
+                    f"XY RES RMS",
+                    f"X DIFF MEDIAN",
+                    f"Y DIFF MEDIAN",
+                    f"XY DIFF MEDIAN",
+                    f"FWHM PIN MEDIAN",
+                    f"R PIN MEDIAN",
+                ]
+
+                qc_names.extend(arrayOfNames)
+
+                qc_order.extend([odb] * len(arrayOfNames))
 
                 qc_values.extend(
                     [
@@ -1900,7 +1906,7 @@ class create_dispersion_map(object):
                     ]
                 )
 
-            for name, value, unit, comment in zip(qc_names, qc_values, qc_units, qc_comments):
+            for name, value, unit, comment, order in zip(qc_names, qc_values, qc_units, qc_comments, qc_order):
                 self.qc = pd.concat(
                     [
                         self.qc,
@@ -1909,6 +1915,7 @@ class create_dispersion_map(object):
                                 "soxspipe_recipe": self.recipeName,
                                 "qc_name": name,
                                 "qc_value": value,
+                                "qc_order": order,
                                 "qc_comment": comment,
                                 "qc_unit": unit,
                                 "obs_date_utc": self.dateObs,
