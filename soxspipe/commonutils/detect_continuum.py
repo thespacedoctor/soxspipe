@@ -1779,6 +1779,10 @@ class detect_continuum(_base_detect):
                     # print("Reducing everyN to 1")
                     continue
 
+                if np.isnan(medianShift):
+                    self.log.error("FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
+                    raise ValueError("FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
+
                 orderPixelTable, medianShift, medianStddev = find_centre_points(
                     orderPixelTable=tmpOrderPixelTable,
                     medianShift=medianShift,
@@ -1861,8 +1865,8 @@ class detect_continuum(_base_detect):
 
         self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
 
-        if "order" in self.recipeName.lower() and percent < 10:
-            message = f"Fewer than 10% of the order slices have a detected continuum trace ({percent:2.1f}%). Please check the quality of the raw frames."
+        if "order" in self.recipeName.lower() and percent < 30:
+            message = f"Fewer than 30% of the order slices have a detected continuum trace ({percent:2.1f}%). Please check the quality of the raw frames."
             raise ValueError(message)
 
         self.log.debug("completed the ``sample_trace`` method")
