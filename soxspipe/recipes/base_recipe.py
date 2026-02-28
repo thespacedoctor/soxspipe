@@ -199,6 +199,7 @@ class base_recipe(object):
                 "qc_name": [],
                 "qc_value": [],
                 "qc_unit": [],
+                "qc_order": [],
                 "qc_comment": [],
                 "obs_date_utc": [],
                 "reduction_date_utc": [],
@@ -415,7 +416,10 @@ class base_recipe(object):
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):
-            os.makedirs(outDir)
+            try:
+                os.makedirs(outDir)
+            except:
+                pass
         # CONVERT CCDData TO FITS HDU (INCLUDING HEADER) AND SAVE WITH PRE TAG
         # PREPENDED TO FILENAME
         basename = os.path.basename(filepath)
@@ -999,7 +1003,10 @@ class base_recipe(object):
             filedir = filedir.replace("//", "/")
             # Recursively create missing directories
             if not os.path.exists(filedir):
-                os.makedirs(filedir)
+                try:
+                    os.makedirs(filedir)
+                except:
+                    pass
 
         filepath = filedir + "/" + filename
 
@@ -1336,7 +1343,10 @@ class base_recipe(object):
                 outDir = outDir.replace("//", "/")
                 # RECURSIVELY CREATE MISSING DIRECTORIES
                 if not os.path.exists(outDir):
-                    os.makedirs(outDir)
+                    try:
+                        os.makedirs(outDir)
+                    except:
+                        pass
 
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 filename = self.sofName + "_BKGROUND.fits"
@@ -1403,11 +1413,16 @@ class base_recipe(object):
         self.qc["sof_name"] = self.sofName + ".sof"
         self.qc["obs_date_utc"] = self.dateObs
 
+        # FILTER DATA FRAME
+        mask = self.qc["qc_order"].isna()
+        self.qc.loc[mask, "qc_order"] = "-1"
+
         # SORT BY COLUMN NAME
         self.qc.sort_values(["qc_name"], inplace=True)
         columns = list(self.qc.columns)
         columns.remove("to_header")
         columns.remove("obs_date_utc")
+        columns.remove("qc_order")
         columns.remove("reduction_date_utc")
         columns.remove("soxspipe_recipe")
         columns.remove("sof_name")
@@ -1430,9 +1445,21 @@ class base_recipe(object):
 
         if rformat == "stdout":
             self.log.print(f"\n# {soxspipe_recipe} QC METRICS")
-            self.log.print(
-                tabulate(self.qc[columns], headers="keys", tablefmt="psql", showindex=False, stralign="right")
-            )
+
+            mask = self.qc["qc_order"] == "-1"
+
+            # Format float values to 3 decimal places
+            qc_display = self.qc.loc[mask][columns].copy()
+            for col in qc_display.columns:
+                qc_display[col] = qc_display[col].apply(
+                    lambda x: (
+                        f"{float(x):.3f}"
+                        if isinstance(x, (int, float))
+                        or (isinstance(x, str) and x.replace(".", "", 1).replace("-", "", 1).isdigit())
+                        else x
+                    )
+                )
+            self.log.print(tabulate(qc_display, headers="keys", tablefmt="psql", showindex=False, stralign="right"))
             self.log.print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
             self.log.print(
                 tabulate(self.products[columns2], headers="keys", tablefmt="psql", showindex=False, stralign="right")
@@ -1564,8 +1591,7 @@ class base_recipe(object):
             tmp = np.ma.array(masterFrame.data, mask=combinedMask)
 
             dmin, dmax, dmean, dstd = imstats(tmp)
-            masterRon = dstd
-            print(masterRon)
+            masterRon = float(dstd)
 
         elif masterRon:
             self.qc = pd.concat(
@@ -1575,7 +1601,7 @@ class base_recipe(object):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "MASTER RON",
-                            "qc_value": masterRon,
+                            "qc_value": float(masterRon),
                             "qc_comment": f"[e-] Combined RON in {frameType}",
                             "qc_unit": "electrons",
                             "obs_date_utc": self.dateObs,

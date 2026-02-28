@@ -452,7 +452,10 @@ class soxs_mflat(base_recipe):
                     outDir = outDir.replace("//", "/")
                     # RECURSIVELY CREATE MISSING DIRECTORIES
                     if not os.path.exists(outDir):
-                        os.makedirs(outDir)
+                        try:
+                            os.makedirs(outDir)
+                        except:
+                            pass
 
                     # GET THE EXTENSION (WITH DOT PREFIX)
                     filename = self.sofName + tag + "_BKGROUND.fits"
