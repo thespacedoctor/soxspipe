@@ -505,13 +505,15 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
             returnDict["status"] = "pass"
             returnDict["productPath"] = productPath
             returnDict["qcTable"] = qcTable
+            mask = qcTable["qc_flag"] == "fail"
+            failedQcs = self.qc.loc[mask]
+            if len(failedQcs):
+                returnDict["status"] = "fail"
+                failedQcs = failedQcs["qc_name"].tolist()
+                returnDict["error_message"] = (
+                    f"The following QC values are outside of acceptable limits: {', '.join(failedQcs)}."
+                )
         except FileExistsError as e:
-            print(str(e))
-            print(str(e))
-            print(str(e))
-            print(str(e))
-            print(str(e))
-            print(str(e))
             if "previously failed" in str(e):
                 returnDict["status"] = "previous-fail"
             elif "product of this recipe" in str(e):

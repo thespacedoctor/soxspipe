@@ -826,13 +826,16 @@ class base_recipe(object):
         self.log.debug("completed the ``_verify_input_frames_basics`` method")
         return imageTypes, imageTech, imageCat
 
-    def clean_up(self):
+    def clean_up(self, forceFail=False):
         """*update product status in DB and remove intermediate files once recipe is complete*
+
+        **Key Arguments:**
+        - ``forceFail`` -- force the recipe to be marked as failed in the DB
 
         **Usage**
 
         ```python
-        recipe.clean_up()
+        recipe.clean_up(forceFail=True)
         ```
         """
         self.log.debug("starting the ``clean_up`` method")
@@ -840,23 +843,36 @@ class base_recipe(object):
         import shutil
         import time
 
+        # FILTER QC TABLE ON qc_flag
+        mask = self.qc["qc_flag"] == "fail"
+        passToFail = False
+        failedQcs = self.qc.loc[mask]
+        failedQcs = failedQcs["qc_name"].tolist()
+        if len(failedQcs):
+            forceFail = True
+            if self.status == "pass":
+                passToFail = True
+
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
-
-            c = self.conn.cursor()
-            sqlQuery = (
-                f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
-            )
-            c.execute(sqlQuery)
-            c.close()
-            # WAIT A MOMENT TO ENSURE DB HAS UPDATED BEFORE REFRESHING SESSION
+            if not passToFail and not forceFail:
+                c = self.conn.cursor()
+                sqlQuery = (
+                    f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
+                )
+                c.execute(sqlQuery)
+                c.close()
 
             # PREVIOUSLY FAILED RECIPE THAT HAS NOW PASSED
-            if self.status == "fail":
+            if (self.status == "fail" and passToFail) or (forceFail and self.status == "pass"):
                 from soxspipe.commonutils import data_organiser
 
+                if passToFail or forceFail:
+                    failure = True
+                else:
+                    failure = False
                 do = data_organiser(log=self.log, rootDir=self.workspaceRootPath)
-                do.session_refresh(failure=False)
+                do.session_refresh(failure=failure)
                 do.close()
 
             self.conn.close()
@@ -867,6 +883,11 @@ class base_recipe(object):
             shutil.rmtree(self.outDir)
         except:
             pass
+
+        if forceFail:
+            self.log.error(
+                f"\nRecipe marked as failed in the database as the following QC values are outside of the acceptable limits: {', '.join(failedQcs)}."
+            )
 
         self.log.debug("completed the ``clean_up`` method")
         return None
@@ -1409,6 +1430,8 @@ class base_recipe(object):
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
         self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
 
+        self.flag_poor_data()
+
         # SEND TO DATABASE
         self.qc["sof_name"] = self.sofName + ".sof"
         self.qc["obs_date_utc"] = self.dateObs
@@ -1465,10 +1488,43 @@ class base_recipe(object):
                 tabulate(self.products[columns2], headers="keys", tablefmt="psql", showindex=False, stralign="right")
             )
             if self.conn:
+                sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
+                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"
+                c = self.conn.cursor()
+                c.execute(sqlQuery, sofNames)
+                c.close()
                 self._dataframe_to_sqlite(self.qc[dbColumns], "quality_control", replace=False)
 
         self.log.debug("completed the ``report_output`` method")
         return self.qc[dbColumns]
+
+    def flag_poor_data(self):
+        """*a method to flag data as 'poor' quality based on QC values exceeding thresholds defined in the settings file*
+
+        **Usage:**
+
+        ```python
+        self.flag_poor_data()
+        ```
+        """
+        self.log.debug("starting the ``flag_poor_data`` method")
+
+        if "qc-acceptable-ranges" not in self.recipeSettings:
+            self.log.debug("No acceptable ranges defined in settings file. Skipping the ``flag_poor_data`` method.")
+            return None
+
+        self.qc["qc_flag"] = "pass"
+
+        for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
+
+            matchName = k.lower().replace("-", " ").replace("_", " ")
+            mask = (self.qc["qc_name"].str.lower() == matchName) & (
+                (self.qc["qc_value"].astype(float) < v[0]) | (self.qc["qc_value"].astype(float) > v[1])
+            )
+            self.qc.loc[mask, "qc_flag"] = "fail"
+
+        self.log.debug("completed the ``flag_poor_data`` method")
+        return None
 
     def qc_ron(self, frameType=False, frameName=False, masterFrame=False, rawRon=False, masterRon=False):
         """*calculate the read-out-noise from bias/dark frames*
@@ -1594,6 +1650,7 @@ class base_recipe(object):
             masterRon = float(dstd)
 
         elif masterRon:
+
             self.qc = pd.concat(
                 [
                     self.qc,
@@ -1827,8 +1884,9 @@ class base_recipe(object):
         iterator = 1
         recipeSettings = self.get_recipe_settings()
         for k, v in recipeSettings.items():
-            if k.lower() in ["uvb", "vis", "nir"]:
+            if k.lower() in ["uvb", "vis", "nir", "qc-acceptable-ranges"]:
                 continue
+
             if not isinstance(v, dict):
                 if isinstance(v, list):
                     v = ", ".join(map(str, v)).strip()

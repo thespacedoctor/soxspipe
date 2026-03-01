@@ -1,5 +1,9 @@
 # Release Notes
 
+adding info line at the end of a multiprocessing batch run of recipe reductions giving details of passed and fails
+adding try/except on making QC and product directories (race condition issue)
+making detect continuum algormithm issue a fail if <30% of lines detected (was 10%)
+adding order numbers and error messages to the QC table and products table in the database
 added gain to the data organiser
 added median pinhole FWHM and resolution to FITS header QCs
 reduced tpyical mflat recipe memory footprint from ~7GB to ~2GB
