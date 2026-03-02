@@ -18,6 +18,13 @@ soxs-mbias:
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 3
+    qc-acceptable-ranges:
+        master-ron: [0,100]
+        fpn-fracmax: [0,7]
+        mbias-median: [0, 3000]
+        raw-ron: [0,150]
+        structx: [0,5]
+        structy: [0,5]
 
 soxs-mdark:
     # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.

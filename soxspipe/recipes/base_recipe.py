@@ -843,18 +843,18 @@ class base_recipe(object):
         import shutil
         import time
 
-        # FILTER QC TABLE ON qc_flag
-        mask = self.qc["qc_flag"] == "fail"
-        passToFail = False
-        failedQcs = self.qc.loc[mask]
-        failedQcs = failedQcs["qc_name"].tolist()
-        if len(failedQcs):
-            forceFail = True
-            if self.status == "pass":
-                passToFail = True
-
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
+            # FILTER QC TABLE ON qc_flag
+            mask = self.qc["qc_flag"] == "fail"
+            passToFail = False
+            failedQcs = self.qc.loc[mask]
+            failedQcs = failedQcs["qc_name"].tolist()
+            if len(failedQcs):
+                forceFail = True
+                if self.status == "pass":
+                    passToFail = True
+
             if not passToFail and not forceFail:
                 c = self.conn.cursor()
                 sqlQuery = (

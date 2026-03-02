@@ -506,7 +506,7 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
             returnDict["productPath"] = productPath
             returnDict["qcTable"] = qcTable
             mask = qcTable["qc_flag"] == "fail"
-            failedQcs = self.qc.loc[mask]
+            failedQcs = qcTable[mask]
             if len(failedQcs):
                 returnDict["status"] = "fail"
                 failedQcs = failedQcs["qc_name"].tolist()
@@ -563,20 +563,14 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
     passing = []
     failing = []
     skipped = []
-    qcTables = []
-    sofList = []
-    errorMessages = []
-    errorSOF = []
     for result in results:
         sof = os.path.basename(result["sof"])
         sofList.append(sof)
         if result["status"] == "pass":
             passing.append(sof)
-            qcTables.append(result["qcTable"])
         elif result["status"] == "fail":
             failing.append(sof)
         else:
-            print(result["error_message"])
             skipped.append(sof)
 
     print(
@@ -584,6 +578,13 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
     )
 
     ## COLLECT TOGETHER THE RESULTS AND UPDATE THE DATABASE
+    passing = []
+    failing = []
+    skipped = []
+    qcTables = []
+    sofList = []
+    errorMessages = []
+    errorSOF = []
     for result in results:
         sof = os.path.basename(result["sof"])
         sofList.append(sof)
@@ -598,6 +599,8 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
             failing.append(sof)
             errorSOF.append(sof)
             errorMessages.append(result["error_message"])
+        if result["qcTable"] is not None:
+            qcTables.append(result["qcTable"])
 
     c = conn.cursor()
     passingString = "','".join(passing)
