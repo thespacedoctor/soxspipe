@@ -13,7 +13,7 @@
 | `ORDEXP90`             | 90th percentile inter-order flux                 | electrons |
 | `X RES MAX`              | Maximum residual in order edge fit along x-axis  | pixels    |
 | `X RES MIN`              | Minimum residual in order edge fit along x-axis  | pixels    |
-| `X RES RMS`              | Std-dev of residual order edge fit along x-axis  | pixels    |
+| `X RES SD`              | Std-dev of residual order edge fit along x-axis  | pixels    |
 
 
 

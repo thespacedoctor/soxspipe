@@ -10,7 +10,7 @@
 | `SAMPLES TOT`   | Total number of samples along orders                       | px   |
 | `X RES MAX` | Maximum residual in order centre fit along x-axis     | px   |
 | `X RES MIN` | Minimum residual in order centre fit along x-axis     | px   |
-| `X RES RMS` | Std-dev of residual order centre fit along x-axis     |      |
+| `X RES SD` | Std-dev of residual order centre fit along x-axis     |      |
 
 
 :::

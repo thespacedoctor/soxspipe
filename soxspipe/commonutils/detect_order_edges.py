@@ -453,7 +453,7 @@ class detect_order_edges(_base_detect):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": "X RES RMS",
+                            "qc_name": "X RES SD",
                             "qc_value": f"{std_res:0.2E}",
                             "qc_comment": "[px] Std-dev of residual order edge fit along x-axis",
                             "qc_unit": "pixels",

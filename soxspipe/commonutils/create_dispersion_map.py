@@ -1779,8 +1779,10 @@ class create_dispersion_map(object):
         if writeQCs:
             absx = abs(orderPixelTable["residuals_x"])
             absy = abs(orderPixelTable["residuals_y"])
-            fwhm = orderPixelTable["fwhm_pin_px"].median()
-            resolution = orderPixelTable["R_pin"].median()
+            fwhm_med = orderPixelTable["fwhm_pin_px"].median()
+            resolution_med = orderPixelTable["R_pin"].median()
+            fwhm_SD = orderPixelTable["fwhm_pin_px"].std()
+            resolution_SD = orderPixelTable["R_pin"].std()
             orderPixelTable["x_diff"] = orderPixelTable["detector_x"] - orderPixelTable["observed_x"]
             orderPixelTable["y_diff"] = orderPixelTable["detector_y"] - orderPixelTable["observed_y"]
             orderPixelTable["xy_diff"] = np.sqrt(
@@ -1789,56 +1791,77 @@ class create_dispersion_map(object):
 
             qc_names = [
                 "X RES MIN",
+                "X RES MEDIAN",
                 "X RES MAX",
-                "X RES RMS",
+                "X RES SD",
                 "Y RES MIN",
+                "Y RES MEDIAN",
                 "Y RES MAX",
-                "Y RES RMS",
+                "Y RES SD",
                 "XY RES MIN",
+                "XY RES MEDIAN",
                 "XY RES MAX",
-                "XY RES RMS",
+                "XY RES SD",
                 "X DIFF MEDIAN",
                 "Y DIFF MEDIAN",
                 "XY DIFF MEDIAN",
+                "X DIFF SD",
+                "Y DIFF SD",
+                "XY DIFF SD",
                 "FWHM PIN MEDIAN",
+                "FWHM PIN SD",
                 "R PIN MEDIAN",
+                "R PIN SD",
             ]
 
             qc_order = [None] * len(qc_names)
 
             qc_values = [
                 absx.min(),
+                np.median(absx),
                 absx.max(),
                 absx.std(),
                 absy.min(),
+                np.median(absy),
                 absy.max(),
                 absy.std(),
                 orderPixelTable["residuals_xy"].min(),
+                np.median(orderPixelTable["residuals_xy"]),
                 orderPixelTable["residuals_xy"].max(),
                 orderPixelTable["residuals_xy"].std(),
-                orderPixelTable["x_diff"].median(),
-                orderPixelTable["y_diff"].median(),
+                orderPixelTable["x_diff"].abs().median(),
+                orderPixelTable["y_diff"].abs().median(),
                 orderPixelTable["xy_diff"].median(),
-                fwhm,
-                resolution,
+                orderPixelTable["x_diff"].std(),
+                orderPixelTable["y_diff"].std(),
+                orderPixelTable["xy_diff"].std(),
+                fwhm_med,
+                fwhm_SD,
+                resolution_med,
+                resolution_SD,
             ]
 
-            qc_units = ["pixels"] * 13 + [""]
+            qc_units = ["pixels"] * 17 + [""] * 2
             qc_comments = [
                 "[px] Minimum residual in dispersion solution fit along x-axis",
+                "[px] Median residual in dispersion solution fit along x-axis",
                 "[px] Maximum residual in dispersion solution fit along x-axis",
                 "[px] Std-dev of residual in dispersion solution fit along x-axis",
                 "[px] Minimum residual in dispersion solution fit along y-axis",
+                "[px] Median residual in dispersion solution fit along y-axis",
                 "[px] Maximum residual in dispersion solution fit along y-axis",
                 "[px] Std-dev of residual in dispersion solution fit along y-axis",
                 "[px] Minimum residual in dispersion solution fit (XY combined)",
+                "[px] Median residual in dispersion solution fit (XY combined)",
                 "[px] Maximum residual in dispersion solution fit (XY combined)",
                 "[px] Std-dev of residual in dispersion solution (XY combined)",
-                "[px] Median difference between predicted and observed line positions along x-axis",
-                "[px] Median difference between predicted and observed line positions along y-axis",
+                "[px] Median absolute difference between predicted and observed line positions along x-axis",
+                "[px] Median absolute difference between predicted and observed line positions along y-axis",
                 "[px] Median difference between predicted and observed line positions (XY combined)",
                 "[px] Median FWHM of detected lines in pinhole frames",
+                "[px] Std-dev FWHM of detected lines in pinhole frames",
                 "Median spectral resolution measured from detected lines in pinhole frames",
+                "Std-dev spectral resolution measured from detected lines in pinhole frames",
             ]
 
             uniqueOrders = orderPixelTable["order"].unique()
@@ -1848,9 +1871,14 @@ class create_dispersion_map(object):
                 absy_order = abs(thisOrder["residuals_y"])
                 fwhm_order = thisOrder["fwhm_pin_px"].median()
                 resolution_order = thisOrder["R_pin"].median()
+                fwhm_order_sd = thisOrder["fwhm_pin_px"].std()
+                resolution_order_sd = thisOrder["R_pin"].std()
                 xdiff = thisOrder["x_diff"].median()
                 ydiff = thisOrder["y_diff"].median()
-                xydiff = np.sqrt(np.square(xdiff) + np.square(ydiff))
+                xydiff = np.median(np.sqrt(np.square(xdiff) + np.square(ydiff)))
+                xdiff_sd = thisOrder["x_diff"].std()
+                ydiff_sd = thisOrder["y_diff"].std()
+                xydiff_sd = np.sqrt(np.square(xdiff_sd) + np.square(ydiff_sd)).std()
                 o = int(o)
 
                 if self.inst == "SOXS" and self.arm == "VIS":
@@ -1864,14 +1892,22 @@ class create_dispersion_map(object):
                     odb = o
 
                 arrayOfNames = [
-                    f"X RES RMS",
-                    f"Y RES RMS",
-                    f"XY RES RMS",
+                    f"X RES MEDIAN",
+                    f"Y RES MEDIAN",
+                    f"XY RES MEDIAN",
+                    f"X RES SD",
+                    f"Y RES SD",
+                    f"XY RES SD",
                     f"X DIFF MEDIAN",
                     f"Y DIFF MEDIAN",
                     f"XY DIFF MEDIAN",
+                    f"X DIFF SD",
+                    f"Y DIFF SD",
+                    f"XY DIFF SD",
                     f"FWHM PIN MEDIAN",
+                    f"FWHM PIN SD",
                     f"R PIN MEDIAN",
+                    f"R PIN SD",
                 ]
 
                 qc_names.extend(arrayOfNames)
@@ -1880,29 +1916,45 @@ class create_dispersion_map(object):
 
                 qc_values.extend(
                     [
+                        np.median(absx_order),
+                        np.median(absy_order),
+                        np.median(thisOrder["residuals_xy"]),
                         absx_order.std(),
                         absy_order.std(),
                         thisOrder["residuals_xy"].std(),
                         xdiff,
                         ydiff,
                         xydiff,
+                        xdiff_sd,
+                        ydiff_sd,
+                        xydiff_sd,
                         fwhm_order,
+                        fwhm_order_sd,
                         resolution_order,
+                        resolution_order_sd,
                     ]
                 )
 
-                qc_units.extend(["pixels"] * 7 + [""])
+                qc_units.extend(["pixels"] * 14 + [""] * 2)
 
                 qc_comments.extend(
                     [
+                        f"[px] Median residual in dispersion solution fit along x-axis for order {o}",
+                        f"[px] Median residual in dispersion solution fit along y-axis for order {o}",
+                        f"[px] Median residual in dispersion solution fit (XY combined) for order {o}",
                         f"[px] Std-dev of residual in dispersion solution fit along x-axis for order {o}",
                         f"[px] Std-dev of residual in dispersion solution fit along y-axis for order {o}",
                         f"[px] Std-dev of residual in dispersion solution (XY combined) for order {o}",
                         f"[px] Median difference between predicted and observed line positions along x-axis for order {o}",
                         f"[px] Median difference between predicted and observed line positions along y-axis for order {o}",
                         f"[px] Median difference between predicted and observed line positions (XY combined) for order {o}",
+                        f"[px] Std-dev of difference between predicted and observed line positions along x-axis for order {o}",
+                        f"[px] Std-dev of difference between predicted and observed line positions along y-axis for order {o}",
+                        f"[px] Std-dev of difference between predicted and observed line positions (XY combined) for order {o}",
                         f"[px] Median FWHM of detected lines in pinhole frames for order {o}",
+                        f"[px] Std-dev of FWHM of detected lines in pinhole frames for order {o}",
                         f"Median spectral resolution measured from detected lines in pinhole frames for order {o}",
+                        f"Std-dev of spectral resolution measured from detected lines in pinhole frames for order {o}",
                     ]
                 )
 
@@ -3634,8 +3686,8 @@ class create_dispersion_map(object):
                 label="clipped arc lines",
             )
 
-            bottomleft.set_ylabel(f"y-shift rms (px)", fontsize=12)
-            bottomleft.set_xlabel(f"x-shift rms (px)", fontsize=12)
+            bottomleft.set_ylabel(f"y-shift SD (px)", fontsize=12)
+            bottomleft.set_xlabel(f"x-shift SD (px)", fontsize=12)
             bottomleft.tick_params(axis="both", which="major", labelsize=9)
             bottomleft.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 

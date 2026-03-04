@@ -14,7 +14,7 @@
 | SAMPLES TOT                | Total number of samples along orders                       |           |
 | X RES MAX              | Maximum residual in continuum fit along x-axis        | px        |
 | X RES MIN              | Minimum residual in continuum fit along x-axis        | px        |
-| X RES RMS              | Std-dev of residual continuum fit along x-axis        | px        |
+| X RES SD              | Std-dev of residual continuum fit along x-axis        | px        |
 
 
 :::
