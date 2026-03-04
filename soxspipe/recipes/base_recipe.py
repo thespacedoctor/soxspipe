@@ -1715,15 +1715,6 @@ class base_recipe(object):
             self.kw("EXPTIME")
         ]
 
-        if medianFlux < -15.0:
-            message = f"The {frameName} has a negative median flux level of {medianFlux:0.2f} e-. Please check the raw input frames."
-            raise ValueError(message)
-        elif fluxRange > 20.0 and frameType in ["MDARK"]:
-            message = (
-                f"The {frameName} has a large flux range of {fluxRange:0.2f} e-/s. Please check the raw input frames."
-            )
-            raise ValueError(message)
-
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
