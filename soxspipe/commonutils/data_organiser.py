@@ -313,10 +313,11 @@ class data_organiser(object):
                 except:
                     pass
             # DELETE ALL ERROR LOG AND SOF FILES
-            for root, dirs, files in os.walk(os.path.abspath(self.rootDir)):
-                for file in files:
-                    if file.endswith("ERROR.log") or file.endswith(".sof"):
-                        os.remove(os.path.join(root, file))
+            if False:
+                for root, dirs, files in os.walk(os.path.abspath(self.rootDir)):
+                    for file in files:
+                        if file.endswith("ERROR.log") or file.endswith(".sof"):
+                            os.remove(os.path.join(root, file))
 
         self._select_instrument()
 

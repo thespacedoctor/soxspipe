@@ -84,8 +84,18 @@ class base_recipe(object):
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
+            errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
+            basename = os.path.basename(self.productPath)
 
-            if os.path.exists(self.productPath) and not overwrite:
+            if os.path.exists(errorLog) and not overwrite:
+                if verbose:
+                    print(
+                        f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
+                    )
+                raise FileExistsError(
+                    f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
+                )
+            elif os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
                 if verbose:
                     print(
@@ -94,17 +104,6 @@ class base_recipe(object):
                 raise FileExistsError(
                     f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
                 )
-            else:
-                errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
-                if os.path.exists(errorLog) and not overwrite:
-                    basename = os.path.basename(errorLog)
-                    if verbose:
-                        print(
-                            f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
-                        )
-                    raise FileExistsError(
-                        f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
-                    )
 
             self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:
@@ -141,6 +140,7 @@ class base_recipe(object):
 
         # INITIATE A DB CONNECTION
         self.conn = None
+        self.status = None
         if not self.turnOffMP:
             if self.currentSession and self.sofName:
                 self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
@@ -843,17 +843,18 @@ class base_recipe(object):
         import shutil
         import time
 
+        # FILTER QC TABLE ON qc_flag
+        mask = self.qc["qc_flag"] == "fail"
+        passToFail = False
+        failedQcs = self.qc.loc[mask]
+        failedQcs = failedQcs["qc_name"].tolist()
+        if len(failedQcs):
+            forceFail = True
+            if self.status == "pass":
+                passToFail = True
+
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
-            # FILTER QC TABLE ON qc_flag
-            mask = self.qc["qc_flag"] == "fail"
-            passToFail = False
-            failedQcs = self.qc.loc[mask]
-            failedQcs = failedQcs["qc_name"].tolist()
-            if len(failedQcs):
-                forceFail = True
-                if self.status == "pass":
-                    passToFail = True
 
             if not passToFail and not forceFail:
                 c = self.conn.cursor()
@@ -1272,10 +1273,6 @@ class base_recipe(object):
             if not self.darkDetrendWarningIssued1:
                 self.log.warning("Dark and science/calibration frame have differing exposure-times.")
                 self.darkDetrendWarningIssued1 = True
-        if master_bias != False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
-            raise AttributeError(
-                "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME"
-            )
 
         processedFrame = inputFrame
 
@@ -1428,9 +1425,7 @@ class base_recipe(object):
             self.products.drop(columns=["file_path"], inplace=True)
 
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
-        self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
-
-        self.flag_poor_data()
+        self.qc = self.qc.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
 
         # SEND TO DATABASE
         self.qc["sof_name"] = self.sofName + ".sof"
@@ -1439,6 +1434,8 @@ class base_recipe(object):
         # FILTER DATA FRAME
         mask = self.qc["qc_order"].isna()
         self.qc.loc[mask, "qc_order"] = "-1"
+
+        self.flag_poor_data()
 
         # SORT BY COLUMN NAME
         self.qc.sort_values(["qc_name"], inplace=True)
@@ -1509,17 +1506,19 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``flag_poor_data`` method")
 
+        self.qc["qc_flag"] = "pass"
+
         if "qc-acceptable-ranges" not in self.recipeSettings:
             self.log.debug("No acceptable ranges defined in settings file. Skipping the ``flag_poor_data`` method.")
             return None
 
-        self.qc["qc_flag"] = "pass"
-
         for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
 
             matchName = k.lower().replace("-", " ").replace("_", " ")
-            mask = (self.qc["qc_name"].str.lower() == matchName) & (
-                (self.qc["qc_value"].astype(float) < v[0]) | (self.qc["qc_value"].astype(float) > v[1])
+            mask = (
+                (self.qc["qc_name"].str.lower() == matchName)
+                & (self.qc["qc_order"] == "-1")
+                & ((self.qc["qc_value"].astype(float) <= v[0]) | (self.qc["qc_value"].astype(float) >= v[1]))
             )
             self.qc.loc[mask, "qc_flag"] = "fail"
 
