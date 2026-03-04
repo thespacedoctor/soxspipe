@@ -1865,10 +1865,6 @@ class detect_continuum(_base_detect):
 
         self.log.print(f"\tContinuum found in {foundLines} out of {allLines} order slices ({percent:2.0f}%)")
 
-        if "order" in self.recipeName.lower() and percent < 30:
-            message = f"Fewer than 30% of the order slices have a detected continuum trace ({percent:2.1f}%). Please check the quality of the raw frames."
-            raise ValueError(message)
-
         self.log.debug("completed the ``sample_trace`` method")
 
         return orderPixelTable

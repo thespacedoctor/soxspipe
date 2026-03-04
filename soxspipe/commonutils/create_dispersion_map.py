@@ -787,10 +787,6 @@ class create_dispersion_map(object):
             # CALCULATE LINE DETECTION STATISTICS
             percentageDetectedLines = float("{:.6f}".format(float(detectedLines) / float(totalLines)))
 
-            if percentageDetectedLines < 0.5:
-                message = f"Only {percentageDetectedLines*100:.2f}% of the input line-list lines were detected on the pinhole frame. Please check the quality of the raw frames."
-                raise ValueError(message)
-
             # GET CURRENT UTC TIMESTAMP FOR QC RECORDS
             utcnow = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 

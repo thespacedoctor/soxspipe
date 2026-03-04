@@ -939,8 +939,8 @@ class soxs_mflat(base_recipe):
             ORDEXP50 = np.median(ORDEXP50list)
             ORDEXP90 = np.median(ORDEXP90list)
 
-            if ORDEXP50 < 100:
-                raise ValueError("FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
+            # if ORDEXP50 < 100:
+            #     raise ValueError("FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
