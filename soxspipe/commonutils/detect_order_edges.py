@@ -414,7 +414,7 @@ class detect_order_edges(_base_detect):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES MIN",
-                            "qc_value": f"{min_res:0.2E}",
+                            "qc_value": f"{min_res:0.3f}",
                             "qc_comment": "[px] Minimum residual in order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
@@ -434,7 +434,7 @@ class detect_order_edges(_base_detect):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES MAX",
-                            "qc_value": f"{max_res:0.2E}",
+                            "qc_value": f"{max_res:0.3f}",
                             "qc_comment": "[px] Maximum residual in order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
@@ -454,7 +454,7 @@ class detect_order_edges(_base_detect):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES SD",
-                            "qc_value": f"{std_res:0.2E}",
+                            "qc_value": f"{std_res:0.3f}",
                             "qc_comment": "[px] Std-dev of residual order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
@@ -973,7 +973,7 @@ class detect_order_edges(_base_detect):
                 orderData["minThreshold"],
                 0,
                 len(slice),
-                label=f'threshold {orderData["minThreshold"]:0.2f},  {orderData["maxThreshold"]:0.2f}',
+                label=f'threshold {orderData["minThreshold"]:0.3f},  {orderData["maxThreshold"]:0.3f}',
                 colors="red",
             )
             plt.title(f"Order {order}, centre = {axisBcoords[index]}")

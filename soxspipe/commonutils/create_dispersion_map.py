@@ -1837,7 +1837,7 @@ class create_dispersion_map(object):
                 resolution_SD,
             ]
 
-            qc_units = ["pixels"] * 17 + [""] * 2
+            qc_units = ["pixels"] * 20 + [""] * 2
             qc_comments = [
                 "[px] Minimum residual in dispersion solution fit along x-axis",
                 "[px] Median residual in dispersion solution fit along x-axis",
@@ -1854,11 +1854,17 @@ class create_dispersion_map(object):
                 "[px] Median absolute difference between predicted and observed line positions along x-axis",
                 "[px] Median absolute difference between predicted and observed line positions along y-axis",
                 "[px] Median difference between predicted and observed line positions (XY combined)",
+                "[px] Std-dev of difference between predicted and observed line positions along x-axis",
+                "[px] Std-dev of difference between predicted and observed line positions along y-axis",
+                "[px] Std-dev of difference between predicted and observed line positions (XY combined)",
                 "[px] Median FWHM of detected lines in pinhole frames",
                 "[px] Std-dev FWHM of detected lines in pinhole frames",
                 "Median spectral resolution measured from detected lines in pinhole frames",
                 "Std-dev spectral resolution measured from detected lines in pinhole frames",
             ]
+
+            if len(qc_units) != len(qc_names) or len(qc_comments) != len(qc_names) or len(qc_values) != len(qc_names):
+                raise ValueError("Mismatch in lengths of QC arrays")
 
             uniqueOrders = orderPixelTable["order"].unique()
             for o in uniqueOrders:
@@ -1954,7 +1960,18 @@ class create_dispersion_map(object):
                     ]
                 )
 
+            if (
+                len(qc_units) != len(qc_names)
+                or len(qc_comments) != len(qc_names)
+                or len(qc_values) != len(qc_names)
+                or len(qc_order) != len(qc_names)
+                or len(qc_order) != len(qc_values)
+            ):
+                raise ValueError("Mismatch in lengths of QC arrays")
+
             for name, value, unit, comment, order in zip(qc_names, qc_values, qc_units, qc_comments, qc_order):
+                if unit != "lines":
+                    value = f"{value:0.3f}"
                 self.qc = pd.concat(
                     [
                         self.qc,
