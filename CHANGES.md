@@ -1,5 +1,8 @@
 # Release Notes
 
+the prep command with the '-r' flag no longer removes previous ERROR logs
+removing previous guardrails that forced recipe fails if QC strayed beyond set limits (now handled with the `qc-acceptable-ranges` setting)
+updating some QC names and adding a few more
 adding mbias QC ranges to soxspipe.yaml
 adding 'guard rails' to recipes with a new 'qc-acceptable-ranges' settings block for each recipe. Give a lower and upper acceptable range for each QC metric. If the QC value lands outside of this range, a forced fail will be triggered.
 adding info line at the end of a multiprocessing batch run of recipe reductions giving details of passed and fails
