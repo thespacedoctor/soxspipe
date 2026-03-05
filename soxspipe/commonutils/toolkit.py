@@ -1412,8 +1412,13 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     cols = []
 
     qcCopy = qc.copy()
+    if "qc_order" in qcCopy.columns:
+        qcCopy = qcCopy.loc[((qcCopy["qc_order"] == "-1") | (qcCopy["qc_order"].isna()) | (qcCopy["qc_order"] == -1))]
     qcCopy["value"] = qcCopy["qc_value"].astype(str) + " " + qcCopy["qc_unit"]
     qcCopy.loc[qcCopy["value"].isnull(), "value"] = qcCopy.loc[qcCopy["value"].isnull(), "qc_value"]
+
+    if len(qcCopy.index) > 10:
+        qcCopy = qcCopy.head(10)
 
     columns1 = ["value", "qc_comment"]
     colColours = plt.cm.Greys(np.full(len(columns1), 0.1))
@@ -1437,7 +1442,7 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     # qcAx.set_title(
     #     "QC Table", fontsize=9)
 
-    settingsCopy = {k: v for k, v in settings.items() if k not in ["nir", "vis", "uvb"]}
+    settingsCopy = {k: v for k, v in settings.items() if k not in ["nir", "vis", "uvb", "qc-acceptable-ranges"]}
 
     settingsCopy = {"setting": settingsCopy.keys(), "value": settingsCopy.values()}
 

@@ -1513,7 +1513,6 @@ class base_recipe(object):
             return None
 
         for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
-
             matchName = k.lower().replace("-", " ").replace("_", " ")
             mask = (
                 (self.qc["qc_name"].str.lower() == matchName)
@@ -1521,6 +1520,9 @@ class base_recipe(object):
                 & ((self.qc["qc_value"].astype(float) <= v[0]) | (self.qc["qc_value"].astype(float) >= v[1]))
             )
             self.qc.loc[mask, "qc_flag"] = "fail"
+            # ADD GUARDRAIL VALUES TO QC TABLE FOR REPORTING PURPOSES
+            self.qc.loc[(self.qc["qc_name"].str.lower() == matchName), "qc_value_min"] = v[0]
+            self.qc.loc[(self.qc["qc_name"].str.lower() == matchName), "qc_value_max"] = v[1]
 
         self.log.debug("completed the ``flag_poor_data`` method")
         return None
