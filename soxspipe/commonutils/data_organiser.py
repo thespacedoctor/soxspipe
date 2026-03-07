@@ -147,6 +147,13 @@ class data_organiser(object):
             "OB_NTPL",
             "OB_START",
             "TPL_START",
+            "NIR_TEMP_K",
+            "VIS_TEMP_C",
+            "CP_TEMP_C",
+            "AFC1_POS1",
+            "AFC1_POS2",
+            "AFC2_POS1",
+            "AFC2_POS2",
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -200,6 +207,13 @@ class data_organiser(object):
             "eso obs ntpl",
             "eso tpl start",
             "eso obs start",
+            "nir temp k",
+            "vis temp c",
+            "cp temp c",
+            "afc1 pos1",
+            "afc1 pos2",
+            "afc2 pos1",
+            "afc2 pos2",
         ]
 
         self.proKeywords = ["eso pro type", "eso pro tech", "eso pro catg"]
@@ -230,6 +244,16 @@ class data_organiser(object):
             "eso tpl nexp",
             "filter",
             "object",
+            # "absrot"
+            # "eso tpl start",
+            # "eso obs start",
+            # "nir temp k",
+            # "vis temp c",
+            # "cp temp c",
+            # "afc1 pos1",
+            # "afc1 pos2",
+            # "afc2 pos1",
+            # "afc2 pos2",
         ]
 
         self.productFilterKeywords = [
@@ -864,7 +888,7 @@ class data_organiser(object):
         mask = filteredFrames[self.kw("GAIN").lower()] > filteredFrames[self.kw("CONAD").lower()]
         filteredFrames.loc[mask, "gain"] = filteredFrames.loc[mask, self.kw("GAIN").lower()]
 
-        # ADD SIMULATION FLAG FOR SPECTROSCOPIC DATA
+        # ADD SIMULATION FLAG FOR SPECTROSCOPIC DATA (AND MORE)
         if self.instrument.lower() == "soxs":
             filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "simulation"] = filteredFrames.loc[
                 (filteredFrames["eso seq arm"] == "NIR"), self.kw("SWSIM_NIR").lower()
@@ -878,8 +902,26 @@ class data_organiser(object):
             filteredFrames.loc[(filteredFrames["simulation"] == "--"), "simulation"] = 0
             filteredFrames.loc[(filteredFrames["simulation"] == -99.99), "simulation"] = 0
             filteredFrames.loc[(filteredFrames["simulation"] == "T"), "simulation"] = 1
+            filteredFrames = filteredFrames.rename(
+                columns={
+                    "eso ins temp217 val": "nir temp k",
+                    "eso ins temp104 val": "vis temp c",
+                    "eso ins temp301 val": "cp temp c",
+                    "eso ins afc1 pos1": "afc1 pos1",
+                    "eso ins afc1 pos2": "afc1 pos2",
+                    "eso ins afc2 pos1": "afc2 pos1",
+                    "eso ins afc2 pos2": "afc2 pos2",
+                }
+            )
         else:
             filteredFrames["simulation"] = 0
+            filteredFrames["nir temp k"] = 0
+            filteredFrames["vis temp c"] = 0
+            filteredFrames["cp temp c"] = 0
+            filteredFrames["afc1 pos1"] = 0
+            filteredFrames["afc1 pos2"] = 0
+            filteredFrames["afc2 pos1"] = 0
+            filteredFrames["afc2 pos2"] = 0
 
         filteredFrames.loc[
             ((filteredFrames["slit"].str.contains("MULT")) & (filteredFrames["slitmask"] == "--")), "slitmask"
@@ -946,10 +988,19 @@ class data_organiser(object):
             rawFrames.loc[(rawFrames["eso seq arm"].str.lower() == "nir")].groupby(groupBy)["lamp"].transform("first")
         )
         rawFrames.loc[(rawFrames["lamp"].isnull()), "lamp"] = "--"
-        rawFrames.loc[(rawFrames["absrot"] == -99.99), "absrot"] = 0.0
 
         rawFrames["exptime"] = rawFrames["exptime"].apply(lambda x: round(x, 2))
-        rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name="counts")
+
+        # Get numeric columns not in the groupby list
+        numeric_cols = rawFrames.select_dtypes(include=[np.number]).columns
+        cols_to_mean = [col for col in numeric_cols if col not in filterKeywordsRaw]
+
+        # Create aggregation dictionary
+        agg_dict = {col: "mean" for col in cols_to_mean}
+        agg_dict["file"] = "size"  # for counting rows
+
+        # Group and aggregate
+        rawGroups = rawFrames.groupby(filterKeywordsRaw).agg(agg_dict).rename(columns={"file": "counts"}).reset_index()
         rawGroups.style.hide(axis="index")
         pd.options.mode.chained_assignment = None
 
@@ -1903,6 +1954,7 @@ class data_organiser(object):
                 "eso tel ambi fwhm start": float,
                 "eso tel airm end": float,
                 "eso tel airm start": float,
+                "absrot": float,
             }
         )
         rawFrames.fillna(
@@ -1919,6 +1971,7 @@ class data_organiser(object):
                 "eso tel ambi fwhm start": -99.99,
                 "eso tel airm end": -99.99,
                 "eso tel airm start": -99.99,
+                "absrot": -99.99,
             },
             inplace=True,
         )
