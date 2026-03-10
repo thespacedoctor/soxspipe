@@ -244,16 +244,17 @@ class data_organiser(object):
             "eso tpl nexp",
             "filter",
             "object",
-            # "absrot"
-            # "eso tpl start",
-            # "eso obs start",
-            # "nir temp k",
-            # "vis temp c",
-            # "cp temp c",
-            # "afc1 pos1",
-            # "afc1 pos2",
-            # "afc2 pos1",
-            # "afc2 pos2",
+        ]
+
+        self.filterKeywordsExtras = [
+            "mjd-obs",
+            "nir temp k",
+            "vis temp c",
+            "cp temp c",
+            "afc1 pos1",
+            "afc1 pos2",
+            "afc2 pos1",
+            "afc2 pos2",
         ]
 
         self.productFilterKeywords = [
@@ -991,18 +992,7 @@ class data_organiser(object):
 
         rawFrames["exptime"] = rawFrames["exptime"].apply(lambda x: round(x, 2))
 
-        # Get numeric columns not in the groupby list
-        numeric_cols = rawFrames.select_dtypes(include=[np.number]).columns
-        cols_to_mean = [col for col in numeric_cols if col not in filterKeywordsRaw]
-
-        # Create aggregation dictionary
-        agg_dict = {col: "mean" for col in cols_to_mean}
-        agg_dict["file"] = "size"  # for counting rows
-
-        # Group and aggregate
-        rawGroups = rawFrames.groupby(filterKeywordsRaw).agg(agg_dict).rename(columns={"file": "counts"}).reset_index()
-        rawGroups.style.hide(axis="index")
-        pd.options.mode.chained_assignment = None
+        rawGroups = self._group_raw_frames(rawFrames, filterKeywordsRaw, addFilepaths=False, addStartDate=False)
 
         if verbose:
             print("\n# CONTENT FILE INDEX\n")
@@ -1912,6 +1902,7 @@ class data_organiser(object):
         ```
         """
         import pandas as pd
+        import numpy as np
 
         # IF NONE, SET TO EMPTY STRING
         ttype, arm, tech = ttype or "", arm or "", tech or ""
@@ -1955,6 +1946,13 @@ class data_organiser(object):
                 "eso tel airm end": float,
                 "eso tel airm start": float,
                 "absrot": float,
+                "nir temp k": float,
+                "vis temp c": float,
+                "cp temp c": float,
+                "afc1 pos1": float,
+                "afc1 pos2": float,
+                "afc2 pos1": float,
+                "afc2 pos2": float,
             }
         )
         rawFrames.fillna(
@@ -1972,6 +1970,13 @@ class data_organiser(object):
                 "eso tel airm end": -99.99,
                 "eso tel airm start": -99.99,
                 "absrot": -99.99,
+                "nir temp k": -99.99,
+                "vis temp c": -99.99,
+                "cp temp c": -99.99,
+                "afc1 pos1": -99.99,
+                "afc1 pos2": -99.99,
+                "afc2 pos1": -99.99,
+                "afc2 pos2": -99.99,
             },
             inplace=True,
         )
@@ -1987,23 +1992,11 @@ class data_organiser(object):
             & (rawFrames["eso dpr type"] != "DARK")
         )
         rawFramesNoOffFrames = rawFrames.loc[~mask]
-        rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw + ["set_first_file"])
 
         if not len(rawFramesNoOffFrames.index):
             return pd.DataFrame(), pd.DataFrame()
 
-        mjds = rawGroups.mean(numeric_only=True)["mjd-obs"].values
-        # MANIPULATE ALL STRINGS IN startTime TO BE OF FORMAT YYYY-MM-DDTHH:MM:SS.SSS
-        startTime = rawGroups.min()["date-obs"].values
-        filepaths = [list(group["filepath"].values) for name, group in rawGroups]
-
-        # PRINT EACH GROUP IN THE GROUPED DATAFRAME
-
-        startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
-        rawGroups = rawGroups.size().reset_index(name="counts")
-        rawGroups["mjd-obs"] = mjds
-        rawGroups["date-obs"] = startTime
-        rawGroups["filepaths"] = filepaths
+        rawGroups = self._group_raw_frames(rawFramesNoOffFrames, filterKeywordsRaw + ["set_first_file"])
 
         # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
         mask = rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])
@@ -2011,13 +2004,7 @@ class data_organiser(object):
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = rawFrames.loc[rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])]
         if len(rawScienceFrames.index):
-            rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
-            filepaths = [list(group["filepath"].values) for name, group in rawScienceFrames]
-            rawScienceFrames = rawScienceFrames.size().reset_index(name="counts")
-            rawScienceFrames["filepaths"] = filepaths
-            startTime = rawScienceFrames["date-obs"].values
-            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
-            rawScienceFrames["date-obs"] = startTime
+            rawScienceFrames = self._group_raw_frames(rawScienceFrames, filterKeywordsRaw + ["mjd-obs"])
             # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
@@ -2038,13 +2025,7 @@ class data_organiser(object):
                 rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
             ]
         if len(rawPinholeFrames.index):
-            rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
-            filepaths = [list(group["filepath"].values) for name, group in rawPinholeFrames]
-            rawPinholeFrames = rawPinholeFrames.size().reset_index(name="counts")
-            rawPinholeFrames["filepaths"] = filepaths
-            startTime = rawPinholeFrames["date-obs"].values
-            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
-            rawPinholeFrames["date-obs"] = startTime
+            rawPinholeFrames = self._group_raw_frames(rawPinholeFrames, filterKeywordsRaw + ["mjd-obs"])
             # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
 
@@ -2098,6 +2079,35 @@ class data_organiser(object):
         rawGroups = rawGroups.loc[~mask]
 
         return rawFrames, rawGroups
+
+    def _group_raw_frames(self, rawFrames, filterKeywordsRaw, addFilepaths=True, addStartDate=True):
+        """Group raw frames and return grouped rows with aggregation metadata."""
+        import pandas as pd
+
+        # Create aggregation dictionary
+        agg_dict = {col: "mean" for col in self.filterKeywordsExtras if col not in filterKeywordsRaw}
+        agg_dict["file"] = "size"  # for counting rows
+
+        rawGroups = rawFrames.groupby(filterKeywordsRaw)
+
+        if addFilepaths:
+            filepaths = [list(group["filepath"].values) for name, group in rawGroups]
+        if addStartDate:
+            startTime = rawGroups.min()["date-obs"].values
+
+        # Group and aggregate
+        rawGroups = rawFrames.groupby(filterKeywordsRaw).agg(agg_dict).rename(columns={"file": "counts"}).reset_index()
+        rawGroups.style.hide(axis="index")
+        pd.options.mode.chained_assignment = None
+
+        # Normalise timestamps to compact YYYYMMDDTHHMMSS format for SOF naming.
+        if addFilepaths:
+            rawGroups["filepaths"] = filepaths
+        if addStartDate:
+            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
+            rawGroups["date-obs"] = startTime
+
+        return rawGroups
 
     def predict_product_frames(self, productTypes, rawGroups, recipe):
         """

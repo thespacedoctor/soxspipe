@@ -436,6 +436,16 @@ class base_recipe(object):
             product=False,
         )
 
+        ## KEYWORDS FOR LATER QCs
+        if self.inst == "SOXS":
+            self.cptemp = frame.header[kw("CP_TEMP_C")]
+            if self.arm == "NIR":
+                self.detectorTemp = frame.header[kw("NIR_TEMP_K")]
+            elif self.arm == "VIS":
+                self.detectorTemp = frame.header[kw("VIS_TEMP_C")]
+            else:
+                self.detectorTemp = None
+
         self.log.debug("completed the ``_prepare_single_frame`` method")
         return filePath
 
@@ -1424,18 +1434,14 @@ class base_recipe(object):
             # REMOVE COLUMN FROM DATA FRAME
             self.products.drop(columns=["file_path"], inplace=True)
 
+        self.flag_poor_data()
+
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
         self.qc = self.qc.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
 
         # SEND TO DATABASE
         self.qc["sof_name"] = self.sofName + ".sof"
         self.qc["obs_date_utc"] = self.dateObs
-
-        # FILTER DATA FRAME
-        mask = self.qc["qc_order"].isna()
-        self.qc.loc[mask, "qc_order"] = "-1"
-
-        self.flag_poor_data()
 
         # SORT BY COLUMN NAME
         self.qc.sort_values(["qc_name"], inplace=True)
@@ -1446,6 +1452,8 @@ class base_recipe(object):
         columns.remove("reduction_date_utc")
         columns.remove("soxspipe_recipe")
         columns.remove("sof_name")
+        columns.remove("qc_value_min")
+        columns.remove("qc_value_max")
         dbColumns = list(self.qc.columns)
         dbColumns.remove("to_header")
 
@@ -1506,6 +1514,57 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``flag_poor_data`` method")
 
+        from datetime import datetime
+        import pandas as pd
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        if self.inst.upper() == "SOXS":
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "DETECTOR TEMP",
+                            "qc_value": self.detectorTemp,
+                            "qc_comment": f"[K] temp of detector",
+                            "qc_unit": "kelvin",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": False,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "CPATH TEMP",
+                            "qc_value": self.cptemp,
+                            "qc_comment": f"[C] temp of common path",
+                            "qc_unit": "celsius",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": False,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+
+        # FILTER DATA FRAME
+        mask = self.qc["qc_order"].isna()
+        self.qc.loc[mask, "qc_order"] = "-1"
         self.qc["qc_flag"] = "pass"
 
         if "qc-acceptable-ranges" not in self.recipeSettings:
@@ -1513,6 +1572,7 @@ class base_recipe(object):
             return None
 
         for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
+            print(k, v)
             matchName = k.lower().replace("-", " ").replace("_", " ")
             mask = (
                 (self.qc["qc_name"].str.lower() == matchName)

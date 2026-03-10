@@ -1,5 +1,7 @@
 # Release Notes
 
+Adding instrument temperature and AFC numbers to data-organiser database
+adding guardrail values to the qc database table
 the prep command with the '-r' flag no longer removes previous ERROR logs
 removing previous guardrails that forced recipe fails if QC strayed beyond set limits (now handled with the `qc-acceptable-ranges` setting)
 updating some QC names and adding a few more

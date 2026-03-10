@@ -393,7 +393,7 @@ class _base_detect(object):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()}RESRMS",
+                            "qc_name": f"{self.axisA.upper()}RESSD",
                             "qc_value": f"{res_std:0.2f}",
                             "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
