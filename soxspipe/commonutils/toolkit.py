@@ -680,11 +680,12 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     import numpy as np
     import pandas as pd
     from soxspipe.commonutils import detector_lookup
+    from astropy.io import fits
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
     kw = keyword_lookup(log=log, settings=settings).get
-    kw = kw
+
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
@@ -710,7 +711,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     # UNPACK THE ORDER TABLE
     orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
-        log=log, orderTablePath=orderTablePath, binx=binx, biny=biny
+        log=log, orderTablePath=orderTablePath, binx=binx, biny=biny, prebinned=True
     )
 
     mask = np.ones_like(frame.data)
