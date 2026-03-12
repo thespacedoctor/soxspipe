@@ -2,13 +2,8 @@
 *Unit testing tools*
 """
 
-import os
+from fundamentals import utKit
 
-on_rtd = os.environ.get("READTHEDOCS") == "True"
-if not on_rtd:
-    from fundamentals import utKit
-else:
-    utKit = object
 
 # OVERRIDES
 
