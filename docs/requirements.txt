@@ -17,3 +17,4 @@ sphinxcontrib-svg2pdfconverter
 sphinx-remove-toctrees
 sphinxcontrib.bibtex
 fundamentals==2.7.6
+line_profiler
