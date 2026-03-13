@@ -722,16 +722,27 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     axisACoords_up = axisACoords_up.astype(int)
     axisACoords_low = axisACoords_low.astype(int)
 
-    # UPDATE THE MASK
-    for u, l, y in zip(axisACoords_up, axisACoords_low, axisBCoords):
-        mask[y][l:u] = 0
+    if axisA == "x":
+        for u, l, y in zip(axisACoords_up, axisACoords_low, axisBCoords):
+            y = int(y)
+            l = int(max(0, l))
+            u = int(min(mask.shape[1], u))
+            if 0 <= y < mask.shape[0] and l < u:
+                mask[y, l:u] = 0
+    else:
+        for u, l, x in zip(axisACoords_up, axisACoords_low, axisBCoords):
+            x = int(x)
+            l = int(max(0, l))
+            u = int(min(mask.shape[0], u))
+            if 0 <= x < mask.shape[1] and l < u:
+                mask[l:u, x] = 0
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
     mask = (mask == 1) | (frame.mask == 1)
 
     # PLOT ONE OF THE MASKED FRAMES TO CHECK
     maskedFrame = ma.array(frame.data, mask=mask)
-    quicklook_image(log=log, CCDObject=np.copy(mask), show=False, ext=None)
+    quicklook_image(log=log, CCDObject=maskedFrame, show=False, ext=None)
 
     mean = np.ma.mean(maskedFrame)
     flux = np.ma.sum(maskedFrame)
@@ -739,8 +750,8 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     utcnow = datetime.utcnow()
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-    mean = "%0.*f" % (2, mean)
-    flux = "%0.*f" % (2, flux)
+    mean = "%0.*f" % (3, mean)
+    flux = "%0.*f" % (3, flux)
 
     qcTable = pd.concat(
         [
