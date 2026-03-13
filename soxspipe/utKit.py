@@ -1,25 +1,22 @@
 """
 *Unit testing tools*
 """
+
 from fundamentals import utKit
 
 # OVERRIDES
 
 
 class utKit(utKit):
-
     """
     *Override dryx utKit*
     """
+
     # Variable Data Atrributes
 
     # Override Variable Data Atrributes
     # Initialisation
-    def __init__(
-            self,
-            moduleDirectory,
-            dbConn=False
-    ):
+    def __init__(self, moduleDirectory, dbConn=False):
         self.moduleDirectory = moduleDirectory
         # x-self-arg-tmpx
 
@@ -72,6 +69,7 @@ class utKit(utKit):
         - ``rootPath`` -- the root path of a project
         """
         import os
+
         rootPath = os.path.dirname(__file__)
 
         return rootPath
@@ -82,15 +80,15 @@ class utKit(utKit):
         """
         from fundamentals.mysql import directory_script_runner
         from fundamentals import tools
+
         packageDirectory = self.get_project_root()
         su = tools(
-            arguments={"settingsFile": packageDirectory +
-                       "/test_settings.yaml"},
+            arguments={"settingsFile": packageDirectory + "/test_settings.yaml"},
             docString=__doc__,
             logLevel="DEBUG",
             options_first=False,
             projectName=None,
-            defaultSettingsFile=False
+            defaultSettingsFile=False,
         )
         arguments, settings, log, dbConn = su.setup()
         directory_script_runner(
@@ -98,5 +96,5 @@ class utKit(utKit):
             pathToScriptDirectory=packageDirectory + "/tests/input",
             dbConn=dbConn,
             successRule=None,
-            failureRule=None
+            failureRule=None,
         )
