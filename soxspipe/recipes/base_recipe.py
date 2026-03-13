@@ -1572,7 +1572,6 @@ class base_recipe(object):
             return None
 
         for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
-            print(k, v)
             matchName = k.lower().replace("-", " ").replace("_", " ")
             mask = (
                 (self.qc["qc_name"].str.lower() == matchName)
