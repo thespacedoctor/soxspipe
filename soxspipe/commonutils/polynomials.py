@@ -15,12 +15,13 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+
 # from line_profiler import profile
 
-os.environ['TERM'] = 'vt100'
+os.environ["TERM"] = "vt100"
 
 
-class chebyshev_order_wavelength_polynomials():
+class chebyshev_order_wavelength_polynomials:
     """*the chebyshev polynomial fits for the single frames; to be iteratively fitted to minimise errors*
 
     **Key Arguments:**
@@ -41,15 +42,7 @@ class chebyshev_order_wavelength_polynomials():
     ```
     """
 
-    def __init__(
-            self,
-            log,
-            orderDeg,
-            wavelengthDeg,
-            slitDeg,
-            exponentsIncluded=False,
-            axis=False
-    ):
+    def __init__(self, log, orderDeg, wavelengthDeg, slitDeg, exponentsIncluded=False, axis=False):
         self.log = log
         self.orderDeg = orderDeg
         self.wavelengthDeg = wavelengthDeg
@@ -75,7 +68,7 @@ class chebyshev_order_wavelength_polynomials():
 
         - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
         """
-        self.log.debug('starting the ``poly`` method')
+        self.log.debug("starting the ``poly`` method")
 
         import numpy as np
 
@@ -97,25 +90,27 @@ class chebyshev_order_wavelength_polynomials():
             for i in range(0, orderDeg + 1):
                 for j in range(0, wavelengthDeg + 1):
                     for k in range(0, slitDeg + 1):
-                        lhsVals += coeff[n_coeff] * orderVals**i * \
-                            wlVals**j * \
-                            spVals**k
+                        lhsVals += coeff[n_coeff] * orderVals**i * wlVals**j * spVals**k
                         n_coeff += 1
         else:
             for i in range(0, orderDeg + 1):
                 for j in range(0, wavelengthDeg + 1):
                     for k in range(0, slitDeg + 1):
                         # OPTIMISE: 95%
-                        lhsVals += coeff[n_coeff] * orderPixelTable[f"order_pow_{self.axis}{i}"].values.astype("float") * orderPixelTable[f"wavelength_pow_{self.axis}{j}"].values.astype(
-                            "float") * orderPixelTable[f"slit_position_pow_{self.axis}{k}"].values.astype("float")
+                        lhsVals += (
+                            coeff[n_coeff]
+                            * orderPixelTable[f"order_pow_{self.axis}{i}"].values.astype("float")
+                            * orderPixelTable[f"wavelength_pow_{self.axis}{j}"].values.astype("float")
+                            * orderPixelTable[f"slit_position_pow_{self.axis}{k}"].values.astype("float")
+                        )
                         n_coeff += 1
 
-        self.log.debug('completed the ``poly`` method')
+        self.log.debug("completed the ``poly`` method")
 
         return lhsVals
 
 
-class chebyshev_xy_polynomial():
+class chebyshev_xy_polynomial:
     """*the chebyshev polynomial fits for the pinhole flat frame order tracing; to be iteratively fitted to minimise errors*
 
     **Key Arguments:**
@@ -134,13 +129,7 @@ class chebyshev_xy_polynomial():
     ```
     """
 
-    def __init__(
-            self,
-            log,
-            y_deg,
-            yCol=False,
-            exponentsIncluded=False
-    ):
+    def __init__(self, log, y_deg, yCol=False, exponentsIncluded=False):
         self.log = log
         self.y_deg = y_deg
         self.yCol = yCol
@@ -160,17 +149,17 @@ class chebyshev_xy_polynomial():
 
         - ``xvals`` -- the x values of the fitted polynomial
         """
-        self.log.info('starting the ``poly`` method')
+        self.log.info("starting the ``poly`` method")
 
         import numpy as np
         import pandas as pd
 
         n_coeff = 0
         if not isinstance(orderPixelTable, pd.core.frame.DataFrame):
-            yarray = np.array(orderPixelTable).astype('float')
+            yarray = np.array(orderPixelTable).astype("float")
             lhsVals = np.zeros(len(orderPixelTable))
         else:
-            yarray = orderPixelTable[self.yCol].values.astype('float')
+            yarray = orderPixelTable[self.yCol].values.astype("float")
             lhsVals = np.zeros(len(orderPixelTable.index))
 
         if not self.exponentsIncluded:
@@ -180,16 +169,15 @@ class chebyshev_xy_polynomial():
                 n_coeff += 1
         else:
             for i in range(0, self.y_deg + 1):
-                lhsVals += coeff[n_coeff] * \
-                    orderPixelTable[f"y_pow_{i}"].values.astype('float')
+                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype("float")
                 n_coeff += 1
 
-        self.log.info('completed the ``poly`` method')
+        self.log.info("completed the ``poly`` method")
 
         return lhsVals
 
 
-class chebyshev_order_xy_polynomials():
+class chebyshev_order_xy_polynomials:
     """*the chebyshev polynomial fits FIX ME*
 
     **Key Arguments:**
@@ -211,16 +199,7 @@ class chebyshev_order_xy_polynomials():
     ```
     """
 
-    def __init__(
-            self,
-            log,
-            orderDeg,
-            axisBDeg,
-            axisB="y",
-            axisBCol=False,
-            orderCol=False,
-            exponentsIncluded=False
-    ):
+    def __init__(self, log, orderDeg, axisBDeg, axisB="y", axisBCol=False, orderCol=False, exponentsIncluded=False):
         self.log = log
         self.orderDeg = orderDeg
         self.axisBDeg = axisBDeg
@@ -243,7 +222,7 @@ class chebyshev_order_xy_polynomials():
 
         - ``lhsVals`` -- the left-hand-side vals of the fitted polynomials
         """
-        self.log.debug('starting the ``poly`` method')
+        self.log.debug("starting the ``poly`` method")
 
         import numpy as np
 
@@ -258,21 +237,23 @@ class chebyshev_order_xy_polynomials():
         # FOR LOOPS ARE THE RIGHT TOOL TO PERFORM COMPUTATIONS OR RUN FUNCTIONS. LIST COMPREHENSION IS SLOW IN THESE CASES
 
         if self.exponentsIncluded == False:
-            orderVals = orderPixelTable[self.orderCol].values.astype('float')
-            bVals = orderPixelTable[self.axisBCol].values.astype('float')
+            orderVals = orderPixelTable[self.orderCol].values.astype("float")
+            bVals = orderPixelTable[self.axisBCol].values.astype("float")
 
             for i in range(0, orderDeg + 1):
                 for j in range(0, axisBDeg + 1):
-                    lhsVals += coeff[n_coeff] * orderVals**i * \
-                        bVals**j
+                    lhsVals += coeff[n_coeff] * orderVals**i * bVals**j
                     n_coeff += 1
         else:
             for i in range(0, orderDeg + 1):
                 for j in range(0, axisBDeg + 1):
-                    lhsVals += float(coeff[n_coeff]) * orderPixelTable[f"order_pow_{i}"].values.astype(
-                        'float') * orderPixelTable[f"{axisB}_pow_{j}"].values.astype('float')
+                    lhsVals += (
+                        float(coeff[n_coeff])
+                        * orderPixelTable[f"order_pow_{i}"].values.astype("float")
+                        * orderPixelTable[f"{axisB}_pow_{j}"].values.astype("float")
+                    )
                     n_coeff += 1
 
-        self.log.debug('completed the ``poly`` method')
+        self.log.debug("completed the ``poly`` method")
 
         return lhsVals

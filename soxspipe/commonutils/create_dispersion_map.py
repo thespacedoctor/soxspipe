@@ -2586,6 +2586,7 @@ class create_dispersion_map(object):
         from astropy.io import fits
         import copy
         from fundamentals import fmultiprocess
+        from soxspipe.commonutils import toolkit
 
         self.log.print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
@@ -2650,6 +2651,10 @@ class create_dispersion_map(object):
 
         combinedWlImage.data += wlMap.data
         combinedSlitImage.data += wlMap.data
+
+        toolkit.frame_to_32(combinedWlImage)
+        toolkit.frame_to_32(combinedSlitImage)
+        toolkit.frame_to_32(orderMap)
 
         # GET THE EXTENSION (WITH DOT PREFIX)
         extension = os.path.splitext(dispersionMapPath)[1]
