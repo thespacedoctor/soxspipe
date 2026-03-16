@@ -799,29 +799,6 @@ class create_dispersion_map(object):
             else:
                 orderPixelTable["fwhm_pin_px"] = 3.0
 
-            if self.firstGuessMap:
-                detectedLineGroups = orderPixelTable.groupby(["wavelength", "order"]).size().reset_index(name="count")
-                # FIND THE MODE COUNT FOR EACH ORDER
-
-                modeCounts = (
-                    detectedLineGroups.groupby("order")["count"]
-                    .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0)
-                    .reset_index(name="pinhole count")
-                )
-                if self.inst.upper() == "SOXS":
-                    # REMOVE ORDER = 10
-                    modeCounts = modeCounts[~modeCounts["order"].isin([10, 11, 12])]
-                # IF ANY MODE IS LESS THAN 9, FAIL GRACEFULLY
-                if (modeCounts["pinhole count"] < 9).any():
-                    from tabulate import tabulate
-
-                    self.log.print("\n")
-                    self.log.print(tabulate(modeCounts, headers="keys", tablefmt="psql"))
-                    self.log.print("\n")
-                    raise AttributeError(
-                        f"All 9 pinholes cannot be seen in the data. A dispersion solution cannot be created."
-                    )
-
             # STEP 6: ITERATIVELY FIT POLYNOMIAL SOLUTIONS WITH AUTOMATIC DEGREE REDUCTION
             fitFound = False
             tryCount = 0
@@ -889,6 +866,41 @@ class create_dispersion_map(object):
 
         # STEP 10: WRITE MISSING LINES TO FILE
         self._write_missing_lines_file(missingLines, missingLinesFN, utcnow)
+
+        if self.firstGuessMap:
+            detectedLineGroups = goodLinesTable.groupby(["wavelength", "order"]).size().reset_index(name="count")
+
+            modeCounts = (
+                detectedLineGroups.groupby("order")["count"]
+                .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0)
+                .reset_index(name="pinhole count")
+            )
+            if self.inst.upper() == "SOXS":
+                # REMOVE ORDER = 10
+                modeCounts = modeCounts[~modeCounts["order"].isin([10, 11, 12])]
+
+            self.minpin = modeCounts["pinhole count"].min()
+
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "PINHOLE COUNT MIN",
+                            "qc_value": self.minpin,
+                            "qc_comment": "[pinholes] Minimum number of pinholes detected in any order",
+                            "qc_unit": "pinholes",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
 
         # WRITE THE MAP TO FILE
         if not self.settings["tune-pipeline"]:
