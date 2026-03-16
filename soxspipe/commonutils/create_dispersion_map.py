@@ -1441,6 +1441,7 @@ class create_dispersion_map(object):
             turnOffMP = False
 
         # PROCESS ALL STAMPS USING MULTIPROCESSING (OR SERIAL IN DEBUG MODE)
+        # NOTE: MULTIPROCESSING AND THREADING IS MUCH SLOWER! KEEP TURNED OFF
         results = fmultiprocess(
             log=self.log,
             function=measure_line_position,
@@ -1449,7 +1450,7 @@ class create_dispersion_map(object):
             timeout=300,
             mute=False,
             progressBar=False,
-            turnOffMP=turnOffMP,  # DISABLE MULTIPROCESSING IN DEBUG MODE
+            turnOffMP=True,  # DISABLE MULTIPROCESSING IN DEBUG MODE
             windowHalf=self.windowHalf,
             iraf=iraf,
             sigmaLimit=sigmaLimit,
