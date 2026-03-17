@@ -387,21 +387,22 @@ class create_dispersion_map(object):
 
         return orderPixelTable
 
-    def _write_qc_metrics(self, totalLines, detectedLines, percentageDetectedLines, utcnow):
+    def _write_qc_metrics(self, totalLines, detectedLines, percentageDetectedLines, percentageGoodLines, utcnow):
         """*WRITE LINE DETECTION QC METRICS TO TABLE*"""
         import pandas as pd
 
         # DETERMINE TAG BASED ON RECIPE TYPE
         tag = "single" if "DISP" in self.recipeName.upper() else "multi"
 
-        qc_names = ["DETLINES TOT", "DETLINES NUM", "DETLINES FRAC"]
+        qc_names = ["DETLINES TOT", "DETLINES NUM", "DETLINES FRAC", "GOODLINES FRAC"]
         qc_comments = [
             f"Total number of line in {tag} line-list",
             f"Number of lines detected in {tag} pinhole frame",
             f"Proportion of input line-list lines detected on {tag} pinhole frame",
+            f"Proportion of good, unclipped lines in {tag} pinhole frame",
         ]
-        qc_values = [totalLines, detectedLines, percentageDetectedLines]
-        qc_units = ["lines", "lines", None]
+        qc_values = [totalLines, detectedLines, percentageDetectedLines, percentageGoodLines]
+        qc_units = ["lines", "lines", None, None]
 
         for qc_name, qc_value, qc_comment, qc_unit in zip(qc_names, qc_values, qc_comments, qc_units):
             self.qc = pd.concat(
@@ -503,7 +504,7 @@ class create_dispersion_map(object):
         from astropy.stats import sigma_clipped_stats
 
         # ONLY CHECK ON FIRST ITERATION
-        if iteration != 0:
+        if iteration > 1:
             return orderPixelTable
 
         # CALCULATE MEDIAN SHIFTS FOR TOP AND BOTTOM SLIT POSITIONS
@@ -550,6 +551,7 @@ class create_dispersion_map(object):
 
             # DEBUG PLOTS IF ENABLED
             if self.debug:
+                print("ERERERE")
                 _plot_slit_index_comparisons(orderPixelTable.loc[(mask & (orderPixelTable["slit_index"] == 8))])
                 _plot_slit_index_comparisons(orderPixelTable.loc[(mask & (orderPixelTable["slit_index"] == 0))])
         elif self.debug:
@@ -790,9 +792,6 @@ class create_dispersion_map(object):
             # GET CURRENT UTC TIMESTAMP FOR QC RECORDS
             utcnow = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
-            # WRITE LINE DETECTION QC METRICS
-            self._write_qc_metrics(totalLines, detectedLines, percentageDetectedLines, utcnow)
-
             # GROUP FOUND LINES INTO SETS AND CLIP ON MEAN XY SHIFT RESIDUALS
             if True:
                 orderPixelTable = self._clip_on_measured_line_metrics(orderPixelTable)
@@ -856,6 +855,12 @@ class create_dispersion_map(object):
 
         # STEP 7: GENERATE OUTPUT FILENAMES
         goodLinesFN, missingLinesFN = self._get_output_filenames()
+
+        # CALCULATE GOOD LINES PERCENTAGE STATISTICS
+        percentageGoodLines = float("{:.6f}".format(float(len(goodLinesTable.index)) / float(totalLines)))
+
+        # WRITE LINE DETECTION QC METRICS
+        self._write_qc_metrics(totalLines, detectedLines, percentageDetectedLines, percentageGoodLines, utcnow)
 
         # STEP 8: PREPARE LINE LISTS WITH PROPER COLUMNS AND QC METRICS
         self._write_line_list_qc(clippedLinesTable, utcnow)
@@ -2616,28 +2621,38 @@ class create_dispersion_map(object):
             if order in theseOrders
         ]
 
-        # NUMPY CAN BE TRICKY WITH MP
-        numThreads = "1"
-        os.environ["OPENBLAS_NUM_THREADS"] = numThreads
-        os.environ["OMP_NUM_THREADS"] = numThreads
-        os.environ["BLAS_NUM_THREADS"] = numThreads
-
         if self.debug or self.turnOffMP:
             turnOffMP = True
+
         else:
             turnOffMP = False
 
-        results = fmultiprocess(
-            log=self.log,
-            function=self.order_to_image,
-            inputArray=inputArray,
-            poolSize=6,
-            timeout=3600,
-            turnOffMP=turnOffMP,
-        )
-        del os.environ["OPENBLAS_NUM_THREADS"]
-        del os.environ["OMP_NUM_THREADS"]
-        del os.environ["BLAS_NUM_THREADS"]
+        if turnOffMP:
+            results = fmultiprocess(
+                log=self.log,
+                function=self.order_to_image,
+                inputArray=inputArray,
+                poolSize=6,
+                timeout=3600,
+                turnOffMP=turnOffMP,
+            )
+        else:
+            # NUMPY CAN BE TRICKY WITH MP
+            numThreads = "1"
+            os.environ["OPENBLAS_NUM_THREADS"] = numThreads
+            os.environ["OMP_NUM_THREADS"] = numThreads
+            os.environ["BLAS_NUM_THREADS"] = numThreads
+            results = fmultiprocess(
+                log=self.log,
+                function=self.order_to_image,
+                inputArray=inputArray,
+                poolSize=6,
+                timeout=3600,
+                turnOffMP=turnOffMP,
+            )
+            del os.environ["OPENBLAS_NUM_THREADS"]
+            del os.environ["OMP_NUM_THREADS"]
+            del os.environ["BLAS_NUM_THREADS"]
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
@@ -2708,10 +2723,8 @@ class create_dispersion_map(object):
 
         # FIRST GENERATE A WAVELENGTH SURFACE - FINE WL, CHUNKY SLIT-POSITION
         wlRange = maxWl - minWl
-        if self.arm.lower == "nir":
-            grid_res_wavelength = wlRange / 200
-        else:
-            grid_res_wavelength = wlRange / 200
+        grid_res_wavelength = wlRange / 200
+
         slitLength = self.detectorParams["slit_length"]
         grid_res_slit = slitLength / 20
 
@@ -2720,9 +2733,9 @@ class create_dispersion_map(object):
         wlArray = np.arange(minWl, maxWl, grid_res_wavelength)
 
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
-        bigSlitArray = np.concatenate([np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
-        # NOW THE BIG WAVELEGTH ARRAY
-        bigWlArray = np.tile(wlArray, np.shape(slitArray)[0])
+        bigSlitArray = np.repeat(slitArray, wlArray.shape[0])
+        # NOW THE BIG WAVELENGTH ARRAY
+        bigWlArray = np.tile(wlArray, slitArray.shape[0])
 
         iteration = 0
         remainingPixels = 1
@@ -2750,6 +2763,7 @@ class create_dispersion_map(object):
             if remainingCount < 3:
                 break
 
+            # PRINT COLUMN NAMES AND TYPES FOR DEBUGGING
             orderPixelTable = orderPixelTable.drop_duplicates(subset=["pixel_x", "pixel_y", "order"])
             train_wlx = orderPixelTable["fit_x"].values
             train_wly = orderPixelTable["fit_y"].values
@@ -2764,7 +2778,7 @@ class create_dispersion_map(object):
                 targetX = np.concatenate([targetX, allx])
                 targetY = np.concatenate([targetY, ally])
 
-            # USE CUBIC SPLINE NEAREST NEIGHBOUR TO SEED RESULTS
+            # USE LINEAR INTERPOLATION TO SEED RESULTS (FASTER THAN CUBIC; SUFFICIENT FOR SEEDING)
             bigWlArray = griddata((train_wlx, train_wly), train_wl, (targetX, targetY), method="cubic")
             bigSlitArray = griddata((train_wlx, train_wly), train_sp, (targetX, targetY), method="cubic")
 
@@ -2812,7 +2826,7 @@ class create_dispersion_map(object):
 
         # GET DETECTOR PIXEL POSITIONS FOR ALL WAVELENGTH-SLIT GRID CELLS
         orderPixelTable = dispersion_map_to_pixel_arrays(
-            log=self.log, dispersionMapPath=self.dispersionMapPath, orderPixelTable=orderPixelTable
+            log=self.log, dispersionMapPath=self.dispersionMapPath, orderPixelTable=orderPixelTable, trimColumns=True
         )
 
         # INTEGER PIXEL VALUES & FIT DISPLACEMENTS FROM PIXEL CENTRES
@@ -2824,9 +2838,17 @@ class create_dispersion_map(object):
             np.square(orderPixelTable["residual_x"]) + np.square(orderPixelTable["residual_y"])
         )
 
+        # DEFINE COLUMN TYPES
+        orderPixelTable["order"] = orderPixelTable["order"].astype(np.int16)
+        orderPixelTable["wavelength"] = orderPixelTable["wavelength"].astype(np.float32)
+        orderPixelTable["slit_position"] = orderPixelTable["slit_position"].astype(np.float32)
+        orderPixelTable["pixel_x"] = orderPixelTable["pixel_x"].astype(np.int16)
+        orderPixelTable["pixel_y"] = orderPixelTable["pixel_y"].astype(np.int16)
+
         # ADD A COUNT COLUMN FOR THE NUMBER OF SMALL SLIT/WL PIXELS FALLING IN
         # LARGE DETECTOR PIXELS
         count = orderPixelTable.groupby(["pixel_x", "pixel_y"]).size().reset_index(name="count")
+        count["count"] = count["count"].astype(np.int16)
         orderPixelTable = pd.merge(
             orderPixelTable, count, how="left", left_on=["pixel_x", "pixel_y"], right_on=["pixel_x", "pixel_y"]
         )
