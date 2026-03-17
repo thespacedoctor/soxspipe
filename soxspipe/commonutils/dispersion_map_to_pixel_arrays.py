@@ -17,15 +17,13 @@ from builtins import object
 import sys
 import os
 
-os.environ['TERM'] = 'vt100'
+os.environ["TERM"] = "vt100"
 
 
 def dispersion_map_to_pixel_arrays(
-        log,
-        dispersionMapPath,
-        orderPixelTable,
-        removeOffDetectorLocation=True):
-    """*Use a dispersion solution to convert wavelength, slit-position and echelle order numbers to X,Y pixel positions.* 
+    log, dispersionMapPath, orderPixelTable, removeOffDetectorLocation=True, trimColumns=False
+):
+    """*Use a dispersion solution to convert wavelength, slit-position and echelle order numbers to X,Y pixel positions.*
 
     Return a line-list with x,y fits given a first guess dispersion map.*
 
@@ -34,7 +32,8 @@ def dispersion_map_to_pixel_arrays(
     - `log` -- logger
     - `dispersionMapPath` -- path to the dispersion map
     - `orderPixelTable` -- a data-frame including 'order', 'wavelength' and 'slit_pos' columns
-    - `removeOffDetectorLocation` -- if data points are found to lie off the detector plane then remove them from the resutls. Default *True*
+    - `removeOffDetectorLocation` -- if data points are found to lie off the detector plane then remove them from the results. Default *True*
+    - `trimColumns` -- if True, only return the specified columns. Default *False*
 
     **Usage:**
 
@@ -51,19 +50,20 @@ def dispersion_map_to_pixel_arrays(
         dispersionMapPath="/path/to/map.csv",
         orderPixelTable=orderPixelTable
     )
-    ```           
+    ```
     """
-    log.debug('starting the ``dispersion_map_to_pixel_arrays`` function')
+    log.debug("starting the ``dispersion_map_to_pixel_arrays`` function")
 
     from astropy.table import Table
     import math
+    import numpy as np
 
     # READ THE FILE
     home = expanduser("~")
     dispersion_map = dispersionMapPath.replace("~", home)
 
     # SPEC FORMAT TO PANDAS DATAFRAME
-    dat = Table.read(dispersion_map, format='fits')
+    dat = Table.read(dispersion_map, format="fits")
     tableData = dat.to_pandas()
 
     # READ IN THE X- AND Y- GENERATING POLYNOMIALS FROM DISPERSION MAP FILE
@@ -88,14 +88,21 @@ def dispersion_map_to_pixel_arrays(
                 orderPixelTable[f"slit_position_pow_{axis}_{k}"] = orderPixelTable["slit_position"].pow(k)
             # check = 0
 
-        coeff[axis] = [float(v) for k, v in row.items() if k not in [
-            "axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)]
+        coeff[axis] = [
+            float(v)
+            for k, v in row.items()
+            if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)
+        ]
         poly[axis] = chebyshev_order_wavelength_polynomials(
-            log=log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True, axis=axis).poly
+            log=log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True, axis=axis
+        ).poly
 
     # CONVERT THE ORDER-SORTED WAVELENGTH ARRAYS INTO ARRAYS OF PIXEL TUPLES
-    orderPixelTable["fit_x"] = poly['x'](orderPixelTable, *coeff['x'])
-    orderPixelTable["fit_y"] = poly['y'](orderPixelTable, *coeff['y'])
+    orderPixelTable["fit_x"] = poly["x"](orderPixelTable, *coeff["x"])
+    orderPixelTable["fit_y"] = poly["y"](orderPixelTable, *coeff["y"])
+
+    orderPixelTable["fit_x"] = orderPixelTable["fit_x"].astype(np.float32)
+    orderPixelTable["fit_y"] = orderPixelTable["fit_y"].astype(np.float32)
 
     if removeOffDetectorLocation:
         # FILTER DATA FRAME
@@ -103,20 +110,15 @@ def dispersion_map_to_pixel_arrays(
         mask = (orderPixelTable["fit_x"] > 0) & (orderPixelTable["fit_y"] > 0)
         orderPixelTable = orderPixelTable.loc[mask]
 
-    log.debug('completed the ``dispersion_map_to_pixel_arrays`` function')
+    if trimColumns:
+        orderPixelTable = orderPixelTable[["order", "wavelength", "slit_position", "fit_x", "fit_y"]]
+
+    log.debug("completed the ``dispersion_map_to_pixel_arrays`` function")
     return orderPixelTable
 
 
-def get_cached_coeffs(
-        log,
-        arm,
-        settings,
-        recipeName,
-        orderDeg,
-        wavelengthDeg,
-        slitDeg,
-        reset=False):
-    """*find cached coefficients (if they exist)* 
+def get_cached_coeffs(log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg, reset=False):
+    """*find cached coefficients (if they exist)*
 
     Return a line-list with x,y fits given a first guess dispersion map.*
 
@@ -144,9 +146,9 @@ def get_cached_coeffs(
         wavelengthDeg=wavelengthDeg,
         slitDeg=slitDeg
     )
-    ```           
+    ```
     """
-    log.debug('starting the ``get_cached_coeffs`` function')
+    log.debug("starting the ``get_cached_coeffs`` function")
 
     from astropy.table import Table
     import math
@@ -171,7 +173,7 @@ def get_cached_coeffs(
     if os.path.exists(filePath) and reset == False:
         dispersion_map = filePath
         # SPEC FORMAT TO PANDAS DATAFRAME
-        dat = Table.read(dispersion_map, format='fits')
+        dat = Table.read(dispersion_map, format="fits")
         tableData = dat.to_pandas()
 
         # READ IN THE X- AND Y- COEFF FROM DISPERSION MAP FILE
@@ -180,20 +182,18 @@ def get_cached_coeffs(
             orderDeg = int(row["order_deg"])
             wavelengthDeg = int(row["wavelength_deg"])
             slitDeg = int(row["slit_deg"])
-            coeff[axis] = [float(v) for k, v in row.items() if k not in [
-                "axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)]
+            coeff[axis] = [
+                float(v)
+                for k, v in row.items()
+                if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)
+            ]
     else:
         if isinstance(orderDeg, list):
-            coeff['x'] = np.ones((orderDeg[0] + 1) *
-                                 (wavelengthDeg[0] + 1) * (slitDeg[0] + 1), dtype=float)
-            coeff['y'] = np.ones((orderDeg[1] + 1) *
-                                 (wavelengthDeg[1] + 1) * (slitDeg[1] + 1), dtype=float)
+            coeff["x"] = np.ones((orderDeg[0] + 1) * (wavelengthDeg[0] + 1) * (slitDeg[0] + 1), dtype=float)
+            coeff["y"] = np.ones((orderDeg[1] + 1) * (wavelengthDeg[1] + 1) * (slitDeg[1] + 1), dtype=float)
         else:
-            coeff['x'] = np.ones((orderDeg + 1) *
-                                 (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
-            coeff['y'] = np.ones((orderDeg + 1) *
-                                 (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
+            coeff["x"] = np.ones((orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
+            coeff["y"] = np.ones((orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
 
-
-    log.debug('completed the ``get_cached_coeffs`` function')
-    return coeff['x'], coeff['y']
+    log.debug("completed the ``get_cached_coeffs`` function")
+    return coeff["x"], coeff["y"]
