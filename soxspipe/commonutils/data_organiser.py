@@ -394,6 +394,45 @@ class data_organiser(object):
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
+        if True:
+            c = self.conn.cursor()
+            sqlQueries = [
+                f'update product_frames set status_{self.sessionId} = "pass" where status_{self.sessionId} = "fail" and sof in (select sof_name from quality_control);',
+            ]
+
+            for k, v in self.settings.items():
+                if k[:5] == "soxs-":
+                    recipe = k
+                    for a in ["acq", "vis", "nir"]:
+                        if a in v and "qc-acceptable-ranges" in v[a]:
+                            arm = a.upper()
+                            for kk, vv in v[a]["qc-acceptable-ranges"].items():
+                                qc_name = kk.upper().replace("-", " ")
+                                qc_min = vv[0]
+                                qc_max = vv[1]
+                                sqlQueries.append(
+                                    f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and sof_name like "%{arm}%" and qc_name = "{qc_name}";'
+                                )
+                    if "qc-acceptable-ranges" in v:
+                        for kk, vv in v["qc-acceptable-ranges"].items():
+                            qc_name = kk.upper().replace("-", " ")
+                            qc_min = vv[0]
+                            qc_max = vv[1]
+                            sqlQueries.append(
+                                f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and qc_name = "{qc_name}";'
+                            )
+
+            sqlQueries += [
+                'update quality_control set qc_flag = "pass" where CAST(qc_value as float) < qc_value_max and CAST(qc_value as float) > qc_value_min and qc_flag != "pass";',
+                'update quality_control set qc_flag = "fail" where (CAST(qc_value as float) > qc_value_max or CAST(qc_value as float) < qc_value_min) and qc_flag != "fail";',
+                'update product_frames set status_base = "fail" where sof in (select sof_name from quality_control where qc_flag = "fail");',
+            ]
+
+            for sqlQuery in sqlQueries:
+                c.execute(sqlQuery)
+            self.conn.commit()
+            c.close()
+
         self._flag_files_to_ignore()
         self.build_sof_files()
 
@@ -1863,11 +1902,16 @@ class data_organiser(object):
 
         c = self.conn.cursor()
         sqlQueries = [
-            f"update sof_map_{self.sessionId} set complete = 1 where complete = -1;",
-            "update raw_frame_sets set complete = 1 where sof in (select r.sof from raw_frame_sets r, product_frames p where p.sof = r.sof and p.complete = 1);",
-            "update raw_frame_sets set complete = 0 where sof in (select r.sof from raw_frame_sets r, product_frames p where p.sof = r.sof and p.complete = 0);",
-            "update raw_frames set processed = 1 where processed = 0 and filepath in (select filepath from sof_map);",
+            f"UPDATE sof_map_{self.sessionId} SET complete = 1 WHERE complete = -1;",
+            "UPDATE raw_frame_sets SET complete = 1 WHERE sof IN (SELECT r.sof FROM raw_frame_sets r JOIN product_frames p ON p.sof = r.sof WHERE p.complete = 1);",
+            "UPDATE raw_frame_sets SET complete = 0 WHERE sof IN (SELECT r.sof FROM raw_frame_sets r JOIN product_frames p ON p.sof = r.sof WHERE p.complete = 0);",
+            "UPDATE raw_frames SET processed = 1 WHERE processed = 0 AND filepath IN (SELECT filepath FROM sof_map);",
+            "UPDATE product_frames SET set_first_file = (SELECT s.file FROM sof_map s WHERE s.sof = product_frames.sof AND s.file LIKE 'SOXS%' LIMIT 1) WHERE set_first_file IS NULL;",
+            "UPDATE raw_frame_sets SET set_first_file = (SELECT s.file FROM sof_map s WHERE s.sof = raw_frame_sets.sof AND s.file LIKE 'SOXS%' LIMIT 1) WHERE set_first_file IS NULL;",
+            "UPDATE product_frames SET absrot=(SELECT absrot FROM raw_frames r WHERE r.file=set_first_file and absrot is null);",
+            "UPDATE raw_frame_sets SET absrot=(SELECT absrot FROM raw_frames r WHERE r.file=set_first_file and absrot is null);",
         ]
+
         for sqlQuery in sqlQueries:
             c.execute(sqlQuery)
         self.conn.commit()
