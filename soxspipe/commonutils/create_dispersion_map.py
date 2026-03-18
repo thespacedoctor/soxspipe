@@ -502,10 +502,15 @@ class create_dispersion_map(object):
     def _handle_multipin_hole_big_shift(self, orderPixelTable, order_num, mask, iteration):
         """*DETECT AND CORRECT LARGE SHIFTS BETWEEN SINGLE/MULTI-PINHOLE FRAMES*"""
         from astropy.stats import sigma_clipped_stats
+        import numpy as np
 
         # ONLY CHECK ON FIRST ITERATION
         if iteration > 1:
             return orderPixelTable
+
+        if len(orderPixelTable.loc[(mask)].index) < 50:
+            self.log.error("COULD NOT DETECT ANY PINHOLES. PLEASE CHECK THE RAW FRAMES")
+            raise ValueError("COULD NOT DETECT ANY PINHOLES. PLEASE CHECK THE RAW FRAMES")
 
         # CALCULATE MEDIAN SHIFTS FOR TOP AND BOTTOM SLIT POSITIONS
         _, medTop, _ = sigma_clipped_stats(
@@ -542,7 +547,7 @@ class create_dispersion_map(object):
         if abs(centreATop - centreABottom) > 0.4:
             # USE LARGER SHIFT
             shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
-            print(f"{order_num} APPLYING BIG SHIFT {shift}")
+            # print(f"{order_num} APPLYING BIG SHIFT {shift}")
 
             # APPLY CORRECTION
             orderPixelTable.loc[mask, f"detector_{self.axisA}_shifted"] = (
@@ -914,7 +919,7 @@ class create_dispersion_map(object):
             mapPath = None
             self.create2DMap = False
 
-        if self.firstGuessMap and self.orderTable and self.create2DMap:
+        if self.firstGuessMap and self.orderTable and self.create2DMap and self.minpin == 9:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath, orders=list(goodLinesTable["order"].unique()))
             res_plots = self._create_dispersion_map_qc_plot(
                 xcoeff=popt_x,
