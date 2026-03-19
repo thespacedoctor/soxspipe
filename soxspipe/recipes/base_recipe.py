@@ -1452,8 +1452,11 @@ class base_recipe(object):
         columns.remove("reduction_date_utc")
         columns.remove("soxspipe_recipe")
         columns.remove("sof_name")
-        columns.remove("qc_value_min")
-        columns.remove("qc_value_max")
+        try:
+            columns.remove("qc_value_min")
+            columns.remove("qc_value_max")
+        except:
+            pass
         dbColumns = list(self.qc.columns)
         dbColumns.remove("to_header")
 
