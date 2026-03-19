@@ -281,10 +281,10 @@ class horne_extraction(object):
             {
                 "x": xarray,
                 "y": yarray,
-                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(float),
-                "slit_position": self.twoDMap["SLIT"].data.flatten().astype(float),
-                "order": self.twoDMap["ORDER"].data.flatten().astype(float),
-                "flux": self.skySubtractedFrame.data.flatten().astype(float),
+                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(np.float32),
+                "slit_position": self.twoDMap["SLIT"].data.flatten().astype(np.float32),
+                "order": self.twoDMap["ORDER"].data.flatten().astype(np.float32),
+                "flux": self.skySubtractedFrame.data.flatten().astype(np.float32),
             }
         )
         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
