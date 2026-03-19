@@ -372,6 +372,7 @@ class response_function(object):
             from astropy.table import Table
             import copy
             from astropy.io import fits
+            from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
 
             t = Table.from_pandas(stdEfficiencyEstimateDF)
             filename = f"{self.sofName}_EFFICIENCY.fits"
@@ -384,85 +385,14 @@ class response_function(object):
 
             BinTableHDU = fits.table_to_hdu(t)
 
-            stdEfficiencyEstimateDF["ORDER"] = np.nan
-
-            ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST
-            self.orderJoins = dict(reversed(list(self.orderJoins.items())))
-
-            for i, (orders, wl) in enumerate(zip(self.orderJoins.keys(), self.orderJoins.values())):
-                if len(orders) == 2:
-                    visOrders = ["i", "r", "g", "u"]
-                    lastOrder = visOrders[int(orders[0])]
-                    order = visOrders[int(orders[0]) - 1]
-
-                elif len(orders) == 3:
-                    lastOrder = int(orders[:1])
-                    order = int(orders[1:])
-                else:
-                    order = int(orders[:2])
-                    lastOrder = int(orders[2::])
-                if i == 0:
-                    stdEfficiencyEstimateDF.loc[(stdEfficiencyEstimateDF["WAVE"] <= wl), "ORDER"] = lastOrder
-                stdEfficiencyEstimateDF.loc[
-                    stdEfficiencyEstimateDF["WAVE"] >= wl,
-                    "ORDER",
-                ] = order
-
-            # CALCULATE THE MEDIAN EFFICIENCY ACROSS ALL ORDERS
-            medianEfficiency = stdEfficiencyEstimateDF["EFFICIENCY"].median()
-
-            # ADD TO QC TABLE
-
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "EFF MEDIAN",
-                            "qc_value": float(f"{medianEfficiency:0.2f}"),
-                            "qc_comment": "Median efficiency across all orders",
-                            "qc_unit": None,
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
+            self.qc = add_snr_efficiency_qcs(
+                log=self.log,
+                spectrumDF=stdEfficiencyEstimateDF,
+                qcTable=self.qc,
+                orderJoins=self.orderJoins,
+                recipeName=self.recipeName,
+                dateObs=self.dateObs,
             )
-
-            # CALCULATE THE MEDIAN EFFICIENCY IN EACH ORDER
-            orderEfficiency = stdEfficiencyEstimateDF.groupby("ORDER")["EFFICIENCY"].median().reset_index()
-            orderEfficiency.columns = ["ORDER", "MEDIAN_EFFICIENCY"]
-
-            for _, row in orderEfficiency.iterrows():
-                self.qc = pd.concat(
-                    [
-                        self.qc,
-                        pd.Series(
-                            {
-                                "soxspipe_recipe": self.recipeName,
-                                "qc_name": f"EFF MEDIAN ORDER {row['ORDER']}",
-                                "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.2f}"),
-                                "qc_comment": f"Median efficiency in order {row['ORDER']}",
-                                "qc_order": row["ORDER"],
-                                "qc_unit": None,
-                                "obs_date_utc": self.dateObs,
-                                "reduction_date_utc": utcnow,
-                                "to_header": True,
-                            }
-                        )
-                        .to_frame()
-                        .T,
-                    ],
-                    ignore_index=True,
-                )
 
             # ADD QC METRICS TO HEADER
             for n, v, c, h in zip(
@@ -477,6 +407,9 @@ class response_function(object):
             priHDU = fits.PrimaryHDU(header=header)
             hduList = fits.HDUList([priHDU, BinTableHDU])
             hduList.writeto(filepath, checksum=True, overwrite=True)
+
+            utcnow = datetime.utcnow()
+            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
             self.products = pd.concat(
                 [

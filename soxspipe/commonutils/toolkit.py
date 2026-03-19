@@ -1836,3 +1836,157 @@ def frame_to_32(frame):
         pass
 
     return frame
+
+
+def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs):
+    """*add quality checks to the qc table*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY' to calculate the checks from.
+    - ``qcTable`` -- the qc table to which the SNR checks will be added
+    - ``orderJoins`` -- a dictionary containing the wavelengths of order joins (if any) to be added as QCs.
+    - ``recipeName`` -- name of the recipe to add to the QC entries
+    - ``dateObs`` -- the observation date to add to the QC entries (in ISO format, e.g., "2024-06-01T00:00:00")
+
+    **Return:**
+
+    - ``qcTable`` -- the updated qc table with SNR checks added
+
+    **Usage:**
+
+    ```python
+    qcTable = add_snr_qcs(log, spectrumDF, qcTable, orderJoins)
+    ```
+    """
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime
+
+    spectrumDF["ORDER"] = np.nan
+
+    ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST
+    orderJoins = dict(reversed(list(orderJoins.items())))
+
+    for i, (orders, wl) in enumerate(zip(orderJoins.keys(), orderJoins.values())):
+        if len(orders) == 2:
+            visOrders = ["i", "r", "g", "u"]
+            lastOrder = visOrders[int(orders[0])]
+            order = visOrders[int(orders[0]) - 1]
+
+        elif len(orders) == 3:
+            lastOrder = int(orders[:1])
+            order = int(orders[1:])
+        else:
+            order = int(orders[:2])
+            lastOrder = int(orders[2::])
+        if i == 0:
+            spectrumDF.loc[(spectrumDF["WAVE"] <= wl), "ORDER"] = lastOrder
+        spectrumDF.loc[
+            spectrumDF["WAVE"] >= wl,
+            "ORDER",
+        ] = order
+
+    utcnow = datetime.utcnow()
+    utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+    # CALCULATE THE MEDIAN EFFICIENCY ACROSS ALL ORDERS
+    if "EFFICIENCY" in spectrumDF.columns:
+        medianEfficiency = spectrumDF["EFFICIENCY"].median()
+        qcTable = pd.concat(
+            [
+                qcTable,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": "EFF MEDIAN",
+                        "qc_value": float(f"{medianEfficiency:0.2f}"),
+                        "qc_comment": "Median efficiency across all orders",
+                        "qc_unit": None,
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
+        # CALCULATE THE MEDIAN EFFICIENCY IN EACH ORDER
+        orderEfficiency = spectrumDF.groupby("ORDER")["EFFICIENCY"].median().reset_index()
+        orderEfficiency.columns = ["ORDER", "MEDIAN_EFFICIENCY"]
+
+        for _, row in orderEfficiency.iterrows():
+            qcTable = pd.concat(
+                [
+                    qcTable,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": recipeName,
+                            "qc_name": f"EFF MEDIAN ORDER {row['ORDER']}",
+                            "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.2f}"),
+                            "qc_comment": f"Median efficiency in order {row['ORDER']}",
+                            "qc_order": row["ORDER"],
+                            "qc_unit": None,
+                            "obs_date_utc": dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+
+    if "SNR" in spectrumDF.columns:
+        medianSNR = spectrumDF["SNR"].median()
+        qcTable = pd.concat(
+            [
+                qcTable,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": "SNR MEDIAN",
+                        "qc_value": float(f"{medianSNR:0.2f}"),
+                        "qc_comment": "Median SNR across all orders",
+                        "qc_unit": None,
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
+        orderSNR = spectrumDF.groupby("ORDER")["SNR"].median().reset_index()
+        orderSNR.columns = ["ORDER", "MEDIAN_SNR"]
+
+        for _, row in orderSNR.iterrows():
+            qcTable = pd.concat(
+                [
+                    qcTable,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": recipeName,
+                            "qc_name": f"SNR MEDIAN ORDER {row['ORDER']}",
+                            "qc_value": float(f"{row['MEDIAN_SNR']:0.2f}"),
+                            "qc_comment": f"Median SNR in order {row['ORDER']}",
+                            "qc_order": row["ORDER"],
+                            "qc_unit": None,
+                            "obs_date_utc": dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+
+    return qcTable
