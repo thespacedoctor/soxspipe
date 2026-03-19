@@ -959,19 +959,35 @@ class horne_extraction(object):
         import concurrent.futures
         import numpy as np
 
-        # Process in chunks to improve memory usage and potentially parallelize
-        # Adjust based on memory constraints
-        chunk_size = 1000
-        for i in range(0, len(wave_resample_grid), chunk_size):
-            chunk_end = min(i + chunk_size, len(wave_resample_grid))
-            wave_chunk = wave_resample_grid[i:chunk_end] * u.nm
+        # Faster approach: resample the full grid once (avoids per-chunk thread-pool overhead)
+        wave_grid_nm = wave_resample_grid * u.nm
 
-            # Process chunks in parallel using concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                future_flux = executor.submit(resampler, spectrum_orig, wave_chunk)
-                future_density = executor.submit(resampler2, spectrumFD_orig, wave_chunk)
-                flux_resampled[i:chunk_end] = future_flux.result().flux
-                fluxDensity_resampled[i:chunk_end] = future_density.result().flux
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                future_flux = executor.submit(resampler, spectrum_orig, wave_grid_nm)
+                future_density = executor.submit(resampler2, spectrumFD_orig, wave_grid_nm)
+
+                flux_out = future_flux.result().flux
+                density_out = future_density.result().flux
+
+                np.copyto(flux_resampled, np.asarray(flux_out.to_value(u.electron), dtype=np.float32))
+                np.copyto(
+                    fluxDensity_resampled,
+                    np.asarray(density_out.to_value(u.electron / u.nm), dtype=np.float32),
+                )
+
+        except MemoryError:
+            # Fallback for very large grids: chunked, but without recreating executors per chunk
+            chunk_size = 10000
+            for i in range(0, len(wave_resample_grid), chunk_size):
+                chunk_end = min(i + chunk_size, len(wave_resample_grid))
+                wave_chunk_nm = wave_resample_grid[i:chunk_end] * u.nm
+
+                flux_chunk = resampler(spectrum_orig, wave_chunk_nm).flux.to_value(u.electron)
+                density_chunk = resampler2(spectrumFD_orig, wave_chunk_nm).flux.to_value(u.electron / u.nm)
+
+                flux_resampled[i:chunk_end] = flux_chunk
+                fluxDensity_resampled[i:chunk_end] = density_chunk
 
         # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
@@ -981,7 +997,6 @@ class horne_extraction(object):
         merged_orders = calculate_rolling_snr(dataframe=merged_orders, flux_column="FLUX_COUNTS", window_size=300)
 
         merged_orders["FLUX_DENSITY_COUNTS"] = fluxDensity_resampled * u.electron / u.nm
-
 
         if False:
             self.products, filePath = plot_merged_spectrum_qc(
