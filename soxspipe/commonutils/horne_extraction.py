@@ -953,51 +953,26 @@ class horne_extraction(object):
             uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values),
             bin_specification="center",
         )
-        fluxDensity_orig = extractedOrdersDF["extractedFluxDensityOptimal"].values
-        spectrumFD_orig = Spectrum1D(
-            flux=fluxDensity_orig,
-            spectral_axis=extractedOrdersDF["wavelengthMedian"].values,
-            bin_specification="center",
-        )
-
         resampler = FluxConservingResampler()
-        resampler2 = FluxConservingResampler()  # LinearInterpolatedResampler
-        # Pre-allocate arrays for efficiency
-        flux_resampled = np.zeros_like(wave_resample_grid)
-        fluxDensity_resampled = np.zeros_like(wave_resample_grid)
+        # Pre-allocate array for efficiency
+        flux_resampled = np.zeros(len(wave_resample_grid), dtype=np.float32)
 
-        import concurrent.futures
-        import numpy as np
-
-        # Faster approach: resample the full grid once (avoids per-chunk thread-pool overhead)
         wave_grid_nm = wave_resample_grid * u.nm
 
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                future_flux = executor.submit(resampler, spectrum_orig, wave_grid_nm)
-                future_density = executor.submit(resampler2, spectrumFD_orig, wave_grid_nm)
-
-                flux_out = future_flux.result().flux
-                density_out = future_density.result().flux
-
-                np.copyto(flux_resampled, np.asarray(flux_out.to_value(u.electron), dtype=np.float32))
-                np.copyto(
-                    fluxDensity_resampled,
-                    np.asarray(density_out.to_value(u.electron / u.nm), dtype=np.float32),
-                )
+            flux_out = resampler(spectrum_orig, wave_grid_nm).flux
+            np.copyto(flux_resampled, np.asarray(flux_out.to_value(u.electron), dtype=np.float32))
 
         except MemoryError:
-            # Fallback for very large grids: chunked, but without recreating executors per chunk
+            # Fallback for very large grids: process in chunks
             chunk_size = 10000
             for i in range(0, len(wave_resample_grid), chunk_size):
                 chunk_end = min(i + chunk_size, len(wave_resample_grid))
                 wave_chunk_nm = wave_resample_grid[i:chunk_end] * u.nm
+                flux_resampled[i:chunk_end] = resampler(spectrum_orig, wave_chunk_nm).flux.to_value(u.electron)
 
-                flux_chunk = resampler(spectrum_orig, wave_chunk_nm).flux.to_value(u.electron)
-                density_chunk = resampler2(spectrumFD_orig, wave_chunk_nm).flux.to_value(u.electron / u.nm)
-
-                flux_resampled[i:chunk_end] = flux_chunk
-                fluxDensity_resampled[i:chunk_end] = density_chunk
+        # Flux density is flux / bin width — exact for a uniform output grid with flux-conserving resampling
+        fluxDensity_resampled = flux_resampled / stepWavelengthOrderMerge
 
         # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
@@ -1143,7 +1118,7 @@ class horne_extraction(object):
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
         # plt.show()
-        plt.savefig(filePath, dpi="figure", bbox_inches="tight")
+        plt.savefig(filePath, dpi=120, format="pdf", bbox_inches="tight")
         plt.close("all")
 
         utcnow = datetime.utcnow()
