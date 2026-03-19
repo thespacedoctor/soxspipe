@@ -398,6 +398,7 @@ class data_organiser(object):
             c = self.conn.cursor()
             sqlQueries = [
                 f'update product_frames set status_{self.sessionId} = "pass" where status_{self.sessionId} = "fail" and sof in (select sof_name from quality_control);',
+                f"update quality_control set qc_value_min = null, qc_value_max = null, qc_flag = 'pass';",
             ]
 
             for k, v in self.settings.items():
@@ -411,7 +412,7 @@ class data_organiser(object):
                                 qc_min = vv[0]
                                 qc_max = vv[1]
                                 sqlQueries.append(
-                                    f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and sof_name like "%{arm}%" and qc_name = "{qc_name}";'
+                                    f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and sof_name like "%{arm}%" and qc_name = "{qc_name}"  and qc_order = "-1";'
                                 )
                     if "qc-acceptable-ranges" in v:
                         for kk, vv in v["qc-acceptable-ranges"].items():
@@ -419,12 +420,12 @@ class data_organiser(object):
                             qc_min = vv[0]
                             qc_max = vv[1]
                             sqlQueries.append(
-                                f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and qc_name = "{qc_name}";'
+                                f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and qc_name = "{qc_name}"  and qc_order = "-1";'
                             )
 
             sqlQueries += [
-                'update quality_control set qc_flag = "pass" where CAST(qc_value as float) < qc_value_max and CAST(qc_value as float) > qc_value_min and qc_flag != "pass";',
-                'update quality_control set qc_flag = "fail" where (CAST(qc_value as float) > qc_value_max or CAST(qc_value as float) < qc_value_min) and qc_flag != "fail";',
+                'update quality_control set qc_flag = "pass" where CAST(qc_value as float) < qc_value_max and CAST(qc_value as float) > qc_value_min and qc_flag != "pass" and qc_order = "-1";',
+                'update quality_control set qc_flag = "fail" where (CAST(qc_value as float) > qc_value_max or CAST(qc_value as float) < qc_value_min) and qc_flag != "fail" and qc_order = "-1";',
                 'update product_frames set status_base = "fail" where sof in (select sof_name from quality_control where qc_flag = "fail");',
             ]
 
@@ -1908,8 +1909,8 @@ class data_organiser(object):
             "UPDATE raw_frames SET processed = 1 WHERE processed = 0 AND filepath IN (SELECT filepath FROM sof_map);",
             "UPDATE product_frames SET set_first_file = (SELECT s.file FROM sof_map s WHERE s.sof = product_frames.sof AND s.file LIKE 'SOXS%' LIMIT 1) WHERE set_first_file IS NULL;",
             "UPDATE raw_frame_sets SET set_first_file = (SELECT s.file FROM sof_map s WHERE s.sof = raw_frame_sets.sof AND s.file LIKE 'SOXS%' LIMIT 1) WHERE set_first_file IS NULL;",
-            "UPDATE product_frames SET absrot=(SELECT absrot FROM raw_frames r WHERE r.file=set_first_file and absrot is null);",
-            "UPDATE raw_frame_sets SET absrot=(SELECT absrot FROM raw_frames r WHERE r.file=set_first_file and absrot is null);",
+            "UPDATE product_frames SET absrot=(SELECT r.absrot FROM raw_frames r WHERE r.file=product_frames.set_first_file);",
+            "UPDATE raw_frame_sets SET absrot=(SELECT r.absrot FROM raw_frames r WHERE r.file=raw_frame_sets.set_first_file);",
         ]
 
         for sqlQuery in sqlQueries:
