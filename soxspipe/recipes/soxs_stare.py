@@ -678,33 +678,35 @@ class soxs_stare(base_recipe):
                 productsTable=self.products,
                 startNightDate=self.startNightDate,
                 stdNotFlatExtractionPath=extractionPath_notflat,
+                orderJoins=orderJoins,
             )
             self.qc, self.products = response.get()
-        
-        
+
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
+
         self.products, filePath = plot_merged_spectrum_qc(
-                merged_orders=mergedSpectumDF,
-                products=self.products,
-                log=self.log,
-                qcDir=self.qcDir,
-                filenameTemplate=self.filenameTemplate,
-                noddingSequence=None,
-                dateObs=self.dateObs,
-                arm=self.arm,
-                recipeName=self.recipeName,
-                orderJoins=orderJoins,
-                debug=self.debug,
-                fluxCalibrated=False
-            )
+            merged_orders=mergedSpectumDF,
+            products=self.products,
+            log=self.log,
+            qcDir=self.qcDir,
+            filenameTemplate=self.filenameTemplate,
+            noddingSequence=None,
+            dateObs=self.dateObs,
+            arm=self.arm,
+            recipeName=self.recipeName,
+            orderJoins=orderJoins,
+            debug=self.debug,
+            fluxCalibrated=False,
+        )
 
         if filePath_fluxcal:
             from astropy.table import Table
             from astropy.io import fits
             from astropy import units as u
+
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"] # BACK COMPATIBILITY WITH THE CODE
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
             # ADD THE SNR COLUMN AND COPY VALUES FROM mergedSpectumDF
             fluxcal_spec["SNR"] = mergedSpectumDF["SNR"]
             self.products, filePath = plot_merged_spectrum_qc(
@@ -719,7 +721,7 @@ class soxs_stare(base_recipe):
                 recipeName=self.recipeName,
                 orderJoins=orderJoins,
                 debug=self.debug,
-                fluxCalibrated=True
+                fluxCalibrated=True,
             )
 
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
