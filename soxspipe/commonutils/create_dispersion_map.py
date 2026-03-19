@@ -3624,7 +3624,7 @@ class create_dispersion_map(object):
             plt.show()
 
         if not self.settings["tune-pipeline"]:
-            plt.savefig(filePath, dpi=240)
+            plt.savefig(filePath, dpi=120, format="pdf")
 
         plt.close("all")
 

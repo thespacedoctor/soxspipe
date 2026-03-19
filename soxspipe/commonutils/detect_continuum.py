@@ -1421,7 +1421,7 @@ class detect_continuum(_base_detect):
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
         if not self.settings["tune-pipeline"]:
-            plt.savefig(filePath, dpi=240)
+            plt.savefig(filePath, dpi=120, format="pdf")
         if self.debug:
             plt.show()
         plt.close(fig)

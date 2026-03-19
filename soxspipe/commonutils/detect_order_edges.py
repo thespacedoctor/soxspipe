@@ -886,7 +886,7 @@ class detect_order_edges(_base_detect):
         filePath = f"{self.qcDir}/{filename}"
         plt.tight_layout()
         # plt.show()
-        plt.savefig(filePath, dpi=180)
+        plt.savefig(filePath, dpi=120, format="pdf")
         plt.close("all")
 
         self.log.debug("completed the ``plot_results`` method")

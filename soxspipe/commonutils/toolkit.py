@@ -384,7 +384,7 @@ def quicklook_image(
         plt.show()
 
     if saveToPath:
-        plt.savefig(saveToPath, dpi=120, bbox_inches="tight")
+        plt.savefig(saveToPath, dpi=120, format="pdf", bbox_inches="tight")
         plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
     plt.close("all")
@@ -1688,7 +1688,7 @@ def plot_merged_spectrum_qc(
     filePath = f"{qcDir}/{filename}"
     if debug:
         plt.show()
-    plt.savefig(filePath, dpi=120, bbox_inches="tight")
+    plt.savefig(filePath, dpi=120, bbox_inches="tight", format="pdf")
     plt.close("all")
 
     utcnow = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
