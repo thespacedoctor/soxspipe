@@ -453,14 +453,24 @@ class horne_extraction(object):
                 self.twoDMap["WAVELENGTH"].data.shape[1],
             )
 
-        # NEAREST NEIGHBOUR INTERPOLATION
-        wlZoom = skt.resize(self.twoDMap["WAVELENGTH"].data, output_shape, order=0, preserve_range=True)
-        slitZoom = skt.resize(self.twoDMap["SLIT"].data, output_shape, order=0, preserve_range=True)
-        rawFluxZoom = skt.resize(self.skySubtractedFrame.data, output_shape, order=0, preserve_range=True)
+        # NEAREST NEIGHBOUR INTERPOLATION USING NUMPY REPEAT (FASTER THAN skt.resize)
+        if self.detectorParams["dispersion-axis"] == "x":
+
+            def _zoom(arr):
+                return np.repeat(arr, zoomFactor, axis=1)
+
+        else:
+
+            def _zoom(arr):
+                return np.repeat(arr, zoomFactor, axis=0)
+
+        wlZoom = _zoom(self.twoDMap["WAVELENGTH"].data)
+        slitZoom = _zoom(self.twoDMap["SLIT"].data)
+        rawFluxZoom = _zoom(self.skySubtractedFrame.data)
         if self.skyModelFrame:
-            skyZoom = skt.resize(self.skyModelFrame.data, output_shape, order=0, preserve_range=True)
-        errorZoom = skt.resize(self.skySubtractedFrame.uncertainty.array, output_shape, order=0, preserve_range=True)
-        bpmZoom = skt.resize(self.skySubtractedFrame.mask, output_shape, order=0, preserve_range=True)
+            skyZoom = _zoom(self.skyModelFrame.data)
+        errorZoom = _zoom(self.skySubtractedFrame.uncertainty.array)
+        bpmZoom = _zoom(self.skySubtractedFrame.mask)
 
         def rebin(arr, binx, biny):
             """REBIN 2D ARRAY ARR TO SHAPE NEW_SHAPE BY AVERAGING."""
