@@ -981,9 +981,9 @@ def twoD_disp_map_image_to_dataframe(
 
     hdul = fits.open(twoDMapPath)
 
-    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float")
-    hdul["SLIT"].data = hdul["SLIT"].data.astype("float")
-    hdul["ORDER"].data = hdul["ORDER"].data.astype("float")
+    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float32")
+    hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
+    hdul["ORDER"].data = hdul["ORDER"].data.astype("int16")
 
     binned = False
     if binx > 1 or biny > 1:
@@ -1009,16 +1009,16 @@ def twoD_disp_map_image_to_dataframe(
     thisDict = {
         "x": xarray,
         "y": yarray,
-        "wavelength": hdul["WAVELENGTH"].data.flatten().astype(float),
-        "slit_position": hdul["SLIT"].data.flatten().astype(float),
-        "order": hdul["ORDER"].data.flatten().astype(float),
-        "min": minimumBinnedPixelValue.astype(float),
+        "wavelength": hdul["WAVELENGTH"].data.flatten().astype("float32"),
+        "slit_position": hdul["SLIT"].data.flatten().astype("float32"),
+        "order": hdul["ORDER"].data.flatten().astype("int16"),
+        "min": minimumBinnedPixelValue.astype("float32"),
     }
 
     if associatedFrame:
-        thisDict["flux"] = associatedFrame.data.flatten().astype(float)
+        thisDict["flux"] = associatedFrame.data.flatten().astype("float32")
         thisDict["mask"] = associatedFrame.mask.flatten().astype(bool)
-        thisDict["error"] = associatedFrame.uncertainty.array.flatten().astype(float)
+        thisDict["error"] = associatedFrame.uncertainty.array.flatten().astype("float32")
 
     # REMOVE IF ABOVE .astype(float) IS WORKING
     # try:
