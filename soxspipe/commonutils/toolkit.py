@@ -1750,19 +1750,31 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
         ```
     """
     import numpy as np
+    from numpy.lib.stride_tricks import sliding_window_view
 
-    def rolling_snr(series):
-        n = len(series)
-        signal = np.median(series.values)
-        noise = 0.6052697 * np.median(
-            np.abs(2.0 * series.values[2 : n - 2] - series.values[0 : n - 4] - series.values[4:n])
-        )
-        return signal / noise
+    values = dataframe[flux_column].to_numpy(dtype=np.float64, copy=False)
+    n = values.size
+    snr_full = np.full(n, np.nan, dtype=np.float64)
 
-    dataframe["SNR"] = dataframe[flux_column].rolling(window=window_size, center=True).apply(rolling_snr)
-    dataframe["SNR"].replace([np.inf, -np.inf], np.nan, inplace=True)
-    dataframe["SNR"].fillna(method="bfill", inplace=True)
-    dataframe["SNR"].fillna(method="ffill", inplace=True)
+    # Need at least 5 points for the noise estimator and enough data for one window
+    if window_size >= 5 and n >= window_size:
+        windows = sliding_window_view(values, window_shape=window_size)
+
+        # Signal: rolling median
+        signal = np.median(windows, axis=1)
+
+        # Noise: robust estimator based on 5-point second-difference pattern
+        diff = np.abs(2.0 * windows[:, 2:-2] - windows[:, :-4] - windows[:, 4:])
+        noise = 0.6052697 * np.median(diff, axis=1)
+
+        snr = np.divide(signal, noise, out=np.full_like(signal, np.nan), where=noise > 0)
+
+        # Match center=True placement
+        left = (window_size - 1) // 2
+        snr_full[left : left + snr.size] = snr
+
+    dataframe["SNR"] = snr_full
+    dataframe["SNR"] = dataframe["SNR"].replace([np.inf, -np.inf], np.nan).bfill().ffill()
     return dataframe
 
 
