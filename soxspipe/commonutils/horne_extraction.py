@@ -953,23 +953,20 @@ class horne_extraction(object):
             uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values),
             bin_specification="center",
         )
-        resampler = FluxConservingResampler()
-        # Pre-allocate array for efficiency
-        flux_resampled = np.zeros(len(wave_resample_grid), dtype=np.float32)
+        # Fast linear resampling — np.interp is O(N log M) vs FluxConservingResampler's
+        # O(N·M), and is accurate for output grids with similar resolution to the input.
+        wave_in = spectrum_orig.spectral_axis.to_value(u.nm)
+        flux_in = spectrum_orig.flux.to_value(u.electron)
 
-        wave_grid_nm = wave_resample_grid * u.nm
-
-        try:
-            flux_out = resampler(spectrum_orig, wave_grid_nm).flux
-            np.copyto(flux_resampled, np.asarray(flux_out.to_value(u.electron), dtype=np.float32))
-
-        except MemoryError:
-            # Fallback for very large grids: process in chunks
-            chunk_size = 10000
-            for i in range(0, len(wave_resample_grid), chunk_size):
-                chunk_end = min(i + chunk_size, len(wave_resample_grid))
-                wave_chunk_nm = wave_resample_grid[i:chunk_end] * u.nm
-                flux_resampled[i:chunk_end] = resampler(spectrum_orig, wave_chunk_nm).flux.to_value(u.electron)
+        # Deduplicate wavelengths that may overlap at order join boundaries
+        _, unique_idx = np.unique(wave_in, return_index=True)
+        flux_resampled = np.interp(
+            wave_resample_grid,
+            wave_in[unique_idx],
+            flux_in[unique_idx],
+            left=0.0,
+            right=0.0,
+        ).astype(np.float32)
 
         # Flux density is flux / bin width — exact for a uniform output grid with flux-conserving resampling
         fluxDensity_resampled = flux_resampled / stepWavelengthOrderMerge
