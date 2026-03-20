@@ -94,15 +94,15 @@ class reducer(object):
             "mbias",
             "mdark",
             "disp_solution",
-            # "order_centres",
-            # "mflat",
-            # "spat_solution",
-            # "nod",
-            # "stare",
-            # "offset",
-            # "nod-obj",
-            # "stare-obj",
-            # "offset-obj",
+            "order_centres",
+            "mflat",
+            "spat_solution",
+            "nod",
+            "stare",
+            "offset",
+            "nod-obj",
+            "stare-obj",
+            "offset-obj",
         ]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
@@ -146,7 +146,9 @@ class reducer(object):
             while True and batchCount < batch:
 
                 # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
-                rawGroups = self.select_sof_files_to_process(recipe=rootRecipe, reductionTarget=self.reductionTarget)
+                rawGroups = self.select_sof_files_to_process(
+                    recipe=rootRecipe, reductionTarget=self.reductionTarget, arm=False
+                )
 
                 if rawGroups.empty:
                     break
@@ -248,13 +250,14 @@ class reducer(object):
         self.log.debug("completed the ``reduce`` method")
         return None
 
-    def select_sof_files_to_process(self, recipe=False, reductionTarget=False, batch=False):
+    def select_sof_files_to_process(self, recipe=False, reductionTarget=False, batch=False, arm=False):
         """*select all of the SOF files still requiring processing*
 
         **Key Arguments:**
             - ``recipe`` -- the name of the recipe to filter by (optional)
             - ``reductionTarget`` -- target for reduction: "all", "sof", "ob" (default: False)
             - ``batch`` -- number of SOF files to return (default: False, all)
+            - ``arm`` -- filter by arm (default: False, all)
 
         **Return:**
 
@@ -281,6 +284,11 @@ class reducer(object):
         else:
             limitText = ""
 
+        if arm:
+            armText = f" and `eso seq arm` = '{arm}' "
+        else:
+            armText = ""
+
         if reductionTarget == "all":
             # GET THE GROUPS OF FILES NEEDING REDUCED, ASSIGN THE CORRECT COMMAND TO EXECUTE THE RECIPE
             if not recipe:
@@ -289,7 +297,7 @@ class reducer(object):
                 recipeText = f"= '{recipe}'"
 
             rawGroups = pd.read_sql(
-                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText}  order by recipe_order, sof {limitText}",
+                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {armText}  order by recipe_order, sof {limitText}",
                 con=conn,
             )
 
@@ -480,6 +488,7 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
     from fundamentals import fmultiprocess
     from soxspipe.commonutils import data_organiser
     import pandas as pd
+    import shutil
 
     def wrapper(inputDict, log, recipe, settings, overwrite, workspaceDirectory, wrapperTurnOffMP=True):
         import traceback
@@ -541,7 +550,10 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
         wrapperTurnOffMP = True
 
     if "mflat" in recipe:
-        poolSize = 4
+        poolSize = 3
+        print(
+            f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode with a pool size of {poolSize} to avoid memory issues..."
+        )
 
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
     results = fmultiprocess(
@@ -634,6 +646,10 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
         do = data_organiser(log=log, rootDir=workspaceDirectory)
         do._dataframe_to_sqlite(qcTables, "quality_control", replace=False)
         do.close()
+
+    exists = os.path.exists(workspaceDirectory + "/tmp/")
+    if exists:
+        shutil.rmtree(workspaceDirectory + "/tmp/")
 
     log.debug("completed the ``run_recipe_bulk`` method")
     return None

@@ -1,5 +1,19 @@
 # Release Notes
 
+adding SNR QC metrics for all extracted spectra (global and order specific)
+added global and order specific median efficiency QCs
+making x diff sd and y diff sd use the absolute values of the pixel shifts (VIS pseudo bands move in different directions)
+speeding up horne extraction
+speed up of the SNR calculation of extracted spectra
+adding more pinhole checks into spatial solution
+adding queries to update the database to enforce QC guardrails
+adding a 'GOODLINES FRAC' QC for the proportion of good, unclipped lines in pinhole frame
+reduced size of dispersion map image files
+optimising spatial solution for speed
+Adding a 'PINHOLE COUNT MIN' to spatial solution QCs
+fixing a subtantial bug in mflat (when normalising frames, the original input flats were getting manipulated instead of a copy - bug introduced when attempting to reduce the memory footprint) 
+fixing the inter-order mask used to isolate orders in the mflat recipe
+fixing spectroscopic QC measurements - mask was incorrect
 Adding instrument temperature and AFC numbers to data-organiser database
 adding guardrail values to the qc database table
 the prep command with the '-r' flag no longer removes previous ERROR logs

@@ -19,12 +19,13 @@ soxs-mbias:
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 3
     qc-acceptable-ranges:
-        master-ron: [0,100]
-        fpn-fracmax: [0,7]
-        mbias-median: [0, 3000]
-        raw-ron: [0,150]
-        structx: [0,5]
-        structy: [0,5]
+        master-ron: [0,10]
+        fpn-fracmax: [0,3]
+        mbias-median: [0, 2000]
+        raw-ron: [0,15]
+        structx: [-3,1]
+        structy: [-0.01,0.6]
+        detector-temp: [0,165]
 
 soxs-mdark:
     # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
@@ -33,6 +34,10 @@ soxs-mdark:
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5
+    qc-acceptable-ranges:
+        mdark-median: [-15, 50]
+        raw-ron: [0,30]
+        detector-temp: [0,50]
 
 
 soxs-disp-solution:
@@ -48,7 +53,19 @@ soxs-disp-solution:
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 5
+        poly-clipping-iteration-limit: 7
+        qc-acceptable-ranges:
+            detlines-frac: [0.9,1.01]
+            fwhm-pin-sd: [0.1,0.2]
+            fwhm-pin-median: [1.60,1.75]
+            x-diff-sd: [0,3.0]
+            y-diff-sd: [0,10.0]
+            x-res-median: [0.0,0.15]
+            y-res-median: [0.0,0.9]
+            x-res-sd: [0,0.4]
+            y-res-sd: [0,1.2]
+            xy-res-sd: [0,1.5]
+            detector-temp: [0,165]
     nir:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
         pixel-window-size: 12
@@ -62,6 +79,21 @@ soxs-disp-solution:
         poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 5
+        qc-acceptable-ranges:
+            detlines-frac: [0.9,1.01]
+            fwhm-pin-sd: [0,0.211]
+            fwhm-pin-median: [1.75,1.89]
+            x-diff-sd: [0,1.3]
+            y-diff-sd: [0,1.5]
+            x-res-median: [0.0,0.35]
+            y-res-median: [0.0,0.13]
+            x-res-sd: [0,1.0]
+            y-res-sd: [0,0.25]
+            xy-diff-sd: [0,1.9]
+            xy-diff-median: [0,6.0]
+            xy-res-sd: [0,1.0]
+            xy-res-median: [0,0.4]
+            detector-temp: [0,50]
 
 soxs-order-centres:
     vis:
@@ -73,7 +105,7 @@ soxs-order-centres:
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
-            peak-sigma-limit: 2.
+            peak-sigma-limit: 5.
             # DEGREE OF Y-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
             disp-axis-deg: 5
             # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER CENTRES
@@ -82,6 +114,10 @@ soxs-order-centres:
             poly-fitting-residual-clipping-sigma: 7
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+        qc-acceptable-ranges:
+            detector-temp: [0,165]
+            psamp: [0.85,1.01]
+            xressd: [0,0.1]
     nir:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
@@ -100,6 +136,10 @@ soxs-order-centres:
             poly-fitting-residual-clipping-sigma: 7
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+        qc-acceptable-ranges:
+            detector-temp: [0,50]
+            psamp: [0.80,1.01]
+            yressd: [0,0.1]
 
 soxs-mflat:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
@@ -111,7 +151,7 @@ soxs-mflat:
     # VIS TUNED USING ORDER-CENTRE POLY DEGS
     vis:
         # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE
-        centre-order-window: 20
+        centre-order-window: 10
         # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
         slice-length-for-edge-detection: 70
         # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
@@ -125,14 +165,21 @@ soxs-mflat:
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
         order-deg: 3
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
-        poly-fitting-residual-clipping-sigma: 10
+        poly-fitting-residual-clipping-sigma: 5
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
         low-sensitivity-clipping-sigma: 2
+        qc-acceptable-ranges:
+            detector-temp: [0,165]
+            inner-order-pix-mean: [0.9,1.1]
+            inner-order-pix-sum: [100000,700000]
+            ordexp90: [10000,150000]
+            x-res-sd: [0,0.37]
+            coldpix-frac: [-0.001,0.01]
     nir:
         # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
-        centre-order-window: 20
+        centre-order-window: 10
         # LENGTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
         slice-length-for-edge-detection: 70
         # WIDTH OF THE CROSS_DISPERSION SLICES USED TO DETERMINE ORDER EDGES
@@ -146,20 +193,27 @@ soxs-mflat:
         # DEGREE OF ORDER-COMPONENT OF GLOBAL POLYNOMIAL FIT TO ORDER EDGES
         order-deg: 6
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
-        poly-fitting-residual-clipping-sigma: 10
+        poly-fitting-residual-clipping-sigma: 3
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER EDGES
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
         low-sensitivity-clipping-sigma: 2
+        qc-acceptable-ranges:
+            detector-temp: [0,50]
+            inner-order-pix-mean: [0.9,1.1]
+            x-res-sd: [0,0.2]
+            ordexp90: [30000,40000]
+            inner-order-pix-sum: [1000000,1200000]
+            coldpix-frac: [-0.001,0.01]
 
 soxs-spat-solution:
     # DIVIDE IMAGE BY MASTER FLAT FRAME
-    use_flat: False
+    use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
     vis:
         # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
-        pixel-window-size: 10
+        pixel-window-size: 15
         # MINIMUM SIGNIFICANCE REQUIRED FOR ARC-LINE TO BE CONSIDERED 'DETECTED'
         pinhole-detection-thres-sigma: 2
         # DEGREE OF ECHELLE ORDER NUMBER COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
@@ -170,13 +224,27 @@ soxs-spat-solution:
         slit-deg: [1,1]
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 5
-        poly-fitting-residual-clipping-sigma: 5
+        poly-fitting-residual-clipping-sigma: 4
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: False
         # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 7
+        qc-acceptable-ranges:
+            detector-temp: [0,165]
+            detlines-frac: [0.97,1.01]
+            goodlines-frac: [0.60,1.01]
+            pinhole-count-min: [8.5,9.5]
+            fwhm-pin-median: [1.60,1.72]
+            fwhm-pin-sd: [0.0,0.16]
+            xy-diff-sd: [0,1.2]
+            xy-res-median: [0,0.5]
+            xy-res-sd: [0,0.5]
+            x-res-sd: [0,0.12]
+            y-res-sd: [0,0.35]
+            # x-diff-sd:  [0,0.3]
+            # y-diff-sd:  [0,1.0]
     nir:
         # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
         pixel-window-size: 10
@@ -198,6 +266,19 @@ soxs-spat-solution:
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 7
+        qc-acceptable-ranges:
+            detector-temp: [0,50]
+            # # detlines-frac: [0.97,1.01]?
+            pinhole-count-min: [8.5,9.5]
+            fwhm-pin-median: [1.55,1.85]
+            fwhm-pin-sd: [0.0,0.135]
+            xy-diff-sd: [0,0.8]
+            xy-res-median: [0,0.3]
+            xy-res-sd: [0,0.4]
+            x-res-sd: [0,0.4]
+            y-res-sd: [0,0.11]
+            x-diff-sd:  [0,0.66]
+            y-diff-sd:  [0,0.7]
     
 bootstrap_dispersion_solution: False
 
@@ -326,6 +407,8 @@ soxs-stare:
             residual_floor_percentile: 95
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
+        qc-acceptable-ranges:
+            detector-temp: [0,50]
 
 
 soxs-nod:
@@ -401,7 +484,6 @@ soxs-response:
 background-subtraction:
     bspline-deg: 2
     gaussian-blur-sigma: 65
-
 
 logging settings:
     formatters:

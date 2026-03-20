@@ -983,7 +983,7 @@ def twoD_disp_map_image_to_dataframe(
 
     hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float32")
     hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
-    hdul["ORDER"].data = hdul["ORDER"].data.astype("int16")
+    hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
 
     binned = False
     if binx > 1 or biny > 1:
@@ -1011,7 +1011,7 @@ def twoD_disp_map_image_to_dataframe(
         "y": yarray,
         "wavelength": hdul["WAVELENGTH"].data.flatten().astype("float32"),
         "slit_position": hdul["SLIT"].data.flatten().astype("float32"),
-        "order": hdul["ORDER"].data.flatten().astype("int16"),
+        "order": hdul["ORDER"].data.flatten().astype("float32"),
         "min": minimumBinnedPixelValue.astype("float32"),
     }
 
