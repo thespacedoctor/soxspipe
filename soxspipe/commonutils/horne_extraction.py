@@ -953,10 +953,19 @@ class horne_extraction(object):
             uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values),
             bin_specification="center",
         )
+
+        fluxDensity_orig = extractedOrdersDF["extractedFluxDensityOptimal"].values
+        spectrumFD_orig = Spectrum1D(
+            flux=fluxDensity_orig,
+            spectral_axis=extractedOrdersDF["wavelengthMedian"].values,
+            bin_specification="center",
+        )
+
         # Fast linear resampling — np.interp is O(N log M) vs FluxConservingResampler's
         # O(N·M), and is accurate for output grids with similar resolution to the input.
         wave_in = spectrum_orig.spectral_axis.to_value(u.nm)
         flux_in = spectrum_orig.flux.to_value(u.electron)
+        fluxDensity_in = spectrumFD_orig.flux.to_value(u.electron / u.nm)
 
         # Deduplicate wavelengths that may overlap at order join boundaries
         _, unique_idx = np.unique(wave_in, return_index=True)
@@ -967,9 +976,13 @@ class horne_extraction(object):
             left=0.0,
             right=0.0,
         ).astype(np.float32)
-
-        # Flux density is flux / bin width — exact for a uniform output grid with flux-conserving resampling
-        fluxDensity_resampled = flux_resampled / stepWavelengthOrderMerge
+        fluxDensity_resampled = np.interp(
+            wave_resample_grid,
+            wave_in[unique_idx],
+            fluxDensity_in[unique_idx],
+            left=0.0,
+            right=0.0,
+        ).astype(np.float32)
 
         # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
