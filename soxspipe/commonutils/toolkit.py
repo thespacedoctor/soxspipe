@@ -1935,7 +1935,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                     pd.Series(
                         {
                             "soxspipe_recipe": recipeName,
-                            "qc_name": f"EFF MEDIAN ORDER {row['ORDER']}",
+                            "qc_name": f"EFF MEDIAN",
                             "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.2f}"),
                             "qc_comment": f"Median efficiency in order {row['ORDER']}",
                             "qc_order": row["ORDER"],
@@ -1983,7 +1983,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                     pd.Series(
                         {
                             "soxspipe_recipe": recipeName,
-                            "qc_name": f"SNR MEDIAN ORDER {row['ORDER']}",
+                            "qc_name": f"SNR MEDIAN",
                             "qc_value": float(f"{row['MEDIAN_SNR']:0.2f}"),
                             "qc_comment": f"Median SNR in order {row['ORDER']}",
                             "qc_order": row["ORDER"],
