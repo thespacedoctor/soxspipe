@@ -92,6 +92,9 @@ class response_function(object):
         self.stdExtractionDF = Table.read(self.stdExtractionPath, format="fits")
         self.stdExtractionDF = self.stdExtractionDF.to_pandas()
 
+        # SORT BY COLUMN NAME
+        self.stdExtractionDF.sort_values(["WAVE"], inplace=True)
+
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
         from soxspipe.commonutils import keyword_lookup
@@ -297,7 +300,6 @@ class response_function(object):
 
         # APPLYING EXTINCTION CORRECTION
         if self.arm == "UVB" or self.arm == "VIS":
-            self.log.print("Applying extinction correction")
             extCorrectionFactor = extinction_correction_factor(
                 stdExtWave, self.calibrationRootPath + "/" + self.detectorParams["extinction"], self.airmass
             )
@@ -319,7 +321,7 @@ class response_function(object):
         numIter = 0
         deletedPoints = 1
 
-        # REMOVE EXLUCED REGION FROM WAVELENGTH AND RESPONSE FUNCTION
+        # REMOVE EXCLUDED REGION FROM WAVELENGTH AND RESPONSE FUNCTION
         for er in excludeRegions:
             elementsToDelete = np.where((wavelength_response >= er[0]) & (wavelength_response <= er[1]))[0]
             wavelength_response = np.delete(wavelength_response, elementsToDelete)
@@ -332,22 +334,33 @@ class response_function(object):
             self.response_function_raw = gaussian_filter1d(self.response_function_raw, sigma=5)
 
         # FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
-
         while (numIter < int(self.recipeSettings[self.arm.lower()]["max_iteration"])) and (deletedPoints > 0):
             try:
                 # FITTING THE DATA
                 elementsToDelete = []
-                responseFuncCoeffs = np.polyfit(wavelength_response, self.response_function_raw, polyOrder)
-                for index, (w, z, zf) in enumerate(
+
+                wavelength_response_tmp = np.array(
+                    [
+                        np.median(wavelength_response[max(0, i - 5) : i + 6])
+                        for i in range(0, len(wavelength_response), 100)
+                    ]
+                )
+                response_function_raw_tmp = np.array(
+                    [
+                        np.median(self.response_function_raw[max(0, i - 5) : i + 6])
+                        for i in range(0, len(self.response_function_raw), 100)
+                    ]
+                )
+
+                responseFuncCoeffs = np.polyfit(wavelength_response_tmp, response_function_raw_tmp, deg=polyOrder)
+                for index, (z, zf) in enumerate(
                     zip(
-                        wavelength_response,
                         self.response_function_raw,
                         np.polyval(responseFuncCoeffs, wavelength_response),
                     )
                 ):
                     # if np.abs(np.abs(z)-np.abs(zf)) > 0.05:
                     # ff np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 100 or z < 0:
-
                     if z < 0 or np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 0.2:
                         elementsToDelete.append(index)
 
@@ -356,8 +369,9 @@ class response_function(object):
                 deletedPoints = len(elementsToDelete)
                 numIter = numIter + 1
             except Exception as e:
-                raise Exception("The fitting of response function did not converge!")
-                sys.exit(1)
+                self.log.print("fail")
+                raise Exception("The fitting of response function did not converge!") from e
+
         if False:
             plt.plot(wavelength_response, self.response_function_raw)
             plt.show()
