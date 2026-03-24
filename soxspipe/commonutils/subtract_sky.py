@@ -1768,7 +1768,6 @@ class subtract_sky(object):
         """
         self.log.debug("starting the ``cross_dispersion_flux_normaliser`` method")
 
-        import scipy.interpolate
         import numpy as np
         from astropy.stats import sigma_clip
         import matplotlib.pyplot as plt
