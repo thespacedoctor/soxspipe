@@ -1779,36 +1779,26 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
 
 
 def extinction_correction_factor(wave, extinctionTablePath, airmass):
+    from scipy.interpolate import interp1d
     import numpy as np
-    from astropy.io import fits
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from astropy.table import Table
 
     # READ THE EXTINCTION CURVE FOR THE OBSERVATORY
     # DATA IS ORGANIZED AS FOLLOWS:
     # FIRST COLUMN, WAVELENGTH (IN ANGSTROM), SECOND COLUMN MAG/AIRMASS
-    extinctionData = fits.getdata(extinctionTablePath, 1)
+    extinctionData = Table.read(extinctionTablePath, format="fits")
+    extinctionData = extinctionData.to_pandas()
 
     # CONVERT ANG TO NM
-    wave_ext = np.asarray(extinctionData["WAVE"], dtype=np.float64) / 10.0
-    mag_airmass = np.asarray(extinctionData["MAG_AIRMASS"], dtype=np.float64)
-    wave = np.asarray(wave, dtype=np.float64)
+    wave_ext = extinctionData["WAVE"] / 10
+    # INTERPOLATING ON THE REQUIRED WAVE SCALE
+    refitted_ext = interp1d(
+        np.array(wave_ext), np.array(extinctionData["MAG_AIRMASS"]), kind="next", fill_value="extrapolate"
+    )
 
-    valid = np.isfinite(wave_ext) & np.isfinite(mag_airmass)
-    wave_ext = wave_ext[valid]
-    mag_airmass = mag_airmass[valid]
-
-    if not wave_ext.size:
-        raise ValueError("No valid extinction-curve data found in extinctionTablePath")
-
-    sort_idx = np.argsort(wave_ext)
-    wave_ext = wave_ext[sort_idx]
-    mag_airmass = mag_airmass[sort_idx]
-
-    # MATCH scipy.interpolate.interp1d(..., kind="next") USING NUMPY ONLY
-    sample_idx = np.searchsorted(wave_ext, wave, side="left")
-    sample_idx = np.clip(sample_idx, 0, wave_ext.size - 1)
-    ext_per_airmass = mag_airmass[sample_idx]
-
-    extCorrectionFactor = 10 ** (0.4 * ext_per_airmass * airmass)
+    extCorrectionFactor = 10 ** (0.4 * refitted_ext(wave) * airmass)
 
     return extCorrectionFactor
 
