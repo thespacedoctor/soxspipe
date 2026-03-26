@@ -1192,7 +1192,7 @@ class soxs_mflat(base_recipe):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": "NLOWSENS",
+                            "qc_name": "N LOW SENS",
                             "qc_value": float(lowSensPixelCount),
                             "qc_comment": "Number of low-sensitivity pixels found in master flat",
                             "qc_unit": "pixels",
