@@ -3,16 +3,15 @@
 
 | Label   | Description                                                | Unit |
 | ------- | ---------------------------------------------------------- | ---- |
-| `CSAMP`   | Number of continuum sample clipped during solution fitting |      |
-| `NORDERS` | Number of order centre traces found                        |      |
-| `NSAMP`   | Number of samples where a continuum is detected            |      |
-| `PSAMP`   | Proportion of samples where a continuum is detected        |      |
-| `SAMPLES TOT`   | Total number of samples along orders                       | px   |
+| `N ORDERS` | Number of order centre traces found                        |      |
+| `SAMPLES DET NUM`                | Number of samples where a continuum is detected            |           |
+| `SAMPLES DET FRAC`                | Fraction of samples where a continuum is detected        |           |
+| `SAMPLES TOT NUM`                | Total number of samples along orders                       |           |
+| `SAMPLES CLIP NUM`                | Number of continuum sample clipped during solution fitting |           |
+| `SAMPLES CLIP FRAC `               | Fraction of detected continuum samples clipped during solution fitting |           |
 | `X RES MAX` | Maximum residual in order centre fit along x-axis     | px   |
 | `X RES MIN` | Minimum residual in order centre fit along x-axis     | px   |
 | `X RES SD` | Std-dev of residual order centre fit along x-axis     |      |
-
-
 :::
 
 
