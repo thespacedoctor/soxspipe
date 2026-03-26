@@ -2077,6 +2077,8 @@ class data_organiser(object):
         rawGroups["recipe"] = recipe
         if "STD,FLUX" in ttype:
             recipe += "_std_flux"
+        if "STD,TELLURIC" in ttype:
+            recipe += "_std_tell"
         rawGroups["sof"] = (
             rawGroups["date-obs"].astype(str)
             + "_"
