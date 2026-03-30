@@ -110,7 +110,7 @@ multi_pinhole_arc:
       - disp_solution
       - mflat
 flux_standard_stare:
-  recipe: stare
+  recipe: stare_std
   eso dpr tech: ["ECHELLE,SLIT,STARE"]
   eso dpr type: 
     STD,FLUX:
@@ -140,7 +140,7 @@ flux_standard_stare:
           - from: .fits
             to: _RESP.fits
 telluric_standard_stare:
-  recipe: stare
+  recipe: stare_std
   eso dpr tech: ["ECHELLE,SLIT,STARE"]
   eso dpr type: 
     STD,TELLURIC:
@@ -163,7 +163,7 @@ telluric_standard_stare:
           - from: .fits
             to: _EXTRACTED_MERGED.fits
 flux_standard_nodding:
-  recipe: nod
+  recipe: nod_std
   eso dpr tech: ["ECHELLE,SLIT,NODDING"]
   eso dpr type: 
     STD,FLUX:
@@ -192,7 +192,7 @@ flux_standard_nodding:
           - from: .fits
             to: _RESP.fits
 telluric_standard_nodding:
-  recipe: nod
+  recipe: nod_std
   eso dpr tech: ["ECHELLE,SLIT,NODDING"]
   eso dpr type: 
     STD,TELLURIC:
@@ -214,7 +214,7 @@ telluric_standard_nodding:
           - from: .fits
             to: _EXTRACTED_MERGED.fits
 flux_standard_offset:
-  recipe: offset
+  recipe: offset_std
   eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
   eso dpr type: 
     STD,FLUX:
@@ -243,7 +243,7 @@ flux_standard_offset:
           - from: .fits
             to: _RESP.fits
 telluric_standard_offset:
-  recipe: offset
+  recipe: offset_std
   eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
   eso dpr type: 
     STD,TELLURIC:
@@ -265,7 +265,7 @@ telluric_standard_offset:
           - from: .fits
             to: _EXTRACTED_MERGED.fits
 science_stare:
-  recipe: stare-obj
+  recipe: stare_obj
   eso dpr tech: ["ECHELLE,SLIT,STARE"]
   eso dpr type: 
     OBJECT:
@@ -290,7 +290,7 @@ science_stare:
           - from: .fits
             to: _EXTRACTED_MERGED.fits
 science_nodding:
-  recipe: nod-obj
+  recipe: nod_obj
   eso dpr tech: ["ECHELLE,SLIT,NODDING"]
   eso dpr type: 
     OBJECT:
@@ -314,7 +314,7 @@ science_nodding:
           - from: .fits
             to: _EXTRACTED_MERGED.fits
 science_offset:
-  recipe: offset-obj
+  recipe: offset_obj
   eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
   eso dpr type: 
     OBJECT:

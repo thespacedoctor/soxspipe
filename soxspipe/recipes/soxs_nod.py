@@ -85,7 +85,6 @@ class soxs_nod(base_recipe):
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
@@ -205,8 +204,13 @@ class soxs_nod(base_recipe):
         allObjectFrames, allFilenames = [], []
         self.masterHeaderFrame = False
         for t in types:
+
             add_filters = {kw("DPR_TYPE"): t, kw("DPR_TECH"): "ECHELLE,SLIT,NODDING"}
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                if t == "STD,FLUX" and "-std" not in self.recipeName:
+                    self.recipeName += "-std"
+                    self.recipeSettings = self.get_recipe_settings()
+                    self.productDir = self.productDir.replace("soxs-nod", "soxs-nod-std")
                 singleFrame = CCDData.read(
                     i,
                     hdu=0,
@@ -316,6 +320,7 @@ class soxs_nod(base_recipe):
             f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS"
         )
 
+        forceFailure = False
         if len(allFrameAOffsets) > 1 and len(uniqueOffsets) > 1:
 
             allSpectrumA = []
@@ -398,6 +403,9 @@ class soxs_nod(base_recipe):
                 [allSpectrumA, allSpectrumB], orderJoins=orderJoins
             )
 
+            if self.generateReponseCurve:
+                forceFailure = True
+
         else:
 
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
@@ -453,7 +461,7 @@ class soxs_nod(base_recipe):
                     stdNotFlatExtractionPath=extractionPath_notflat,
                     orderJoins=orderJoins,
                 )
-                self.qc, self.products = response.get()
+                self.qc, self.products, forceFailure = response.get()
 
         # CHECK IF FLUX CALIBRATION IS REQUESTED
         filePath_fluxcal = None
@@ -525,7 +533,7 @@ class soxs_nod(base_recipe):
             )
 
         qcTable = self.report_output()
-        self.clean_up()
+        self.clean_up(forceFail=forceFailure)
 
         self.log.debug("completed the ``produce_product`` method")
 
@@ -772,6 +780,8 @@ class soxs_nod(base_recipe):
         #     groupedDataframe['signal']
 
         # PREPARING THE HDU
+        for col, decimals in [("WAVE", 2), ("FLUX_COUNTS", 3), ("SNR", 2), ("FLUX_DENSITY_COUNTS", 3)]:
+            groupedDataframe[col] = groupedDataframe[col].apply(lambda x: round(float(x), decimals))
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)
 
         utcnow = datetime.utcnow()
@@ -800,7 +810,10 @@ class soxs_nod(base_recipe):
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
         asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")
         asciiFilePath = f"{self.productDir}/{asciiFilename}"
-        stackedSpectrum.write(asciiFilePath, format="ascii", overwrite=True)
+        stackedSpectrum2 = stackedSpectrum.copy()
+        stackedSpectrum2["WAVE"] = stackedSpectrum2["WAVE"] * 10
+        stackedSpectrum2["WAVE"].format = "{:.2f}"  # CONVERTING TO ANGSTROMS
+        stackedSpectrum2.write(asciiFilePath, format="ascii", overwrite=True)
 
         self.products = pd.concat(
             [

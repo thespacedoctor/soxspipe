@@ -471,7 +471,7 @@ class data_organiser(object):
 
         import pandas as pd
 
-        query = 'select distinct "eso seq arm", "night start date", "night start mjd", "eso obs name","eso obs id" from raw_frame_sets where complete = 1 and recipe in ("nod-obj","stare-obj","offset-obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
+        query = 'select distinct "eso seq arm", "night start date", "night start mjd", "eso obs name","eso obs id" from raw_frame_sets where complete = 1 and recipe in ("nod_obj","stare_obj","offset_obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
         obsDf = pd.read_sql(query, con=self.conn)
 
         if len(obsDf.index):
@@ -489,7 +489,7 @@ class data_organiser(object):
 
         self.log.debug("starting the ``list_sofs`` method")
 
-        query = 'select distinct "eso seq arm", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod-obj","stare-obj","offset-obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
+        query = 'select distinct "eso seq arm", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod_obj","stare_obj","offset_obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
         sofDf = pd.read_sql(query, con=self.conn)
 
         if len(sofDf.index):
@@ -1111,6 +1111,7 @@ class data_organiser(object):
                 continue
             myFile = open(sofPath, "w")
             content = tabulate(group[["filepath", "tag"]], tablefmt="plain", showindex=False)
+
             myFile.write(content)
             myFile.close()
 
@@ -1628,7 +1629,7 @@ class data_organiser(object):
     def get_incomplete_raw_frames_set(self):
         import pandas as pd
 
-        query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod-obj","stare-obj","offset-obj")'
+        query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod_obj","stare_obj","offset_obj")'
         return pd.read_sql(query, con=self.conn)
 
     def _select_instrument(self, inst=False):
@@ -1848,33 +1849,37 @@ class data_organiser(object):
                     if isinstance(calibrationTypes, dict):
                         for arm, calType in calibrationTypes.items():
 
+                            if "STD" in ttype:
+                                extraType = f"""AND "eso dpr type" = '{ttype}'"""
+                            else:
+                                extraType = ""
+
                             exists = " AND ".join(
                                 [
                                     f"""EXISTS (
                                 SELECT 1 FROM cal_{ct} 
-                                WHERE cal_{ct}.sof = product_frames.sof 
+                                WHERE cal_{ct}.sof = p.sof 
                                 AND (cal_{ct}.upstream_status = 'pass' OR cal_{ct}.upstream_status IS NULL)
                             )"""
                                     for ct in calType
                                 ]
                             )
 
-                            sqlQuery = f"""select sof from product_frames
+                            sqlQuery = f"""select sof from product_frames_plus as p
                                 WHERE complete < 1 
                                 AND recipe = '{recipe}'
                                 AND "eso seq arm" = '{arm}'
+                                {extraType}
                                 AND {exists};"""
 
                             containerSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
 
                             self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
 
-                            sqlQuery = f"""UPDATE product_frames 
+                            sqlQuery = f"""UPDATE product_frames as p
                                 SET complete = -1 
                                 WHERE complete < 1 
-                                AND recipe = '{recipe}'
-                                AND "eso seq arm" = '{arm}'
-                                AND {exists};"""
+                                And sof in ("{'","'.join(containerSofs)}")"""
 
                             c.execute(sqlQuery)
 
@@ -2075,10 +2080,15 @@ class data_organiser(object):
             rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
 
         rawGroups["recipe"] = recipe
+
         if "STD,FLUX" in ttype:
-            recipe += "_std_flux"
+
+            recipe = recipe.replace("_std", "") + "_std_flux"
+
         if "STD,TELLURIC" in ttype:
-            recipe += "_std_tell"
+
+            recipe = recipe.replace("_std", "") + "_std_tell"
+
         rawGroups["sof"] = (
             rawGroups["date-obs"].astype(str)
             + "_"
@@ -2134,6 +2144,9 @@ class data_organiser(object):
         # Create aggregation dictionary
         agg_dict = {col: "mean" for col in self.filterKeywordsExtras if col not in filterKeywordsRaw}
         agg_dict["file"] = "size"  # for counting rows
+
+        if "set_first_file" in filterKeywordsRaw:
+            filterKeywordsRaw.remove("set_first_file")
 
         rawGroups = rawFrames.groupby(filterKeywordsRaw)
 
@@ -2242,12 +2255,14 @@ class data_organiser(object):
         # BUILD SOF MAP TABLE
         mask = rawGroups["sof"].isin(containerSofs)
         sofMapDF = rawGroups.loc[mask]
+
         sofMapDF = sofMapDF.explode("filepaths")
         sofMapDF["file"] = sofMapDF["filepaths"].apply(lambda x: os.path.basename(x) if pd.notnull(x) else x)
         sofMapDF = sofMapDF.rename(columns={"filepaths": "filepath"})
         sofMapDF["tag"] = sofMapDF["eso dpr type"].replace(",", "_") + "_" + sofMapDF["eso seq arm"]
         sofMapDF = sofMapDF[["file", "tag", "sof", "filepath", "complete"]]
         sofMapDF["complete"] = 1
+
         self._dataframe_to_sqlite(sofMapDF, f"sof_map_{self.sessionId}", replace=False)
 
         # UPDATE RAW FRAMES AS PROCESSED

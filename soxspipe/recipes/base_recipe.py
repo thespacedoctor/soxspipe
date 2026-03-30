@@ -80,6 +80,12 @@ class base_recipe(object):
         self.darkDetrendWarningIssued1 = False
         self.darkDetrendWarningIssued2 = False
 
+        if isinstance(inputFrames, str) and "_STD_" in inputFrames:
+
+            self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")
+            self.recipeName = self.recipeName.replace("soxs-stare", "soxs-stare-std")
+            self.recipeName = self.recipeName.replace("soxs-offset", "soxs-offset-std")
+
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
@@ -366,7 +372,7 @@ class base_recipe(object):
 
         frame.mask = boolMask
 
-        if self.recipeName in ["soxs-nod", "soxs-stare"] and self.recipeSettings["use_flat"]:
+        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:
             # OBJECT/STANDARD FRAMES
             if frame.meta[kw("DPR_TYPE")] == "STD,FLUX" or "STD_stare" in frame.meta[kw("OBS_NAME")]:
                 # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
@@ -724,8 +730,14 @@ class base_recipe(object):
         if self.settings["instrument"] == "xsh":
             gain = self.inputFrames.values(keyword=kw("CONAD"), unique=True)
         else:
-            a = self.inputFrames.values(keyword=kw("CONAD"))
-            b = self.inputFrames.values(keyword=kw("GAIN"))
+            mask = self.inputFrames.summary[kw("PRO_CATG")] != f"RESP_TAB_{self.arm}"
+            checkFrames = self.inputFrames.summary[mask]
+            # REMOVE MASKED/EMPTY VALUES (WORKS FOR ASTROPY TABLE COLUMNS TOO)
+            conad = np.ma.asarray(checkFrames[kw("CONAD")])
+            gainVals = np.ma.asarray(checkFrames[kw("GAIN")])
+            valid = (~np.ma.getmaskarray(conad)) & (~np.ma.getmaskarray(gainVals))
+            a = conad[valid].tolist()
+            b = gainVals[valid].tolist()
             gain = [max(x, y) for x, y in zip(a, b) if x is not None and y is not None]
             gain = list(set(gain))
 
@@ -774,7 +786,7 @@ class base_recipe(object):
             if (
                 self.inst == "SOXS"
                 and self.arm == "NIR"
-                and self.recipeName in ["soxs-nod", "soxs-stare", "soxs-offset"]
+                and self.recipeName.replace("-std", "").replace("-obj", "") in ["soxs-nod", "soxs-stare", "soxs-offset"]
                 and "SLIT5.0" in slitWidth
                 and "SLIT1.5" in slitWidth
                 and len(slitWidth) == 2
@@ -895,7 +907,10 @@ class base_recipe(object):
         except:
             pass
 
-        if forceFail:
+        if forceFail and isinstance(forceFail, str):
+            self.log.error(f"\nRecipe marked as failed in the database. {forceFail}")
+
+        elif forceFail:
             self.log.error(
                 f"\nRecipe marked as failed in the database as the following QC values are outside of the acceptable limits: {', '.join(failedQcs)}."
             )

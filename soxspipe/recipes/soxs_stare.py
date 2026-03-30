@@ -615,6 +615,7 @@ class soxs_stare(base_recipe):
         # CHECK IF FLUX CALIBRATION IS NEEDED
         filePath_fluxcal = None
 
+        forceFailure = False
         if responseFunctionPath:
             from soxspipe.commonutils import flux_calibration
 
@@ -680,7 +681,7 @@ class soxs_stare(base_recipe):
                 stdNotFlatExtractionPath=extractionPath_notflat,
                 orderJoins=orderJoins,
             )
-            self.qc, self.products = response.get()
+            self.qc, self.products, forceFailure = response.get()
 
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
@@ -767,7 +768,7 @@ class soxs_stare(base_recipe):
             )
 
         qcTable = self.report_output()
-        self.clean_up()
+        self.clean_up(forceFail=forceFailure)
 
         self.log.debug("completed the ``produce_product`` method")
         return productPath, qcTable

@@ -216,7 +216,12 @@ class response_function(object):
             self.log.warning(
                 f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(stdAbsFluxDF.columns[1:])}"
             )
-            return self.qc, self.products
+            forceFailure = True
+            return (
+                self.qc,
+                self.products,
+                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(stdAbsFluxDF.columns[1:])}",
+            )
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
         if self.arm == "NIR":
@@ -459,7 +464,7 @@ class response_function(object):
             stdEfficiencyEstimate=stdEfficiencyEstimate,
         )
 
-        return self.qc, self.products
+        return self.qc, self.products, False
 
     def plot_response_curve(
         self,
