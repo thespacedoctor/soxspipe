@@ -687,6 +687,9 @@ class horne_extraction(object):
                 ".fits", f"_EXTRACTED_MERGED{self.noddingSequence}{self.notFlattened}.fits"
             )
             filePath = f"{self.productDir}/{filename}"
+            for col, decimals in [("WAVE", 2), ("FLUX_COUNTS", 3), ("SNR", 2), ("FLUX_DENSITY_COUNTS", 3)]:
+                mergedSpectumDF[col] = mergedSpectumDF[col].apply(lambda x: round(float(x), decimals))
+
             mergedTable = Table.from_pandas(mergedSpectumDF)
             BinTableHDU = fits.table_to_hdu(mergedTable)
             hduList = fits.HDUList([priHDU, BinTableHDU])
@@ -702,7 +705,10 @@ class horne_extraction(object):
                 # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
                 asciiFilepath = filePath.replace(".fits", f".txt")
                 asciiFilename = filename.replace(".fits", f".txt")
+                mergedTable["WAVE"] = mergedTable["WAVE"] * 10  # CONVERTING TO ANGSTROMS
+                mergedTable["WAVE"].format = "{:.2f}"
                 mergedTable.write(asciiFilepath, format="ascii", overwrite=True)
+
                 self.products = pd.concat(
                     [
                         self.products,
