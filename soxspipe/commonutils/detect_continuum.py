@@ -335,9 +335,9 @@ class _base_detect(object):
         uniqueorders = len(orderPixelTable["order"].unique())
 
         # CALCULATE COMBINED RESIDUALS AND STATS
-        res_mean = np.ma.mean(res)
+        res_mean = np.ma.mean(np.ma.abs(res))
         res_std = np.ma.std(res)
-        res_median = np.ma.median(res)
+        res_median = np.ma.median(np.ma.abs(res))
 
         if writeQCs:
             utcnow = datetime.utcnow()
@@ -415,8 +415,8 @@ class _base_detect(object):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MEDIAN",
-                            "qc_value": f"{res_median:0.2f}",
-                            "qc_comment": f"[px] Median residual {tag} fit along {self.axisA}-axis",
+                            "qc_value": f"{res_mean:0.2f}",
+                            "qc_comment": f"[px] Median abolute residual {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,

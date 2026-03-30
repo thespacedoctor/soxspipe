@@ -116,8 +116,8 @@ soxs-order-centres:
             poly-clipping-iteration-limit: 5
         qc-acceptable-ranges:
             detector-temp: [0,165]
-            psamp: [0.85,1.01]
-            xressd: [0,0.1]
+            samples-det-frac: [0.85,1.01]
+            x-res-sd: [0,0.1]
     nir:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
@@ -138,8 +138,8 @@ soxs-order-centres:
             poly-clipping-iteration-limit: 5
         qc-acceptable-ranges:
             detector-temp: [0,50]
-            psamp: [0.80,1.01]
-            yressd: [0,0.1]
+            samples-det-frac: [0.80,1.01]
+            y-res-sd: [0,0.1]
 
 soxs-mflat:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
