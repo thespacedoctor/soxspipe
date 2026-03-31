@@ -687,8 +687,14 @@ class horne_extraction(object):
                 ".fits", f"_EXTRACTED_MERGED{self.noddingSequence}{self.notFlattened}.fits"
             )
             filePath = f"{self.productDir}/{filename}"
+
+            def _round_scalar_or_quantity(value, decimals):
+                if hasattr(value, "value"):
+                    value = value.value
+                return round(float(value), decimals)
+
             for col, decimals in [("WAVE", 2), ("FLUX_COUNTS", 3), ("SNR", 2), ("FLUX_DENSITY_COUNTS", 3)]:
-                mergedSpectumDF[col] = mergedSpectumDF[col].apply(lambda x: round(float(x), decimals))
+                mergedSpectumDF[col] = mergedSpectumDF[col].apply(lambda x: _round_scalar_or_quantity(x, decimals))
 
             mergedTable = Table.from_pandas(mergedSpectumDF)
             BinTableHDU = fits.table_to_hdu(mergedTable)
