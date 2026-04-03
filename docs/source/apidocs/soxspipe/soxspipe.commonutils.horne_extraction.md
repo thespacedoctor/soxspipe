@@ -46,14 +46,14 @@
 ```
 ````
 
-````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, gain=1.0)
+````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, gain=1.0, hornePolyOrder=3, debug=False)
 :canonical: soxspipe.commonutils.horne_extraction.extract_single_order
 
 ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.extract_single_order
 ```
 ````
 
-`````{py:class} horne_extraction(log, settings, recipeSettings, skyModelFrame, skySubtractedFrame, twoDMapPath, recipeName=False, qcTable=False, productsTable=False, dispersionMap=False, sofName=False, locationSetIndex=False, startNightDate='')
+`````{py:class} horne_extraction(log, settings, recipeSettings, skyModelFrame, skySubtractedFrame, unflattenedFrame, twoDMapPath, recipeName=False, qcTable=False, productsTable=False, dispersionMap=False, sofName=False, locationSetIndex=False, startNightDate='', notFlattened=False, debug=False, turnOffMP=False)
 :canonical: soxspipe.commonutils.horne_extraction.horne_extraction
 
 Bases: {py:obj}`object`
@@ -83,18 +83,10 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} plot_extracted_spectrum_qc(uniqueOrders, extractions)
+````{py:method} plot_extracted_spectrum_qc(extractions)
 :canonical: soxspipe.commonutils.horne_extraction.horne_extraction.plot_extracted_spectrum_qc
 
 ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.horne_extraction.plot_extracted_spectrum_qc
-```
-
-````
-
-````{py:method} plot_merged_spectrum_qc(merged_orders)
-:canonical: soxspipe.commonutils.horne_extraction.horne_extraction.plot_merged_spectrum_qc
-
-```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.horne_extraction.plot_merged_spectrum_qc
 ```
 
 ````

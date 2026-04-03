@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} soxs_nod(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False)
+`````{py:class} soxs_nod(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False, debug=False, turnOffMP=False)
 :canonical: soxspipe.recipes.soxs_nod.soxs_nod
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
@@ -37,7 +37,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 ```{autodoc2-docstring} soxspipe.recipes.soxs_nod.soxs_nod.__init__
 ```
 
-````{py:method} clean_up()
+````{py:method} clean_up(forceFail=False)
 :canonical: soxspipe.recipes.soxs_nod.soxs_nod.clean_up
 
 ````
@@ -52,16 +52,13 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````
 
-````{py:method} get_recipe_settings()
-:canonical: soxspipe.recipes.soxs_nod.soxs_nod.get_recipe_settings
+````{py:method} flag_poor_data()
+:canonical: soxspipe.recipes.soxs_nod.soxs_nod.flag_poor_data
 
 ````
 
-````{py:method} plot_stacked_spectrum_qc(stackedSpectrum)
-:canonical: soxspipe.recipes.soxs_nod.soxs_nod.plot_stacked_spectrum_qc
-
-```{autodoc2-docstring} soxspipe.recipes.soxs_nod.soxs_nod.plot_stacked_spectrum_qc
-```
+````{py:method} get_recipe_settings()
+:canonical: soxspipe.recipes.soxs_nod.soxs_nod.get_recipe_settings
 
 ````
 
@@ -70,7 +67,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````
 
-````{py:method} process_single_ab_nodding_cycle(aFrame, bFrame, locationSetIndex, orderTablePath)
+````{py:method} process_single_ab_nodding_cycle(aFrame, bFrame, locationSetIndex, orderTablePath, notFlattened=False, masterFlat=False)
 :canonical: soxspipe.recipes.soxs_nod.soxs_nod.process_single_ab_nodding_cycle
 
 ```{autodoc2-docstring} soxspipe.recipes.soxs_nod.soxs_nod.process_single_ab_nodding_cycle
@@ -101,7 +98,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````
 
-````{py:method} stack_extractions(dataFrameList, postfix='')
+````{py:method} stack_extractions(dataFrameList, notFlattened=False, orderJoins=None)
 :canonical: soxspipe.recipes.soxs_nod.soxs_nod.stack_extractions
 
 ```{autodoc2-docstring} soxspipe.recipes.soxs_nod.soxs_nod.stack_extractions

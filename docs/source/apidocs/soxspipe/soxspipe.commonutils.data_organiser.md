@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} data_organiser(log, rootDir, vlt=False)
+`````{py:class} data_organiser(log, rootDir, vlt=False, dbConnect=True)
 :canonical: soxspipe.commonutils.data_organiser.data_organiser
 
 Bases: {py:obj}`object`
@@ -37,26 +37,82 @@ Bases: {py:obj}`object`
 ```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.__init__
 ```
 
-````{py:method} generate_sof_and_product_names(reductionOrder, rawFrames, calibrationFrames, calibrationTables, rawGroups)
-:canonical: soxspipe.commonutils.data_organiser.data_organiser.generate_sof_and_product_names
+````{py:method} build_sof_files()
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.build_sof_files
 
-```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.generate_sof_and_product_names
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.build_sof_files
 ```
 
 ````
 
-````{py:method} populate_products_table(reductionOrder, rawGroups)
-:canonical: soxspipe.commonutils.data_organiser.data_organiser.populate_products_table
+````{py:method} close()
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.close
 
-```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.populate_products_table
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.close
 ```
 
 ````
 
-````{py:method} prepare()
+````{py:method} get_incomplete_raw_frames_set()
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.get_incomplete_raw_frames_set
+
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.get_incomplete_raw_frames_set
+```
+
+````
+
+````{py:method} get_raw_frames_and_groups(ttype=None, arm=None, tech=None, recipe=None, recipeOrder=None, filterName=None, unprocessedOnly=False)
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.get_raw_frames_and_groups
+
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.get_raw_frames_and_groups
+```
+
+````
+
+````{py:method} list_obs()
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.list_obs
+
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.list_obs
+```
+
+````
+
+````{py:method} list_raw(sofFile)
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.list_raw
+
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.list_raw
+```
+
+````
+
+````{py:method} list_sofs()
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.list_sofs
+
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.list_sofs
+```
+
+````
+
+````{py:method} predict_product_frames(productTypes, rawGroups, recipe)
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.predict_product_frames
+
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.predict_product_frames
+```
+
+````
+
+````{py:method} prepare(refresh=False, report=True)
 :canonical: soxspipe.commonutils.data_organiser.data_organiser.prepare
 
 ```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.prepare
+```
+
+````
+
+````{py:method} raw_frames_to_sof_map(rawGroups, containerSofs)
+:canonical: soxspipe.commonutils.data_organiser.data_organiser.raw_frames_to_sof_map
+
+```{autodoc2-docstring} soxspipe.commonutils.data_organiser.data_organiser.raw_frames_to_sof_map
 ```
 
 ````

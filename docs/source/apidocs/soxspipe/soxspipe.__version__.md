@@ -26,7 +26,7 @@
 ````{py:data} __version__
 :canonical: soxspipe.__version__.__version__
 :value: >
-   '0.13.6'
+   '0.15.2'
 
 ```{autodoc2-docstring} soxspipe.__version__.__version__
 ```

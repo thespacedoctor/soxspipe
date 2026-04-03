@@ -42,7 +42,7 @@
 ```
 ````
 
-`````{py:class} soxs_order_centres(log, settings=False, inputFrames=[], verbose=False, overwrite=False, polyOrders=False, command=False)
+`````{py:class} soxs_order_centres(log, settings=False, inputFrames=[], verbose=False, overwrite=False, polyOrders=False, command=False, debug=False, turnOffMP=False)
 :canonical: soxspipe.recipes.soxs_order_centres.soxs_order_centres
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
@@ -56,7 +56,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 ```{autodoc2-docstring} soxspipe.recipes.soxs_order_centres.soxs_order_centres.__init__
 ```
 
-````{py:method} clean_up()
+````{py:method} clean_up(forceFail=False)
 :canonical: soxspipe.recipes.soxs_order_centres.soxs_order_centres.clean_up
 
 ````
@@ -68,6 +68,11 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````{py:method} detrend(inputFrame, master_bias=False, dark=False, master_flat=False, order_table=False)
 :canonical: soxspipe.recipes.soxs_order_centres.soxs_order_centres.detrend
+
+````
+
+````{py:method} flag_poor_data()
+:canonical: soxspipe.recipes.soxs_order_centres.soxs_order_centres.flag_poor_data
 
 ````
 

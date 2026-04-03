@@ -27,7 +27,7 @@
 
 ### API
 
-````{py:function} dispersion_map_to_pixel_arrays(log, dispersionMapPath, orderPixelTable, removeOffDetectorLocation=True)
+````{py:function} dispersion_map_to_pixel_arrays(log, dispersionMapPath, orderPixelTable, removeOffDetectorLocation=True, trimColumns=False)
 :canonical: soxspipe.commonutils.dispersion_map_to_pixel_arrays.dispersion_map_to_pixel_arrays
 
 ```{autodoc2-docstring} soxspipe.commonutils.dispersion_map_to_pixel_arrays.dispersion_map_to_pixel_arrays

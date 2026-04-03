@@ -21,9 +21,25 @@
     ```
 ````
 
+### Functions
+
+````{list-table}
+:class: autosummary longtable
+:align: left
+
+* - {py:obj}`run_recipe <soxspipe.commonutils.reducer.run_recipe>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.reducer.run_recipe
+    :summary:
+    ```
+* - {py:obj}`run_recipe_bulk <soxspipe.commonutils.reducer.run_recipe_bulk>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.reducer.run_recipe_bulk
+    :summary:
+    ```
+````
+
 ### API
 
-`````{py:class} reducer(log, workspaceDirectory, settings=False, pathToSettings=False, quitOnFail=False, overwrite=False, daemon=False)
+`````{py:class} reducer(log, workspaceDirectory, reductionTarget='all', settings=False, pathToSettings=False, quitOnFail=False, overwrite=False, daemon=False, verbose=False, refreshWorkspace=False)
 :canonical: soxspipe.commonutils.reducer.reducer
 
 Bases: {py:obj}`object`
@@ -37,7 +53,7 @@ Bases: {py:obj}`object`
 ```{autodoc2-docstring} soxspipe.commonutils.reducer.reducer.__init__
 ```
 
-````{py:method} reduce()
+````{py:method} reduce(batch=False, multiprocess=False)
 :canonical: soxspipe.commonutils.reducer.reducer.reduce
 
 ```{autodoc2-docstring} soxspipe.commonutils.reducer.reducer.reduce
@@ -45,15 +61,7 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} run_recipe(recipe, sof, command=False)
-:canonical: soxspipe.commonutils.reducer.reducer.run_recipe
-
-```{autodoc2-docstring} soxspipe.commonutils.reducer.reducer.run_recipe
-```
-
-````
-
-````{py:method} select_sof_files_to_process()
+````{py:method} select_sof_files_to_process(recipe=False, reductionTarget=False, batch=False, arm=False)
 :canonical: soxspipe.commonutils.reducer.reducer.select_sof_files_to_process
 
 ```{autodoc2-docstring} soxspipe.commonutils.reducer.reducer.select_sof_files_to_process
@@ -62,3 +70,17 @@ Bases: {py:obj}`object`
 ````
 
 `````
+
+````{py:function} run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=False, turnOffMP=False)
+:canonical: soxspipe.commonutils.reducer.run_recipe
+
+```{autodoc2-docstring} soxspipe.commonutils.reducer.run_recipe
+```
+````
+
+````{py:function} run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, workspaceDirectory, conn, sessionId)
+:canonical: soxspipe.commonutils.reducer.run_recipe_bulk
+
+```{autodoc2-docstring} soxspipe.commonutils.reducer.run_recipe_bulk
+```
+````
