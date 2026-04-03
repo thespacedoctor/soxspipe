@@ -436,6 +436,7 @@ class data_organiser(object):
 
         self._flag_files_to_ignore()
         self.build_sof_files()
+        self.build_sof_files()
 
         if report:
 
