@@ -14,6 +14,9 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+import multiprocessing
+
+multiprocessing.set_start_method("spawn")
 
 os.environ["TERM"] = "vt100"
 
@@ -97,12 +100,12 @@ class reducer(object):
             "order_centres",
             "mflat",
             "spat_solution",
-            "nod",
-            "stare",
-            "offset",
-            "nod-obj",
-            "stare-obj",
-            "offset-obj",
+            "nod_std",
+            "stare_std",
+            "offset_std",
+            "nod_obj",
+            "stare_obj",
+            "offset_obj",
         ]
 
         self.sessionPath = workspaceDirectory + "/sessions/" + self.sessionId
@@ -183,7 +186,7 @@ class reducer(object):
                             self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
                             break
 
-                        recipe = row["recipe"].replace("-std", "").replace("-obj", "")
+                        recipe = row["recipe"].replace("_std", "").replace("_obj", "")
                         sof = row["sof"]
                         startTime = times.get_now_sql_datetime()
                         sof = self.sessionPath + "/sof/" + sof
@@ -204,7 +207,9 @@ class reducer(object):
                         except Exception as e:
                             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
                             self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-                            self.log.error(f'\nRecipe Command: {row["command"].replace("-obj ", " ")}\n\n')
+                            self.log.error(
+                                f'\nRecipe Command: {row["command"].replace("-obj ", " ").replace("-std ", " ")}\n\n'
+                            )
                             fail = True
 
                             if self.quitOnFail:
@@ -221,7 +226,9 @@ class reducer(object):
                         runningTime = times.calculate_time_difference(startTime, endTime)
                         sys.argv[0] = os.path.basename(sys.argv[0])
 
-                        self.log.print(f'\nRecipe Command: {row["command"].replace("-obj ", " ")} ')
+                        self.log.print(
+                            f'\nRecipe Command: {row["command"].replace("_obj ", " ").replace("_std ", " ")} '
+                        )
                         self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                         if not self.daemon:
                             print(f"{'='*70}\n")
@@ -327,7 +334,16 @@ class reducer(object):
             mask = rawGroups["recipe"] == recipe
             rawGroups = rawGroups.loc[mask]
 
-        rawGroups["command"] = "soxspipe " + rawGroups["recipe"].str.replace("-obj", "") + " sof/" + rawGroups["sof"]
+        rawGroups["command"] = (
+            "soxspipe "
+            + rawGroups["recipe"]
+            .str.replace("-obj", "")
+            .str.replace("_obj", "")
+            .str.replace("-std", "")
+            .str.replace("_std", "")
+            + " sof/"
+            + rawGroups["sof"]
+        )
         if self.pathToSettings:
             rawGroups["command"] += f" -s {self.pathToSettings}"
         conn.close()
@@ -492,6 +508,7 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
 
     def wrapper(inputDict, log, recipe, settings, overwrite, workspaceDirectory, wrapperTurnOffMP=True):
         import traceback
+        import os
 
         returnDict = {
             "status": None,
@@ -533,7 +550,9 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
         except Exception as e:
             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
             log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-            log.error(f'\nRecipe Command: {inputDict["command"].replace("-obj ", " ")}\n\n')
+            log.error(
+                f'\nRecipe Command: {inputDict["command"].replace("-obj ", " ").replace("_obj ", " ").replace("-std ", " ").replace("_std ", " ")}\n\n'
+            )
             returnDict["status"] = "fail"
             returnDict["error_message"] = e
 
@@ -545,6 +564,10 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
     if ("nod" in recipe or "stare" in recipe) and len(inputDicts) < 4:
         turnOffMP = True
         wrapperTurnOffMP = False
+    elif "nod" in recipe or "stare" in recipe:
+        # poolSize = 4
+        turnOffMP = False
+        wrapperTurnOffMP = True
     else:
         turnOffMP = False
         wrapperTurnOffMP = True
@@ -556,6 +579,7 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
         )
 
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
+
     results = fmultiprocess(
         log=log,
         function=wrapper,
