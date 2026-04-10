@@ -76,7 +76,7 @@ class soxs_stare(base_recipe):
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-        self.recipeSettings = settings[self.recipeName]
+        self.recipeSettings = self.get_recipe_settings()
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
