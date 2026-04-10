@@ -690,7 +690,7 @@ class create_dispersion_map(object):
                         # NIR ARM OF SOXS OR OTHER INSTRUMENTS
                         # ASSIGN SHIFT GROUP BASED ON NxN GRID OF mph_mean_x AND mph_mean_y
                         # SET GRID SIZE (N=3 MEANS 3x3 GRID)
-                        grid_size = 2
+                        grid_size = 3
 
                         x = orderPixelTable["mph_mean_x"]
                         y = orderPixelTable["mph_mean_y"]
@@ -1101,6 +1101,8 @@ class create_dispersion_map(object):
 
         # GET PREDICTED PIXEL VALUES FROM FIRST GUESS MAP
         df = dispersion_map_to_pixel_arrays(log=self.log, dispersionMapPath=self.firstGuessMap, orderPixelTable=df)
+        df["detector_x_shifted"] = df["detector_x"]
+        df["detector_y_shifted"] = df["detector_y"]
 
         # CALCULATE SHIFTS BETWEEN PREDICTED AND ACTUAL POSITIONS
         tmpList = df.copy()
@@ -1119,19 +1121,20 @@ class create_dispersion_map(object):
         for o in uniqueOrders:
             mask = tmpList["order"] == o
             meanxy, medianxy, stdxy = sigma_clipped_stats(
-                tmpList.loc[mask, "shift_xy"], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=3
+                tmpList.loc[mask, "shift_xy"], sigma=3.0, stdfunc="mad_std", cenfunc="median", maxiters=3
             )
             meanx, medianx, stdx = sigma_clipped_stats(
-                tmpList.loc[mask, "shift_x"], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=1
+                tmpList.loc[mask, "shift_x"], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3
             )
             meany, mediany, stdy = sigma_clipped_stats(
-                tmpList.loc[mask, "shift_y"], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=1
+                tmpList.loc[mask, "shift_y"], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3
             )
 
             # USE MEDIAN FOR ORDERS WITH HIGH SCATTER
             if stdxy > 1.5:
                 tmpList.loc[mask, "shift_y"] = mediany
                 tmpList.loc[mask, "shift_x"] = medianx
+                print(o, stdxy, "high scatter - using median shift values")
 
         # MERGE SHIFTS BACK INTO MAIN DATAFRAME
         df = df.merge(tmpList, on=["wavelength", "order"], how="outer")
@@ -1140,8 +1143,8 @@ class create_dispersion_map(object):
         df.dropna(axis="index", how="any", subset=["shift_x"], inplace=True)
 
         # APPLY SHIFTS TO DETECTOR POSITIONS
-        df.loc[:, "detector_x"] -= df.loc[:, "shift_x"]
-        df.loc[:, "detector_y"] -= df.loc[:, "shift_y"]
+        df.loc[:, "detector_x_shifted"] -= df.loc[:, "shift_x"]
+        df.loc[:, "detector_y_shifted"] -= df.loc[:, "shift_y"]
 
         # DROP TEMPORARY SHIFT COLUMNS
         df.drop(columns=["fit_x", "fit_y", "shift_x", "shift_y"], inplace=True)
@@ -2993,6 +2996,7 @@ class create_dispersion_map(object):
                 skylines=False,
                 slitPositions=self.uniqueSlitPos,
             )
+
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis="index", how="any", subset=["residuals_x"], inplace=True)
         orderPixelTable["residuals_xy"] = np.sqrt(
@@ -3043,12 +3047,7 @@ class create_dispersion_map(object):
 
         # a = plt.figure(figsize=(40, 15))
 
-        if self.debug:
-            fig = plt.figure(figsize=(6, 7), constrained_layout=True)
-            gs = fig.add_gridspec(1, 1)
-            toprow = fig.add_subplot(gs[:, :])
-
-        elif rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:  # SOXS NIR
+        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:  # SOXS NIR
             fig = plt.figure(figsize=(6, 20), constrained_layout=True)
             # CREATE THE GRID OF AXES
             if self.arcFrame:
@@ -3277,9 +3276,6 @@ class create_dispersion_map(object):
         if self.axisA == "x":
             toprow.invert_yaxis()
         toprow.set_ylim([0, rotatedImg.shape[0]])
-
-        if self.debug:
-            plt.show()
 
         midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5)
         midrow.set_title("global dispersion solution", fontsize=10)
@@ -3624,7 +3620,7 @@ class create_dispersion_map(object):
             plt.show()
 
         if not self.settings["tune-pipeline"]:
-            plt.savefig(filePath, dpi=120, format="pdf")
+            plt.savefig(filePath, dpi=360, format="pdf")
 
         plt.close("all")
 
