@@ -7,9 +7,11 @@
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----- | ------------- | -------------------------------------------------- |
 | use_flat                                          | divide image by master flat frame                                                                           | bool  | settings file | -                                                  |
 | subtract_background                               | fit and subtract the intra-order background light                                                           | bool  | settings file | -                                                  |
+| use_lacosmic | use la cosmic to remove CRHs before extraction | bool | settings file | - |
 | stacked-clipping-sigma                            | the sigma clipping limit used when stacking frames into a composite frame                                   | float | settings file | [`clip_and_stack`](../utils/clip_and_stack.md)     |
 | stacked-clipping-iterations                       | the maximum sigma-clipping iterations used when stacking frames into a composite frame                      | int   | settings file | [`clip_and_stack`](../utils/clip_and_stack.md)     |
 | horne-extraction-slit-length                      | the length of the 'slit' used to collect object flux (in pixels). Doubles are boxcar extraction aperture size.                                           | int   | settings file | [`horne_extraction`](../utils/horne_extraction.md) |
+| horne-extraction-profile-poly-order | degree of the polynomial used to fit the dispersion-direction profiles of the object. | int | settings file | [`horne_extraction`](../utils/horne_extraction.md) |
 | horne-extraction-profile-global-clipping-sigma    | sigma clipping limit when fitting the object profile (global over the order)                                | float | settings file | [`horne_extraction`](../utils/horne_extraction.md) |
 | horne-extraction-profile-clipping-sigma           | sigma clipping limit when fitting the dispersion-direction profiles of the object                           | float | settings file | [`horne_extraction`](../utils/horne_extraction.md) |
 | horne-extraction-profile-clipping-iteration-count | maximum number of clipping iterations when fitting dispersion-direction profiles                            | int   | settings file | [`horne_extraction`](../utils/horne_extraction.md) |
@@ -23,8 +25,8 @@
 | poly-clipping-iteration-limit                     | maximum number of clipping iterations when fitting global polynomial to object trace                        | int   | settings file | [`detect_continuum`](../utils/detect_continuum.md) |
 | background-subtraction: bspline-deg         | degree of bsplines used to fit the inter-order background (if `subtract_background` == True)         | int  | settings file                  | [`subtract_background`](../utils/subtract_background.md) |
 | background-subtraction: gaussian-blur-sigma | Standard deviation of Gaussian kernel used to smooth background image (if `subtract_background` == True)  | int  | settings file                 | [`subtract_background`](../utils/subtract_background.md) |
+| response: max_iteration | maximum number of iterations used to fit the polynomial to the response function | int | settings file | [`response_function`](../utils/response_function.md) |
+| response: poly_order | degree of the polynomial used to fit the response function | int | settings file | [`response_function`](../utils/response_function.md) |
 
 
 :::
-
-

@@ -29,5 +29,3 @@
 | response: poly_order | degree of the polynomial used to fit the response function | int | settings file | [`response_function`](../utils/response_function.md) |
 
 :::
-
-==UPDATE parameters==

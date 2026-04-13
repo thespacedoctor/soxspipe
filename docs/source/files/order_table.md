@@ -10,11 +10,3 @@ order,degy,CENT_c0,CENT_c1,CENT_c2,CENT_c3
 12,3,714.084224,0.392816612,-0.000177468713,1.24058095e-09
 ...
 ```
-
----
-
-:::{todo}
-
-- add order table example after soxs_mflat
-
-:::
