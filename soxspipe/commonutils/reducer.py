@@ -254,6 +254,10 @@ class reducer(object):
                 )
                 print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
 
+        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+        do.session_refresh(failure=None)
+        do.close()
+
         self.log.debug("completed the ``reduce`` method")
         return None
 
