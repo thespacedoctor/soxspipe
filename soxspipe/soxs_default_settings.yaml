@@ -684,10 +684,14 @@ soxs-nod:
 
 soxs-response:
     vis:
+        # MAXIMUM NUMBER OF ITERATIONS USED TO FIT THE POLYNOMIAL TO THE RESPONSE FUNCTION
         max_iteration: 5
+        # DEGREE OF THE POLYNOMIAL USED TO FIT THE RESPONSE FUNCTION
         poly_order: 5
     nir:        
+        # MAXIMUM NUMBER OF ITERATIONS USED TO FIT THE POLYNOMIAL TO THE RESPONSE FUNCTION
         max_iteration: 5
+        # DEGREE OF THE POLYNOMIAL USED TO FIT THE RESPONSE FUNCTION
         poly_order: 7
 
 
