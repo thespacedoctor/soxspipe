@@ -238,13 +238,10 @@ soxs-spat-solution:
             pinhole-count-min: [8.5,9.5]
             fwhm-pin-median: [1.60,1.72]
             fwhm-pin-sd: [0.0,0.16]
-            # xy-diff-sd: [0,1.2]
-            xy-res-median: [0,0.6]
-            xy-res-sd: [0,0.4]
-            x-res-sd: [0,0.17]
-            y-res-sd: [0,0.4]
-            # x-diff-sd:  [0,0.3]
-            # y-diff-sd:  [0,1.0]
+            xy-res-median: [0,0.7]
+            xy-res-sd: [0,0.5]
+            x-res-sd: [0,0.25]
+            y-res-sd: [0,0.48]
     nir:
         # THE SIZE OF THE SQUARE WINDOW USED TO SEARCH FOR AN ARC-LAMP EMISSION LINE, CENTRED ON THE PREDICTED PIXEL POSITION OF THE LINE
         pixel-window-size: 10
