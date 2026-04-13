@@ -24,7 +24,9 @@
 | poly-fitting-residual-clipping-sigma              | clipping limit (median and mad) when fitting global polynomial to object trace                              | float | settings file | [`detect_continuum`](../utils/detect_continuum.md) |
 | poly-clipping-iteration-limit                     | maximum number of clipping iterations when fitting global polynomial to object trace                        | int   | settings file | [`detect_continuum`](../utils/detect_continuum.md) |
 | background-subtraction: bspline-deg         | degree of bsplines used to fit the inter-order background (if `subtract_background` == True)         | int  | settings file                  | [`subtract_background`](../utils/subtract_background.md) |
-| background-subtraction: gaussian-blur-sigma | Standard deviation of Gaussian kernel used to smooth background image (if `subtract_background` == True)  | int  | settings file                 | [`subtract_background`](../utils/subtract_background.md) |
+| background-subtraction: gaussian-blur-sigma | standard deviation of Gaussian kernel used to smooth background image (if `subtract_background` == True) | int  | settings file                 | [`subtract_background`](../utils/subtract_background.md) |
+| response: max_iteration | maximum number of iterations used to fit the polynomial to the response function | int | settings file | [`response_function`](../utils/response_function.md) |
+| response: poly_order | degree of the polynomial used to fit the response function | int | settings file | [`response_function`](../utils/response_function.md) |
 
 :::
 
