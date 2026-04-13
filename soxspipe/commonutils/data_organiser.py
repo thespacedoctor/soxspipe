@@ -450,7 +450,7 @@ class data_organiser(object):
             print(f"   - `sessions/`: directory of data-reduction sessions")
             print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
             print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
-            print(f"   - `reductions/`: nested folders, ordered by date, containing reduced data.\n")
+            print(f"   - `reduced/`: nested folders, ordered by date, containing reduced data.\n")
 
             incompleteSets = self.get_incomplete_raw_frames_set()
             if len(incompleteSets.index):
@@ -1064,7 +1064,7 @@ class data_organiser(object):
 
         # GENERATE A LIST OF FILE PATHS
         pathToDirectory = self.rootDir
-        allowlistExtensions = [".db", ".yaml", ".log", ".sh"]
+        allowlistExtensions = [".db", ".yaml", ".log", ".sh", ".py"]
         for d in os.listdir(pathToDirectory):
             filepath = os.path.join(pathToDirectory, d)
             if os.path.splitext(filepath)[1] in allowlistExtensions:
