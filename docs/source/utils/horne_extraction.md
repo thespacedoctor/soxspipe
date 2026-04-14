@@ -43,7 +43,7 @@ $$
 V_{i}^{\lambda} = V_{0} + \frac{P_{i}^{\lambda} f_{\lambda} +  S_{i}^{\lambda}}{Q}
 $$
 
-Where $V_{0}$ is the square of the readout noise of the detector, $f_\{lambda}$ is the sum of the pixels within the extraction window at each wavelength, and $Q$ is the detector gain. 
+Where $V_{0}$ is the square of the readout noise of the detector, $f_{\lambda}$ is the sum of the pixels within the extraction window at each wavelength, and $Q$ is the detector gain. 
 
 Cosmic rays and uncorrected deviant pixels are removed from the extraction by comparing their value with a certain threshold. In particular, for each pixel $i$ in the extraction window the quantity
 
