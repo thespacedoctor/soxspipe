@@ -44,3 +44,18 @@ In multiprocessing mode, recipe sof files are reduced in parallel, and the user 
 :::
 
 ## Targetting a Science SOF file for Reduction
+
+In addition to reducing an entire directory of data, `soxspipe` can target specific science SOF files. In this mode of operation, the pipeline will only reduce the calibration data needed to reduce the targeted science SOF file. To list all of the science SOF files in a workspace, run the command:
+
+```bash
+soxspipe list sof .
+```
+
+Then select an SOF file to target, and run the `reduce` command with the `sof` sub-command, for example:
+
+```bash
+soxspipe reduce sof 20260111T080805_VIS_1X1_1_NOD_OBJ_SLIT5_0_60_0S_SOXS_CD-325613.sof
+```
+
+As with reducing data with the `all` sub-command, if a recipe fails to create a required calibration product, the pipeline will attempt to pivot to use the next-best available product (as long as other calibration data is available in the workspace).
+
