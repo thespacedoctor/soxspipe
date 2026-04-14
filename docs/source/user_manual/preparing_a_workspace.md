@@ -22,7 +22,9 @@ soxspipe prep .
 Once the workspace has been prepared, you should find it contains the following files and folders:
 
 - `misc/`: a lost-and-found archive of non-fits files
+- `qc/`: a directory to host the quality control data and plots
 - `raw/`: all raw frames to be reduced
+- `reduced/`: a directory to host the reduced data
 - `sessions/`: directory of data-reduction sessions
 - `sof/`: the set-of-files (sof) files required for each reduction step
 - `soxspipe.db`: an SQLite database needed by the data-organiser; please do not delete
