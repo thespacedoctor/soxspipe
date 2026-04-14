@@ -7,7 +7,7 @@ The general algorithm and steps performed by [`response_function`](#soxspipe.com
 :::{figure-md} response_function_util
 ![](response_function.png){width=600px}
 
-The algorithm used to compute the response function of the spectrograph.
+The algorithm used to compute the spectrograph's response function.
 :::
 
 In detail, this utility first determines the average airmass at which the standard star, provided as input, has been observed. Then, it loads the standard extinction curve, supplied as a FITS table with wavelength and $mag_{airmass}$ for the observing site (La Silla for NTT/SOXS), and corrects the observed flux (in counts) accordingly, applying the formula:
@@ -31,6 +31,20 @@ where $C(\lambda)$ is the tabulated value of the standard star flux in the catal
 The different values of $S(\lambda)$ are fitted with a polynomial of 4th order (as default) or `soxs-response-poly_order` using a standard iteration schema. For each iteration, data are fitted, and points for which the residuals deviate more `soxs-response-sigma_clipping_threshold` standard deviations are clipped for the next iteration (with a maximum of `soxs-response-max_iteration` number of iterations).
 
 If the fit does not converge, `response_function` raises an exception; otherwise, a FITS table containing the fit's parameters is saved.
+
+## Efficiency Calculation
+
+During the computation of the response function, the `get()` method performs an evaluation of the efficiency of the instrument as the ratio between the measured counts from the observed and _not_ flat field corrected standard star spectrum and the expected number of counts from tabulated flux values of known standard stars.
+
+In detail, the `get()` method searches the FITS header for the standard name to load the tabulated expected flux value from the static calibration assets for the observed standard star. It then divides the observed spectrum by the exposure time (`EXPTIME` keyword in the FITS header) and reinterpolates the tabulated standard star fluxes onto the same wavelength grid as the observed spectrum. The tabulated flux values are then converted into ph s$^{-1} cm^{-2} \AA^{-1}$ and multiplied by the effective NTT telescope area (89,000 cm$^2$). Finally, the observed standard star spectrum is divided by the tabulated standard star fluxes (adjusted as discussed above) to obtain the estimate of the end-to-end efficiency, which is smoothed using a standard Savitzky-Golay filter with $\sigma$ = 21.
+
+:::{figure-md} response_curve_util
+
+![image-20260414151800690](../_images/image-20260414151800690.png)
+
+The output of the `reponse_function` utility used in the reduction of spectroscopic standard star spectra. The third panel shows th fittted response curve, and the final panel shows the overall efficiency of the instrument across the entire wavelength range of the spectrograph arm. 
+
+:::
 
 ### Utility API
 
