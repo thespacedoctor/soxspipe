@@ -6,6 +6,7 @@
 | ------------------------- | -------------------------------------------- | --------- |---------- |---------- |---------- |
 | `EXTRACTED ORDERS TABLE`    | Table of the extracted source in each order  | FITS      |     `SCI_SLIT_FLUX_<ARM>`     |      `REDUCED`     |     `ECHELLE,SLIT`      |
 | `EXTRACTED MERGED TABLE`    | Table of the extracted, order-merged         | FITS      |      `SCI_SLIT_FLUX_<ARM>`      |     `REDUCED`      |      `ECHELLE,SLIT`     |
+| `EXTRACTED_FLUXCAL_SPECTRUM` | Table of the flux calibrated extracted spectrum | FITS | `SCI_SLIT_FLUX_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `SKY SUBTRACTED OBJECT`     | The sky-subtracted object                    | FITS      |       -       |    -       |     -      |
 | `SKY MODEL`                 | The sky background model                     | FITS      |         -       |    -       |     -      |
 | `SKY SUB RESIDUALS`         | The sky subtraction residuals                | FITS      |        -       |    -       |     -      |
@@ -18,9 +19,8 @@
 | `OBJECT TRACE RES`          | Residuals of the object trace polynomial fit | PDF       |     -       |    -       |     -      |
 | `EXTRACTED ORDERS QC PLOT`  | QC plot of extracted source                  | PDF       |     -       |    -       |     -      |
 | `EXTRACTED MERGED QC PLOT`  | QC plot of extracted order-merged source     | PDF       |     -       |    -       |     -      |
-|  |  |  |  |  |  |
+| `EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT` | QC plot of extracted order-merged, flux-calibrated source | PDF | - | - | - |
 | `RESPONSE_QC_PLOT` | Response curve QC plot. | PDF | - | - | - |
 
 :::
-
 
