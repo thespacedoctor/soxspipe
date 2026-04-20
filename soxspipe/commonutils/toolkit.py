@@ -1569,6 +1569,7 @@ def plot_merged_spectrum_qc(
     orderJoins=False,
     debug=False,
     fluxCalibrated=False,
+    qcTable=False,
 ):
     """
     Plot merged spectrum QC plot as a standalone function.
@@ -1588,6 +1589,7 @@ def plot_merged_spectrum_qc(
     import pandas as pd
     from astropy import units as u
     from astropy.stats import sigma_clipped_stats
+    import numpy as np
 
     if not noddingSequence:
         noddingSequence = ""
@@ -1604,7 +1606,7 @@ def plot_merged_spectrum_qc(
         top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
 
     top_panel.set_title(
-        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace(".fits", "")}",
+        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace('.fits', '')}",
         fontsize=11,
         linespacing=2.0,
     )
@@ -1662,6 +1664,12 @@ def plot_merged_spectrum_qc(
     bottom_panel.set_ylabel("SNR", fontsize=10)
     bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
 
+    if not isinstance(qcTable, bool):
+        snrValue = qcTable.loc[qcTable["qc_name"] == "SNR MEDIAN"]
+        orderValue = snrValue["qc_order"].values
+        orderValue[orderValue == np.nan] = "GLOBAL"
+        snrValue = snrValue["qc_value"].values
+
     bottom_panel.plot(merged_orders["WAVE"], merged_orders["SNR"], linewidth=0.4, color="black")
     try:
         bottom_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
@@ -1670,6 +1678,12 @@ def plot_merged_spectrum_qc(
     import numpy as np
 
     bottom_panel.set_ylim(0, np.nanmax(merged_orders["SNR"]) * 1.1)
+
+    if not isinstance(qcTable, bool) and len(orderValue):
+        snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in zip(orderValue, snrValue))
+        bottom_panel.text(
+            0.99, 0.99, snr_text, transform=bottom_panel.transAxes, ha="right", va="top", fontsize=5, family="monospace"
+        )
 
     if orderJoins:
         for k, v in orderJoins.items():
@@ -1868,7 +1882,12 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     import pandas as pd
     from datetime import datetime
 
+    spectrumDF = spectrumDF.copy(deep=False)
     spectrumDF["ORDER"] = np.nan
+    try:
+        spectrumDF["WAVE"] = spectrumDF["WAVE"].values.value
+    except:
+        pass
 
     ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST
     orderJoins = dict(reversed(list(orderJoins.items())))
