@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} response_function(log, stdExtractionPath, recipeName, sofName, settings=False, qcTable=False, productsTable=False, startNightDate='', stdNotFlatExtractionPath='')
+`````{py:class} response_function(log, stdExtractionPath, recipeName, sofName, settings=False, qcTable=False, productsTable=False, startNightDate='', stdNotFlatExtractionPath='', orderJoins=None)
 :canonical: soxspipe.commonutils.response_function.response_function
 
 Bases: {py:obj}`object`
@@ -37,14 +37,6 @@ Bases: {py:obj}`object`
 ```{autodoc2-docstring} soxspipe.commonutils.response_function.response_function.__init__
 ```
 
-````{py:method} extinction_correction_factor(wave)
-:canonical: soxspipe.commonutils.response_function.response_function.extinction_correction_factor
-
-```{autodoc2-docstring} soxspipe.commonutils.response_function.response_function.extinction_correction_factor
-```
-
-````
-
 ````{py:method} get()
 :canonical: soxspipe.commonutils.response_function.response_function.get
 
@@ -53,7 +45,7 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} plot_response_curve(stdExtWave, stdExtWave_noflat, stdExtFlux, binCentreWave, binCentreWaveOriginal, binIntegratedFlux, absToExtFluxRatio, responseFuncCoeffs, stdEfficiencyEstimate)
+````{py:method} plot_response_curve(stdExtWave, stdExtWaveNotFlat, stdExtFlux, binCentreWave, binCentreWaveOriginal, binIntegratedFlux, absToExtFluxRatio, responseFuncCoeffs, stdEfficiencyEstimate)
 :canonical: soxspipe.commonutils.response_function.response_function.plot_response_curve
 
 ```{autodoc2-docstring} soxspipe.commonutils.response_function.response_function.plot_response_curve

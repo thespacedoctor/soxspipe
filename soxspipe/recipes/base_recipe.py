@@ -63,6 +63,7 @@ class base_recipe(object):
         from soxspipe.commonutils import toolkit
         import sqlite3 as sql
         import matplotlib
+        import random
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
@@ -79,27 +80,36 @@ class base_recipe(object):
         self.darkDetrendWarningIssued1 = False
         self.darkDetrendWarningIssued2 = False
 
+        if isinstance(inputFrames, str) and "_STD_" in inputFrames:
+
+            self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")
+            self.recipeName = self.recipeName.replace("soxs-stare", "soxs-stare-std")
+            self.recipeName = self.recipeName.replace("soxs-offset", "soxs-offset-std")
+
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
+            errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
+            basename = os.path.basename(self.productPath)
 
-            if os.path.exists(self.productPath) and not overwrite:
+            if os.path.exists(errorLog) and not overwrite:
+                if verbose:
+                    print(
+                        f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
+                    )
+                raise FileExistsError(
+                    f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
+                )
+            elif os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
                 if verbose:
                     print(
                         f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
                     )
-                raise FileExistsError
-            else:
-                errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
-                if os.path.exists(errorLog) and not overwrite:
-                    basename = os.path.basename(errorLog)
-                    if verbose:
-                        print(
-                            f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
-                        )
-                    raise FileExistsError
+                raise FileExistsError(
+                    f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
+                )
 
             self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:
@@ -120,6 +130,8 @@ class base_recipe(object):
         self.detectorParams = None
         self.dateObs = None
 
+        self.outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))
+
         # FIND THE CURRENT SESSION
         from os.path import expanduser
 
@@ -134,6 +146,7 @@ class base_recipe(object):
 
         # INITIATE A DB CONNECTION
         self.conn = None
+        self.status = None
         if not self.turnOffMP:
             if self.currentSession and self.sofName:
                 self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
@@ -192,6 +205,7 @@ class base_recipe(object):
                 "qc_name": [],
                 "qc_value": [],
                 "qc_unit": [],
+                "qc_order": [],
                 "qc_comment": [],
                 "obs_date_utc": [],
                 "reduction_date_utc": [],
@@ -250,7 +264,6 @@ class base_recipe(object):
         import warnings
         from datetime import datetime
         from soxspipe.commonutils import toolkit
-        import random
 
         warnings.filterwarnings(action="ignore")
         logging.captureWarnings(True)
@@ -277,8 +290,14 @@ class base_recipe(object):
                     key_uncertainty_type="UTYPE",
                 )
             except TypeError as e:
-                self.log.info(f"{filepath} is a FITS Binary Table")
-                return filepath
+                if "buffer is too small" in str(e):
+                    self.log.warning(
+                        f"Buffer is too small for frame {filepath}. The frame is likely corrupted and will not be used in the reduction.\n"
+                    )
+                    return None
+                else:
+                    self.log.info(f"{filepath} is a FITS Binary Table")
+                    return filepath
 
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SXSPRE" DOES NOT
         # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
@@ -353,7 +372,7 @@ class base_recipe(object):
 
         frame.mask = boolMask
 
-        if self.recipeName in ["soxs-nod", "soxs-stare"] and self.recipeSettings["use_flat"]:
+        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:
             # OBJECT/STANDARD FRAMES
             if frame.meta[kw("DPR_TYPE")] == "STD,FLUX" or "STD_stare" in frame.meta[kw("OBS_NAME")]:
                 # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
@@ -395,8 +414,7 @@ class base_recipe(object):
         if save:
             outDir = self.workspaceRootPath
         else:
-            outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))
-            self.outDir = outDir
+            outDir = self.outDir
 
         # INJECT THE PRE KEYWORD
         utcnow = datetime.utcnow()
@@ -404,7 +422,10 @@ class base_recipe(object):
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         if not os.path.exists(outDir):
-            os.makedirs(outDir)
+            try:
+                os.makedirs(outDir)
+            except:
+                pass
         # CONVERT CCDData TO FITS HDU (INCLUDING HEADER) AND SAVE WITH PRE TAG
         # PREPENDED TO FILENAME
         basename = os.path.basename(filepath)
@@ -420,6 +441,16 @@ class base_recipe(object):
             overwrite=True,
             product=False,
         )
+
+        ## KEYWORDS FOR LATER QCs
+        if self.inst == "SOXS":
+            self.cptemp = frame.header[kw("CP_TEMP_C")]
+            if self.arm == "NIR":
+                self.detectorTemp = frame.header[kw("NIR_TEMP_K")]
+            elif self.arm == "VIS":
+                self.detectorTemp = frame.header[kw("VIS_TEMP_C")]
+            else:
+                self.detectorTemp = None
 
         self.log.debug("completed the ``_prepare_single_frame`` method")
         return filePath
@@ -491,6 +522,7 @@ class base_recipe(object):
         )
         preframes = []
         preframes[:] = [self._prepare_single_frame(frame=frame, save=save) for frame in filepaths]
+        preframes = [f for f in preframes if f is not None]
 
         sof = set_of_files(
             log=self.log,
@@ -698,8 +730,14 @@ class base_recipe(object):
         if self.settings["instrument"] == "xsh":
             gain = self.inputFrames.values(keyword=kw("CONAD"), unique=True)
         else:
-            a = self.inputFrames.values(keyword=kw("CONAD"))
-            b = self.inputFrames.values(keyword=kw("GAIN"))
+            mask = self.inputFrames.summary[kw("PRO_CATG")] != f"RESP_TAB_{self.arm}"
+            checkFrames = self.inputFrames.summary[mask]
+            # REMOVE MASKED/EMPTY VALUES (WORKS FOR ASTROPY TABLE COLUMNS TOO)
+            conad = np.ma.asarray(checkFrames[kw("CONAD")])
+            gainVals = np.ma.asarray(checkFrames[kw("GAIN")])
+            valid = (~np.ma.getmaskarray(conad)) & (~np.ma.getmaskarray(gainVals))
+            a = conad[valid].tolist()
+            b = gainVals[valid].tolist()
             gain = [max(x, y) for x, y in zip(a, b) if x is not None and y is not None]
             gain = list(set(gain))
 
@@ -748,7 +786,7 @@ class base_recipe(object):
             if (
                 self.inst == "SOXS"
                 and self.arm == "NIR"
-                and self.recipeName in ["soxs-nod", "soxs-stare", "soxs-offset"]
+                and self.recipeName.replace("-std", "").replace("-obj", "") in ["soxs-nod", "soxs-stare", "soxs-offset"]
                 and "SLIT5.0" in slitWidth
                 and "SLIT1.5" in slitWidth
                 and len(slitWidth) == 2
@@ -810,13 +848,16 @@ class base_recipe(object):
         self.log.debug("completed the ``_verify_input_frames_basics`` method")
         return imageTypes, imageTech, imageCat
 
-    def clean_up(self):
+    def clean_up(self, forceFail=False):
         """*update product status in DB and remove intermediate files once recipe is complete*
+
+        **Key Arguments:**
+        - ``forceFail`` -- force the recipe to be marked as failed in the DB
 
         **Usage**
 
         ```python
-        recipe.clean_up()
+        recipe.clean_up(forceFail=True)
         ```
         """
         self.log.debug("starting the ``clean_up`` method")
@@ -824,23 +865,37 @@ class base_recipe(object):
         import shutil
         import time
 
+        # FILTER QC TABLE ON qc_flag
+        mask = self.qc["qc_flag"] == "fail"
+        passToFail = False
+        failedQcs = self.qc.loc[mask]
+        failedQcs = failedQcs["qc_name"].tolist()
+        if len(failedQcs):
+            forceFail = True
+            if self.status == "pass":
+                passToFail = True
+
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
 
-            c = self.conn.cursor()
-            sqlQuery = (
-                f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
-            )
-            c.execute(sqlQuery)
-            c.close()
-            # WAIT A MOMENT TO ENSURE DB HAS UPDATED BEFORE REFRESHING SESSION
+            if not passToFail and not forceFail:
+                c = self.conn.cursor()
+                sqlQuery = (
+                    f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
+                )
+                c.execute(sqlQuery)
+                c.close()
 
             # PREVIOUSLY FAILED RECIPE THAT HAS NOW PASSED
-            if self.status == "fail":
+            if (self.status == "fail" and passToFail) or (forceFail and self.status == "pass"):
                 from soxspipe.commonutils import data_organiser
 
+                if passToFail or forceFail:
+                    failure = True
+                else:
+                    failure = False
                 do = data_organiser(log=self.log, rootDir=self.workspaceRootPath)
-                do.session_refresh(failure=False)
+                do.session_refresh(failure=failure)
                 do.close()
 
             self.conn.close()
@@ -851,6 +906,14 @@ class base_recipe(object):
             shutil.rmtree(self.outDir)
         except:
             pass
+
+        if forceFail and isinstance(forceFail, str):
+            self.log.error(f"\nRecipe marked as failed in the database. {forceFail}")
+
+        elif forceFail:
+            self.log.error(
+                f"\nRecipe marked as failed in the database as the following QC values are outside of the acceptable limits: {', '.join(failedQcs)}."
+            )
 
         self.log.debug("completed the ``clean_up`` method")
         return None
@@ -987,7 +1050,10 @@ class base_recipe(object):
             filedir = filedir.replace("//", "/")
             # Recursively create missing directories
             if not os.path.exists(filedir):
-                os.makedirs(filedir)
+                try:
+                    os.makedirs(filedir)
+                except:
+                    pass
 
         filepath = filedir + "/" + filename
 
@@ -1119,9 +1185,9 @@ class base_recipe(object):
         # preclipped_masks = np.copy(combiner.data_arr.mask)
         totalPixels = np.size(combinedMask)
 
-        ## REDUCING TO FLOAT16 TO SAVE MEMORY DURING CLIPPING
+        ## Reduce memory by avoiding an extra full-array copy during clipping
         combiner.data_arr.mask = sigma_clip(
-            combiner.data_arr.data.astype(np.float32),
+            np.asarray(combiner.data_arr.data, dtype=np.float32),
             sigma_lower=stacked_clipping_sigma,
             sigma_upper=stacked_clipping_sigma,
             axis=0,
@@ -1232,10 +1298,6 @@ class base_recipe(object):
             if not self.darkDetrendWarningIssued1:
                 self.log.warning("Dark and science/calibration frame have differing exposure-times.")
                 self.darkDetrendWarningIssued1 = True
-        if master_bias != False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
-            raise AttributeError(
-                "CODE NEEDS WRITTEN HERE TO SCALE DARK FRAME TO EXPOSURE TIME OF SCIENCE/CALIBRATION FRAME"
-            )
 
         processedFrame = inputFrame
 
@@ -1324,7 +1386,10 @@ class base_recipe(object):
                 outDir = outDir.replace("//", "/")
                 # RECURSIVELY CREATE MISSING DIRECTORIES
                 if not os.path.exists(outDir):
-                    os.makedirs(outDir)
+                    try:
+                        os.makedirs(outDir)
+                    except:
+                        pass
 
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 filename = self.sofName + "_BKGROUND.fits"
@@ -1384,8 +1449,10 @@ class base_recipe(object):
             # REMOVE COLUMN FROM DATA FRAME
             self.products.drop(columns=["file_path"], inplace=True)
 
+        self.flag_poor_data()
+
         # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
-        self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
+        self.qc = self.qc.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
 
         # SEND TO DATABASE
         self.qc["sof_name"] = self.sofName + ".sof"
@@ -1396,9 +1463,15 @@ class base_recipe(object):
         columns = list(self.qc.columns)
         columns.remove("to_header")
         columns.remove("obs_date_utc")
+        columns.remove("qc_order")
         columns.remove("reduction_date_utc")
         columns.remove("soxspipe_recipe")
         columns.remove("sof_name")
+        try:
+            columns.remove("qc_value_min")
+            columns.remove("qc_value_max")
+        except:
+            pass
         dbColumns = list(self.qc.columns)
         dbColumns.remove("to_header")
 
@@ -1418,18 +1491,118 @@ class base_recipe(object):
 
         if rformat == "stdout":
             self.log.print(f"\n# {soxspipe_recipe} QC METRICS")
-            self.log.print(
-                tabulate(self.qc[columns], headers="keys", tablefmt="psql", showindex=False, stralign="right")
-            )
+
+            mask = self.qc["qc_order"] == "-1"
+
+            # Format float values to 3 decimal places
+            qc_display = self.qc.loc[mask][columns].copy()
+            for col in qc_display.columns:
+                qc_display[col] = qc_display[col].apply(
+                    lambda x: (
+                        f"{float(x):.3f}"
+                        if isinstance(x, (int, float))
+                        or (isinstance(x, str) and x.replace(".", "", 1).replace("-", "", 1).isdigit())
+                        else x
+                    )
+                )
+            self.log.print(tabulate(qc_display, headers="keys", tablefmt="psql", showindex=False, stralign="right"))
             self.log.print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
             self.log.print(
                 tabulate(self.products[columns2], headers="keys", tablefmt="psql", showindex=False, stralign="right")
             )
             if self.conn:
+                sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
+                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"
+                c = self.conn.cursor()
+                c.execute(sqlQuery, sofNames)
+                c.close()
                 self._dataframe_to_sqlite(self.qc[dbColumns], "quality_control", replace=False)
 
         self.log.debug("completed the ``report_output`` method")
         return self.qc[dbColumns]
+
+    def flag_poor_data(self):
+        """*a method to flag data as 'poor' quality based on QC values exceeding thresholds defined in the settings file*
+
+        **Usage:**
+
+        ```python
+        self.flag_poor_data()
+        ```
+        """
+        self.log.debug("starting the ``flag_poor_data`` method")
+
+        from datetime import datetime
+        import pandas as pd
+
+        utcnow = datetime.utcnow()
+        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+        if self.inst.upper() == "SOXS":
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "DETECTOR TEMP",
+                            "qc_value": self.detectorTemp,
+                            "qc_comment": f"[K] temp of detector",
+                            "qc_unit": "kelvin",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": False,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "CPATH TEMP",
+                            "qc_value": self.cptemp,
+                            "qc_comment": f"[C] temp of common path",
+                            "qc_unit": "celsius",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": False,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+
+        # FILTER DATA FRAME
+        mask = self.qc["qc_order"].isna()
+        self.qc.loc[mask, "qc_order"] = "-1"
+        self.qc["qc_flag"] = "pass"
+
+        if "qc-acceptable-ranges" not in self.recipeSettings:
+            self.log.debug("No acceptable ranges defined in settings file. Skipping the ``flag_poor_data`` method.")
+            return None
+
+        for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
+            matchName = k.lower().replace("-", " ").replace("_", " ")
+            mask = (
+                (self.qc["qc_name"].str.lower() == matchName)
+                & (self.qc["qc_order"] == "-1")
+                & ((self.qc["qc_value"].astype(float) <= v[0]) | (self.qc["qc_value"].astype(float) >= v[1]))
+            )
+            self.qc.loc[mask, "qc_flag"] = "fail"
+            # ADD GUARDRAIL VALUES TO QC TABLE FOR REPORTING PURPOSES
+            self.qc.loc[(self.qc["qc_name"].str.lower() == matchName), "qc_value_min"] = v[0]
+            self.qc.loc[(self.qc["qc_name"].str.lower() == matchName), "qc_value_max"] = v[1]
+
+        self.log.debug("completed the ``flag_poor_data`` method")
+        return None
 
     def qc_ron(self, frameType=False, frameName=False, masterFrame=False, rawRon=False, masterRon=False):
         """*calculate the read-out-noise from bias/dark frames*
@@ -1552,10 +1725,10 @@ class base_recipe(object):
             tmp = np.ma.array(masterFrame.data, mask=combinedMask)
 
             dmin, dmax, dmean, dstd = imstats(tmp)
-            masterRon = dstd
-            print(masterRon)
+            masterRon = float(dstd)
 
         elif masterRon:
+
             self.qc = pd.concat(
                 [
                     self.qc,
@@ -1563,7 +1736,7 @@ class base_recipe(object):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "MASTER RON",
-                            "qc_value": masterRon,
+                            "qc_value": float(masterRon),
                             "qc_comment": f"[e-] Combined RON in {frameType}",
                             "qc_unit": "electrons",
                             "obs_date_utc": self.dateObs,
@@ -1619,15 +1792,6 @@ class base_recipe(object):
         fluxRange = (np.nanpercentile(frame.data, 95) - np.nanpercentile(frame.data, 5)) / frame.header[
             self.kw("EXPTIME")
         ]
-
-        if medianFlux < -15.0:
-            message = f"The {frameName} has a negative median flux level of {medianFlux:0.2f} e-. Please check the raw input frames."
-            raise ValueError(message)
-        elif fluxRange > 20.0 and frameType in ["MDARK"]:
-            message = (
-                f"The {frameName} has a large flux range of {fluxRange:0.2f} e-/s. Please check the raw input frames."
-            )
-            raise ValueError(message)
 
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -1789,8 +1953,9 @@ class base_recipe(object):
         iterator = 1
         recipeSettings = self.get_recipe_settings()
         for k, v in recipeSettings.items():
-            if k.lower() in ["uvb", "vis", "nir"]:
+            if k.lower() in ["uvb", "vis", "nir", "qc-acceptable-ranges"]:
                 continue
+
             if not isinstance(v, dict):
                 if isinstance(v, list):
                     v = ", ".join(map(str, v)).strip()

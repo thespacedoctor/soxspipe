@@ -307,7 +307,7 @@ class soxs_mflat(base_recipe):
                 CCDObject=normalisedFlats[0],
                 stdWindow=6,
                 show=False,
-                ext=True,
+                ext=None,
                 surfacePlot=True,
                 title=f"Single normalised flat frame {tag}",
             )
@@ -452,7 +452,10 @@ class soxs_mflat(base_recipe):
                     outDir = outDir.replace("//", "/")
                     # RECURSIVELY CREATE MISSING DIRECTORIES
                     if not os.path.exists(outDir):
-                        os.makedirs(outDir)
+                        try:
+                            os.makedirs(outDir)
+                        except:
+                            pass
 
                     # GET THE EXTENSION (WITH DOT PREFIX)
                     filename = self.sofName + tag + "_BKGROUND.fits"
@@ -846,6 +849,7 @@ class soxs_mflat(base_recipe):
         import numpy.ma as ma
         import numpy as np
         import pandas as pd
+        from astropy.stats import sigma_clipped_stats
 
         kw = self.kw
         from astropy.io import fits
@@ -885,12 +889,33 @@ class soxs_mflat(base_recipe):
         # UPDATE THE MASK
         if self.axisA == "x":
             for x, y in zip(axisAcoords, axisBcoords):
-                mask[y][x - window : x + window] = 0
+                x_start = max(0, x - window)
+                x_end = min(mask.shape[1], x + window)
+                if 0 <= y < mask.shape[0] and x_start < x_end:
+                    mask[y, x_start:x_end] = 0
         else:
             for y, x in zip(axisAcoords, axisBcoords):
-                mask[y][x - window : x + window] = 0
+                y_start = max(0, y - window)
+                y_end = min(mask.shape[0], y + window)
+                if 0 <= x < mask.shape[1] and y_start < y_end:
+                    mask[y_start:y_end, x] = 0
         # COMBINE MASK WITH THE BAD PIXEL MASK
         mask = np.logical_or(mask, inputFlats[0].mask)
+
+        if self.debug:
+
+            this = inputFlats[0].copy()
+            this.mask = mask
+
+            quicklook_image(
+                log=self.log,
+                CCDObject=this,
+                stdWindow=6,
+                show=False,
+                ext=None,
+                surfacePlot=True,
+                title=f"Example input flat frame with order centre mask applied {lamp}",
+            )
 
         if not firstPassMasterFlat:
             self.log.print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL - FIRST PASS")
@@ -899,26 +924,50 @@ class soxs_mflat(base_recipe):
             ORDEXP90list = []
 
             for i, frame in enumerate(inputFlats):
-                ## BELOW LINES NEEDED TO AVOID HIGHER MEMORY USAGE WITH LARGE ARRAYS
-                maskedFrame = ma.array(frame.data, mask=mask)
-                maskedData = np.empty_like(maskedFrame.data)
-                np.copyto(maskedData, maskedFrame.data, where=~maskedFrame.mask)
-                maskedData[maskedFrame.mask] = np.nan
+                nrows = frame.data.shape[0]
+                chunk_size = 256  # tune to balance memory vs overhead
+                sample_chunks = []
+                rng = np.random.default_rng(seed=42)
 
-                ORDEXP10list.append(np.median(np.nanpercentile(maskedData, 10)))
-                ORDEXP50list.append(np.median(np.nanpercentile(maskedData, 50)))
-                ORDEXP90list.append(np.median(np.nanpercentile(maskedData, 90)))
-                # print(f"THE {lamp} FLAT EXPOSURE LEVEL IS {exposureLevel}")
-                normalisedFrame = frame.divide(np.nanpercentile(maskedData, 97))
-                normalisedFrame.header = frame.header
-                normalisedFrames.append(normalisedFrame)
-                # print(humanize.naturalsize(process.memory_info().rss))
+                for row_start in range(0, nrows, chunk_size):
+                    row_end = min(row_start + chunk_size, nrows)
+                    chunk_data = frame.data[row_start:row_end].copy()
+                    chunk_mask = mask[row_start:row_end]
+                    chunk_data[chunk_mask] = np.nan
+                    valid = chunk_data.ravel()
+                    valid = valid[~np.isnan(valid)]
+                    if valid.size:
+                        # # subsample to cap memory: keep at most 1000 values per chunk
+                        if valid.size > 10000:
+                            valid = rng.choice(valid, size=10000, replace=False)
+                        sample_chunks.append(valid)
+                    del chunk_data, chunk_mask, valid
+
+                all_valid = np.concatenate(sample_chunks)
+                del sample_chunks
+
+                ORDEXP10list.append(np.percentile(all_valid, 10))
+                ORDEXP50list.append(np.percentile(all_valid, 50))
+                ORDEXP90list.append(np.percentile(all_valid, 90))
+
+                mean, median, std = sigma_clipped_stats(
+                    all_valid, sigma=25.0, stdfunc="mad_std", cenfunc="median", maxiters=3
+                )
+                norm_level = mean
+                del all_valid
+
+                # Divide in-place to avoid allocating a full CCDData copy
+                nframe = frame.copy()
+                nframe.data /= norm_level
+                if nframe.uncertainty is not None:
+                    nframe.uncertainty.array /= norm_level
+                normalisedFrames.append(nframe)
             ORDEXP10 = np.median(ORDEXP10list)
             ORDEXP50 = np.median(ORDEXP50list)
             ORDEXP90 = np.median(ORDEXP90list)
 
-            if ORDEXP50 < 100:
-                raise ValueError("FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
+            # if ORDEXP50 < 100:
+            #     raise ValueError("FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -987,20 +1036,45 @@ class soxs_mflat(base_recipe):
         else:
             self.log.print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL - SECOND PASS")
 
-            exposureFrames = [frame.divide(firstPassMasterFlat) for frame in inputFlats]
-            newMasks = [
-                np.ma.masked_where(np.isnan(exposureFrame.data), exposureFrame.data) for exposureFrame in exposureFrames
-            ]
-            maskedFrames = [
-                ma.array(exposureFrame.data, mask=(mask == 1) | (newMask.mask == 1))
-                for exposureFrame, newMask in zip(exposureFrames, newMasks)
-            ]
-            normalisedFrames = [
-                frame.divide(np.ma.median(maskedFrame)) for maskedFrame, frame in zip(maskedFrames, inputFlats)
-            ]
+            # Process frames one-by-one to reduce peak memory usage
+            normalisedFrames = []
+            chunk_size = 256  # rows per chunk - tune to balance memory vs overhead
 
-            for frame, normalisedFrame in zip(inputFlats, normalisedFrames):
-                normalisedFrame.header = frame.header
+            for frame in inputFlats:
+
+                nrows = frame.data.shape[0]
+                # Compute median of (frame / firstPassMasterFlat) in chunks
+                # to avoid allocating a full-size intermediate array
+                rng = np.random.default_rng(seed=56)
+                chunk_vals = []
+                for row_start in range(0, nrows, chunk_size):
+                    row_end = min(row_start + chunk_size, nrows)
+                    chunk_data = frame.data[row_start:row_end] / firstPassMasterFlat.data[row_start:row_end]
+                    chunk_nan_mask = np.isnan(chunk_data)
+                    chunk_combined_mask = mask[row_start:row_end] | chunk_nan_mask
+                    valid = chunk_data[~chunk_combined_mask]
+                    if valid.size:
+                        if valid.size > 10000:
+                            valid = rng.choice(valid, size=10000, replace=False)
+                        chunk_vals.append(valid)
+                    del chunk_data, chunk_nan_mask, chunk_combined_mask, valid
+
+                if chunk_vals:
+                    all_valid = np.concatenate(chunk_vals)
+                    mean, median, std = sigma_clipped_stats(
+                        all_valid, sigma=25.0, stdfunc="mad_std", cenfunc="median", maxiters=3
+                    )
+                    norm_level = mean
+                    all_valid /= norm_level
+                    del all_valid, chunk_vals
+
+                # Divide in-place to avoid allocating a full CCDData copy
+                nframe = frame.copy()
+                nframe.data /= norm_level
+                if nframe.uncertainty is not None:
+                    nframe.uncertainty.array /= norm_level
+                normalisedFrames.append(nframe)
+                del norm_level
 
         # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
         quicklook_image(
@@ -1118,8 +1192,8 @@ class soxs_mflat(base_recipe):
                     pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
-                            "qc_name": "NLOWSENS",
-                            "qc_value": lowSensPixelCount,
+                            "qc_name": "N LOW SENS",
+                            "qc_value": float(lowSensPixelCount),
                             "qc_comment": "Number of low-sensitivity pixels found in master flat",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,

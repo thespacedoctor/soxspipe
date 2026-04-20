@@ -42,7 +42,7 @@
 ```
 ````
 
-`````{py:class} soxs_spatial_solution(log, settings=False, inputFrames=[], verbose=False, overwrite=False, create2DMap=True, polyOrders=False, command=False)
+`````{py:class} soxs_spatial_solution(log, settings=False, inputFrames=[], verbose=False, overwrite=False, create2DMap=True, polyOrders=False, command=False, debug=False, turnOffMP=False)
 :canonical: soxspipe.recipes.soxs_spatial_solution.soxs_spatial_solution
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
@@ -56,7 +56,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 ```{autodoc2-docstring} soxspipe.recipes.soxs_spatial_solution.soxs_spatial_solution.__init__
 ```
 
-````{py:method} clean_up()
+````{py:method} clean_up(forceFail=False)
 :canonical: soxspipe.recipes.soxs_spatial_solution.soxs_spatial_solution.clean_up
 
 ````
@@ -68,6 +68,11 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````{py:method} detrend(inputFrame, master_bias=False, dark=False, master_flat=False, order_table=False)
 :canonical: soxspipe.recipes.soxs_spatial_solution.soxs_spatial_solution.detrend
+
+````
+
+````{py:method} flag_poor_data()
+:canonical: soxspipe.recipes.soxs_spatial_solution.soxs_spatial_solution.flag_poor_data
 
 ````
 

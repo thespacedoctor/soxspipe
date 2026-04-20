@@ -479,6 +479,13 @@ def main(arguments=None):
 
                         logging.shutdown()
                         reload(logging)
+                        if hasattr(logging, "PRINT"):
+                            delattr(logging, "PRINT")
+                        if hasattr(logging, "print"):
+                            delattr(logging, "print")
+                        if hasattr(logging.getLoggerClass(), "print"):
+                            delattr(logging.getLoggerClass(), "print")
+
                         settingsFile = f"{pwd}/sessions/{currentSession}/soxspipe.yaml"
                         arguments["--settings"] = settingsFile
                         su = tools(

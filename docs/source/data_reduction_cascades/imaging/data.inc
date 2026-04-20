@@ -22,3 +22,5 @@
 | Product                   | Description                                                  |
 | ------------------------- | ------------------------------------------------------------ |
 | Acquisition Camera Images | *ugrizy* astrometrically and photometrically (*griz* only) calibrated to Refcat2 {cite:p}`tonry2018a`. |
+
+**Note ACAM reductions have not yet been finalised in the pipeline**

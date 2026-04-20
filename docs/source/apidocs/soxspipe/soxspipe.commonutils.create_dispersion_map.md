@@ -27,6 +27,10 @@
 :class: autosummary longtable
 :align: left
 
+* - {py:obj}`find_largest_cluster_center <soxspipe.commonutils.create_dispersion_map.find_largest_cluster_center>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.find_largest_cluster_center
+    :summary:
+    ```
 * - {py:obj}`measure_line_position <soxspipe.commonutils.create_dispersion_map.measure_line_position>`
   - ```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.measure_line_position
     :summary:
@@ -39,7 +43,7 @@
 
 ### API
 
-`````{py:class} create_dispersion_map(log, settings, recipeSettings, pinholeFrame, firstGuessMap=False, orderTable=False, qcTable=False, productsTable=False, sofName=False, create2DMap=True, lineDetectionTable=False, startNightDate='', arcFrame=None)
+`````{py:class} create_dispersion_map(log, settings, recipeSettings, pinholeFrame, firstGuessMap=False, orderTable=False, qcTable=False, productsTable=False, sofName=False, create2DMap=True, lineDetectionTable=False, startNightDate='', arcFrame=None, debug=False, turnOffMP=False)
 :canonical: soxspipe.commonutils.create_dispersion_map.create_dispersion_map
 
 Bases: {py:obj}`object`
@@ -85,7 +89,7 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} detect_pinhole_arc_lines(orderPixelTable, iraf=True, sigmaLimit=3, iteration=False, brightest=False, exclude_border=False)
+````{py:method} detect_pinhole_arc_lines(orderPixelTable, iraf=True, sigmaLimit=3, iteration=False, brightest=False, exclude_border=False, returnAll=False)
 :canonical: soxspipe.commonutils.create_dispersion_map.create_dispersion_map.detect_pinhole_arc_lines
 
 ```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.create_dispersion_map.detect_pinhole_arc_lines
@@ -151,7 +155,14 @@ Bases: {py:obj}`object`
 
 `````
 
-````{py:function} measure_line_position(stampInfo, log, windowHalf, iraf, sigmaLimit, brightest=False, exclude_border=False)
+````{py:function} find_largest_cluster_center(x, y, eps=2.0, min_samples=5)
+:canonical: soxspipe.commonutils.create_dispersion_map.find_largest_cluster_center
+
+```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.find_largest_cluster_center
+```
+````
+
+````{py:function} measure_line_position(stampInfo, log, windowHalf, iraf, sigmaLimit, iteration, brightest=False, exclude_border=False, multipinhole=False, returnAll=True, debug=False)
 :canonical: soxspipe.commonutils.create_dispersion_map.measure_line_position
 
 ```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.measure_line_position

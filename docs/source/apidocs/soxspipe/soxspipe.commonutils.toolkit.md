@@ -31,12 +31,28 @@
   - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.add_recipe_logger
     :summary:
     ```
+* - {py:obj}`add_snr_efficiency_qcs <soxspipe.commonutils.toolkit.add_snr_efficiency_qcs>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.add_snr_efficiency_qcs
+    :summary:
+    ```
+* - {py:obj}`calculate_rolling_snr <soxspipe.commonutils.toolkit.calculate_rolling_snr>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.calculate_rolling_snr
+    :summary:
+    ```
 * - {py:obj}`create_dispersion_solution_grid_lines_for_plot <soxspipe.commonutils.toolkit.create_dispersion_solution_grid_lines_for_plot>`
   - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.create_dispersion_solution_grid_lines_for_plot
     :summary:
     ```
 * - {py:obj}`cut_image_slice <soxspipe.commonutils.toolkit.cut_image_slice>`
   - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.cut_image_slice
+    :summary:
+    ```
+* - {py:obj}`extinction_correction_factor <soxspipe.commonutils.toolkit.extinction_correction_factor>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.extinction_correction_factor
+    :summary:
+    ```
+* - {py:obj}`frame_to_32 <soxspipe.commonutils.toolkit.frame_to_32>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.frame_to_32
     :summary:
     ```
 * - {py:obj}`generic_quality_checks <soxspipe.commonutils.toolkit.generic_quality_checks>`
@@ -49,6 +65,10 @@
     ```
 * - {py:obj}`get_calibrations_path <soxspipe.commonutils.toolkit.get_calibrations_path>`
   - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.get_calibrations_path
+    :summary:
+    ```
+* - {py:obj}`plot_merged_spectrum_qc <soxspipe.commonutils.toolkit.plot_merged_spectrum_qc>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.plot_merged_spectrum_qc
     :summary:
     ```
 * - {py:obj}`predict_product_path <soxspipe.commonutils.toolkit.predict_product_path>`
@@ -116,6 +136,20 @@
 ```
 ````
 
+````{py:function} add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs)
+:canonical: soxspipe.commonutils.toolkit.add_snr_efficiency_qcs
+
+```{autodoc2-docstring} soxspipe.commonutils.toolkit.add_snr_efficiency_qcs
+```
+````
+
+````{py:function} calculate_rolling_snr(dataframe, flux_column, window_size)
+:canonical: soxspipe.commonutils.toolkit.calculate_rolling_snr
+
+```{autodoc2-docstring} soxspipe.commonutils.toolkit.calculate_rolling_snr
+```
+````
+
 ````{py:function} create_dispersion_solution_grid_lines_for_plot(log, dispMap, dispMapImage, associatedFrame, kw, skylines=False, slitPositions=False, slit_length=11)
 :canonical: soxspipe.commonutils.toolkit.create_dispersion_solution_grid_lines_for_plot
 
@@ -123,10 +157,24 @@
 ```
 ````
 
-````{py:function} cut_image_slice(log, frame, width, length, x, y, sliceAxis='x', median=False, plot=False)
+````{py:function} cut_image_slice(log, frame, width, length, x, y, sliceAxis='x', median=False, debug=False)
 :canonical: soxspipe.commonutils.toolkit.cut_image_slice
 
 ```{autodoc2-docstring} soxspipe.commonutils.toolkit.cut_image_slice
+```
+````
+
+````{py:function} extinction_correction_factor(wave, extinctionTablePath, airmass)
+:canonical: soxspipe.commonutils.toolkit.extinction_correction_factor
+
+```{autodoc2-docstring} soxspipe.commonutils.toolkit.extinction_correction_factor
+```
+````
+
+````{py:function} frame_to_32(frame)
+:canonical: soxspipe.commonutils.toolkit.frame_to_32
+
+```{autodoc2-docstring} soxspipe.commonutils.toolkit.frame_to_32
 ```
 ````
 
@@ -148,6 +196,13 @@
 :canonical: soxspipe.commonutils.toolkit.get_calibrations_path
 
 ```{autodoc2-docstring} soxspipe.commonutils.toolkit.get_calibrations_path
+```
+````
+
+````{py:function} plot_merged_spectrum_qc(merged_orders, products, log, qcDir, filenameTemplate, noddingSequence, dateObs, arm, recipeName, orderJoins=False, debug=False, fluxCalibrated=False)
+:canonical: soxspipe.commonutils.toolkit.plot_merged_spectrum_qc
+
+```{autodoc2-docstring} soxspipe.commonutils.toolkit.plot_merged_spectrum_qc
 ```
 ````
 

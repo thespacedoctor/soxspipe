@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} base_recipe(log, settings=False, inputFrames=False, verbose=False, overwrite=False, recipeName=False, command=False)
+`````{py:class} base_recipe(log, settings=False, inputFrames=False, verbose=False, overwrite=False, recipeName=False, command=False, debug=False, turnOffMP=False)
 :canonical: soxspipe.recipes.base_recipe.base_recipe
 
 Bases: {py:obj}`object`
@@ -37,7 +37,7 @@ Bases: {py:obj}`object`
 ```{autodoc2-docstring} soxspipe.recipes.base_recipe.base_recipe.__init__
 ```
 
-````{py:method} clean_up()
+````{py:method} clean_up(forceFail=False)
 :canonical: soxspipe.recipes.base_recipe.base_recipe.clean_up
 
 ```{autodoc2-docstring} soxspipe.recipes.base_recipe.base_recipe.clean_up
@@ -57,6 +57,14 @@ Bases: {py:obj}`object`
 :canonical: soxspipe.recipes.base_recipe.base_recipe.detrend
 
 ```{autodoc2-docstring} soxspipe.recipes.base_recipe.base_recipe.detrend
+```
+
+````
+
+````{py:method} flag_poor_data()
+:canonical: soxspipe.recipes.base_recipe.base_recipe.flag_poor_data
+
+```{autodoc2-docstring} soxspipe.recipes.base_recipe.base_recipe.flag_poor_data
 ```
 
 ````

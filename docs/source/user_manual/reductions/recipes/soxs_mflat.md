@@ -33,11 +33,9 @@
 
 
 :::{figure-md} soxs_mflat_qc
-![image-20250128123443989](../../../_images/image-20250128123443989.png){width=600px}
+![image-20260414112522708](../../../_images/image-20260414112522708.png){width=500px}
 
-
-
-A QC plot resulting from the `soxs_mflat` recipe (Xshooter NIR). The top panel shows the upper and lower-order edge detections registered in the individual cross-dispersion slices in an Xshooter NIR flat frame. The bottom panel shows the global polynomial fits to the upper and lower-order edges, with the area between the fits filled with different colours to reveal the unique echelle orders across the detector plane.
+A QC plot resulting from the `soxs_mflat` recipe (SOXS NIR). The top panel shows the upper and lower-order edge detections registered in the individual cross-dispersion slices in a SOXS NIR flat frame. The bottom panel shows the global polynomial fits to the upper and lower-order edges, with the area between the fits filled with different colours to reveal the unique echelle orders across the detector plane.
 :::
 
 

@@ -7,13 +7,13 @@ soxspipe [-Vx] spat_solution <inputFrames> [-o <outputDirectory> -s <pathToSetti
 To rerun a previously executed `soxs_spatial_solution` recipe, you can find the execution command at the end of the [recipe log file](../../logging.md) (found in the workspace `products/soxs_spatial_solution` directory). Use the `-x` flag to overwrite the product files if they already exist. For example, from the root of your workspace, you would run a command like:
 
 ```bash
-soxspipe spat_solution sof/2021.09.05T15.26.34.694_VIS_1X1_FAST_SPAT_SOL_THAR_10.0S_XSHOOTER.sof -s ./sessions/base/soxspipe.yaml  -x
+soxspipe spat_solution sof/20260111T095625_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof -s ./sessions/base/soxspipe.yaml  -x
 ```
 
 While the default polynomial fitting orders have been carefully tuned to robustly reduce most data, it is possible to execute this recipe while providing the dispersion-solution polynomial fitting orders through the command line, with command line settings overriding those in the YAML settings file. For instance, to attempt a dispersion solution fit using 3rd (x) and 4th-order (y) spectral-order (`oo`) component, a 5th-order (for both x and y) wavelength (`ww`) component, and a 2nd (x) and 4th-order (y) slit-position component (`ss`):
 
 ```bash
-soxspipe spat_solution sof/2021.09.05T15.26.34.694_VIS_1X1_FAST_SPAT_SOL_THAR_10.0S_XSHOOTER.sof -s ./sessions/base/soxspipe.yaml --poly=345524
+soxspipe spat_solution sof/20260111T095625_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof -s ./sessions/base/soxspipe.yaml --poly=345524
 ```
 
 To adjust the default settings for the `soxs_spatial_solution` recipe, open the `soxspipe.yaml` file referenced in the command above in a text editor, navigate to the `soxs_spatial_solution` dictionary, save the file and rerun the recipe command. The settings' descriptions can be found in {numref}`soxs_spatial_solution_parameters`.

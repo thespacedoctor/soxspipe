@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} flux_calibration(log, responseFunction, extractedSpectrum, settings=False)
+`````{py:class} flux_calibration(log, responseFunction, extractedSpectrum, settings=False, airmass=1.0, exptime=1.0, extinctionPath='', arm='', header=None, recipeName='', startNightDate='', sofName='', debug=False)
 :canonical: soxspipe.commonutils.flux_calibration.flux_calibration
 
 Bases: {py:obj}`object`

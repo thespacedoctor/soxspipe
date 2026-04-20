@@ -31,6 +31,10 @@
   - ```{autodoc2-docstring} soxspipe.recipes.soxs_mflat.nearest_neighbour
     :summary:
     ```
+* - {py:obj}`print_memory_usage <soxspipe.recipes.soxs_mflat.print_memory_usage>`
+  - ```{autodoc2-docstring} soxspipe.recipes.soxs_mflat.print_memory_usage
+    :summary:
+    ```
 ````
 
 ### API
@@ -42,7 +46,14 @@
 ```
 ````
 
-`````{py:class} soxs_mflat(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False)
+````{py:function} print_memory_usage(pprint=False, message='')
+:canonical: soxspipe.recipes.soxs_mflat.print_memory_usage
+
+```{autodoc2-docstring} soxspipe.recipes.soxs_mflat.print_memory_usage
+```
+````
+
+`````{py:class} soxs_mflat(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False, debug=False, turnOffMP=False)
 :canonical: soxspipe.recipes.soxs_mflat.soxs_mflat
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
@@ -64,7 +75,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````
 
-````{py:method} clean_up()
+````{py:method} clean_up(forceFail=False)
 :canonical: soxspipe.recipes.soxs_mflat.soxs_mflat.clean_up
 
 ````
@@ -84,6 +95,11 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ```{autodoc2-docstring} soxspipe.recipes.soxs_mflat.soxs_mflat.find_uvb_overlap_order_and_scale
 ```
+
+````
+
+````{py:method} flag_poor_data()
+:canonical: soxspipe.recipes.soxs_mflat.soxs_mflat.flag_poor_data
 
 ````
 

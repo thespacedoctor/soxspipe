@@ -7,7 +7,7 @@ soxspipe [-Vx] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
 To rerun a previously executed `soxs_nod` recipe, you can find the execution command at the end of the [recipe log file](../../logging.md) (found in the workspace `products/soxs_nod` directory). Use the `-x` flag to overwrite the product files if they already exist. For example, from the root of your workspace, you would run a command like:
 
 ```bash
-soxspipe nod sof/2019.10.30T23.34.48.0961_NIR_NOD_200.0S_XSHOOTER_STD_FLUX.sof -s ./sessions/base/soxspipe.yaml  -x
+soxspipe nod sof/20260111T041914_NIR_3_NOD_STD_FLUX_SLIT1_0_150_0S_SOXS.sof -s ./sessions/base/soxspipe.yaml  -x
 ```
 
 To adjust the default settings for the `soxs_nod` recipe, open the `soxspipe.yaml` file referenced in the command above in a text editor, navigate to the `soxs_nod` dictionary, save the file and rerun the recipe command. The settings' descriptions can be found in {numref}`soxs_nod_parameters`.

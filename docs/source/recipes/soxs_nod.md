@@ -44,8 +44,23 @@ If the jitter is present, the `soxs_nod` recipe determines how many different of
 Note a boxcar extraction is also preformed alongside the Horne extraction. Use the `horne-extraction-slit-length` to control the size of the aperture used to preform the boxcar extraction on the object trace.
 
 ## Output
- 
+
 :::{include} output/soxs_nod.inc
+:::
+
+:::{figure-md} soxs_nod_qc
+![image-20260414114627756](../_images/image-20260414114627756.png)
+
+A QC plot resulting from the `soxs_nod` recipe. This is a SOXS VIS wavelength and flux calibrated spectrum of the standard star CD-325613. The top- and middle-panels show the flux and wavelength calibrated spectrum, the top in linear-flux and the middle in log-flux scale. The bottom panel shows the signal-to-noise ratio across the entire wavelength range covered by the spectrum.
+
+:::
+
+:::{figure-md} response_curve_util
+
+![image-20260414151800690](../_images/image-20260414151800690.png)
+
+The output of the `reponse_function` utility (used by nodding and stare recipes) used in the reduction of spectroscopic standard star spectra. The third panel shows th fittted response curve, and the final panel shows the overall efficiency of the instrument across the entire wavelength range of the spectrograph arm. 
+
 :::
 
 ## QC Metrics

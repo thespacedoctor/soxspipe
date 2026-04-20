@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} soxs_stare(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False)
+`````{py:class} soxs_stare(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False, debug=False, turnOffMP=False)
 :canonical: soxspipe.recipes.soxs_stare.soxs_stare
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
@@ -37,7 +37,7 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 ```{autodoc2-docstring} soxspipe.recipes.soxs_stare.soxs_stare.__init__
 ```
 
-````{py:method} clean_up()
+````{py:method} clean_up(forceFail=False)
 :canonical: soxspipe.recipes.soxs_stare.soxs_stare.clean_up
 
 ````
@@ -49,6 +49,11 @@ Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
 
 ````{py:method} detrend(inputFrame, master_bias=False, dark=False, master_flat=False, order_table=False)
 :canonical: soxspipe.recipes.soxs_stare.soxs_stare.detrend
+
+````
+
+````{py:method} flag_poor_data()
+:canonical: soxspipe.recipes.soxs_stare.soxs_stare.flag_poor_data
 
 ````
 

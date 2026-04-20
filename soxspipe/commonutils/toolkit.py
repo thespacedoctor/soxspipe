@@ -384,7 +384,7 @@ def quicklook_image(
         plt.show()
 
     if saveToPath:
-        plt.savefig(saveToPath, dpi=120, bbox_inches="tight")
+        plt.savefig(saveToPath, dpi=120, format="pdf", bbox_inches="tight")
         plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
     plt.close("all")
@@ -680,11 +680,12 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     import numpy as np
     import pandas as pd
     from soxspipe.commonutils import detector_lookup
+    from astropy.io import fits
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
     kw = keyword_lookup(log=log, settings=settings).get
-    kw = kw
+
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
@@ -710,7 +711,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     # UNPACK THE ORDER TABLE
     orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
-        log=log, orderTablePath=orderTablePath, binx=binx, biny=biny
+        log=log, orderTablePath=orderTablePath, binx=binx, biny=biny, prebinned=True
     )
 
     mask = np.ones_like(frame.data)
@@ -721,16 +722,27 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     axisACoords_up = axisACoords_up.astype(int)
     axisACoords_low = axisACoords_low.astype(int)
 
-    # UPDATE THE MASK
-    for u, l, y in zip(axisACoords_up, axisACoords_low, axisBCoords):
-        mask[y][l:u] = 0
+    if axisA == "x":
+        for u, l, y in zip(axisACoords_up, axisACoords_low, axisBCoords):
+            y = int(y)
+            l = int(max(0, l))
+            u = int(min(mask.shape[1], u))
+            if 0 <= y < mask.shape[0] and l < u:
+                mask[y, l:u] = 0
+    else:
+        for u, l, x in zip(axisACoords_up, axisACoords_low, axisBCoords):
+            x = int(x)
+            l = int(max(0, l))
+            u = int(min(mask.shape[0], u))
+            if 0 <= x < mask.shape[1] and l < u:
+                mask[l:u, x] = 0
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
     mask = (mask == 1) | (frame.mask == 1)
 
     # PLOT ONE OF THE MASKED FRAMES TO CHECK
     maskedFrame = ma.array(frame.data, mask=mask)
-    quicklook_image(log=log, CCDObject=np.copy(mask), show=False, ext=None)
+    quicklook_image(log=log, CCDObject=maskedFrame, show=False, ext=None)
 
     mean = np.ma.mean(maskedFrame)
     flux = np.ma.sum(maskedFrame)
@@ -738,8 +750,8 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     utcnow = datetime.utcnow()
     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-    mean = "%0.*f" % (2, mean)
-    flux = "%0.*f" % (2, flux)
+    mean = "%0.*f" % (3, mean)
+    flux = "%0.*f" % (3, flux)
 
     qcTable = pd.concat(
         [
@@ -969,9 +981,9 @@ def twoD_disp_map_image_to_dataframe(
 
     hdul = fits.open(twoDMapPath)
 
-    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float")
-    hdul["SLIT"].data = hdul["SLIT"].data.astype("float")
-    hdul["ORDER"].data = hdul["ORDER"].data.astype("float")
+    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float32")
+    hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
+    hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
 
     binned = False
     if binx > 1 or biny > 1:
@@ -997,16 +1009,16 @@ def twoD_disp_map_image_to_dataframe(
     thisDict = {
         "x": xarray,
         "y": yarray,
-        "wavelength": hdul["WAVELENGTH"].data.flatten().astype(float),
-        "slit_position": hdul["SLIT"].data.flatten().astype(float),
-        "order": hdul["ORDER"].data.flatten().astype(float),
-        "min": minimumBinnedPixelValue.astype(float),
+        "wavelength": hdul["WAVELENGTH"].data.flatten().astype("float32"),
+        "slit_position": hdul["SLIT"].data.flatten().astype("float32"),
+        "order": hdul["ORDER"].data.flatten().astype("float32"),
+        "min": minimumBinnedPixelValue.astype("float32"),
     }
 
     if associatedFrame:
-        thisDict["flux"] = associatedFrame.data.flatten().astype(float)
+        thisDict["flux"] = associatedFrame.data.flatten().astype("float32")
         thisDict["mask"] = associatedFrame.mask.flatten().astype(bool)
-        thisDict["error"] = associatedFrame.uncertainty.array.flatten().astype(float)
+        thisDict["error"] = associatedFrame.uncertainty.array.flatten().astype("float32")
 
     # REMOVE IF ABOVE .astype(float) IS WORKING
     # try:
@@ -1198,7 +1210,10 @@ def add_recipe_logger(log, productPath):
     # PARENT DIRECTORY PATH NEEDS TO EXIST FOR LOGGER TO WRITE
     parentDirectory = os.path.dirname(loggingPath)
     if not os.path.exists(parentDirectory):
-        os.makedirs(parentDirectory)
+        try:
+            os.makedirs(parentDirectory)
+        except:
+            pass
 
     recipeLog = logging.FileHandler(loggingPath, mode="a", encoding=None, delay=False)
     recipeLogFormatter = logging.Formatter("%(message)s")
@@ -1409,8 +1424,13 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     cols = []
 
     qcCopy = qc.copy()
+    if "qc_order" in qcCopy.columns:
+        qcCopy = qcCopy.loc[((qcCopy["qc_order"] == "-1") | (qcCopy["qc_order"].isna()) | (qcCopy["qc_order"] == -1))]
     qcCopy["value"] = qcCopy["qc_value"].astype(str) + " " + qcCopy["qc_unit"]
     qcCopy.loc[qcCopy["value"].isnull(), "value"] = qcCopy.loc[qcCopy["value"].isnull(), "qc_value"]
+
+    if len(qcCopy.index) > 10:
+        qcCopy = qcCopy.head(10)
 
     columns1 = ["value", "qc_comment"]
     colColours = plt.cm.Greys(np.full(len(columns1), 0.1))
@@ -1434,7 +1454,7 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     # qcAx.set_title(
     #     "QC Table", fontsize=9)
 
-    settingsCopy = {k: v for k, v in settings.items() if k not in ["nir", "vis", "uvb"]}
+    settingsCopy = {k: v for k, v in settings.items() if k not in ["nir", "vis", "uvb", "qc-acceptable-ranges"]}
 
     settingsCopy = {"setting": settingsCopy.keys(), "value": settingsCopy.values()}
 
@@ -1517,14 +1537,20 @@ def utility_setup(log, settings, recipeName, startNightDate):
     qcDir = qcDir.replace("//", "/")
     # RECURSIVELY CREATE MISSING DIRECTORIES
     if not os.path.exists(qcDir):
-        os.makedirs(qcDir)
+        try:
+            os.makedirs(qcDir)
+        except Exception as e:
+            pass
 
     # PRODUCT DIR
     productDir = settings["workspace-root-dir"].replace("~", home) + f"/reduced/{startNightDate}/{recipeName}/"
     productDir = productDir.replace("//", "/")
     # RECURSIVELY CREATE MISSING DIRECTORIES
     if not os.path.exists(productDir):
-        os.makedirs(productDir)
+        try:
+            os.makedirs(productDir)
+        except Exception as e:
+            pass
 
     log.debug("completed the ``utility_setup`` function")
     return qcDir, productDir
@@ -1577,7 +1603,11 @@ def plot_merged_spectrum_qc(
     else:
         top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
 
-    top_panel.set_title(f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
+    top_panel.set_title(
+        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace(".fits", "")}",
+        fontsize=11,
+        linespacing=2.0,
+    )
 
     top_panel.plot(
         merged_orders["WAVE"],
@@ -1662,7 +1692,7 @@ def plot_merged_spectrum_qc(
     filePath = f"{qcDir}/{filename}"
     if debug:
         plt.show()
-    plt.savefig(filePath, dpi=120, bbox_inches="tight")
+    plt.savefig(filePath, dpi=120, bbox_inches="tight", format="pdf")
     plt.close("all")
 
     utcnow = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
@@ -1724,19 +1754,31 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
         ```
     """
     import numpy as np
+    from numpy.lib.stride_tricks import sliding_window_view
 
-    def rolling_snr(series):
-        n = len(series)
-        signal = np.median(series.values)
-        noise = 0.6052697 * np.median(
-            np.abs(2.0 * series.values[2 : n - 2] - series.values[0 : n - 4] - series.values[4:n])
-        )
-        return signal / noise
+    values = dataframe[flux_column].to_numpy(dtype=np.float64, copy=False)
+    n = values.size
+    snr_full = np.full(n, np.nan, dtype=np.float64)
 
-    dataframe["SNR"] = dataframe[flux_column].rolling(window=window_size, center=True).apply(rolling_snr)
-    dataframe["SNR"].replace([np.inf, -np.inf], np.nan, inplace=True)
-    dataframe["SNR"].fillna(method="bfill", inplace=True)
-    dataframe["SNR"].fillna(method="ffill", inplace=True)
+    # Need at least 5 points for the noise estimator and enough data for one window
+    if window_size >= 5 and n >= window_size:
+        windows = sliding_window_view(values, window_shape=window_size)
+
+        # Signal: rolling median
+        signal = np.median(windows, axis=1)
+
+        # Noise: robust estimator based on 5-point second-difference pattern
+        diff = np.abs(2.0 * windows[:, 2:-2] - windows[:, :-4] - windows[:, 4:])
+        noise = 0.6052697 * np.median(diff, axis=1)
+
+        snr = np.divide(signal, noise, out=np.full_like(signal, np.nan), where=noise > 0)
+
+        # Match center=True placement
+        left = (window_size - 1) // 2
+        snr_full[left : left + snr.size] = snr
+
+    dataframe["SNR"] = snr_full
+    dataframe["SNR"] = dataframe["SNR"].replace([np.inf, -np.inf], np.nan).bfill().ffill()
     return dataframe
 
 
@@ -1798,3 +1840,157 @@ def frame_to_32(frame):
         pass
 
     return frame
+
+
+def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs):
+    """*add quality checks to the qc table*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY' to calculate the checks from.
+    - ``qcTable`` -- the qc table to which the SNR checks will be added
+    - ``orderJoins`` -- a dictionary containing the wavelengths of order joins (if any) to be added as QCs.
+    - ``recipeName`` -- name of the recipe to add to the QC entries
+    - ``dateObs`` -- the observation date to add to the QC entries (in ISO format, e.g., "2024-06-01T00:00:00")
+
+    **Return:**
+
+    - ``qcTable`` -- the updated qc table with SNR checks added
+
+    **Usage:**
+
+    ```python
+    qcTable = add_snr_qcs(log, spectrumDF, qcTable, orderJoins)
+    ```
+    """
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime
+
+    spectrumDF["ORDER"] = np.nan
+
+    ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST
+    orderJoins = dict(reversed(list(orderJoins.items())))
+
+    for i, (orders, wl) in enumerate(zip(orderJoins.keys(), orderJoins.values())):
+        if len(orders) == 2:
+            visOrders = ["i", "r", "g", "u"]
+            lastOrder = visOrders[int(orders[0])]
+            order = visOrders[int(orders[0]) - 1]
+
+        elif len(orders) == 3:
+            lastOrder = int(orders[:1])
+            order = int(orders[1:])
+        else:
+            order = int(orders[:2])
+            lastOrder = int(orders[2::])
+        if i == 0:
+            spectrumDF.loc[(spectrumDF["WAVE"] <= wl), "ORDER"] = lastOrder
+        spectrumDF.loc[
+            spectrumDF["WAVE"] >= wl,
+            "ORDER",
+        ] = order
+
+    utcnow = datetime.utcnow()
+    utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+    # CALCULATE THE MEDIAN EFFICIENCY ACROSS ALL ORDERS
+    if "EFFICIENCY" in spectrumDF.columns:
+        medianEfficiency = spectrumDF["EFFICIENCY"].median()
+        qcTable = pd.concat(
+            [
+                qcTable,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": "EFF MEDIAN",
+                        "qc_value": float(f"{medianEfficiency:0.2f}"),
+                        "qc_comment": "Median efficiency across all orders",
+                        "qc_unit": None,
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
+        # CALCULATE THE MEDIAN EFFICIENCY IN EACH ORDER
+        orderEfficiency = spectrumDF.groupby("ORDER")["EFFICIENCY"].median().reset_index()
+        orderEfficiency.columns = ["ORDER", "MEDIAN_EFFICIENCY"]
+
+        for _, row in orderEfficiency.iterrows():
+            qcTable = pd.concat(
+                [
+                    qcTable,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": recipeName,
+                            "qc_name": f"EFF MEDIAN",
+                            "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.2f}"),
+                            "qc_comment": f"Median efficiency in order {row['ORDER']}",
+                            "qc_order": row["ORDER"],
+                            "qc_unit": None,
+                            "obs_date_utc": dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+
+    if "SNR" in spectrumDF.columns:
+        medianSNR = spectrumDF["SNR"].median()
+        qcTable = pd.concat(
+            [
+                qcTable,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": "SNR MEDIAN",
+                        "qc_value": float(f"{medianSNR:0.2f}"),
+                        "qc_comment": "Median SNR across all orders",
+                        "qc_unit": None,
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
+        )
+        orderSNR = spectrumDF.groupby("ORDER")["SNR"].median().reset_index()
+        orderSNR.columns = ["ORDER", "MEDIAN_SNR"]
+
+        for _, row in orderSNR.iterrows():
+            qcTable = pd.concat(
+                [
+                    qcTable,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": recipeName,
+                            "qc_name": f"SNR MEDIAN",
+                            "qc_value": float(f"{row['MEDIAN_SNR']:0.2f}"),
+                            "qc_comment": f"Median SNR in order {row['ORDER']}",
+                            "qc_order": row["ORDER"],
+                            "qc_unit": None,
+                            "obs_date_utc": dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+
+    return qcTable

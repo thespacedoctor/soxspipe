@@ -26,7 +26,14 @@ fd \\.tex   --exec perl -0777 -pi -e 's/\[width\=601\\sphinxpxdimen\]/\[width\=2
 fd \\.tex   --exec perl -0777 -pi -e 's/\\sphinxcaption/\\caption/gs'
 fd \\.tex   --exec perl -0777 -pi -e 's/\\begin{savenotes}/\\begin{figure}\[H\]\\begin{savenotes}/gs'
 fd \\.tex   --exec perl -0777 -pi -e 's/\\end{savenotes}/\\end{savenotes}\\end{figure}/gs'
+fd \\.tex   --exec perl -0777 -pi -e 's/\\sphinxpxdimen/.75bp\\relax/gs'
+fd \\.tex   --exec perl -0777 -pi -e 's/\{\[\}\\hyperlink/\{\[\}\\protect\\hyperlink/gs'
 
+fd \\.tex   --exec perl -0777 -pi -e 's/\\sphinxatlongtableend\n\\end{savenotes}\\end{figure}/\\sphinxatlongtableend\n\\end{savenotes}/gs'
+
+fd \\.tex   --exec perl -0777 -pi -e 's/\\begin{figure}\[H\]\\begin{savenotes}\n\\sphinxatlongtablestart/\\begin{savenotes}\n\\sphinxatlongtablestart/gs'
+
+fd \\.tex   --exec perl -0777 -pi -e 's/\*\[\\sphinxlongtablecapskipadjust\]//gs'
 
 # rm -rf ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx
 # mkdir ~/Dropbox/Apps/Overleaf/SOXS-SPE-0022-Pipeline-Design/sphinx

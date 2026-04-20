@@ -387,21 +387,22 @@ class create_dispersion_map(object):
 
         return orderPixelTable
 
-    def _write_qc_metrics(self, totalLines, detectedLines, percentageDetectedLines, utcnow):
+    def _write_qc_metrics(self, totalLines, detectedLines, percentageDetectedLines, percentageGoodLines, utcnow):
         """*WRITE LINE DETECTION QC METRICS TO TABLE*"""
         import pandas as pd
 
         # DETERMINE TAG BASED ON RECIPE TYPE
         tag = "single" if "DISP" in self.recipeName.upper() else "multi"
 
-        qc_names = ["DETLINES TOT", "DETLINES NUM", "DETLINES FRAC"]
+        qc_names = ["DETLINES TOT", "DETLINES NUM", "DETLINES FRAC", "GOODLINES FRAC"]
         qc_comments = [
             f"Total number of line in {tag} line-list",
             f"Number of lines detected in {tag} pinhole frame",
             f"Proportion of input line-list lines detected on {tag} pinhole frame",
+            f"Proportion of good, unclipped lines in {tag} pinhole frame",
         ]
-        qc_values = [totalLines, detectedLines, percentageDetectedLines]
-        qc_units = ["lines", "lines", None]
+        qc_values = [totalLines, detectedLines, percentageDetectedLines, percentageGoodLines]
+        qc_units = ["lines", "lines", None, None]
 
         for qc_name, qc_value, qc_comment, qc_unit in zip(qc_names, qc_values, qc_comments, qc_units):
             self.qc = pd.concat(
@@ -501,10 +502,15 @@ class create_dispersion_map(object):
     def _handle_multipin_hole_big_shift(self, orderPixelTable, order_num, mask, iteration):
         """*DETECT AND CORRECT LARGE SHIFTS BETWEEN SINGLE/MULTI-PINHOLE FRAMES*"""
         from astropy.stats import sigma_clipped_stats
+        import numpy as np
 
         # ONLY CHECK ON FIRST ITERATION
-        if iteration != 0:
+        if iteration > 1:
             return orderPixelTable
+
+        if len(orderPixelTable.loc[(mask)].index) < 50:
+            self.log.error("COULD NOT DETECT ANY PINHOLES. PLEASE CHECK THE RAW FRAMES")
+            raise ValueError("COULD NOT DETECT ANY PINHOLES. PLEASE CHECK THE RAW FRAMES")
 
         # CALCULATE MEDIAN SHIFTS FOR TOP AND BOTTOM SLIT POSITIONS
         _, medTop, _ = sigma_clipped_stats(
@@ -541,7 +547,7 @@ class create_dispersion_map(object):
         if abs(centreATop - centreABottom) > 0.4:
             # USE LARGER SHIFT
             shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
-            print(f"{order_num} APPLYING BIG SHIFT {shift}")
+            # print(f"{order_num} APPLYING BIG SHIFT {shift}")
 
             # APPLY CORRECTION
             orderPixelTable.loc[mask, f"detector_{self.axisA}_shifted"] = (
@@ -550,6 +556,7 @@ class create_dispersion_map(object):
 
             # DEBUG PLOTS IF ENABLED
             if self.debug:
+                print("ERERERE")
                 _plot_slit_index_comparisons(orderPixelTable.loc[(mask & (orderPixelTable["slit_index"] == 8))])
                 _plot_slit_index_comparisons(orderPixelTable.loc[(mask & (orderPixelTable["slit_index"] == 0))])
         elif self.debug:
@@ -683,7 +690,7 @@ class create_dispersion_map(object):
                         # NIR ARM OF SOXS OR OTHER INSTRUMENTS
                         # ASSIGN SHIFT GROUP BASED ON NxN GRID OF mph_mean_x AND mph_mean_y
                         # SET GRID SIZE (N=3 MEANS 3x3 GRID)
-                        grid_size = 2
+                        grid_size = 3
 
                         x = orderPixelTable["mph_mean_x"]
                         y = orderPixelTable["mph_mean_y"]
@@ -738,7 +745,7 @@ class create_dispersion_map(object):
 
                         # PRINT PROGRESS UPDATE
                         sys.stdout.flush()
-                        sys.stdout.write("\x1b[1A\x1b[2K")
+                        # sys.stdout.write("\x1b[1A\x1b[2K")
                         self.log.print(
                             f"\t ITERATION {iteration}: Median X Y difference between predicted "
                             f"and measured positions: {medianx:0.5f},{mediany:0.5f} "
@@ -787,44 +794,14 @@ class create_dispersion_map(object):
             # CALCULATE LINE DETECTION STATISTICS
             percentageDetectedLines = float("{:.6f}".format(float(detectedLines) / float(totalLines)))
 
-            if percentageDetectedLines < 0.5:
-                message = f"Only {percentageDetectedLines*100:.2f}% of the input line-list lines were detected on the pinhole frame. Please check the quality of the raw frames."
-                raise ValueError(message)
-
             # GET CURRENT UTC TIMESTAMP FOR QC RECORDS
             utcnow = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-
-            # WRITE LINE DETECTION QC METRICS
-            self._write_qc_metrics(totalLines, detectedLines, percentageDetectedLines, utcnow)
 
             # GROUP FOUND LINES INTO SETS AND CLIP ON MEAN XY SHIFT RESIDUALS
             if True:
                 orderPixelTable = self._clip_on_measured_line_metrics(orderPixelTable)
             else:
                 orderPixelTable["fwhm_pin_px"] = 3.0
-
-            if self.firstGuessMap:
-                detectedLineGroups = orderPixelTable.groupby(["wavelength", "order"]).size().reset_index(name="count")
-                # FIND THE MODE COUNT FOR EACH ORDER
-
-                modeCounts = (
-                    detectedLineGroups.groupby("order")["count"]
-                    .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0)
-                    .reset_index(name="pinhole count")
-                )
-                if self.inst.upper() == "SOXS":
-                    # REMOVE ORDER = 10
-                    modeCounts = modeCounts[~modeCounts["order"].isin([10, 11, 12])]
-                # IF ANY MODE IS LESS THAN 9, FAIL GRACEFULLY
-                if (modeCounts["pinhole count"] < 9).any():
-                    from tabulate import tabulate
-
-                    self.log.print("\n")
-                    self.log.print(tabulate(modeCounts, headers="keys", tablefmt="psql"))
-                    self.log.print("\n")
-                    raise AttributeError(
-                        f"All 9 pinholes cannot be seen in the data. A dispersion solution cannot be created."
-                    )
 
             # STEP 6: ITERATIVELY FIT POLYNOMIAL SOLUTIONS WITH AUTOMATIC DEGREE REDUCTION
             fitFound = False
@@ -884,6 +861,12 @@ class create_dispersion_map(object):
         # STEP 7: GENERATE OUTPUT FILENAMES
         goodLinesFN, missingLinesFN = self._get_output_filenames()
 
+        # CALCULATE GOOD LINES PERCENTAGE STATISTICS
+        percentageGoodLines = float("{:.6f}".format(float(len(goodLinesTable.index)) / float(totalLines)))
+
+        # WRITE LINE DETECTION QC METRICS
+        self._write_qc_metrics(totalLines, detectedLines, percentageDetectedLines, percentageGoodLines, utcnow)
+
         # STEP 8: PREPARE LINE LISTS WITH PROPER COLUMNS AND QC METRICS
         self._write_line_list_qc(clippedLinesTable, utcnow)
         goodAndClippedLines, goodLinesTable = self._prepare_line_list_columns(goodLinesTable, clippedLinesTable)
@@ -894,6 +877,41 @@ class create_dispersion_map(object):
         # STEP 10: WRITE MISSING LINES TO FILE
         self._write_missing_lines_file(missingLines, missingLinesFN, utcnow)
 
+        if self.firstGuessMap:
+            detectedLineGroups = goodLinesTable.groupby(["wavelength", "order"]).size().reset_index(name="count")
+
+            modeCounts = (
+                detectedLineGroups.groupby("order")["count"]
+                .agg(lambda x: x.mode().iloc[0] if not x.mode().empty else 0)
+                .reset_index(name="pinhole count")
+            )
+            if self.inst.upper() == "SOXS":
+                # REMOVE ORDER = 10
+                modeCounts = modeCounts[~modeCounts["order"].isin([10, 11, 12])]
+
+            self.minpin = modeCounts["pinhole count"].min()
+
+            self.qc = pd.concat(
+                [
+                    self.qc,
+                    pd.Series(
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "PINHOLE COUNT MIN",
+                            "qc_value": self.minpin,
+                            "qc_comment": "[pinholes] Minimum number of pinholes detected in any order",
+                            "qc_unit": "pinholes",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    )
+                    .to_frame()
+                    .T,
+                ],
+                ignore_index=True,
+            )
+
         # WRITE THE MAP TO FILE
         if not self.settings["tune-pipeline"]:
             mapPath = self.write_map_to_file(popt_x, popt_y, orderDeg, wavelengthDeg, slitDeg)
@@ -901,7 +919,7 @@ class create_dispersion_map(object):
             mapPath = None
             self.create2DMap = False
 
-        if self.firstGuessMap and self.orderTable and self.create2DMap:
+        if self.firstGuessMap and self.orderTable and self.create2DMap and self.minpin == 9:
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath, orders=list(goodLinesTable["order"].unique()))
             res_plots = self._create_dispersion_map_qc_plot(
                 xcoeff=popt_x,
@@ -1083,6 +1101,8 @@ class create_dispersion_map(object):
 
         # GET PREDICTED PIXEL VALUES FROM FIRST GUESS MAP
         df = dispersion_map_to_pixel_arrays(log=self.log, dispersionMapPath=self.firstGuessMap, orderPixelTable=df)
+        df["detector_x_shifted"] = df["detector_x"]
+        df["detector_y_shifted"] = df["detector_y"]
 
         # CALCULATE SHIFTS BETWEEN PREDICTED AND ACTUAL POSITIONS
         tmpList = df.copy()
@@ -1101,19 +1121,20 @@ class create_dispersion_map(object):
         for o in uniqueOrders:
             mask = tmpList["order"] == o
             meanxy, medianxy, stdxy = sigma_clipped_stats(
-                tmpList.loc[mask, "shift_xy"], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=3
+                tmpList.loc[mask, "shift_xy"], sigma=3.0, stdfunc="mad_std", cenfunc="median", maxiters=3
             )
             meanx, medianx, stdx = sigma_clipped_stats(
-                tmpList.loc[mask, "shift_x"], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=1
+                tmpList.loc[mask, "shift_x"], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3
             )
             meany, mediany, stdy = sigma_clipped_stats(
-                tmpList.loc[mask, "shift_y"], sigma=10.0, stdfunc="mad_std", cenfunc="median", maxiters=1
+                tmpList.loc[mask, "shift_y"], sigma=5.0, stdfunc="mad_std", cenfunc="median", maxiters=3
             )
 
             # USE MEDIAN FOR ORDERS WITH HIGH SCATTER
             if stdxy > 1.5:
                 tmpList.loc[mask, "shift_y"] = mediany
                 tmpList.loc[mask, "shift_x"] = medianx
+                print(o, stdxy, "high scatter - using median shift values")
 
         # MERGE SHIFTS BACK INTO MAIN DATAFRAME
         df = df.merge(tmpList, on=["wavelength", "order"], how="outer")
@@ -1122,8 +1143,8 @@ class create_dispersion_map(object):
         df.dropna(axis="index", how="any", subset=["shift_x"], inplace=True)
 
         # APPLY SHIFTS TO DETECTOR POSITIONS
-        df.loc[:, "detector_x"] -= df.loc[:, "shift_x"]
-        df.loc[:, "detector_y"] -= df.loc[:, "shift_y"]
+        df.loc[:, "detector_x_shifted"] -= df.loc[:, "shift_x"]
+        df.loc[:, "detector_y_shifted"] -= df.loc[:, "shift_y"]
 
         # DROP TEMPORARY SHIFT COLUMNS
         df.drop(columns=["fit_x", "fit_y", "shift_x", "shift_y"], inplace=True)
@@ -1433,6 +1454,7 @@ class create_dispersion_map(object):
             turnOffMP = False
 
         # PROCESS ALL STAMPS USING MULTIPROCESSING (OR SERIAL IN DEBUG MODE)
+        # NOTE: MULTIPROCESSING AND THREADING IS MUCH SLOWER! KEEP TURNED OFF
         results = fmultiprocess(
             log=self.log,
             function=measure_line_position,
@@ -1441,7 +1463,7 @@ class create_dispersion_map(object):
             timeout=300,
             mute=False,
             progressBar=False,
-            turnOffMP=turnOffMP,  # DISABLE MULTIPROCESSING IN DEBUG MODE
+            turnOffMP=True,  # DISABLE MULTIPROCESSING IN DEBUG MODE
             windowHalf=self.windowHalf,
             iraf=iraf,
             sigmaLimit=sigmaLimit,
@@ -1489,6 +1511,7 @@ class create_dispersion_map(object):
         from contextlib import suppress
         import copy
         import math
+        import numpy as np
 
         arm = self.arm
         kw = self.kw
@@ -1606,7 +1629,7 @@ class create_dispersion_map(object):
             self.qc["qc_comment"].values,
             self.qc["to_header"].values,
         ):
-            if h:
+            if h and v is not np.nan:
                 header[f"ESO QC {n}".upper()] = (v, c)
 
         # CREATE PRIMARY HDU AND WRITE FITS FILE
@@ -1778,6 +1801,10 @@ class create_dispersion_map(object):
         if writeQCs:
             absx = abs(orderPixelTable["residuals_x"])
             absy = abs(orderPixelTable["residuals_y"])
+            fwhm_med = orderPixelTable["fwhm_pin_px"].median()
+            resolution_med = orderPixelTable["R_pin"].median()
+            fwhm_SD = orderPixelTable["fwhm_pin_px"].std()
+            resolution_SD = orderPixelTable["R_pin"].std()
             orderPixelTable["x_diff"] = orderPixelTable["detector_x"] - orderPixelTable["observed_x"]
             orderPixelTable["y_diff"] = orderPixelTable["detector_y"] - orderPixelTable["observed_y"]
             orderPixelTable["xy_diff"] = np.sqrt(
@@ -1786,104 +1813,191 @@ class create_dispersion_map(object):
 
             qc_names = [
                 "X RES MIN",
+                "X RES MEDIAN",
                 "X RES MAX",
-                "X RES RMS",
+                "X RES SD",
                 "Y RES MIN",
+                "Y RES MEDIAN",
                 "Y RES MAX",
-                "Y RES RMS",
+                "Y RES SD",
                 "XY RES MIN",
+                "XY RES MEDIAN",
                 "XY RES MAX",
-                "XY RES RMS",
+                "XY RES SD",
                 "X DIFF MEDIAN",
                 "Y DIFF MEDIAN",
                 "XY DIFF MEDIAN",
+                "X DIFF SD",
+                "Y DIFF SD",
+                "XY DIFF SD",
+                "FWHM PIN MEDIAN",
+                "FWHM PIN SD",
+                "R PIN MEDIAN",
+                "R PIN SD",
             ]
+
+            qc_order = [None] * len(qc_names)
 
             qc_values = [
                 absx.min(),
+                np.median(absx),
                 absx.max(),
                 absx.std(),
                 absy.min(),
+                np.median(absy),
                 absy.max(),
                 absy.std(),
                 orderPixelTable["residuals_xy"].min(),
+                np.median(orderPixelTable["residuals_xy"]),
                 orderPixelTable["residuals_xy"].max(),
                 orderPixelTable["residuals_xy"].std(),
-                orderPixelTable["x_diff"].median(),
-                orderPixelTable["y_diff"].median(),
+                orderPixelTable["x_diff"].abs().median(),
+                orderPixelTable["y_diff"].abs().median(),
                 orderPixelTable["xy_diff"].median(),
+                orderPixelTable["x_diff"].abs().std(),
+                orderPixelTable["y_diff"].abs().std(),
+                orderPixelTable["xy_diff"].std(),
+                fwhm_med,
+                fwhm_SD,
+                resolution_med,
+                resolution_SD,
             ]
 
-            qc_units = ["pixels"] * 12
+            qc_units = ["pixels"] * 20 + [""] * 2
             qc_comments = [
                 "[px] Minimum residual in dispersion solution fit along x-axis",
+                "[px] Median residual in dispersion solution fit along x-axis",
                 "[px] Maximum residual in dispersion solution fit along x-axis",
                 "[px] Std-dev of residual in dispersion solution fit along x-axis",
                 "[px] Minimum residual in dispersion solution fit along y-axis",
+                "[px] Median residual in dispersion solution fit along y-axis",
                 "[px] Maximum residual in dispersion solution fit along y-axis",
                 "[px] Std-dev of residual in dispersion solution fit along y-axis",
                 "[px] Minimum residual in dispersion solution fit (XY combined)",
+                "[px] Median residual in dispersion solution fit (XY combined)",
                 "[px] Maximum residual in dispersion solution fit (XY combined)",
                 "[px] Std-dev of residual in dispersion solution (XY combined)",
-                "[px] Median difference between predicted and observed line positions along x-axis",
-                "[px] Median difference between predicted and observed line positions along y-axis",
+                "[px] Median absolute difference between predicted and observed line positions along x-axis",
+                "[px] Median absolute difference between predicted and observed line positions along y-axis",
                 "[px] Median difference between predicted and observed line positions (XY combined)",
+                "[px] Std-dev of difference between predicted and observed line positions along x-axis",
+                "[px] Std-dev of difference between predicted and observed line positions along y-axis",
+                "[px] Std-dev of difference between predicted and observed line positions (XY combined)",
+                "[px] Median FWHM of detected lines in pinhole frames",
+                "[px] Std-dev FWHM of detected lines in pinhole frames",
+                "Median spectral resolution measured from detected lines in pinhole frames",
+                "Std-dev spectral resolution measured from detected lines in pinhole frames",
             ]
+
+            if len(qc_units) != len(qc_names) or len(qc_comments) != len(qc_names) or len(qc_values) != len(qc_names):
+                raise ValueError("Mismatch in lengths of QC arrays")
 
             uniqueOrders = orderPixelTable["order"].unique()
             for o in uniqueOrders:
                 thisOrder = orderPixelTable.loc[orderPixelTable["order"] == o]
                 absx_order = abs(thisOrder["residuals_x"])
                 absy_order = abs(thisOrder["residuals_y"])
+                fwhm_order = thisOrder["fwhm_pin_px"].median()
+                resolution_order = thisOrder["R_pin"].median()
+                fwhm_order_sd = thisOrder["fwhm_pin_px"].std()
+                resolution_order_sd = thisOrder["R_pin"].std()
                 xdiff = thisOrder["x_diff"].median()
                 ydiff = thisOrder["y_diff"].median()
-                xydiff = np.sqrt(np.square(xdiff) + np.square(ydiff))
+                xydiff = np.median(np.sqrt(np.square(xdiff) + np.square(ydiff)))
+                xdiff_sd = thisOrder["x_diff"].std()
+                ydiff_sd = thisOrder["y_diff"].std()
+                xydiff_sd = np.sqrt(np.square(xdiff_sd) + np.square(ydiff_sd)).std()
                 o = int(o)
 
                 if self.inst == "SOXS" and self.arm == "VIS":
                     for n, oo in zip(["u", "g", "r", "i"], [2, 3, 1, 4]):
                         if o == oo:
-                            o = n
+                            ostr = n
+                            odb = n
                             break
                 else:
-                    o = f"O{o}"
+                    ostr = f"O{o}"
+                    odb = o
 
-                qc_names.extend(
-                    [
-                        f"X RES RMS {o}",
-                        f"Y RES RMS {o}",
-                        f"XY RES RMS {o}",
-                        f"X DIFF MEDIAN {o}",
-                        f"Y DIFF MEDIAN {o}",
-                        f"XY DIFF MEDIAN {o}",
-                    ]
-                )
+                arrayOfNames = [
+                    f"X RES MEDIAN",
+                    f"Y RES MEDIAN",
+                    f"XY RES MEDIAN",
+                    f"X RES SD",
+                    f"Y RES SD",
+                    f"XY RES SD",
+                    f"X DIFF MEDIAN",
+                    f"Y DIFF MEDIAN",
+                    f"XY DIFF MEDIAN",
+                    f"X DIFF SD",
+                    f"Y DIFF SD",
+                    f"XY DIFF SD",
+                    f"FWHM PIN MEDIAN",
+                    f"FWHM PIN SD",
+                    f"R PIN MEDIAN",
+                    f"R PIN SD",
+                ]
+
+                qc_names.extend(arrayOfNames)
+
+                qc_order.extend([odb] * len(arrayOfNames))
 
                 qc_values.extend(
                     [
+                        np.median(absx_order),
+                        np.median(absy_order),
+                        np.median(thisOrder["residuals_xy"]),
                         absx_order.std(),
                         absy_order.std(),
                         thisOrder["residuals_xy"].std(),
                         xdiff,
                         ydiff,
                         xydiff,
+                        xdiff_sd,
+                        ydiff_sd,
+                        xydiff_sd,
+                        fwhm_order,
+                        fwhm_order_sd,
+                        resolution_order,
+                        resolution_order_sd,
                     ]
                 )
 
-                qc_units.extend(["pixels"] * 6)
+                qc_units.extend(["pixels"] * 14 + [""] * 2)
 
                 qc_comments.extend(
                     [
+                        f"[px] Median residual in dispersion solution fit along x-axis for order {o}",
+                        f"[px] Median residual in dispersion solution fit along y-axis for order {o}",
+                        f"[px] Median residual in dispersion solution fit (XY combined) for order {o}",
                         f"[px] Std-dev of residual in dispersion solution fit along x-axis for order {o}",
                         f"[px] Std-dev of residual in dispersion solution fit along y-axis for order {o}",
                         f"[px] Std-dev of residual in dispersion solution (XY combined) for order {o}",
                         f"[px] Median difference between predicted and observed line positions along x-axis for order {o}",
                         f"[px] Median difference between predicted and observed line positions along y-axis for order {o}",
                         f"[px] Median difference between predicted and observed line positions (XY combined) for order {o}",
+                        f"[px] Std-dev of difference between predicted and observed line positions along x-axis for order {o}",
+                        f"[px] Std-dev of difference between predicted and observed line positions along y-axis for order {o}",
+                        f"[px] Std-dev of difference between predicted and observed line positions (XY combined) for order {o}",
+                        f"[px] Median FWHM of detected lines in pinhole frames for order {o}",
+                        f"[px] Std-dev of FWHM of detected lines in pinhole frames for order {o}",
+                        f"Median spectral resolution measured from detected lines in pinhole frames for order {o}",
+                        f"Std-dev of spectral resolution measured from detected lines in pinhole frames for order {o}",
                     ]
                 )
 
-            for name, value, unit, comment in zip(qc_names, qc_values, qc_units, qc_comments):
+            if (
+                len(qc_units) != len(qc_names)
+                or len(qc_comments) != len(qc_names)
+                or len(qc_values) != len(qc_names)
+                or len(qc_order) != len(qc_names)
+                or len(qc_order) != len(qc_values)
+            ):
+                raise ValueError("Mismatch in lengths of QC arrays")
+
+            for name, value, unit, comment, order in zip(qc_names, qc_values, qc_units, qc_comments, qc_order):
+                if unit != "lines":
+                    value = f"{value:0.3f}"
                 self.qc = pd.concat(
                     [
                         self.qc,
@@ -1892,6 +2006,7 @@ class create_dispersion_map(object):
                                 "soxspipe_recipe": self.recipeName,
                                 "qc_name": name,
                                 "qc_value": value,
+                                "qc_order": order,
                                 "qc_comment": comment,
                                 "qc_unit": unit,
                                 "obs_date_utc": self.dateObs,
@@ -2484,6 +2599,7 @@ class create_dispersion_map(object):
         from astropy.io import fits
         import copy
         from fundamentals import fmultiprocess
+        from soxspipe.commonutils import toolkit
 
         self.log.print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
@@ -2513,28 +2629,38 @@ class create_dispersion_map(object):
             if order in theseOrders
         ]
 
-        # NUMPY CAN BE TRICKY WITH MP
-        numThreads = "1"
-        os.environ["OPENBLAS_NUM_THREADS"] = numThreads
-        os.environ["OMP_NUM_THREADS"] = numThreads
-        os.environ["BLAS_NUM_THREADS"] = numThreads
-
         if self.debug or self.turnOffMP:
             turnOffMP = True
+
         else:
             turnOffMP = False
 
-        results = fmultiprocess(
-            log=self.log,
-            function=self.order_to_image,
-            inputArray=inputArray,
-            poolSize=6,
-            timeout=3600,
-            turnOffMP=turnOffMP,
-        )
-        del os.environ["OPENBLAS_NUM_THREADS"]
-        del os.environ["OMP_NUM_THREADS"]
-        del os.environ["BLAS_NUM_THREADS"]
+        if turnOffMP:
+            results = fmultiprocess(
+                log=self.log,
+                function=self.order_to_image,
+                inputArray=inputArray,
+                poolSize=6,
+                timeout=3600,
+                turnOffMP=turnOffMP,
+            )
+        else:
+            # NUMPY CAN BE TRICKY WITH MP
+            numThreads = "1"
+            os.environ["OPENBLAS_NUM_THREADS"] = numThreads
+            os.environ["OMP_NUM_THREADS"] = numThreads
+            os.environ["BLAS_NUM_THREADS"] = numThreads
+            results = fmultiprocess(
+                log=self.log,
+                function=self.order_to_image,
+                inputArray=inputArray,
+                poolSize=6,
+                timeout=3600,
+                turnOffMP=turnOffMP,
+            )
+            del os.environ["OPENBLAS_NUM_THREADS"]
+            del os.environ["OMP_NUM_THREADS"]
+            del os.environ["BLAS_NUM_THREADS"]
 
         slitImages = [r[0] for r in results]
         wlImages = [r[1] for r in results]
@@ -2548,6 +2674,10 @@ class create_dispersion_map(object):
 
         combinedWlImage.data += wlMap.data
         combinedSlitImage.data += wlMap.data
+
+        toolkit.frame_to_32(combinedWlImage)
+        toolkit.frame_to_32(combinedSlitImage)
+        toolkit.frame_to_32(orderMap)
 
         # GET THE EXTENSION (WITH DOT PREFIX)
         extension = os.path.splitext(dispersionMapPath)[1]
@@ -2601,10 +2731,8 @@ class create_dispersion_map(object):
 
         # FIRST GENERATE A WAVELENGTH SURFACE - FINE WL, CHUNKY SLIT-POSITION
         wlRange = maxWl - minWl
-        if self.arm.lower == "nir":
-            grid_res_wavelength = wlRange / 200
-        else:
-            grid_res_wavelength = wlRange / 200
+        grid_res_wavelength = wlRange / 200
+
         slitLength = self.detectorParams["slit_length"]
         grid_res_slit = slitLength / 20
 
@@ -2613,9 +2741,9 @@ class create_dispersion_map(object):
         wlArray = np.arange(minWl, maxWl, grid_res_wavelength)
 
         # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
-        bigSlitArray = np.concatenate([np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
-        # NOW THE BIG WAVELEGTH ARRAY
-        bigWlArray = np.tile(wlArray, np.shape(slitArray)[0])
+        bigSlitArray = np.repeat(slitArray, wlArray.shape[0])
+        # NOW THE BIG WAVELENGTH ARRAY
+        bigWlArray = np.tile(wlArray, slitArray.shape[0])
 
         iteration = 0
         remainingPixels = 1
@@ -2643,6 +2771,7 @@ class create_dispersion_map(object):
             if remainingCount < 3:
                 break
 
+            # PRINT COLUMN NAMES AND TYPES FOR DEBUGGING
             orderPixelTable = orderPixelTable.drop_duplicates(subset=["pixel_x", "pixel_y", "order"])
             train_wlx = orderPixelTable["fit_x"].values
             train_wly = orderPixelTable["fit_y"].values
@@ -2657,7 +2786,7 @@ class create_dispersion_map(object):
                 targetX = np.concatenate([targetX, allx])
                 targetY = np.concatenate([targetY, ally])
 
-            # USE CUBIC SPLINE NEAREST NEIGHBOUR TO SEED RESULTS
+            # USE LINEAR INTERPOLATION TO SEED RESULTS (FASTER THAN CUBIC; SUFFICIENT FOR SEEDING)
             bigWlArray = griddata((train_wlx, train_wly), train_wl, (targetX, targetY), method="cubic")
             bigSlitArray = griddata((train_wlx, train_wly), train_sp, (targetX, targetY), method="cubic")
 
@@ -2705,7 +2834,7 @@ class create_dispersion_map(object):
 
         # GET DETECTOR PIXEL POSITIONS FOR ALL WAVELENGTH-SLIT GRID CELLS
         orderPixelTable = dispersion_map_to_pixel_arrays(
-            log=self.log, dispersionMapPath=self.dispersionMapPath, orderPixelTable=orderPixelTable
+            log=self.log, dispersionMapPath=self.dispersionMapPath, orderPixelTable=orderPixelTable, trimColumns=True
         )
 
         # INTEGER PIXEL VALUES & FIT DISPLACEMENTS FROM PIXEL CENTRES
@@ -2717,9 +2846,17 @@ class create_dispersion_map(object):
             np.square(orderPixelTable["residual_x"]) + np.square(orderPixelTable["residual_y"])
         )
 
+        # DEFINE COLUMN TYPES
+        orderPixelTable["order"] = orderPixelTable["order"].astype(np.int16)
+        orderPixelTable["wavelength"] = orderPixelTable["wavelength"].astype(np.float32)
+        orderPixelTable["slit_position"] = orderPixelTable["slit_position"].astype(np.float32)
+        orderPixelTable["pixel_x"] = orderPixelTable["pixel_x"].astype(np.int16)
+        orderPixelTable["pixel_y"] = orderPixelTable["pixel_y"].astype(np.int16)
+
         # ADD A COUNT COLUMN FOR THE NUMBER OF SMALL SLIT/WL PIXELS FALLING IN
         # LARGE DETECTOR PIXELS
         count = orderPixelTable.groupby(["pixel_x", "pixel_y"]).size().reset_index(name="count")
+        count["count"] = count["count"].astype(np.int16)
         orderPixelTable = pd.merge(
             orderPixelTable, count, how="left", left_on=["pixel_x", "pixel_y"], right_on=["pixel_x", "pixel_y"]
         )
@@ -2859,6 +2996,7 @@ class create_dispersion_map(object):
                 skylines=False,
                 slitPositions=self.uniqueSlitPos,
             )
+
         # DROP MISSING VALUES
         orderPixelTable.dropna(axis="index", how="any", subset=["residuals_x"], inplace=True)
         orderPixelTable["residuals_xy"] = np.sqrt(
@@ -2909,12 +3047,7 @@ class create_dispersion_map(object):
 
         # a = plt.figure(figsize=(40, 15))
 
-        if self.debug:
-            fig = plt.figure(figsize=(6, 7), constrained_layout=True)
-            gs = fig.add_gridspec(1, 1)
-            toprow = fig.add_subplot(gs[:, :])
-
-        elif rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:  # SOXS NIR
+        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:  # SOXS NIR
             fig = plt.figure(figsize=(6, 20), constrained_layout=True)
             # CREATE THE GRID OF AXES
             if self.arcFrame:
@@ -3143,9 +3276,6 @@ class create_dispersion_map(object):
         if self.axisA == "x":
             toprow.invert_yaxis()
         toprow.set_ylim([0, rotatedImg.shape[0]])
-
-        if self.debug:
-            plt.show()
 
         midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5)
         midrow.set_title("global dispersion solution", fontsize=10)
@@ -3490,7 +3620,7 @@ class create_dispersion_map(object):
             plt.show()
 
         if not self.settings["tune-pipeline"]:
-            plt.savefig(filePath, dpi=240)
+            plt.savefig(filePath, dpi=360, format="pdf")
 
         plt.close("all")
 
@@ -3610,8 +3740,8 @@ class create_dispersion_map(object):
                 label="clipped arc lines",
             )
 
-            bottomleft.set_ylabel(f"y-shift rms (px)", fontsize=12)
-            bottomleft.set_xlabel(f"x-shift rms (px)", fontsize=12)
+            bottomleft.set_ylabel(f"y-shift SD (px)", fontsize=12)
+            bottomleft.set_xlabel(f"x-shift SD (px)", fontsize=12)
             bottomleft.tick_params(axis="both", which="major", labelsize=9)
             bottomleft.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 

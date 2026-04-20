@@ -1,11 +1,11 @@
 # Collecting Data
 
-Before you can reduce SOXS or XShooter data, you will first need to download the data from the [ESO Science Archive Facility](https://archive.eso.org/eso/eso_archive_main.html) (SAF). As a first step, navigate to the [SAF query interface](https://archive.eso.org/eso/eso_archive_main.html) and fill in the details of the object data set you are interested in downloading. Add the target's name and, optionally, the night the data was acquired. Select XSHOOTER or SOXS under the Spectroscopy column (and Imaging if required) and check 'Science' under the Category section (see {numref}`saf_query_interface`). Now, click the green 'Search' button.
+Before you can reduce SOXS <!--or XShooter-->data, you will first need to download the data from the [ESO Science Archive Facility](https://archive.eso.org/eso/eso_archive_main.html) (SAF). As a first step, navigate to the [SAF query interface](https://archive.eso.org/eso/eso_archive_main.html) and enter the details of the object dataset you want to download. Add the target's name and, optionally, the night the data was acquired. Select <!--XSHOOTER or-->SOXS under the Spectroscopy column (and Imaging if required) and check 'Science' under the Category section (see {numref}`saf_query_interface`). Now, click the green 'Search' button.
 
 :::{figure-md} saf_query_interface
 ![image-20250123102538697](../_images/image-20250123102538697.png)
 
-The Query Interface of the ESO Science Archive Facility.  
+The Query Interface of the ESO Science Archive Facility (select SOXS as your instrument).
 :::
 
 

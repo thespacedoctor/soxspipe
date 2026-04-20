@@ -1,16 +1,69 @@
 # Release Notes
 
-
-adding multiprocessing option when reducing all frames
-reducing size of MBIAS and MDARK (float32 instead of float64)
-renamed QC metrics as suggested in RIX 119
-added many more FITS keywords to the `raw_frames` table in soxspipe.db & the data oragniser
-removed VIS darks from the data-organiser (i.e. don't automatically write to SOF files)
-removing cruft from data-oraniser module
-adding 'eso tpl nexp' to the data-organiser database to be abke to filter out incomplete OB datasets
-
+* **FEATURE:** Added a multiprocessing option when reducing all frames.
+* **FEATURE:** Added guardrails to recipes using a new `qc-acceptable-ranges` settings block for each recipe. Lower and upper acceptable ranges can now be set for each QC metric, and a forced failure is triggered if a QC falls outside its defined range.
 * **FEATURE:** You can now export all the raw frames needed to reduce a science SOF file (see the `soxspipe raw sof` command and the FAQs in docs).
-* **ENHANCEMENT:** creating useful views on the soxspipe.db (sorting products and raw frames by recipe).
+* **ENHANCEMENT:** Added `ESO TPL NEXP` to the data-organiser database to allow incomplete OB datasets to be filtered out.
+* **ENHANCEMENT:** Added an information line at the end of a multiprocessing batch reduction run with details of passes and failures.
+* **ENHANCEMENT:** Added checks for corrupt frames so the pipeline warns about them before attempting to reduce the data without the offending files.
+* **ENHANCEMENT:** Added database queries to enforce QC guardrails.
+* **ENHANCEMENT:** Added guardrail values to the QC database table.
+* **ENHANCEMENT:** Added gain to the data organiser.
+* **ENHANCEMENT:** Added a `GOODLINES FRAC` QC for the proportion of good, unclipped lines in a pinhole frame.
+* **ENHANCEMENT:** Added global and order-specific median efficiency QCs (`EFF MEDIAN`).
+* **ENHANCEMENT:** Added SNR QC metrics for all extracted spectra, including global and order-specific values (`SNR MEDIAN`).
+* **ENHANCEMENT:** Added `PINHOLE COUNT MIN` to the spatial solution QCs.
+* **ENHANCEMENT:** Made `X DIFF SD` and `Y DIFF SD` use the absolute values of the pixel shifts, since VIS pseudo-bands move in different directions.
+* **ENHANCEMENT:** Added instrument temperature and AFC numbers to the data-organiser database.
+* **ENHANCEMENT:** Added many more FITS keywords to the `raw_frames` table in `soxspipe.db` and the data organiser.
+* **ENHANCEMENT:** Added median pinhole FWHM and resolution to FITS header QCs.
+* **ENHANCEMENT:** Added more pinhole checks to the spatial solution.
+* **ENHANCEMENT:** Added order numbers and error messages to the QC and products tables in the database.
+* **ENHANCEMENT:** Added Python files to the allow-list of file extensions that are not moved to the misc directory when `prep` is run.
+* **ENHANCEMENT:** Added separate settings for nodding standards versus objects.
+* **ENHANCEMENT:** Allowed the response function code to work in multiprocessing mode.
+* **ENHANCEMENT:** Creating useful views on the `soxspipe.db` (sorting products and raw frames by recipe).
+* **ENHANCEMENT:** Refreshed the pipeline session after each reduction to update the status of each product in the database.
+* **ENHANCEMENT:** Updated some QC names and added several more.
+* **ENHANCEMENT:** Updated the `prep` command so that the `-r` flag no longer removes previous ERROR logs.
+* **REFACTOR:** Renamed QC metrics as suggested in RIX 119.
+* **REFACTOR:** Added try/except handling when creating QC and product directories to avoid race condition issues.
+* **REFACTOR:** Changed the grid size from 2x2 to 3x3 when determining line shifts in NIR dispersion solutions.
+* **REFACTOR:** Cleaned up standards data reduction.
+* **REFACTOR:** Optimised the spatial solution for speed.
+* **REFACTOR:** Preserved `detector_x` and `detector_y` as the original line-list values in the multipinhole dispersion solution. The X DIFF SD and Y DIFF SD QCs now show the true spread in pixel shifts.
+* **REFACTOR:** Reduced the size of dispersion map image files.
+* **REFACTOR:** Reduced the size of MBIAS and MDARK products by using `float32` instead of `float64`.
+* **REFACTOR:** Reduced the typical `mflat` recipe memory footprint from approximately 7 GB to approximately 2 GB.
+* **REFACTOR:** Removed cruft from the data-organiser module.
+* **REFACTOR:** Removed previous guardrails that forced recipe failures when QC values strayed beyond set limits. This is now handled with the `qc-acceptable-ranges` setting.
+* **REFACTOR:** Removed VIS darks from the data organiser so they are not automatically written to SOF files.
+* **REFACTOR:** Sped up Horne extraction.
+* **REFACTOR:** Sped up the SNR calculation for extracted spectra.
+* **REFACTOR:** Updated extracted spectra in ASCII files to use wavelength in Angström instead of nm, as requested by the consortium. FITS table extractions remain in nm.
+* **REFACTOR:** Updated the detect continuum algorithm to fail if fewer than 30% of lines are detected, increased from 10%.
+* **DOCS:** Added `horne-extraction-profile-poly-order` and `use_lacosmic` to the `soxs-nod` and `soxs-stare` parameter documentation.
+* **DOCS:** Added a note in the documentation about the `soxs_sof_map.yaml` file.
+* **DOCS:** Added a QC plot for the response curve and efficiency.
+* **DOCS:** Added a section to the documentation about reducing data in multiprocessing mode.
+* **DOCS:** Added acceptable ranges to all recipe QCs.
+* **DOCS:** Added details of how the efficiency is calculated.
+* **DOCS:** Added a note about QC metric guardrails in the `qc-acceptable-ranges` section of the settings.
+* **DOCS:** Added details of the `max_iteration` and `poly_order` response function parameters to the `soxs-nod` and `soxs-stare` documentation.
+* **DOCS:** Added documentation for targeting and reducing individual science SOF files.
+* **DOCS:** Added `GOODLINES FRAC`, `FWHM PIN SD` & `PINHOLE COUNT MIN` to the QC descriptions for dispersion solutions.
+* **DOCS:** Added `EFF MEDIAN` & `SNR MEDIAN` to the QC descriptions for standard star reductions.
+* **DOCS:** Updated some QC names and added several more.
+* **DOCS:** Added stare and nodding QC plots.
+* **DOCS:** Noted that the pipeline can now reduce entire datasets in parallel using multiprocessing.
+* **DOCS:** Noted that the pipeline can now specifically target and reduce individual SOF files.
+* **DOCS:** Replaced Xshooter example QC plots and images with SOXS versions.
+* **DOCS:** Updated the quickstart guide to use SOXS data instead of Xshooter.
+* **FIXED:** Fixed a bug in the SOXS stare recipe settings.
+* **FIXED:** Fixed a substantial bug in `mflat` where the original input flats were being modified during normalisation instead of a copy. This bug was introduced during an attempt to reduce memory usage.
+* **FIXED:** Fixed logging for the watch command.
+* **FIXED:** Fixed spectroscopic QC measurements where the mask was incorrect.
+* **FIXED:** Fixed the inter-order mask used to isolate orders in the `mflat` recipe.
 * **FIXED:** fixing slit width matching for std response curve files and science frames.
 * **FIXED:** science frames are now being reduced again with the reduce all command.
 
@@ -20,28 +73,28 @@ adding 'eso tpl nexp' to the data-organiser database to be abke to filter out in
 
 ## v0.15.0 - January 26, 2026
 
-* raw frames are now sorted into UTC dated folders instead of Chilean time (to match la silla setup)
-* show progress when uncompressing .Z files
-* Corrected validation of response curve files by not checking binning with NIR data (previously this was causing needless fails)
-* Complete refactoring of the data-organiser. Now, much faster and data-organiser dictionaries are located in one yaml file.
-* Added a `--refresh` flag to the prep command. Using this flag will completely refresh the soxspipe.db database, delete all ERROR logs and rebuild all SOF files from scratch. 
-* A single QC file is written for each recipe. This is a plain text file containing all computed QC values for the recipe.
-* If the ICS is in simulation mode, data is ignored (e.g. NISE is forced to stay at the 5" slit).
-* Dark scaling warning is thrown once per recipe as opposed to once per raw frame to be detrended (resulting in multiple duplicate warnings).
-* Checks are in place to determine if darks/pinhole/order trace and flat frames are 'good'. If not, an error is forced the pipeline removes the faulty calibration files from downstream SOF files.
-* Integrating flux-calibration into the dataorganiser
-* Moving module level imports into classes & methods to reduce memory footprint.
-* Standard star repsonse function now recorded in the products table of the DO database.  
-* Cleaned up the text printed after `soxspipe prep`.
-* Move to detect continuum on the unflattened frame in stare mode (to mirror what has been done in nodding)
-* Added true NIR gain and RON to detector settings file
-* moving management of matplotlib backend to a single location in the base_recipe class (easier to manage)
-* massive refactoring of create_dispersion_map to make it more readable and manageable. 
-* Move to adjusting the NIR predicted line-locations in detector quadrants rather than order by order 
-* **FIXED**: added jinja2 to setup.py
-* removed extra stare reductions at the end of `soxspipe reduce all`
-* fixed an issue with the macos matplotlib backend tripping up ubuntu reductions (again)
-* Add a `calculate_rolling_snr` function to robustly compute the SNR ratio across the entire spectrum wavelength range. Algorithm is the [presented here](https://esahubble.org/static/archives/stecfnewsletters/pdf/hst_stecf_0042.pdf).
+* **FEATURE:** Add a `calculate_rolling_snr` function to robustly compute the SNR ratio across the entire spectrum wavelength range. Algorithm is the [presented here](https://esahubble.org/static/archives/stecfnewsletters/pdf/hst_stecf_0042.pdf).
+* **FEATURE:** Added a `--refresh` flag to the prep command. Using this flag will completely refresh the `soxspipe.db` database, delete all ERROR logs, and rebuild all SOF files from scratch.
+* **FEATURE:** Show progress when uncompressing `.Z` files.
+* **ENHANCEMENT:** A single QC file is written for each recipe. This is a plain text file containing all computed QC values for the recipe.
+* **ENHANCEMENT:** Added true NIR gain and RON to detector settings file.
+* **ENHANCEMENT:** Checks are in place to determine if darks, pinhole, order trace, and flat frames are 'good'. If not, an error is forced and the pipeline removes the faulty calibration files from downstream SOF files.
+* **ENHANCEMENT:** Dark scaling warning is thrown once per recipe as opposed to once per raw frame to be detrended (resulting in multiple duplicate warnings).
+* **ENHANCEMENT:** Integrating flux-calibration into the dataorganiser.
+* **ENHANCEMENT:** Standard star response function now recorded in the products table of the DO database.
+* **REFACTOR:** Cleaned up the text printed after `soxspipe prep`.
+* **REFACTOR:** Complete refactoring of the data-organiser. Now much faster, and data-organiser dictionaries are located in one YAML file.
+* **REFACTOR:** Corrected validation of response curve files by not checking binning with NIR data (previously this was causing needless fails).
+* **REFACTOR:** If the ICS is in simulation mode, data is ignored (e.g. NISE is forced to stay at the 5" slit).
+* **REFACTOR:** Massive refactoring of `create_dispersion_map` to make it more readable and manageable.
+* **REFACTOR:** Move to adjusting the NIR predicted line-locations in detector quadrants rather than order by order.
+* **REFACTOR:** Move to detect continuum on the unflattened frame in stare mode (to mirror what has been done in nodding).
+* **REFACTOR:** Moving management of matplotlib backend to a single location in the `base_recipe` class (easier to manage).
+* **REFACTOR:** Moving module level imports into classes and methods to reduce memory footprint.
+* **REFACTOR:** Raw frames are now sorted into UTC dated folders instead of Chilean time (to match La Silla setup).
+* **REFACTOR:** Removed extra stare reductions at the end of `soxspipe reduce all`.
+* **FIXED:** Added `jinja2` to `setup.py`.
+* **FIXED:** Fixed an issue with the macOS matplotlib backend tripping up Ubuntu reductions (again).
 
 ## v0.14.1 - October 20, 2025
 

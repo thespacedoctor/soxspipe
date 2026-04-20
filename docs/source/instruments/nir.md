@@ -7,18 +7,18 @@
 | Parameter                   | Value                                                        |
 | --------------------------- | :----------------------------------------------------------- |
 | Detector                    | Teledyne H2RG                                                |
-| Pixel-Size                  | 18 μm                                                        |
+| Pixel-Size                  | 18 $\mu$m                                                        |
 | Array-Size                  | 2048 $\times$ 2048 px                                        |
 | Array-Scale                 | 0.25 arcsec/px                                               |
 | Read noise (RMS)            | Double correlated: $< 20 e^{-}$  <br>16 Fowler pairs $< 7 e^{-}$ |
-| Dark current @ 40K          | $< 0.005 {e^{-}/s/px}$                                       |
+| Dark current @ 45K          | $< 0.005 {e^{-}/s/px}$                                       |
 | Resolution $(R)$            | $\simeq$ 5000 (1 arcsec slit)                                |
 | Wavelength Range            | 800-2000 nm                                                  |
 | Slit Widths                 | 0.5, 1.0, 1.5, 5.0 arcsec                                    |
 | Slit Height                 | 12 arcsec                                                    |
-| Grating Blaze Angle         | 44°                                                          |
-| Detector Operating Temp     | 40K                                                          |
-| Spectrograph Operating Temp | 150K                                                         |
+| Grating Blaze Angle         | 44$\degree$                                                          |
+| Detector Operating Temp     | 45K                                                          |
+| Spectrograph Operating Temp | 140K                                                         |
 | Orders                      | 15                                                           |
 | Penrays                     | Ar-Ne-Xe-Hg                                                  |
 

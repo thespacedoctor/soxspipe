@@ -281,10 +281,10 @@ class horne_extraction(object):
             {
                 "x": xarray,
                 "y": yarray,
-                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(float),
-                "slit_position": self.twoDMap["SLIT"].data.flatten().astype(float),
-                "order": self.twoDMap["ORDER"].data.flatten().astype(float),
-                "flux": self.skySubtractedFrame.data.flatten().astype(float),
+                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(np.float32),
+                "slit_position": self.twoDMap["SLIT"].data.flatten().astype(np.float32),
+                "order": self.twoDMap["ORDER"].data.flatten().astype(np.float32),
+                "flux": self.skySubtractedFrame.data.flatten().astype(np.float32),
             }
         )
         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
@@ -453,14 +453,24 @@ class horne_extraction(object):
                 self.twoDMap["WAVELENGTH"].data.shape[1],
             )
 
-        # NEAREST NEIGHBOUR INTERPOLATION
-        wlZoom = skt.resize(self.twoDMap["WAVELENGTH"].data, output_shape, order=0, preserve_range=True)
-        slitZoom = skt.resize(self.twoDMap["SLIT"].data, output_shape, order=0, preserve_range=True)
-        rawFluxZoom = skt.resize(self.skySubtractedFrame.data, output_shape, order=0, preserve_range=True)
+        # NEAREST NEIGHBOUR INTERPOLATION USING NUMPY REPEAT (FASTER THAN skt.resize)
+        if self.detectorParams["dispersion-axis"] == "x":
+
+            def _zoom(arr):
+                return np.repeat(arr, zoomFactor, axis=1)
+
+        else:
+
+            def _zoom(arr):
+                return np.repeat(arr, zoomFactor, axis=0)
+
+        wlZoom = _zoom(self.twoDMap["WAVELENGTH"].data)
+        slitZoom = _zoom(self.twoDMap["SLIT"].data)
+        rawFluxZoom = _zoom(self.skySubtractedFrame.data)
         if self.skyModelFrame:
-            skyZoom = skt.resize(self.skyModelFrame.data, output_shape, order=0, preserve_range=True)
-        errorZoom = skt.resize(self.skySubtractedFrame.uncertainty.array, output_shape, order=0, preserve_range=True)
-        bpmZoom = skt.resize(self.skySubtractedFrame.mask, output_shape, order=0, preserve_range=True)
+            skyZoom = _zoom(self.skyModelFrame.data)
+        errorZoom = _zoom(self.skySubtractedFrame.uncertainty.array)
+        bpmZoom = _zoom(self.skySubtractedFrame.mask)
 
         def rebin(arr, binx, biny):
             """REBIN 2D ARRAY ARR TO SHAPE NEW_SHAPE BY AVERAGING."""
@@ -677,6 +687,15 @@ class horne_extraction(object):
                 ".fits", f"_EXTRACTED_MERGED{self.noddingSequence}{self.notFlattened}.fits"
             )
             filePath = f"{self.productDir}/{filename}"
+
+            def _round_scalar_or_quantity(value, decimals):
+                if hasattr(value, "value"):
+                    value = value.value
+                return round(float(value), decimals)
+
+            for col, decimals in [("WAVE", 2), ("FLUX_COUNTS", 3), ("SNR", 2), ("FLUX_DENSITY_COUNTS", 3)]:
+                mergedSpectumDF[col] = mergedSpectumDF[col].apply(lambda x: _round_scalar_or_quantity(x, decimals))
+
             mergedTable = Table.from_pandas(mergedSpectumDF)
             BinTableHDU = fits.table_to_hdu(mergedTable)
             hduList = fits.HDUList([priHDU, BinTableHDU])
@@ -692,7 +711,10 @@ class horne_extraction(object):
                 # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
                 asciiFilepath = filePath.replace(".fits", f".txt")
                 asciiFilename = filename.replace(".fits", f".txt")
+                mergedTable["WAVE"] = mergedTable["WAVE"] * 10  # CONVERTING TO ANGSTROMS
+                mergedTable["WAVE"].format = "{:.2f}"
                 mergedTable.write(asciiFilepath, format="ascii", overwrite=True)
+
                 self.products = pd.concat(
                     [
                         self.products,
@@ -943,6 +965,7 @@ class horne_extraction(object):
             uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values),
             bin_specification="center",
         )
+
         fluxDensity_orig = extractedOrdersDF["extractedFluxDensityOptimal"].values
         spectrumFD_orig = Spectrum1D(
             flux=fluxDensity_orig,
@@ -950,28 +973,28 @@ class horne_extraction(object):
             bin_specification="center",
         )
 
-        resampler = FluxConservingResampler()
-        resampler2 = FluxConservingResampler()  # LinearInterpolatedResampler
-        # Pre-allocate arrays for efficiency
-        flux_resampled = np.zeros_like(wave_resample_grid)
-        fluxDensity_resampled = np.zeros_like(wave_resample_grid)
+        # Fast linear resampling — np.interp is O(N log M) vs FluxConservingResampler's
+        # O(N·M), and is accurate for output grids with similar resolution to the input.
+        wave_in = spectrum_orig.spectral_axis.to_value(u.nm)
+        flux_in = spectrum_orig.flux.to_value(u.electron)
+        fluxDensity_in = spectrumFD_orig.flux.to_value(u.electron / u.nm)
 
-        import concurrent.futures
-        import numpy as np
-
-        # Process in chunks to improve memory usage and potentially parallelize
-        # Adjust based on memory constraints
-        chunk_size = 1000
-        for i in range(0, len(wave_resample_grid), chunk_size):
-            chunk_end = min(i + chunk_size, len(wave_resample_grid))
-            wave_chunk = wave_resample_grid[i:chunk_end] * u.nm
-
-            # Process chunks in parallel using concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-                future_flux = executor.submit(resampler, spectrum_orig, wave_chunk)
-                future_density = executor.submit(resampler2, spectrumFD_orig, wave_chunk)
-                flux_resampled[i:chunk_end] = future_flux.result().flux
-                fluxDensity_resampled[i:chunk_end] = future_density.result().flux
+        # Deduplicate wavelengths that may overlap at order join boundaries
+        _, unique_idx = np.unique(wave_in, return_index=True)
+        flux_resampled = np.interp(
+            wave_resample_grid,
+            wave_in[unique_idx],
+            flux_in[unique_idx],
+            left=0.0,
+            right=0.0,
+        ).astype(np.float32)
+        fluxDensity_resampled = np.interp(
+            wave_resample_grid,
+            wave_in[unique_idx],
+            fluxDensity_in[unique_idx],
+            left=0.0,
+            right=0.0,
+        ).astype(np.float32)
 
         # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
@@ -981,7 +1004,6 @@ class horne_extraction(object):
         merged_orders = calculate_rolling_snr(dataframe=merged_orders, flux_column="FLUX_COUNTS", window_size=300)
 
         merged_orders["FLUX_DENSITY_COUNTS"] = fluxDensity_resampled * u.electron / u.nm
-
 
         if False:
             self.products, filePath = plot_merged_spectrum_qc(
@@ -1118,7 +1140,7 @@ class horne_extraction(object):
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
         # plt.show()
-        plt.savefig(filePath, dpi="figure", bbox_inches="tight")
+        plt.savefig(filePath, dpi=120, format="pdf", bbox_inches="tight")
         plt.close("all")
 
         utcnow = datetime.utcnow()

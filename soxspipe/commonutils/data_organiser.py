@@ -114,6 +114,7 @@ class data_organiser(object):
             "LAMP7",
             "DET_READ_TYPE",
             "CONAD",
+            "GAIN",
             "RON",
             "OBS_ID",
             "OBS_NAME",
@@ -146,6 +147,13 @@ class data_organiser(object):
             "OB_NTPL",
             "OB_START",
             "TPL_START",
+            "NIR_TEMP_K",
+            "VIS_TEMP_C",
+            "CP_TEMP_C",
+            "AFC1_POS1",
+            "AFC1_POS2",
+            "AFC2_POS1",
+            "AFC2_POS2",
         ]
 
         # THE MINIMUM SET OF KEYWORD WE EVER WANT RETURNED
@@ -168,6 +176,7 @@ class data_organiser(object):
             "slit",
             "slitmask",
             "lamp",
+            "gain",
             "night start date",
             "night start mjd",
             "mjd-date",
@@ -198,6 +207,13 @@ class data_organiser(object):
             "eso obs ntpl",
             "eso tpl start",
             "eso obs start",
+            "nir temp k",
+            "vis temp c",
+            "cp temp c",
+            "afc1 pos1",
+            "afc1 pos2",
+            "afc2 pos1",
+            "afc2 pos2",
         ]
 
         self.proKeywords = ["eso pro type", "eso pro tech", "eso pro catg"]
@@ -215,6 +231,7 @@ class data_organiser(object):
             "rospeed",
             "slit",
             "slitmask",
+            "gain",
             "binning",
             "night start mjd",
             "night start date",
@@ -227,6 +244,17 @@ class data_organiser(object):
             "eso tpl nexp",
             "filter",
             "object",
+        ]
+
+        self.filterKeywordsExtras = [
+            "mjd-obs",
+            "nir temp k",
+            "vis temp c",
+            "cp temp c",
+            "afc1 pos1",
+            "afc1 pos2",
+            "afc2 pos1",
+            "afc2 pos2",
         ]
 
         self.productFilterKeywords = [
@@ -310,10 +338,11 @@ class data_organiser(object):
                 except:
                     pass
             # DELETE ALL ERROR LOG AND SOF FILES
-            for root, dirs, files in os.walk(os.path.abspath(self.rootDir)):
-                for file in files:
-                    if file.endswith("ERROR.log") or file.endswith(".sof"):
-                        os.remove(os.path.join(root, file))
+            if False:
+                for root, dirs, files in os.walk(os.path.abspath(self.rootDir)):
+                    for file in files:
+                        if file.endswith("ERROR.log") or file.endswith(".sof"):
+                            os.remove(os.path.join(root, file))
 
         self._select_instrument()
 
@@ -365,7 +394,48 @@ class data_organiser(object):
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
+        if True:
+            c = self.conn.cursor()
+            sqlQueries = [
+                f'update product_frames set status_{self.sessionId} = "pass" where status_{self.sessionId} = "fail" and sof in (select sof_name from quality_control);',
+                f"update quality_control set qc_value_min = null, qc_value_max = null, qc_flag = 'pass';",
+            ]
+
+            for k, v in self.settings.items():
+                if k[:5] == "soxs-":
+                    recipe = k
+                    for a in ["acq", "vis", "nir"]:
+                        if a in v and "qc-acceptable-ranges" in v[a]:
+                            arm = a.upper()
+                            for kk, vv in v[a]["qc-acceptable-ranges"].items():
+                                qc_name = kk.upper().replace("-", " ")
+                                qc_min = vv[0]
+                                qc_max = vv[1]
+                                sqlQueries.append(
+                                    f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and sof_name like "%{arm}%" and qc_name = "{qc_name}"  and qc_order = "-1";'
+                                )
+                    if "qc-acceptable-ranges" in v:
+                        for kk, vv in v["qc-acceptable-ranges"].items():
+                            qc_name = kk.upper().replace("-", " ")
+                            qc_min = vv[0]
+                            qc_max = vv[1]
+                            sqlQueries.append(
+                                f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and qc_name = "{qc_name}"  and qc_order = "-1";'
+                            )
+
+            sqlQueries += [
+                'update quality_control set qc_flag = "pass" where CAST(qc_value as float) < qc_value_max and CAST(qc_value as float) > qc_value_min and qc_flag != "pass" and qc_order = "-1";',
+                'update quality_control set qc_flag = "fail" where (CAST(qc_value as float) > qc_value_max or CAST(qc_value as float) < qc_value_min) and qc_flag != "fail" and qc_order = "-1";',
+                'update product_frames set status_base = "fail" where sof in (select sof_name from quality_control where qc_flag = "fail");',
+            ]
+
+            for sqlQuery in sqlQueries:
+                c.execute(sqlQuery)
+            self.conn.commit()
+            c.close()
+
         self._flag_files_to_ignore()
+        self.build_sof_files()
         self.build_sof_files()
 
         if report:
@@ -380,7 +450,7 @@ class data_organiser(object):
             print(f"   - `sessions/`: directory of data-reduction sessions")
             print(f"   - `sof/`: the set-of-files (sof) files required for each reduction step")
             print(f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
-            print(f"   - `reductions/`: nested folders, ordered by date, containing reduced data.\n")
+            print(f"   - `reduced/`: nested folders, ordered by date, containing reduced data.\n")
 
             incompleteSets = self.get_incomplete_raw_frames_set()
             if len(incompleteSets.index):
@@ -402,7 +472,7 @@ class data_organiser(object):
 
         import pandas as pd
 
-        query = 'select distinct "eso seq arm", "night start date", "night start mjd", "eso obs name","eso obs id" from raw_frame_sets where complete = 1 and recipe in ("nod-obj","stare-obj","offset-obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
+        query = 'select distinct "eso seq arm", "night start date", "night start mjd", "eso obs name","eso obs id" from raw_frame_sets where complete = 1 and recipe in ("nod_obj","stare_obj","offset_obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
         obsDf = pd.read_sql(query, con=self.conn)
 
         if len(obsDf.index):
@@ -420,7 +490,7 @@ class data_organiser(object):
 
         self.log.debug("starting the ``list_sofs`` method")
 
-        query = 'select distinct "eso seq arm", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod-obj","stare-obj","offset-obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
+        query = 'select distinct "eso seq arm", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod_obj","stare_obj","offset_obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
         sofDf = pd.read_sql(query, con=self.conn)
 
         if len(sofDf.index):
@@ -701,37 +771,37 @@ class data_organiser(object):
             )
             rawFrames = pd.concat(results)
 
-        # FIX BOUNDARY GROUP FILES -- MOVE TO NEXT DAY SO THEY GET COMBINED WITH THE REST OF THEIR GROUP
-        # E.G. UVB BIASES TAKEN ACROSS THE BOUNDARY BETWEEN 2 NIGHTS
-        # FIRST FIND END OF NIGHT DATA - AND PUSH TO THE NEXT DAY
-        mask = rawFrames["boundary"] > 0.96
-        filteredDf = rawFrames.loc[mask].copy()
-        filteredDf["night start mjd"] = filteredDf["night start mjd"] + 1
-        mask = filteredDf["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
-        filteredDf.loc[mask, "eso dpr type"] = "LAMP,FLAT"
-        # NOW FIND START OF NIGHT DATA
-        mask = rawFrames["boundary"] < 0.04
-        filteredDf2 = rawFrames.loc[mask].copy()
-        mask = filteredDf2["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
-        filteredDf2.loc[mask, "eso dpr type"] = "LAMP,FLAT"
+        # # FIX BOUNDARY GROUP FILES -- MOVE TO NEXT DAY SO THEY GET COMBINED WITH THE REST OF THEIR GROUP
+        # # E.G. UVB BIASES TAKEN ACROSS THE BOUNDARY BETWEEN 2 NIGHTS
+        # # FIRST FIND END OF NIGHT DATA - AND PUSH TO THE NEXT DAY
+        # mask = rawFrames["boundary"] > 0.96
+        # filteredDf = rawFrames.loc[mask].copy()
+        # filteredDf["night start mjd"] = filteredDf["night start mjd"] + 1
+        # mask = filteredDf["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
+        # filteredDf.loc[mask, "eso dpr type"] = "LAMP,FLAT"
+        # # NOW FIND START OF NIGHT DATA
+        # mask = rawFrames["boundary"] < 0.04
+        # filteredDf2 = rawFrames.loc[mask].copy()
+        # mask = filteredDf2["eso dpr type"].isin(["LAMP,DFLAT", "LAMP,QFLAT"])
+        # filteredDf2.loc[mask, "eso dpr type"] = "LAMP,FLAT"
 
-        # NOW FIND MATCHES BETWEEN 2 DATASETS
-        theseKeys = [
-            "eso seq arm",
-            "eso dpr catg",
-            "eso dpr tech",
-            "eso dpr type",
-            "eso pro catg",
-            "eso pro tech",
-            "eso pro type",
-            "night start mjd",
-        ]
-        matched = pd.merge(filteredDf, filteredDf2, on=theseKeys)
-        boundaryFiles = np.unique(matched["file_x"].values)
-        mask = rawFrames["file"].isin(boundaryFiles)
-        rawFrames.loc[mask, "night start mjd"] += 1
+        # # NOW FIND MATCHES BETWEEN 2 DATASETS
+        # theseKeys = [
+        #     "eso seq arm",
+        #     "eso dpr catg",
+        #     "eso dpr tech",
+        #     "eso dpr type",
+        #     "eso pro catg",
+        #     "eso pro tech",
+        #     "eso pro type",
+        #     "night start mjd",
+        # ]
+        # matched = pd.merge(filteredDf, filteredDf2, on=theseKeys)
+        # boundaryFiles = np.unique(matched["file_x"].values)
+        # mask = rawFrames["file"].isin(boundaryFiles)
+        # rawFrames.loc[mask, "night start mjd"] += 1
 
-        rawFrames["night start date"] = Time(rawFrames["night start mjd"], format="mjd").to_value("iso", subfmt="date")
+        # rawFrames["night start date"] = Time(rawFrames["night start mjd"], format="mjd").to_value("iso", subfmt="date")
 
         self.log.debug("completed the ``_create_directory_table`` function")
         return rawFrames, fitsPaths, remainingFiles
@@ -842,6 +912,7 @@ class data_organiser(object):
         filteredFrames["slitmask"] = "--"
         filteredFrames["lamp"] = "--"
         filteredFrames["simulation"] = "--"
+        filteredFrames["gain"] = -99.99
 
         # ADD SLIT FOR SPECTROSCOPIC DATA
         filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "slit"] = filteredFrames.loc[
@@ -854,7 +925,12 @@ class data_organiser(object):
             (filteredFrames["eso seq arm"] == "UVB"), self.kw("SLIT_UVB").lower()
         ]
 
-        # ADD SIMULATION FLAG FOR SPECTROSCOPIC DATA
+        # CHECK GAIN AND CONAD ARE CORRECTLY POPULATED
+        filteredFrames["gain"] = filteredFrames[self.kw("CONAD").lower()]
+        mask = filteredFrames[self.kw("GAIN").lower()] > filteredFrames[self.kw("CONAD").lower()]
+        filteredFrames.loc[mask, "gain"] = filteredFrames.loc[mask, self.kw("GAIN").lower()]
+
+        # ADD SIMULATION FLAG FOR SPECTROSCOPIC DATA (AND MORE)
         if self.instrument.lower() == "soxs":
             filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "simulation"] = filteredFrames.loc[
                 (filteredFrames["eso seq arm"] == "NIR"), self.kw("SWSIM_NIR").lower()
@@ -868,8 +944,26 @@ class data_organiser(object):
             filteredFrames.loc[(filteredFrames["simulation"] == "--"), "simulation"] = 0
             filteredFrames.loc[(filteredFrames["simulation"] == -99.99), "simulation"] = 0
             filteredFrames.loc[(filteredFrames["simulation"] == "T"), "simulation"] = 1
+            filteredFrames = filteredFrames.rename(
+                columns={
+                    "eso ins temp217 val": "nir temp k",
+                    "eso ins temp104 val": "vis temp c",
+                    "eso ins temp301 val": "cp temp c",
+                    "eso ins afc1 pos1": "afc1 pos1",
+                    "eso ins afc1 pos2": "afc1 pos2",
+                    "eso ins afc2 pos1": "afc2 pos1",
+                    "eso ins afc2 pos2": "afc2 pos2",
+                }
+            )
         else:
             filteredFrames["simulation"] = 0
+            filteredFrames["nir temp k"] = 0
+            filteredFrames["vis temp c"] = 0
+            filteredFrames["cp temp c"] = 0
+            filteredFrames["afc1 pos1"] = 0
+            filteredFrames["afc1 pos2"] = 0
+            filteredFrames["afc2 pos1"] = 0
+            filteredFrames["afc2 pos2"] = 0
 
         filteredFrames.loc[
             ((filteredFrames["slit"].str.contains("MULT")) & (filteredFrames["slitmask"] == "--")), "slitmask"
@@ -936,12 +1030,10 @@ class data_organiser(object):
             rawFrames.loc[(rawFrames["eso seq arm"].str.lower() == "nir")].groupby(groupBy)["lamp"].transform("first")
         )
         rawFrames.loc[(rawFrames["lamp"].isnull()), "lamp"] = "--"
-        rawFrames.loc[(rawFrames["absrot"] == -99.99), "absrot"] = 0.0
 
         rawFrames["exptime"] = rawFrames["exptime"].apply(lambda x: round(x, 2))
-        rawGroups = rawFrames.groupby(filterKeywordsRaw).size().reset_index(name="counts")
-        rawGroups.style.hide(axis="index")
-        pd.options.mode.chained_assignment = None
+
+        rawGroups = self._group_raw_frames(rawFrames, filterKeywordsRaw, addFilepaths=False, addStartDate=False)
 
         if verbose:
             print("\n# CONTENT FILE INDEX\n")
@@ -972,7 +1064,7 @@ class data_organiser(object):
 
         # GENERATE A LIST OF FILE PATHS
         pathToDirectory = self.rootDir
-        allowlistExtensions = [".db", ".yaml", ".log", ".sh"]
+        allowlistExtensions = [".db", ".yaml", ".log", ".sh", ".py"]
         for d in os.listdir(pathToDirectory):
             filepath = os.path.join(pathToDirectory, d)
             if os.path.splitext(filepath)[1] in allowlistExtensions:
@@ -1020,6 +1112,7 @@ class data_organiser(object):
                 continue
             myFile = open(sofPath, "w")
             content = tabulate(group[["filepath", "tag"]], tablefmt="plain", showindex=False)
+
             myFile.write(content)
             myFile.close()
 
@@ -1537,7 +1630,7 @@ class data_organiser(object):
     def get_incomplete_raw_frames_set(self):
         import pandas as pd
 
-        query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod-obj","stare-obj","offset-obj")'
+        query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod_obj","stare_obj","offset_obj")'
         return pd.read_sql(query, con=self.conn)
 
     def _select_instrument(self, inst=False):
@@ -1757,33 +1850,37 @@ class data_organiser(object):
                     if isinstance(calibrationTypes, dict):
                         for arm, calType in calibrationTypes.items():
 
+                            if "STD" in ttype:
+                                extraType = f"""AND "eso dpr type" = '{ttype}'"""
+                            else:
+                                extraType = ""
+
                             exists = " AND ".join(
                                 [
                                     f"""EXISTS (
                                 SELECT 1 FROM cal_{ct} 
-                                WHERE cal_{ct}.sof = product_frames.sof 
+                                WHERE cal_{ct}.sof = p.sof 
                                 AND (cal_{ct}.upstream_status = 'pass' OR cal_{ct}.upstream_status IS NULL)
                             )"""
                                     for ct in calType
                                 ]
                             )
 
-                            sqlQuery = f"""select sof from product_frames
+                            sqlQuery = f"""select sof from product_frames_plus as p
                                 WHERE complete < 1 
                                 AND recipe = '{recipe}'
                                 AND "eso seq arm" = '{arm}'
+                                {extraType}
                                 AND {exists};"""
 
                             containerSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
 
                             self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
 
-                            sqlQuery = f"""UPDATE product_frames 
+                            sqlQuery = f"""UPDATE product_frames as p
                                 SET complete = -1 
                                 WHERE complete < 1 
-                                AND recipe = '{recipe}'
-                                AND "eso seq arm" = '{arm}'
-                                AND {exists};"""
+                                And sof in ("{'","'.join(containerSofs)}")"""
 
                             c.execute(sqlQuery)
 
@@ -1812,11 +1909,16 @@ class data_organiser(object):
 
         c = self.conn.cursor()
         sqlQueries = [
-            f"update sof_map_{self.sessionId} set complete = 1 where complete = -1;",
-            "update raw_frame_sets set complete = 1 where sof in (select r.sof from raw_frame_sets r, product_frames p where p.sof = r.sof and p.complete = 1);",
-            "update raw_frame_sets set complete = 0 where sof in (select r.sof from raw_frame_sets r, product_frames p where p.sof = r.sof and p.complete = 0);",
-            "update raw_frames set processed = 1 where processed = 0 and filepath in (select filepath from sof_map);",
+            f"UPDATE sof_map_{self.sessionId} SET complete = 1 WHERE complete = -1;",
+            "UPDATE raw_frame_sets SET complete = 1 WHERE sof IN (SELECT r.sof FROM raw_frame_sets r JOIN product_frames p ON p.sof = r.sof WHERE p.complete = 1);",
+            "UPDATE raw_frame_sets SET complete = 0 WHERE sof IN (SELECT r.sof FROM raw_frame_sets r JOIN product_frames p ON p.sof = r.sof WHERE p.complete = 0);",
+            "UPDATE raw_frames SET processed = 1 WHERE processed = 0 AND filepath IN (SELECT filepath FROM sof_map);",
+            "UPDATE product_frames SET set_first_file = (SELECT s.file FROM sof_map s WHERE s.sof = product_frames.sof AND s.file LIKE 'SOXS%' LIMIT 1) WHERE set_first_file IS NULL;",
+            "UPDATE raw_frame_sets SET set_first_file = (SELECT s.file FROM sof_map s WHERE s.sof = raw_frame_sets.sof AND s.file LIKE 'SOXS%' LIMIT 1) WHERE set_first_file IS NULL;",
+            "UPDATE product_frames SET absrot=(SELECT r.absrot FROM raw_frames r WHERE r.file=product_frames.set_first_file);",
+            "UPDATE raw_frame_sets SET absrot=(SELECT r.absrot FROM raw_frames r WHERE r.file=raw_frame_sets.set_first_file);",
         ]
+
         for sqlQuery in sqlQueries:
             c.execute(sqlQuery)
         self.conn.commit()
@@ -1851,6 +1953,7 @@ class data_organiser(object):
         ```
         """
         import pandas as pd
+        import numpy as np
 
         # IF NONE, SET TO EMPTY STRING
         ttype, arm, tech = ttype or "", arm or "", tech or ""
@@ -1882,6 +1985,7 @@ class data_organiser(object):
         rawFrames = rawFrames.astype(
             {
                 "exptime": float,
+                "gain": float,
                 "ra": float,
                 "dec": float,
                 "eso tel parang end": float,
@@ -1892,11 +1996,20 @@ class data_organiser(object):
                 "eso tel ambi fwhm start": float,
                 "eso tel airm end": float,
                 "eso tel airm start": float,
+                "absrot": float,
+                "nir temp k": float,
+                "vis temp c": float,
+                "cp temp c": float,
+                "afc1 pos1": float,
+                "afc1 pos2": float,
+                "afc2 pos1": float,
+                "afc2 pos2": float,
             }
         )
         rawFrames.fillna(
             {
                 "exptime": -99.99,
+                "gain": -99.99,
                 "ra": -99.99,
                 "dec": -99.99,
                 "eso tel parang end": -99.99,
@@ -1907,6 +2020,14 @@ class data_organiser(object):
                 "eso tel ambi fwhm start": -99.99,
                 "eso tel airm end": -99.99,
                 "eso tel airm start": -99.99,
+                "absrot": -99.99,
+                "nir temp k": -99.99,
+                "vis temp c": -99.99,
+                "cp temp c": -99.99,
+                "afc1 pos1": -99.99,
+                "afc1 pos2": -99.99,
+                "afc2 pos1": -99.99,
+                "afc2 pos2": -99.99,
             },
             inplace=True,
         )
@@ -1922,23 +2043,11 @@ class data_organiser(object):
             & (rawFrames["eso dpr type"] != "DARK")
         )
         rawFramesNoOffFrames = rawFrames.loc[~mask]
-        rawGroups = rawFramesNoOffFrames.groupby(filterKeywordsRaw + ["set_first_file"])
 
         if not len(rawFramesNoOffFrames.index):
             return pd.DataFrame(), pd.DataFrame()
 
-        mjds = rawGroups.mean(numeric_only=True)["mjd-obs"].values
-        # MANIPULATE ALL STRINGS IN startTime TO BE OF FORMAT YYYY-MM-DDTHH:MM:SS.SSS
-        startTime = rawGroups.min()["date-obs"].values
-        filepaths = [list(group["filepath"].values) for name, group in rawGroups]
-
-        # PRINT EACH GROUP IN THE GROUPED DATAFRAME
-
-        startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
-        rawGroups = rawGroups.size().reset_index(name="counts")
-        rawGroups["mjd-obs"] = mjds
-        rawGroups["date-obs"] = startTime
-        rawGroups["filepaths"] = filepaths
+        rawGroups = self._group_raw_frames(rawFramesNoOffFrames, filterKeywordsRaw + ["set_first_file"])
 
         # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
         mask = rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])
@@ -1946,13 +2055,7 @@ class data_organiser(object):
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
         rawScienceFrames = rawFrames.loc[rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])]
         if len(rawScienceFrames.index):
-            rawScienceFrames = rawScienceFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
-            filepaths = [list(group["filepath"].values) for name, group in rawScienceFrames]
-            rawScienceFrames = rawScienceFrames.size().reset_index(name="counts")
-            rawScienceFrames["filepaths"] = filepaths
-            startTime = rawScienceFrames["date-obs"].values
-            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
-            rawScienceFrames["date-obs"] = startTime
+            rawScienceFrames = self._group_raw_frames(rawScienceFrames, filterKeywordsRaw + ["mjd-obs"])
             # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
@@ -1973,19 +2076,20 @@ class data_organiser(object):
                 rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
             ]
         if len(rawPinholeFrames.index):
-            rawPinholeFrames = rawPinholeFrames.groupby(filterKeywordsRaw + ["mjd-obs", "date-obs"])
-            filepaths = [list(group["filepath"].values) for name, group in rawPinholeFrames]
-            rawPinholeFrames = rawPinholeFrames.size().reset_index(name="counts")
-            rawPinholeFrames["filepaths"] = filepaths
-            startTime = rawPinholeFrames["date-obs"].values
-            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
-            rawPinholeFrames["date-obs"] = startTime
+            rawPinholeFrames = self._group_raw_frames(rawPinholeFrames, filterKeywordsRaw + ["mjd-obs"])
             # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
 
         rawGroups["recipe"] = recipe
+
         if "STD,FLUX" in ttype:
-            recipe += "_std_flux"
+
+            recipe = recipe.replace("_std", "") + "_std_flux"
+
+        if "STD,TELLURIC" in ttype:
+
+            recipe = recipe.replace("_std", "") + "_std_tell"
+
         rawGroups["sof"] = (
             rawGroups["date-obs"].astype(str)
             + "_"
@@ -2033,6 +2137,38 @@ class data_organiser(object):
         rawGroups = rawGroups.loc[~mask]
 
         return rawFrames, rawGroups
+
+    def _group_raw_frames(self, rawFrames, filterKeywordsRaw, addFilepaths=True, addStartDate=True):
+        """Group raw frames and return grouped rows with aggregation metadata."""
+        import pandas as pd
+
+        # Create aggregation dictionary
+        agg_dict = {col: "mean" for col in self.filterKeywordsExtras if col not in filterKeywordsRaw}
+        agg_dict["file"] = "size"  # for counting rows
+
+        if "set_first_file" in filterKeywordsRaw:
+            filterKeywordsRaw.remove("set_first_file")
+
+        rawGroups = rawFrames.groupby(filterKeywordsRaw)
+
+        if addFilepaths:
+            filepaths = [list(group["filepath"].values) for name, group in rawGroups]
+        if addStartDate:
+            startTime = rawGroups.min()["date-obs"].values
+
+        # Group and aggregate
+        rawGroups = rawFrames.groupby(filterKeywordsRaw).agg(agg_dict).rename(columns={"file": "counts"}).reset_index()
+        rawGroups.style.hide(axis="index")
+        pd.options.mode.chained_assignment = None
+
+        # Normalise timestamps to compact YYYYMMDDTHHMMSS format for SOF naming.
+        if addFilepaths:
+            rawGroups["filepaths"] = filepaths
+        if addStartDate:
+            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
+            rawGroups["date-obs"] = startTime
+
+        return rawGroups
 
     def predict_product_frames(self, productTypes, rawGroups, recipe):
         """
@@ -2120,12 +2256,14 @@ class data_organiser(object):
         # BUILD SOF MAP TABLE
         mask = rawGroups["sof"].isin(containerSofs)
         sofMapDF = rawGroups.loc[mask]
+
         sofMapDF = sofMapDF.explode("filepaths")
         sofMapDF["file"] = sofMapDF["filepaths"].apply(lambda x: os.path.basename(x) if pd.notnull(x) else x)
         sofMapDF = sofMapDF.rename(columns={"filepaths": "filepath"})
         sofMapDF["tag"] = sofMapDF["eso dpr type"].replace(",", "_") + "_" + sofMapDF["eso seq arm"]
         sofMapDF = sofMapDF[["file", "tag", "sof", "filepath", "complete"]]
         sofMapDF["complete"] = 1
+
         self._dataframe_to_sqlite(sofMapDF, f"sof_map_{self.sessionId}", replace=False)
 
         # UPDATE RAW FRAMES AS PROCESSED
@@ -2166,7 +2304,9 @@ class data_organiser(object):
         keepTrying = 0
         while keepTrying < 7:
             try:
-                dataframe.replace(["--"], None).to_sql(table_name, con=self.conn, index=False, if_exists="append")
+                dataframe.replace(["--", -99.99], None).to_sql(
+                    table_name, con=self.conn, index=False, if_exists="append"
+                )
                 keepTrying = 10
             except Exception as e:
                 if keepTrying > 5:
@@ -2243,7 +2383,6 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
         masterTable["utc-4hrs"] = chileTimes.strftime("%Y-%m-%dt%H:%M:%S")
         masterTable["night start date"] = startNightDate.strftime("%Y-%m-%d")
         masterTable["night start mjd"] = startNightDate.mjd.astype(int)
-        masterTable["boundary"] = startNightDate.mjd - startNightDate.mjd.astype(int)
         masterTable.add_index("night start date")
         masterTable.add_index("night start mjd")
         masterTable.add_index("mjd-date")

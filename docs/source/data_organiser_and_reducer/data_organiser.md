@@ -7,21 +7,22 @@ The algorithm the DO uses to prepare a workspace is shown in {numref}`data_organ
 :::{figure-md} data_organiser_util
 ![](soxs_data_organiser.png){width=600px}
 
-The algorithm used by the soxspipe data-organiser to prepare a workspace for data-reduction.
+The algorithm used by the soxspipe data-organiser to prepare a workspace for data reduction.
 :::
 
 At the heart of the DO is a SQLite database called `soxspipe.db`. Here, the organiser's bookkeeping is performed, recorded, and maintained.
 
-The ESO Science Archive Facility delivers FITS data in a `.Z` compressed format. When running `soxspipe prep`, the DO first finds and uncompresses for any `.Z` compressed FITS frames within the workspace root. The DO then reads the FITS headers of all of the FITS frames in the workspace root and selects out the raw (unreduced) frames, record one entry per raw frame in the `raw_frames` table of `soxspipe.db`. The DO then moves these raw frames to a `raw` directory within the workspace. Any remaining files are moved out of the workspace root and into a `misc` directory.
+The ESO Science Archive Facility delivers FITS data in a `.Z` compressed format. When running `soxspipe prep`, the DO first finds and uncompresses any `.Z` compressed FITS frames within the workspace root. The DO then reads the FITS headers of all of the FITS frames in the workspace root and selects out the raw (unreduced) frames, recording one entry per raw frame in the `raw_frames` table of `soxspipe.db`. The DO then moves these raw frames to a `raw` directory within the workspace. Any remaining files are moved out of the workspace root and into a `misc` directory.
 
 A sanity check is performed to ensure that the data in the `raw_frames` database table matches the data in the `raw` directory. If frames have been removed from the file system, the corresponding records in the database table are deleted. Also, frames within the `raw` directory missing from the database table are added.
 
-The next step is for the DO to define all sets of raw frames that can be used to produce next-stage products (master bias, master flat, order location tables, etc). These sets are recorded sets in the `raw_frame_sets` database table. These raw frame sets derive the raw frame content for all possible SOF files, which are recorded in the `sof_map` database table, assigning a human-readable 'tag' (e.g. BIAS_UVB) to individual frames and maps the frames to named sof files. 
+The next step is for the DO to define all sets of raw frames that can be used to produce next-stage products (master bias, master flat, order location tables, etc). The rules for these associations are read from the `soxs_sof_map.yaml` file is shipped with the pipeline code. These sets are recorded sets in the `raw_frame_sets` database table. These raw frame sets derive the raw frame content for all possible SOF files, which are recorded in the `sof_map` database table, assigning a human-readable 'tag' (e.g. BIAS_UVB) to individual frames and mapping the frames to named sof files. 
 
-The initial set of SOF files in the `sof_map` table is used to predict the product files written when soxspipe recipes are executed on the SOF files. The expected product information is written to a `product_frames` database table. From this `product_frames` table, the products are assigned to SOF files later in the reduction cascade (recorded, again, in the `sof_map` table). 
+The initial set of SOF files in the `sof_map` table is used to predict the product files written when soxspipe recipes are executed on the SOF files. The expected product information is written to a `product_frames` database table. From this `product_frames` table, products are assigned to SOF files later in the reduction cascade (recorded again in the `sof_map` table). 
 
-Finally, all SOF files from the `sof_map`  table are written in a `sof` directory in the workspace root and ready to be used by the various soxspipe recipes during a data-reduction session.
+Finally, all SOF files from the `sof_map` table are written to a sof directory in the workspace root and are ready to be used by the various soxspipe recipes during a data-reduction session.
 
+During the running of each pipeline recipe, Quality Control (QC) metrics are generated, and within the pipeline settings file, there are `qc-acceptable-ranges` for each recipe. These acceptable ranges act as guardrails for the pipeline, so that if a QC metric falls outside an acceptable range, the pipeline forces a 'fail' on this data, preventing it from cascading into further data-reduction stages.
 
 ### Utility API
 

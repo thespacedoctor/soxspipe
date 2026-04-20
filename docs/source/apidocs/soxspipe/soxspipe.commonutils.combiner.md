@@ -64,7 +64,7 @@ Bases: {py:obj}`ccdproc.Combiner`
 
 ````
 
-````{py:method} sum_combine(sum_func=None, scale_to=None, uncertainty_func=_default_std_dev_func)
+````{py:method} sum_combine(sum_func=None, scale_to=None, uncertainty_func=_default_std())
 :canonical: soxspipe.commonutils.combiner.Combiner.sum_combine
 
 ````
