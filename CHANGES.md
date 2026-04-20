@@ -1,5 +1,7 @@
 # Release Notes
 
+## v0.16.0 - April 20, 2026
+
 * **FEATURE:** Added a multiprocessing option when reducing all frames.
 * **FEATURE:** Added guardrails to recipes using a new `qc-acceptable-ranges` settings block for each recipe. Lower and upper acceptable ranges can now be set for each QC metric, and a forced failure is triggered if a QC falls outside its defined range.
 * **FEATURE:** You can now export all the raw frames needed to reduce a science SOF file (see the `soxspipe raw sof` command and the FAQs in docs).
