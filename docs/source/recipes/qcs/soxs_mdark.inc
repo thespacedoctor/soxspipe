@@ -1,5 +1,6 @@
 :::{table} Quality Control metrics calculated in the `soxs_mdark` recipe.
 :name: soxs_mdark_qc
+:widths: 15, 45, 10, 30
 
 | Label             | Description            | Unit | Acceptable Range |
 | :---------------- | :--------------------- | ---- | ----------------- |
@@ -9,5 +10,3 @@
 | `RAW RON` | RON in single DARK | electrons | NIR: [0,30] |
 
 :::
-
-==UPDATE QCs==

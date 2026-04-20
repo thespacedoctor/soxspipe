@@ -1,5 +1,7 @@
 :::{table} Quality Control metrics calculated in the `soxs_stare` recipe. Note that the acceptable ranges are enforced only for standard stars, not for science frames.
 :name: soxs_stare_qc
+:class: longtable
+:widths: 15, 45, 10, 30
 
 | Label                | Description                                                | Unit      | Acceptable Range |
 | -------------------- | ---------------------------------------------------------- | --------- | --------- |
@@ -7,9 +9,9 @@
 | `INNER ORDER PIX MEAN` | Mean inner-order pixel value                          | electrons | VIS: [-40,60], NIR: [-40,60] |
 | `INNER ORDER PIX SUM`  | Sum of all inner-order pixel values                   | electrons | - |
 | `BADPIX NUM`         | Number of bad pixels                                       |           | - |
-| `N ORDERS`              | Number of orders containing an object trace                |           | VIS: 4 , NIR: 15 |
+| `N ORDERS`              | Number of orders containing an object trace                |           | VIS: 4, NIR: 15 |
 | `SAMPLES DET NUM`                | Number of samples where a continuum is detected            |           | - |
-| `SAMPLES DET FRAC`                | Fraction of samples where a continuum is detected        |           | VIS: [0.93,1.0] NIR: [0.7,1.0] |
+| `SAMPLES DET FRAC`                | Fraction of samples where a continuum is detected        |           | VIS: [0.93,1.0], NIR: [0.7,1.0] |
 | `SAMPLES TOT NUM`                | Total number of samples along orders                       |           | - |
 | `SAMPLES CLIP NUM`                | Number of continuum sample clipped during solution fitting |           | - |
 | `SAMPLES CLIP FRAC`                | Fraction of detected continuum samples clipped during solution fitting |           | VIS: [0.0,0.2], NIR: [0.0,0.3] |
@@ -27,5 +29,3 @@
 
 :::
 
-
-==UPDATE QCs==

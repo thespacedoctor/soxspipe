@@ -20,42 +20,47 @@ An error log is written to the recipe's product directory if the recipe fails to
 Here is an example log file from one of the simpler recipes (`mdark`):
 
 ```text
+Recipe Command: soxspipe mdark sof/20260111T083044_NIR_3_MDARK_10_0S_SOXS.sof -s ./soxspipe.yaml
 # VERIFYING INPUT FRAMES
+
+	Gain is being read from the detector parameter file (not the FITS header)
+
 # VERIFYING INPUT FRAMES - ALL GOOD
 
-# PREPARING 3 RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK
+# PREPARING 5 RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS AND APPENDING DEFAULT BAD-PIXEL MASK
 # PREPARED FRAMES - SUMMARY
-               filename                INSTRUME    MJD-OBS     TYPE  CATG  TECH ARM EXPTIME  SLIT LAMP
--------------------------------------- -------- -------------- ---- ----- ----- --- ------- ----- ----
-XSHOO.2020-10-15T11:46:37.097_pre.fits XSHOOTER 59137.49070714 DARK CALIB IMAGE NIR    10.0 Blind   --
-XSHOO.2020-10-15T11:46:52.655_pre.fits XSHOOTER 59137.49088721 DARK CALIB IMAGE NIR    10.0 Blind   --
-XSHOO.2020-10-15T11:47:10.217_pre.fits XSHOOTER 59137.49109048 DARK CALIB IMAGE NIR    10.0 Blind   --
+               filename               INSTRUME    MJD-OBS     TYPE  CATG  TECH ARM EXPTIME ESO PRO TYPE ESO PRO CATG ESO PRO TECH  SLIT LAMP
+------------------------------------- -------- -------------- ---- ----- ----- --- ------- ------------ ------------ ------------ ----- ----
+SOXS.2026-01-11T08:30:44.542_pre.fits     SOXS  61051.3546822 DARK CALIB IMAGE NIR    10.0           --           --           -- BLANK   --
+SOXS.2026-01-11T08:31:03.437_pre.fits     SOXS 61051.35490089 DARK CALIB IMAGE NIR    10.0           --           --           -- BLANK   --
+SOXS.2026-01-11T08:31:23.438_pre.fits     SOXS 61051.35513238 DARK CALIB IMAGE NIR    10.0           --           --           -- BLANK   --
+SOXS.2026-01-11T08:31:43.438_pre.fits     SOXS 61051.35536387 DARK CALIB IMAGE NIR    10.0           --           --           -- BLANK   --
+SOXS.2026-01-11T08:32:03.443_pre.fits     SOXS 61051.35559541 DARK CALIB IMAGE NIR    10.0           --           --           -- BLANK   --
 
 
 
-# MEAN COMBINING 3 NIR CALIB IMAGE DARK FRAMES
-	The basic bad-pixel mask for the NIR detector DARK frames contains 12349 pixels (0.57% of all pixels)
-	0 new pixels made it into the combined bad-pixel map (bad pixels now account for 0.57% of all pixels)
+# MEAN COMBINING 5 NIR CALIB IMAGE DARK FRAMES
+	The basic bad-pixel mask for the NIR detector DARK frames contains 0 pixels (0.0% of all pixels)
+	0 new pixels made it into the combined bad-pixel map (bad pixels now account for 0.00% of all pixels)
 
 # SOXS-MDARK QC METRICS
-+-----------------+--------------+-----------+---------------------------------------+
-|         qc_name |     qc_value |   qc_unit |                            qc_comment |
-|-----------------+--------------+-----------+---------------------------------------|
-| BADPIX FRAC |     0.005732 |           |                Fraction of bad pixels |
-|    MDARK MEDIAN |   280.897    | electrons | [e-] Median flux level of master dark |
-|    BADPIX NUM | 12349        |           |                  Number of bad pixels |
-|    RAW RON |    14.9194   | electrons |               [e-] RON in single DARK |
-+-----------------+--------------+-----------+---------------------------------------+
++---------------+------------+-----------+---------------------------------------+-----------+
+|       qc_name |   qc_value |   qc_unit |                            qc_comment |   qc_flag |
+|---------------+------------+-----------+---------------------------------------+-----------|
+|    CPATH TEMP |     16     |   celsius |               [C] temp of common path |      pass |
+| DETECTOR TEMP |     45     |    kelvin |                  [K] temp of detector |      pass |
+|   HOTPIX FRAC |      0     |           |                Fraction of hot pixels |      pass |
+|    HOTPIX NUM |      0     |           |                  Number of hot pixels |      pass |
+|  MDARK MEDIAN |     -1.179 | electrons | [e-] Median flux level of master dark |      pass |
+|       RAW RON |     14.858 | electrons |               [e-] RON in single DARK |      pass |
++---------------+------------+-----------+---------------------------------------+-----------+
 
 # SOXS-MDARK RECIPE PRODUCTS & QC OUTPUTS
-+-----------------+--------------------------------------------------------+-------------+--------------------------+---------+-----------------------+
-|   product_label |                                              file_name |   file_type |             obs_date_utc |   label |          product_desc |
-|-----------------+--------------------------------------------------------+-------------+--------------------------+---------+-----------------------|
-|           MDARK | 2020.10.15T11.46.37.0966_NIR_MDARK_10.0S_XSHOOTER.fits |        FITS | 2020-10-15T11:46:37.0966 |    PROD | NIR Master dark frame |
-+-----------------+--------------------------------------------------------+-------------+--------------------------+---------+-----------------------+
-
-Recipe Command: soxspipe mdark sof/2020.10.15T11.46.37.0966_NIR_MDARK_10.0S_XSHOOTER.sof -s ./sessions/base/soxspipe.yaml 
-Recipe Run Time: 1s
++-----------------+---------------------------------------------+-------------+--------------------------+---------+-----------------------+
+|   product_label |                                   file_name |   file_type |             obs_date_utc |   label |          product_desc |
+|-----------------+---------------------------------------------+-------------+--------------------------+---------+-----------------------|
+|           MDARK | 20260111T083044_NIR_3_MDARK_10_0S_SOXS.fits |        FITS | 2026-01-11T08:30:44.5420 |    PROD | NIR Master dark frame |
++-----------------+---------------------------------------------+-------------+--------------------------+---------+-----------------------+
 ```
 
 Informative results from each stage of the recipe's reduction tasks are written, including a list describing the input files, a table of QC results and a table of the data-reduction products and QC plots generated. At the end of the log file, the user will find the command required to rerun the recipes and a report on the time it took for the recipe to complete.

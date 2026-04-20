@@ -7,7 +7,7 @@
 | Parameter           | Value                                                        |
 | ------------------- | ------------------------------------------------------------ |
 | Detector            | e2V CCD44-82                                                 |
-| Pixel-Size          | 15 μm                                                        |
+| Pixel-Size          | 15 $\mu$m                                                        |
 | Array-Size          | 2048 $\times$ 4096 px; 30.7 x 61.4 mm                        |
 | Array-Scale         | 0.28 arcsec/px                                               |
 | Peak Signal         | 200,000 $e^{-}/px$                                           |
@@ -18,7 +18,7 @@
 | Wavelength Range    | 350-850nm                                                    |
 | Slit Widths         | 0.5, 1.0, 1.5, 5.0 arcsec                                    |
 | Slit Height         | 11 arcsec                                                    |
-| Grating Blaze Angle | 41°                                                          |
+| Grating Blaze Angle | 41$\degree$                                                         |
 | Orders (quasi)      | 4                                                            |
 
 :::

@@ -1,8 +1,10 @@
 :::{table} Quality Control metrics calculated in the `soxs_spatial_solution` recipe.
 :name: soxs_spatial_solution_qc
+:class: longtable
+:widths: 15, 45, 10, 30
 
 | Label | Description                                                          | Unit  | Acceptable Range |
-| :---- | :------------------------------------------------------------------- | ----- | ----- |
+|:----|:-------------------------------------------------------------------|:-----|:-----|
 | `DETLINES CLIP NUM` | Total number of detected lines clipped during solution fitting       | lines | - |
 | `DETLINES NUM` | Number of lines detected in single pinhole frame                     | lines | - |
 | `DETLINES FRAC` | Proportion of input line-list lines detected on single pinhole frame |       | VIS: [0.95,1.0]| 
@@ -48,12 +50,8 @@
 | `XY DIFF MEDIAN O<N>` | Median difference between observed and predicted pinhole detector locations (order N)  | pixels    | - |
 | `FWHM PIN MEDIAN O<N>` |  Median FWHM of detected lines in pinhole frames (order N) | pixels    | - |
 | `FWHM PIN SD O<N>` | Standard-deviation in FWHM of detected lines in pinhole frames (order N) | pixels | - |
-| `R PIN MEDIAN O<N>` | Median spectral resolution measured from detected lines in pinhole frames  (order N) | | - |
+| `R PIN MEDIAN O<N>` | Median spectral resolution measured from detected lines in pinhole frames (order N) | | - |
 
 :::
 
 
-
-
-
-==UPDATE QCs==

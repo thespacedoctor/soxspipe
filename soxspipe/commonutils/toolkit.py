@@ -1603,7 +1603,11 @@ def plot_merged_spectrum_qc(
     else:
         top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
 
-    top_panel.set_title(f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})", fontsize=11)
+    top_panel.set_title(
+        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace(".fits", "")}",
+        fontsize=11,
+        linespacing=2.0,
+    )
 
     top_panel.plot(
         merged_orders["WAVE"],

@@ -10,7 +10,7 @@ mkdir soxs-workspace-one
 cd soxs-workspace-one
 ```
 
-Now download/move all of the SOXS or Xshooter raw data from your data set into the root of this workspace. There is no need for nested folders; just fill the directory with FITS files.
+Now download/move all of the SOXS<!--or Xshooter--> raw data from your data set into the root of this workspace. There is no need for nested folders; just fill the directory with FITS files.
 
  `soxspipe` has a built-in [data organiser](../data_organiser_and_reducer/data_organiser.md) that does the heavy lifting of sorting and preparing your raw data for data reduction. So to prepare your workspace, change into the workspace directory and run the `soxspipe prep` command:
 

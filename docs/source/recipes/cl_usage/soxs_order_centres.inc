@@ -8,13 +8,13 @@ soxspipe [-Vx] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSetti
 To rerun a previously executed `soxs_order_centres` recipe, you can find the execution command at the end of the [recipe log file](../../logging.md) (found in the workspace `products/soxs_order_centres` directory). Use the `-x` flag to overwrite the product files if they already exist. For example, from the root of your workspace, you would run a command like:
 
 ```bash
-soxspipe order_centres sof/2019.10.31T10.02.46.516_UVB_1X1_FAST_ORDER_LOCATIONS_QLAMP_UVB_HIGH_30.0S_XSHOOTER.sof -s ./sessions/base/soxspipe.yaml 
+soxspipe order_centres sof/20251011T094554_VIS_1X1_1_OLOC_QTH_PINHOLE_10_0S_SOXS.sof -s ./sessions/base/soxspipe.yaml 
 ```
 
 While the default polynomial fitting orders have been carefully tuned to robustly reduce most data, it is possible to execute this recipe while providing the order-trace polynomial fitting orders through the command line, with command line settings overriding those in the YAML settings file. For instance, to attempt a order trace fit using 3rd (x) and 6th-order (y) spectral-order (`oo`) component and a 4th-order (x) and 3rd-order (y) wavelength (`ww`) component:
 
 ```bash
-soxspipe order_centres sof/2019.10.31T10.02.46.516_UVB_1X1_FAST_ORDER_LOCATIONS_QLAMP_UVB_HIGH_30.0S_XSHOOTER.sof -s ./sessions/base/soxspipe.yaml  --poly=3643
+soxspipe order_centres sof/20251011T094554_VIS_1X1_1_OLOC_QTH_PINHOLE_10_0S_SOXS.sof -s ./sessions/base/soxspipe.yaml  --poly=3643
 ```
 
 To adjust the default settings for the `soxs_order_centres` recipe, open the `soxspipe.yaml` file referenced in the command above in a text editor, navigate to the `soxs_order_centres` dictionary, save the file and rerun the recipe command. The settings' descriptions can be found in {numref}`soxs_order_centres_parameters`.

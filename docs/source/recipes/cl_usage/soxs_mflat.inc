@@ -7,7 +7,7 @@ soxspipe [-Vx] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>
 To rerun a previously executed `soxs_mflat` recipe, you can find the execution command at the end of the [recipe log file](../../logging.md) (found in the workspace `products/soxs_mflat` directory). Use the `-x` flag to overwrite the product files if they already exist. For example, from the root of your workspace, you would run a command like:
 
 ```bash
-soxspipe mflat sof/2020.10.22T12.59.53.634_VIS_1X1_FAST_MFLAT_23.6953S_XSHOOTER.sof -s ./sessions/base/soxspipe.yaml  -x
+soxspipe mflat sof/20251012T111444_VIS_2X2_3_MFLAT_QTH_SLIT0_5_20_0S_SOXS.sof -s ./sessions/base/soxspipe.yaml  -x
 ```
 
 To adjust the default settings for the `soxs_mflat` recipe, open the `soxspipe.yaml` file referenced in the command above in a text editor, navigate to the `soxs_mflat` dictionary, save the file and rerun the recipe command. The settings' descriptions can be found in {numref}`soxs_mflat_parameters`.

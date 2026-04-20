@@ -7,7 +7,7 @@ soxspipe [-Vx] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>
 To rerun a previously executed `soxs_mdark` recipe, you can find the execution command at the end of the [recipe log file](../../logging.md) (found in the workspace `products/soxs_mdark` directory). Use the `-x` flag to overwrite the product files if they already exist. For example, from the root of your workspace, you would run a command like:
 
 ```bash
-soxspipe mdark sof/2019.10.30T10.27.28.6175_NIR_MDARK_60.0S_XSHOOTER.sof -s ./sessions/base/soxspipe.yaml  -x
+soxspipe mdark sof/20260111T082924_NIR_3_MDARK_5_0S_SOXS.sof -s ./sessions/base/soxspipe.yaml  -x
 ```
 
 To adjust the default settings for the `soxs_mdark` recipe, open the `soxspipe.yaml` file referenced in the command above in a text editor, navigate to the `soxs_mdark` dictionary, save the file and rerun the recipe command. The settings' descriptions can be found in {numref}`soxs_mdark_parameters`.

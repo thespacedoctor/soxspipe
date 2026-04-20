@@ -23,7 +23,7 @@ Please refer to the [installation section](installation.md) for alternative inst
 
 The demo SOXS data for this quickstart guide are taken from the nights of 8th-12th October 2025 and 11th January 2026. The 'science' objects found in the data are actually spectroscopic standard stars taken in science mode. 
 
-To download the data from the [ESO Science Archive Facility](http://archive.eso.org/eso/eso_archive_main.html) ... **Awaiting permission to share this data**
+To download the data from the [ESO Science Archive Facility](http://archive.eso.org/eso/eso_archive_main.html), select the the dates above and choose SOXS as the instrument you are interested in.
 
 For each dataset, click on the 'MarkAll' button and then 'Request marked datasets' (see {numref}`request_data`).
 

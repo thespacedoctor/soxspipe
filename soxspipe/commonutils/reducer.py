@@ -565,16 +565,8 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
     inputDicts = [{"sof": sof, "command": command} for sof, command in zip(sofList, commandList)]
 
     poolSize = False
-    if ("nod" in recipe or "stare" in recipe) and len(inputDicts) < 4:
-        turnOffMP = True
-        wrapperTurnOffMP = False
-    elif "nod" in recipe or "stare" in recipe:
-        # poolSize = 4
-        turnOffMP = False
-        wrapperTurnOffMP = True
-    else:
-        turnOffMP = False
-        wrapperTurnOffMP = True
+    turnOffMP = False
+    wrapperTurnOffMP = True
 
     if "mflat" in recipe:
         poolSize = 3

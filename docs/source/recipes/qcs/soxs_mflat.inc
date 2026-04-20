@@ -1,5 +1,6 @@
 :::{table} Quality Control metrics calculated in the `soxs_mflat` recipe.
 :name: soxs_mflat_qc
+:widths: 15, 45, 10, 30
 
 | Label                | Description                                           | Unit      | Acceptable Range |
 | -------------------- | ----------------------------------------------------- | --------- | --------- |
@@ -19,4 +20,3 @@
 
 :::
 
-==UPDATE QCs==

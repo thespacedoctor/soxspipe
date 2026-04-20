@@ -7,7 +7,7 @@ soxspipe [-Vx] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>
 To rerun a previously executed `soxs_mbias` recipe, you can find the execution command at the end of the [recipe log file](../../logging.md) (found in the workspace `products/soxs_mbias` directory). Use the `-x` flag to overwrite the product files if they already exist. For example, from the root of your workspace, you would run a command like:
 
 ```bash
-soxspipe mbias sof/2019.10.30T09.39.11.127_VIS_1X1_SLOW_MBIAS_XSHOOTER.sof -s ./sessions/base/soxspipe.yaml -x
+soxspipe mbias sof/20251010T091927_VIS_1X1_1_MBIAS_SOXS.sof -s ./sessions/base/soxspipe.yaml -x
 ```
 
 To adjust the default settings for the `soxs_mbias` recipe, open the `soxspipe.yaml` file referenced in the command above in a text editor, navigate to the `soxs_mbias` dictionary, save the file and rerun the recipe command. The settings' descriptions can be found in {numref}`table_soxs_mbias_parameters`.

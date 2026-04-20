@@ -1,5 +1,6 @@
 :::{table} Quality Control metrics calculated in the `soxs_mbias` recipe.
 :name: table_soxs_mbias_qc
+:widths: 15, 45, 10, 30
 
 | Label | Description | Unit | Acceptable Range |
 | :------------ | :----------- | ------------- | ------------- |

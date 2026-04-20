@@ -55,7 +55,13 @@ A QC plot resulting from the `soxs_nod` recipe. This is a SOXS VIS wavelength an
 
 :::
 
+:::{figure-md} response_curve_util
 
+![image-20260414151800690](../_images/image-20260414151800690.png)
+
+The output of the `reponse_function` utility (used by nodding and stare recipes) used in the reduction of spectroscopic standard star spectra. The third panel shows th fittted response curve, and the final panel shows the overall efficiency of the instrument across the entire wavelength range of the spectrograph arm. 
+
+:::
 
 ## QC Metrics
 
