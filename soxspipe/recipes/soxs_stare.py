@@ -698,6 +698,7 @@ class soxs_stare(base_recipe):
             orderJoins=orderJoins,
             debug=self.debug,
             fluxCalibrated=False,
+            qcTable=self.qc,
         )
 
         if filePath_fluxcal:
@@ -723,6 +724,7 @@ class soxs_stare(base_recipe):
                 orderJoins=orderJoins,
                 debug=self.debug,
                 fluxCalibrated=True,
+                qcTable=self.qc,
             )
 
         qcTable = self.report_output()

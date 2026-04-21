@@ -386,7 +386,7 @@ class horne_extraction(object):
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
         from datetime import datetime
-        from soxspipe.commonutils.toolkit import read_spectral_format
+        from soxspipe.commonutils.toolkit import read_spectral_format, add_snr_efficiency_qcs
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
         import numpy as np
         import scipy.ndimage
@@ -622,6 +622,15 @@ class horne_extraction(object):
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
         mergedSpectumDF, orderJoins = self.merge_extracted_orders(extractedOrdersDF)
+
+        self.qc = add_snr_efficiency_qcs(
+            log=self.log,
+            spectrumDF=mergedSpectumDF,
+            qcTable=self.qc,
+            orderJoins=orderJoins,
+            recipeName=self.recipeName,
+            dateObs=self.dateObs,
+        )
 
         if not isinstance(self.products, bool):
 

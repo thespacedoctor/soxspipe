@@ -1665,9 +1665,10 @@ def plot_merged_spectrum_qc(
     bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
 
     if not isinstance(qcTable, bool):
+        qcTable = qcTable.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
         snrValue = qcTable.loc[qcTable["qc_name"] == "SNR MEDIAN"]
         orderValue = snrValue["qc_order"].values
-        orderValue[orderValue == np.nan] = "GLOBAL"
+        orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
         snrValue = snrValue["qc_value"].values
 
     bottom_panel.plot(merged_orders["WAVE"], merged_orders["SNR"], linewidth=0.4, color="black")
@@ -1679,10 +1680,24 @@ def plot_merged_spectrum_qc(
 
     bottom_panel.set_ylim(0, np.nanmax(merged_orders["SNR"]) * 1.1)
 
+    # ADD SNR VALUES TO BOTTOM PANEL
     if not isinstance(qcTable, bool) and len(orderValue):
-        snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in zip(orderValue, snrValue))
+
+        _vis_rank = {"GLOBAL": 0, "u": 1, "g": 2, "r": 3, "i": 4}
+
+        def _order_key(pair):
+            o = pair[0]
+            if o in _vis_rank:
+                return (0, _vis_rank[o])
+            try:
+                return (1, float(o))
+            except (ValueError, TypeError):
+                return (2, str(o))
+
+        pairs = sorted(zip(orderValue, snrValue), key=_order_key)
+        snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in pairs)
         bottom_panel.text(
-            0.99, 0.99, snr_text, transform=bottom_panel.transAxes, ha="right", va="top", fontsize=5, family="monospace"
+            0.99, 0.97, snr_text, transform=bottom_panel.transAxes, ha="right", va="top", fontsize=5, family="monospace"
         )
 
     if orderJoins:
