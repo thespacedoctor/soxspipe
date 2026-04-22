@@ -1570,6 +1570,7 @@ def plot_merged_spectrum_qc(
     debug=False,
     fluxCalibrated=False,
     qcTable=False,
+    settings=False,
 ):
     """
     Plot merged spectrum QC plot as a standalone function.
@@ -1579,6 +1580,9 @@ def plot_merged_spectrum_qc(
         filePath (str): Path to the saved QC plot PDF.
     """
     log.debug("starting the ``plot_merged_spectrum_qc`` function")
+
+    # DETECTOR PARAMETERS LOOKUP OBJECT
+    from soxspipe.commonutils import detector_lookup
 
     # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
     if isinstance(products, bool) and not products:
@@ -1594,9 +1598,25 @@ def plot_merged_spectrum_qc(
     if not noddingSequence:
         noddingSequence = ""
 
+    # DETECTOR PARAMETERS LOOKUP OBJECT
+    dp = detector_lookup(log=log, settings=settings).get(arm)
+
+    # GET SKYLINE DATA
+    calibrationRootPath = get_calibrations_path(log=log, settings=settings)
+    skylines = calibrationRootPath + "/" + dp["skylines"]
+    # SPEC FORMAT TO PANDAS DATAFRAME
+    from astropy.table import Table
+
+    dat = Table.read(skylines, format="fits")
+    skylinesDF = dat.to_pandas()
+    # FILTER TO STRONG SKY LINES ONLY FOR PLOTTING
+    skylinesDF["FLUX"] = skylinesDF["FLUX"].astype(float)
+    mask = skylinesDF["FLUX"] > 5.0
+    skylinesDF = skylinesDF.loc[mask]
+
     fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
     # Adjusted height ratios
-    gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 0, 0])
+    gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 1, 0])
 
     # Top panel with linear scale
     top_panel = fig.add_subplot(gs[0, :])
@@ -1616,6 +1636,7 @@ def plot_merged_spectrum_qc(
         merged_orders["FLUX_COUNTS"],
         linewidth=0.3,
         color="#dc322f" if not fluxCalibrated else "#2aa198",
+        zorder=1,
     )
 
     try:
@@ -1637,6 +1658,7 @@ def plot_merged_spectrum_qc(
         merged_orders["FLUX_COUNTS"],
         linewidth=0.3,
         color="#dc322f" if not fluxCalibrated else "#2aa198",
+        zorder=1,
     )
 
     from astropy.stats import sigma_clip, mad_std
@@ -1668,10 +1690,16 @@ def plot_merged_spectrum_qc(
         qcTable = qcTable.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
         snrValue = qcTable.loc[qcTable["qc_name"] == "SNR MEDIAN"]
         orderValue = snrValue["qc_order"].values
+        for i in range(len(orderValue)):
+            try:
+                orderValue[i] = int(orderValue[i])
+            except (ValueError, TypeError):
+                pass
+
         orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
         snrValue = snrValue["qc_value"].values
 
-    bottom_panel.plot(merged_orders["WAVE"], merged_orders["SNR"], linewidth=0.4, color="black")
+    bottom_panel.plot(merged_orders["WAVE"], merged_orders["SNR"], linewidth=0.4, color="black", zorder=1)
     try:
         bottom_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
     except Exception:
@@ -1697,8 +1725,42 @@ def plot_merged_spectrum_qc(
         pairs = sorted(zip(orderValue, snrValue), key=_order_key)
         snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in pairs)
         bottom_panel.text(
-            0.99, 0.97, snr_text, transform=bottom_panel.transAxes, ha="right", va="top", fontsize=5, family="monospace"
+            0.99,
+            0.98,
+            snr_text,
+            transform=bottom_panel.transAxes,
+            ha="right",
+            va="top",
+            fontsize=5,
+            family="monospace",
+            color="black",
+            zorder=1,
         )
+
+    # SKY PANEL WITH SKY FLUX
+    sky_panel = fig.add_subplot(gs[3, :])
+    sky_panel.set_xlabel("wavelength (nm)", fontsize=10)
+
+    if not fluxCalibrated:
+        sky_panel.set_ylabel("sky flux ($e^{-}$)", fontsize=10)
+    else:
+        sky_panel.set_ylabel("sky flux", fontsize=10)
+
+    sky_panel.set_yscale("log")
+
+    sky_panel.plot(
+        merged_orders["WAVE"],
+        merged_orders["SKY_COUNTS"],
+        linewidth=0.3,
+        color="#859900" if not fluxCalibrated else "#2aa198",
+        zorder=1,
+    )
+
+    sky_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
+    try:
+        sky_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
+    except Exception:
+        sky_panel.set_xlim(merged_orders["WAVE"].min(), merged_orders["WAVE"].max())
 
     if orderJoins:
         for k, v in orderJoins.items():
@@ -1714,6 +1776,12 @@ def plot_merged_spectrum_qc(
                     color="black",
                     alpha=0.5,
                 )
+
+    # PLOT SKY LINES AS VERTICAL LINES ON SKY PANEL
+    for _, row in skylinesDF.iterrows():
+        for panel in [top_panel, middle_panel, bottom_panel, sky_panel]:
+            panel.axvline(row["WAVELENGTH"], color="gray", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+
     if fluxCalibrated:
         filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT{noddingSequence}.pdf")
     else:

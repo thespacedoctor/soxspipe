@@ -39,6 +39,7 @@ VIS:
   flip-qc-plot: 1
   extinction: extinction_lasilla.fits
   flux-standards: flux_standards.fits
+  skylines: SKYLINES.fits
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION
@@ -77,3 +78,4 @@ NIR:
   flip-qc-plot: 1
   extinction: extinction_lasilla.fits
   flux-standards: flux_standards.fits
+  skylines: SKYLINES.fits
