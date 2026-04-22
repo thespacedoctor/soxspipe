@@ -982,10 +982,19 @@ class horne_extraction(object):
             bin_specification="center",
         )
 
+        sky_orig = extractedOrdersDF["skyFlux"].values * u.electron
+        spectrumSky_orig = Spectrum1D(
+            flux=sky_orig,
+            spectral_axis=extractedOrdersDF["wavelengthMedian"].values,
+            bin_specification="center",
+        )
+
         # Fast linear resampling — np.interp is O(N log M) vs FluxConservingResampler's
         # O(N·M), and is accurate for output grids with similar resolution to the input.
         wave_in = spectrum_orig.spectral_axis.to_value(u.nm)
         flux_in = spectrum_orig.flux.to_value(u.electron)
+        var_in = spectrum_orig.uncertainty.array
+        sky_in = spectrumSky_orig.flux.to_value(u.electron)
         fluxDensity_in = spectrumFD_orig.flux.to_value(u.electron / u.nm)
 
         # Deduplicate wavelengths that may overlap at order join boundaries
@@ -1004,11 +1013,27 @@ class horne_extraction(object):
             left=0.0,
             right=0.0,
         ).astype(np.float32)
+        variance_resampled = np.interp(
+            wave_resample_grid,
+            wave_in[unique_idx],
+            var_in[unique_idx],
+            left=0.0,
+            right=0.0,
+        ).astype(np.float32)
+        sky_resampled = np.interp(
+            wave_resample_grid,
+            wave_in[unique_idx],
+            sky_in[unique_idx],
+            left=0.0,
+            right=0.0,
+        ).astype(np.float32)
 
         # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
         merged_orders["WAVE"] = wave_resample_grid * u.nm
         merged_orders["FLUX_COUNTS"] = flux_resampled * u.electron
+        merged_orders["VARIANCE"] = variance_resampled * u.electron
+        merged_orders["SKY_COUNTS"] = sky_resampled * u.electron
 
         merged_orders = calculate_rolling_snr(dataframe=merged_orders, flux_column="FLUX_COUNTS", window_size=300)
 
@@ -1472,6 +1497,8 @@ def extract_single_order(
     )
     fluxStack = np.vstack(crossDispersionSlices["sliceRawFlux"])
     crossDispersionSlices["extractedFluxBoxcar"] = fluxStack.sum(axis=1)
+    skyFluxStack = np.vstack(crossDispersionSlices["sliceSky"])
+    crossDispersionSlices["skyFlux"] = skyFluxStack.sum(axis=1)
     crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices["sliceRawFluxMaskedSum"]
     crossDispersionSlices["snr"] = crossDispersionSlices["extractedFluxOptimal"] / np.power(
         crossDispersionSlices["varianceSpectrum"], 0.5
@@ -1550,6 +1577,7 @@ def extract_single_order(
             "extractedFluxOptimal",
             "extractedFluxBoxcar",
             "extractedFluxBoxcarRobust",
+            "skyFlux",
         ]
     ]
 
