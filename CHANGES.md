@@ -1,5 +1,9 @@
 # Release Notes
 
+sky spectrum added to the stare extraction QC plots
+adding SNR values to the bottom panel of the extracted spectra QC plots
+sky flux and variance added to the extracted spectra FITS tables
+
 ## v0.16.0 - April 20, 2026
 
 * **FEATURE:** Added a multiprocessing option when reducing all frames.
