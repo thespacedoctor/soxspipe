@@ -326,33 +326,33 @@ soxs-stare-std:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_iterations: 15
+            percentile_clipping_iterations: 15 
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
-            percentile_rolling_window_size: 30
+            percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.03
+            clip-slit-edge-fraction: 0.07
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
-            aggressive_object_masking: False
+            aggressive_object_masking: True
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 2
             # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
             slit_illumination_order: 1
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
-            starting_points_per_knot: 300
+            starting_points_per_knot: 1000   
             # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
-            min_points_per_knot: 11
+            min_points_per_knot: 5
             # SIGNIFICANCE OF A RISE OR FALL IN THE SKY SPECTRUM ALONG THE DISPERSION AXIS ABOVE WHICH KNOTS ARE ADDED TO PROFILE THE SKY-LINE
-            knot_skyline_sigma: 0.5
+            skyline_significance: 20
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO DETERMINE IF THE SKY-DATA RESIDUALS ARE JUST NOISE (EDGE OF ORDERS) 
-            noise_rolling_window_size: 1000
+            noise_rolling_window_size: 250
             # SIGNIFICANCE OF THE LOCAL ROLLING WINDOW RESIDUAL VALUE COMPARED TO THE GLOBAL RESIDUALS - TO DETERMINE IF WE ARE JUST LOOKING AT NOISE
             noise_sigma: 5
             # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
-            bspline_fitting_residual_clipping_sigma: 20
+            bspline_fitting_residual_clipping_sigma: 50
             # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
-            bspline_iteration_limit: 7
+            bspline_iteration_limit: 25
             # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
-            residual_floor_percentile: 80
+            residual_floor_percentile: 90
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
     nir:
@@ -383,39 +383,39 @@ soxs-stare-std:
             poly-fitting-residual-clipping-sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 10
-        sky-subtraction:
+        ssky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_iterations: 7
+            percentile_clipping_iterations: 15 
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
             percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.01
+            clip-slit-edge-fraction: 0.07
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
-            aggressive_object_masking: False
+            aggressive_object_masking: True
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 2
             # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
             slit_illumination_order: 1
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
-            starting_points_per_knot: 300
+            starting_points_per_knot: 1000   
             # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
-            min_points_per_knot: 11
+            min_points_per_knot: 15
             # SIGNIFICANCE OF A RISE OR FALL IN THE SKY SPECTRUM ALONG THE DISPERSION AXIS ABOVE WHICH KNOTS ARE ADDED TO PROFILE THE SKY-LINE
-            knot_skyline_sigma: 0.5
+            skyline_significance: 20
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO DETERMINE IF THE SKY-DATA RESIDUALS ARE JUST NOISE (EDGE OF ORDERS) 
-            noise_rolling_window_size: 1000
+            noise_rolling_window_size: 250
             # SIGNIFICANCE OF THE LOCAL ROLLING WINDOW RESIDUAL VALUE COMPARED TO THE GLOBAL RESIDUALS - TO DETERMINE IF WE ARE JUST LOOKING AT NOISE
             noise_sigma: 5
             # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
-            bspline_fitting_residual_clipping_sigma: 20
+            bspline_fitting_residual_clipping_sigma: 10
             # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
-            bspline_iteration_limit: 4
+            bspline_iteration_limit: 25
             # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
-            residual_floor_percentile: 95
+            residual_floor_percentile: 90
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
         qc-acceptable-ranges:
@@ -464,35 +464,35 @@ soxs-stare:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 2
+            percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_iterations: 15
+            percentile_clipping_iterations: 15 
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
-            percentile_rolling_window_size: 30
+            percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.03
+            clip-slit-edge-fraction: 0.07
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
-            aggressive_object_masking: False
+            aggressive_object_masking: True
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 2
             # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
             slit_illumination_order: 1
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
-            starting_points_per_knot: 100
+            starting_points_per_knot: 1000   
             # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
-            min_points_per_knot: 11
+            min_points_per_knot: 15
             # SIGNIFICANCE OF A RISE OR FALL IN THE SKY SPECTRUM ALONG THE DISPERSION AXIS ABOVE WHICH KNOTS ARE ADDED TO PROFILE THE SKY-LINE
-            knot_skyline_sigma: 0.5
+            skyline_significance: 20
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO DETERMINE IF THE SKY-DATA RESIDUALS ARE JUST NOISE (EDGE OF ORDERS) 
-            noise_rolling_window_size: 1000
+            noise_rolling_window_size: 250
             # SIGNIFICANCE OF THE LOCAL ROLLING WINDOW RESIDUAL VALUE COMPARED TO THE GLOBAL RESIDUALS - TO DETERMINE IF WE ARE JUST LOOKING AT NOISE
             noise_sigma: 5
             # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
-            bspline_fitting_residual_clipping_sigma: 50
+            bspline_fitting_residual_clipping_sigma: 10
             # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
-            bspline_iteration_limit: 7
+            bspline_iteration_limit: 25
             # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
-            residual_floor_percentile: 5
+            residual_floor_percentile: 90
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
     nir:
@@ -529,33 +529,33 @@ soxs-stare:
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_iterations: 7
+            percentile_clipping_iterations: 15 
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM
             percentile_rolling_window_size: 35
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
-            clip-slit-edge-fraction: 0.01
+            clip-slit-edge-fraction: 0.07
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
-            aggressive_object_masking: False
+            aggressive_object_masking: True
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 2
             # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
             slit_illumination_order: 1
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
-            starting_points_per_knot: 300
+            starting_points_per_knot: 1000   
             # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
-            min_points_per_knot: 11
+            min_points_per_knot: 15
             # SIGNIFICANCE OF A RISE OR FALL IN THE SKY SPECTRUM ALONG THE DISPERSION AXIS ABOVE WHICH KNOTS ARE ADDED TO PROFILE THE SKY-LINE
-            knot_skyline_sigma: 0.5
+            skyline_significance: 20
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO DETERMINE IF THE SKY-DATA RESIDUALS ARE JUST NOISE (EDGE OF ORDERS) 
-            noise_rolling_window_size: 1000
+            noise_rolling_window_size: 250
             # SIGNIFICANCE OF THE LOCAL ROLLING WINDOW RESIDUAL VALUE COMPARED TO THE GLOBAL RESIDUALS - TO DETERMINE IF WE ARE JUST LOOKING AT NOISE
-            noise_sigma: 3
+            noise_sigma: 5
             # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
-            bspline_fitting_residual_clipping_sigma: 20
+            bspline_fitting_residual_clipping_sigma: 10
             # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
-            bspline_iteration_limit: 4
+            bspline_iteration_limit: 25
             # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
-            residual_floor_percentile: 95
+            residual_floor_percentile: 90
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
         qc-acceptable-ranges:
@@ -723,6 +723,7 @@ soxs-response:
 background-subtraction:
     bspline-deg: 2
     gaussian-blur-sigma: 65
+
 
 
 
