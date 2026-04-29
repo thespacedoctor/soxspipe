@@ -365,7 +365,12 @@ def main(arguments=None):
 
             do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
             if a["sof"]:
-                rawFramePaths = do.list_raw(a["sofFile"])
+                rawFramePaths, rawTable = do.list_raw(a["sofFile"])
+
+                from tabulate import tabulate
+
+                print(tabulate(rawTable[["file", "tag"]], headers="keys", tablefmt="psql", showindex=False))
+
                 if len(rawFramePaths) == 0:
                     print(
                         f"No raw frames found for the SOF file `{a['sofFile']}`. Please check that the SOF filename is correct."
