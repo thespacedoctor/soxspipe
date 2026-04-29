@@ -364,11 +364,11 @@ class subtract_sky(object):
         percentile_rolling_window_size = self.recipeSettings["sky-subtraction"]["percentile_rolling_window_size"]
         self.rollingWindowSize = int(percentile_rolling_window_size)
 
-        imageMapOrder["clipped"] = False
-        imageMapOrder["object"] = False
-        imageMapOrder["bspline_clipped"] = False
-        imageMapOrder["edge_clipped"] = False
-        imageMapOrder["bad_pixel_clipped"] = False
+        imageMapOrder["flagged_all_clipped"] = False
+        imageMapOrder["flagged_object_clipped"] = False
+        imageMapOrder["flagged_bspline_clipped"] = False
+        imageMapOrder["flagged_edge_clipped"] = False
+        imageMapOrder["flagged_bad_pixel_clipped"] = False
 
         # ASSIGN ORDER-EDGE PIXELS A 'clipped' FLAG
         if clipSlitEdge:
@@ -377,14 +377,14 @@ class subtract_sky(object):
             mask = (imageMapOrder["slit_position"] > imageMapOrder["slit_position"].max() - clipSlitEdge) | (
                 imageMapOrder["slit_position"] < imageMapOrder["slit_position"].min() + clipSlitEdge
             )
-            imageMapOrder.loc[mask, "edge_clipped"] = True
-            imageMapOrder.loc[mask, "clipped"] = True
+            imageMapOrder.loc[mask, "flagged_edge_clipped"] = True
+            imageMapOrder.loc[mask, "flagged_all_clipped"] = True
 
         # ASSIGN BAD-PIXELS A 'clipped' FLAG?
         if clipBPs:
             mask = imageMapOrder["mask"] == True
-            imageMapOrder.loc[mask, "bad_pixel_clipped"] = True
-            imageMapOrder.loc[mask, "clipped"] = True
+            imageMapOrder.loc[mask, "flagged_bad_pixel_clipped"] = True
+            imageMapOrder.loc[mask, "flagged_all_clipped"] = True
 
         # CLIP THE MOST DEVIANT PIXELS WITHIN A WAVELENGTH ROLLING WINDOW - BAD-PIXELS AND CRHs AND OBJECTS
         imageMapOrder = self.rolling_window_clipping(
@@ -534,8 +534,8 @@ class subtract_sky(object):
 
         # RAW MARKERS
         tworow.scatter(
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux"].values,
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "wavelength"].values,
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "flux"].values,
             label="unclipped",
             s=0.5,
             c=black,
@@ -543,10 +543,15 @@ class subtract_sky(object):
             zorder=1,
         )
 
-        columnName = ["object", "bad_pixel_clipped", "edge_clipped", "bspline_clipped"]
+        columnName = [
+            "flagged_object_clipped",
+            "flagged_bad_pixel_clipped",
+            "flagged_edge_clipped",
+            "flagged_bspline_clipped",
+        ]
         colours = [blue, orange, green, purple]
         alphas = [0.2, 0.3, 0.8, 1.0]
-        labels = ["object", "bad pixels", "order edges", "bspline clipped"]
+        labels = ["flagged_object_clipped", "bad pixels", "order edges", "bspline clipped"]
 
         for cn, cl, lb, al in zip(columnName, colours, labels, alphas):
             tworow.scatter(
@@ -563,10 +568,14 @@ class subtract_sky(object):
         # PERCENTILE LINE
         tworow.plot(
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "wavelength"
+                (imageMapOrderDF["flagged_all_clipped"] == False)
+                & (imageMapOrderDF["flagged_object_clipped"] == False),
+                "wavelength",
             ].values,
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False), "flux_smoothed"
+                (imageMapOrderDF["flagged_all_clipped"] == False)
+                & (imageMapOrderDF["flagged_object_clipped"] == False),
+                "flux_percentile_smoothed",
             ].values,
             label="percentile-smoothed",
             c=blue,
@@ -575,13 +584,15 @@ class subtract_sky(object):
 
         # SIGMA RESIDUAL
         weights = tworow.plot(
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "wavelength"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"].values
-            - imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"].max() * 1.2,
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "wavelength"].values,
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "residual_windowed_std"].values
+            - imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "residual_windowed_std"].max() * 1.2,
             label="$\\sigma$ residual scatter (shifted)",
             c=black,
         )
-        ylimmin = -imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_windowed_std"].max() * 1.3
+        ylimmin = (
+            -imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "residual_windowed_std"].max() * 1.3
+        )
 
         if ylimmin < -3000:
             ylimmin = -300
@@ -601,12 +612,12 @@ class subtract_sky(object):
         # tworow.set_xticks([], [])
 
         # SLIT-POSITION RESIDUAL PANEL (SHOWING OBJECT)
-        std = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "residual_global_sigma"].std()
-        median = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == True, "residual_global_sigma"].median()
+        std = imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == True, "residual_global_sigma"].std()
+        median = imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == True, "residual_global_sigma"].median()
 
         threerow.scatter(
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "slit_position"].values,
-            imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "residual_global_sigma"].values,
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "slit_position"].values,
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "residual_global_sigma"].values,
             label="deviations",
             s=0.5,
             alpha=0.5,
@@ -614,10 +625,10 @@ class subtract_sky(object):
             zorder=1,
         )
 
-        columnName = ["object", "bad_pixel_clipped", "bspline_clipped"]
+        columnName = ["flagged_object_clipped", "flagged_bad_pixel_clipped", "flagged_bspline_clipped"]
         colours = [blue, orange, purple]
         alphas = [0.2, 1, 1]
-        labels = ["object", "bad pixels", "bspline clipped"]
+        labels = ["flagged_object_clipped", "bad pixels", "bspline clipped"]
 
         for cn, cl, lb, al in zip(columnName, colours, labels, alphas):
             threerow.scatter(
@@ -640,10 +651,15 @@ class subtract_sky(object):
         # IMAGE SHOWING CLIPPED PIXEL MASK
         im = fourrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1)
 
-        columnName = ["object", "bad_pixel_clipped", "edge_clipped", "bspline_clipped"]
+        columnName = [
+            "flagged_object_clipped",
+            "flagged_bad_pixel_clipped",
+            "flagged_edge_clipped",
+            "flagged_bspline_clipped",
+        ]
         colours = [blue, orange, green, purple]
         alphas = [1, 1, 1, 1]
-        labels = ["object", "bad pixels", "order edges", "bspline clipped"]
+        labels = ["flagged_object_clipped", "bad pixels", "order edges", "bspline clipped"]
         patches = []
 
         for cn, cl, lb, al in zip(columnName, colours, labels, alphas):
@@ -680,8 +696,8 @@ class subtract_sky(object):
         # PLOT WAVELENGTH VS FLUX SKY MODEL
         fiverow.set_title("STEP 2. Fit a univariate bspline to sky-flux as a function of wavelength", fontsize=10)
         fiverow.scatter(
-            imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False), "wavelength"].values,
-            imageMapOrderDF.loc[(imageMapOrderDF["clipped"] == False), "flux"].values,
+            imageMapOrderDF.loc[(imageMapOrderDF["flagged_all_clipped"] == False), "wavelength"].values,
+            imageMapOrderDF.loc[(imageMapOrderDF["flagged_all_clipped"] == False), "flux"].values,
             s=1,
             c=black,
             alpha=0.1,
@@ -691,14 +707,14 @@ class subtract_sky(object):
 
         if False:
             fiverow.scatter(
-                imageMapOrderDF.loc[imageMapOrderDF["bspline_clipped"] == True, "wavelength"].values,
-                imageMapOrderDF.loc[imageMapOrderDF["bspline_clipped"] == True, "flux"].values,
+                imageMapOrderDF.loc[imageMapOrderDF["flagged_bspline_clipped"] == True, "wavelength"].values,
+                imageMapOrderDF.loc[imageMapOrderDF["flagged_bspline_clipped"] == True, "flux"].values,
                 s=8,
                 c=violet,
                 marker="x",
                 alpha=1.0,
                 zorder=1,
-                label="clipped",
+                label="flagged_all_clipped",
             )
 
         if tck:
@@ -706,9 +722,10 @@ class subtract_sky(object):
             sky = ip.splev(wl, tck)
             # sky = ip.splev(wl, tck, der=1)
             # sky = ip.splev(wl, tck, der=2)
-            knotSky = ip.splev(knotLocations, tck)
+            if not isinstance(knotLocations, bool) and len(knotLocations):
+                knotSky = ip.splev(knotLocations, tck)
+                fiverow.scatter(knotLocations, knotSky, marker=7, s=5, alpha=0.2, c=red, zorder=3, label="knots")
             skymodel = fiverow.plot(wl, sky, label="sky model", c=blue, zorder=3)
-            fiverow.scatter(knotLocations, knotSky, marker=7, s=5, alpha=0.2, c=red, zorder=3, label="knots")
         else:
             skymodel = fiverow.plot(
                 imageMapOrderDF["wavelength"].values,
@@ -719,7 +736,10 @@ class subtract_sky(object):
             )
         if ylimmin < -3000:
             ylimmin = -300
-        fiverow.set_ylim(imageMapOrderDF["flux_smoothed"].min() - 30, imageMapOrderDF["flux_smoothed"].max() * 1.2)
+        fiverow.set_ylim(
+            imageMapOrderDF["flux_percentile_smoothed"].min() - 30,
+            imageMapOrderDF["flux_percentile_smoothed"].max() * 1.2,
+        )
         fiverow.set_ylabel("counts", fontsize=10)
         fiverow.legend(loc=2, fontsize=8, bbox_to_anchor=(1.05, 1), borderaxespad=0.0)
 
@@ -775,10 +795,11 @@ class subtract_sky(object):
         # SUBTRACTED SKY RESIDUAL PANEL
         eightrow.scatter(
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"
+                (imageMapOrderDF["flagged_all_clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"
             ].values,
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "sky_subtracted_flux"
+                (imageMapOrderDF["flagged_all_clipped"] == False) & (imageMapOrderDF["slit_position"] > 0),
+                "sky_subtracted_flux",
             ].values,
             s=3,
             alpha=0.2,
@@ -788,10 +809,11 @@ class subtract_sky(object):
         )
         eightrow.scatter(
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"
+                (imageMapOrderDF["flagged_all_clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"
             ].values,
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "sky_subtracted_flux"
+                (imageMapOrderDF["flagged_all_clipped"] == False) & (imageMapOrderDF["slit_position"] < 0),
+                "sky_subtracted_flux",
             ].values,
             s=3,
             alpha=0.2,
@@ -804,8 +826,12 @@ class subtract_sky(object):
         )
         eightrow.legend(loc=2, fontsize=8, bbox_to_anchor=(1.05, 1), borderaxespad=0.0)
 
-        mean = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"]).mean()
-        std = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux"]).std()
+        mean = np.absolute(
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "sky_subtracted_flux"]
+        ).mean()
+        std = np.absolute(
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "sky_subtracted_flux"]
+        ).std()
 
         eightrow.set_ylim(-1000, 1000)
         eightrow.set_xlabel("wavelength (nm)", fontsize=10)
@@ -814,10 +840,10 @@ class subtract_sky(object):
         # SUBTRACTED SKY RESIDUAL/ERROR PANEL
         ninerow.scatter(
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"
+                (imageMapOrderDF["flagged_all_clipped"] == False) & (imageMapOrderDF["slit_position"] > 0), "wavelength"
             ].values,
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] > 0),
+                (imageMapOrderDF["flagged_all_clipped"] == False) & (imageMapOrderDF["slit_position"] > 0),
                 "sky_subtracted_flux_weighted",
             ].values,
             s=3,
@@ -827,10 +853,10 @@ class subtract_sky(object):
         )
         ninerow.scatter(
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"
+                (imageMapOrderDF["flagged_all_clipped"] == False) & (imageMapOrderDF["slit_position"] < 0), "wavelength"
             ].values,
             imageMapOrderDF.loc[
-                (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["slit_position"] < 0),
+                (imageMapOrderDF["flagged_all_clipped"] == False) & (imageMapOrderDF["slit_position"] < 0),
                 "sky_subtracted_flux_weighted",
             ].values,
             s=3,
@@ -840,12 +866,12 @@ class subtract_sky(object):
         )
         ninerow.scatter(knotLocations, np.zeros_like(knotLocations), marker=7, s=15, alpha=0.7, c=red, zorder=3)
 
-        mean = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_weighted"])[
-            100:-100
-        ].mean()
-        std = np.absolute(imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "sky_subtracted_flux_weighted"])[
-            100:-100
-        ].std()
+        mean = np.absolute(
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "sky_subtracted_flux_weighted"]
+        )[100:-100].mean()
+        std = np.absolute(
+            imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "sky_subtracted_flux_weighted"]
+        )[100:-100].std()
 
         try:
             ninerow.set_ylim(mean - 10 * std, mean + 10 * std)
@@ -903,61 +929,108 @@ class subtract_sky(object):
 
         iteration = 0
         quantile = 0.3
-
+        lastClipped = -1
         while iteration < max_iterations:
             iteration += 1
             # CALCULATE PERCENTILE SMOOTH DATA & RESIDUALS
-            notClippedOrObjectMask = (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False)
-            imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"] = (
-                imageMapOrderDF.loc[notClippedOrObjectMask, "flux"]
-                .rolling(window=windowSize, center=True)
-                .quantile(quantile)
+            mask_clipped = imageMapOrderDF["flagged_all_clipped"] == True
+            mask_object = imageMapOrderDF["flagged_object_clipped"] == True
+
+            # RESETS
+            imageMapOrderDF["flux_std"] = np.nan
+            imageMapOrderDF["flux_upper_limit"] = np.nan
+            imageMapOrderDF["flux_minus_smoothed_residual"] = np.nan
+            imageMapOrderDF["flux_minus_smoothed_residual_std"] = np.nan
+            imageMapOrderDF["flux_minus_smoothed_residual_upper_limit"] = np.nan
+
+            if iteration <= 2:
+                imageMapOrderDF["flux_percentile_smoothed"] = np.nan
+                imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"] = (
+                    imageMapOrderDF.loc[~mask_clipped, "flux"]
+                    .rolling(window=windowSize, center=True, closed="both")
+                    .quantile(quantile)
+                )
+
+            imageMapOrderDF.loc[~mask_clipped, "flux_minus_smoothed_residual"] = (
+                imageMapOrderDF.loc[~mask_clipped, "flux"]
+                - imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"]
             )
 
-            imageMapOrderDF.loc[notClippedOrObjectMask, "flux_std"] = (
-                imageMapOrderDF.loc[notClippedOrObjectMask, "flux"].rolling(window=windowSize, center=True).std()
-            )
-            imageMapOrderDF["flux_minus_smoothed_residual"] = imageMapOrderDF["flux"] - imageMapOrderDF["flux_smoothed"]
-            notClippedOrObjectMask = (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False)
-            masked = (
-                imageMapOrderDF.loc[notClippedOrObjectMask, "flux"]
-                > imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"]
-                + sigma_clip_limit * imageMapOrderDF.loc[notClippedOrObjectMask, "flux_std"]
-            )
-            imageMapOrderDF.loc[(notClippedOrObjectMask & masked), "object"] = True
-            notClippedOrObjectMask = (imageMapOrderDF["clipped"] == False) & (imageMapOrderDF["object"] == False)
-            masked = (
-                imageMapOrderDF.loc[notClippedOrObjectMask, "flux"]
-                < imageMapOrderDF.loc[notClippedOrObjectMask, "flux_smoothed"]
-                - 1.0 * imageMapOrderDF.loc[notClippedOrObjectMask, "flux_std"]
-            )
-            imageMapOrderDF.loc[(notClippedOrObjectMask & masked), "object"] = True
+            # imageMapOrderDF.loc[~mask_clipped & ~mask_object, "flux_minus_smoothed_residual_std"] = (
+            #     imageMapOrderDF.loc[~mask_clipped & ~mask_object, "flux_minus_smoothed_residual"]
+            #     .rolling(window=windowSize * 10, center=True, min_periods=windowSize, closed="both")
+            #     .std()
+            # )
 
-            totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
+            imageMapOrderDF.loc[~mask_clipped, "flux_minus_smoothed_residual_std"] = (
+                imageMapOrderDF.loc[~mask_clipped, "flux_minus_smoothed_residual"]
+                .rolling(window=windowSize, center=True, closed="both")
+                .std()
+            )
+
+            imageMapOrderDF.loc[~mask_clipped, "flux_minus_smoothed_residual_upper_limit"] = (
+                imageMapOrderDF.loc[~mask_clipped, "flux_minus_smoothed_residual_std"] * sigma_clip_limit
+            )
+
+            imageMapOrderDF.loc[~mask_clipped, "flux_upper_limit"] = (
+                imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"]
+                + imageMapOrderDF.loc[~mask_clipped, "flux_minus_smoothed_residual_upper_limit"]
+            )
+
+            # NOW CLIP THE OBJECT PIXELS
+            masked = imageMapOrderDF.loc[~mask_clipped, "flux"] > imageMapOrderDF.loc[~mask_clipped, "flux_upper_limit"]
+            imageMapOrderDF.loc[(~mask_clipped & ~mask_object & masked), "flagged_object_clipped"] = True
+
+            # RESET MASKS
+            mask_object = imageMapOrderDF["flagged_object_clipped"] == True
+            imageMapOrderDF.loc[(mask_object), "flagged_all_clipped"] = True
+            mask_clipped = imageMapOrderDF["flagged_all_clipped"] == True
+
+            # masked = (
+            #     imageMapOrderDF.loc[~mask_clipped & ~mask_object, "flux"]
+            #     < imageMapOrderDF.loc[~mask_clipped & ~mask_object, "flux_percentile_smoothed"]
+            #     - 1.0 * imageMapOrderDF.loc[~mask_clipped & ~mask_object, "flux_std"]
+            # )
+            # imageMapOrderDF.loc[(~mask_clipped & ~mask_object & masked), "flagged_object_clipped"] = True
+
+            totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
             percent = (float(totalClipped) / float(allPixels)) * 100.0
-            print(f"ORDER {order}: iteration {iteration} - {totalClipped} pixels clipped in total = {percent:1.1f}%")
+            # print(f"ORDER {order}: iteration {iteration} - {totalClipped} pixels clipped in total = {percent:1.1f}%")
+
+            if totalClipped == lastClipped:
+                # print("NO CHANGE IN CLIPPED PIXELS - STOPPING ITERATIONS")
+                break
+            lastClipped = totalClipped
+
+            if self.debug and False:
+                # PLOT THE CLIPPED PIXELS IN EACH ITERATION
+                self.plot_order_skymodel_fitting_quicklook(
+                    imageMapOrderDF,
+                    None,
+                    title=f"clipping pixels containing object flux\niteration {iteration} - {percent:1.1f}% clipped",
+                )
 
             if self.arm.upper() in ("VIS"):
                 if iteration == 5:
-                    totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
+                    totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
                     percent = (float(totalClipped) / float(allPixels)) * 100.0
                     if percent < 2:
                         print("FIXING PERCENT < 2")
-                        imageMapOrderDF["object"] = False
+                        imageMapOrderDF["flagged_object_clipped"] = False
                         sigma_clip_limit -= 0.1
                         if quantile > 0.1:
                             quantile -= 0.05
                         iteration = 0
                 # if iteration == max_iterations:
-                #     totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
+                #     totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
                 #     percent = (float(totalClipped) / float(allPixels)) * 100.0
                 #     if percent > 70:
                 #         print("FIXING PERCENT > 70")
-                #         imageMapOrderDF["object"] = False
+                #         imageMapOrderDF["flagged_object_clipped"] = False
                 #         windowSize = windowSize + 1
                 #         iteration = 0
 
-        totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["object"] == True)].index)
+        totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
         percent = (float(totalClipped) / float(allPixels)) * 100.0
 
         # sys.stdout.flush()
@@ -966,12 +1039,12 @@ class subtract_sky(object):
         self.log.print(f"\tORDER {order}: {totalClipped} pixels clipped in total = {percent:1.1f}%)")
 
         if percent > 85.0:
-            imageMapOrderDF["object"] = False
+            imageMapOrderDF["flagged_object_clipped"] = False
             self.log.warning(
                 f"ORDER {order}: More than 85% of pixels flagged to be clipped ({percent:1.1f}%). Clipping 0% instead."
             )
 
-        std = imageMapOrderDF.loc[imageMapOrderDF["clipped"] == False, "flux_minus_smoothed_residual"].std()
+        std = imageMapOrderDF.loc[imageMapOrderDF["flagged_all_clipped"] == False, "flux_minus_smoothed_residual"].std()
         imageMapOrderDF["residual_global_sigma"] = imageMapOrderDF["flux_minus_smoothed_residual"] / std
 
         self.log.debug("completed the ``rolling_window_clipping`` method")
@@ -1012,13 +1085,16 @@ class subtract_sky(object):
         bsplineSigma = self.recipeSettings["sky-subtraction"]["bspline_fitting_residual_clipping_sigma"]
         # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
         bsplineIterations = self.recipeSettings["sky-subtraction"]["bspline_iteration_limit"]
+        # USE THIS PERCENTILE TO DETERMINE THE RESIDUAL FLOOR
+        residual_floor_percentile = self.recipeSettings["sky-subtraction"]["residual_floor_percentile"]
 
         # SORT BY COLUMN NAME
         imageMapOrder.sort_values(by=["wavelength"], inplace=True)
         order = imageMapOrder["order"].values[0]
 
         # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
-        goodWl = imageMapOrder.loc[imageMapOrder["clipped"] == False, "wavelength"]
+        mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
+        goodWl = imageMapOrder.loc[~mask_all_clipped, "wavelength"]
 
         # REPLACE NANS IN residual_windowed_std
         data = imageMapOrder["residual_windowed_std"].values
@@ -1026,8 +1102,34 @@ class subtract_sky(object):
         data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
         imageMapOrder["residual_windowed_std"] = data
 
-        # imageMapOrder["weights"] = 1 / imageMapOrder["residual_windowed_std"].values
-        imageMapOrder["weights"] = 1 / imageMapOrder["error"].values
+        imageMapOrder.loc[~mask_all_clipped, "weights"] = (
+            1 / imageMapOrder.loc[~mask_all_clipped, "residual_windowed_std"].values
+        )
+
+        imageMapOrder.loc[~mask_all_clipped, "weights2"] = imageMapOrder.loc[~mask_all_clipped, "flux"].values
+        imageMapOrder.loc[imageMapOrder["weights2"] < 2, "weights2"] = 2
+
+        described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
+        if self.debug:
+            print("weights2 description", described_weights)
+
+        imageMapOrder.loc[~mask_all_clipped, "weights2"] = imageMapOrder.loc[~mask_all_clipped, "weights2"].values / (
+            imageMapOrder.loc[~mask_all_clipped, "residual_windowed_std"].values * 2.0
+        )
+        imageMapOrder.loc[imageMapOrder["weights2"] < 2, "weights2"] = 2
+
+        described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
+        if self.debug:
+            print("weights2 description", described_weights)
+
+        imageMapOrder.loc[~mask_all_clipped, "weights2"] = np.log10(
+            imageMapOrder.loc[~mask_all_clipped, "weights2"].values
+        )
+
+        described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
+        if self.debug:
+            print("weights2 description", described_weights)
+        # imageMapOrder["weights"] = 1 / imageMapOrder["error"].values
 
         # WE WILL UPDATE THIS VALUE LATER IN WORKFLOW WITH SLIT-ILLUMINATION CORRECTION
         imageMapOrder["slit_normalisation_ratio"] = 1
@@ -1039,9 +1141,9 @@ class subtract_sky(object):
 
         # STARTER KNOTS USED TO MEASURE THE RESIDUAL FLOOR BEFORE REVERTING TO defaultPointsPerKnot
         if self.arm.upper == "NIR":
-            starterPointsPerKnot = 25
+            starterPointsPerKnot = 1000
         else:
-            starterPointsPerKnot = 500
+            starterPointsPerKnot = 1000
 
         if self.binx > 1:
             defaultPointsPerKnot /= self.binx
@@ -1058,10 +1160,16 @@ class subtract_sky(object):
         defaultPointsPerKnot = int(defaultPointsPerKnot)
         starterPointsPerKnot = int(starterPointsPerKnot)
 
-        n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
-        # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONG WAVELENGTH RANGE
-        qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
-        defaultKnots = np.quantile(goodWl, qs)
+        if defaultPointsPerKnot:
+            n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
+            # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONG WAVELENGTH RANGE
+            try:
+                qs = np.linspace(0, 1, n_interior_knots + 2)[7:-7]
+            except:
+                qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
+            defaultKnots = np.quantile(goodWl, qs)
+        else:
+            defaultKnots = np.array([])
 
         if self.debug:
             print("default knot count", len(defaultKnots))
@@ -1085,26 +1193,33 @@ class subtract_sky(object):
         slitCorrectIterations = 0
 
         # CLIP NAN FLUX
-        imageMapOrder.loc[imageMapOrder["flux"].isnull(), "clipped"] = True
+        imageMapOrder.loc[imageMapOrder["flux"].isnull(), "flagged_all_clipped"] = True
+        mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
 
+        lastExtraKnotCount = -1
         while iterationCount < bsplineIterations:
             iterationCount += 1
 
             # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
-            goodWl = imageMapOrder.loc[imageMapOrder["clipped"] == False, "wavelength"]
+            goodWl = imageMapOrder.loc[~mask_all_clipped, "wavelength"]
             goodFlux = (
-                imageMapOrder.loc[imageMapOrder["clipped"] == False, "flux"]
-                / imageMapOrder.loc[imageMapOrder["clipped"] == False, "slit_normalisation_ratio"]
+                imageMapOrder.loc[~mask_all_clipped, "flux"]
+                / imageMapOrder.loc[~mask_all_clipped, "slit_normalisation_ratio"]
             )
-            goodWeights = imageMapOrder.loc[imageMapOrder["clipped"] == False, "weights"]
+            if iterationCount < 5:
+                goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights"]
+            else:
+                goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights2"]
 
             if iterationCount < 5:
                 baseKnots = starterKnots
+
             if iterationCount == 5:
                 baseKnots = defaultKnots
 
             if self.debug:
                 print("base knot count", len(baseKnots), iterationCount)
+                print("extra knot count", len(extraKnots), iterationCount)
 
             allKnots = np.sort(np.concatenate((extraKnots, baseKnots)))
 
@@ -1135,24 +1250,22 @@ class subtract_sky(object):
                 # POTENTIAL NEW KNOTS PLACED HALF WAY BETWEEN ADJACENT CURRENT KNOTS
                 meanResiduals = []
 
-                unclippedAndSkyline = (imageMapOrder["clipped"] == False) & (
-                    imageMapOrder["sky_line"].isin(["rise", "fall"])
-                )
+                unclippedAndSkyline = ~mask_all_clipped & (imageMapOrder["flagged_sky_line"].isin(["line"]))
                 df = imageMapOrder.loc[unclippedAndSkyline]
                 ind = np.digitize(df["wavelength"], allKnots)
 
-                imageMapOrder["sky_subtracted_flux_abs"] = imageMapOrder["sky_subtracted_flux"].abs()
                 group = imageMapOrder.loc[unclippedAndSkyline].groupby(ind)
-                meanResiduals = group["sky_subtracted_flux_abs"].mean()
+                meanResiduals = group["sky_local_vs_global"].mean()
+                stdResiduals = group["sky_local_vs_global"].std()
 
                 counts = group.size()
                 potentialNewKnots = group["wavelength"].mean()
                 mask = counts < min_points_per_knot
-                meanResiduals[mask] = residualFloor - 1
+                meanResiduals[mask] = -100000
 
                 meanResiduals = np.array(meanResiduals)
                 potentialNewKnots = np.array(potentialNewKnots)
-                mask = np.ma.masked_where(meanResiduals < residualFloor, meanResiduals).mask
+                mask = np.ma.masked_where(meanResiduals < 0, meanResiduals).mask
                 # ELSE ADD NEW KNOT IF ABOVE FLOOT
                 newKnots = np.ma.compressed(np.ma.masked_array(potentialNewKnots, mask))
                 meanResiduals = np.ma.compressed(np.ma.masked_array(meanResiduals, mask))
@@ -1161,7 +1274,7 @@ class subtract_sky(object):
                 extraKnots = np.sort(np.concatenate((newKnots, extraKnots)))
 
                 # NOW ADD KNOTS AT SKYLINE NODES
-                skylineNodes = (imageMapOrder["clipped"] == False) & (imageMapOrder["sky_line"] == "node")
+                skylineNodes = ~mask_all_clipped & (imageMapOrder["flagged_sky_line"] == "node")
                 df = imageMapOrder.loc[skylineNodes]
                 ind = np.digitize(df["wavelength"], allKnots)
                 group = imageMapOrder.loc[skylineNodes].groupby(ind)
@@ -1176,6 +1289,7 @@ class subtract_sky(object):
                 #     print(f"EXTRA KNOTS: {len(newKnots)} .... {len(allKnots)} ... {iterationCount}")
 
             try:
+
                 tck, fp, ier, msg = ip.splrep(
                     goodWl, goodFlux, t=allKnots, k=self.bspline_order, w=goodWeights, full_output=True
                 )
@@ -1185,7 +1299,7 @@ class subtract_sky(object):
                 )
             t, c, k = tck
 
-            if ier in (10,):
+            if ier in (10, 30):
                 self.log.info(
                     f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n"
                 )
@@ -1194,25 +1308,76 @@ class subtract_sky(object):
             else:
                 tck_previous = tck
 
-            if iterationCount == -1:
+            if iterationCount >= -1:
                 # FIRST PASS SIGMA CLIPPING OF BSPLINE
-                residuals = imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_subtracted_flux"]
+                for _ in range(3):
+                    mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
 
-                masked_residuals = sigma_clip(
-                    residuals,
-                    sigma_lower=bsplineSigma,
-                    sigma_upper=bsplineSigma,
-                    maxiters=3,
-                    cenfunc="mean",
-                    stdfunc="std",
+                    # ## ROLLING MEDIAN CLIPPING
+                    # imageMapOrder.loc[~mask_all_clipped, "sky_flux_rolling_median"] = (
+                    #     imageMapOrder.loc[~mask_all_clipped, "flux"]
+                    #     .rolling(35, center=True, min_periods=3, closed="both")
+                    #     .median()
+                    # )
+                    # imageMapOrder.loc[~mask_all_clipped, "sky_flux_rolling_std"] = (
+                    #     imageMapOrder.loc[~mask_all_clipped, "flux"]
+                    #     .rolling(35, center=True, min_periods=3, closed="both")
+                    #     .std()
+                    # )
+                    # mask_rolling_median_clipping = ~mask_all_clipped & (
+                    #     (
+                    #         imageMapOrder["flux"]
+                    #         > imageMapOrder["sky_flux_rolling_median"] + imageMapOrder["sky_flux_rolling_std"] * 3
+                    #     )
+                    #     | (
+                    #         imageMapOrder["flux"]
+                    #         < imageMapOrder["sky_flux_rolling_median"] - imageMapOrder["sky_flux_rolling_std"] * 2
+                    #     )
+                    # )
+                    # imageMapOrder.loc[mask_rolling_median_clipping, "flagged_all_clipped"] = True
+                    # imageMapOrder.loc[mask_rolling_median_clipping, "flagged_bspline_clipped"] = True
+
+                    # residuals = imageMapOrder.loc[~mask_all_clipped, "sky_subtracted_flux"]
+                    # imageMapOrder.loc[~mask_all_clipped, "bspline_sky_residual_windowed_std"] = (
+                    #     imageMapOrder.loc[~mask_all_clipped, "sky_subtracted_flux"]
+                    #     .rolling(15, center=True, min_periods=3, closed="both")
+                    #     .std()
+                    # )
+
+                    # mask_residual_clipping = ~mask_all_clipped & (
+                    #     (
+                    #         imageMapOrder["sky_subtracted_flux"]
+                    #         > imageMapOrder["bspline_sky_residual_windowed_std"] * bsplineSigma
+                    #     )
+                    #     | (
+                    #         imageMapOrder["sky_subtracted_flux"]
+                    #         < -imageMapOrder["bspline_sky_residual_windowed_std"] * bsplineSigma
+                    #     )
+                    # )
+                    # imageMapOrder.loc[mask_residual_clipping, "flagged_bspline_clipped"] = True
+                    # imageMapOrder.loc[mask_residual_clipping, "flagged_all_clipped"] = True
+
+            if iterationCount > 0:
+                imageMapOrder, residualFloor = self.determine_residual_floor(imageMapOrder, tck, iterationCount)
+
+            if iterationCount > 5:
+                window = 25
+            else:
+                window = 50
+
+            imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = imageMapOrder.loc[
+                ~mask_all_clipped, "flux"
+            ].values - ip.splev(imageMapOrder.loc[~mask_all_clipped, "wavelength"].values, tck)
+            imageMapOrder.loc[~mask_all_clipped, "sky_residual_floor_local"] = (
+                imageMapOrder.loc[~mask_all_clipped, "sky_residuals"]
+                .rolling(window=window, center=True, min_periods=5, closed="both")
+                .median()
+            )
+
+            if self.debug and iterationCount in (1, 3, 5, 7, 15, bsplineIterations):
+                self.plot_order_skymodel_fitting_quicklook(
+                    imageMapOrder, tck, title=f"Fitting the sky model\niteration {iterationCount}", knots=allKnots
                 )
-                imageMapOrder.loc[imageMapOrder["clipped"] == False, "bspline_clipped"] = masked_residuals.mask
-                imageMapOrder.loc[imageMapOrder["clipped"] == False, "clipped"] = masked_residuals.mask
-
-            if iterationCount == 0:
-                imageMapOrder, residualFloor = self.determine_residual_floor(imageMapOrder, tck)
-            if self.debug and iterationCount in (0, bsplineIterations):
-                self.plot_order_skymodel_fitting_quicklook(imageMapOrder, tck)
 
             # GENERATE SKY-MODEL FROM BSPLINE
             imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
@@ -1228,7 +1393,7 @@ class subtract_sky(object):
             imageMapOrder["sky_subtracted_flux_weighted_abs"] = imageMapOrder["sky_subtracted_flux_weighted"].abs()
 
             flux_error_ratio = imageMapOrder.loc[
-                imageMapOrder["clipped"] == False, "sky_subtracted_flux_weighted"
+                imageMapOrder["flagged_all_clipped"] == False, "sky_subtracted_flux_weighted"
             ].values
 
             if flux_error_ratio[1000:-1000].shape[0]:
@@ -1242,6 +1407,12 @@ class subtract_sky(object):
                 )
             except:
                 pass
+
+            if iterationCount >= 5:
+                if lastExtraKnotCount == len(extraKnots):
+                    self.log.info(f"\t\tNo new knots added on iteration {iterationCount}. Stopping iterations.\n")
+                    break
+            lastExtraKnotCount = len(extraKnots)
 
         imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
         imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
@@ -1257,11 +1428,9 @@ class subtract_sky(object):
         )
         imageMapOrder["sky_subtracted_flux_weighted_abs"] = imageMapOrder["sky_subtracted_flux_weighted"].abs()
 
-        # print(defaultPointsPerKnot)
-        imageMapOrder["sky_subtracted_flux_rolling_median"] = (
-            imageMapOrder["sky_subtracted_flux"].abs().rolling(defaultPointsPerKnot).median()
-        )
-        flux_error_ratio = imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_subtracted_flux_weighted"].values
+        flux_error_ratio = imageMapOrder.loc[
+            imageMapOrder["flagged_all_clipped"] == False, "sky_subtracted_flux_weighted"
+        ].values
         if flux_error_ratio[1000:-1000].shape[0]:
             flux_error_ratio = flux_error_ratio[1000:-1000]
 
@@ -1482,7 +1651,7 @@ class subtract_sky(object):
         for o, minWl, maxWl in zip(orderNums, waveLengthMin, waveLengthMax):
             if o == order:
                 orderInfo = (order, minWl, maxWl)
-        (order, minWl, maxWl) = orderInfo
+        order, minWl, maxWl = orderInfo
 
         minWl = minWl - 5
         maxWl = minWl + 5
@@ -1552,7 +1721,7 @@ class subtract_sky(object):
 
         orderPixelTable = pd.merge(
             orderPixelTable,
-            imageMapOrder[["x", "y", "flux", "clipped"]],
+            imageMapOrder[["x", "y", "flux", "flagged_all_clipped"]],
             how="left",
             left_on=["pixel_x", "pixel_y"],
             right_on=["x", "y"],
@@ -1579,7 +1748,7 @@ class subtract_sky(object):
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
         if remove_clipped:
-            mask = orderPixelTable["clipped"] == True
+            mask = orderPixelTable["flagged_all_clipped"] == True
             orderPixelTable.loc[mask, "flux"] = np.nan
 
         # RESTRUCTURE FLUXES INTO A STRAIGHTENED IMAGE
@@ -1686,7 +1855,7 @@ class subtract_sky(object):
 
         # COMBINE ALL ORDERS AND KEEP ONLY PIXELS FLAGGED AS POTENTIAL OBJECT
         allimageMapOrder = pd.concat(order_dataframes)
-        mask = allimageMapOrder["object"] == True
+        mask = allimageMapOrder["flagged_object_clipped"] == True
         allimageMapOrder = allimageMapOrder.loc[mask]
 
         percentile_rolling_window_size = self.recipeSettings["sky-subtraction"]["percentile_rolling_window_size"]
@@ -1744,26 +1913,36 @@ class subtract_sky(object):
             if aggressive:
                 for objectt in object_ranges:
 
-                    df.loc[(df["slit_position"].between(objectt[0], objectt[1])), "clipped"] = True
-                    df.loc[(df["slit_position"].between(objectt[0], objectt[1])), "object"] = True
-                    df.loc[((df["object"] == True)), "clipped"] = True
+                    df.loc[(df["slit_position"].between(objectt[0], objectt[1])), "flagged_all_clipped"] = True
+                    df.loc[(df["slit_position"].between(objectt[0], objectt[1])), "flagged_object_clipped"] = True
+                    df.loc[((df["flagged_object_clipped"] == True)), "flagged_all_clipped"] = True
             else:
-                # df.loc[((df['slit_position'].between(object[0], object[1])) & (df['object'] == True)), "clipped"] = True
-                df.loc[((df["object"] == True)), "clipped"] = True
-            df.loc[((df["clipped"] == False) & (df["object"] == True)), "object"] = False
+                # df.loc[((df['slit_position'].between(object[0], object[1])) & (df['object'] == True)), "flagged_all_clipped"] = True
+                df.loc[((df["flagged_object_clipped"] == True)), "flagged_all_clipped"] = True
+            # df.loc[
+            #     ((df["flagged_all_clipped"] == False) & (df["flagged_object_clipped"] == True)),
+            #     "flagged_object_clipped",
+            # ] = False
 
-            notClippedOrObjectMask = (df["clipped"] == False) & (df["object"] == False)
+            notClippedOrObjectMask = (df["flagged_all_clipped"] == False) & (df["flagged_object_clipped"] == False)
 
             df.loc[notClippedOrObjectMask, "residual_windowed_std"] = (
                 df.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"]
-                .rolling(percentile_rolling_window_size, center=True)
+                .rolling(percentile_rolling_window_size * 10, center=True, min_periods=3, closed="both")
                 .std()
             )
 
             # GENERATE A LARGER ROLLING WINDOWED STD TO BE USED IN DETERMINING NOISE
             df.loc[notClippedOrObjectMask, "residual_windowed_long_median"] = (
                 df.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"]
-                .rolling(noise_rolling_window_size, center=True)
+                .rolling(noise_rolling_window_size, center=True, min_periods=30, closed="both")
+                .median()
+            )
+
+            # GENERATE A LARGER ROLLING WINDOWED STD TO BE USED IN DETERMINING NOISE
+            df.loc[notClippedOrObjectMask, "flux_windowed_long_median"] = (
+                df.loc[notClippedOrObjectMask, "flux_percentile_smoothed"]
+                .rolling(noise_rolling_window_size, center=True, min_periods=30, closed="both")
                 .median()
             )
 
@@ -1800,8 +1979,8 @@ class subtract_sky(object):
         orderDF["slit_normalisation_ratio"] = 1.0
 
         # COLLECT THE SKYLINE PIXELS
-        mask = orderDF["clipped"] == False
-        # mask = ((orderDF["clipped"] == False) & (orderDF["sky_line"] == False))
+        mask = orderDF["flagged_all_clipped"] == False
+        # mask = ((orderDF["flagged_all_clipped"] == False) & (orderDF["flagged_sky_line"] == False))
         thisOrder = orderDF.loc[mask]
 
         # SORT BY COLUMN NAME
@@ -1815,10 +1994,10 @@ class subtract_sky(object):
         # DO AN INITIAL CLIPPING OF THE DATA
         # masked_residuals = sigma_clip(
         #     thisOrder["sky_subtracted_flux"], sigma_lower=3, sigma_upper=3, maxiters=5, cenfunc='mean', stdfunc='std')
-        # thisOrder["clipped"] = masked_residuals.mask
+        # thisOrder["flagged_all_clipped"] = masked_residuals.mask
 
         # FIT THE DATA WITH A POLYMONIAL
-        mask = thisOrder["clipped"] == False
+        mask = thisOrder["flagged_all_clipped"] == False
         sp = thisOrder.loc[mask]["slit_position"].values
         fx = thisOrder.loc[mask]["sky_subtracted_flux"].values
         wt = 1 / thisOrder.loc[mask]["residual_windowed_std"].values
@@ -1915,8 +2094,8 @@ class subtract_sky(object):
         slit_illumination_order = self.recipeSettings["sky-subtraction"]["slit_illumination_order"]
 
         # COLLECT THE SKYLINE PIXELS
-        # mask = ((orderDF["clipped"] == False) & (orderDF["sky_line"] != False))
-        mask = orderDF["clipped"] == False
+        # mask = ((orderDF["flagged_all_clipped"] == False) & (orderDF["flagged_sky_line"] != False))
+        mask = orderDF["flagged_all_clipped"] == False
         thisOrder = orderDF.loc[mask]
         order = orderDF["order"].values[0]
 
@@ -1972,12 +2151,13 @@ class subtract_sky(object):
         self.log.debug("completed the ``adjust_tilt`` method")
         return orderDF
 
-    def determine_residual_floor(self, imageMapOrder, tck):
+    def determine_residual_floor(self, imageMapOrder, tck, iteration):
         """*determine residual floor and flag sky-lines*
 
         **Key Arguments:**
             - ``imageMapOrderDF`` --  dataframe with various processed data for a given order
             - ``tck`` -- the fitted bspline components. t for knots, c of coefficients, k for order
+            - ``iteration`` -- the iteration number of the sky-subtraction loop, used to determine how aggressive to be in flagging sky-lines and determining the residual floor
 
         **Return:**
 
@@ -2003,107 +2183,167 @@ class subtract_sky(object):
         # USE THIS PERCENTILE TO DETERMINE THE RESIDUAL FLOOR
         residual_floor_percentile = self.recipeSettings["sky-subtraction"]["residual_floor_percentile"]
         # SIGNIFICANCE OF THE FIRST DERIVATIVE OF THE SKY (DO WE HAVE A LINE)
-        line_significance = self.recipeSettings["sky-subtraction"]["knot_skyline_sigma"]
+        line_significance = self.recipeSettings["sky-subtraction"]["skyline_significance"] / 10.0
         # SIGNIFICANCE OF THE SECOND DERIVATIVE OF THE SKY, i.e. A RISE OR FALL IN THE SKY SPECTRUM ALONG THE DISPERSION AXIS (LINE WINGS)
-        node_significance = self.recipeSettings["sky-subtraction"]["knot_skyline_sigma"]
+        node_significance = self.recipeSettings["sky-subtraction"]["skyline_significance"] / 10.0
         # SIGNIFICANCE OF THE LOCAL ROLLING WINDOW RESIDUAL VALUE COMPARED TO THE GLOBAL RESIDUALS - TO DETERMINE IF WE ARE JUST LOOKING AT NOISE
         noise_significance = self.recipeSettings["sky-subtraction"]["noise_sigma"]
 
         # DO SOME CLIPPING ON THE INITIAL SKY SUBTRACTION RESIDUALS
         imageMapOrder["sky_residuals"] = np.nan
         imageMapOrder["sky_residuals_clipped"] = False
-        imageMapOrder["sky_line"] = False
-        imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_residuals"] = (
-            imageMapOrder.loc[imageMapOrder["clipped"] == False, "flux"].values
-            - ip.splev(imageMapOrder.loc[imageMapOrder["clipped"] == False, "wavelength"].values, tck)
-        ) / ip.splev(imageMapOrder.loc[imageMapOrder["clipped"] == False, "wavelength"].values, tck, der=1)
+        if "flagged_sky_line" not in imageMapOrder.columns:
+            imageMapOrder["flagged_sky_line"] = False
+
+        mask_unclipped = imageMapOrder["flagged_all_clipped"] == False
+        imageMapOrder.loc[mask_unclipped, "sky_residuals"] = imageMapOrder.loc[
+            mask_unclipped, "flux"
+        ].values - ip.splev(imageMapOrder.loc[mask_unclipped, "wavelength"].values, tck)
 
         # FUDGE FOR NON-DARK SUBTRACTED DATA
         imageMapOrder.replace([np.inf, -np.inf], 1, inplace=True)
 
-        # SIGMA-CLIP THE DATA
-        masked_residuals = sigma_clip(
-            imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_residuals"],
-            sigma_lower=25,
-            sigma_upper=25,
-            maxiters=1,
-            cenfunc="median",
-            stdfunc="mad_std",
-        )
-        imageMapOrder.loc[imageMapOrder["clipped"] == False, "sky_residuals_clipped"] = masked_residuals.mask
-        imageMapOrder.loc[imageMapOrder["clipped"] == False, "clipped"] = masked_residuals.mask
+        ## DETERMINE THE RESIDUAL FLOOR WITHIN UNCLIPPED REGIONS - LONG WINDOW ROLLING QUANTILE
+        window = int(20000 / iteration)
+        if window < 5000:
+            window = 5000
 
-        # MARK REGIONS AS NOISY
-        unclipped = imageMapOrder["clipped"] == False
-        imageMapOrder["noisy"] = False
+        imageMapOrder.loc[mask_unclipped, "sky_residual_floor"] = (
+            imageMapOrder.loc[mask_unclipped, "sky_residuals"]
+            .rolling(window=window, center=True, closed="both")
+            .quantile(residual_floor_percentile / 100.0)
+        )
+
+        # RESET NOISY FLAG
+        imageMapOrder["flagged_noisy_region"] = False
 
         mean, median, std = sigma_clipped_stats(
-            imageMapOrder.loc[(unclipped), "residual_windowed_long_median"],
+            imageMapOrder.loc[(mask_unclipped), "residual_windowed_long_median"],
+            sigma=2.0,
+            stdfunc="mad_std",
+            cenfunc="median",
+            maxiters=10,
+        )
+
+        if std < 1.0:
+            std = 1.0
+
+        mask_noise_limit = imageMapOrder["residual_windowed_long_median"] > median + noise_significance * std
+
+        ## FLAG SECTIONS OF NEGATIVE FLUX AS NOISE
+        mean, median, std = sigma_clipped_stats(
+            imageMapOrder.loc[(mask_unclipped), "flux_windowed_long_median"],
             sigma=2.0,
             stdfunc="std",
             cenfunc="mean",
             maxiters=5,
         )
 
-        if std < 1.0:
-            std = 1.0
+        # if std < 1.0:
+        #     std = 1.0
 
-        print(f"mean: {mean:0.3f}, median: {median:0.3f}, std: {std:0.3f}")
-        print(f"noise limit: {median + noise_significance * std:0.3f}")
-
-        noiseLimit = imageMapOrder["residual_windowed_long_median"] > median + noise_significance * std
-        imageMapOrder.loc[(unclipped & noiseLimit), "noisy"] = True
+        mask_noise_limit = mask_noise_limit | (
+            imageMapOrder["flux_windowed_long_median"] < median - noise_significance * std
+        )
+        imageMapOrder.loc[(mask_unclipped & mask_noise_limit), "flagged_noisy_region"] = True
 
         # MARK RISING SKYLINES
-        unclipped = imageMapOrder["clipped"] == False
-        unnoisy = imageMapOrder["noisy"] == False
+        mask_unclipped = imageMapOrder["flagged_all_clipped"] == False
+        mask_unnoisy = imageMapOrder["flagged_noisy_region"] == False
 
-        imageMapOrder.loc[(unclipped), "sky_d1"] = ip.splev(
-            imageMapOrder.loc[unclipped, "wavelength"].values, tck, der=1
+        imageMapOrder.loc[(mask_unclipped), "sky_d0"] = ip.splev(
+            imageMapOrder.loc[mask_unclipped, "wavelength"].values, tck
         )
-        imageMapOrder.loc[(unclipped), "sky_d2"] = ip.splev(
-            imageMapOrder.loc[unclipped, "wavelength"].values, tck, der=2
+        imageMapOrder.loc[(mask_unclipped), "sky_d1"] = ip.splev(
+            imageMapOrder.loc[mask_unclipped, "wavelength"].values, tck, der=1
+        )
+        imageMapOrder.loc[(mask_unclipped), "sky_d2"] = ip.splev(
+            imageMapOrder.loc[mask_unclipped, "wavelength"].values, tck, der=2
         )
 
-        std = imageMapOrder.loc[(unclipped & unnoisy), "sky_d1"].std()
-        mean = imageMapOrder.loc[(unclipped & unnoisy), "sky_d1"].mean()
+        imageMapOrder.loc[(mask_unclipped), "sky_local_vs_global"] = (
+            imageMapOrder.loc[(mask_unclipped), "sky_residual_floor_local"]
+            - imageMapOrder.loc[(mask_unclipped), "sky_residual_floor"]
+        )
+
+        mask_skyline = imageMapOrder.loc[(mask_unclipped), "sky_local_vs_global"] > 0
+        mask_negative = imageMapOrder.loc[(mask_unclipped), "sky_local_vs_global"] < 0
+        imageMapOrder.loc[
+            (mask_unclipped & mask_negative),
+            "sky_local_vs_global",
+        ] = 0
 
         imageMapOrder.loc[
-            (unclipped & unnoisy) & (imageMapOrder["sky_d1"] > mean + line_significance * std), "sky_line"
-        ] = "rise"
-        imageMapOrder.loc[
-            (unclipped & unnoisy) & (imageMapOrder["sky_d1"] < mean - line_significance * std), "sky_line"
-        ] = "fall"
+            (mask_unclipped & mask_skyline),
+            "flagged_sky_line",
+        ] = "line"
+
+        # # print(defaultPointsPerKnot)
+        # imageMapOrder.loc[(mask_unclipped & mask_unnoisy), "sky_d1"] = (
+        #     imageMapOrder.loc[(mask_unclipped & mask_unnoisy), "sky_d1"]
+        #     .rolling(25, center=True, min_periods=3)
+        #     .median()
+        # )
+        # # print(defaultPointsPerKnot)
+        # imageMapOrder.loc[(mask_unclipped & mask_unnoisy), "sky_d2"] = (
+        #     imageMapOrder.loc[(mask_unclipped & mask_unnoisy), "sky_d2"].rolling(9, center=True, min_periods=3).median()
+        # )
+
+        # ## FLAG SECTIONS OF NEGATIVE FLUX AS NOISE
+        # mean, median, std = sigma_clipped_stats(
+        #     imageMapOrder.loc[(mask_unclipped & mask_unnoisy), "sky_d1"],
+        #     sigma=15,
+        #     stdfunc="mad_std",
+        #     cenfunc="median",
+        #     maxiters=3,
+        # )
+
+        # imageMapOrder.loc[
+        #     (mask_unclipped & mask_unnoisy)
+        #     & (imageMapOrder["sky_d1"] > mean + line_significance * std)
+        #     & (imageMapOrder["sky_d0"] > mean + line_significance * std),
+        #     "flagged_sky_line",
+        # ] = "rise"
+        # imageMapOrder.loc[
+        #     (mask_unclipped & mask_unnoisy) & (imageMapOrder["sky_d1"] < mean - line_significance * std),
+        #     "flagged_sky_line",
+        # ] = "fall"
 
         # MARK SKY INFECTION POINTS
-        std = imageMapOrder.loc[(unclipped & unnoisy), "sky_d2"].std()
-        mean = imageMapOrder.loc[(unclipped & unnoisy), "sky_d2"].mean()
-        skyline = imageMapOrder["sky_line"].isin(["rise", "fall"])
-        imageMapOrder.loc[
-            (unclipped & unnoisy & skyline) & (imageMapOrder["sky_d2"] > mean + node_significance * std), "sky_line"
-        ] = "node"
-        imageMapOrder.loc[
-            (unclipped & unnoisy & skyline) & (imageMapOrder["sky_d2"] < mean - node_significance * std), "sky_line"
-        ] = "node"
+        ## FLAG SECTIONS OF NEGATIVE FLUX AS NOISE
+        # mask_skyline = imageMapOrder["flagged_sky_line"].isin(["rise", "fall", "line"])
+        # if iteration > 4:
+        #     mean, median, std = sigma_clipped_stats(
+        #         imageMapOrder.loc[(mask_unclipped & mask_unnoisy), "sky_d2"],
+        #         sigma=100,
+        #         stdfunc="mad_std",
+        #         cenfunc="median",
+        #         maxiters=1,
+        #     )
+
+        #     imageMapOrder.loc[
+        #         (mask_unclipped & mask_unnoisy) & (imageMapOrder["sky_d2"] > mean + node_significance * std),
+        #         "flagged_sky_line",
+        #     ] = "node"
+        #     imageMapOrder.loc[
+        #         (mask_unclipped & mask_unnoisy) & (imageMapOrder["sky_d2"] < mean - node_significance * std),
+        #         "flagged_sky_line",
+        #     ] = "node"
 
         # CALCULATE THE RESIDUAL FLOOR
-        nonSkyline = imageMapOrder["sky_line"] == False
-        nonSkyResiduals = imageMapOrder.loc[(unclipped & nonSkyline & unnoisy), "flux"].values - ip.splev(
-            imageMapOrder.loc[(unclipped & nonSkyline & unnoisy), "wavelength"].values, tck
-        )
-        residualFloor = np.percentile(np.abs(nonSkyResiduals), residual_floor_percentile)
+        mask_nonSkyline = imageMapOrder["flagged_sky_line"] == False
 
         # DETERMINE SKYLINES PEAKS
-        skyFlux = imageMapOrder.loc[(unclipped & unnoisy), "flux"].values
+        skyFlux = imageMapOrder.loc[(mask_unclipped & mask_unnoisy), "flux"].values
         skyFluxMean, skyFluxStd = np.median(skyFlux), skyFlux.std()
         highFluxMask = imageMapOrder["flux"] > skyFluxMean + 1.5 * skyFluxStd
-        imageMapOrder.loc[(unclipped & unnoisy & nonSkyline & highFluxMask), "sky_line"] = "peak"
+        imageMapOrder.loc[(mask_unclipped & mask_unnoisy & mask_nonSkyline & highFluxMask), "flagged_sky_line"] = "peak"
 
         self.log.debug("completed the ``determine_residual_floor`` method")
         # print(residualFloor)
-        return imageMapOrder, residualFloor
+        return imageMapOrder, 5
 
-    def plot_order_skymodel_fitting_quicklook(self, imageMapOrder, tck):
+    def plot_order_skymodel_fitting_quicklook(self, imageMapOrder, tck, title=None, knots=False):
         """Quick-look diagnostic plot of the sky-model fit for a single order."""
         from soxspipe.commonutils.toolkit import get_calibrations_path
         from astropy.table import Table
@@ -2116,102 +2356,367 @@ class subtract_sky(object):
         dp = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         skylines = calibrationRootPath + "/" + dp["skylines"]
+
         dat = Table.read(skylines, format="fits")
         skylinesDF = dat.to_pandas()
         # FILTER TO STRONG SKY LINES ONLY FOR PLOTTING
+        skylinesDF["WAVELENGTH"] = skylinesDF["WAVELENGTH"].astype(float)
         skylinesDF["FLUX"] = skylinesDF["FLUX"].astype(float)
-        mask = skylinesDF["FLUX"] > 5.0
+        if self.arm == "VIS":
+            mask = skylinesDF["FLUX"] > 5
+        else:
+            mask = skylinesDF["FLUX"] > 100
         skylinesDF = skylinesDF.loc[mask]
 
         # GENERATE THE FIGURE FOR THE PLOT
-        fig = plt.figure(num=None, figsize=(24, 8), dpi=150, facecolor=None, edgecolor=None, frameon=True)
-        ax = fig.add_axes([0.05, 0.1, 0.99, 0.8], polar=False, frameon=True)
+        from matplotlib.gridspec import GridSpec
+
+        fig = plt.figure(num=None, figsize=(24, 10), dpi=150, facecolor=None, edgecolor=None, frameon=True)
+        gs = GridSpec(2, 1, figure=fig, height_ratios=[3, 1], hspace=0.4)
+        ax = fig.add_subplot(gs[0])
+        ax2 = fig.add_subplot(gs[1])
         ax.set_xlabel("wavelength (nm)")
         ax.set_ylabel("Counts")
+        ax2.set_title("sky subtraction residuals", fontsize=12)
+        ax2.set_xlabel("wavelength (nm)")
+        ax2.set_ylabel("Flux")
+        if title:
+            ax.set_title(title, fontsize=14)
 
-        # PREP THE DATAFRAME TO SORT AND CLASSIFY SKY PIXELS
-        unclipped = imageMapOrder["clipped"] == False
-        noisy = imageMapOrder["noisy"] == True
-        nonSkyline = imageMapOrder["sky_line"] == False
-        skyline = imageMapOrder["sky_line"].isin(["rise", "fall"])
-        skynode = imageMapOrder["sky_line"].isin(["node"])
-        bsplineClipped = imageMapOrder["bspline_clipped"] == True
+        def refresh_and_plot(pause=None):
+            for axis in [ax, ax2]:
+                handles, labels = axis.get_legend_handles_labels()
+                unique_handles = []
+                unique_labels = []
+
+                for handle, label in zip(handles, labels):
+                    if not label or label.startswith("_") or label in unique_labels:
+                        continue
+
+                    unique_handles.append(handle)
+                    unique_labels.append(label)
+
+                existing_legend = getattr(axis, "legend_", None)
+                if existing_legend is not None:
+                    existing_legend.remove()
+
+                if unique_handles:
+                    lgnd = axis.legend(
+                        unique_handles,
+                        unique_labels,
+                        loc="upper right",
+                        bbox_to_anchor=(1.2, 1.0),
+                        prop={"size": 8},
+                    )
+                    for legobj in lgnd.legend_handles:
+                        try:
+                            legobj.set_sizes([30])
+                            legobj.set_alpha(0.7)
+                        except:
+                            pass
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            if pause:
+                plt.pause(pause)
+            else:
+                plot.show()
+
+        # BUILD THE MASKS FOR PLOTTING VARIOUS DATA POINTS
+        mask_everything = imageMapOrder["wavelength"] > 0.0
+        mask_object = imageMapOrder["flagged_object_clipped"] == True
+        mask_all_clipped = (imageMapOrder["flagged_all_clipped"] == True) | (
+            imageMapOrder["flagged_object_clipped"] == True
+        )
+        mask_bad_pixel = imageMapOrder["flagged_bad_pixel_clipped"] == True
+        mask_order_edge = imageMapOrder["flagged_edge_clipped"] == True
+
+        # LINES
+        wl_not_clipped = imageMapOrder.loc[~mask_all_clipped, "wavelength"].values
+        flux_not_clipped = imageMapOrder.loc[~mask_all_clipped, "flux"].values
+        flux_percentile_smoothed = imageMapOrder.loc[~mask_all_clipped, "flux_percentile_smoothed"].values
+        flux_minus_smoothed_residuals = imageMapOrder.loc[~mask_all_clipped, "flux_minus_smoothed_residual"].values
+        flux_minus_smoothed_residual_upper_limit = imageMapOrder.loc[
+            ~mask_all_clipped, "flux_minus_smoothed_residual_upper_limit"
+        ].values
+        flux_upper_limit = imageMapOrder.loc[~mask_all_clipped, "flux_upper_limit"].values
+
+        if tck:
+            mask_noisy = imageMapOrder["flagged_noisy_region"] == True
+            mask_nonSkyline = imageMapOrder["flagged_sky_line"] == False
+            mask_skyline = imageMapOrder["flagged_sky_line"].isin(["rise", "fall", "line"])
+            mask_skynode = imageMapOrder["flagged_sky_line"].isin(["node"])
+            mask_bspline_clipped = imageMapOrder["flagged_bspline_clipped"] == True
+            flux_bspline_sky_residuals = imageMapOrder.loc[~mask_all_clipped, "sky_residuals"].values
+            # sky_flux_rolling_median = imageMapOrder.loc[~mask_all_clipped, "sky_flux_rolling_median"].values
+            sky_residual_floor = imageMapOrder.loc[~mask_all_clipped, "sky_residual_floor"].values
+            sky_residual_floor_local = imageMapOrder.loc[~mask_all_clipped, "sky_residual_floor_local"].values
+
+        # SET PLOT LIMITS
+        mean, median, std = sigma_clipped_stats(
+            imageMapOrder.loc[~mask_all_clipped & imageMapOrder["flux"] > -50, "flux"].values, sigma=3.0, maxiters=3
+        )
+        range_sigma = 3
+        ax.set_ylim(mean - std, mean + range_sigma * std)
 
         # PLOT SKY LINES AS VERTICAL LINES ON SKY PANEL
+        label = "catalogue skyline"
         for _, row in skylinesDF.iterrows():
-            ax.axvline(row["WAVELENGTH"], color="gray", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0)
+            ax.axvline(row["WAVELENGTH"], color="gray", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0, label=label)
+            ax2.axvline(row["WAVELENGTH"], color="gray", linestyle="-", linewidth=0.5, alpha=0.5, zorder=0, label=label)
+            if label:
+                label = None
 
-        mmin = imageMapOrder.loc[(unclipped & nonSkyline), "wavelength"].values.min()
-        mmax = imageMapOrder.loc[(unclipped & nonSkyline), "wavelength"].values.max()
+        mmin = imageMapOrder.loc[(~mask_object), "wavelength"].values.min()
+        mmax = imageMapOrder.loc[(~mask_object), "wavelength"].values.max()
         ax.set_xlim(mmin, mmax)
+        ax2.set_xlim(mmin, mmax)
 
-        ## NO SKY-LINES - GREEN
-        ax.scatter(
-            imageMapOrder.loc[(unclipped & nonSkyline), "wavelength"].values,
-            imageMapOrder.loc[(unclipped & nonSkyline), "flux"].values,
-            s=1,
-            c="green",
-            alpha=0.1,
-            zorder=1,
-            label="no sky",
-        )
-        # PREDICTED SKYLINES - ORANGE
-        ax.scatter(
-            imageMapOrder.loc[(unclipped & skyline), "wavelength"].values,
-            imageMapOrder.loc[(unclipped & skyline), "flux"].values,
-            s=1,
-            c="orange",
-            alpha=0.3,
-            zorder=2,
-            label="skyline",
-        )
-        # PREDICTED SKYLINE WINGS - RED
-        ax.scatter(
-            imageMapOrder.loc[(unclipped & skynode), "wavelength"].values,
-            imageMapOrder.loc[(unclipped & skynode), "flux"].values,
-            s=1,
-            c="red",
-            alpha=0.3,
-            zorder=3,
-            label="skyline node",
-        )
+        # Put a legend on plot
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0, box.width * 0.95, box.height])
+        box2 = ax2.get_position()
+        ax2.set_position([box2.x0, box2.y0, box2.width * 0.95, box2.height])
 
+        # FLUX - SMOOTHED RESIDUALS
+        if True and not tck:
+            mean, median, std = sigma_clipped_stats(
+                imageMapOrder.loc[
+                    ~mask_all_clipped & imageMapOrder["flux_minus_smoothed_residual"] > -50,
+                    "flux_minus_smoothed_residual",
+                ].values,
+                sigma=3.0,
+                maxiters=3,
+            )
+            range_sigma = 3
+            ax2.set_ylim(mean - std, mean + range_sigma * std)
+            ax2.scatter(
+                wl_not_clipped,
+                flux_minus_smoothed_residuals,
+                s=1,
+                c="grey",
+                alpha=0.2,
+                zorder=1,
+                label="flux residuals (windowed)",
+            )
+
+            if False:
+                ax2.scatter(
+                    wl_not_clipped,
+                    flux_minus_smoothed_residual_upper_limit,
+                    s=1,
+                    c="red",
+                    alpha=0.01,
+                    zorder=1,
+                    label="flux residuals upper limit",
+                )
+        elif True:
+            mean, median, std = sigma_clipped_stats(
+                imageMapOrder.loc[
+                    ~mask_all_clipped & imageMapOrder["sky_residuals"] > -50,
+                    "sky_residuals",
+                ].values,
+                sigma=3.0,
+                maxiters=3,
+            )
+            range_sigma = 7
+            ax2.set_ylim(mean - std, mean + range_sigma * std)
+            ax2.scatter(
+                wl_not_clipped,
+                flux_bspline_sky_residuals,
+                s=1,
+                c="grey",
+                alpha=0.2,
+                zorder=1,
+                label="flux residuals (windowed)",
+            )
+            ax2.plot(
+                wl_not_clipped,
+                sky_residual_floor,
+                c="blue",
+                alpha=0.2,
+                zorder=1,
+                label="sky residual floor",
+            )
+            ax2.plot(
+                wl_not_clipped,
+                sky_residual_floor_local,
+                c="green",
+                alpha=0.2,
+                zorder=1,
+                label="sky residual floor local",
+            )
+            if not isinstance(knots, bool):
+                ax2.scatter(
+                    knots,
+                    np.zeros_like(knots),
+                    marker="v",
+                    s=1,
+                    c="red",
+                    alpha=0.5,
+                    zorder=10,
+                    label="bspline knots",
+                )
+
+        ## UNCLIPPED
+        if True:
+            ax.scatter(
+                wl_not_clipped,
+                flux_not_clipped,
+                s=1,
+                c="green",
+                alpha=0.1,
+                zorder=1,
+                label="unclipped",
+            )
         if False:
+            ax.scatter(
+                wl_not_clipped,
+                flux_upper_limit,
+                s=1,
+                c="red",
+                alpha=0.01,
+                zorder=1,
+                label="flux upper limit (windowed)",
+            )
+        if True and not tck:
+            # SHOW ROLLING SCATTER
+            ax.scatter(
+                wl_not_clipped,
+                flux_percentile_smoothed,
+                s=1,
+                c="blue",
+                alpha=0.01,
+                zorder=5,
+                label="flux percentile smoothed (windowed)",
+            )
+
+        ## EDGES
+        if False and not tck:
+            ax.scatter(
+                imageMapOrder.loc[mask_order_edge, "wavelength"].values,
+                imageMapOrder.loc[mask_order_edge, "flux"].values,
+                s=1,
+                marker="x",
+                c="green",
+                alpha=0.1,
+                zorder=2,
+                label="edge clipped",
+            )
+
+        ## BAD PIXELS
+        if True and not tck:
+            ax.scatter(
+                imageMapOrder.loc[mask_bad_pixel, "wavelength"].values,
+                imageMapOrder.loc[mask_bad_pixel, "flux"].values,
+                s=1,
+                marker="v",
+                c="red",
+                alpha=0.1,
+                zorder=2,
+                label="bad pixels clipped",
+            )
+        refresh_and_plot(0.2)
+
+        ## OBJECT
+        if True and not tck:
+            ax.scatter(
+                imageMapOrder.loc[mask_object, "wavelength"].values,
+                imageMapOrder.loc[mask_object, "flux"].values,
+                s=1,
+                c="cyan",
+                alpha=0.1,
+                zorder=2,
+                label="object",
+            )
+            refresh_and_plot(0.2)
+
+        if not tck:
+            plt.close("all")  # close the figure
+            return
+
+        ## SHOT-NOISE
+        if False:
+            ax.scatter(
+                imageMapOrder.loc[(~mask_all_clipped & mask_nonSkyline), "wavelength"].values,
+                imageMapOrder.loc[(~mask_all_clipped & mask_nonSkyline), "flux"].values,
+                s=1,
+                c="green",
+                alpha=0.1,
+                zorder=1,
+                label="shot-noise",
+            )
+            refresh_and_plot(0.2)
+
+        # PREDICTED SKYLINES - ORANGE
+        if True:
+            ax.scatter(
+                imageMapOrder.loc[(~mask_all_clipped & mask_skyline), "wavelength"].values,
+                imageMapOrder.loc[(~mask_all_clipped & mask_skyline), "flux"].values,
+                s=1,
+                c="orange",
+                alpha=0.3,
+                zorder=2,
+                label="predicted skyline",
+            )
+            refresh_and_plot(0.2)
+
+        # PREDICTED SKYLINE WINGS - RED
+        if True:
+            ax.scatter(
+                imageMapOrder.loc[(~mask_all_clipped & mask_skynode), "wavelength"].values,
+                imageMapOrder.loc[(~mask_all_clipped & mask_skynode), "flux"].values,
+                s=1,
+                c="red",
+                alpha=0.3,
+                zorder=3,
+                label="predicted skyline wings/peak",
+            )
+            refresh_and_plot(0.2)
+
+        # BSPLINE CLIPPED
+        if True:
             # SHOW BSPLINE CLIPPED FROM PREVIOUS ITERATION
             ax.scatter(
-                imageMapOrder.loc[(bsplineClipped), "wavelength"].values,
-                imageMapOrder.loc[(bsplineClipped), "flux"].values,
+                imageMapOrder.loc[(mask_bspline_clipped), "wavelength"].values,
+                imageMapOrder.loc[(mask_bspline_clipped), "flux"].values,
                 s=1,
                 c="blue",
                 alpha=1,
                 zorder=10,
                 label="bspline clipped",
             )
+            refresh_and_plot(0.2)
 
+        # NOISY DATA REGION
         if True:
-            # SHOW NOISY DATA
+
             ax.scatter(
-                imageMapOrder.loc[(noisy), "wavelength"].values,
-                imageMapOrder.loc[(noisy), "flux"].values,
+                imageMapOrder.loc[(mask_noisy), "wavelength"].values,
+                imageMapOrder.loc[(mask_noisy), "flux"].values,
                 s=2,
                 marker="x",
                 c="grey",
                 alpha=0.3,
                 zorder=4,
-                label="noisy data",
+                label="noisy region",
             )
+            refresh_and_plot(0.2)
 
+        # PLOT SKY RESIDUALS
         if False:
-            # PLOT SKY RESIDUALS AND CLIPPED RESIDUALS
             ax.scatter(
-                imageMapOrder.loc[unclipped, "wavelength"].values,
-                imageMapOrder.loc[unclipped, "sky_residuals"].values,
+                imageMapOrder.loc[mask_all_clipped, "wavelength"].values,
+                imageMapOrder.loc[mask_all_clipped, "sky_residuals"].values,
                 s=1,
                 c="green",
                 alpha=1,
                 zorder=13,
-                label="unclipped",
+                label="sky residuals",
             )
+            refresh_and_plot(0.2)
+
+        # CLIPPED RESIDUALS
+        if False:
             ax.scatter(
                 imageMapOrder.loc[(imageMapOrder["sky_residuals_clipped"] == True), "wavelength"].values,
                 imageMapOrder.loc[(imageMapOrder["sky_residuals_clipped"] == True), "sky_residuals"].values,
@@ -2220,47 +2725,79 @@ class subtract_sky(object):
                 marker="x",
                 alpha=1,
                 zorder=13,
-                label="unclipped",
+                label="clipped residuals",
             )
+            refresh_and_plot(0.2)
 
         wl = np.linspace(imageMapOrder["wavelength"].min(), imageMapOrder["wavelength"].max(), 1000000)
         sky = ip.splev(wl, tck)
-        sky_d1 = ip.splev(wl, tck, der=1)
-        sky_d2 = ip.splev(wl, tck, der=2)
-        ax.plot(wl, sky, label="sky model", c="#268bd2", zorder=10, alpha=0.7)
+        # sky_d1 = ip.splev(wl, tck, der=1)
+        # sky_d2 = ip.splev(wl, tck, der=2)
+        # sky_d3 = ip.splev(wl, tck, der=3)
+        # ax.plot(wl, sky, label="sky model", c="#268bd2", zorder=10, alpha=0.7)
 
+        ## BSPLINE SKY
         if True:
-            ax.plot(wl, sky_d1, label="sky model derivative", c="pink", zorder=3, alpha=0.2)
-            ax.plot(wl, sky_d2 / 100, label="sky model 2nd derivative / 100", c="violet", zorder=3, alpha=0.2)
-
-        mean, median, std = sigma_clipped_stats(sky, sigma=5.0, maxiters=2)
-        if std < 20:
-            std = 20
-        ax.set_ylim(mean - 3 * std, mean + 3 * std)
-
-        if True:
-            # SHOW ROLLING SCATTER
-
-            print(
-                imageMapOrder.loc[(unclipped), "wavelength"].values,
-                imageMapOrder.loc[(unclipped), "residual_windowed_long_median"].values,
-            )
             ax.plot(
-                imageMapOrder.loc[(unclipped), "wavelength"].values,
-                imageMapOrder.loc[(unclipped), "residual_windowed_long_median"].values - 2 * std,
+                wl,
+                sky,
+                label="sky model bspline",
+                c="purple",
+                zorder=3,
+                alpha=0.5,
+            )
+            refresh_and_plot(0.2)
+            # ax.plot(wl, sky_d2 / 100, label="sky model 2nd derivative / 100", c="violet", zorder=3, alpha=0.2)
+
+        # ROLLING MEDIAN OF THE SKY SUBTRACTED FLUX
+        if False:
+            ax.plot(
+                wl_not_clipped,
+                sky_flux_rolling_median,
+                label="sky flux_rolling_median",
+                c="purple",
+                zorder=3,
+                alpha=0.5,
+            )
+            # ax.plot(wl, sky_d2 / 100, label="sky model 2nd derivative / 100", c="violet", zorder=3, alpha=0.2)
+
+        if False:
+            ax.plot(
+                wl,
+                sky_d1,
+                label="sky model derivative",
+                c="pink",
+                zorder=5,
+                alpha=0.5,
+            )
+            refresh_and_plot(0.2)
+            # ax.plot(wl, sky_d2 / 100, label="sky model 2nd derivative / 100", c="violet", zorder=3, alpha=0.2)
+
+        if False:
+            ax.plot(
+                wl,
+                sky_d3,
+                label="sky model derivative 3",
+                c="orange",
+                zorder=5,
+                alpha=0.5,
+            )
+            refresh_and_plot(0.2)
+
+        if False:
+            # SHOW ROLLING SCATTER
+            ax.plot(
+                imageMapOrder.loc[(mask_all_clipped), "wavelength"].values,
+                imageMapOrder.loc[(mask_all_clipped), "residual_windowed_long_median"].values - 2 * std,
                 c="black",
                 alpha=0.3,
                 zorder=0,
                 label="residual windowed std",
             )
+            refresh_and_plot(0.2)
 
-        # Put a legend on plot
-        box = ax.get_position()
-        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-        ax.legend(loc="upper right", bbox_to_anchor=(1.1, 0.5), prop={"size": 8})
-
-        title = "label"
-        plt.pause(3)
+        # plt.pause(10)
+        plt.show()
         plt.close("all")  # close the figure
 
     # use the tab-trigger below for new method
