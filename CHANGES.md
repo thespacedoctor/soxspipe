@@ -1,5 +1,9 @@
 # Release Notes
 
+improved sky-subtraction
+updating settings for skysubraction
+print a table of exported files when running the 'raw' command
+adding new parameters to fit and clip noise from the sky-model spectrum
 sky spectrum added to the stare extraction QC plots
 adding SNR values to the bottom panel of the extracted spectra QC plots
 sky flux and variance added to the extracted spectra FITS tables
