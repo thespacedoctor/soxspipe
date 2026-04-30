@@ -447,6 +447,7 @@ class soxs_stare(base_recipe):
                 sofName=self.sofName,
                 recipeName=self.recipeName,
                 startNightDate=self.startNightDate,
+                debug=self.debug,
             )
             skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, self.qc, self.products = (
                 skymodel.subtract()
@@ -579,6 +580,7 @@ class soxs_stare(base_recipe):
                 sofName=self.sofName,
                 recipeName=self.recipeName,
                 startNightDate=self.startNightDate,
+                debug=self.debug,
             )
             (
                 unflattenedSkymodelCCDData,
@@ -698,6 +700,8 @@ class soxs_stare(base_recipe):
             orderJoins=orderJoins,
             debug=self.debug,
             fluxCalibrated=False,
+            qcTable=self.qc,
+            settings=self.settings,
         )
 
         if filePath_fluxcal:
@@ -708,8 +712,8 @@ class soxs_stare(base_recipe):
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
             fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
-            # ADD THE SNR COLUMN AND COPY VALUES FROM mergedSpectumDF
             fluxcal_spec["SNR"] = mergedSpectumDF["SNR"]
+            fluxcal_spec["SKY_COUNTS"] = mergedSpectumDF["SKY_COUNTS"]
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=fluxcal_spec,
                 products=self.products,
@@ -723,6 +727,8 @@ class soxs_stare(base_recipe):
                 orderJoins=orderJoins,
                 debug=self.debug,
                 fluxCalibrated=True,
+                qcTable=self.qc,
+                settings=self.settings,
             )
 
         qcTable = self.report_output()

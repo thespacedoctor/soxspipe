@@ -513,12 +513,14 @@ class data_organiser(object):
         for _ in range(4):  # Recursively query up to 5 times
             sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
 
-        sqlQuery = f"SELECT filepath from sof_map WHERE sof in ({sqlQuery}) and filepath like '%./raw/%' order by sof"
+        sqlQuery = f"SELECT * from sof_map WHERE sof in ({sqlQuery}) and filepath like '%./raw/%' order by sof"
 
-        filepaths = pd.read_sql(sqlQuery, con=self.conn)["filepath"].tolist()
+        table = pd.read_sql(sqlQuery, con=self.conn)
+
+        filepaths = table["filepath"].tolist()
 
         self.log.debug("completed the ``list_raw`` method")
-        return list(set(filepaths))
+        return list(set(filepaths)), table
 
     def _sync_raw_frames(self, skipSqlSync=False):
         """*sync the raw frames between the project folder and the database*

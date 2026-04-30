@@ -504,6 +504,8 @@ class soxs_nod(base_recipe):
             orderJoins=orderJoins,
             debug=self.debug,
             fluxCalibrated=False,
+            qcTable=self.qc,
+            settings=self.settings,
         )
 
         if filePath_fluxcal:
@@ -530,6 +532,8 @@ class soxs_nod(base_recipe):
                 orderJoins=orderJoins,
                 debug=self.debug,
                 fluxCalibrated=True,
+                qcTable=self.qc,
+                settings=self.settings,
             )
 
         qcTable = self.report_output()
