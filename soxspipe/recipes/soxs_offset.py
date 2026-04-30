@@ -240,7 +240,7 @@ class soxs_offset(soxs_nod):
             [],
         )
 
-        # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
+        # SPLIT FRAMES INTO ON (negative net offset: offsetRA + offsetDec < 0) AND OFF (zero or positive net offset)
         for frame, filename in zip(allObjectFrames, allFilenames):
 
             offsetRA = frame.header[kw(f"OFFSET_RA")]
@@ -258,16 +258,16 @@ class soxs_offset(soxs_nod):
         uniqueOffsets = list(set(allFrameONOffsets))
 
         if len(allFrameONOffsets) != len(allFrameOFFOffsets):
-            error = f"Found {len(allFrameONOffsets)} A frames and {len(allFrameOFFOffsets)} B frames. The number of A and B frames must be the same for nodding reductions."
+            error = f"Found {len(allFrameONOffsets)} ON frames and {len(allFrameOFFOffsets)} OFF frames. The number of ON and OFF frames must be the same for offset reductions."
             self.log.error(
-                f"Found {len(allFrameONOffsets)} A frames and {len(allFrameOFFOffsets)} B frames. The number of A and B frames must be the same for nodding reductions."
+                f"Found {len(allFrameONOffsets)} ON frames and {len(allFrameOFFOffsets)} OFF frames. The number of ON and OFF frames must be the same for offset reductions."
             )
             raise Exception(error)
 
         if len(uniqueOffsets) == 0:
-            error = f"Did not find frames with a positive offset. Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the providing offset frames."
+            error = f"Did not find any ON frames (frames with a negative net offset, i.e. offsetRA + offsetDec < 0). Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the provided offset frames."
             self.log.error(
-                f"Did not find frames with a positive offset. Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the providing offset frames."
+                f"Did not find any ON frames (frames with a negative net offset, i.e. offsetRA + offsetDec < 0). Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the provided offset frames."
             )
             raise Exception(error)
 
