@@ -507,6 +507,7 @@ class soxs_offset(soxs_nod):
                 qcTable=self.qc,
                 settings=self.settings,
             )
+            productPath = filePath_fluxcal
 
         qcTable = self.report_output()
         self.clean_up(forceFail=forceFailure)
