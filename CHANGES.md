@@ -1,5 +1,6 @@
 # Release Notes
 
+offset mode has been integrated into the pipeline
 improved sky-subtraction
 updating settings for skysubraction
 print a table of exported files when running the 'raw' command
