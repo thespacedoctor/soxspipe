@@ -364,6 +364,7 @@ class soxs_offset(soxs_nod):
                 ],
                 orderJoins=orderJoins,
             )
+            productPath = extractionPath
 
             if self.generateReponseCurve:
                 forceFailure = True
@@ -397,6 +398,7 @@ class soxs_offset(soxs_nod):
                 ],
                 orderJoins=orderJoins,
             )
+            productPath = extractionPath
 
             if self.generateReponseCurve:
                 from soxspipe.commonutils import response_function
@@ -487,6 +489,7 @@ class soxs_offset(soxs_nod):
             fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
             # ADD THE SNR COLUMN AND COPY VALUES FROM stackedSpectrum
             fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
+            productPath = filePath_fluxcal
 
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=fluxcal_spec,
@@ -509,5 +512,7 @@ class soxs_offset(soxs_nod):
         self.clean_up(forceFail=forceFailure)
 
         self.log.debug("completed the ``produce_product`` method")
+
+        
 
         return productPath, qcTable
