@@ -12,7 +12,7 @@ Date Created
 
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
+from .soxs_nod import soxs_nod
 from soxspipe.commonutils.toolkit import (
     add_snr_efficiency_qcs,
     generic_quality_checks,
@@ -31,7 +31,7 @@ os.environ["TERM"] = "vt100"
 # TODO: When combining spectra at the end, we use a simple sum. If we use sigma-clipping followed by a mean combine, we can remove CRHs for data sets with more than 1 AB cycle.
 
 
-class soxs_nod(base_recipe):
+class soxs_offset(soxs_nod):
     """
     *Reduce SOXS/Xshooter data taken in nodding mode*
 
@@ -45,7 +45,6 @@ class soxs_nod(base_recipe):
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- generate debug plots. Default *False*
     - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
-    - ``recipeName`` -- the name of the recipe. Default "soxs-nod". This is used to retrieve the recipe settings from the settings dictionary and to name the product file (soxs_offset inherits soxs_nod)
 
     **Usage**
 
@@ -69,15 +68,14 @@ class soxs_nod(base_recipe):
         command=False,
         debug=False,
         turnOffMP=False,
-        recipeName="soxs-nod",
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_nod, self).__init__(
+        super(soxs_offset, self).__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
             overwrite=overwrite,
-            recipeName=recipeName,
+            recipeName="soxs-offset",
             command=command,
             debug=debug,
             verbose=verbose,
@@ -122,58 +120,6 @@ class soxs_nod(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
-
-    def verify_input_frames(self):
-        """*verify the input frame match those required by the soxs_nod recipe*
-
-        If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
-        """
-        self.log.debug("starting the ``verify_input_frames`` method")
-
-        kw = self.kw
-
-        error = False
-
-        # BASIC VERIFICATION COMMON TO ALL RECIPES
-        imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
-        arm = self.arm
-
-        if not error:
-            for i in imageTypes:
-                if i not in ["OBJECT", "LAMP,FLAT", "STD,FLUX", "STD,TELLURIC"]:
-                    error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
-
-        if "offset" in self.recipeName:
-            if not error:
-                for i in imageTech:
-                    if i in ["STD,FLUX", "STD,TELLURIC"]:
-                        pass
-                    elif i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,OFFSET"]:
-                        error = f"Found a {i} file. Input frames for soxspipe offset need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
-        else:
-            if not error:
-                if i in ["STD,FLUX", "STD,TELLURIC"]:
-                    pass
-                for i in imageTech:
-                    if i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
-                        error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
-
-        if not error:
-            for i in [f"DISP_TAB_{self.arm}", f"ORDER_TAB_{self.arm}", f"DISP_IMAGE_{self.arm}"]:
-                if i not in imageCat:
-                    error = f"Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm}). The sof file is missing a {i} frame."
-
-        if error:
-            sys.stdout.flush()
-            sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            self.log.print(self.inputFrames.summary)
-            self.log.print("")
-            raise TypeError(error)
-
-        self.imageType = imageTypes[0]
-        self.log.debug("completed the ``verify_input_frames`` method")
         return None
 
     def produce_product(self):
