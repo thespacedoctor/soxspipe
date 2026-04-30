@@ -82,7 +82,7 @@ class soxs_offset(soxs_nod):
             turnOffMP=turnOffMP,
         )
         self.log = log
-        log.debug("instansiating a new 'soxs_offset' object")
+        log.debug("instantiating a new 'soxs_offset' object")
         self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
