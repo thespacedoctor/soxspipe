@@ -1758,7 +1758,8 @@ def plot_merged_spectrum_qc(
             zorder=1,
         )
 
-    sky_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
+        sky_panel.set_ylim(10, merged_orders["SKY_COUNTS"].max() * 1.1)
+
     try:
         sky_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
     except Exception:
@@ -1787,7 +1788,7 @@ def plot_merged_spectrum_qc(
                 color="blue",
                 linestyle="-",
                 linewidth=0.2,
-                alpha=0.3,
+                alpha=0.08,
                 zorder=0,
                 label="Sky Line" if panel == top_panel else "",
             )

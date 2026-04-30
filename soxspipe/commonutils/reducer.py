@@ -9,6 +9,7 @@ Author
 Date Created
 : January 17, 2024
 """
+
 # from memory_profiler import profile
 from fundamentals import tools
 from builtins import object
@@ -16,7 +17,7 @@ import sys
 import os
 import multiprocessing
 
-multiprocessing.set_start_method("spawn")
+# multiprocessing.set_start_method("spawn")
 
 os.environ["TERM"] = "vt100"
 
