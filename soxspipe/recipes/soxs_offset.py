@@ -390,7 +390,7 @@ class soxs_offset(soxs_nod):
                 masterFlat = False
 
             mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
-                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath, masterFlat=master_flat
+                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath, masterFlat=masterFlat
             )
             stackedSpectrum, extractionPath = self.stack_extractions(
                 [
@@ -409,7 +409,7 @@ class soxs_offset(soxs_nod):
                     locationSetIndex=1,
                     orderTablePath=orderTablePath,
                     notFlattened=True,
-                    masterFlat=master_flat,
+                    masterFlat=masterFlat,
                 )
                 stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions(
                     [
