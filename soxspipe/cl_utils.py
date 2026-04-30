@@ -19,6 +19,7 @@ Usage:
     soxspipe [-Vxd] spat_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
     soxspipe [-Vxd] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vxd] offset <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
 
 Options:
@@ -40,6 +41,7 @@ Options:
     spat_solution                          the spatial solution recipe
     stare                                  reduce stare mode science frames
     nod                                    reduce nodding mode science frames
+    offset                                 reduce offset mode science frames
 
     start                                   start the watch daemon
     stop                                    stop the watch daemon
@@ -62,6 +64,7 @@ Options:
     --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
     --vlt                                  only use this flag if setting up a workspace on a VLT environment workstation
 """
+
 ################# GLOBAL IMPORTS ####################
 import time
 import os
@@ -325,6 +328,20 @@ def main(arguments=None):
                 debug=a["debugFlag"],
             )
             reducedNod = recipe.produce_product()
+
+        if a["offset"]:
+            from soxspipe.recipes import soxs_offset
+
+            recipe = soxs_offset(
+                log=log,
+                settings=settings,
+                inputFrames=a["inputFrames"],
+                verbose=verbose,
+                overwrite=a["overwriteFlag"],
+                command=command,
+                debug=a["debugFlag"],
+            )
+            reducedOffset = recipe.produce_product()
 
         if a["prep"]:
             do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
