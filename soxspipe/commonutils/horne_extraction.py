@@ -154,7 +154,7 @@ class horne_extraction(object):
         self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
         self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
 
-        # TODO: replace this value with true value from FITS headerfobject
+        # TODO: replace this value with true value from FITS header object
         self.ron = 3.0
 
         # OPEN THE SKY-SUBTRACTED FRAME
@@ -343,6 +343,10 @@ class horne_extraction(object):
         )
         productPath, self.qc, self.products, orderPolyTable, self.orderPixelTable, orderMetaTable = detector.get()
 
+        # FAILED TO FIND THE TRACE
+        if productPath is None:
+            return None
+
         # UNPACK THE ORDER TABLE
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=productPath
@@ -375,6 +379,10 @@ class horne_extraction(object):
         - ``mergedSpectumDF`` -- path to the FITS binary table containing the merged spectrum
         """
         self.log.debug("starting the ``extract`` method")
+
+        if self.orderPixelTable is None:
+            self.log.error("No trace found in the data, optimal extraction cannot be performed.")
+            return self.qc, self.products, None, None, None
 
         import matplotlib.pyplot as plt
         import pandas as pd
@@ -663,6 +671,7 @@ class horne_extraction(object):
                 ".fits", f"_EXTRACTED_ORDERS{self.noddingSequence}{self.notFlattened}.fits"
             )
             filePath = f"{self.productDir}/{filename}"
+            hduList.verify("fix")
             hduList.writeto(filePath, checksum=True, overwrite=True)
 
             utcnow = datetime.utcnow()
@@ -708,6 +717,7 @@ class horne_extraction(object):
             mergedTable = Table.from_pandas(mergedSpectumDF)
             BinTableHDU = fits.table_to_hdu(mergedTable)
             hduList = fits.HDUList([priHDU, BinTableHDU])
+            hduList.verify("fix")
             hduList.writeto(filePath, checksum=True, overwrite=True)
 
             # EXPORTING SPECTRUM IN ASCII FORMAT

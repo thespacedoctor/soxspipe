@@ -1,5 +1,8 @@
 # Release Notes
 
+don't attempt sky-subtraction on *very* bright sources in VIS
+if contunuum fit fails on a single NOD cycle, still continue and attempt to fit other cycles
+adding fits verification
 offset mode has been integrated into the pipeline
 improved sky-subtraction
 updating settings for skysubraction
