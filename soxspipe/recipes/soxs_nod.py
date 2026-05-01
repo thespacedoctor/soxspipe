@@ -9,6 +9,7 @@ Author
 Date Created
 : February 27, 2024
 """
+
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
 from .base_recipe import base_recipe
@@ -44,6 +45,7 @@ class soxs_nod(base_recipe):
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- generate debug plots. Default *False*
     - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
+    - ``recipeName`` -- the name of the recipe. Default "soxs-nod". This is used to retrieve the recipe settings from the settings dictionary and to name the product file (soxs_offset inherits soxs_nod)
 
     **Usage**
 
@@ -67,6 +69,7 @@ class soxs_nod(base_recipe):
         command=False,
         debug=False,
         turnOffMP=False,
+        recipeName="soxs-nod",
     ):
         # INHERIT INITIALISATION FROM  base_recipe
         super(soxs_nod, self).__init__(
@@ -74,7 +77,7 @@ class soxs_nod(base_recipe):
             settings=settings,
             inputFrames=inputFrames,
             overwrite=overwrite,
-            recipeName="soxs-nod",
+            recipeName=recipeName,
             command=command,
             debug=debug,
             verbose=verbose,
@@ -141,10 +144,20 @@ class soxs_nod(base_recipe):
                 if i not in ["OBJECT", "LAMP,FLAT", "STD,FLUX", "STD,TELLURIC"]:
                     error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
 
-        if not error:
-            for i in imageTech:
-                if i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
-                    error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
+        if "offset" in self.recipeName:
+            if not error:
+                for i, ii in zip(imageTech, imageTypes):
+                    if ii in ["STD,FLUX", "STD,TELLURIC"]:
+                        pass
+                    elif i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,OFFSET"]:
+                        error = f"Found a {i} file. Input frames for soxspipe offset need to be an object/std offset frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
+        else:
+            if not error:
+                for i, ii in zip(imageTech, imageTypes):
+                    if ii in ["STD,FLUX", "STD,TELLURIC"]:
+                        pass
+                    elif i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
+                        error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
 
         if not error:
             for i in [f"DISP_TAB_{self.arm}", f"ORDER_TAB_{self.arm}", f"DISP_IMAGE_{self.arm}"]:
@@ -427,7 +440,7 @@ class soxs_nod(base_recipe):
                 masterFlat = False
 
             mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
-                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath, masterFlat=master_flat
+                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath, masterFlat=masterFlat
             )
             stackedSpectrum, extractionPath = self.stack_extractions(
                 [mergedSpectrumDF_A, mergedSpectrumDF_B], orderJoins=orderJoins
@@ -442,7 +455,7 @@ class soxs_nod(base_recipe):
                     locationSetIndex=1,
                     orderTablePath=orderTablePath,
                     notFlattened=True,
-                    masterFlat=master_flat,
+                    masterFlat=masterFlat,
                 )
                 stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions(
                     [mergedSpectrumDF_A, mergedSpectrumDF_B], notFlattened=True, orderJoins=orderJoins
@@ -577,28 +590,38 @@ class soxs_nod(base_recipe):
 
         # SUBTRACTING A FROM B
         A_minus_B_notflattened = aFrame.subtract(bFrame)
-        B_minus_A_notflattened = bFrame.subtract(aFrame)
+        if "nod" in self.recipeName:
+            B_minus_A_notflattened = bFrame.subtract(aFrame)
 
         # REAPPLYING HEADERS
         hdr_A = aFrame.header
         hdr_B = bFrame.header
         A_minus_B_notflattened.header = hdr_A
-        B_minus_A_notflattened.header = hdr_B
+        if "nod" in self.recipeName:
+            B_minus_A_notflattened.header = hdr_B
 
         # WRITE IN A FITS FILE THE A-B AND B-A FRAMES
         if notFlattened:
             extraText = " (not flattened this time - needed to calculate efficiency)"
         else:
             extraText = ""
-        self.log.print(f"\n# PROCESSING AB NODDING CYCLE {locationSetIndex} {extraText}")
+        if "nod" in self.recipeName:
+            self.log.print(f"\n# PROCESSING AB NODDING CYCLE {locationSetIndex} {extraText}")
+        else:
+            self.log.print(f"\n# PROCESSING ON-OFF OFFSET CYCLE {locationSetIndex} {extraText}")
         home = expanduser("~")
-        filename = self.sofName + f"_AB_{locationSetIndex}.fits"
-        filePath = f"{self.productDir}/{filename}"
-        A_minus_B_notflattened.write(filePath, overwrite=True, checksum=True)
+        if "nod" in self.recipeName:
+            filename = self.sofName + f"_AB_{locationSetIndex}.fits"
+            filePath = f"{self.productDir}/{filename}"
+            A_minus_B_notflattened.write(filePath, overwrite=True, checksum=True)
 
-        filename = self.sofName + f"_BA_{locationSetIndex}.fits"
-        filePath = f"{self.productDir}/{filename}"
-        B_minus_A_notflattened.write(filePath, overwrite=True, checksum=True)
+            filename = self.sofName + f"_BA_{locationSetIndex}.fits"
+            filePath = f"{self.productDir}/{filename}"
+            B_minus_A_notflattened.write(filePath, overwrite=True, checksum=True)
+        else:
+            filename = self.sofName + f"_ONOFF_{locationSetIndex}.fits"
+            filePath = f"{self.productDir}/{filename}"
+            A_minus_B_notflattened.write(filePath, overwrite=True, checksum=True)
 
         if False:
             from soxspipe.commonutils.toolkit import quicklook_image
@@ -613,16 +636,17 @@ class soxs_nod(base_recipe):
                 surfacePlot=True,
                 saveToPath=False,
             )
-            quicklook_image(
-                log=self.log,
-                CCDObject=B_minus_A_notflattened,
-                show=True,
-                ext="data",
-                stdWindow=3,
-                title=False,
-                surfacePlot=True,
-                saveToPath=False,
-            )
+            if "nod" in self.recipeName:
+                quicklook_image(
+                    log=self.log,
+                    CCDObject=B_minus_A_notflattened,
+                    show=True,
+                    ext="data",
+                    stdWindow=3,
+                    title=False,
+                    surfacePlot=True,
+                    saveToPath=False,
+                )
 
         # TODO: ADD THESE CHECKS .... LIKELY FOR EACH AB CYCLE INDEX
         if True:
@@ -635,7 +659,7 @@ class soxs_nod(base_recipe):
             )
             self.qc = spectroscopic_image_quality_checks(
                 log=self.log,
-                frame=B_minus_A_notflattened,
+                frame=A_minus_B_notflattened,
                 settings=self.settings,
                 recipeName=self.recipeName,
                 qcTable=self.qc,
@@ -655,17 +679,19 @@ class soxs_nod(base_recipe):
                 master_flat=masterFlat,
                 order_table=orderTablePath,
             )
-            B_minus_A = self.detrend(
-                inputFrame=B_minus_A_notflattened,
-                master_bias=False,
-                dark=False,
-                master_flat=masterFlat,
-                order_table=orderTablePath,
-            )
+            if "nod" in self.recipeName:
+                B_minus_A = self.detrend(
+                    inputFrame=B_minus_A_notflattened,
+                    master_bias=False,
+                    dark=False,
+                    master_flat=masterFlat,
+                    order_table=orderTablePath,
+                )
 
         else:
             A_minus_B = A_minus_B_notflattened
-            B_minus_A = B_minus_A_notflattened
+            if "nod" in self.recipeName:
+                B_minus_A = B_minus_A_notflattened
 
         # EXTRACT THE A MINUS B FRAME
         optimalExtractor = horne_extraction(
@@ -691,26 +717,29 @@ class soxs_nod(base_recipe):
         self.qc, theseProducts, mergedSpectrumDF_A, orderJoins, extractionFITSPathA = optimalExtractor.extract()
 
         # EXTRACT THE B MINUS A FRAME
-        optimalExtractor = horne_extraction(
-            log=self.log,
-            skyModelFrame=False,
-            skySubtractedFrame=B_minus_A,
-            unflattenedFrame=B_minus_A_notflattened,
-            twoDMapPath=self.twoDMap,
-            settings=self.settings,
-            recipeName=self.recipeName,
-            recipeSettings=self.recipeSettings,
-            qcTable=self.qc,
-            productsTable=theseProducts,
-            dispersionMap=self.dispMap,
-            sofName=self.sofName,
-            locationSetIndex=locationSetIndex,
-            startNightDate=self.startNightDate,
-            debug=self.debug,
-            notFlattened=notFlattened,
-            turnOffMP=self.turnOffMP,
-        )
-        self.qc, theseProducts, mergedSpectrumDF_B, orderJoins, extractionFITSPathB = optimalExtractor.extract()
+        if "nod" in self.recipeName:
+            optimalExtractor = horne_extraction(
+                log=self.log,
+                skyModelFrame=False,
+                skySubtractedFrame=B_minus_A,
+                unflattenedFrame=B_minus_A_notflattened,
+                twoDMapPath=self.twoDMap,
+                settings=self.settings,
+                recipeName=self.recipeName,
+                recipeSettings=self.recipeSettings,
+                qcTable=self.qc,
+                productsTable=theseProducts,
+                dispersionMap=self.dispMap,
+                sofName=self.sofName,
+                locationSetIndex=locationSetIndex,
+                startNightDate=self.startNightDate,
+                debug=self.debug,
+                notFlattened=notFlattened,
+                turnOffMP=self.turnOffMP,
+            )
+            self.qc, theseProducts, mergedSpectrumDF_B, orderJoins, extractionFITSPathB = optimalExtractor.extract()
+        else:
+            mergedSpectrumDF_B = False
 
         if self.recipeSettings["save_single_frame_extractions"] == True:
             self.products = theseProducts
@@ -809,6 +838,7 @@ class soxs_nod(base_recipe):
         home = expanduser("~")
         filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
+        hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT

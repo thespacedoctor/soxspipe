@@ -9,6 +9,7 @@ Author
 Date Created
 : January 22, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 
 from soxspipe.commonutils import filenamer
@@ -348,6 +349,7 @@ class base_recipe(object):
                 toolkit.frame_to_32(frame)
                 # WRITE CCDDATA OBJECT TO FILE
                 HDUList = frame.to_hdu()
+                HDUList.verify("fix")
                 HDUList.writeto(bitMapPath, output_verify="exception", overwrite=True, checksum=True)
 
             self.log.critical(message)
@@ -1067,6 +1069,7 @@ class base_recipe(object):
 
         HDUList = frame.to_hdu(hdu_mask="QUAL", hdu_uncertainty="ERRS", hdu_flags=None)
         HDUList[0].name = "FLUX"
+        HDUList.verify("fix")
         if product:
             HDUList.writeto(filepath, output_verify="fix+warn", overwrite=overwrite, checksum=True)
         else:
@@ -1397,6 +1400,7 @@ class base_recipe(object):
                 header = copy.deepcopy(inputFrame.header)
                 primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
                 hdul = fits.HDUList([primary_hdu])
+                hdul.verify("fix")
                 hdul.writeto(filepath, output_verify="exception", overwrite=True, checksum=True)
 
                 self.products = pd.concat(

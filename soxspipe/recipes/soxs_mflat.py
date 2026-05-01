@@ -9,6 +9,7 @@ Author
 Date Created
 : September 16, 2020
 """
+
 from soxspipe.commonutils.toolkit import generic_quality_checks, spectroscopic_image_quality_checks
 from datetime import datetime
 
@@ -463,6 +464,7 @@ class soxs_mflat(base_recipe):
                     header = copy.deepcopy(inputFrame.header)
                     primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
                     hdul = fits.HDUList([primary_hdu])
+                    hdul.verify("fix")
                     hdul.writeto(filepath, output_verify="exception", overwrite=True, checksum=True)
 
                     self.products = pd.concat(

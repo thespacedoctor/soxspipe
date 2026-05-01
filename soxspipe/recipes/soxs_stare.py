@@ -9,6 +9,7 @@ Author
 Date Created
 : February 28, 2022
 """
+
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from .base_recipe import base_recipe
@@ -453,90 +454,38 @@ class soxs_stare(base_recipe):
                 skymodel.subtract()
             )
 
-            # WRITE SKY-SUBTRACTON TO DISK
-            filename = self.filenameTemplate.replace(".fits", "_SKYSUB.fits")
-            productPath = self._write(
-                frame=skySubtractedCCDData,
-                filedir=self.workspaceRootPath,
-                filename=filename,
-                overwrite=True,
-                maskToZero=True,
-            )
-            filename = os.path.basename(productPath)
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-            self.products = pd.concat(
-                [
-                    self.products,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": "soxs-stare",
-                            "product_label": "SKY_SUBTRACTED_OBJECT",
-                            "file_name": filename,
-                            "file_type": "FITS",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": f"The sky-subtracted object",
-                            "file_path": productPath,
-                            "label": "PROD",
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
+            if skymodelCCDData is None:
+                self.subtractSky = False
+                self.recipeSettings["sky-subtraction"]["subtract_sky"] = False
+                skymodelCCDData = False
+                skySubtractedCCDData = combined_object
+                self.recipeSettings["horne-extraction-slit-length"] = 30.0
+            else:
 
-            # WRITE SKY-MODEL TO DISK
-            filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
-            productPath = self._write(
-                frame=skymodelCCDData, filedir=self.workspaceRootPath, filename=filename, overwrite=True
-            )
-            filename = os.path.basename(productPath)
-            self.products = pd.concat(
-                [
-                    self.products,
-                    pd.Series(
-                        {
-                            "soxspipe_recipe": "soxs-stare",
-                            "product_label": "SKY_MODEL",
-                            "file_name": filename,
-                            "file_type": "FITS",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": f"The sky background model",
-                            "file_path": productPath,
-                            "label": "PROD",
-                        }
-                    )
-                    .to_frame()
-                    .T,
-                ],
-                ignore_index=True,
-            )
-
-            if True:
-                # WRITE SKY-MODEL TO DISK
-                filename = self.filenameTemplate.replace(".fits", "_SKYSUB_RESIDUALS.fits")
+                # WRITE SKY-SUBTRACTON TO DISK
+                filename = self.filenameTemplate.replace(".fits", "_SKYSUB.fits")
                 productPath = self._write(
-                    frame=skySubtractedResidualsCCDData,
+                    frame=skySubtractedCCDData,
                     filedir=self.workspaceRootPath,
                     filename=filename,
                     overwrite=True,
+                    maskToZero=True,
                 )
                 filename = os.path.basename(productPath)
+                utcnow = datetime.utcnow()
+                utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
                 self.products = pd.concat(
                     [
                         self.products,
                         pd.Series(
                             {
                                 "soxspipe_recipe": "soxs-stare",
-                                "product_label": "SKY_SUB_RESIDUALS",
+                                "product_label": "SKY_SUBTRACTED_OBJECT",
                                 "file_name": filename,
                                 "file_type": "FITS",
                                 "obs_date_utc": self.dateObs,
                                 "reduction_date_utc": utcnow,
-                                "product_desc": f"The sky subtraction residuals",
+                                "product_desc": f"The sky-subtracted object",
                                 "file_path": productPath,
                                 "label": "PROD",
                             }
@@ -547,22 +496,82 @@ class soxs_stare(base_recipe):
                     ignore_index=True,
                 )
 
-            # ADD QUALITY CHECKS
-            self.qc = generic_quality_checks(
-                log=self.log,
-                frame=skySubtractedCCDData,
-                settings=self.settings,
-                recipeName=self.recipeName,
-                qcTable=self.qc,
-            )
-            self.qc = spectroscopic_image_quality_checks(
-                log=self.log,
-                frame=skySubtractedCCDData,
-                settings=self.settings,
-                recipeName=self.recipeName,
-                qcTable=self.qc,
-                orderTablePath=orderTablePath,
-            )
+                # WRITE SKY-MODEL TO DISK
+                filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
+                productPath = self._write(
+                    frame=skymodelCCDData, filedir=self.workspaceRootPath, filename=filename, overwrite=True
+                )
+                filename = os.path.basename(productPath)
+                self.products = pd.concat(
+                    [
+                        self.products,
+                        pd.Series(
+                            {
+                                "soxspipe_recipe": "soxs-stare",
+                                "product_label": "SKY_MODEL",
+                                "file_name": filename,
+                                "file_type": "FITS",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "product_desc": f"The sky background model",
+                                "file_path": productPath,
+                                "label": "PROD",
+                            }
+                        )
+                        .to_frame()
+                        .T,
+                    ],
+                    ignore_index=True,
+                )
+
+                if True:
+                    # WRITE SKY-MODEL TO DISK
+                    filename = self.filenameTemplate.replace(".fits", "_SKYSUB_RESIDUALS.fits")
+                    productPath = self._write(
+                        frame=skySubtractedResidualsCCDData,
+                        filedir=self.workspaceRootPath,
+                        filename=filename,
+                        overwrite=True,
+                    )
+                    filename = os.path.basename(productPath)
+                    self.products = pd.concat(
+                        [
+                            self.products,
+                            pd.Series(
+                                {
+                                    "soxspipe_recipe": "soxs-stare",
+                                    "product_label": "SKY_SUB_RESIDUALS",
+                                    "file_name": filename,
+                                    "file_type": "FITS",
+                                    "obs_date_utc": self.dateObs,
+                                    "reduction_date_utc": utcnow,
+                                    "product_desc": f"The sky subtraction residuals",
+                                    "file_path": productPath,
+                                    "label": "PROD",
+                                }
+                            )
+                            .to_frame()
+                            .T,
+                        ],
+                        ignore_index=True,
+                    )
+
+                # ADD QUALITY CHECKS
+                self.qc = generic_quality_checks(
+                    log=self.log,
+                    frame=skySubtractedCCDData,
+                    settings=self.settings,
+                    recipeName=self.recipeName,
+                    qcTable=self.qc,
+                )
+                self.qc = spectroscopic_image_quality_checks(
+                    log=self.log,
+                    frame=skySubtractedCCDData,
+                    settings=self.settings,
+                    recipeName=self.recipeName,
+                    qcTable=self.qc,
+                    orderTablePath=orderTablePath,
+                )
         else:
             skymodelCCDData = False
             skySubtractedCCDData = combined_object

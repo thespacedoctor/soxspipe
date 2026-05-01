@@ -482,6 +482,19 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             turnOffMP=turnOffMP,
         )
 
+    if "offset" in recipe:
+        from soxspipe.recipes import soxs_offset
+
+        soxs_recipe = soxs_offset(
+            log=log,
+            settings=settings,
+            inputFrames=sof,
+            overwrite=overwrite,
+            command=command,
+            verbose=verbose,
+            turnOffMP=turnOffMP,
+        )
+
     productPath, qcTable = soxs_recipe.produce_product()
     del soxs_recipe
 

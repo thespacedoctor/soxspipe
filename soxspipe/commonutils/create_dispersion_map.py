@@ -28,6 +28,7 @@ Module Structure
   4. Fit polynomial dispersion solution (wavelength, order, slit)
   5. Generate QC plots and write output files
 """
+
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils.toolkit import unpack_order_table, read_spectral_format, twoD_disp_map_image_to_dataframe
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
@@ -1635,6 +1636,7 @@ class create_dispersion_map(object):
         # CREATE PRIMARY HDU AND WRITE FITS FILE
         priHDU = fits.PrimaryHDU(header=header)
         hduList = fits.HDUList([priHDU, BinTableHDU])
+        hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         if False:
@@ -1657,6 +1659,7 @@ class create_dispersion_map(object):
             polyOrders = "".join(polyOrders)
             filename = f"{self.recipeName}_{self.arm}_{polyOrders}.fits"
             cacheFilePath = f"{cache}/{filename}"
+            hduList.verify("fix")
             hduList.writeto(cacheFilePath, checksum=True, overwrite=True)
 
         self.log.debug("completed the ``write_map_to_file`` method")
@@ -2695,6 +2698,7 @@ class create_dispersion_map(object):
         image_hdu2 = fits.ImageHDU(orderMap.data)
         image_hdu2.header["EXTNAME"] = "ORDER"
         hdul = fits.HDUList([primary_hdu, image_hdu, image_hdu2])
+        hdul.verify("fix")
         hdul.writeto(dispersion_image_filePath, output_verify="exception", overwrite=True, checksum=True)
 
         self.log.debug("completed the ``map_to_image`` method")
@@ -2723,7 +2727,7 @@ class create_dispersion_map(object):
         import numpy as np
         from scipy.interpolate import griddata
 
-        (order, minWl, maxWl) = orderInfo
+        order, minWl, maxWl = orderInfo
         slitMap, wlMap, orderMap = self.create_placeholder_images(order=order)
 
         if np.count_nonzero(wlMap.data) == 0:

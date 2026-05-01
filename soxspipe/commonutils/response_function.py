@@ -9,6 +9,7 @@
 :Date Created:
     July 28, 2023
 """
+
 import sys
 import os
 from builtins import object
@@ -425,6 +426,7 @@ class response_function(object):
 
             priHDU = fits.PrimaryHDU(header=header)
             hduList = fits.HDUList([priHDU, BinTableHDU])
+            hduList.verify("fix")
             hduList.writeto(filepath, checksum=True, overwrite=True)
 
             utcnow = datetime.utcnow()
@@ -681,6 +683,7 @@ class response_function(object):
         priHDU = fits.PrimaryHDU(header=header)
 
         hduList = fits.HDUList([priHDU, BinTableHDU])
+        hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         utcnow = datetime.utcnow()

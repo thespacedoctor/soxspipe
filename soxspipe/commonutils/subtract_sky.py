@@ -99,6 +99,8 @@ class subtract_sky(object):
         self.recipeSettings = recipeSettings
         self.startNightDate = startNightDate
         self.debug = debug
+        ## NEEDED TO FLAG IF THE SKY SUBTRACTION SHOULD BE STOPPED - E.G. IF THE OBJECT IS VERY BRIGHT AND WE ARE LIKELY FITTING THE SKY TO THE OBJECT FLUX
+        self.stopSubtraction = False
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -230,6 +232,8 @@ class subtract_sky(object):
                 clipSlitEdge=self.recipeSettings["sky-subtraction"]["clip-slit-edge-fraction"],
             )
             allimageMapOrder.append(imageMapOrder)
+            if self.stopSubtraction:
+                return None, None, None, self.qc, self.products
 
         # MASK OUT OBJECT PIXELS
         allimageMapOrder = self.clip_object_slit_positions(
@@ -1018,7 +1022,9 @@ class subtract_sky(object):
                     totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
                     percent = (float(totalClipped) / float(allPixels)) * 100.0
                     if percent < 2:
-                        print("FIXING PERCENT < 2")
+                        if imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"].mean() > 4000:
+                            self.stopSubtraction = True
+                            return None
                         imageMapOrderDF["flagged_object_clipped"] = False
                         sigma_clip_limit -= 0.1
                         if quantile > 0.1:
@@ -1109,27 +1115,32 @@ class subtract_sky(object):
             1 / imageMapOrder.loc[~mask_all_clipped, "residual_windowed_std"].values
         )
 
-        imageMapOrder.loc[~mask_all_clipped, "weights2"] = imageMapOrder.loc[~mask_all_clipped, "flux"].values + 1000
-        imageMapOrder.loc[imageMapOrder["weights2"] < 0.01, "weights2"] = 0.01
+        if self.arm.upper() == "VIS":
+            imageMapOrder.loc[~mask_all_clipped, "weights2"] = (
+                imageMapOrder.loc[~mask_all_clipped, "flux"].values + 1000
+            )
+            imageMapOrder.loc[imageMapOrder["weights2"] < 0.01, "weights2"] = 0.01
 
-        described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
-        if self.debug:
-            print("weights2 description", described_weights)
+            described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
+            if self.debug:
+                print("weights2 description", described_weights)
 
-        imageMapOrder.loc[~mask_all_clipped, "weights2"] = imageMapOrder.loc[~mask_all_clipped, "weights2"].values / (
-            imageMapOrder.loc[~mask_all_clipped, "residual_windowed_std"].values * 2.0
-        )
+            imageMapOrder.loc[~mask_all_clipped, "weights2"] = imageMapOrder.loc[
+                ~mask_all_clipped, "weights2"
+            ].values / (imageMapOrder.loc[~mask_all_clipped, "residual_windowed_std"].values * 2.0)
 
-        described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
-        if self.debug:
-            print("weights2 description", described_weights)
+            described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
+            if self.debug:
+                print("weights2 description", described_weights)
 
-        imageMapOrder.loc[~mask_all_clipped, "weights"] = np.pow(
-            imageMapOrder.loc[~mask_all_clipped, "weights2"].values, 1.2
-        )
-        imageMapOrder.loc[~mask_all_clipped, "weights2"] = np.pow(
-            imageMapOrder.loc[~mask_all_clipped, "weights2"].values, 1.2
-        )
+            imageMapOrder.loc[~mask_all_clipped, "weights"] = np.pow(
+                imageMapOrder.loc[~mask_all_clipped, "weights2"].values, 1.2
+            )
+            imageMapOrder.loc[~mask_all_clipped, "weights2"] = np.pow(
+                imageMapOrder.loc[~mask_all_clipped, "weights2"].values, 1.2
+            )
+        else:
+            imageMapOrder.loc[~mask_all_clipped, "weights2"] = imageMapOrder.loc[~mask_all_clipped, "weights"]
 
         described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
         if self.debug:
@@ -1146,7 +1157,7 @@ class subtract_sky(object):
 
         # STARTER KNOTS USED TO MEASURE THE RESIDUAL FLOOR BEFORE REVERTING TO defaultPointsPerKnot
         if self.arm.upper() == "NIR":
-            starterPointsPerKnot = 750
+            starterPointsPerKnot = 300
         else:
             starterPointsPerKnot = 1000
 
@@ -1272,6 +1283,19 @@ class subtract_sky(object):
                 # POTENTIAL NEW KNOTS PLACED HALF WAY BETWEEN ADJACENT CURRENT KNOTS
                 meanResiduals = []
 
+                # FIND ALL EXISTING KNOTS THAT ARE IN THE NOISE
+                nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
+                df = imageMapOrder.loc[~mask_all_clipped & nosiyRegionMask]
+                ind = np.digitize(df["wavelength"], allKnots)
+                if len(ind):
+                    ind = np.insert(ind, 0, 0)
+                    ind = np.append(ind, len(allKnots))
+
+                # REMOVE THE KNOTS FOUND WITH INDEX IND
+                knotsToRemove = allKnots[ind - 1]
+
+                allKnots = np.array([k for k in allKnots if k not in knotsToRemove])
+
                 # GROUP ALL DATA POINTS BETWEEN KNOTS
                 nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
                 df = imageMapOrder.loc[~mask_all_clipped & ~nosiyRegionMask]
@@ -1282,28 +1306,31 @@ class subtract_sky(object):
 
                 ## ANY GROUPS WITH A MEAN > 0 WILL CONTAIN HIGH RESIDUALS SOMEWHERE
                 meanResiduals = group["sky_local_vs_global"].mean()
+                summedResiduals = group["sky_local_vs_global"].sum()
 
                 counts = group.size()
+                index = group.indices.keys()
                 potentialNewKnots = group["wavelength"].mean()
                 potentialNewKnots2 = group["wavelength"].mean() - group["wavelength"].std()
                 potentialNewKnots3 = group["wavelength"].mean() + group["wavelength"].std()
+
                 mask = counts < min_points_per_knot
                 meanResiduals[mask] = -100000
 
                 meanResiduals = np.array(meanResiduals)
 
-                mask = np.ma.masked_where(meanResiduals > 0, meanResiduals).mask
-                # ELSE ADD NEW KNOT IF ABOVE FLOOT
+                mask = np.ma.masked_where((meanResiduals > 0) & (summedResiduals > 100), meanResiduals).mask
+                # ELSE ADD NEW KNOT IF ABOVE FLOOR
                 for nk in [potentialNewKnots2, potentialNewKnots3]:
                     nk = np.ma.compressed(np.ma.masked_array(np.array(nk), ~mask))
                     allKnots = np.sort(np.concatenate((nk, allKnots)))
                     extraKnots = np.sort(np.concatenate((nk, extraKnots)))
 
-                # NOW ADD KNOTS AT SKYLINE NODES
-                skylineNodes = ~mask_all_clipped & (imageMapOrder["flagged_sky_line"] == "node")
-                df = imageMapOrder.loc[skylineNodes]
+                # NOW ADD KNOTS WHERE BSPLINE SKY IS BELOW 0
+                lowBspline = ~mask_all_clipped & (imageMapOrder["sky_model_wl"] < -5000)
+                df = imageMapOrder.loc[lowBspline]
                 ind = np.digitize(df["wavelength"], allKnots)
-                group = imageMapOrder.loc[skylineNodes].groupby(ind)
+                group = imageMapOrder.loc[lowBspline].groupby(ind)
                 counts = group.size()
                 potentialNewKnots = group["wavelength"].mean()
                 mask = counts < min_points_per_knot
@@ -1392,7 +1419,7 @@ class subtract_sky(object):
                 window = 25
 
             if self.arm.upper() in ["NIR"]:
-                window = 50
+                window = 35
 
             imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = imageMapOrder.loc[
                 ~mask_all_clipped, "flux"
@@ -1413,7 +1440,7 @@ class subtract_sky(object):
                 imageMapOrder.loc[~mask_all_clipped, "sky_residuals"].values, window=window
             )
 
-            if self.debug and iterationCount > 4:
+            if self.debug and iterationCount > 0:
                 self.plot_order_skymodel_fitting_quicklook(
                     imageMapOrder, tck, title=f"Fitting the sky model\niteration {iterationCount}", knots=allKnots
                 )
@@ -1451,6 +1478,7 @@ class subtract_sky(object):
                 if lastExtraKnotCount == len(extraKnots):
                     self.log.info(f"\t\tNo new knots added on iteration {iterationCount}. Stopping iterations.\n")
                     break
+
             lastExtraKnotCount = len(extraKnots)
 
         if not lastExtraKnotCount:
