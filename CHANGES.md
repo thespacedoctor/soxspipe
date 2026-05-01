@@ -1,5 +1,6 @@
 # Release Notes
 
+* adding quickstart data link to the docs (thanks Markus)
 
 ## v0.17.1 - May 1, 2026
 

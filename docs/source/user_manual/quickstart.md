@@ -21,18 +21,19 @@ Please refer to the [installation section](installation.md) for alternative inst
 
 ## Demo Data
 
-The demo SOXS data for this quickstart guide are taken from the nights of 8th-12th October 2025 and 11th January 2026. The 'science' objects found in the data are actually spectroscopic standard stars taken in science mode. 
+The demo SOXS data for this quickstart guide are taken from the nights of October 2025 and January 2026. The 'science' objects found in the data are actually spectroscopic standard stars taken in science mode. 
 
-To download the data from the [ESO Science Archive Facility](http://archive.eso.org/eso/eso_archive_main.html), select the the dates above and choose SOXS as the instrument you are interested in.
+[You can download the data from here](http://archive.eso.org/wdb/wdb/eso/packages/query?pkg_id=167586).
 
-For each dataset, click on the 'MarkAll' button and then 'Request marked datasets' (see {numref}`request_data`).
+Alternatively, if you would like to download a different dataset, then naivigate to the [ESO Science Archive Facility](http://archive.eso.org/eso/eso_archive_main.html), select the the dates above and choose SOXS as the instrument you are interested in.
+
+Click on the 'MarkAll' button and then 'Request marked datasets' (see {numref}`request_data`).
 
 :::{figure-md} request_data
 ![image-20250123120219627](../_images/image-20250123120219627.png)
 
 Mark all of the data and request to download.
 :::
-
 
 Collecting the associated raw calibration frames with the raw science frames is essential. Otherwise, the pipeline will not be able to reduce your data. To do this, click the 'Run association' button beside the 'Associated raw calibrations' checkbox (shown in {numref}`associated_calibration_data`). Once the association is completed, the 'Associated raw calibrations' checkbox should be checked.
 
