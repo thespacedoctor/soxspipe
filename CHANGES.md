@@ -1,5 +1,10 @@
 # Release Notes
 
+
+## v0.17.1 - May 1, 2026
+
+* **FIXED:** case sensitivity issue with the name of the `skylines.fits` file on ubuntu.
+
 ## v0.17.0 - May 1, 2026
 
 * **FEATURE:** Offset mode has been integrated into the pipeline.
