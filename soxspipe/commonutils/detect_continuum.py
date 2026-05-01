@@ -9,6 +9,7 @@ Author
 Date Created
 : September 10, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.toolkit import cut_image_slice
@@ -540,6 +541,7 @@ class _base_detect(object):
         priHDU = fits.PrimaryHDU(header=header)
 
         hduList = fits.HDUList([priHDU, BinTableHDU, BinTableHDU2])
+        hduList.verify("fix")
         hduList.writeto(order_table_path, checksum=True, overwrite=True)
 
         self.log.debug("completed the ``write_order_table_to_file`` method")
@@ -787,7 +789,7 @@ class detect_continuum(_base_detect):
                     self.log.print(
                         f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters."
                     )
-                    raise e
+                    return None, self.qc, self.products, None, None, None
                 if self.settings["tune-pipeline"]:
                     raise e
 
