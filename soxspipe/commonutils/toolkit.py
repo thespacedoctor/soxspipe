@@ -1624,7 +1624,7 @@ def plot_merged_spectrum_qc(
     # Top panel with linear scale
     top_panel = fig.add_subplot(gs[0, :])
     if fluxCalibrated:
-        top_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\AA^{-1}$)", fontsize=10)
+        top_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\\AA^{-1}$)", fontsize=10)
     else:
         top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
 
@@ -1652,7 +1652,7 @@ def plot_merged_spectrum_qc(
     if not fluxCalibrated:
         middle_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
     else:
-        middle_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\AA^{-1}$)", fontsize=10)
+        middle_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\\AA^{-1}$)", fontsize=10)
     middle_panel.set_xlabel("wavelength (nm)", fontsize=10)
     middle_panel.set_yscale("log")
 
