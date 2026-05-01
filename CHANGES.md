@@ -1,16 +1,18 @@
 # Release Notes
 
-don't attempt sky-subtraction on *very* bright sources in VIS
-if contunuum fit fails on a single NOD cycle, still continue and attempt to fit other cycles
-adding fits verification
-offset mode has been integrated into the pipeline
-improved sky-subtraction
-updating settings for skysubraction
-print a table of exported files when running the 'raw' command
-adding new parameters to fit and clip noise from the sky-model spectrum
-sky spectrum added to the stare extraction QC plots
-adding SNR values to the bottom panel of the extracted spectra QC plots
-sky flux and variance added to the extracted spectra FITS tables
+## v0.17.0 - May 1, 2026
+
+* **FEATURE:** Offset mode has been integrated into the pipeline.
+* **ENHANCEMENT:** Print a table of exported files when running the `raw` command.
+* **ENHANCEMENT:** Add new parameters to fit and clip noise from the sky-model spectrum.
+* **ENHANCEMENT:** Sky spectrum added to the stare extraction QC plots.
+* **ENHANCEMENT:** Add SNR values to the bottom panel of the extracted spectra QC plots.
+* **ENHANCEMENT:** Sky flux and variance added to the extracted spectra FITS tables (stare so far).
+* **REFACTOR:** Don’t attempt sky-subtraction on *very* bright sources in VIS.
+* **REFACTOR:** If continuum fitting fails on a single NOD cycle, still continue and attempt to fit other cycles.
+* **REFACTOR:** Add FITS verification.
+* **REFACTOR:** Improve sky-subtraction.
+
 
 ## v0.16.0 - April 20, 2026
 
