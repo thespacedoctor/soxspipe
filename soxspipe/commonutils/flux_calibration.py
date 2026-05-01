@@ -195,6 +195,7 @@ class flux_calibration(object):
 
         filename = f"{self.sofName}_FLUXCAL.fits"
         filePath = f"{self.productDir}/{filename}"
+        hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         from datetime import datetime

@@ -838,6 +838,7 @@ class soxs_nod(base_recipe):
         home = expanduser("~")
         filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
+        hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
