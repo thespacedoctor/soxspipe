@@ -409,7 +409,7 @@ soxs-stare-std:
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO DETERMINE IF THE SKY-DATA RESIDUALS ARE JUST NOISE (EDGE OF ORDERS) 
             noise_rolling_window_size: 250
             # SIGNIFICANCE OF THE LOCAL ROLLING WINDOW RESIDUAL VALUE COMPARED TO THE GLOBAL RESIDUALS - TO DETERMINE IF WE ARE JUST LOOKING AT NOISE
-            noise_sigma: 3
+            noise_sigma: 15
             # WHEN FITTING THE BSPLINE TO THE DATA, CLIP DEVIANT DATA POINTS BEFORE REFITTING WITH THIS SIGMA LIMIT
             bspline_fitting_residual_clipping_sigma: 10
             # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
@@ -555,7 +555,7 @@ soxs-stare:
             # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
             bspline_iteration_limit: 25
             # THE RESIDUAL FLOOR USED TO DETERMINE IF MORE KNOTS ARE NEEDED DURING BSPLINE FITTING
-            residual_floor_percentile: 90
+            residual_floor_percentile: 80
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
         qc-acceptable-ranges:
