@@ -32,7 +32,7 @@ UVB:
   mid_slit_index: 4
   spectral format table: SPECTRAL_FORMAT_TAB_UVB.fits
   slit_length: 11 #arcsec
-  skylines: SKYLINES.fits
+  skylines: skylines.fits
   line-atlas: ThAr.fits
   dispersion-axis: x
   rotate-qc-plot: 90
@@ -74,7 +74,7 @@ VIS:
   mid_slit_index: 4
   spectral format table: SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 11 #arcsec
-  skylines: SKYLINES.fits
+  skylines: skylines.fits
   line-atlas: ThAr.fits
   dispersion-axis: x
   rotate-qc-plot: 90
@@ -110,7 +110,7 @@ NIR:
   mid_slit_index: 4
   spectral format table: SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 11 #arcsec
-  skylines: SKYLINES.fits
+  skylines: skylines.fits
   line-atlas: ArHgNeXe.fits
   dispersion-axis: x
   rotate-qc-plot: 90
