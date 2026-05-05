@@ -380,8 +380,8 @@ def quicklook_image(
         plt.ylabel("x-axis", fontsize=16)
 
     if show:
-        plt.pause(0.1)
-        # plt.show()
+        # plt.pause(0.1)
+        plt.show()
 
     if saveToPath:
         plt.savefig(saveToPath, dpi=120, format="pdf", bbox_inches="tight")

@@ -589,7 +589,7 @@ soxs-nod-std:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 35
+            slice-length: 65
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -668,7 +668,7 @@ soxs-nod:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 35
+            slice-length: 65
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -732,7 +732,7 @@ soxs-offset:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 35
+            slice-length: 65
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
