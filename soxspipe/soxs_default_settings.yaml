@@ -1,4 +1,4 @@
-ersion: 1
+version: 1
 
 # INTERMEDIATE DATA PRODUCTS CAN CONSUME A LOT OF STORAGE SPACE - BE WARNED
 save-intermediate-products: False
