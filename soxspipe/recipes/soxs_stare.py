@@ -598,6 +598,9 @@ class soxs_stare(base_recipe):
                 self.qc,
                 self.products,
             ) = skymodel.subtract()
+            if not unflattenedSkymodelCCDData:
+                unflattenedSkySubtractedCCDData = combined_object_notflattened
+                unflattenedSkymodelCCDData = False
         else:
             unflattenedSkySubtractedCCDData = combined_object_notflattened
             unflattenedSkymodelCCDData = False

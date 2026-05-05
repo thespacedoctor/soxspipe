@@ -1,5 +1,6 @@
 # Release Notes
 
+* **REFACTOR:** allowing for NODDING to continue if no trace found in single AB sequence.
 * **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
 * **REFACTOR:** updating NODDING setting to catch continuum traces closer to the edges (spatially) of the orders 
 

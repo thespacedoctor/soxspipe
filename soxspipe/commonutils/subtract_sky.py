@@ -1021,8 +1021,13 @@ class subtract_sky(object):
                 if iteration == 5:
                     totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
                     percent = (float(totalClipped) / float(allPixels)) * 100.0
-                    if percent < 2:
-                        if imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"].mean() > 4000:
+
+                    if percent < 5:
+
+                        if imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"].mean() > 2500:
+                            self.log.warning(
+                                "OBJECT IS LIKELY VERY BRIGHT - STOPPING SKY-SUBTRACTION TO AVOID CLIPPING TOO MANY PIXELS"
+                            )
                             self.stopSubtraction = True
                             return None
                         imageMapOrderDF["flagged_object_clipped"] = False
