@@ -1,6 +1,8 @@
 # Release Notes
 
-* adding quickstart data link to the docs (thanks Markus)
+* **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
+* **REFACTOR:** updating NODDING setting to catch continuum traces closer to the edges (spatially) of the orders 
+
 
 ## v0.17.1 - May 1, 2026
 

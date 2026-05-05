@@ -9,6 +9,7 @@ Author
 Date Created
 : September  8, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import detect_continuum
 from soxspipe.commonutils import keyword_lookup
@@ -349,7 +350,7 @@ class soxs_order_centres(base_recipe):
                 biny=biny,
                 startNightDate=self.startNightDate,
             )
-            orderPixelTable = detector.sample_trace()
+            orderPixelTable, detectionPercentage = detector.sample_trace()
 
             print("\n\nTUNING SOXSPIPE\n")
 

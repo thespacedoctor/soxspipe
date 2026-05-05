@@ -709,7 +709,12 @@ class detect_continuum(_base_detect):
         coeff_dict = self.coeff_dict
 
         if isinstance(self.orderPixelTable, bool):
-            orderPixelTable = self.sample_trace()
+            orderPixelTable, detectionPercentage = self.sample_trace()
+            if detectionPercentage < 10:
+                self.log.print(
+                    f"Could not converge on a good fit to the continuum. Please check the quality of your data."
+                )
+                return None, self.qc, self.products, None, None, None
         else:
             orderPixelTable = self.orderPixelTable
 
@@ -1914,7 +1919,7 @@ class detect_continuum(_base_detect):
 
         self.log.debug("completed the ``sample_trace`` method")
 
-        return orderPixelTable
+        return orderPixelTable, percent
 
     # use the tab-trigger below for new method
     # xt-class-method
