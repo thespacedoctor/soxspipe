@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED:** fixing reduction of VIS binned object data - response curve binning verification was too strict 
 * **REFACTOR:** forcing sky-subtraction to be switched off for relatively bright sources in VIS
 * **REFACTOR:** allowing for NODDING to continue if no trace found in single AB sequence.
 * **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
