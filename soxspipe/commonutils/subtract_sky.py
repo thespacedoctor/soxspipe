@@ -1962,6 +1962,7 @@ class subtract_sky(object):
             # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
             edges = int(nbins / 20)
             lower = False
+            record_range = False
             for sp, count in zip(bins[edges:-edges], result[edges:-edges]):
                 if count > 0:
                     postiveCount += 1
