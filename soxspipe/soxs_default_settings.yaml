@@ -558,8 +558,7 @@ soxs-stare:
             residual_floor_percentile: 80
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
-        qc-acceptable-ranges:
-            detector-temp: [0,50]
+
 
 
 soxs-nod-std:
@@ -589,7 +588,7 @@ soxs-nod-std:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 65
+            slice-length: 50
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -668,7 +667,7 @@ soxs-nod:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 65
+            slice-length: 70
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -681,8 +680,6 @@ soxs-nod:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
-        qc-acceptable-ranges:
-            detector-temp: [0,165]
     nir:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
@@ -701,8 +698,7 @@ soxs-nod:
             poly-fitting-residual-clipping-sigma: 5
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 7
-        qc-acceptable-ranges:
-            detector-temp: [0,50]
+            
             
 
 soxs-offset:
@@ -732,7 +728,7 @@ soxs-offset:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
             # LENGTH OF EACH SLICE (PIXELS)
-            slice-length: 65
+            slice-length: 35
             # WIDTH OF EACH SLICE (PIXELS)
             slice-width: 3
             # HEIGHT GAUSSIAN PEAK MUST BE ABOVE MEDIAN FLUX TO BE "DETECTED" BY CODE (STD VIA MEDIAN ABSOLUTE DEVIATION).
@@ -745,8 +741,6 @@ soxs-offset:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
-        qc-acceptable-ranges:
-            detector-temp: [0,165]
     nir:
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
@@ -764,9 +758,7 @@ soxs-offset:
             # CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-fitting-residual-clipping-sigma: 5
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
-            poly-clipping-iteration-limit: 7
-        qc-acceptable-ranges:
-            detector-temp: [0,50]
+            poly-clipping-iteration-limit: 7            
 
 soxs-offset-std:
     use_flat: True
@@ -843,27 +835,10 @@ soxs-response:
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE RESPONSE FUNCTION
         poly_order: 7
 
-
-
-soxs-response:
-    vis:
-        # MAXIMUM NUMBER OF ITERATIONS USED TO FIT THE POLYNOMIAL TO THE RESPONSE FUNCTION
-        max_iteration: 5
-        # DEGREE OF THE POLYNOMIAL USED TO FIT THE RESPONSE FUNCTION
-        poly_order: 5
-    nir:        
-        # MAXIMUM NUMBER OF ITERATIONS USED TO FIT THE POLYNOMIAL TO THE RESPONSE FUNCTION
-        max_iteration: 5
-        # DEGREE OF THE POLYNOMIAL USED TO FIT THE RESPONSE FUNCTION
-        poly_order: 7
-
-
-
 # UTILS
 background-subtraction:
     bspline-deg: 2
     gaussian-blur-sigma: 65
-
 
 
 logging settings:
