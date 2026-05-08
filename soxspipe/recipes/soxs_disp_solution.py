@@ -9,6 +9,7 @@ Author
 Date Created
 : August 25, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
 from .base_recipe import base_recipe
@@ -18,7 +19,6 @@ from builtins import object
 import sys
 import os
 from soxspipe.commonutils import create_dispersion_map
-
 
 os.environ["TERM"] = "vt100"
 
@@ -263,7 +263,7 @@ class soxs_disp_solution(base_recipe):
         else:
             add_filters = {kw("DPR_TYPE"): "LAMP,FMTCHK", kw("DPR_TECH"): "IMAGE"}
         # from tabulate import tabulate
-        # self.log.print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='psql'))
+        # self.log.print(tabulate(self.inputFrames.summary, headers='keys', tablefmt='github'))
         # self.log.print(self.inputFrames.files_filtered(include_path=True, **add_filters))
         # sys.exit(0)
 

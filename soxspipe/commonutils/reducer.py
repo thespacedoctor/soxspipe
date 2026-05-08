@@ -253,7 +253,7 @@ class reducer(object):
                 print(
                     "\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:"
                 )
-                print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
+                print(tabulate(incompleteSets, headers="keys", tablefmt="github", showindex=False))
 
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
         do.session_refresh(failure=None)

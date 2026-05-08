@@ -1400,7 +1400,7 @@ class soxs_mflat(base_recipe):
 
         from tabulate import tabulate
 
-        print(tabulate(bothOrderMeanFluxes, headers="keys", tablefmt="psql"))
+        print(tabulate(bothOrderMeanFluxes, headers="keys", tablefmt="github"))
 
         mask = bothOrderMeanFluxes["best_frame"] == "QTH"
         orderFlip = bothOrderMeanFluxes.loc[mask]

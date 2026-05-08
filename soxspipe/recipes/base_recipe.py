@@ -1498,10 +1498,10 @@ class base_recipe(object):
                         else x
                     )
                 )
-            self.log.print(tabulate(qc_display, headers="keys", tablefmt="psql", showindex=False, stralign="right"))
+            self.log.print(tabulate(qc_display, headers="keys", tablefmt="github", showindex=False, stralign="right"))
             self.log.print(f"\n# {soxspipe_recipe} RECIPE PRODUCTS & QC OUTPUTS")
             self.log.print(
-                tabulate(self.products[columns2], headers="keys", tablefmt="psql", showindex=False, stralign="right")
+                tabulate(self.products[columns2], headers="keys", tablefmt="github", showindex=False, stralign="right")
             )
             if self.conn:
                 sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
@@ -1970,7 +1970,7 @@ class base_recipe(object):
             frame.header[f"ESO PRO REC1 ID"] = self.recipeName
 
         # from tabulate import tabulate
-        # print(tabulate(tableData, headers='keys', tablefmt='psql'))
+        # print(tabulate(tableData, headers='keys', tablefmt='github'))
 
         self.log.debug("completed the ``update_fits_keywords`` method")
         return None

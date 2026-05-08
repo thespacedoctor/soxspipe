@@ -386,7 +386,7 @@ def main(arguments=None):
 
                 from tabulate import tabulate
 
-                print(tabulate(rawTable[["file", "tag"]], headers="keys", tablefmt="psql", showindex=False))
+                print(tabulate(rawTable[["file", "tag"]], headers="keys", tablefmt="github", showindex=False))
 
                 if len(rawFramePaths) == 0:
                     print(

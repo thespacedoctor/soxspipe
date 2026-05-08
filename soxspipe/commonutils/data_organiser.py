@@ -9,6 +9,7 @@ Author
 Date Created
 : March  9, 2023
 """
+
 from line_profiler import profile
 from fundamentals import tools
 from builtins import object
@@ -457,7 +458,7 @@ class data_organiser(object):
                 from tabulate import tabulate
 
                 print("SOME CALIBRATION FRAMES ARE NOT PRESENT FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:")
-                print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
+                print(tabulate(incompleteSets, headers="keys", tablefmt="github", showindex=False))
 
             self.conn.close()
 
@@ -479,7 +480,7 @@ class data_organiser(object):
             from tabulate import tabulate
 
             print(f"THE CURRENT WORKSPACE CONTAINS {len(obsDf.index)} SCIENCE OBSERVATION BLOCKS:")
-            print(tabulate(obsDf, headers="keys", tablefmt="psql", showindex=False))
+            print(tabulate(obsDf, headers="keys", tablefmt="github", showindex=False))
 
         self.log.debug("completed the ``list_obs`` method")
         return obsDf
@@ -490,14 +491,15 @@ class data_organiser(object):
 
         self.log.debug("starting the ``list_sofs`` method")
 
-        query = 'select distinct "eso seq arm", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod_obj","stare_obj","offset_obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
+        query = 'select distinct "eso seq arm", upper(replace("recipe", "_obj", "")) as "recipe", "night start date", round("mjd-obs",1) as "mjd-obs", "eso obs name","eso obs id", "slit", "sof" from raw_frame_sets where complete = 1 and recipe in ("nod_obj","stare_obj","offset_obj") and `eso dpr type` like "%OBJECT%" order by "mjd-obs" asc'
         sofDf = pd.read_sql(query, con=self.conn)
 
         if len(sofDf.index):
             from tabulate import tabulate
 
-            print(f"THE CURRENT WORKSPACE CONTAINS {len(sofDf.index)} SCIENCE SOF FILES:")
-            print(tabulate(sofDf, headers="keys", tablefmt="psql", showindex=False))
+            print(f"# THE CURRENT WORKSPACE CONTAINS {len(sofDf.index)} SCIENCE SOF FILES:\n")
+            print(tabulate(sofDf, headers="keys", tablefmt="github", showindex=False))
+            print()
 
         self.log.debug("completed the ``list_sofs`` method")
         return sofDf
@@ -1857,16 +1859,11 @@ class data_organiser(object):
                             else:
                                 extraType = ""
 
-                            exists = " AND ".join(
-                                [
-                                    f"""EXISTS (
+                            exists = " AND ".join([f"""EXISTS (
                                 SELECT 1 FROM cal_{ct} 
                                 WHERE cal_{ct}.sof = p.sof 
                                 AND (cal_{ct}.upstream_status = 'pass' OR cal_{ct}.upstream_status IS NULL)
-                            )"""
-                                    for ct in calType
-                                ]
-                            )
+                            )""" for ct in calType])
 
                             sqlQuery = f"""select sof from product_frames_plus as p
                                 WHERE complete < 1 
