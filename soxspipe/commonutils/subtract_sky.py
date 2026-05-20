@@ -50,7 +50,7 @@ class subtract_sky(object):
 
     **Usage:**
 
-    To setup your logger and settings, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html).
+    To setup your logger and settings, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/main/initialisation.html).
 
     To initiate a `subtract_sky` object, use the following:
 

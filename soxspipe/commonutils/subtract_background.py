@@ -9,6 +9,7 @@ Author
 Date Created
 : June  3, 2021
 """
+
 from soxspipe.commonutils import keyword_lookup
 from os.path import expanduser
 from soxspipe.commonutils.toolkit import quicklook_image
@@ -40,7 +41,7 @@ class subtract_background(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html).
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/main/initialisation.html).
 
     To fit and subtract the background from an image:
 
