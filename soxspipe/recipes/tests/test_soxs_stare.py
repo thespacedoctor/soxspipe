@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -19,7 +20,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -32,7 +33,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments2, settings2, log2, dbConn2 = su.setup()
 
@@ -118,14 +119,12 @@ class test_soxs_stare(unittest.TestCase):
     def test_soxs_stare_function_exception(self):
 
         from soxspipe.recipes import soxs_stare
+
         try:
             sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xsh/SOMEDIRECTORY/sofs/nir_mixed_exptime_darks.sof"
             from soxspipe.recipes import soxs_stare
-            this = soxs_stare(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath
-            )
+
+            this = soxs_stare(log=log, settings=settings, inputFrames=sofPath)
             assert False
         except Exception as e:
             assert True
@@ -134,6 +133,8 @@ class test_soxs_stare(unittest.TestCase):
         # x-print-testpage-for-pessto-marshall-web-object
 
     # x-class-to-test-named-worker-function
-#ADD A MAIN HERE TO RUN THOSE TESTS
+
+
+# ADD A MAIN HERE TO RUN THOSE TESTS
 if __name__ == "__main__":
     unittest.main()

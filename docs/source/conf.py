@@ -129,7 +129,9 @@ if False:
     # https://github.com/pylint-dev/astroid/issues/2191
     print("RUNNING A SPHINX BUILD")
     import dataclasses
-    from sphinxcontrib.bibtex.style.referencing.author_year import AuthorYearReferenceStyle
+    from sphinxcontrib.bibtex.style.referencing.author_year import (
+        AuthorYearReferenceStyle,
+    )
     from sphinxcontrib.bibtex.style.referencing import BracketStyle
     import sphinxcontrib.bibtex.plugin
 
@@ -141,7 +143,9 @@ if False:
 
     @dataclasses.dataclass
     class MyReferenceStyle(AuthorYearReferenceStyle):
-        bracket_parenthetical: BracketStyle = dataclasses.field(default_factory=bracket_style)
+        bracket_parenthetical: BracketStyle = dataclasses.field(
+            default_factory=bracket_style
+        )
         bracket_textual: BracketStyle = dataclasses.field(default_factory=bracket_style)
         bracket_author: BracketStyle = dataclasses.field(default_factory=bracket_style)
         bracket_label: BracketStyle = dataclasses.field(default_factory=bracket_style)
@@ -190,7 +194,14 @@ latex_engine = "xelatex"
 
 if not on_rtd:
     latex_documents = [
-        ("overleaf/introduction", "introduction.tex", "introduction", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/introduction",
+            "introduction.tex",
+            "introduction",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
         (
             "overleaf/collecting_data",
             "collecting_data.tex",
@@ -199,9 +210,30 @@ if not on_rtd:
             "howto",
             False,
         ),
-        ("overleaf/recipes", "recipes.tex", "recipes", "David R. Young & Marco Landoni", "howto", False),
-        ("overleaf/utils", "utils.tex", "utils", "David R. Young & Marco Landoni", "howto", False),
-        ("overleaf/instruments", "instruments.tex", "instruments", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/recipes",
+            "recipes.tex",
+            "recipes",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        (
+            "overleaf/utils",
+            "utils.tex",
+            "utils",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        (
+            "overleaf/instruments",
+            "instruments.tex",
+            "instruments",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
         (
             "overleaf/data_organiser_and_reducer",
             "data_organiser_and_reducer.tex",
@@ -226,7 +258,14 @@ if not on_rtd:
             "howto",
             False,
         ),
-        ("overleaf/files", "files.tex", "files", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/files",
+            "files.tex",
+            "files",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
         (
             "overleaf/quickstart_guide",
             "quickstart_guide.tex",
@@ -235,7 +274,14 @@ if not on_rtd:
             "howto",
             False,
         ),
-        ("overleaf/installation", "installation.tex", "installation", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/installation",
+            "installation.tex",
+            "installation",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
         (
             "overleaf/preparing_a_workspace",
             "preparing_a_workspace.tex",
@@ -244,7 +290,14 @@ if not on_rtd:
             "howto",
             False,
         ),
-        ("overleaf/reductions", "reductions.tex", "reductions", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/reductions",
+            "reductions.tex",
+            "reductions",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
         (
             "overleaf/pipeline_settings",
             "pipeline_settings.tex",
@@ -253,15 +306,56 @@ if not on_rtd:
             "howto",
             False,
         ),
-        ("overleaf/logging", "logging.tex", "logging", "David R. Young & Marco Landoni", "howto", False),
-        ("overleaf/sessions", "sessions.tex", "sessions", "David R. Young & Marco Landoni", "howto", False),
-        ("overleaf/support", "support.tex", "sessions", "David R. Young & Marco Landoni", "howto", False),
-        ("overleaf/references", "references.tex", "references", "David R. Young & Marco Landoni", "howto", False),
-        ("overleaf/appendix", "appendix.tex", "appendix", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/logging",
+            "logging.tex",
+            "logging",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        (
+            "overleaf/sessions",
+            "sessions.tex",
+            "sessions",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        (
+            "overleaf/support",
+            "support.tex",
+            "sessions",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        (
+            "overleaf/references",
+            "references.tex",
+            "references",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        (
+            "overleaf/appendix",
+            "appendix.tex",
+            "appendix",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
     ]
 else:
     latex_documents = [
-        ("index", "soxspipe.tex", "soxspipe Documentation", "David R. Young & Marco Landoni", "manual"),
+        (
+            "index",
+            "soxspipe.tex",
+            "soxspipe Documentation",
+            "David R. Young & Marco Landoni",
+            "manual",
+        ),
     ]
 
 
@@ -283,7 +377,12 @@ def linkcode_resolve(domain, info):
             filename = ("/").join(filename.split("/")[0:-1]) + "/"
         else:
             filename = ""
-        filename += ("/").join(info["fullname"].split(".")[0:-1]) + ".py" + "#" + info["fullname"].split(".")[-1]
+        filename += (
+            ("/").join(info["fullname"].split(".")[0:-1])
+            + ".py"
+            + "#"
+            + info["fullname"].split(".")[-1]
+        )
     return link_resolver_url + "/" + filename
 
 

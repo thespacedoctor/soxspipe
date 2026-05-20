@@ -9,6 +9,7 @@ Author
 Date Created
 : May 17, 2021
 """
+
 ################# GLOBAL IMPORTS ####################
 from datetime import datetime
 from soxspipe.commonutils import keyword_lookup
@@ -65,7 +66,10 @@ class soxs_straighten(base_recipe):
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(
-            log=self.log, settings=self.settings, inputFrames=self.inputFrames, ext=self.settings["data-extension"]
+            log=self.log,
+            settings=self.settings,
+            inputFrames=self.inputFrames,
+            ext=self.settings["data-extension"],
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -86,7 +90,9 @@ class soxs_straighten(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"]
+        )
 
         return None
 
@@ -136,9 +142,13 @@ class soxs_straighten(base_recipe):
 
         # LOOK FOR ****
         arm = self.arm
-        if arm not in self.supplementaryInput or "2D_MAP" not in self.supplementaryInput[arm]:
+        if (
+            arm not in self.supplementaryInput
+            or "2D_MAP" not in self.supplementaryInput[arm]
+        ):
             raise TypeError(
-                "Need a full dispersion/spatial solution for %(arm)s - none found with the input files" % locals()
+                "Need a full dispersion/spatial solution for %(arm)s - none found with the input files"
+                % locals()
             )
 
         if error:

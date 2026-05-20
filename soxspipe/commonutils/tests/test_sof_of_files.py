@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("", dbConn=False).get_project_root()
@@ -19,7 +20,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -49,24 +50,20 @@ class test_set_of_files(unittest.TestCase):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
         from soxspipe.commonutils.set_of_files import set_of_files
-        sof = set_of_files(
-            log=log,
-            settings=settings
-        )
+
+        sof = set_of_files(log=log, settings=settings)
         sofFile = sof._generate_sof_file_from_directory(
-            directory=directory, sofPath=sofPath)
+            directory=directory, sofPath=sofPath
+        )
         print("sof file written to %(sofPath)s" % locals())
 
     def test_xsh_sof_to_collection_from_directory_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
         from soxspipe.commonutils.set_of_files import set_of_files
+
         print(directory)
-        sof = set_of_files(
-            log=log,
-            settings=settings,
-            inputFrames=directory
-        )
+        sof = set_of_files(log=log, settings=settings, inputFrames=directory)
         sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
 
@@ -74,11 +71,8 @@ class test_set_of_files(unittest.TestCase):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
         from soxspipe.commonutils.set_of_files import set_of_files
-        sof = set_of_files(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
+
+        sof = set_of_files(log=log, settings=settings, inputFrames=sofPath)
         sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
 
@@ -86,6 +80,7 @@ class test_set_of_files(unittest.TestCase):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
+
         home = expanduser("~")
         if directory[0] == "~":
             directory = directory.replace("~", home)
@@ -97,11 +92,8 @@ class test_set_of_files(unittest.TestCase):
                 fileList.append(filename)
 
         from soxspipe.commonutils.set_of_files import set_of_files
-        sof = set_of_files(
-            log=log,
-            settings=settings,
-            inputFrames=fileList
-        )
+
+        sof = set_of_files(log=log, settings=settings, inputFrames=fileList)
         sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
 
@@ -109,24 +101,20 @@ class test_set_of_files(unittest.TestCase):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         sofPath = "~/xshooter-pipeline-data/unittest_data/test.sof"
         from soxspipe.commonutils.set_of_files import set_of_files
-        sof = set_of_files(
-            log=log,
-            settings=settings
-        )
+
+        sof = set_of_files(log=log, settings=settings)
         sofFile = sof._generate_sof_file_from_directory(
-            directory=directory, sofPath=sofPath)
+            directory=directory, sofPath=sofPath
+        )
 
         print("sof file written to %(sofPath)s" % locals())
 
     def test_soxs_set_of_files_function_exception(self):
 
         from soxspipe.commonutils.set_of_files import set_of_files
+
         try:
-            this = set_of_files(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
-            )
+            this = set_of_files(log=log, settings=settings, fakeKey="break the code")
             this.get()
             assert False
         except Exception as e:

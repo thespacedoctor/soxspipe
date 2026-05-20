@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -19,7 +20,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -32,7 +33,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments2, settings2, log2, dbConn2 = su.setup()
 
@@ -61,15 +62,12 @@ class test_mbias(unittest.TestCase):
     import pytest
 
     def test_xsh_mbias_from_directory_function(self):
-        directory = settings["test-data-root"] + \
-            "/xshooter-mbias/uvb/1x1/fast_read"
+        directory = settings["test-data-root"] + "/xshooter-mbias/uvb/1x1/fast_read"
 
         from soxspipe.recipes import soxs_mbias
+
         this = soxs_mbias(
-            log=log,
-            settings=settings,
-            inputFrames=directory,
-            overwrite=True
+            log=log, settings=settings, inputFrames=directory, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -80,11 +78,9 @@ class test_mbias(unittest.TestCase):
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input
         from soxspipe.recipes import soxs_mbias
+
         this = soxs_mbias(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -96,21 +92,19 @@ class test_mbias(unittest.TestCase):
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input
         from soxspipe.recipes import soxs_mbias
+
         this = soxs_mbias(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
     @pytest.mark.full
     def test_xsh_mbias_from_list_of_fits_function(self):
-        directory = settings["test-data-root"] + \
-            "/xshooter-mbias/uvb/1x1/slow_read"
+        directory = settings["test-data-root"] + "/xshooter-mbias/uvb/1x1/slow_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
+
         home = expanduser("~")
         if directory[0] == "~":
             directory = directory.replace("~", home)
@@ -124,21 +118,19 @@ class test_mbias(unittest.TestCase):
         # utKit.refresh_database() # reset database to database found in
         # soxspipe.recipes/test/input
         from soxspipe.recipes import soxs_mbias
+
         this = soxs_mbias(
-            log=log,
-            settings=settings,
-            inputFrames=fileList,
-            overwrite=True
+            log=log, settings=settings, inputFrames=fileList, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
 
     @pytest.mark.full
     def test_xsh_produce_product_function(self):
-        directory = settings["test-data-root"] + \
-            "/xshooter-mbias/uvb/1x1/fast_read"
+        directory = settings["test-data-root"] + "/xshooter-mbias/uvb/1x1/fast_read"
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from os.path import expanduser
+
         home = expanduser("~")
         if directory[0] == "~":
             directory = directory.replace("~", home)
@@ -150,11 +142,9 @@ class test_mbias(unittest.TestCase):
                 fileList.append(filename)
 
         from soxspipe.recipes import soxs_mbias
+
         this = soxs_mbias(
-            log=log,
-            settings=settings,
-            inputFrames=fileList,
-            overwrite=True
+            log=log, settings=settings, inputFrames=fileList, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -164,11 +154,9 @@ class test_mbias(unittest.TestCase):
         directory = settings["test-data-root"] + "/xshooter-lingain/vis"
         try:
             from soxspipe.recipes import soxs_mbias
+
             this = soxs_mbias(
-                log=log,
-                settings=settings,
-                inputFrames=directory,
-                overwrite=True
+                log=log, settings=settings, inputFrames=directory, overwrite=True
             )
             this.get()
             assert False
@@ -181,11 +169,9 @@ class test_mbias(unittest.TestCase):
         directory = settings["test-data-root"] + "/xshooter-mdark/vis"
         try:
             from soxspipe.recipes import soxs_mbias
+
             this = soxs_mbias(
-                log=log,
-                settings=settings,
-                inputFrames=directory,
-                overwrite=True
+                log=log, settings=settings, inputFrames=directory, overwrite=True
             )
             this.get()
             assert False
@@ -198,12 +184,9 @@ class test_mbias(unittest.TestCase):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
         try:
             from soxspipe.recipes import soxs_mbias
-            this = soxs_mbias(
-                log=log,
-                settings=settings,
-                inputFrames=directory,
-                overwrite=True
 
+            this = soxs_mbias(
+                log=log, settings=settings, inputFrames=directory, overwrite=True
             )
             this.get()
             assert False
@@ -215,12 +198,10 @@ class test_mbias(unittest.TestCase):
     def test_soxs_mbias_function_exception(self):
 
         from soxspipe.recipes import soxs_mbias
+
         try:
             this = soxs_mbias(
-                log=log,
-                settings=settings,
-                fakeKey="break the code",
-                overwrite=True
+                log=log, settings=settings, fakeKey="break the code", overwrite=True
             )
             this.get()
             assert False

@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -21,7 +22,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -52,21 +53,16 @@ class test_soxs_uncompress(unittest.TestCase):
     def test_uncompress_function(self):
 
         from soxspipe.commonutils import uncompress
-        uncompress(
-            log=log,
-            directory=pathToOutputDir
-        )
+
+        uncompress(log=log, directory=pathToOutputDir)
 
     @pytest.mark.full
     def test_soxs_uncompress_function_exception(self):
 
         from soxspipe.commonutils import uncompress
+
         try:
-            this = uncompress(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
-            )
+            this = uncompress(log=log, settings=settings, fakeKey="break the code")
             this.get()
             assert False
         except Exception as e:

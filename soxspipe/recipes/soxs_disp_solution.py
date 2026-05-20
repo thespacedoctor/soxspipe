@@ -96,7 +96,10 @@ class soxs_disp_solution(base_recipe):
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(
-            log=self.log, settings=self.settings, inputFrames=self.inputFrames, ext=self.settings["data-extension"]
+            log=self.log,
+            settings=self.settings,
+            inputFrames=self.inputFrames,
+            ext=self.settings["data-extension"],
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -117,7 +120,9 @@ class soxs_disp_solution(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"]
+        )
 
         return None
 
@@ -284,7 +289,9 @@ class soxs_disp_solution(base_recipe):
                 {kw("DPR_TYPE"): "WAVE,LAMP", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
             ]
         else:
-            filter_list = [{kw("DPR_TYPE"): "LAMP,FMTCHK", kw("DPR_TECH"): "ECHELLE,PINHOLE"}]
+            filter_list = [
+                {kw("DPR_TYPE"): "LAMP,FMTCHK", kw("DPR_TECH"): "ECHELLE,PINHOLE"}
+            ]
 
         for add_filters in filter_list:
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -298,14 +305,20 @@ class soxs_disp_solution(base_recipe):
                     key_uncertainty_type="UTYPE",
                 )
 
-        self.pinholeFrame = self.detrend(inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
+        self.pinholeFrame = self.detrend(
+            inputFrame=pinhole_image, master_bias=master_bias, dark=dark
+        )
 
         self.update_fits_keywords(frame=self.pinholeFrame)
 
         if self.settings["save-intermediate-products"]:
             outDir = self.workspaceRootPath
             filePath = self._write(
-                frame=self.pinholeFrame, filedir=outDir, filename=False, overwrite=True, product=False
+                frame=self.pinholeFrame,
+                filedir=outDir,
+                filename=False,
+                overwrite=True,
+                product=False,
             )
             self.log.print(f"\nCalibrated single pinhole frame: {filePath}\n")
 
@@ -320,7 +333,14 @@ class soxs_disp_solution(base_recipe):
                 pass
 
             # GET THE LINE DETECTION LIST BEFORE JUMPING TO PERMUTATIONS
-            mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
+            (
+                mapPath,
+                mapImagePath,
+                res_plots,
+                qcTable,
+                productsTable,
+                lineDetectionTable,
+            ) = create_dispersion_map(
                 log=self.log,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -365,7 +385,14 @@ class soxs_disp_solution(base_recipe):
                 self.recipeSettings["order-deg"] = self.polyOrders[:2]
                 self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
 
-            productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
+            (
+                productPath,
+                mapImagePath,
+                res_plots,
+                qcTable,
+                productsTable,
+                lineDetectionTable,
+            ) = create_dispersion_map(
                 log=self.log,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -416,7 +443,17 @@ class soxs_disp_solution(base_recipe):
         return productPath, qcTable
 
 
-def parameterTuning(p, log, recipeSettings, settings, pinholeFrame, qc, products, sofName, lineDetectionTable):
+def parameterTuning(
+    p,
+    log,
+    recipeSettings,
+    settings,
+    pinholeFrame,
+    qc,
+    products,
+    sofName,
+    lineDetectionTable,
+):
     """*tuning the spatial solution*"""
 
     recipeSettings["order-deg"] = list(p[:2])
@@ -437,7 +474,14 @@ def parameterTuning(p, log, recipeSettings, settings, pinholeFrame, qc, products
         startNightDate=False,
     )
     try:
-        productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+        (
+            productPath,
+            mapImagePath,
+            res_plots,
+            qcTable,
+            productsTable,
+            lineDetectionTable,
+        ) = this.get()
     except:
         pass
 

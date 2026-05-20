@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -21,14 +22,16 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
 # SETUP PATHS TO COMMON DIRECTORIES FOR TEST DATA
 moduleDirectory = os.path.dirname(__file__)
 pathToInputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/data-organiser/"
-pathToOutputDir = home + "/xshooter-pipeline-data/unittest_data/xsh/data-organiser-output/"
+pathToOutputDir = (
+    home + "/xshooter-pipeline-data/unittest_data/xsh/data-organiser-output/"
+)
 
 # pathToInputDir = home + "/Desktop/data_organiser_cl_test/input"
 # pathToOutputDir = home + "/Desktop/data_organiser_cl_test/output"
@@ -59,29 +62,24 @@ class test_xsh_data_organiser(unittest.TestCase):
     def test_data_organiser_function(self):
 
         from soxspipe.commonutils import data_organiser
-        do = data_organiser(
-            log=log,
-            rootDir=pathToOutputDir + "01_EG274"
-        )
+
+        do = data_organiser(log=log, rootDir=pathToOutputDir + "01_EG274")
         do.prepare()
         do.session_list()
 
         from soxspipe.commonutils import reducer
+
         this = reducer(
-            log=log,
-            settings=settings,
-            workspaceDirectory=pathToOutputDir + "01_EG274"
+            log=log, settings=settings, workspaceDirectory=pathToOutputDir + "01_EG274"
         )
 
     @pytest.mark.full
     def test_soxs_data_organiser_function_exception(self):
 
         from soxspipe.commonutils import data_organiser
+
         try:
-            this = data_organiser(
-                log=log,
-                fakeKey="break the code"
-            )
+            this = data_organiser(log=log, fakeKey="break the code")
             this.get()
             assert False
         except Exception as e:
