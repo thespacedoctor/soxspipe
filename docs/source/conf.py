@@ -7,30 +7,31 @@ import time
 import os
 import sys
 from datetime import datetime, date
+
 # Check if we are on Read the Docs
-on_rtd = os.environ.get('READTHEDOCS') == 'True'
+on_rtd = os.environ.get("READTHEDOCS") == "True"
 
 # WHERE DOES THIS conf.py FILE LIVE?
 moduleDirectory = os.path.dirname(os.path.realpath(__file__))
 # GET PACKAGE __version__ INTO locals()
 exec(open(moduleDirectory + "/../../soxspipe/__version__.py").read())
-sys.path.insert(0, os.path.abspath('../../soxspipe/soxspipe'))
+sys.path.insert(0, os.path.abspath("../../soxspipe/soxspipe"))
 
 # General information about the project.
 now = datetime.now()
 now = now.strftime("%Y")
-project = u'soxspipe'
-copyright = u'%(now)s, David R. Young & Marco Lanodi' % locals()
+project = "soxspipe"
+copyright = "%(now)s, David R. Young & Marco Lanodi" % locals()
 version = "v" + str(__version__)
 release = version
-today_fmt = '%Y'
+today_fmt = "%Y"
 
 # -- General configuration ---------------------------------------------------
-templates_path = ['_templates']
-exclude_patterns = ['**xxx**']
+templates_path = ["_templates"]
+exclude_patterns = ["**xxx**"]
 source_suffix = {
-    '.rst': 'restructuredtext',
-    '.md': 'markdown',
+    ".rst": "restructuredtext",
+    ".md": "markdown",
 }
 
 extensions = [
@@ -41,23 +42,23 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.todo",
     "sphinx.ext.viewcode",
-    'sphinxcontrib.inkscapeconverter',
-    'sphinx.ext.autosectionlabel',
+    "sphinxcontrib.inkscapeconverter",
+    "sphinx.ext.autosectionlabel",
     # External stuff
     "sphinxext.opengraph",
     "myst_parser",
     "sphinx_copybutton",
     "sphinx_design",
     "sphinx_inline_tabs",
-    'autodoc2',
-    'sphinxcontrib.mermaid',
-    'sphinx_togglebutton',
-    'sphinx.ext.coverage',
-    'sphinx.ext.linkcode',
-    'sphinx_search.extension',
-    'sphinx_tippy',
+    "autodoc2",
+    "sphinxcontrib.mermaid",
+    "sphinx_togglebutton",
+    "sphinx.ext.coverage",
+    "sphinx.ext.linkcode",
+    "sphinx_search.extension",
+    "sphinx_tippy",
     "sphinx_remove_toctrees",
-    'sphinxcontrib.bibtex'
+    "sphinxcontrib.bibtex",
 ]
 myst_enable_extensions = [
     "tasklist",
@@ -74,8 +75,7 @@ myst_enable_extensions = [
     "smartquotes",
     "strikethrough",
     "substitution",
-    "attrs_block"
-
+    "attrs_block",
 ]
 suppress_warnings = ["myst.strikethrough"]
 autosectionlabel_prefix_document = True
@@ -83,10 +83,10 @@ autosectionlabel_prefix_document = True
 numfig = True
 
 numfig_format = {
-    'code-block': 'Listing %s',
-    'figure': 'Fig. %s',
-    'table': 'Table %s',
-    'section': 'Section',
+    "code-block": "Listing %s",
+    "figure": "Fig. %s",
+    "table": "Table %s",
+    "section": "Section",
 }
 
 
@@ -95,13 +95,13 @@ myst_enable_checkboxes = True
 myst_heading_anchors = 3
 todo_include_todos = True
 
-link_resolver_url = "https://github.com/thespacedoctor/soxspipe/blob/master"
+link_resolver_url = "https://github.com/thespacedoctor/soxspipe/blob/main"
 
 remove_from_toctrees = ["utils/[!_]*"]
 
 
 # BIBTEX STUFF
-bibtex_bibfiles = ['dry-bookends-references.bib']
+bibtex_bibfiles = ["dry-bookends-references.bib"]
 # bibtex_reference_style = 'author_year'
 # bibtex_default_style = 'unsrtalpha'
 
@@ -116,7 +116,6 @@ if True or (runAutodoc2 and runAutodoc2 != "None"):
         {
             "path": "../../soxspipe",
             "exclude_files": ["*test_*.py"],
-
         }
     ]
     autodoc2_render_plugin = "myst"
@@ -136,8 +135,8 @@ if False:
 
     def bracket_style() -> BracketStyle:
         return BracketStyle(
-            left='(',
-            right=')',
+            left="(",
+            right=")",
         )
 
     @dataclasses.dataclass
@@ -149,9 +148,9 @@ if False:
         bracket_year: BracketStyle = dataclasses.field(default_factory=bracket_style)
 
     sphinxcontrib.bibtex.plugin.register_plugin(
-        'sphinxcontrib.bibtex.style.referencing',
-        'author_year_round', MyReferenceStyle)
-    bibtex_reference_style = 'author_year_round'
+        "sphinxcontrib.bibtex.style.referencing", "author_year_round", MyReferenceStyle
+    )
+    bibtex_reference_style = "author_year_round"
 
 
 # use the tab-trigger below for new function
@@ -167,19 +166,19 @@ ogp_custom_meta_tags = [
 ]
 
 # -- THEME SETTINGS -------------------------------------------------
-html_theme = 'furo'
-html_static_path = ['_static', '_images']
+html_theme = "furo"
+html_static_path = ["_static", "_images"]
 html_theme_options = {
     "light_logo": "thespacedoctor_icon_dark_circle.png",
     "dark_logo": "thespacedoctor_icon_white_circle.png",
     "source_repository": "https://github.com/thespacedoctor/soxspipe/",
-    "source_branch": "master",
+    "source_branch": "main",
     "source_directory": "docs/source/",
 }
 html_favicon = "_images/favicon.ico"
 html_title = f"soxspipe <small>v{__version__}</small>"
 html_show_sourcelink = True
-html_add_permalinks = u"  ∞"
+html_add_permalinks = "  ∞"
 # OTHER USEFUL SETTINGS
 # html_theme_options = {
 #     "announcement": "<em>Important</em> announcement!",
@@ -187,75 +186,104 @@ html_add_permalinks = u"  ∞"
 
 # -- LaTeX output -------------------------------------------------
 
-latex_engine = 'xelatex'
+latex_engine = "xelatex"
 
 if not on_rtd:
     latex_documents = [
-        ('overleaf/introduction', 'introduction.tex', u'introduction',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/collecting_data', 'collecting_data.tex', u'collecting data',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/recipes', 'recipes.tex', u'recipes',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/utils', 'utils.tex', u'utils',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/instruments', 'instruments.tex', u'instruments',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/data_organiser_and_reducer', 'data_organiser_and_reducer.tex', u'data organiser and reducer',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/data_reduction_cascades', 'data_reduction_cascades.tex', u'data reduction cascades',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/observing_modes', 'observing_modes.tex', u'observing modes',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/files', 'files.tex', u'files',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/quickstart_guide', 'quickstart_guide.tex', u'quickstart guide',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/installation', 'installation.tex', u'installation',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/preparing_a_workspace', 'preparing_a_workspace.tex', u'preparing a workspace',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/reductions', 'reductions.tex', u'reductions',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/pipeline_settings', 'pipeline_settings.tex', u'pipeline settings',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/logging', 'logging.tex', u'logging',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/sessions', 'sessions.tex', u'sessions',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/support', 'support.tex', u'sessions',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/references', 'references.tex', u'references',
-         u'David R. Young & Marco Landoni', 'howto', False),
-        ('overleaf/appendix', 'appendix.tex', u'appendix',
-         u'David R. Young & Marco Landoni', 'howto', False),
+        ("overleaf/introduction", "introduction.tex", "introduction", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/collecting_data",
+            "collecting_data.tex",
+            "collecting data",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        ("overleaf/recipes", "recipes.tex", "recipes", "David R. Young & Marco Landoni", "howto", False),
+        ("overleaf/utils", "utils.tex", "utils", "David R. Young & Marco Landoni", "howto", False),
+        ("overleaf/instruments", "instruments.tex", "instruments", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/data_organiser_and_reducer",
+            "data_organiser_and_reducer.tex",
+            "data organiser and reducer",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        (
+            "overleaf/data_reduction_cascades",
+            "data_reduction_cascades.tex",
+            "data reduction cascades",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        (
+            "overleaf/observing_modes",
+            "observing_modes.tex",
+            "observing modes",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        ("overleaf/files", "files.tex", "files", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/quickstart_guide",
+            "quickstart_guide.tex",
+            "quickstart guide",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        ("overleaf/installation", "installation.tex", "installation", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/preparing_a_workspace",
+            "preparing_a_workspace.tex",
+            "preparing a workspace",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        ("overleaf/reductions", "reductions.tex", "reductions", "David R. Young & Marco Landoni", "howto", False),
+        (
+            "overleaf/pipeline_settings",
+            "pipeline_settings.tex",
+            "pipeline settings",
+            "David R. Young & Marco Landoni",
+            "howto",
+            False,
+        ),
+        ("overleaf/logging", "logging.tex", "logging", "David R. Young & Marco Landoni", "howto", False),
+        ("overleaf/sessions", "sessions.tex", "sessions", "David R. Young & Marco Landoni", "howto", False),
+        ("overleaf/support", "support.tex", "sessions", "David R. Young & Marco Landoni", "howto", False),
+        ("overleaf/references", "references.tex", "references", "David R. Young & Marco Landoni", "howto", False),
+        ("overleaf/appendix", "appendix.tex", "appendix", "David R. Young & Marco Landoni", "howto", False),
     ]
 else:
     latex_documents = [
-        ("index", 'soxspipe.tex', 'soxspipe Documentation', u'David R. Young & Marco Landoni', 'manual'),
+        ("index", "soxspipe.tex", "soxspipe Documentation", "David R. Young & Marco Landoni", "manual"),
     ]
 
 
 latex_toplevel_sectioning = "section"
-latex_show_urls = 'footnote'
+latex_show_urls = "footnote"
 
 
 def linkcode_resolve(domain, info):
-    if domain != 'py':
+    if domain != "py":
         return None
-    if not info['module']:
+    if not info["module"]:
         return None
 
-    filename = info['module'].replace('.', '/')
-    if info['fullname'] and "." not in info['fullname']:
-        filename += "/" + info['fullname'] + ".py"
+    filename = info["module"].replace(".", "/")
+    if info["fullname"] and "." not in info["fullname"]:
+        filename += "/" + info["fullname"] + ".py"
     else:
         if "/" in filename:
             filename = ("/").join(filename.split("/")[0:-1]) + "/"
         else:
             filename = ""
-        filename += ("/").join(info['fullname'].split(
-            ".")[0:-1]) + ".py" + "#" + info['fullname'].split(".")[-1]
+        filename += ("/").join(info["fullname"].split(".")[0:-1]) + ".py" + "#" + info["fullname"].split(".")[-1]
     return link_resolver_url + "/" + filename
 
 
@@ -265,6 +293,7 @@ def updateUsageMd():
     """
     from soxspipe import cl_utils
     import codecs
+
     usage = cl_utils.__doc__
 
     if not "Usage:" in usage or "todo:" in usage:
@@ -282,7 +311,7 @@ def updateUsageMd():
 
     moduleDirectory = os.path.dirname(__file__)
     uFile = moduleDirectory + "/usage.md"
-    writeFile = codecs.open(uFile, encoding='utf-8', mode='w')
+    writeFile = codecs.open(uFile, encoding="utf-8", mode="w")
     writeFile.write(usage)
     writeFile.close()
 

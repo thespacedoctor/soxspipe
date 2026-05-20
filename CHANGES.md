@@ -1,5 +1,9 @@
 # Release Notes
 
+* **REFACTOR:** renaming `master` branch to `main`
+* **REFACTOR:** moving to `pyproject.toml` and away from older `setup.py` installation
+* **ENHANCEMENT:** moving to github actions (away from jenkins)
+* **REFACTOR:** information tables are now printed to the terminal in markdown format
 * **FIXED:** fixing reduction of VIS binned object data - response curve binning verification was too strict 
 * **REFACTOR:** forcing sky-subtraction to be switched off for relatively bright sources in VIS
 * **REFACTOR:** allowing for NODDING to continue if no trace found in single AB sequence.
@@ -301,7 +305,7 @@
 * **FIXED:** Instrument = "SHOOT" now recognised as Xshooter data
 * **FIXED:** bug in the detect continuum code that would fail to fit a gaussian in the cross-dispersion slices if NaN values were present.
 * **DOCS:** complete update of the SOXS documentation. See https://soxspipe.readthedocs.io
-* **DOCS:** 4 installation methods are now reported in the documentation (anaconda is not required to install the pipeline). https://soxspipe.readthedocs.io/en/master/user_manual/installation.html
+* **DOCS:** 4 installation methods are now reported in the documentation (anaconda is not required to install the pipeline).[main version](https://soxspipe.readthedocs.io/en/main/)user_manual/installation.html
 
 ## v0.11.1 - August 15, 2024
 
