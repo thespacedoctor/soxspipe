@@ -1,0 +1,101 @@
+[build-system]
+requires = ["setuptools>=70", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "soxspipe"
+dynamic = ["version"]
+description = "A python package and command-line tools to The data-reduction pipeline for the SOXS instrument"
+authors = [
+    {name = "David Young", email= "david.young.rse@gmail.com"},
+]
+keywords = ['soxs, eso, data, pipeline, spectra']
+requires-python = ">=3.11"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Utilities"
+]
+dependencies = [
+    'pyyaml==6.0.2',
+    'fundamentals==2.7.6',
+    'astropy==6.1.2 ',
+    'ccdproc==2.4.2',
+    'docopt==0.6.2',
+    'photutils==1.13.0',
+    'matplotlib==3.9.2',
+    'numpy==2.1.0',
+    'unicodecsv==0.14.1',
+    'pandas==2.2.2',
+    'tabulate==0.9.0',
+    'bottleneck==1.4.0',
+    'multiprocess==0.70.16',
+    'specutils==1.16.0',
+    'humanize==4.11.0',
+    'line_profiler',
+    'memory_profiler',
+    'scikit-learn',
+    'jinja2'
+]
+
+[project.urls]
+"Homepage" = "https://github.com/thespacedoctor/soxspipe"
+
+[project.optional-dependencies]
+docs = [
+    "build",
+    "sphinx",
+    "sphinx-autodoc2",
+    "myst-parser",
+    "furo",
+    "sphinx-inline-tabs",
+    "sphinxext-opengraph",
+    "sphinx-autobuild",
+    "linkify-it-py",
+    "sphinxcontrib-mermaid",
+    "sphinx-togglebutton",
+    "sphinx_copybutton",
+    "sphinx_tippy",
+    "sphinx_design",
+    "pygments-csv-lexer",
+    "sphinxcontrib-svg2pdfconverter",
+    "sphinx-remove-toctrees",
+    "sphinxcontrib.bibtex",
+]
+tests = [
+    "pytest",
+    "pytest-cov",
+    "nose2"
+]
+dev = [
+    "soxspipe[tests, docs]",
+    "build",
+    "twine"
+]
+
+# THESE ARE ENTRY POINTS USED FOR THE CL-INTERFACE
+[project.scripts]
+soxspipe = 'soxspipe.cl_utils:main'
+
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+soxspipe = ["resources/**/*"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests", "tests.*"]
+
+
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "no-local-version"
+write_to = "soxspipe/__version__.py"
+write_to_template = "__version__ = '{version}'\n"
+
+
