@@ -127,7 +127,9 @@ class reducer(object):
         self.log.debug("starting the ``reduce`` method")
 
         if self.sessionId is None:
-            print("Please prepare this workspace using `soxspipe prep` before attempting to reduce the data.")
+            print(
+                "Please prepare this workspace using `soxspipe prep` before attempting to reduce the data."
+            )
             return None
 
         from fundamentals import times
@@ -189,7 +191,9 @@ class reducer(object):
                     fail = False
                     for index, row in rawGroups.iterrows():
                         if batchCount >= batch:
-                            self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
+                            self.log.print(
+                                f"Batch limit of {batch} reached, pausing reductions."
+                            )
                             break
 
                         recipe = row["recipe"].replace("_std", "").replace("_obj", "")
@@ -212,7 +216,9 @@ class reducer(object):
                             continue
                         except Exception as e:
                             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                            self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                            self.log.error(
+                                f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}"
+                            )
                             self.log.error(
                                 f'\nRecipe Command: {row["command"].replace("-obj ", " ").replace("-std ", " ")}\n\n'
                             )
@@ -229,7 +235,9 @@ class reducer(object):
 
                         ## FINISH LOGGING ##
                         endTime = times.get_now_sql_datetime()
-                        runningTime = times.calculate_time_difference(startTime, endTime)
+                        runningTime = times.calculate_time_difference(
+                            startTime, endTime
+                        )
                         sys.argv[0] = os.path.basename(sys.argv[0])
 
                         self.log.print(
@@ -240,7 +248,9 @@ class reducer(object):
                             print(f"{'='*70}\n")
 
                     if fail:
-                        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                        do = data_organiser(
+                            log=self.log, rootDir=self.workspaceDirectory
+                        )
                         reset = do.session_refresh()
                         do.close()
                         if reset:
@@ -274,7 +284,9 @@ class reducer(object):
         self.log.debug("completed the ``reduce`` method")
         return None
 
-    def select_sof_files_to_process(self, recipe=False, reductionTarget=False, batch=False, arm=False):
+    def select_sof_files_to_process(
+        self, recipe=False, reductionTarget=False, batch=False, arm=False
+    ):
         """*select all of the SOF files still requiring processing*
 
         **Key Arguments:**
@@ -298,7 +310,9 @@ class reducer(object):
         import pandas as pd
         import sqlite3 as sql
 
-        conn = sql.connect(self.sessionDB, timeout=300, autocommit=True, check_same_thread=False)
+        conn = sql.connect(
+            self.sessionDB, timeout=300, autocommit=True, check_same_thread=False
+        )
         c = conn.cursor()
         c.execute("PRAGMA busy_timeout = 100000")
         c.execute("PRAGMA synchronous = OFF")
@@ -331,15 +345,15 @@ class reducer(object):
             for _ in range(4):  # Recursively query up to 5 times
                 sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
 
-            sqlQuery = (
-                f"SELECT distinct sof, recipe from raw_frame_sets WHERE sof in ({sqlQuery}) order by recipe_order, sof"
-            )
+            sqlQuery = f"SELECT distinct sof, recipe from raw_frame_sets WHERE sof in ({sqlQuery}) order by recipe_order, sof"
 
             rawGroups = pd.read_sql(sqlQuery, con=conn)
 
         if not len(rawGroups.index):
             if reductionTarget != "all":
-                self.log.warning("The SOF file selected for processing is either missing or incomplete.")
+                self.log.warning(
+                    "The SOF file selected for processing is either missing or incomplete."
+                )
             else:
                 self.log.info("No SOF files require processing.")
             conn.close()
@@ -369,7 +383,9 @@ class reducer(object):
         return rawGroups[["recipe", "sof", "command"]].drop_duplicates()
 
 
-def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=False, turnOffMP=False):
+def run_recipe(
+    log, recipe, sof, settings, overwrite, command=False, verbose=False, turnOffMP=False
+):
     """*execute a pipeline recipe*
 
     **Key Arguments:**
@@ -597,7 +613,9 @@ def run_recipe_bulk(
                 returnDict["error_message"] = e
         except Exception as e:
             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-            log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+            log.error(
+                f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}"
+            )
             log.error(
                 f'\nRecipe Command: {inputDict["command"].replace("-obj ", " ").replace("_obj ", " ").replace("-std ", " ").replace("_std ", " ")}\n\n'
             )
@@ -606,7 +624,9 @@ def run_recipe_bulk(
 
         return returnDict
 
-    inputDicts = [{"sof": sof, "command": command} for sof, command in zip(sofList, commandList)]
+    inputDicts = [
+        {"sof": sof, "command": command} for sof, command in zip(sofList, commandList)
+    ]
 
     poolSize = False
     turnOffMP = False
@@ -618,7 +638,9 @@ def run_recipe_bulk(
             f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode with a pool size of {poolSize} to avoid memory issues..."
         )
 
-    log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
+    log.print(
+        f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode..."
+    )
 
     results = fmultiprocess(
         log=log,
