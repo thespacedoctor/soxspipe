@@ -1,15 +1,14 @@
 # Release Notes
 
-* **REFACTOR:** renaming `master` branch to `main`
-* **REFACTOR:** moving to `pyproject.toml` and away from older `setup.py` installation
-* **ENHANCEMENT:** moving to github actions (away from jenkins)
-* **REFACTOR:** information tables are now printed to the terminal in markdown format
-* **FIXED:** fixing reduction of VIS binned object data - response curve binning verification was too strict 
-* **REFACTOR:** forcing sky-subtraction to be switched off for relatively bright sources in VIS
-* **REFACTOR:** allowing for NODDING to continue if no trace found in single AB sequence.
 * **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
+* **ENHANCEMENT:** moving to github actions (away from jenkins)
+* **REFACTOR:** allowing for NODDING to continue if no trace found in single AB sequence.
+* **REFACTOR:** forcing sky-subtraction to be switched off for relatively bright sources in VIS
+* **REFACTOR:** information tables are now printed to the terminal in markdown format
+* **REFACTOR:** moving to `pyproject.toml` and away from older `setup.py` installation
+* **REFACTOR:** renaming `master` branch to `main`
 * **REFACTOR:** updating NODDING setting to catch continuum traces closer to the edges (spatially) of the orders 
-
+* **FIXED:** fixing reduction of VIS binned object data - response curve binning verification was too strict 
 
 ## v0.17.1 - May 1, 2026
 
