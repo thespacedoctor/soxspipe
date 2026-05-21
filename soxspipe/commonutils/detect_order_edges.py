@@ -938,9 +938,9 @@ class detect_order_edges(_base_detect):
             filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
-        plt.tight_layout()
+        # plt.tight_layout()
         # plt.show()
-        plt.savefig(filePath, dpi=120, format="pdf")
+        plt.savefig(filePath, dpi=120, format="pdf", bbox_inches="tight")
         plt.close(fig)
         plt.close("all")
 

@@ -1531,9 +1531,9 @@ class detect_continuum(_base_detect):
             filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
-        plt.tight_layout()
+        # plt.tight_layout()
         if not self.settings["tune-pipeline"]:
-            plt.savefig(filePath, dpi=120, format="pdf")
+            plt.savefig(filePath, dpi=120, format="pdf", bbox_inches="tight")
         if self.debug:
             plt.show()
         plt.close(fig)

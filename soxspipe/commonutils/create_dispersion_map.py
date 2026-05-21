@@ -3831,7 +3831,7 @@ class create_dispersion_map(object):
             settingsAx=settingsAx,
         )
 
-        plt.tight_layout()
+        # plt.tight_layout()
         if self.debug:
             plt.show()
 
