@@ -109,11 +109,11 @@ soxspipe list ob  >> /tmp/soxspipe_list_sof.log
 soxspipe raw sof 20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof >> /tmp/soxspipe_list_sof.log
 
 echo "## TESTING SINGLE SOF REDUCTIONS"
-soxspipe reduce sof 20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof >> /tmp/soxspipe_prep.log
+soxspipe -q reduce sof 20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof  >> /tmp/soxspipe_prep.log
 echo "## TESTING BATCH REDUCTION"
-soxspipe reduce all . -b 25 >> /tmp/soxspipe_prep.log
+soxspipe -q reduce all . -b 25 >> /tmp/soxspipe_prep.log
 echo "## TESTING SINGLE-THREAD REDUCTION"
-soxspipe reduce all . >> /tmp/soxspipe_prep.log
+soxspipe -q reduce all . >> /tmp/soxspipe_prep.log
 
 echo "## TESTING MULTIPROCESSING REDUCTIONS"
 reset_workspace
