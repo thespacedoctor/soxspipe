@@ -21,7 +21,11 @@ os.environ["TERM"] = "vt100"
 
 
 def dispersion_map_to_pixel_arrays(
-    log, dispersionMapPath, orderPixelTable, removeOffDetectorLocation=True, trimColumns=False
+    log,
+    dispersionMapPath,
+    orderPixelTable,
+    removeOffDetectorLocation=True,
+    trimColumns=False,
 ):
     """*Use a dispersion solution to convert wavelength, slit-position and echelle order numbers to X,Y pixel positions.*
 
@@ -81,20 +85,32 @@ def dispersion_map_to_pixel_arrays(
 
         if check:
             for i in range(0, orderDeg + 1):
-                orderPixelTable[f"order_pow_{axis}_{i}"] = orderPixelTable["order"].pow(i)
+                orderPixelTable[f"order_pow_{axis}_{i}"] = orderPixelTable["order"].pow(
+                    i
+                )
             for j in range(0, wavelengthDeg + 1):
-                orderPixelTable[f"wavelength_pow_{axis}_{j}"] = orderPixelTable["wavelength"].pow(j)
+                orderPixelTable[f"wavelength_pow_{axis}_{j}"] = orderPixelTable[
+                    "wavelength"
+                ].pow(j)
             for k in range(0, slitDeg + 1):
-                orderPixelTable[f"slit_position_pow_{axis}_{k}"] = orderPixelTable["slit_position"].pow(k)
+                orderPixelTable[f"slit_position_pow_{axis}_{k}"] = orderPixelTable[
+                    "slit_position"
+                ].pow(k)
             # check = 0
 
         coeff[axis] = [
             float(v)
             for k, v in row.items()
-            if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)
+            if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"]
+            and not math.isnan(v)
         ]
         poly[axis] = chebyshev_order_wavelength_polynomials(
-            log=log, orderDeg=orderDeg, wavelengthDeg=wavelengthDeg, slitDeg=slitDeg, exponentsIncluded=True, axis=axis
+            log=log,
+            orderDeg=orderDeg,
+            wavelengthDeg=wavelengthDeg,
+            slitDeg=slitDeg,
+            exponentsIncluded=True,
+            axis=axis,
         ).poly
 
     # CONVERT THE ORDER-SORTED WAVELENGTH ARRAYS INTO ARRAYS OF PIXEL TUPLES
@@ -111,13 +127,17 @@ def dispersion_map_to_pixel_arrays(
         orderPixelTable = orderPixelTable.loc[mask]
 
     if trimColumns:
-        orderPixelTable = orderPixelTable[["order", "wavelength", "slit_position", "fit_x", "fit_y"]]
+        orderPixelTable = orderPixelTable[
+            ["order", "wavelength", "slit_position", "fit_x", "fit_y"]
+        ]
 
     log.debug("completed the ``dispersion_map_to_pixel_arrays`` function")
     return orderPixelTable
 
 
-def get_cached_coeffs(log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg, reset=False):
+def get_cached_coeffs(
+    log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg, reset=False
+):
     """*find cached coefficients (if they exist)*
 
     Return a line-list with x,y fits given a first guess dispersion map.*
@@ -185,15 +205,26 @@ def get_cached_coeffs(log, arm, settings, recipeName, orderDeg, wavelengthDeg, s
             coeff[axis] = [
                 float(v)
                 for k, v in row.items()
-                if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)
+                if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"]
+                and not math.isnan(v)
             ]
     else:
         if isinstance(orderDeg, list):
-            coeff["x"] = np.ones((orderDeg[0] + 1) * (wavelengthDeg[0] + 1) * (slitDeg[0] + 1), dtype=float)
-            coeff["y"] = np.ones((orderDeg[1] + 1) * (wavelengthDeg[1] + 1) * (slitDeg[1] + 1), dtype=float)
+            coeff["x"] = np.ones(
+                (orderDeg[0] + 1) * (wavelengthDeg[0] + 1) * (slitDeg[0] + 1),
+                dtype=float,
+            )
+            coeff["y"] = np.ones(
+                (orderDeg[1] + 1) * (wavelengthDeg[1] + 1) * (slitDeg[1] + 1),
+                dtype=float,
+            )
         else:
-            coeff["x"] = np.ones((orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
-            coeff["y"] = np.ones((orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
+            coeff["x"] = np.ones(
+                (orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float
+            )
+            coeff["y"] = np.ones(
+                (orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float
+            )
 
     log.debug("completed the ``get_cached_coeffs`` function")
     return coeff["x"], coeff["y"]

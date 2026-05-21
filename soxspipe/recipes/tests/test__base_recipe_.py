@@ -51,7 +51,10 @@ class test_base_recipe(unittest.TestCase):
     @pytest.mark.full
     def test_xshbase_recipe_function(self):
 
-        framePath = settings["test-data-root"] + "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
+        framePath = (
+            settings["test-data-root"]
+            + "/xshooter-mbias/uvb/XSHOO.2019-07-03T10:40:24.434.fits"
+        )
         interMediatePath = settings["workspace-root-dir"]
         from soxspipe.recipes import base_recipe
 
@@ -67,7 +70,9 @@ class test_base_recipe(unittest.TestCase):
         preFrame = recipe._prepare_single_frame(frame=framePath)
 
         # NOW TRY SAVING
-        preFrame = recipe._prepare_single_frame(frame=framePath, save=settings["save-intermediate-products"])
+        preFrame = recipe._prepare_single_frame(
+            frame=framePath, save=settings["save-intermediate-products"]
+        )
 
         # NOW CLEAN UP
         recipe.clean_up()

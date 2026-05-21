@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -21,7 +22,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -50,49 +51,34 @@ class test_detector_lookup(unittest.TestCase):
     def test_soxs_detector_lookup_function(self):
 
         from soxspipe.commonutils import detector_lookup
-        this = detector_lookup(
-            log=log,
-            settings=settings
-        )
+
+        this = detector_lookup(log=log, settings=settings)
         detectorDict = this._select_dictionary()
         print(this._select_dictionary())
 
     def test_soxs_detector_lookup_get_function(self):
 
         from soxspipe.commonutils import detector_lookup
-        detectDict = detector_lookup(
-            log=log,
-            settings=settings
-        ).get("NIR")
+
+        detectDict = detector_lookup(log=log, settings=settings).get("NIR")
         print(detectDict)
 
-        detectDict = detector_lookup(
-            log=log,
-            settings=settings
-        ).get("UVB")
+        detectDict = detector_lookup(log=log, settings=settings).get("UVB")
         print(detectDict)
 
-        detectDict = detector_lookup(
-            log=log,
-            settings=settings
-        ).get("VIS")
+        detectDict = detector_lookup(log=log, settings=settings).get("VIS")
         print(detectDict)
 
         # HOW ABOUT LOWERCASE?
-        detectDict = detector_lookup(
-            log=log,
-            settings=settings
-        ).get("nir")
+        detectDict = detector_lookup(log=log, settings=settings).get("nir")
         print(detectDict)
 
     def test_soxs_detector_lookup_function_wrong_arm(self):
 
         from soxspipe.commonutils import detector_lookup
+
         try:
-            detectDict = detector_lookup(
-                log=log,
-                settings=settings
-            ).get("RUBBISH")
+            detectDict = detector_lookup(log=log, settings=settings).get("RUBBISH")
             assert False
         except Exception as e:
             assert True
@@ -104,12 +90,9 @@ class test_detector_lookup(unittest.TestCase):
     def test_soxs_detector_lookup_function_exception(self):
 
         from soxspipe.commonutils import detector_lookup
+
         try:
-            this = detector_lookup(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
-            )
+            this = detector_lookup(log=log, settings=settings, fakeKey="break the code")
             this.get()
             assert False
         except Exception as e:

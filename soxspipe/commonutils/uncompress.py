@@ -9,6 +9,7 @@ Author
 Date Created
 : April 11, 2023
 """
+
 from fundamentals import tools
 from builtins import object
 import sys
@@ -44,7 +45,11 @@ def uncompress(log, directory):
     batch = []
     for d in os.listdir(directory):
         filepath = os.path.join(directory, d)
-        if os.path.isfile(filepath) and "fits" in d and os.path.splitext(filepath)[1] == ".Z":
+        if (
+            os.path.isfile(filepath)
+            and "fits" in d
+            and os.path.splitext(filepath)[1] == ".Z"
+        ):
             batch.append(filepath)
             count += 1
             if len(batch) == 25:
@@ -65,7 +70,9 @@ def uncompress(log, directory):
                     sys.stdout.flush()
                     sys.stdout.write("\x1b[1A\x1b[2K")
                 percent = (float(uncompressedCount) / float(count)) * 100.0
-                print(f"Decompressed {uncompressedCount}/{count} fits.Z files ({percent:.1f}%)")
+                print(
+                    f"Decompressed {uncompressedCount}/{count} fits.Z files ({percent:.1f}%)"
+                )
         except Exception as e:
             log.error(f"Could not uncompress .Z files")
 

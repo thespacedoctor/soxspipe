@@ -54,9 +54,7 @@ class test_detect_continuum(unittest.TestCase):
 
     @pytest.mark.full
     def test_xsh_detect_continuum_function(self):
-        pinholeFlatPath = (
-            "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
-        )
+        pinholeFlatPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/order_definition_NIR_calibrated.fits"
         dispersion_map = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
         home = expanduser("~")
         pinholeFlatPath = pinholeFlatPath.replace("~", home)
@@ -119,7 +117,9 @@ class test_detect_continuum(unittest.TestCase):
         from soxspipe.commonutils import detect_continuum
 
         try:
-            this = detect_continuum(log=log, settings=settings, fakeKey="break the code")
+            this = detect_continuum(
+                log=log, settings=settings, fakeKey="break the code"
+            )
             this.get()
             assert False
         except Exception as e:

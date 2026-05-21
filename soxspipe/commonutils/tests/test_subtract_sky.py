@@ -59,9 +59,7 @@ class test_subtract_sky(unittest.TestCase):
 
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_single.fits"
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
-        twoDMap = (
-            "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
-        )
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
 
         from soxspipe.commonutils import keyword_lookup
 
@@ -71,7 +69,9 @@ class test_subtract_sky(unittest.TestCase):
 
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
 
-        mapDF, interOrderMask = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, slit_length=11, kw=kw)
+        mapDF, interOrderMask = twoD_disp_map_image_to_dataframe(
+            log=log, twoDMapPath=twoDMap, slit_length=11, kw=kw
+        )
 
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
         from astropy.nddata import CCDData
@@ -97,7 +97,11 @@ class test_subtract_sky(unittest.TestCase):
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
 
         mapDF, interOrderMask = twoD_disp_map_image_to_dataframe(
-            log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, slit_length=11, kw=kw
+            log=log,
+            twoDMapPath=twoDMap,
+            associatedFrame=objectFrame,
+            slit_length=11,
+            kw=kw,
         )
 
         from tabulate import tabulate
@@ -109,9 +113,7 @@ class test_subtract_sky(unittest.TestCase):
 
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_single.fits"
         objectPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/stare_mode_cal_multi.fits"
-        twoDMap = (
-            "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
-        )
+        twoDMap = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP_IMAGE.fits"
         dispMap = "~/xshooter-pipeline-dTata/unittest_data/xsh/xshooter-subtract-sky/20190830T184348_NIR_2D_MAP.fits"
 
         # UNIT READ FROM BUNIT KEYWORD OF FITS FILE UNLESS EXPLICITLY SUPPLIED
@@ -177,7 +179,13 @@ class test_subtract_sky(unittest.TestCase):
             productsTable=products,
             dispMap=dispMap,
         )
-        skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, qcTable, productsTable = this.subtract()
+        (
+            skymodelCCDData,
+            skySubtractedCCDData,
+            skySubtractedResidualsCCDData,
+            qcTable,
+            productsTable,
+        ) = this.subtract()
 
         from tabulate import tabulate
 

@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -19,7 +20,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -32,7 +33,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments2, settings2, log2, dbConn2 = su.setup()
 
@@ -63,11 +64,9 @@ class test_soxs_mdark(unittest.TestCase):
     def test_xsh_mdark_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_6s_darks.sof"
         from soxspipe.recipes import soxs_mdark
+
         this = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -76,11 +75,9 @@ class test_soxs_mdark(unittest.TestCase):
     def test_xsh_mdark_nir_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_240s_darks.sof"
         from soxspipe.recipes import soxs_mdark
+
         this = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -89,11 +86,9 @@ class test_soxs_mdark(unittest.TestCase):
     def test_xsh_mdark_nir_function3(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_125s_darks.sof"
         from soxspipe.recipes import soxs_mdark
+
         this = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -102,11 +97,9 @@ class test_soxs_mdark(unittest.TestCase):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/uvb_1x1_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
+
         this = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -115,11 +108,9 @@ class test_soxs_mdark(unittest.TestCase):
     def test_xsh_mdark_uvb_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/uvb_2x2_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
+
         this = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -127,11 +118,9 @@ class test_soxs_mdark(unittest.TestCase):
     def test_xsh_mdark_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/vis_1x1_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
+
         this = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -140,11 +129,9 @@ class test_soxs_mdark(unittest.TestCase):
     def test_xsh_mdark_vis_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/vis_2x2_dark_3600s.sof"
         from soxspipe.recipes import soxs_mdark
+
         this = soxs_mdark(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         productPath = this.produce_product()
         print(f"Here is the final product `{productPath}`")
@@ -202,14 +189,13 @@ class test_soxs_mdark(unittest.TestCase):
     def test_soxs_mdark_function_exception(self):
 
         from soxspipe.recipes import soxs_mdark
+
         try:
             sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_mixed_exptime_darks.sof"
             from soxspipe.recipes import soxs_mdark
+
             this = soxs_mdark(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath,
-                overwrite=True
+                log=log, settings=settings, inputFrames=sofPath, overwrite=True
             )
             assert False
         except Exception as e:

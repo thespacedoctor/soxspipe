@@ -85,7 +85,9 @@ class soxs_stare(base_recipe):
         # imagefilecollection)
         from soxspipe.commonutils.set_of_files import set_of_files
 
-        sof = set_of_files(log=self.log, settings=self.settings, inputFrames=self.inputFrames)
+        sof = set_of_files(
+            log=self.log, settings=self.settings, inputFrames=self.inputFrames
+        )
         self.inputFrames, self.supplementaryInput = sof.get()
 
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_stare - NO MORE, NO LESS.
@@ -104,13 +106,17 @@ class soxs_stare(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"]
+        )
 
         # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
         if self.sofName:
             self.filenameTemplate = self.sofName + ".fits"
         else:
-            self.filenameTemplate = filenamer(log=self.log, frame=self.objectFrame, settings=self.settings)
+            self.filenameTemplate = filenamer(
+                log=self.log, frame=self.objectFrame, settings=self.settings
+            )
 
         self.generateReponseCurve = False
 
@@ -137,7 +143,14 @@ class soxs_stare(base_recipe):
 
         if self.arm == "NIR":
             if not error:
-                okList = ["OBJECT", "LAMP,FLAT", "DARK", "STD,FLUX", "STD,TELLURIC", "OBJECT,ASYNC"]
+                okList = [
+                    "OBJECT",
+                    "LAMP,FLAT",
+                    "DARK",
+                    "STD,FLUX",
+                    "STD,TELLURIC",
+                    "OBJECT,ASYNC",
+                ]
                 if "PAE" in self.settings and self.settings["PAE"]:
                     okList.append("FLAT,LAMP")
                 for i in imageTypes:
@@ -161,7 +174,15 @@ class soxs_stare(base_recipe):
         else:
             if not error:
                 for i in imageTypes:
-                    if i not in ["OBJECT", "LAMP,FLAT", "BIAS", "DARK", "STD,FLUX", "STD,TELLURIC", "OBJECT,ASYNC"]:
+                    if i not in [
+                        "OBJECT",
+                        "LAMP,FLAT",
+                        "BIAS",
+                        "DARK",
+                        "STD,FLUX",
+                        "STD,TELLURIC",
+                        "OBJECT,ASYNC",
+                    ]:
                         error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
 
             if not error:
@@ -244,7 +265,10 @@ class soxs_stare(base_recipe):
 
         # FLUX STD FRAMES
         if not len(allObjectFrames):
-            add_filters = {kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"}
+            add_filters = {
+                kw("DPR_TYPE"): "STD,FLUX",
+                kw("DPR_TECH"): "ECHELLE,SLIT,STARE",
+            }
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 singleFrame = CCDData.read(
@@ -261,7 +285,10 @@ class soxs_stare(base_recipe):
 
         # FLUX STD FRAMES
         if not len(allObjectFrames):
-            add_filters = {kw("DPR_TYPE"): "STD,TELLURIC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"}
+            add_filters = {
+                kw("DPR_TYPE"): "STD,TELLURIC",
+                kw("DPR_TECH"): "ECHELLE,SLIT,STARE",
+            }
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 singleFrame = CCDData.read(
@@ -276,7 +303,10 @@ class soxs_stare(base_recipe):
                 allObjectFrames.append(singleFrame)
 
         if not len(allObjectFrames) and "PAE" in self.settings and self.settings["PAE"]:
-            add_filters = {kw("DPR_TYPE"): "LAMP,FLAT", kw("DPR_TECH"): "ECHELLE,PINHOLE"}
+            add_filters = {
+                kw("DPR_TYPE"): "LAMP,FLAT",
+                kw("DPR_TECH"): "ECHELLE,PINHOLE",
+            }
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 singleFrame = CCDData.read(
@@ -289,14 +319,19 @@ class soxs_stare(base_recipe):
                     key_uncertainty_type="UTYPE",
                 )
                 allObjectFrames.append(singleFrame)
-            self.log.warning("Processing a ORDER-TRACE frame with the stare-mode recipe")
+            self.log.warning(
+                "Processing a ORDER-TRACE frame with the stare-mode recipe"
+            )
             self.subtractSky = False
 
         if "PAE" in self.settings and self.settings["PAE"]:
             self.subtractSky = False
 
         if not len(allObjectFrames):
-            add_filters = {kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): "ECHELLE,SLIT,NODDING"}
+            add_filters = {
+                kw("DPR_TYPE"): "STD,FLUX",
+                kw("DPR_TECH"): "ECHELLE,SLIT,NODDING",
+            }
             allObjectFrames = []
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 singleFrame = CCDData.read(
@@ -312,7 +347,10 @@ class soxs_stare(base_recipe):
             self.log.warning("Processing a NODDING frame with the stare-mode recipe")
 
         combined_object_notflattened = self.clip_and_stack(
-            frames=allObjectFrames, recipe="soxs_stare", ignore_input_masks=True, post_stack_clipping=False
+            frames=allObjectFrames,
+            recipe="soxs_stare",
+            ignore_input_masks=True,
+            post_stack_clipping=False,
         )
         self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
 
@@ -383,20 +421,28 @@ class soxs_stare(base_recipe):
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # FIND THE 2D MAP TABLE
         filterDict = {kw("PRO_CATG"): f"DISP_TAB_{arm}"}
-        dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        dispMap = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
-        twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        twoDMap = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # FIND THE RESPONSE FUNCTION, IF PRESENT
         try:
             filterDict = {kw("PRO_CATG"): f"RESP_TAB_{arm}"}
-            responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+            responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(
+                include_path=True
+            )[0]
 
         except:
             responseFunctionPath = False
@@ -450,9 +496,13 @@ class soxs_stare(base_recipe):
                 startNightDate=self.startNightDate,
                 debug=self.debug,
             )
-            skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData, self.qc, self.products = (
-                skymodel.subtract()
-            )
+            (
+                skymodelCCDData,
+                skySubtractedCCDData,
+                skySubtractedResidualsCCDData,
+                self.qc,
+                self.products,
+            ) = skymodel.subtract()
 
             if skymodelCCDData is None:
                 self.subtractSky = False
@@ -499,7 +549,10 @@ class soxs_stare(base_recipe):
                 # WRITE SKY-MODEL TO DISK
                 filename = self.filenameTemplate.replace(".fits", "_SKYMODEL.fits")
                 productPath = self._write(
-                    frame=skymodelCCDData, filedir=self.workspaceRootPath, filename=filename, overwrite=True
+                    frame=skymodelCCDData,
+                    filedir=self.workspaceRootPath,
+                    filename=filename,
+                    overwrite=True,
                 )
                 filename = os.path.basename(productPath)
                 self.products = pd.concat(
@@ -526,7 +579,9 @@ class soxs_stare(base_recipe):
 
                 if True:
                     # WRITE SKY-MODEL TO DISK
-                    filename = self.filenameTemplate.replace(".fits", "_SKYSUB_RESIDUALS.fits")
+                    filename = self.filenameTemplate.replace(
+                        ".fits", "_SKYSUB_RESIDUALS.fits"
+                    )
                     productPath = self._write(
                         frame=skySubtractedResidualsCCDData,
                         filedir=self.workspaceRootPath,
@@ -624,7 +679,9 @@ class soxs_stare(base_recipe):
             debug=self.debug,
             turnOffMP=self.turnOffMP,
         )
-        self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
+        self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = (
+            optimalExtractor.extract()
+        )
 
         # CHECK IF FLUX CALIBRATION IS NEEDED
         filePath_fluxcal = None
@@ -633,9 +690,13 @@ class soxs_stare(base_recipe):
         if responseFunctionPath:
             from soxspipe.commonutils import flux_calibration
 
-            calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+            calibrationRootPath = get_calibrations_path(
+                log=self.log, settings=self.settings
+            )
 
-            detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
+            detectorParams = detector_lookup(log=self.log, settings=self.settings).get(
+                self.arm
+            )
 
             self.log.print(f"# FLUX CALIBRATING THE SPECTRUM\n")
             fluxCalibrator = flux_calibration(
@@ -677,7 +738,9 @@ class soxs_stare(base_recipe):
                 notFlattened=True,
                 turnOffMP=self.turnOffMP,
             )
-            self.qc, self.products, _, _, extractionPath_notflat = optimalExtractor.extract()
+            self.qc, self.products, _, _, extractionPath_notflat = (
+                optimalExtractor.extract()
+            )
 
             # GETTING THE RESPONSE
             from soxspipe.commonutils import response_function
@@ -723,7 +786,9 @@ class soxs_stare(base_recipe):
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec[
+                "FLUX_CALIBRATED"
+            ]  # BACK COMPATIBILITY WITH THE CODE
             fluxcal_spec["SNR"] = mergedSpectumDF["SNR"]
             fluxcal_spec["SKY_COUNTS"] = mergedSpectumDF["SKY_COUNTS"]
             self.products, filePath = plot_merged_spectrum_qc(

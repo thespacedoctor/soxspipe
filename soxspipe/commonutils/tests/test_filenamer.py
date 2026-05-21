@@ -11,6 +11,7 @@ from os.path import expanduser
 from astropy.io import fits
 from astropy.nddata import CCDData
 from astropy import units as u
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -24,7 +25,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -48,6 +49,7 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 # xt-utkit-refresh-database
 
+
 class test_filenamer(unittest.TestCase):
 
     import pytest
@@ -55,6 +57,7 @@ class test_filenamer(unittest.TestCase):
     @pytest.mark.full
     def test_soxs_filenamer_function(self):
         from soxspipe.commonutils import filenamer
+
         utDir = settings["test-data-root"]
         subDirs = [
             "create_dispersion_map",
@@ -66,7 +69,7 @@ class test_filenamer(unittest.TestCase):
             "xshooter-detect-order-edges",
             "xshooter-mflat/uvb/qflat",
             "xshooter-mflat/nir/calibrated",
-            "xshooter-disp-solution/nir/"
+            "xshooter-disp-solution/nir/",
         ]
         filestoname = []
         for dirr in subDirs:
@@ -75,34 +78,37 @@ class test_filenamer(unittest.TestCase):
             for d in os.listdir(pathToDirectory):
                 if "DISP" not in d and "ORDER" not in d:
                     filepath = os.path.join(pathToDirectory, d)
-                    if os.path.isfile(filepath) and os.path.splitext(filepath)[1] == ".fits":
+                    if (
+                        os.path.isfile(filepath)
+                        and os.path.splitext(filepath)[1] == ".fits"
+                    ):
                         filestoname.append(filepath)
 
         for filepath in filestoname:
             print(f"\nORIG: {filepath}")
             # with fits.open(filepath, "readonly") as hdul:
-            frame = CCDData.read(filepath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+            frame = CCDData.read(
+                filepath,
+                hdu=0,
+                unit=u.electron,
+                hdu_uncertainty="ERRS",
+                hdu_mask="QUAL",
+                hdu_flags="FLAGS",
+                key_uncertainty_type="UTYPE",
+            )
             if "SOXSPIPE PRE" in frame.header:
                 frame.header["SXSPRE"] = frame.header["SOXSPIPE PRE"]
 
-            filename = filenamer(
-                log=log,
-                frame=frame,
-                settings=settings
-            )
+            filename = filenamer(log=log, frame=frame, settings=settings)
             print(filename)
 
     @pytest.mark.full
     def test_soxs_filenamer_function_exception(self):
 
         from soxspipe.commonutils import filenamer
+
         try:
-            this = filenamer(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
-            )
+            this = filenamer(log=log, settings=settings, fakeKey="break the code")
             this.get()
             assert False
         except Exception as e:

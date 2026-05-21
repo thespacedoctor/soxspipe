@@ -108,7 +108,10 @@ class subtract_background(object):
         from soxspipe.commonutils.toolkit import utility_setup
 
         self.qcDir, self.productDir = utility_setup(
-            log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate
+            log=self.log,
+            settings=settings,
+            recipeName=recipeName,
+            startNightDate=startNightDate,
         )
 
         quicklook_image(
@@ -162,7 +165,12 @@ class subtract_background(object):
         originalMask = np.copy(self.frame.mask)
 
         quicklook_image(
-            log=self.log, CCDObject=self.frame.data, show=False, ext=None, surfacePlot=True, title="Initial frame"
+            log=self.log,
+            CCDObject=self.frame.data,
+            show=False,
+            ext=None,
+            surfacePlot=True,
+            title="Initial frame",
         )
 
         # MASK THE INNER ORDER AREA (AND BAD PIXELS)
@@ -179,7 +187,9 @@ class subtract_background(object):
 
         backgroundFrame = self.create_background_image(
             rowFitOrder=self.settings["background-subtraction"]["bspline-deg"],
-            gaussianSigma=self.settings["background-subtraction"]["gaussian-blur-sigma"],
+            gaussianSigma=self.settings["background-subtraction"][
+                "gaussian-blur-sigma"
+            ],
         )
         toolkit.frame_to_32(backgroundFrame)
 
@@ -262,14 +272,20 @@ class subtract_background(object):
 
         for o in uniqueOrders:
 
-            axisBcoord = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisB}coord"]
-            axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisA}coord_edgeup"]
-            axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisA}coord_edgelow"]
+            axisBcoord = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                f"{self.axisB}coord"
+            ]
+            axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                f"{self.axisA}coord_edgeup"
+            ]
+            axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][
+                f"{self.axisA}coord_edgelow"
+            ]
 
             if o != oBot:
-                next_axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o + 1)][
-                    f"{self.axisA}coord_edgeup"
-                ]
+                next_axisAcoord_edgeup = orderPixelTable.loc[
+                    (orderPixelTable["order"] == o + 1)
+                ][f"{self.axisA}coord_edgeup"]
                 bottomGap = axisAcoord_edgelow.values - next_axisAcoord_edgeup.values
                 expandBottom = np.median(bottomGap) / 2 - 3
                 if expandBottom < 2:
@@ -278,9 +294,9 @@ class subtract_background(object):
                 expandBottom = expandTop
 
             if o != oTop:
-                previous_axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o - 1)][
-                    f"{self.axisA}coord_edgelow"
-                ]
+                previous_axisAcoord_edgelow = orderPixelTable.loc[
+                    (orderPixelTable["order"] == o - 1)
+                ][f"{self.axisA}coord_edgelow"]
                 topGap = previous_axisAcoord_edgelow.values - axisAcoord_edgeup.values
                 expandTop = np.median(topGap) / 2 - 3
                 if expandTop < 2:
@@ -295,14 +311,22 @@ class subtract_background(object):
                 axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord = zip(
                     *[
                         (x1, x2, b)
-                        for x1, x2, b in zip(axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord)
-                        if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen
+                        for x1, x2, b in zip(
+                            axisAcoord_edgelow, axisAcoord_edgeup, axisBcoord
+                        )
+                        if x1 < axisALen
+                        and x2 > 0
+                        and x2 < axisALen
+                        and b > 0
+                        and b < axisBLen
                     ]
                 )
             except:
                 continue
             for b, u, l in zip(
-                axisBcoord, np.ceil(axisAcoord_edgeup).astype(int), np.floor(axisAcoord_edgelow).astype(int)
+                axisBcoord,
+                np.ceil(axisAcoord_edgeup).astype(int),
+                np.floor(axisAcoord_edgelow).astype(int),
             ):
                 if l < 0:
                     l = 0
@@ -366,7 +390,12 @@ class subtract_background(object):
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA
         clippedDataMask = sigma_clip(
-            maskedImage, sigma_lower=10, sigma_upper=50, maxiters=2, cenfunc="median", stdfunc="mad_std"
+            maskedImage,
+            sigma_lower=10,
+            sigma_upper=50,
+            maxiters=2,
+            cenfunc="median",
+            stdfunc="mad_std",
         )
 
         # COMBINE MASK WITH THE BAD PIXEL MASK
@@ -409,7 +438,9 @@ class subtract_background(object):
         for idx, row in enumerate(maskedImage):
 
             # SET X TO A MASKED RANGE ... BLANK DATA BUT WITH MASK FROM IMAGE
-            xunmasked = ma.masked_array(np.linspace(0, len(row), len(row), dtype=int), mask=row.mask)
+            xunmasked = ma.masked_array(
+                np.linspace(0, len(row), len(row), dtype=int), mask=row.mask
+            )
 
             # fit = ma.polyfit(xunmasked, row, deg=rowFitOrder)
             xfit = xunmasked.data
@@ -425,11 +456,15 @@ class subtract_background(object):
             hw = math.floor(window / 2)
             # rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).quantile(.1)
             try:
-                rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
+                rowmaskedSmoothed = (
+                    pd.Series(rowmasked).rolling(window=window, center=True).median()
+                )
             except:
                 rowmasked = rowmasked.astype(float)
                 # rowmasked = rowmasked.byteswap().newbyteorder() ## REMOVE IF ABOVE .astype(float) WORKS
-                rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
+                rowmaskedSmoothed = (
+                    pd.Series(rowmasked).rolling(window=window, center=True).median()
+                )
             rowmaskedSmoothed[:hw] = rowmaskedSmoothed.iloc[hw + 1]
             rowmaskedSmoothed[-hw:] = rowmaskedSmoothed.iloc[-hw - 1]
             rowmasked[:hw] = rowmasked[hw + 1]
@@ -438,7 +473,9 @@ class subtract_background(object):
             rowmaskedSmoothed = np.where(rowmaskedSmoothed < 0, 0, rowmaskedSmoothed)
 
             seedKnots = xmasked[1 : -1 : window * 2]
-            tck, fp, ier, msg = splrep(xmasked, rowmaskedSmoothed, t=seedKnots, k=rowFitOrder, full_output=True)
+            tck, fp, ier, msg = splrep(
+                xmasked, rowmaskedSmoothed, t=seedKnots, k=rowFitOrder, full_output=True
+            )
             t, c, k = tck
 
             if ier == 10:
@@ -469,7 +506,9 @@ class subtract_background(object):
             title="Scattered light background image",
         )
 
-        backgroundMap = scipy.ndimage.filters.gaussian_filter(backgroundMap, gaussianSigma, truncate=2, axes=0)
+        backgroundMap = scipy.ndimage.filters.gaussian_filter(
+            backgroundMap, gaussianSigma, truncate=2, axes=0
+        )
 
         # SET -VE T0 ZERO
         backgroundMap = np.where(backgroundMap < 0, 0, backgroundMap)

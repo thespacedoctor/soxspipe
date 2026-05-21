@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -19,7 +20,7 @@ su = tools(
     logLevel="WARNING",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -32,7 +33,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments2, settings2, log2, dbConn2 = su.setup()
 
@@ -90,11 +91,9 @@ class test_soxs_order_centres(unittest.TestCase):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_NIR_ORDER_CENTRE.sof"
         # sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-orderpos/nir"
         from soxspipe.recipes import soxs_order_centres
+
         this = soxs_order_centres(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         this.produce_product()
 
@@ -102,32 +101,26 @@ class test_soxs_order_centres(unittest.TestCase):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_UVB_ORDER_CENTRE_DLAMP_1x1_fast.sof"
         from soxspipe.recipes import soxs_order_centres
+
         this = soxs_order_centres(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         this.produce_product()
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_UVB_ORDER_CENTRE_QLAMP_1x1_fast.sof"
         from soxspipe.recipes import soxs_order_centres
+
         this = soxs_order_centres(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         this.produce_product()
 
     def test_xsh_order_centres_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-order-centres/sof/20170818_VIS_ORDER_CENTRE_1x1_fast.sof"
         from soxspipe.recipes import soxs_order_centres
+
         this = soxs_order_centres(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         this.produce_product()
 
@@ -135,14 +128,13 @@ class test_soxs_order_centres(unittest.TestCase):
     def test_soxs_order_centres_function_exception(self):
 
         from soxspipe.recipes import soxs_order_centres
+
         try:
             sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-orderpos/sof/order_centre_uvb.sof"
             from soxspipe.recipes import soxs_order_centres
+
             this = soxs_order_centres(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath,
-                overwrite=True
+                log=log, settings=settings, inputFrames=sofPath, overwrite=True
             )
             assert False
         except Exception as e:

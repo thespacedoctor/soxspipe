@@ -119,13 +119,22 @@ def main(arguments=None):
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
-    if "-s" not in sys.argv and "prep" not in sys.argv and "session" not in sys.argv and currentSession:
+    if (
+        "-s" not in sys.argv
+        and "prep" not in sys.argv
+        and "session" not in sys.argv
+        and currentSession
+    ):
         settingsFile = f"./sessions/{currentSession}/soxspipe.yaml"
         exists = os.path.exists(settingsFile)
         sys.argv.append("-s")
         sys.argv.append(settingsFile)
 
-    if "prep" in sys.argv or "watch" in sys.argv or ("reduce" in sys.argv and "-s" not in sys.argv):
+    if (
+        "prep" in sys.argv
+        or "watch" in sys.argv
+        or ("reduce" in sys.argv and "-s" not in sys.argv)
+    ):
         arguments = docopt(__doc__)
         if "--settings" in arguments.keys():
             del arguments["--settings"]
@@ -344,7 +353,9 @@ def main(arguments=None):
             reducedOffset = recipe.produce_product()
 
         if a["prep"]:
-            do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
+            do = data_organiser(
+                log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"]
+            )
             do.prepare(refresh=a["refreshFlag"])
 
         if a["session"] and a["ls"]:
@@ -386,7 +397,14 @@ def main(arguments=None):
 
                 from tabulate import tabulate
 
-                print(tabulate(rawTable[["file", "tag"]], headers="keys", tablefmt="github", showindex=False))
+                print(
+                    tabulate(
+                        rawTable[["file", "tag"]],
+                        headers="keys",
+                        tablefmt="github",
+                        showindex=False,
+                    )
+                )
 
                 if len(rawFramePaths) == 0:
                     print(
@@ -575,7 +593,13 @@ def main(arguments=None):
     runningTime = times.calculate_time_difference(startTime, endTime)
     sys.argv[0] = os.path.basename(sys.argv[0])
 
-    if not a["prep"] and not a["session"] and not a["reduce"] and not a["watch"] and not a["list"]:
+    if (
+        not a["prep"]
+        and not a["session"]
+        and not a["reduce"]
+        and not a["watch"]
+        and not a["list"]
+    ):
         log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
         log.print(f"Recipe Run Time: {runningTime}\n\n")
         print(f"{'='*70}\n")

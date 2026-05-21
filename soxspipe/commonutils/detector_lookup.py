@@ -9,12 +9,14 @@ Author
 Date Created
 : August 13, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 from fundamentals import tools
 from builtins import object
 import sys
 import os
-os.environ['TERM'] = 'vt100'
+
+os.environ["TERM"] = "vt100"
 
 
 class detector_lookup(object):
@@ -42,9 +44,9 @@ class detector_lookup(object):
     """
 
     def __init__(
-            self,
-            log,
-            settings=False,
+        self,
+        log,
+        settings=False,
     ):
         self.log = log
         log.debug("instantiating a new 'detector_lookup' object")
@@ -60,8 +62,7 @@ class detector_lookup(object):
 
         return None
 
-    def get(self,
-            arm):
+    def get(self, arm):
         """
         *return a dictionary of detector characteristics and parameters*
 
@@ -69,18 +70,19 @@ class detector_lookup(object):
 
         - ``arm`` -- the detector parameters to return
         """
-        self.log.debug('starting the ``get`` method')
+        self.log.debug("starting the ``get`` method")
 
         arm = arm.upper()
 
         if arm not in self.dectDict:
-            raise LookupError(f"the detector '{arm}' cannot be found in the detector parameters lookup file")
+            raise LookupError(
+                f"the detector '{arm}' cannot be found in the detector parameters lookup file"
+            )
 
-        self.log.debug('completed the ``get`` method')
+        self.log.debug("completed the ``get`` method")
         return self.dectDict[arm]
 
-    def _select_dictionary(
-            self):
+    def _select_dictionary(self):
         """*select the detector parameter dictionary based on the instrument passed via the settings*
 
         **Return:**
@@ -98,16 +100,21 @@ class detector_lookup(object):
         dectDict = detector._select_dictionary()
         ```
         """
-        self.log.debug('starting the ``_select_dictionary`` method')
+        self.log.debug("starting the ``_select_dictionary`` method")
 
         # GENERATE PATH TO YAML DICTIONARY
-        yamlFilePath = os.path.dirname(os.path.dirname(
-            __file__)) + "/resources/" + self.instrument + "_detector_parameters.yaml"
+        yamlFilePath = (
+            os.path.dirname(os.path.dirname(__file__))
+            + "/resources/"
+            + self.instrument
+            + "_detector_parameters.yaml"
+        )
 
         # YAML CONTENT TO DICTIONARY
         import yaml
-        with open(yamlFilePath, 'r') as stream:
+
+        with open(yamlFilePath, "r") as stream:
             dectDict = yaml.safe_load(stream)
 
-        self.log.debug('completed the ``_select_dictionary`` method')
+        self.log.debug("completed the ``_select_dictionary`` method")
         return dectDict

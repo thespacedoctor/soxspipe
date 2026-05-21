@@ -9,6 +9,7 @@ Author
 Date Created
 : January 27, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
 
@@ -90,7 +91,10 @@ class soxs_mdark(base_recipe):
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(
-            log=self.log, settings=self.settings, inputFrames=self.inputFrames, ext=self.settings["data-extension"]
+            log=self.log,
+            settings=self.settings,
+            inputFrames=self.inputFrames,
+            ext=self.settings["data-extension"],
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -111,7 +115,9 @@ class soxs_mdark(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"]
+        )
 
         return None
 
@@ -144,7 +150,9 @@ class soxs_mdark(base_recipe):
             if len(exptimes) > 1:
                 exptimes = [str(e) for e in exptimes]
                 exptimes = " and ".join(exptimes)
-                error = "Input frames have differing exposure-times %(exptimes)s" % locals()
+                error = (
+                    "Input frames have differing exposure-times %(exptimes)s" % locals()
+                )
 
         if error:
             sys.stdout.flush()
@@ -188,13 +196,18 @@ class soxs_mdark(base_recipe):
             )
         ]
 
-        meanFluxLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
+        meanFluxLevels, rons, noiseFrames = zip(
+            *[self.subtract_mean_flux_level(c) for c in ccds]
+        )
         masterMeanFluxLevel = np.mean(meanFluxLevels)
         masterMedianFluxLevel = np.median(meanFluxLevels)
         rawRon = np.mean(rons)
 
         combined_noise = self.clip_and_stack(
-            frames=list(noiseFrames), recipe="soxs_mdark", ignore_input_masks=False, post_stack_clipping=True
+            frames=list(noiseFrames),
+            recipe="soxs_mdark",
+            ignore_input_masks=False,
+            post_stack_clipping=True,
         )
 
         maskedDataArray = np.ma.array(combined_noise.data, mask=combined_noise.mask)
@@ -202,10 +215,15 @@ class soxs_mdark(base_recipe):
 
         # FILL MASKED PIXELS WITH 0
         combined_noise.data = (
-            np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanFluxLevel
+            np.ma.array(
+                combined_noise.data, mask=combined_noise.mask, fill_value=0
+            ).filled()
+            + masterMeanFluxLevel
         )
         combined_noise.uncertainty = np.ma.array(
-            combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon
+            combined_noise.uncertainty.array,
+            mask=combined_noise.mask,
+            fill_value=rawRon,
         ).filled()
         toolkit.frame_to_32(combined_noise)
         combined_dark_mean = combined_noise
@@ -213,11 +231,18 @@ class soxs_mdark(base_recipe):
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
-            log=self.log, frame=combined_dark_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc
+            log=self.log,
+            frame=combined_dark_mean,
+            settings=self.settings,
+            recipeName=self.recipeName,
+            qcTable=self.qc,
         )
 
         medianFlux = self.qc_median_flux_level(
-            frame=combined_dark_mean, frameType="MDARK", frameName="master dark", medianFlux=masterMedianFluxLevel
+            frame=combined_dark_mean,
+            frameType="MDARK",
+            frameName="master dark",
+            medianFlux=masterMedianFluxLevel,
         )
 
         self.qc_ron(frameType="DARK")
@@ -226,7 +251,10 @@ class soxs_mdark(base_recipe):
 
         # WRITE TO DISK
         productPath = self._write(
-            frame=combined_dark_mean, filedir=self.workspaceRootPath, filename=False, overwrite=True
+            frame=combined_dark_mean,
+            filedir=self.workspaceRootPath,
+            filename=False,
+            overwrite=True,
         )
         filename = os.path.basename(productPath)
 

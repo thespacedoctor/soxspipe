@@ -9,6 +9,7 @@ Author
 Date Created
 : February 26, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 from fundamentals import tools
 from builtins import object
@@ -126,7 +127,9 @@ class keyword_lookup(object):
         keywords = []
         for t in tag:
             if t not in self.kwDict:
-                raise LookupError(f"{t} is not in the list of known FITS Header keyword aliases")
+                raise LookupError(
+                    f"{t} is not in the list of known FITS Header keyword aliases"
+                )
             keywords.append(self.kwDict[t] + index)
 
         # RETURNING A SINGLE KEYWORD?
@@ -158,7 +161,10 @@ class keyword_lookup(object):
 
         # GENERATE PATH TO YAML DICTIONARY
         yamlFilePath = (
-            os.path.dirname(os.path.dirname(__file__)) + "/resources/" + self.instrument.lower() + "_keywords.yaml"
+            os.path.dirname(os.path.dirname(__file__))
+            + "/resources/"
+            + self.instrument.lower()
+            + "_keywords.yaml"
         )
 
         # YAML CONTENT TO DICTIONARY

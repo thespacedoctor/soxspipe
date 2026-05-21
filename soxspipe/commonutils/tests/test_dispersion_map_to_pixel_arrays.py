@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -21,7 +22,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -45,6 +46,7 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 # xt-utkit-refresh-database
 
+
 class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
 
     import pytest
@@ -55,17 +57,18 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
         dispersionMapPath = "~/xshooter-pipeline-data/unittest_data/xsh/detect_continuum/20170818T172310_NIR_DISP_MAP.fits"
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
         import pandas as pd
+
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         myDict = {
             "order": [11, 11, 11, 11, 11],
-            "wavelength": [2000., 2100., 2200., 2300., 2400.],
-            "slit_position": [0, 0, 0, 0, 0]
+            "wavelength": [2000.0, 2100.0, 2200.0, 2300.0, 2400.0],
+            "slit_position": [0, 0, 0, 0, 0],
         }
         orderPixelTable = pd.DataFrame(myDict)
         orderPixelTable = dispersion_map_to_pixel_arrays(
             log=log,
             dispersionMapPath=dispersionMapPath,
-            orderPixelTable=orderPixelTable
+            orderPixelTable=orderPixelTable,
         )
 
     import pytest
@@ -74,11 +77,10 @@ class test_dispersion_map_to_pixel_arrays(unittest.TestCase):
     def test_soxs_dispersion_map_to_pixel_arrays_function_exception(self):
 
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
+
         try:
             this = dispersion_map_to_pixel_arrays(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
+                log=log, settings=settings, fakeKey="break the code"
             )
             this.get()
             assert False

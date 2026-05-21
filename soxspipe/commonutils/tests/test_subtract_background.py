@@ -10,6 +10,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 packageDirectory = utKit("").get_project_root()
 settingsFile = packageDirectory + "/test_settings_xsh.yaml"
@@ -22,7 +23,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -46,6 +47,7 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 # xt-utkit-refresh-database
 
+
 class test_subtract_background(unittest.TestCase):
 
     import pytest
@@ -58,15 +60,20 @@ class test_subtract_background(unittest.TestCase):
         home = expanduser("~")
         flatPath = flatPath.replace("~", home)
         orderTable = orderTable.replace("~", home)
-        flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+        flatFrame = CCDData.read(
+            flatPath,
+            hdu=0,
+            unit=u.electron,
+            hdu_uncertainty="ERRS",
+            hdu_mask="QUAL",
+            hdu_flags="FLAGS",
+            key_uncertainty_type="UTYPE",
+        )
 
         from soxspipe.commonutils.subtract_background import subtract_background
+
         background = subtract_background(
-            log=log,
-            frame=flatFrame,
-            orderTable=orderTable,
-            settings=settings
+            log=log, frame=flatFrame, orderTable=orderTable, settings=settings
         )
         backgroundSubtractedFrame = background.subtract()
 
@@ -74,11 +81,10 @@ class test_subtract_background(unittest.TestCase):
     def test_soxs_subtract_background_function_exception(self):
 
         from soxspipe.commonutils.subtract_background import subtract_background
+
         try:
             this = subtract_background(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
+                log=log, settings=settings, fakeKey="break the code"
             )
             this.subtract()
             assert False

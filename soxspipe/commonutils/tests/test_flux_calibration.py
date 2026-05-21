@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -21,7 +22,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -45,6 +46,7 @@ if not os.path.exists(pathToOutputDir):
 # xt-setup-unit-testing-files-and-folders
 # xt-utkit-refresh-database
 
+
 class test_flux_calibration(unittest.TestCase):
 
     def test_xsh_flux_calibration_function(self):
@@ -53,22 +55,22 @@ class test_flux_calibration(unittest.TestCase):
         extractedSpectrum = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-fluxcal/nir/2019.08.22T23.12.18.5011_NIR_STARE_205PT0_EG_274_EXTRACTED_MERGED.fits"
 
         from soxspipe.commonutils import flux_calibration
+
         fluxcal = flux_calibration(
             log=log,
             settings=settings,
             responseFunction=responseFunction,
-            extractedSpectrum=extractedSpectrum
+            extractedSpectrum=extractedSpectrum,
         )
         fluxcal.calibrate()
 
     def test_soxs_flux_calibration_function_exception(self):
 
         from soxspipe.commonutils import flux_calibration
+
         try:
             this = flux_calibration(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
+                log=log, settings=settings, fakeKey="break the code"
             )
             this.get()
             assert False
