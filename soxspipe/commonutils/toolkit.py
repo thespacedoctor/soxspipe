@@ -14,11 +14,16 @@ from os.path import expanduser
 from soxspipe.commonutils import detector_lookup
 from datetime import datetime, UTC
 from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils.polynomials import chebyshev_xy_polynomial, chebyshev_order_xy_polynomials
+from soxspipe.commonutils.polynomials import (
+    chebyshev_xy_polynomial,
+    chebyshev_order_xy_polynomials,
+)
 from fundamentals import tools
 from builtins import object
 import sys
-from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
+    dispersion_map_to_pixel_arrays,
+)
 import os
 from line_profiler import profile
 
@@ -83,11 +88,13 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     slice_length_offset = int(axisA - halfSlice)
     if sliceAxis == "x":
         sliceFull = frame[
-            int(axisB - halfwidth) : int(axisB + halfwidth + 1), slice_length_offset : int(axisA + halfSlice)
+            int(axisB - halfwidth) : int(axisB + halfwidth + 1),
+            slice_length_offset : int(axisA + halfSlice),
         ]
     else:
         sliceFull = frame[
-            slice_length_offset : int(axisA + halfSlice), int(axisB - halfwidth) : int(axisB + halfwidth + 1)
+            slice_length_offset : int(axisA + halfSlice),
+            int(axisB - halfwidth) : int(axisB + halfwidth + 1),
         ]
     slice_width_centre = (int(axisB + halfwidth + 1) + int(axisB - halfwidth)) / 2
 
@@ -226,7 +233,12 @@ def quicklook_image(
     if not isinstance(dispMapImage, bool):
 
         gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
-            log=log, dispMap=dispMap, dispMapImage=dispMapImage, associatedFrame=CCDObject, kw=kw, skylines=skylinesDF
+            log=log,
+            dispMap=dispMap,
+            dispMapImage=dispMapImage,
+            associatedFrame=CCDObject,
+            kw=kw,
+            skylines=skylinesDF,
         )
 
         try:
@@ -289,7 +301,15 @@ def quicklook_image(
             np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]),
             np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]),
         )
-        surface = ax.plot_surface(X=X, Y=Y, Z=rotatedImg, cmap="viridis", antialiased=True, vmin=vmin, vmax=vmax)
+        surface = ax.plot_surface(
+            X=X,
+            Y=Y,
+            Z=rotatedImg,
+            cmap="viridis",
+            antialiased=True,
+            vmin=vmin,
+            vmax=vmax,
+        )
 
         if inst == "SOXS":
             ax.azim = 70
@@ -380,8 +400,8 @@ def quicklook_image(
         plt.ylabel("x-axis", fontsize=16)
 
     if show:
-        plt.pause(0.1)
-        # plt.show()
+        # plt.pause(0.1)
+        plt.show()
 
     if saveToPath:
         plt.savefig(saveToPath, dpi=120, format="pdf", bbox_inches="tight")
@@ -474,8 +494,8 @@ def unpack_order_table(
 
     axisBcoords = [
         np.arange(
-            0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend)),
-            4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend)),
+            (0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend))),
+            (4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend))),
             pixelDelta,
         )
         for l, u, r in zip(blower, bupper, brange)
@@ -484,7 +504,10 @@ def unpack_order_table(
     orders = [np.full_like(a, o) for a, o in zip(axisBcoords, orderMetaTable["order"].values)]
 
     # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-    myDict = {f"{axisB}coord": np.concatenate(axisBcoords), "order": np.concatenate(orders)}
+    myDict = {
+        f"{axisB}coord": np.concatenate(axisBcoords),
+        "order": np.concatenate(orders),
+    }
     orderPixelTable = pd.DataFrame(myDict)
 
     cent_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
@@ -867,7 +890,11 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
     # USE DISPERSION MAP TO FIND X-Y LIMITS OF THE SPECTRAL FORMAT FOR EACH ORDER
     # WE WANT TO LIMIT THE EXTRACTION TO THESE REGIONS
     if not isinstance(dispersionMap, bool):
-        myDict = {"order": np.asarray([]), "wavelength": np.asarray([]), "slit_position": np.asarray([])}
+        myDict = {
+            "order": np.asarray([]),
+            "wavelength": np.asarray([]),
+            "slit_position": np.asarray([]),
+        }
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
             wlArray = np.array([wmin, wmax])
             myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
@@ -875,7 +902,10 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
             myDict["slit_position"] = np.append(myDict["slit_position"], np.zeros(len(wlArray)))
         orderPixelTable = pd.DataFrame(myDict)
         orderPixelTable = dispersion_map_to_pixel_arrays(
-            log=log, dispersionMapPath=dispersionMap, orderPixelTable=orderPixelTable, removeOffDetectorLocation=False
+            log=log,
+            dispersionMapPath=dispersionMap,
+            orderPixelTable=orderPixelTable,
+            removeOffDetectorLocation=False,
         )
 
         orderPixelRanges = []
@@ -936,7 +966,13 @@ def get_calibrations_path(log, settings):
 
 
 def twoD_disp_map_image_to_dataframe(
-    log, slit_length, twoDMapPath, kw=False, associatedFrame=False, removeMaskedPixels=False, dispAxis="y"
+    log,
+    slit_length,
+    twoDMapPath,
+    kw=False,
+    associatedFrame=False,
+    removeMaskedPixels=False,
+    dispAxis="y",
 ):
     """*convert the 2D dispersion image map to a pandas dataframe*
 
@@ -1067,22 +1103,23 @@ def twoD_disp_map_image_to_dataframe(
     mapDF = mapDF.loc[~mask]
 
     # SORT BY COLUMN NAME
-    mapDF.sort_values(["wavelength"], inplace=True)
+    if not mapDF.empty:
+        mapDF.sort_values(["wavelength"], inplace=True)
 
-    # CALCULATE PIXEL SCALE
-    if dispAxis == "y":
-        mapDF.sort_values(["x", "y"], inplace=True)
-    else:
-        mapDF.sort_values(["y", "x"], inplace=True)
-    shiftedWlArray = list(mapDF["wavelength"].values)[1:]
-    shiftedWlArray.append(np.nan)
-    mapDF["pixelScale"] = mapDF["wavelength"] - shiftedWlArray
-    mask = (mapDF["pixelScale"] > 2) | (mapDF["pixelScale"] < -2)
-    mapDF.loc[mask, "pixelScale"] = 0.0
-    mapDF["pixelScale"] = mapDF["pixelScale"].abs()
+        # CALCULATE PIXEL SCALE
+        if dispAxis == "y":
+            mapDF.sort_values(["x", "y"], inplace=True)
+        else:
+            mapDF.sort_values(["y", "x"], inplace=True)
+        shiftedWlArray = list(mapDF["wavelength"].values)[1:]
+        shiftedWlArray.append(np.nan)
+        mapDF["pixelScale"] = mapDF["wavelength"] - shiftedWlArray
+        mask = (mapDF["pixelScale"] > 2) | (mapDF["pixelScale"] < -2)
+        mapDF.loc[mask, "pixelScale"] = 0.0
+        mapDF["pixelScale"] = mapDF["pixelScale"].abs()
 
-    # SORT BY COLUMN NAME
-    mapDF.sort_values(["wavelength"], inplace=True)
+        # SORT BY COLUMN NAME
+        mapDF.sort_values(["wavelength"], inplace=True)
 
     log.debug("completed the ``twoD_disp_map_image_to_dataframe`` function")
     return mapDF, interOrderMask
@@ -1225,7 +1262,8 @@ def add_recipe_logger(log, productPath):
 
     recipeErr = logging.FileHandler(loggingErrorPath, mode="a", encoding=None, delay=True)
     recipeErrFormatter = logging.Formatter(
-        '%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s', "%Y-%m-%d %H:%M:%S"
+        '%(asctime)s %(levelname)s: "%(pathname)s", line %(lineno)d, in %(funcName)s > %(message)s',
+        "%Y-%m-%d %H:%M:%S",
     )
     recipeErr.set_name("recipeErr")
     recipeErr.setLevel(logging.ERROR)
@@ -1245,7 +1283,14 @@ class MaxFilter:
 
 
 def create_dispersion_solution_grid_lines_for_plot(
-    log, dispMap, dispMapImage, associatedFrame, kw, skylines=False, slitPositions=False, slit_length=11
+    log,
+    dispMap,
+    dispMapImage,
+    associatedFrame,
+    kw,
+    skylines=False,
+    slitPositions=False,
+    slit_length=11,
 ):
     """*given a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
 
@@ -1289,7 +1334,11 @@ def create_dispersion_solution_grid_lines_for_plot(
     import pandas as pd
 
     dispMapDF, interOrderMask = twoD_disp_map_image_to_dataframe(
-        log=log, slit_length=slit_length, twoDMapPath=dispMapImage, associatedFrame=associatedFrame, kw=kw
+        log=log,
+        slit_length=slit_length,
+        twoDMapPath=dispMapImage,
+        associatedFrame=associatedFrame,
+        kw=kw,
     )
 
     uniqueOrders = dispMapDF["order"].unique()
@@ -1371,7 +1420,15 @@ def get_calibration_lamp(log, frame, kw):
     inst = frame.header["INSTRUME"]
     lamp = None
 
-    for l in [kw("LAMP1"), kw("LAMP2"), kw("LAMP3"), kw("LAMP4"), kw("LAMP5"), kw("LAMP6"), kw("LAMP7")]:
+    for l in [
+        kw("LAMP1"),
+        kw("LAMP2"),
+        kw("LAMP3"),
+        kw("LAMP4"),
+        kw("LAMP5"),
+        kw("LAMP6"),
+        kw("LAMP7"),
+    ]:
         if l in frame.header:
             newLamp = frame.header[l]
             newLamp = (
@@ -1668,10 +1725,19 @@ def plot_merged_spectrum_qc(
 
     # SIGMA-CLIP THE DATA
     arrayMask = sigma_clip(
-        merged_orders["FLUX_COUNTS"], sigma_lower=3, sigma_upper=15.0, maxiters=1, cenfunc="mean", stdfunc="std"
+        merged_orders["FLUX_COUNTS"],
+        sigma_lower=3,
+        sigma_upper=15.0,
+        maxiters=1,
+        cenfunc="mean",
+        stdfunc="std",
     )
     mean, median, std = sigma_clipped_stats(
-        merged_orders["FLUX_COUNTS"], sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3
+        merged_orders["FLUX_COUNTS"],
+        sigma=5.0,
+        stdfunc="std",
+        cenfunc="mean",
+        maxiters=3,
     )
     maxFlux = arrayMask.max() + 3 * std
     minFlux = arrayMask.min() - 3 * std
@@ -1702,7 +1768,13 @@ def plot_merged_spectrum_qc(
         orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
         snrValue = snrValue["qc_value"].values
 
-    bottom_panel.plot(merged_orders["WAVE"], merged_orders["SNR"], linewidth=0.4, color="black", zorder=1)
+    bottom_panel.plot(
+        merged_orders["WAVE"],
+        merged_orders["SNR"],
+        linewidth=0.4,
+        color="black",
+        zorder=1,
+    )
     try:
         bottom_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
     except Exception:
@@ -1907,7 +1979,10 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     wave_ext = extinctionData["WAVE"] / 10
     # INTERPOLATING ON THE REQUIRED WAVE SCALE
     refitted_ext = interp1d(
-        np.array(wave_ext), np.array(extinctionData["MAG_AIRMASS"]), kind="next", fill_value="extrapolate"
+        np.array(wave_ext),
+        np.array(extinctionData["MAG_AIRMASS"]),
+        kind="next",
+        fill_value="extrapolate",
     )
 
     extCorrectionFactor = 10 ** (0.4 * refitted_ext(wave) * airmass)

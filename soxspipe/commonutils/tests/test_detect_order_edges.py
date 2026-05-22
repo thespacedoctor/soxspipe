@@ -10,6 +10,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -23,7 +24,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -59,33 +60,46 @@ class test_detect_order_edges(unittest.TestCase):
         home = expanduser("~")
         flatPath = flatPath.replace("~", home)
         orderCentreTable = orderCentreTable.replace("~", home)
-        flatFrame = CCDData.read(flatPath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-                                 hdu_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+        flatFrame = CCDData.read(
+            flatPath,
+            hdu=0,
+            unit=u.electron,
+            hdu_uncertainty="ERRS",
+            hdu_mask="QUAL",
+            hdu_flags="FLAGS",
+            key_uncertainty_type="UTYPE",
+        )
 
         import pandas as pd
+
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
-        qc = pd.DataFrame({
-            "soxspipe_recipe": [],
-            "qc_name": [],
-            "qc_value": [],
-            "qc_unit": [],
-            "qc_comment": [],
-            "obs_date_utc": [],
-            "reduction_date_utc": [],
-            "to_header": []
-        })
-        products = pd.DataFrame({
-            "soxspipe_recipe": [],
-            "product_label": [],
-            "file_name": [],
-            "file_type": [],
-            "obs_date_utc": [],
-            "reduction_date_utc": [],
-            "file_path": [],
-            "label": []
-        })
+        qc = pd.DataFrame(
+            {
+                "soxspipe_recipe": [],
+                "qc_name": [],
+                "qc_value": [],
+                "qc_unit": [],
+                "qc_comment": [],
+                "obs_date_utc": [],
+                "reduction_date_utc": [],
+                "to_header": [],
+            }
+        )
+        products = pd.DataFrame(
+            {
+                "soxspipe_recipe": [],
+                "product_label": [],
+                "file_name": [],
+                "file_type": [],
+                "obs_date_utc": [],
+                "reduction_date_utc": [],
+                "file_path": [],
+                "label": [],
+            }
+        )
 
         from soxspipe.commonutils import detect_order_edges
+
         edges = detect_order_edges(
             log=log,
             flatFrame=flatFrame,
@@ -101,11 +115,10 @@ class test_detect_order_edges(unittest.TestCase):
     def test_soxs_detect_order_edges_function_exception(self):
 
         from soxspipe.commonutils import detect_order_edges
+
         try:
             this = detect_order_edges(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
+                log=log, settings=settings, fakeKey="break the code"
             )
             this.get()
             assert False

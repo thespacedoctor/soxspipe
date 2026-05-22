@@ -118,7 +118,9 @@ class soxs_offset(soxs_nod):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"]
+        )
 
         return None
 
@@ -147,7 +149,10 @@ class soxs_offset(soxs_nod):
         from astropy import units as u
         import pandas as pd
         from datetime import datetime
-        from soxspipe.commonutils.toolkit import quicklook_image, plot_merged_spectrum_qc
+        from soxspipe.commonutils.toolkit import (
+            quicklook_image,
+            plot_merged_spectrum_qc,
+        )
 
         arm = self.arm
         kw = self.kw
@@ -169,7 +174,9 @@ class soxs_offset(soxs_nod):
                 if t == "STD,FLUX" and "-std" not in self.recipeName:
                     self.recipeName += "-std"
                     self.recipeSettings = self.get_recipe_settings()
-                    self.productDir = self.productDir.replace("soxs-offset", "soxs-offset-std")
+                    self.productDir = self.productDir.replace(
+                        "soxs-offset", "soxs-offset-std"
+                    )
                 singleFrame = CCDData.read(
                     i,
                     hdu=0,
@@ -201,20 +208,28 @@ class soxs_offset(soxs_nod):
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # FIND THE 2D MAP TABLE
         filterDict = {kw("PRO_CATG"): f"DISP_TAB_{arm}"}
-        self.dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        self.dispMap = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
-        self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # CHECK IF FLUX CALIBRATION IS REQUESTED
         try:
             filterDict = {kw("PRO_CATG"): f"RESP_TAB_{arm}"}
-            responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+            responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(
+                include_path=True
+            )[0]
 
         except:
             responseFunctionPath = False
@@ -231,7 +246,14 @@ class soxs_offset(soxs_nod):
         )
 
         # DIVIDING IN A AND B SEQUENCES
-        allFrameON, allFrameOFF, allFrameONOffsets, allFrameOFFOffsets, allFrameONNames, allFrameOFFNames = (
+        (
+            allFrameON,
+            allFrameOFF,
+            allFrameONOffsets,
+            allFrameOFFOffsets,
+            allFrameONNames,
+            allFrameOFFNames,
+        ) = (
             [],
             [],
             [],
@@ -345,12 +367,14 @@ class soxs_offset(soxs_nod):
                     masterFlat = False
 
                 # PROCESSING SINGLE SEQUENCE
-                mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
-                    aFrame=frameON,
-                    bFrame=frameOFF,
-                    locationSetIndex=sequenceCount,
-                    orderTablePath=orderTablePath,
-                    masterFlat=masterFlat,
+                mergedSpectrumDF_A, _, orderJoins = (
+                    self.process_single_ab_nodding_cycle(
+                        aFrame=frameON,
+                        bFrame=frameOFF,
+                        locationSetIndex=sequenceCount,
+                        orderTablePath=orderTablePath,
+                        masterFlat=masterFlat,
+                    )
                 )
                 if sequenceCount == 1:
                     allSpectrumA = mergedSpectrumDF_A
@@ -373,11 +397,17 @@ class soxs_offset(soxs_nod):
 
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
-                frames=allFrameON, recipe="soxs_offset", ignore_input_masks=False, post_stack_clipping=True
+                frames=allFrameON,
+                recipe="soxs_offset",
+                ignore_input_masks=False,
+                post_stack_clipping=True,
             )
 
             bFrame = self.clip_and_stack(
-                frames=allFrameOFF, recipe="soxs_offset", ignore_input_masks=False, post_stack_clipping=True
+                frames=allFrameOFF,
+                recipe="soxs_offset",
+                ignore_input_masks=False,
+                post_stack_clipping=True,
             )
 
             # INJECT KEYWORDS INTO HEADER
@@ -390,7 +420,11 @@ class soxs_offset(soxs_nod):
                 masterFlat = False
 
             mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
-                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath, masterFlat=masterFlat
+                aFrame=aFrame,
+                bFrame=bFrame,
+                locationSetIndex=1,
+                orderTablePath=orderTablePath,
+                masterFlat=masterFlat,
             )
             stackedSpectrum, extractionPath = self.stack_extractions(
                 [
@@ -403,20 +437,24 @@ class soxs_offset(soxs_nod):
             if self.generateReponseCurve:
                 from soxspipe.commonutils import response_function
 
-                mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
-                    aFrame=aFrame,
-                    bFrame=bFrame,
-                    locationSetIndex=1,
-                    orderTablePath=orderTablePath,
-                    notFlattened=True,
-                    masterFlat=masterFlat,
+                mergedSpectrumDF_A, _, orderJoins = (
+                    self.process_single_ab_nodding_cycle(
+                        aFrame=aFrame,
+                        bFrame=bFrame,
+                        locationSetIndex=1,
+                        orderTablePath=orderTablePath,
+                        notFlattened=True,
+                        masterFlat=masterFlat,
+                    )
                 )
-                stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions(
-                    [
-                        mergedSpectrumDF_A,
-                    ],
-                    notFlattened=True,
-                    orderJoins=orderJoins,
+                stackedSpectrum_notflat, extractionPath_notflat = (
+                    self.stack_extractions(
+                        [
+                            mergedSpectrumDF_A,
+                        ],
+                        notFlattened=True,
+                        orderJoins=orderJoins,
+                    )
                 )
                 # GETTING THE RESPONSE
                 self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
@@ -438,7 +476,9 @@ class soxs_offset(soxs_nod):
         filePath_fluxcal = None
         if responseFunctionPath:
 
-            calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+            calibrationRootPath = get_calibrations_path(
+                log=self.log, settings=self.settings
+            )
             from soxspipe.commonutils.flux_calibration import flux_calibration
 
             self.log.print(f"# PERFORMING FLUX CALIBRATION\n")
@@ -450,7 +490,9 @@ class soxs_offset(soxs_nod):
                 settings=self.settings,
                 airmass=allFrameON[0].header.get("HIERARCH ESO TEL AIRM END"),
                 exptime=allFrameON[0].header.get("EXPTIME"),
-                extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
+                extinctionPath=calibrationRootPath
+                + "/"
+                + self.detectorParams["extinction"],
                 arm=self.arm,
                 header=allFrameON[0].header,
                 recipeName=self.recipeName,
@@ -486,7 +528,9 @@ class soxs_offset(soxs_nod):
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec[
+                "FLUX_CALIBRATED"
+            ]  # BACK COMPATIBILITY WITH THE CODE
             # ADD THE SNR COLUMN AND COPY VALUES FROM stackedSpectrum
             fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
             productPath = filePath_fluxcal
@@ -513,7 +557,5 @@ class soxs_offset(soxs_nod):
         self.clean_up(forceFail=forceFailure)
 
         self.log.debug("completed the ``produce_product`` method")
-
-        
 
         return productPath, qcTable

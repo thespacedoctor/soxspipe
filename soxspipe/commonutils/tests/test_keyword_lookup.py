@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -20,7 +21,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -50,10 +51,8 @@ class test_keyword_lookup(unittest.TestCase):
     def test_soxs_keyword_dictionary_selection_function(self):
 
         from soxspipe.commonutils import keyword_lookup
-        this = keyword_lookup(
-            log=log,
-            settings=settings
-        )
+
+        this = keyword_lookup(log=log, settings=settings)
         kw = this._select_dictionary()
         print(kw["DET_NDITSKIP"])
         print(kw["MJDOBS"])
@@ -62,10 +61,8 @@ class test_keyword_lookup(unittest.TestCase):
     def test_soxs_keyword_lookup_function(self):
 
         from soxspipe.commonutils import keyword_lookup
-        kw = keyword_lookup(
-            log=log,
-            settings=settings
-        ).get
+
+        kw = keyword_lookup(log=log, settings=settings).get
         if settings["instrument"] == "xsh":
             assert kw("DET_NDITSKIP") == "ESO DET NDITSKIP"
             assert kw("PROV", 14) == "PROV14"
@@ -73,18 +70,15 @@ class test_keyword_lookup(unittest.TestCase):
 
         # AND HOW ABOUT LISTS
         if settings["instrument"] == "xsh":
-            assert kw(["PROV", "DET_NDITSKIP"])[1] == 'ESO DET NDITSKIP'
+            assert kw(["PROV", "DET_NDITSKIP"])[1] == "ESO DET NDITSKIP"
 
     @pytest.mark.full
     def test_soxs_keyword_lookup_function_exception(self):
 
         from soxspipe.commonutils import keyword_lookup
+
         try:
-            this = keyword_lookup(
-                log=log,
-                settings=settings,
-                fakeKey="break the code"
-            )
+            this = keyword_lookup(log=log, settings=settings, fakeKey="break the code")
             this.get()
             assert False
         except Exception as e:

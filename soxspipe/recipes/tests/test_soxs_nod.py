@@ -9,6 +9,7 @@ from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
 import sys
+
 home = expanduser("~")
 
 
@@ -21,7 +22,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -49,36 +50,27 @@ class test_soxs_nod(unittest.TestCase):
     def test_soxs_nod_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-nod/sof/2010.09.14T23.39.32.2932_NIR_NOD_20PT0_XSHOOTER.sof"
         from soxspipe.recipes import soxs_nod
-        this = soxs_nod(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
+
+        this = soxs_nod(log=log, settings=settings, inputFrames=sofPath)
         this.produce_product()
 
     @pytest.mark.full
     def test_soxs_nod_uvb_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-nod/sof/2010.09.14T23.39.21.697_UVB_1X1_FAST_NOD_XSHOOTER.sof"
         from soxspipe.recipes import soxs_nod
-        this = soxs_nod(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
+
+        this = soxs_nod(log=log, settings=settings, inputFrames=sofPath)
         this.produce_product()
 
     def test_soxs_nod_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-nod/sof/2010.09.14T23.39.26.928_VIS_1X1_FAST_NOD_XSHOOTER.sof"
         from soxspipe.recipes import soxs_nod
-        this = soxs_nod(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
+
+        this = soxs_nod(log=log, settings=settings, inputFrames=sofPath)
         this.produce_product()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     suite = unittest.TestSuite()
     suite.addTest(test_soxs_nod("test_soxs_nod_nir_function"))
     runner = unittest.TextTestRunner()

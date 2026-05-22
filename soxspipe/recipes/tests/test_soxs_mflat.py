@@ -13,6 +13,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -24,7 +25,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -37,7 +38,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments2, settings2, log2, dbConn2 = su.setup()
 
@@ -70,34 +71,35 @@ class test_soxs_mflat(unittest.TestCase):
         orderTablePath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/nir/20170818T173106_NIR_ORDER_LOCATIONS.fits"
         # UNPACK THE ORDER TABLE
         from soxspipe.commonutils.toolkit import unpack_order_table
+
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
-            log=log, orderTablePath=orderTablePath)
+            log=log, orderTablePath=orderTablePath
+        )
 
         from tabulate import tabulate
-        print(tabulate(orderPolyTable, headers='keys', tablefmt='psql'))
-        print(tabulate(orderPixelTable.head(100), headers='keys', tablefmt='psql'))
+
+        print(tabulate(orderPolyTable, headers="keys", tablefmt="pretty"))
+        print(tabulate(orderPixelTable.head(100), headers="keys", tablefmt="pretty"))
 
     def test_xsh_mflat_nir_long_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_long_flats.sof"
         from soxspipe.recipes import soxs_mflat
+
         this = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         mflat = this.produce_product()
         print(f"The master flat file has been saved to '{mflat}'")
 
     @pytest.mark.full
     def test_soxs_mflat_nir_soxsreal_function(self):
-        sofPath = "~/xshooter-pipeline-data/unittest_data/soxs/FLAT/sof/SOXS_NIR_FLATS.sof"
+        sofPath = (
+            "~/xshooter-pipeline-data/unittest_data/soxs/FLAT/sof/SOXS_NIR_FLATS.sof"
+        )
         from soxspipe.recipes import soxs_mflat
+
         this = soxs_mflat(
-            log=log2,
-            settings=settings2,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log2, settings=settings2, inputFrames=sofPath, overwrite=True
         )
         mflat = this.produce_product()
         print(f"The master flat file has been saved to '{mflat}'")
@@ -106,11 +108,9 @@ class test_soxs_mflat(unittest.TestCase):
     def test_xsh_mflat_nir_short_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/nir_short_flats.sof"
         from soxspipe.recipes import soxs_mflat
+
         this = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         this.produce_product()
 
@@ -118,12 +118,10 @@ class test_soxs_mflat(unittest.TestCase):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_dflats.sof"
         from soxspipe.recipes import soxs_mflat
+
         try:
             this = soxs_mflat(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath,
-                overwrite=True
+                log=log, settings=settings, inputFrames=sofPath, overwrite=True
             )
             this.produce_product()
             assert False
@@ -136,12 +134,10 @@ class test_soxs_mflat(unittest.TestCase):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/uvb_qflats.sof"
         from soxspipe.recipes import soxs_mflat
+
         try:
             this = soxs_mflat(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath,
-                overwrite=True
+                log=log, settings=settings, inputFrames=sofPath, overwrite=True
             )
             this.produce_product()
             assert False
@@ -152,11 +148,9 @@ class test_soxs_mflat(unittest.TestCase):
     def test_xsh_mflat_vis_long_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof/vis_long_flats.sof"
         from soxspipe.recipes import soxs_mflat
+
         this = soxs_mflat(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath,
-            overwrite=True
+            log=log, settings=settings, inputFrames=sofPath, overwrite=True
         )
         this.produce_product()
 
@@ -173,14 +167,13 @@ class test_soxs_mflat(unittest.TestCase):
     def test_soxs_mflat_function_exception(self):
 
         from soxspipe.recipes import soxs_mflat
+
         try:
             sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mflat/sof//nir_mixed_exptime_darks.sof"
             from soxspipe.recipes import soxs_mflat
+
             this = soxs_mflat(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath,
-                overwrite=True
+                log=log, settings=settings, inputFrames=sofPath, overwrite=True
             )
             assert False
         except Exception as e:

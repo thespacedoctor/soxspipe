@@ -9,21 +9,18 @@ Author
 Date Created
 : March  9, 2021
 """
+
 from soxspipe.commonutils import detector_lookup
 from soxspipe.commonutils import keyword_lookup
 from fundamentals import tools
 from builtins import object
 import sys
 import os
-os.environ['TERM'] = 'vt100'
+
+os.environ["TERM"] = "vt100"
 
 
-def filenamer(
-        log,
-        frame,
-        keywordLookup=False,
-        detectorLookup=False,
-        settings=False):
+def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=False):
     """Given a FITS object, use the SOXS file-naming scheme to return a filename to be used to save the FITS object to disk
 
     **Key Arguments:**
@@ -50,30 +47,23 @@ def filenamer(
     )
     ```
     """
-    log.debug('starting the ``filenamer`` function')
+    log.debug("starting the ``filenamer`` function")
 
     # GENERATE A FILENAME FOR THE FRAME BASED ON THE FILENAMING
     # CONVENTION
     if keywordLookup:
         kw = keywordLookup
     else:
-        kw = keyword_lookup(
-            log=log,
-            settings=settings
-        ).get
+        kw = keyword_lookup(log=log, settings=settings).get
 
     if detectorLookup:
         dp = detectorLookup
     else:
         arm = frame.header[kw("SEQ_ARM")]
         # DETECTOR PARAMETERS LOOKUP OBJECT
-        dp = detector_lookup(
-            log=log,
-            settings=settings
-        ).get(arm)
+        dp = detector_lookup(log=log, settings=settings).get(arm)
 
-    dateStamp = frame.header[kw("DATE_OBS")].replace(
-        "-", ".").replace(":", ".")
+    dateStamp = frame.header[kw("DATE_OBS")].replace("-", ".").replace(":", ".")
     obid = frame.header[kw("OBS_ID")]
     arm = frame.header[kw("SEQ_ARM")].lower()
     # x = int(dp["binning"][1])
@@ -120,21 +110,46 @@ def filenamer(
             ttype = "mdark"
         else:
             ttype = "dark"
-    elif "LAMP" in frame.header[kw("DPR_TYPE")].upper() and "FLAT" in frame.header[kw("DPR_TYPE")].upper():
+    elif (
+        "LAMP" in frame.header[kw("DPR_TYPE")].upper()
+        and "FLAT" in frame.header[kw("DPR_TYPE")].upper()
+    ):
         if "SXSPRE" in frame.header:
             ttype = "mflat"
         else:
             ttype = "flat"
-    elif frame.header[kw("DPR_TYPE")].upper() == "LAMP,FMTCHK" or frame.header[kw("DPR_TYPE")].upper() == "LAMP,WAVE":
+    elif (
+        frame.header[kw("DPR_TYPE")].upper() == "LAMP,FMTCHK"
+        or frame.header[kw("DPR_TYPE")].upper() == "LAMP,WAVE"
+    ):
         ttype = "arc"
-    elif "LAMP" in frame.header[kw("DPR_TYPE")].upper() and "ORDERDEF" in frame.header[kw("DPR_TYPE")].upper():
+    elif (
+        "LAMP" in frame.header[kw("DPR_TYPE")].upper()
+        and "ORDERDEF" in frame.header[kw("DPR_TYPE")].upper()
+    ):
         ttype = "flat"
-    elif "OBJECT" in frame.header[kw("DPR_TYPE")].upper() and ("STARE" in frame.header[kw("DPR_TECH")].upper() or "NODDING" in frame.header[kw("DPR_TECH")].upper()):
+    elif "OBJECT" in frame.header[kw("DPR_TYPE")].upper() and (
+        "STARE" in frame.header[kw("DPR_TECH")].upper()
+        or "NODDING" in frame.header[kw("DPR_TECH")].upper()
+    ):
         object = frame.header[kw("OBJECT")].upper()
-        ttype = f"object_stare_{object}".replace(" ", "_").replace("-", "_").replace("__", "_").replace("__", "_")
-    elif "STD,FLUX" in frame.header[kw("DPR_TYPE")].upper() and ("STARE" in frame.header[kw("DPR_TECH")].upper() or "NODDING" in frame.header[kw("DPR_TECH")].upper()):
+        ttype = (
+            f"object_stare_{object}".replace(" ", "_")
+            .replace("-", "_")
+            .replace("__", "_")
+            .replace("__", "_")
+        )
+    elif "STD,FLUX" in frame.header[kw("DPR_TYPE")].upper() and (
+        "STARE" in frame.header[kw("DPR_TECH")].upper()
+        or "NODDING" in frame.header[kw("DPR_TECH")].upper()
+    ):
         object = frame.header[kw("OBJECT")].upper()
-        ttype = f"std_flux_stare_{object}".replace(" ", "_").replace("-", "_").replace("__", "_").replace("__", "_")
+        ttype = (
+            f"std_flux_stare_{object}".replace(" ", "_")
+            .replace("-", "_")
+            .replace("__", "_")
+            .replace("__", "_")
+        )
 
     if ",Q" in frame.header[kw("DPR_TYPE")].upper():
         lamp = "_QLAMP"
@@ -163,9 +178,15 @@ def filenamer(
     if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,MULTI-PINHOLE":
         maskSlit = "multipin"
 
-    if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,SLIT" and ttype in ("mflat", "flat"):
+    if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,SLIT" and ttype in (
+        "mflat",
+        "flat",
+    ):
         maskSlit = "slit"
-    if frame.header[kw("DPR_TECH")].upper() in ("ECHELLE,SLIT,STARE", "ECHELLE,SLIT,NODDING") and ("object" in ttype or 'std_flux' in ttype):
+    if frame.header[kw("DPR_TECH")].upper() in (
+        "ECHELLE,SLIT,STARE",
+        "ECHELLE,SLIT,NODDING",
+    ) and ("object" in ttype or "std_flux" in ttype):
         maskSlit = "slit"
 
     # EXTRA PARAMETERS NEEDED FOR SPECTRUM
@@ -188,5 +209,5 @@ def filenamer(
     filename = filename.upper()
     filename += ".fits"
 
-    log.debug('completed the ``filenamer`` function')
+    log.debug("completed the ``filenamer`` function")
     return filename

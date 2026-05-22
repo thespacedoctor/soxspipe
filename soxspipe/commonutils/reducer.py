@@ -160,7 +160,12 @@ class reducer(object):
                 if multiprocess:
                     import sqlite3 as sql
 
-                    conn = sql.connect(self.sessionDB, timeout=300, autocommit=True, check_same_thread=False)
+                    conn = sql.connect(
+                        self.sessionDB,
+                        timeout=300,
+                        autocommit=True,
+                        check_same_thread=False,
+                    )
                     c = conn.cursor()
                     c.execute("PRAGMA busy_timeout = 100000")
                     c.execute("PRAGMA synchronous = OFF")
@@ -214,7 +219,7 @@ class reducer(object):
                             fail = True
 
                             if self.quitOnFail:
-                                sys.exit(0)
+                                sys.exit(1)
 
                             if self.reductionTarget != "all":
                                 self.overwrite = False
@@ -253,7 +258,14 @@ class reducer(object):
                 print(
                     "\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:"
                 )
-                print(tabulate(incompleteSets, headers="keys", tablefmt="psql", showindex=False))
+                print(
+                    tabulate(
+                        incompleteSets,
+                        headers="keys",
+                        tablefmt="pretty",
+                        showindex=False,
+                    )
+                )
 
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
         do.session_refresh(failure=None)
@@ -502,7 +514,17 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     return productPath, qcTable
 
 
-def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, workspaceDirectory, conn, sessionId):
+def run_recipe_bulk(
+    log,
+    recipe,
+    sofList,
+    commandList,
+    settings,
+    overwrite,
+    workspaceDirectory,
+    conn,
+    sessionId,
+):
     """*execute a pipeline recipe in multiprocessing mode*
 
     **Key Arguments:**
@@ -524,7 +546,15 @@ def run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, work
     import pandas as pd
     import shutil
 
-    def wrapper(inputDict, log, recipe, settings, overwrite, workspaceDirectory, wrapperTurnOffMP=True):
+    def wrapper(
+        inputDict,
+        log,
+        recipe,
+        settings,
+        overwrite,
+        workspaceDirectory,
+        wrapperTurnOffMP=True,
+    ):
         import traceback
         import os
 

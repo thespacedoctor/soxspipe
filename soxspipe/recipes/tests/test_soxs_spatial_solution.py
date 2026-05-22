@@ -8,6 +8,7 @@ import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
+
 home = expanduser("~")
 
 packageDirectory = utKit("").get_project_root()
@@ -19,7 +20,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments, settings, log, dbConn = su.setup()
 
@@ -32,7 +33,7 @@ su = tools(
     logLevel="DEBUG",
     options_first=False,
     projectName=None,
-    defaultSettingsFile=False
+    defaultSettingsFile=False,
 )
 arguments2, settings2, log2, dbConn2 = su.setup()
 
@@ -64,12 +65,13 @@ class test_soxs_spatial_solution(unittest.TestCase):
     def test_soxs_real_spatial_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs/spat-solution/sof/SOXS_REAL_MPH_ARC.sof"
         from soxspipe.recipes import soxs_spatial_solution
+
         this = soxs_spatial_solution(
             log=log2,
             settings=settings2,
             inputFrames=sofPath,
             overwrite=True,
-            create2DMap=True
+            create2DMap=True,
         )
         this.produce_product()
 
@@ -77,24 +79,26 @@ class test_soxs_spatial_solution(unittest.TestCase):
     def test_soxs_spatial_solution_nir_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/soxs-sim/MPH_ARC/sof/SOXSIM_MPH_ARC.sof"
         from soxspipe.recipes import soxs_spatial_solution
+
         this = soxs_spatial_solution(
             log=log2,
             settings=settings2,
             inputFrames=sofPath,
             overwrite=True,
-            create2DMap=False
+            create2DMap=False,
         )
         this.produce_product()
 
     def test_xsh_spatial_solution_nir_function2(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_NIR_SPAT_SOLUTION.sof"
         from soxspipe.recipes import soxs_spatial_solution
+
         this = soxs_spatial_solution(
             log=log,
             settings=settings,
             inputFrames=sofPath,
             overwrite=True,
-            create2DMap=False
+            create2DMap=False,
         )
         this.produce_product()
 
@@ -103,12 +107,13 @@ class test_soxs_spatial_solution(unittest.TestCase):
 
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_UVB_SPAT_SOLUTION_1x1_fast.sof"
         from soxspipe.recipes import soxs_spatial_solution
+
         this = soxs_spatial_solution(
             log=log,
             settings=settings,
             inputFrames=sofPath,
             overwrite=True,
-            create2DMap=False
+            create2DMap=False,
         )
         this.produce_product()
 
@@ -116,25 +121,21 @@ class test_soxs_spatial_solution(unittest.TestCase):
     def test_xsh_spatial_solution_vis_function(self):
         sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-spat-solution/sof/20170818_VIS_SPAT_SOLUTION_1x1_fast.sof"
         from soxspipe.recipes import soxs_spatial_solution
-        this = soxs_spatial_solution(
-            log=log,
-            settings=settings,
-            inputFrames=sofPath
-        )
+
+        this = soxs_spatial_solution(log=log, settings=settings, inputFrames=sofPath)
         this.produce_product()
 
     @pytest.mark.full
     def test_soxs_spatial_solution_function_exception(self):
 
         from soxspipe.recipes import soxs_spatial_solution
+
         try:
             sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/SOMEDIRECTORY/sofs/nir_mixed_exptime_darks.sof"
             from soxspipe.recipes import soxs_spatial_solution
+
             this = soxs_spatial_solution(
-                log=log,
-                settings=settings,
-                inputFrames=sofPath,
-                overwrite=True
+                log=log, settings=settings, inputFrames=sofPath, overwrite=True
             )
             assert False
         except Exception as e:

@@ -120,7 +120,9 @@ class soxs_nod(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"]
+        )
 
         return None
 
@@ -149,18 +151,32 @@ class soxs_nod(base_recipe):
                 for i, ii in zip(imageTech, imageTypes):
                     if ii in ["STD,FLUX", "STD,TELLURIC"]:
                         pass
-                    elif i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,OFFSET"]:
+                    elif i not in [
+                        "IMAGE",
+                        "ECHELLE,SLIT",
+                        "ECHELLE,MULTI-PINHOLE",
+                        "ECHELLE,SLIT,OFFSET",
+                    ]:
                         error = f"Found a {i} file. Input frames for soxspipe offset need to be an object/std offset frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
         else:
             if not error:
                 for i, ii in zip(imageTech, imageTypes):
                     if ii in ["STD,FLUX", "STD,TELLURIC"]:
                         pass
-                    elif i not in ["IMAGE", "ECHELLE,SLIT", "ECHELLE,MULTI-PINHOLE", "ECHELLE,SLIT,NODDING"]:
+                    elif i not in [
+                        "IMAGE",
+                        "ECHELLE,SLIT",
+                        "ECHELLE,MULTI-PINHOLE",
+                        "ECHELLE,SLIT,NODDING",
+                    ]:
                         error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
 
         if not error:
-            for i in [f"DISP_TAB_{self.arm}", f"ORDER_TAB_{self.arm}", f"DISP_IMAGE_{self.arm}"]:
+            for i in [
+                f"DISP_TAB_{self.arm}",
+                f"ORDER_TAB_{self.arm}",
+                f"DISP_IMAGE_{self.arm}",
+            ]:
                 if i not in imageCat:
                     error = f"Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm}). The sof file is missing a {i} frame."
 
@@ -201,7 +217,10 @@ class soxs_nod(base_recipe):
         from astropy import units as u
         import pandas as pd
         from datetime import datetime
-        from soxspipe.commonutils.toolkit import quicklook_image, plot_merged_spectrum_qc
+        from soxspipe.commonutils.toolkit import (
+            quicklook_image,
+            plot_merged_spectrum_qc,
+        )
 
         arm = self.arm
         kw = self.kw
@@ -223,7 +242,9 @@ class soxs_nod(base_recipe):
                 if t == "STD,FLUX" and "-std" not in self.recipeName:
                     self.recipeName += "-std"
                     self.recipeSettings = self.get_recipe_settings()
-                    self.productDir = self.productDir.replace("soxs-nod", "soxs-nod-std")
+                    self.productDir = self.productDir.replace(
+                        "soxs-nod", "soxs-nod-std"
+                    )
                 singleFrame = CCDData.read(
                     i,
                     hdu=0,
@@ -255,20 +276,28 @@ class soxs_nod(base_recipe):
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # FIND THE 2D MAP TABLE
         filterDict = {kw("PRO_CATG"): f"DISP_TAB_{arm}"}
-        self.dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        self.dispMap = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
-        self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        self.twoDMap = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         # CHECK IF FLUX CALIBRATION IS REQUESTED
         try:
             filterDict = {kw("PRO_CATG"): f"RESP_TAB_{arm}"}
-            responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+            responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(
+                include_path=True
+            )[0]
 
         except:
             responseFunctionPath = False
@@ -285,7 +314,14 @@ class soxs_nod(base_recipe):
         )
 
         # DIVIDING IN A AND B SEQUENCES
-        allFrameA, allFrameB, allFrameAOffsets, allFrameBOffsets, allFrameANames, allFrameBNames = (
+        (
+            allFrameA,
+            allFrameB,
+            allFrameAOffsets,
+            allFrameBOffsets,
+            allFrameANames,
+            allFrameBNames,
+        ) = (
             [],
             [],
             [],
@@ -343,7 +379,9 @@ class soxs_nod(base_recipe):
             allFrameA.sort(key=lambda x: x.header["MJD-OBS"])
             allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
 
-            for frameA, frameB, frameAName, frameBName in zip(allFrameA, allFrameB, allFrameANames, allFrameBNames):
+            for frameA, frameB, frameAName, frameBName in zip(
+                allFrameA, allFrameB, allFrameANames, allFrameBNames
+            ):
 
                 self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
                 if False:
@@ -397,12 +435,14 @@ class soxs_nod(base_recipe):
                     masterFlat = False
 
                 # PROCESSING SINGLE SEQUENCE
-                mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
-                    aFrame=frameA,
-                    bFrame=frameB,
-                    locationSetIndex=sequenceCount,
-                    orderTablePath=orderTablePath,
-                    masterFlat=masterFlat,
+                mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = (
+                    self.process_single_ab_nodding_cycle(
+                        aFrame=frameA,
+                        bFrame=frameB,
+                        locationSetIndex=sequenceCount,
+                        orderTablePath=orderTablePath,
+                        masterFlat=masterFlat,
+                    )
                 )
                 if sequenceCount == 1:
                     allSpectrumA = mergedSpectrumDF_A
@@ -423,11 +463,17 @@ class soxs_nod(base_recipe):
 
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
             aFrame = self.clip_and_stack(
-                frames=allFrameA, recipe="soxs_nod", ignore_input_masks=False, post_stack_clipping=True
+                frames=allFrameA,
+                recipe="soxs_nod",
+                ignore_input_masks=False,
+                post_stack_clipping=True,
             )
 
             bFrame = self.clip_and_stack(
-                frames=allFrameB, recipe="soxs_nod", ignore_input_masks=False, post_stack_clipping=True
+                frames=allFrameB,
+                recipe="soxs_nod",
+                ignore_input_masks=False,
+                post_stack_clipping=True,
             )
 
             # INJECT KEYWORDS INTO HEADER
@@ -439,8 +485,14 @@ class soxs_nod(base_recipe):
             else:
                 masterFlat = False
 
-            mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
-                aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath, masterFlat=masterFlat
+            mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = (
+                self.process_single_ab_nodding_cycle(
+                    aFrame=aFrame,
+                    bFrame=bFrame,
+                    locationSetIndex=1,
+                    orderTablePath=orderTablePath,
+                    masterFlat=masterFlat,
+                )
             )
             stackedSpectrum, extractionPath = self.stack_extractions(
                 [mergedSpectrumDF_A, mergedSpectrumDF_B], orderJoins=orderJoins
@@ -449,16 +501,22 @@ class soxs_nod(base_recipe):
             if self.generateReponseCurve:
                 from soxspipe.commonutils import response_function
 
-                mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
-                    aFrame=aFrame,
-                    bFrame=bFrame,
-                    locationSetIndex=1,
-                    orderTablePath=orderTablePath,
-                    notFlattened=True,
-                    masterFlat=masterFlat,
+                mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = (
+                    self.process_single_ab_nodding_cycle(
+                        aFrame=aFrame,
+                        bFrame=bFrame,
+                        locationSetIndex=1,
+                        orderTablePath=orderTablePath,
+                        notFlattened=True,
+                        masterFlat=masterFlat,
+                    )
                 )
-                stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions(
-                    [mergedSpectrumDF_A, mergedSpectrumDF_B], notFlattened=True, orderJoins=orderJoins
+                stackedSpectrum_notflat, extractionPath_notflat = (
+                    self.stack_extractions(
+                        [mergedSpectrumDF_A, mergedSpectrumDF_B],
+                        notFlattened=True,
+                        orderJoins=orderJoins,
+                    )
                 )
                 # GETTING THE RESPONSE
                 self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
@@ -480,7 +538,9 @@ class soxs_nod(base_recipe):
         filePath_fluxcal = None
         if responseFunctionPath:
 
-            calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+            calibrationRootPath = get_calibrations_path(
+                log=self.log, settings=self.settings
+            )
             from soxspipe.commonutils.flux_calibration import flux_calibration
 
             self.log.print(f"# PERFORMING FLUX CALIBRATION\n")
@@ -492,7 +552,9 @@ class soxs_nod(base_recipe):
                 settings=self.settings,
                 airmass=allFrameA[0].header.get("HIERARCH ESO TEL AIRM END"),
                 exptime=allFrameA[0].header.get("EXPTIME"),
-                extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
+                extinctionPath=calibrationRootPath
+                + "/"
+                + self.detectorParams["extinction"],
                 arm=self.arm,
                 header=allFrameA[0].header,
                 recipeName=self.recipeName,
@@ -528,7 +590,9 @@ class soxs_nod(base_recipe):
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec[
+                "FLUX_CALIBRATED"
+            ]  # BACK COMPATIBILITY WITH THE CODE
             # ADD THE SNR COLUMN AND COPY VALUES FROM stackedSpectrum
             fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
 
@@ -557,7 +621,13 @@ class soxs_nod(base_recipe):
         return productPath, qcTable
 
     def process_single_ab_nodding_cycle(
-        self, aFrame, bFrame, locationSetIndex, orderTablePath, notFlattened=False, masterFlat=False
+        self,
+        aFrame,
+        bFrame,
+        locationSetIndex,
+        orderTablePath,
+        notFlattened=False,
+        masterFlat=False,
     ):
         """*process a single AB nodding cycle*
 
@@ -606,9 +676,13 @@ class soxs_nod(base_recipe):
         else:
             extraText = ""
         if "nod" in self.recipeName:
-            self.log.print(f"\n# PROCESSING AB NODDING CYCLE {locationSetIndex} {extraText}")
+            self.log.print(
+                f"\n# PROCESSING AB NODDING CYCLE {locationSetIndex} {extraText}"
+            )
         else:
-            self.log.print(f"\n# PROCESSING ON-OFF OFFSET CYCLE {locationSetIndex} {extraText}")
+            self.log.print(
+                f"\n# PROCESSING ON-OFF OFFSET CYCLE {locationSetIndex} {extraText}"
+            )
         home = expanduser("~")
         if "nod" in self.recipeName:
             filename = self.sofName + f"_AB_{locationSetIndex}.fits"
@@ -714,7 +788,9 @@ class soxs_nod(base_recipe):
             turnOffMP=self.turnOffMP,
         )
 
-        self.qc, theseProducts, mergedSpectrumDF_A, orderJoins, extractionFITSPathA = optimalExtractor.extract()
+        self.qc, theseProducts, mergedSpectrumDF_A, orderJoins, extractionFITSPathA = (
+            optimalExtractor.extract()
+        )
 
         # EXTRACT THE B MINUS A FRAME
         if "nod" in self.recipeName:
@@ -737,7 +813,13 @@ class soxs_nod(base_recipe):
                 notFlattened=notFlattened,
                 turnOffMP=self.turnOffMP,
             )
-            self.qc, theseProducts, mergedSpectrumDF_B, orderJoins, extractionFITSPathB = optimalExtractor.extract()
+            (
+                self.qc,
+                theseProducts,
+                mergedSpectrumDF_B,
+                orderJoins,
+                extractionFITSPathB,
+            ) = optimalExtractor.extract()
         else:
             mergedSpectrumDF_B = False
 
@@ -772,7 +854,10 @@ class soxs_nod(base_recipe):
         from astropy.io import fits
         from astropy.table import Table
         import numpy as np
-        from soxspipe.commonutils.toolkit import calculate_rolling_snr, add_snr_efficiency_qcs
+        from soxspipe.commonutils.toolkit import (
+            calculate_rolling_snr,
+            add_snr_efficiency_qcs,
+        )
         from astropy import units as u
         from specutils import Spectrum1D
 
@@ -785,7 +870,9 @@ class soxs_nod(base_recipe):
 
         merged_dataframe = pd.concat(dataFrameList)
         # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGTH TO THE 4 DIGITS
-        merged_dataframe["WAVE"] = merged_dataframe["WAVE"].apply(lambda x: round(float(x.value), 4))
+        merged_dataframe["WAVE"] = merged_dataframe["WAVE"].apply(
+            lambda x: round(float(x.value), 4)
+        )
         groupedDataframe = merged_dataframe.groupby(by="WAVE", as_index=False).median()
 
         self.filenameTemplate = self.sofName + ".fits"
@@ -802,10 +889,14 @@ class soxs_nod(base_recipe):
 
         flux_orig = groupedDataframe["FLUX_COUNTS"].values * u.electron
         spectrum_orig = Spectrum1D(
-            flux=flux_orig, spectral_axis=groupedDataframe["WAVE"].values * u.nm, bin_specification="center"
+            flux=flux_orig,
+            spectral_axis=groupedDataframe["WAVE"].values * u.nm,
+            bin_specification="center",
         )
 
-        groupedDataframe = calculate_rolling_snr(dataframe=groupedDataframe, flux_column="FLUX_COUNTS", window_size=300)
+        groupedDataframe = calculate_rolling_snr(
+            dataframe=groupedDataframe, flux_column="FLUX_COUNTS", window_size=300
+        )
 
         # groupedDataframe['signal'] = groupedDataframe['FLUX_COUNTS'].rolling(
         #     window=15, center=True).median().fillna(method='bfill').fillna(method='ffill').values
@@ -813,8 +904,15 @@ class soxs_nod(base_recipe):
         #     groupedDataframe['signal']
 
         # PREPARING THE HDU
-        for col, decimals in [("WAVE", 2), ("FLUX_COUNTS", 3), ("SNR", 2), ("FLUX_DENSITY_COUNTS", 3)]:
-            groupedDataframe[col] = groupedDataframe[col].apply(lambda x: round(float(x), decimals))
+        for col, decimals in [
+            ("WAVE", 2),
+            ("FLUX_COUNTS", 3),
+            ("SNR", 2),
+            ("FLUX_DENSITY_COUNTS", 3),
+        ]:
+            groupedDataframe[col] = groupedDataframe[col].apply(
+                lambda x: round(float(x), decimals)
+            )
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)
 
         utcnow = datetime.utcnow()
@@ -836,13 +934,17 @@ class soxs_nod(base_recipe):
 
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
-        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
+        filename = self.filenameTemplate.replace(
+            ".fits", "_EXTRACTED_MERGED" + postfix + ".fits"
+        )
         filePath = f"{self.productDir}/{filename}"
         hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
-        asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")
+        asciiFilename = self.filenameTemplate.replace(
+            ".fits", "_EXTRACTED_MERGED" + postfix + ".txt"
+        )
         asciiFilePath = f"{self.productDir}/{asciiFilename}"
         stackedSpectrum2 = stackedSpectrum.copy()
         stackedSpectrum2["WAVE"] = stackedSpectrum2["WAVE"] * 10

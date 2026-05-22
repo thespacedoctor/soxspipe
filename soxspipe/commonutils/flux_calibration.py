@@ -33,7 +33,7 @@ class flux_calibration(object):
 
     **Usage:**
 
-    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/master/initialisation.html).
+    To setup your logger, settings and database connections, please use the ``fundamentals`` package (see tutorial here https://fundamentals.readthedocs.io/en/main/initialisation.html).
 
     To initiate a flux_calibration object, use the following:
 
@@ -93,7 +93,10 @@ class flux_calibration(object):
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
 
         self.qcDir, self.productDir = utility_setup(
-            log=self.log, settings=settings, recipeName=recipeName, startNightDate=startNightDate
+            log=self.log,
+            settings=settings,
+            recipeName=recipeName,
+            startNightDate=startNightDate,
         )
         self.products = pd.DataFrame()
 
@@ -158,7 +161,12 @@ class flux_calibration(object):
         responseFunctionFactor = np.polyval(polyCoeffs, self.extractedSpectrum["WAVE"])
         flux_calibration = flux_calibration * responseFunctionFactor * 10**-17
 
-        fluxCalSpectrum = pd.DataFrame({"WAVE": self.extractedSpectrum["WAVE"], "FLUX_CALIBRATED": flux_calibration})
+        fluxCalSpectrum = pd.DataFrame(
+            {
+                "WAVE": self.extractedSpectrum["WAVE"],
+                "FLUX_CALIBRATED": flux_calibration,
+            }
+        )
 
         if self.debug:
             import matplotlib

@@ -9,6 +9,7 @@ Author
 Date Created
 : September 10, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 
 from fundamentals import tools
@@ -42,7 +43,9 @@ class chebyshev_order_wavelength_polynomials:
     ```
     """
 
-    def __init__(self, log, orderDeg, wavelengthDeg, slitDeg, exponentsIncluded=False, axis=False):
+    def __init__(
+        self, log, orderDeg, wavelengthDeg, slitDeg, exponentsIncluded=False, axis=False
+    ):
         self.log = log
         self.orderDeg = orderDeg
         self.wavelengthDeg = wavelengthDeg
@@ -99,9 +102,15 @@ class chebyshev_order_wavelength_polynomials:
                         # OPTIMISE: 95%
                         lhsVals += (
                             coeff[n_coeff]
-                            * orderPixelTable[f"order_pow_{self.axis}{i}"].values.astype("float")
-                            * orderPixelTable[f"wavelength_pow_{self.axis}{j}"].values.astype("float")
-                            * orderPixelTable[f"slit_position_pow_{self.axis}{k}"].values.astype("float")
+                            * orderPixelTable[
+                                f"order_pow_{self.axis}{i}"
+                            ].values.astype("float")
+                            * orderPixelTable[
+                                f"wavelength_pow_{self.axis}{j}"
+                            ].values.astype("float")
+                            * orderPixelTable[
+                                f"slit_position_pow_{self.axis}{k}"
+                            ].values.astype("float")
                         )
                         n_coeff += 1
 
@@ -169,7 +178,9 @@ class chebyshev_xy_polynomial:
                 n_coeff += 1
         else:
             for i in range(0, self.y_deg + 1):
-                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype("float")
+                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype(
+                    "float"
+                )
                 n_coeff += 1
 
         self.log.info("completed the ``poly`` method")
@@ -199,7 +210,16 @@ class chebyshev_order_xy_polynomials:
     ```
     """
 
-    def __init__(self, log, orderDeg, axisBDeg, axisB="y", axisBCol=False, orderCol=False, exponentsIncluded=False):
+    def __init__(
+        self,
+        log,
+        orderDeg,
+        axisBDeg,
+        axisB="y",
+        axisBCol=False,
+        orderCol=False,
+        exponentsIncluded=False,
+    ):
         self.log = log
         self.orderDeg = orderDeg
         self.axisBDeg = axisBDeg

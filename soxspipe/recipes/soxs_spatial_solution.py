@@ -9,6 +9,7 @@ Author
 Date Created
 : March 17, 2021
 """
+
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
 from .base_recipe import base_recipe
@@ -94,7 +95,10 @@ class soxs_spatial_solution(base_recipe):
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(
-            log=self.log, settings=self.settings, inputFrames=self.inputFrames, ext=self.settings["data-extension"]
+            log=self.log,
+            settings=self.settings,
+            inputFrames=self.inputFrames,
+            ext=self.settings["data-extension"],
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -115,7 +119,9 @@ class soxs_spatial_solution(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"]
+        )
 
         return None
 
@@ -142,7 +148,12 @@ class soxs_spatial_solution(base_recipe):
 
             if not error:
                 for i in imageTech:
-                    if i not in ["ECHELLE,MULTI-PINHOLE", "IMAGE", "ECHELLE,SLIT", "ECHELLE,PINHOLE"]:
+                    if i not in [
+                        "ECHELLE,MULTI-PINHOLE",
+                        "IMAGE",
+                        "ECHELLE,SLIT",
+                        "ECHELLE,PINHOLE",
+                    ]:
                         error = f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
 
             if not error:
@@ -165,7 +176,11 @@ class soxs_spatial_solution(base_recipe):
                         error = f"Found a {i} frame. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
 
             if not error:
-                for i in [f"MASTER_BIAS_{self.arm}", f"ORDER_TAB_{self.arm}", f"DISP_TAB_{self.arm}"]:
+                for i in [
+                    f"MASTER_BIAS_{self.arm}",
+                    f"ORDER_TAB_{self.arm}",
+                    f"DISP_TAB_{self.arm}",
+                ]:
                     if i not in imageCat:
                         error = f"Input frames for soxspipe spatial_solution need to be LAMP,WAVE, a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
 
@@ -286,7 +301,9 @@ class soxs_spatial_solution(base_recipe):
                 {kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,MULTI-PINHOLE"},
             ]
         else:
-            filter_list = [{kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,MULTI-PINHOLE"}]
+            filter_list = [
+                {kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,MULTI-PINHOLE"}
+            ]
 
         for add_filters in filter_list:
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -310,7 +327,9 @@ class soxs_spatial_solution(base_recipe):
                 {kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,SLIT"},
             ]
         else:
-            filter_list = [{kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,SLIT"}]
+            filter_list = [
+                {kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,SLIT"}
+            ]
         for add_filters in filter_list:
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 slit_arc = CCDData.read(
@@ -332,7 +351,9 @@ class soxs_spatial_solution(base_recipe):
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        order_table = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        order_table = self.inputFrames.filter(**filterDict).files_filtered(
+            include_path=True
+        )[0]
 
         add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -378,8 +399,16 @@ class soxs_spatial_solution(base_recipe):
 
         if self.settings["save-intermediate-products"]:
             fileDir = self.workspaceRootPath
-            filepath = self._write(self.multiPinholeFrame, fileDir, filename=False, overwrite=True, product=False)
-            self.log.print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
+            filepath = self._write(
+                self.multiPinholeFrame,
+                fileDir,
+                filename=False,
+                overwrite=True,
+                product=False,
+            )
+            self.log.print(
+                f"\nCalibrated multi pinhole frame frame saved to {filepath}\n"
+            )
 
         if self.settings["tune-pipeline"]:
             from itertools import product
@@ -395,7 +424,14 @@ class soxs_spatial_solution(base_recipe):
                 pass
 
             # GET THE LINE DETECTION LIST BEFORE JUMPING TO PERMUTATIONS
-            mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
+            (
+                mapPath,
+                mapImagePath,
+                res_plots,
+                qcTable,
+                productsTable,
+                lineDetectionTable,
+            ) = create_dispersion_map(
                 log=self.log,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -448,7 +484,14 @@ class soxs_spatial_solution(base_recipe):
                 self.slit_arc = False
 
             # GENERATE AN UPDATED DISPERSION MAP
-            mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
+            (
+                mapPath,
+                mapImagePath,
+                res_plots,
+                qcTable,
+                productsTable,
+                lineDetectionTable,
+            ) = create_dispersion_map(
                 log=self.log,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -580,7 +623,14 @@ def parameterTuning(
         debug=self.debug,
     )
     try:
-        productPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = this.get()
+        (
+            productPath,
+            mapImagePath,
+            res_plots,
+            qcTable,
+            productsTable,
+            lineDetectionTable,
+        ) = this.get()
     except:
         pass
 

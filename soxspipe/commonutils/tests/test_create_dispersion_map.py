@@ -88,7 +88,9 @@ class test_create_dispersion_map(unittest.TestCase):
         # WRITE OUT A NEW FITS FILE
         from astropy.io import fits
 
-        fits.writeto(frame, data, hdr, output_verify="fix+warn", overwrite=True, checksum=True)
+        fits.writeto(
+            frame, data, hdr, output_verify="fix+warn", overwrite=True, checksum=True
+        )
 
         from os.path import expanduser
 
@@ -132,15 +134,17 @@ class test_create_dispersion_map(unittest.TestCase):
 
         from soxspipe.commonutils import create_dispersion_map
 
-        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
-            log=log,
-            settings=settings2,
-            recipeSettings=settings2["soxs-disp-solution"],
-            pinholeFrame=frame,
-            qcTable=qc,
-            productsTable=products,
-            create2DMap=False,
-        ).get()
+        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = (
+            create_dispersion_map(
+                log=log,
+                settings=settings2,
+                recipeSettings=settings2["soxs-disp-solution"],
+                pinholeFrame=frame,
+                qcTable=qc,
+                productsTable=products,
+                create2DMap=False,
+            ).get()
+        )
         print(mapPath)
 
     @pytest.mark.full
@@ -190,15 +194,17 @@ class test_create_dispersion_map(unittest.TestCase):
 
         from soxspipe.commonutils import create_dispersion_map
 
-        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
-            log=log,
-            settings=settings,
-            recipeSettings=settings["soxs-disp-solution"],
-            pinholeFrame=frame,
-            qcTable=qc,
-            productsTable=products,
-            create2DMap=False,
-        ).get()
+        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = (
+            create_dispersion_map(
+                log=log,
+                settings=settings,
+                recipeSettings=settings["soxs-disp-solution"],
+                pinholeFrame=frame,
+                qcTable=qc,
+                productsTable=products,
+                create2DMap=False,
+            ).get()
+        )
         print(mapPath)
 
     @pytest.mark.full
@@ -248,16 +254,18 @@ class test_create_dispersion_map(unittest.TestCase):
 
         from soxspipe.commonutils import create_dispersion_map
 
-        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = create_dispersion_map(
-            log=log,
-            settings=settings,
-            recipeSettings=settings["soxs-spat-solution"],
-            pinholeFrame=frame,
-            firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T172310_NIR_DISP_MAP.fits",
-            qcTable=qc,
-            productsTable=products,
-            create2DMap=False,
-        ).get()
+        mapPath, mapImagePath, res_plots, qcTable, productsTable, lineDetectionTable = (
+            create_dispersion_map(
+                log=log,
+                settings=settings,
+                recipeSettings=settings["soxs-spat-solution"],
+                pinholeFrame=frame,
+                firstGuessMap="~/xshooter-pipeline-data/unittest_data/xsh/create_dispersion_map/20170818T172310_NIR_DISP_MAP.fits",
+                qcTable=qc,
+                productsTable=products,
+                create2DMap=False,
+            ).get()
+        )
         print(mapPath)
 
     @pytest.mark.full
@@ -266,7 +274,9 @@ class test_create_dispersion_map(unittest.TestCase):
         from soxspipe.commonutils import create_dispersion_map
 
         try:
-            this, this2, this3 = create_dispersion_map(log=log, settings=settings, fakeKey="break the code")
+            this, this2, this3 = create_dispersion_map(
+                log=log, settings=settings, fakeKey="break the code"
+            )
             this.get()
             assert False
         except Exception as e:

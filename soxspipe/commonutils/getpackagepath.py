@@ -3,6 +3,7 @@
 """
 *Get common file and folder paths for the host package*
 """
+
 import os
 
 

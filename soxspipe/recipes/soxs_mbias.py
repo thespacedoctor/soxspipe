@@ -9,6 +9,7 @@ Author
 Date Created
 : January 22, 2020
 """
+
 ################# GLOBAL IMPORTS ####################
 
 from soxspipe.commonutils.toolkit import generic_quality_checks
@@ -20,7 +21,6 @@ from builtins import object
 from line_profiler import profile
 import sys
 import os
-
 
 os.environ["TERM"] = "vt100"
 
@@ -88,7 +88,10 @@ class soxs_mbias(base_recipe):
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(
-            log=self.log, settings=self.settings, inputFrames=self.inputFrames, ext=self.settings["data-extension"]
+            log=self.log,
+            settings=self.settings,
+            inputFrames=self.inputFrames,
+            ext=self.settings["data-extension"],
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
@@ -105,7 +108,9 @@ class soxs_mbias(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+        self.inputFrames = self.prepare_frames(
+            save=self.settings["save-intermediate-products"]
+        )
 
         return None
 
@@ -175,24 +180,34 @@ class soxs_mbias(base_recipe):
         ]
 
         # OPTIMISE: 33%
-        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
+        meanBiasLevels, rons, noiseFrames = zip(
+            *[self.subtract_mean_flux_level(c) for c in ccds]
+        )
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
 
         # OPTIMISE: 19%
         combined_noise = self.clip_and_stack(
-            frames=list(noiseFrames), recipe="soxs_mbias", ignore_input_masks=True, post_stack_clipping=True
+            frames=list(noiseFrames),
+            recipe="soxs_mbias",
+            ignore_input_masks=True,
+            post_stack_clipping=True,
         )
 
         masterRon = np.std(combined_noise.data)
 
         # USE COMBINED NOISE MASK AS MBIAS MASK
         combined_noise.data = (
-            np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
+            np.ma.array(
+                combined_noise.data, mask=combined_noise.mask, fill_value=0
+            ).filled()
+            + masterMeanBiasLevel
         )
         combined_noise.uncertainty = np.ma.array(
-            combined_noise.uncertainty.array, mask=combined_noise.mask, fill_value=rawRon
+            combined_noise.uncertainty.array,
+            mask=combined_noise.mask,
+            fill_value=rawRon,
         ).filled()
         combined_bias_mean = combined_noise
         combined_bias_mean.mask = combined_noise.mask
@@ -212,11 +227,18 @@ class soxs_mbias(base_recipe):
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
-            log=self.log, frame=combined_bias_mean, settings=self.settings, recipeName=self.recipeName, qcTable=self.qc
+            log=self.log,
+            frame=combined_bias_mean,
+            settings=self.settings,
+            recipeName=self.recipeName,
+            qcTable=self.qc,
         )
 
         medianFlux = self.qc_median_flux_level(
-            frame=combined_bias_mean, frameType="MBIAS", frameName="master bias", medianFlux=masterMedianBiasLevel
+            frame=combined_bias_mean,
+            frameType="MBIAS",
+            frameName="master bias",
+            medianFlux=masterMedianBiasLevel,
         )
 
         self.update_fits_keywords(frame=combined_bias_mean)
@@ -224,7 +246,10 @@ class soxs_mbias(base_recipe):
         # WRITE TO DISK
         toolkit.frame_to_32(combined_bias_mean)
         productPath = self._write(
-            frame=combined_bias_mean, filedir=self.workspaceRootPath, filename=False, overwrite=True
+            frame=combined_bias_mean,
+            filedir=self.workspaceRootPath,
+            filename=False,
+            overwrite=True,
         )
         filename = os.path.basename(productPath)
 
@@ -405,11 +430,17 @@ class soxs_mbias(base_recipe):
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
             # BIN THE FRAME TO INCREASE SPEED
             maskedDataArray = block_reduce(maskedDataArray, 5, np.mean)
-            dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
+            dark_image_grey_fourier = np.fft.fftshift(
+                np.fft.fft2(maskedDataArray.filled(np.median(frame.data)))
+            )
 
             # SIGMA-CLIP THE DATA
             masked_dark_image_grey_fourier = sigma_clip(
-                dark_image_grey_fourier, sigma_lower=100, sigma_upper=100, maxiters=1, cenfunc="mean"
+                dark_image_grey_fourier,
+                sigma_lower=100,
+                sigma_upper=100,
+                maxiters=1,
+                cenfunc="mean",
             )
             goodData = np.ma.compressed(masked_dark_image_grey_fourier)
 
@@ -423,9 +454,19 @@ class soxs_mbias(base_recipe):
             from soxspipe.commonutils.toolkit import quicklook_image
 
             quicklook_image(
-                log=self.log, CCDObject=abs(masked_dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1
+                log=self.log,
+                CCDObject=abs(masked_dark_image_grey_fourier),
+                show=False,
+                ext=None,
+                stdWindow=0.1,
             )
-            quicklook_image(log=self.log, CCDObject=abs(dark_image_grey_fourier), show=False, ext=None, stdWindow=0.1)
+            quicklook_image(
+                log=self.log,
+                CCDObject=abs(dark_image_grey_fourier),
+                show=False,
+                ext=None,
+                stdWindow=0.1,
+            )
 
             ratios.append(frame_std / frame_mad)
 

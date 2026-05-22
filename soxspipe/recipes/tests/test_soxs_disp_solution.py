@@ -137,7 +137,9 @@ class test_soxs_disp_solution(unittest.TestCase):
             sofPath = "~/xshooter-pipeline-data/unittest_data/xsh/xshooter-mdark/sofs/nir_mixed_exptime_darks.sof"
             from soxspipe.recipes import soxs_disp_solution
 
-            this = soxs_disp_solution(log=log, settings=settings, inputFrames=sofPath, overwrite=True)
+            this = soxs_disp_solution(
+                log=log, settings=settings, inputFrames=sofPath, overwrite=True
+            )
             assert False
         except Exception as e:
             assert True

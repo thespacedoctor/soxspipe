@@ -9,6 +9,7 @@ Author
 Date Created
 : January 22, 2020
 """
+
 from os import listdir, path
 from ccdproc import ImageFileCollection
 import os
@@ -19,7 +20,9 @@ from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
 
 class ImageFileCollection(ImageFileCollection):
-    def _dict_from_fits_header(self, file_name, input_summary=None, missing_marker=None):
+    def _dict_from_fits_header(
+        self, file_name, input_summary=None, missing_marker=None
+    ):
         """ """
         from astropy.io import fits
         from collections import OrderedDict
@@ -152,7 +155,16 @@ class set_of_files(object):
 
     # Initialization
 
-    def __init__(self, log, settings=False, inputFrames=[], verbose=True, recipeName=False, ext=0, session=None):
+    def __init__(
+        self,
+        log,
+        settings=False,
+        inputFrames=[],
+        verbose=True,
+        recipeName=False,
+        ext=0,
+        session=None,
+    ):
         self.log = log
         log.debug("instantiating a new 'sof' object")
         self.settings = settings
@@ -237,7 +249,9 @@ class set_of_files(object):
 
         content = ""
         for d in sorted(os.listdir(directory)):
-            if os.path.isfile(os.path.join(directory, d)) and (os.path.splitext(d)[-1].lower() == ".fits"):
+            if os.path.isfile(os.path.join(directory, d)) and (
+                os.path.splitext(d)[-1].lower() == ".fits"
+            ):
                 fitsPath = os.path.abspath(os.path.join(directory, d))
                 # OPEN FITS FILE AT HDULIST - HDU (HEADER DATA UNIT) CONTAINS A HEADER AND A DATA ARRAY (IMAGE) OR
                 # TABLE.
@@ -314,27 +328,49 @@ class set_of_files(object):
             if self.ext > 0:
                 sofSeed = ImageFileCollection(location=self.inputFrames, ext=self.ext)
                 foundKeys = [
-                    k for k in self.keys if (k.lower() in sofSeed.summary.colnames or k in sofSeed.summary.colnames)
+                    k
+                    for k in self.keys
+                    if (
+                        k.lower() in sofSeed.summary.colnames
+                        or k in sofSeed.summary.colnames
+                    )
                 ]
-                sof = ImageFileCollection(keywords=foundKeys, location=self.inputFrames, ext=self.ext)
+                sof = ImageFileCollection(
+                    keywords=foundKeys, location=self.inputFrames, ext=self.ext
+                )
                 missingKeys = [
                     k
                     for k in self.keys
-                    if (k.lower() not in sofSeed.summary.colnames and k not in sofSeed.summary.colnames)
+                    if (
+                        k.lower() not in sofSeed.summary.colnames
+                        and k not in sofSeed.summary.colnames
+                    )
                 ]
                 if len(missingKeys):
-                    primExt = ImageFileCollection(keywords=missingKeys, location=self.inputFrames, ext=0)
+                    primExt = ImageFileCollection(
+                        keywords=missingKeys, location=self.inputFrames, ext=0
+                    )
                     sof._summary = join(primExt._summary, sof._summary, keys="file")
             else:
-                sof = ImageFileCollection(location=self.inputFrames, keywords=self.keys, ext=self.ext)
+                sof = ImageFileCollection(
+                    location=self.inputFrames, keywords=self.keys, ext=self.ext
+                )
 
             supplementaryFilepaths = []
             for d in os.listdir(self.inputFrames):
                 filepath = os.path.join(self.inputFrames, d)
-                if os.path.isfile(filepath) and ".fits" not in d.lower() and d[0] != ".":
+                if (
+                    os.path.isfile(filepath)
+                    and ".fits" not in d.lower()
+                    and d[0] != "."
+                ):
                     supplementaryFilepaths.append(filepath)
 
-        elif isinstance(self.inputFrames, str) and os.path.isfile(self.inputFrames) and ".sof" in self.inputFrames:
+        elif (
+            isinstance(self.inputFrames, str)
+            and os.path.isfile(self.inputFrames)
+            and ".sof" in self.inputFrames
+        ):
 
             readFile = codecs.open(self.inputFrames, encoding="utf-8", mode="r")
             thisData = readFile.read()
@@ -345,17 +381,27 @@ class set_of_files(object):
             lines = [l for l in lines if len(l) and l[0] != "#"]
 
             fitsFiles = []
-            fitsFiles[:] = [l.split(".fits")[0].replace("~/", home + "/") + ".fits" for l in lines if ".fits" in l]
+            fitsFiles[:] = [
+                l.split(".fits")[0].replace("~/", home + "/") + ".fits"
+                for l in lines
+                if ".fits" in l
+            ]
 
             supplementaryFilepaths = [
-                l.replace("~/", home + "/") for l in lines if ".fits" not in l.lower() and len(l) > 3
+                l.replace("~/", home + "/")
+                for l in lines
+                if ".fits" not in l.lower() and len(l) > 3
             ]
 
             # PREPEND SESSION PATHS
             if self.currentSession:
-                fitsFiles[:] = [f.replace("./reduced", f"./sessions/{self.currentSession}/reduced") for f in fitsFiles]
+                fitsFiles[:] = [
+                    f.replace("./reduced", f"./sessions/{self.currentSession}/reduced")
+                    for f in fitsFiles
+                ]
                 supplementaryFilepaths[:] = [
-                    f.replace("./reduced", f"./sessions/{self.currentSession}/reduced") for f in supplementaryFilepaths
+                    f.replace("./reduced", f"./sessions/{self.currentSession}/reduced")
+                    for f in supplementaryFilepaths
                 ]
 
             # MAKE SURE FILES EXIST
@@ -363,7 +409,9 @@ class set_of_files(object):
             for f in fitsFiles + supplementaryFilepaths:
                 exists = os.path.exists(f)
                 if not exists:
-                    raise FileNotFoundError(f"the input file `{f}` does not appear to exist")
+                    raise FileNotFoundError(
+                        f"the input file `{f}` does not appear to exist"
+                    )
 
             locations = [os.path.dirname(f) for f in fitsFiles]
             if len(set(locations)) == 1:
@@ -373,21 +421,46 @@ class set_of_files(object):
                 location = None
 
             if self.ext > 0:
-                sofSeed = ImageFileCollection(filenames=fitsFiles, location=location, ext=self.ext)
+                sofSeed = ImageFileCollection(
+                    filenames=fitsFiles, location=location, ext=self.ext
+                )
                 foundKeys = [
-                    k for k in self.keys if (k.lower() in sofSeed.summary.colnames or k in sofSeed.summary.colnames)
+                    k
+                    for k in self.keys
+                    if (
+                        k.lower() in sofSeed.summary.colnames
+                        or k in sofSeed.summary.colnames
+                    )
                 ]
-                sof = ImageFileCollection(filenames=fitsFiles, keywords=foundKeys, location=location, ext=self.ext)
+                sof = ImageFileCollection(
+                    filenames=fitsFiles,
+                    keywords=foundKeys,
+                    location=location,
+                    ext=self.ext,
+                )
                 missingKeys = [
                     k
                     for k in self.keys
-                    if (k.lower() not in sofSeed.summary.colnames and k not in sofSeed.summary.colnames)
+                    if (
+                        k.lower() not in sofSeed.summary.colnames
+                        and k not in sofSeed.summary.colnames
+                    )
                 ]
                 if len(missingKeys):
-                    primExt = ImageFileCollection(filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                    primExt = ImageFileCollection(
+                        filenames=fitsFiles,
+                        keywords=missingKeys,
+                        location=location,
+                        ext=0,
+                    )
                     sof._summary = join(primExt._summary, sof._summary, keys="file")
             else:
-                sof = ImageFileCollection(filenames=fitsFiles, keywords=self.keys, location=location, ext=self.ext)
+                sof = ImageFileCollection(
+                    filenames=fitsFiles,
+                    keywords=self.keys,
+                    location=location,
+                    ext=self.ext,
+                )
 
         elif isinstance(self.inputFrames, list):
             fitsFiles = [f for f in self.inputFrames if ".fits" in f.lower()]
@@ -399,28 +472,53 @@ class set_of_files(object):
             else:
                 location = None
 
-            sof = ImageFileCollection(filenames=fitsFiles, keywords=self.keys, location=location, ext=self.ext)
+            sof = ImageFileCollection(
+                filenames=fitsFiles, keywords=self.keys, location=location, ext=self.ext
+            )
 
             if self.ext > 0:
-                foundKeys = [k for k in self.keys if (k.lower() in sof.summary.colnames or k in sof.summary.colnames)]
-                sof = ImageFileCollection(filenames=fitsFiles, keywords=foundKeys, location=location, ext=self.ext)
+                foundKeys = [
+                    k
+                    for k in self.keys
+                    if (k.lower() in sof.summary.colnames or k in sof.summary.colnames)
+                ]
+                sof = ImageFileCollection(
+                    filenames=fitsFiles,
+                    keywords=foundKeys,
+                    location=location,
+                    ext=self.ext,
+                )
                 missingKeys = [
-                    k for k in self.keys if (k.lower() not in sof.summary.colnames and k not in sof.summary.colnames)
+                    k
+                    for k in self.keys
+                    if (
+                        k.lower() not in sof.summary.colnames
+                        and k not in sof.summary.colnames
+                    )
                 ]
                 if len(missingKeys):
-                    primExt = ImageFileCollection(filenames=fitsFiles, keywords=missingKeys, location=location, ext=0)
+                    primExt = ImageFileCollection(
+                        filenames=fitsFiles,
+                        keywords=missingKeys,
+                        location=location,
+                        ext=0,
+                    )
                     sof._summary = join(primExt._summary, sof._summary, keys="file")
             fitsFiles = [os.path.basename(f) for f in fitsFiles]
             sof._summary["filename"] = fitsFiles
             self.keys = ["filename"] + self.keys
-            supplementaryFilepaths = [f for f in self.inputFrames if ".fits" not in f.lower() and f[0] != "."]
+            supplementaryFilepaths = [
+                f for f in self.inputFrames if ".fits" not in f.lower() and f[0] != "."
+            ]
 
         else:
             raise TypeError(
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths"
             )
 
-        supplementary_sof = self.create_supplementary_file_dictionary(supplementaryFilepaths)
+        supplementary_sof = self.create_supplementary_file_dictionary(
+            supplementaryFilepaths
+        )
 
         self.log.debug("completed the ``get`` method")
         return sof, supplementary_sof
