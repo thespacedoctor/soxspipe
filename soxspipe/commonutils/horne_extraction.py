@@ -19,12 +19,9 @@ from line_profiler import profile
 os.environ["TERM"] = "vt100"
 
 
-# TODO: replace RON value with true value from FITS header
 # TODO: include the BPM in create_cross_dispersion_slice (at least)
 # TODO: find a more robust solution for when horneDenominatorSum == 0 (all pixels in a slice do not pass variance cuts). See where fudged == true
-# TODO: delete weight collection
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
-# TODO: replace 'gain' with true gain from fits headers
 
 
 class horne_extraction(object):
@@ -677,7 +674,6 @@ class horne_extraction(object):
             globalClippingSigma=self.globalClippingSigma,
             axisA=self.axisA,
             axisB=self.axisB,
-            gain=self.gain,
             hornePolyOrder=self.recipeSettings["horne-extraction-profile-poly-order"],
             debug=self.debug,
             turnOffMP=turnOffMP,
@@ -1323,7 +1319,6 @@ def extract_single_order(
     globalClippingSigma,
     axisA,
     axisB,
-    gain=1.0,
     hornePolyOrder=3,
     debug=False,
 ):
@@ -1357,7 +1352,7 @@ def extract_single_order(
         return None
 
     # VERTICALLY STACK THE SLICES INTO PSEUDO-RECTIFIED IMAGE
-    keys_to_stack = ["sliceRawFlux", "sliceFluxNormalised", "sliceWeights", "sliceMask"]
+    keys_to_stack = ["sliceRawFlux", "sliceFluxNormalised", "sliceMask"]
 
     # PREALLOCATE A DICTIONARY FOR THE STACKED ARRAYS
     stacked_images = {key: np.vstack(crossDispersionSlices[key]) for key in keys_to_stack}
