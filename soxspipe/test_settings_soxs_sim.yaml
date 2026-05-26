@@ -18,7 +18,6 @@ soxs-mdark:
     stacked-clipping-sigma: 5
     stacked-clipping-iterations: 5 
 
-
 soxs-disp-solution:
     pixel-window-size: 10
     pinhole-detection-thres-sigma: 5
