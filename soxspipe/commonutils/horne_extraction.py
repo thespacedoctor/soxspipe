@@ -1622,7 +1622,7 @@ def create_cross_dispersion_slices(crossDispersionSlices):
     this = (crossDispersionSlices["pixelScaleNm"].values[2:] - crossDispersionSlices["pixelScaleNm"].values[:-2]) / 2
     this = np.insert(this, 0, np.nan)
     this = np.append(this, np.nan)
-    crossDispersionSlices["pixelScaleNm"] = this
+    crossDispersionSlices["pixelScaleNm"] = np.abs(this)
 
     ## REMOVE BAD PIXELS AND COSMIC RAYS FROM THE FLUX ARRAY
     maskedArrays, fullColumnMask, sliceRawFluxMasked, sliceVarianceMasked = _mask_slice_raw_flux(

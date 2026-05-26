@@ -96,9 +96,7 @@ class response_function(object):
         # SORT BY COLUMN NAME
         self.stdExtractionDF.sort_values(["WAVE"], inplace=True)
 
-        self.calibrationRootPath = get_calibrations_path(
-            log=self.log, settings=self.settings
-        )
+        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
         from soxspipe.commonutils import keyword_lookup
 
@@ -127,9 +125,7 @@ class response_function(object):
                 except:
                     pass
 
-        self.std_objName = self.std_objName.split(" V")[0].replace(
-            " ", ""
-        )  # Hack to reduce xsh data
+        self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")  # Hack to reduce xsh data
 
         # REMOVE SPACES IN NAME
         self.std_objName = self.std_objName.replace(" ", "")
@@ -138,9 +134,7 @@ class response_function(object):
 
         if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
             # STD STAR GIVEN, READING THE NON FLAT FIELDED SPECTRUM
-            self.stdExtractionNotFlatDF = Table.read(
-                stdNotFlatExtractionPath, format="fits"
-            )
+            self.stdExtractionNotFlatDF = Table.read(stdNotFlatExtractionPath, format="fits")
             self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF.to_pandas()
         if self.std_objName in stdAkas:
             for s, a in zip(stdNames, stdAkas):
@@ -344,9 +338,7 @@ class response_function(object):
                 plt.show()
             stdExtFlux = stdExtFlux * extCorrectionFactor
 
-        self.response_function_raw = (
-            self.std_wavelength_to_abs_flux(stdExtWave) / stdExtFlux
-        )
+        self.response_function_raw = self.std_wavelength_to_abs_flux(stdExtWave) / stdExtFlux
         wavelength_response = self.stdExtractionDF["WAVE"].values
 
         polyOrder = int(self.recipeSettings[self.arm.lower()]["poly_order"])
@@ -355,26 +347,18 @@ class response_function(object):
 
         # REMOVE EXCLUDED REGION FROM WAVELENGTH AND RESPONSE FUNCTION
         for er in excludeRegions:
-            elementsToDelete = np.where(
-                (wavelength_response >= er[0]) & (wavelength_response <= er[1])
-            )[0]
+            elementsToDelete = np.where((wavelength_response >= er[0]) & (wavelength_response <= er[1]))[0]
             wavelength_response = np.delete(wavelength_response, elementsToDelete)
-            self.response_function_raw = np.delete(
-                self.response_function_raw, elementsToDelete
-            )
+            self.response_function_raw = np.delete(self.response_function_raw, elementsToDelete)
 
         # SMOOTHING DATA IF NIR
         if self.arm == "NIR":
             from scipy.ndimage import gaussian_filter1d
 
-            self.response_function_raw = gaussian_filter1d(
-                self.response_function_raw, sigma=5
-            )
+            self.response_function_raw = gaussian_filter1d(self.response_function_raw, sigma=5)
 
         # FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
-        while (
-            numIter < int(self.recipeSettings[self.arm.lower()]["max_iteration"])
-        ) and (deletedPoints > 0):
+        while (numIter < int(self.recipeSettings[self.arm.lower()]["max_iteration"])) and (deletedPoints > 0):
             try:
                 # FITTING THE DATA
                 elementsToDelete = []
@@ -392,9 +376,7 @@ class response_function(object):
                     ]
                 )
 
-                responseFuncCoeffs = np.polyfit(
-                    wavelength_response_tmp, response_function_raw_tmp, deg=polyOrder
-                )
+                responseFuncCoeffs = np.polyfit(wavelength_response_tmp, response_function_raw_tmp, deg=polyOrder)
                 for index, (z, zf) in enumerate(
                     zip(
                         self.response_function_raw,
@@ -407,31 +389,23 @@ class response_function(object):
                         elementsToDelete.append(index)
 
                 wavelength_response = np.delete(wavelength_response, elementsToDelete)
-                self.response_function_raw = np.delete(
-                    self.response_function_raw, elementsToDelete
-                )
+                self.response_function_raw = np.delete(self.response_function_raw, elementsToDelete)
                 deletedPoints = len(elementsToDelete)
                 numIter = numIter + 1
             except Exception as e:
                 self.log.print("fail")
-                raise Exception(
-                    "The fitting of response function did not converge!"
-                ) from e
+                raise Exception("The fitting of response function did not converge!") from e
 
         if False:
             plt.plot(wavelength_response, self.response_function_raw)
             plt.show()
 
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
-        self.write_response_function_to_file(
-            responseFuncCoeffs=responseFuncCoeffs, polyOrder=polyOrder
-        )
+        self.write_response_function_to_file(responseFuncCoeffs=responseFuncCoeffs, polyOrder=polyOrder)
 
         if not isinstance(stdEfficiencyEstimate, bool):
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
-            stdEfficiencyEstimateDF = pd.DataFrame(
-                {"WAVE": stdExtWaveNotFlat, "EFFICIENCY": stdEfficiencyEstimate}
-            )
+            stdEfficiencyEstimateDF = pd.DataFrame({"WAVE": stdExtWaveNotFlat, "EFFICIENCY": stdEfficiencyEstimate})
             # WRITE THE EFFICIENCY ESTIMATE TO FITS BINARY TABLE
             from astropy.table import Table
             import copy
@@ -577,9 +551,7 @@ class response_function(object):
         flux_margin = 0.2 * (max_flux - min_flux)  # Add 10% margin
         # onerow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
 
-        tworow.scatter(
-            binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.5
-        )
+        tworow.scatter(binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.5)
         tworow.set_title("Raw ratio", fontsize=12)
         tworow.set_xlabel(f"wavelength (nm)", fontsize=9)
         tworow.set_ylabel("Ratio $\\frac{F_{\\lambda}}{F_c}$", fontsize=9)
@@ -595,9 +567,7 @@ class response_function(object):
             linewidth=2.5,
             alpha=0.7,
         )
-        threerow.scatter(
-            binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.2
-        )
+        threerow.scatter(binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.2)
         # threerow.set_xlim(min(binCentreWave), max(binCentreWave))
         # threerow.set_ylim(min(absToExtFluxRatio), max(absToExtFluxRatio))
         threerow.set_xlabel(f"wavelength (nm)", fontsize=9)
@@ -630,6 +600,8 @@ class response_function(object):
         fiverow.set_xlabel(f"wavelength (nm)", fontsize=9)
         fiverow.set_ylabel("residual", fontsize=9)
         fiverow.tick_params(axis="both", which="major", labelsize=9)
+
+        print(stdExtWaveNotFlat, stdEfficiencyEstimate)
 
         if stdEfficiencyEstimate is not None:
             sixrow.plot(stdExtWaveNotFlat, stdEfficiencyEstimate, linewidth=0.2)
