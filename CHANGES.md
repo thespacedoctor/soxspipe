@@ -1,8 +1,8 @@
 # Release Notes
 
-* **REFACTOR:** updated SNR calculation on extracted spectra. The variance using is now from the propagated errors instead of the SNR being derived from the extracted spectrum itself.
 * **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
 * **ENHANCEMENT:** moving to github actions (away from jenkins)
+* **REFACTOR:** updated SNR calculation on extracted spectra. The variance using is now from the propagated errors instead of the SNR being derived from the extracted spectrum itself.
 * **REFACTOR:** allowing for NODDING to continue if no trace found in single AB sequence.
 * **REFACTOR:** forcing sky-subtraction to be switched off for relatively bright sources in VIS
 * **REFACTOR:** information tables are now printed to the terminal in markdown format
