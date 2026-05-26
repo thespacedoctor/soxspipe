@@ -894,9 +894,11 @@ class soxs_nod(base_recipe):
             bin_specification="center",
         )
 
-        groupedDataframe = calculate_rolling_snr(
-            dataframe=groupedDataframe, flux_column="FLUX_COUNTS", window_size=300
+        groupedDataframe["SNR"] = groupedDataframe["FLUX_COUNTS"].values / np.sqrt(
+            groupedDataframe["VARIANCE"].values
         )
+
+        # groupedDataframe = calculate_rolling_snr(dataframe=groupedDataframe, flux_column="FLUX_COUNTS", window_size=300)
 
         # groupedDataframe['signal'] = groupedDataframe['FLUX_COUNTS'].rolling(
         #     window=15, center=True).median().fillna(method='bfill').fillna(method='ffill').values

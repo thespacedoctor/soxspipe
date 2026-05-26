@@ -1,0 +1,16 @@
+name: Tests
+
+
+on: [tests]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-python@v5
+          with:
+            python-version-file: pyproject.toml
+            architecture: x64
+            check-latest: true
+      

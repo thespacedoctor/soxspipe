@@ -1,6 +1,7 @@
 name: Integration Tests
 
-on: [pull_request]
+on: [pull_request, test]
+
 
 jobs:
   call-workflow:
