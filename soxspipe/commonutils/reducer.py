@@ -219,7 +219,7 @@ class reducer(object):
                             fail = True
 
                             if self.quitOnFail:
-                                sys.exit(0)
+                                sys.exit(1)
 
                             if self.reductionTarget != "all":
                                 self.overwrite = False
