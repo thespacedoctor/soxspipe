@@ -1,5 +1,6 @@
 # Release Notes
 
+
 * **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
 * **ENHANCEMENT:** moving to github actions (away from jenkins)
 * **REFACTOR:** updated SNR calculation on extracted spectra. The variance using is now from the propagated errors instead of the SNR being derived from the extracted spectrum itself.
