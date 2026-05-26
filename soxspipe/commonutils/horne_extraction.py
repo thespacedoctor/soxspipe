@@ -142,29 +142,17 @@ class horne_extraction(object):
 
         # DETECTING SEQUENCE AUTOMATICALLY
         try:
-            self.noddingSequence = (
-                "_A"
-                if int(skySubtractedFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0)
-                else "_B"
-            )
+            self.noddingSequence = "_A" if int(skySubtractedFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
             if locationSetIndex:
                 self.noddingSequence += str(locationSetIndex)
         except:
             self.noddingSequence = ""
 
         # COLLECT SETTINGS FROM SETTINGS FILE
-        self.slitHalfLength = int(
-            self.recipeSettings["horne-extraction-slit-length"] / 2
-        )
-        self.clippingSigma = self.recipeSettings[
-            "horne-extraction-profile-clipping-sigma"
-        ]
-        self.clippingIterationLimit = self.recipeSettings[
-            "horne-extraction-profile-clipping-iteration-count"
-        ]
-        self.globalClippingSigma = self.recipeSettings[
-            "horne-extraction-profile-global-clipping-sigma"
-        ]
+        self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
+        self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
+        self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
+        self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
 
         # TODO: replace this value with true value from FITS header object
         self.ron = 3.0
@@ -191,9 +179,7 @@ class horne_extraction(object):
         self.dateObs = self.skySubtractedFrame.header[kw("DATE_OBS")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
-        self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(
-            self.arm
-        )
+        self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
 
         if self.twoDMapPath:
             self.mapDF, self.interOrderMask = twoD_disp_map_image_to_dataframe(
@@ -237,9 +223,7 @@ class horne_extraction(object):
         if self.sofName:
             self.filenameTemplate = self.sofName + ".fits"
         else:
-            self.filenameTemplate = filenamer(
-                log=self.log, frame=self.skySubtractedFrame, settings=self.settings
-            )
+            self.filenameTemplate = filenamer(log=self.log, frame=self.skySubtractedFrame, settings=self.settings)
 
         from soxspipe.commonutils.toolkit import utility_setup
 
@@ -293,28 +277,20 @@ class horne_extraction(object):
             self.twoDMap["WAVELENGTH"].data = block_reduce(
                 self.twoDMap["WAVELENGTH"].data, (binyRatio, binxRatio), func=np.mean
             )
-            self.twoDMap["SLIT"].data = block_reduce(
-                self.twoDMap["SLIT"].data, (binyRatio, binxRatio), func=np.mean
-            )
-            self.twoDMap["ORDER"].data = block_reduce(
-                self.twoDMap["ORDER"].data, (binyRatio, binxRatio), func=np.mean
-            )
+            self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (binyRatio, binxRatio), func=np.mean)
+            self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (binyRatio, binxRatio), func=np.mean)
 
         self.imageMap = pd.DataFrame.from_dict(
             {
                 "x": xarray,
                 "y": yarray,
-                "wavelength": self.twoDMap["WAVELENGTH"]
-                .data.flatten()
-                .astype(np.float32),
+                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(np.float32),
                 "slit_position": self.twoDMap["SLIT"].data.flatten().astype(np.float32),
                 "order": self.twoDMap["ORDER"].data.flatten().astype(np.float32),
                 "flux": self.skySubtractedFrame.data.flatten().astype(np.float32),
             }
         )
-        self.imageMap.dropna(
-            how="all", subset=["wavelength", "slit_position", "order"], inplace=True
-        )
+        self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
         # REMOVE IF THE ABOVE .astype(float) CONVERSION IS WORKING
         # try:
@@ -350,9 +326,7 @@ class horne_extraction(object):
         #         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
         # REMOVE ZEROS
-        mask = (self.imageMap["wavelength"] == 0) & (
-            self.imageMap["slit_position"] == 0
-        )
+        mask = (self.imageMap["wavelength"] == 0) & (self.imageMap["slit_position"] == 0)
         self.imageMap = self.imageMap.loc[~mask]
 
         # FIND THE OBJECT TRACE IN EACH ORDER
@@ -396,15 +370,10 @@ class horne_extraction(object):
             uniqueOrders = self.orderPixelTable["order"].unique()
             for o in uniqueOrders:
                 mask = self.orderPixelTable["order"] == o
-                if (
-                    self.orderPixelTable.loc[mask][f"{self.axisA}coord_centre"].std()
-                    < 100
-                ):
+                if self.orderPixelTable.loc[mask][f"{self.axisA}coord_centre"].std() < 100:
                     keepOrders.append(o)
                 else:
-                    self.log.warning(
-                        f"Bad continuum fit to order {o}; this order will not be extracted"
-                    )
+                    self.log.warning(f"Bad continuum fit to order {o}; this order will not be extracted")
             mask = self.orderPixelTable["order"].isin(keepOrders)
             self.orderPixelTable = self.orderPixelTable.loc[mask]
 
@@ -422,9 +391,7 @@ class horne_extraction(object):
         self.log.debug("starting the ``extract`` method")
 
         if self.orderPixelTable is None:
-            self.log.error(
-                "No trace found in the data, optimal extraction cannot be performed."
-            )
+            self.log.error("No trace found in the data, optimal extraction cannot be performed.")
             return self.qc, self.products, None, None, None
 
         import matplotlib.pyplot as plt
@@ -450,10 +417,7 @@ class horne_extraction(object):
         kw = self.kw
         arm = self.arm
 
-        # GET UNIQUE VALUES IN COLUMN
         uniqueOrders = self.orderPixelTable["order"].unique()
-        # print("FIX ME")
-        # uniqueOrders = [25]
         extractions = []
 
         self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)")
@@ -467,15 +431,6 @@ class horne_extraction(object):
         except:
             pass
 
-        if self.arm == "NIR":
-            self.gain = self.detectorParams["gain"]
-        elif self.inst.upper() == "SOXS":
-            a = self.skySubtractedFrame.header[kw("CONAD")]
-            b = self.skySubtractedFrame.header[kw("GAIN")]
-            self.gain = max(a, b)
-        else:
-            self.gain = self.skySubtractedFrame.header[kw("CONAD")]
-
         # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
         orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
             log=self.log,
@@ -487,9 +442,7 @@ class horne_extraction(object):
             biny=biny,
         )
 
-        self.log.print(
-            "\tBuilding wavelength, slit-position, flux, error and bad-pixel arrays"
-        )
+        self.log.print("\tBuilding wavelength, slit-position, flux, error and bad-pixel arrays")
 
         # ZOOM IN ON THE DATA TO GET MORE PIXELS ACROSS THE SLIT (NEAREST
         # NEIGHBOUR INTERPOLATION)
@@ -522,6 +475,7 @@ class horne_extraction(object):
 
         wlZoom = _zoom(self.twoDMap["WAVELENGTH"].data)
         slitZoom = _zoom(self.twoDMap["SLIT"].data)
+        ## THIS IS (D-S) IN HORNE 1986, I.E. THE SKY-SUBTRACTED FLUX
         rawFluxZoom = _zoom(self.skySubtractedFrame.data)
         if self.skyModelFrame:
             skyZoom = _zoom(self.skyModelFrame.data)
@@ -533,7 +487,7 @@ class horne_extraction(object):
             new_shape = (arr.shape[0] // binx, binx, arr.shape[1] // biny, biny)
             return arr.reshape(new_shape).mean(axis=(1, 3))
 
-        def initial_sigma_clipping(rawFluxArray, bpmArray):
+        def initial_sigma_clipping(rawFluxArray, bpmArray, order=None):
             """RUN SOME INITIAL SIGMA CLIPPING TO CATCH MORE BAD PIXELS"""
 
             import numpy as np
@@ -555,15 +509,17 @@ class horne_extraction(object):
             )
             newBpm = rawFluxMasked.mask
 
+            self.log.print(
+                f"\t\t{sum(sum(newBpm)) - sum(sum(bpmArray))} additional bad pixels found from initial sigma clipping (order:{order})",
+            )
+
             return newBpm
 
         # ADD SOME DATA TO THE SLICES
         orderSlices = []
         wlMinMax = []
         # uniqueOrders = [16]
-        for order, amin, amax, wlmin, wlmax in zip(
-            orderNums, amins, amaxs, waveLengthMin, waveLengthMax
-        ):
+        for order, amin, amax, wlmin, wlmax in zip(orderNums, amins, amaxs, waveLengthMin, waveLengthMax):
             if order in uniqueOrders:
                 orderTable = self.orderPixelTable.loc[
                     (self.orderPixelTable["order"] == order)
@@ -572,15 +528,11 @@ class horne_extraction(object):
                 ]
 
                 self.axisAstart = (
-                    np.round(
-                        (orderTable[f"{self.axisA}coord_centre"] * zoomFactor)
-                    ).astype(int)
+                    np.round((orderTable[f"{self.axisA}coord_centre"] * zoomFactor)).astype(int)
                     - self.slitHalfLength * zoomFactor
                 )
                 self.axisAstop = (
-                    np.round(
-                        (orderTable[f"{self.axisA}coord_centre"] * zoomFactor)
-                    ).astype(int)
+                    np.round((orderTable[f"{self.axisA}coord_centre"] * zoomFactor)).astype(int)
                     + self.slitHalfLength * zoomFactor
                 )
                 self.axisBcoord = orderTable[f"{self.axisB}coord"].round().astype(int)
@@ -641,7 +593,7 @@ class horne_extraction(object):
                         zoomTuple[0],
                         zoomTuple[1],
                     )
-                    newBpm = initial_sigma_clipping(rawFluxRebinned, bpmRebinned)
+                    newBpm = initial_sigma_clipping(rawFluxRebinned, bpmRebinned, order=order)
 
                     orderTable["bpMask"] = list(newBpm)
 
@@ -737,9 +689,7 @@ class horne_extraction(object):
             # FILTER DATA FRAME
             # FIRST CREATE THE MASK
             if e is not None:
-                mask = (e["wavelengthMedian"] > wlTuple[0]) & (
-                    e["wavelengthMedian"] < wlTuple[1]
-                )
+                mask = (e["wavelengthMean"] > wlTuple[0]) & (e["wavelengthMean"] < wlTuple[1])
                 e = e.loc[mask]
                 updatedExtractions.append(e)
 
@@ -839,9 +789,7 @@ class horne_extraction(object):
                 ("SNR", 2),
                 ("FLUX_DENSITY_COUNTS", 3),
             ]:
-                mergedSpectumDF[col] = mergedSpectumDF[col].apply(
-                    lambda x: _round_scalar_or_quantity(x, decimals)
-                )
+                mergedSpectumDF[col] = mergedSpectumDF[col].apply(lambda x: _round_scalar_or_quantity(x, decimals))
 
             mergedTable = Table.from_pandas(mergedSpectumDF)
             BinTableHDU = fits.table_to_hdu(mergedTable)
@@ -852,20 +800,14 @@ class horne_extraction(object):
             # EXPORTING SPECTRUM IN ASCII FORMAT
 
             # CHECKING IF WE ARE IN A NODDING SEQUENCE
-            if (
-                self.noddingSequence
-                or len(self.noddingSequence) > 0
-                and not self.notFlattened
-            ):
+            if self.noddingSequence or len(self.noddingSequence) > 0 and not self.notFlattened:
                 pass
             elif not self.notFlattened:
                 # SAVE THE MERGED ASTROPY TABLE TO TXT FILE
                 # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
                 asciiFilepath = filePath.replace(".fits", f".txt")
                 asciiFilename = filename.replace(".fits", f".txt")
-                mergedTable["WAVE"] = (
-                    mergedTable["WAVE"] * 10
-                )  # CONVERTING TO ANGSTROMS
+                mergedTable["WAVE"] = mergedTable["WAVE"] * 10  # CONVERTING TO ANGSTROMS
                 mergedTable["WAVE"].format = "{:.2f}"
                 mergedTable.write(asciiFilepath, format="ascii", overwrite=True)
 
@@ -922,9 +864,7 @@ class horne_extraction(object):
     def weighted_average(self, group):
         import numpy as np
 
-        group["FLUX_COUNTS"] = (
-            group["flux_resampled"] * np.abs(group["snr"])
-        ).sum() / np.abs(group["snr"]).sum()
+        group["FLUX_COUNTS"] = (group["flux_resampled"] * np.abs(group["snr"])).sum() / np.abs(group["snr"]).sum()
         # group['wf'] = group['flux_resampled'].mean()
 
         return group["FLUX_COUNTS"]
@@ -938,9 +878,7 @@ class horne_extraction(object):
         # else:
         #     group['wf'] = group[1]['flux_resampled']
         if len(group) > 1:
-            if np.abs(group.iloc[0]["flux_resampled"]) >= np.abs(
-                group.iloc[1]["flux_resampled"]
-            ):
+            if np.abs(group.iloc[0]["flux_resampled"]) >= np.abs(group.iloc[1]["flux_resampled"]):
                 group["FLUX_COUNTS"] = group.iloc[1]["flux_resampled"]
             else:
                 group["FLUX_COUNTS"] = group.iloc[0]["flux_resampled"]
@@ -1033,16 +971,12 @@ class horne_extraction(object):
             o = int(o)
             mask = extractedOrdersDF["order"] == o
             if lastOrderMin:
-                order_join_wl = (
-                    extractedOrdersDF.loc[mask]["wavelengthMedian"].max() + lastOrderMin
-                ) / 2.0
+                order_join_wl = (extractedOrdersDF.loc[mask]["wavelengthMean"].max() + lastOrderMin) / 2.0
                 orderJoins[f"{o-1}{o}"] = order_join_wl
-                gap = (
-                    extractedOrdersDF.loc[mask]["wavelengthMedian"].max() - lastOrderMin
-                )
+                gap = extractedOrdersDF.loc[mask]["wavelengthMean"].max() - lastOrderMin
                 orderGaps[f"{o-1}{o}"] = gap
                 # print(f"ORDER: {o}, JOIN: {order_join_wl}, GAP: {gap}")
-            lastOrderMin = extractedOrdersDF.loc[mask]["wavelengthMedian"].min()
+            lastOrderMin = extractedOrdersDF.loc[mask]["wavelengthMean"].min()
 
         # A FIX FOR THE UV XSHOOTER DATA (FLATS TAKEN WITH DIFFERENT LAMPS)
         # GET UNIQUE VALUES IN COLUMN
@@ -1060,7 +994,7 @@ class horne_extraction(object):
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
                     maxwl = orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio
                     mask = (extractedOrdersDF["order"] == o - 1) & (
-                        extractedOrdersDF["wavelengthMedian"]
+                        extractedOrdersDF["wavelengthMean"]
                         <= orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio
                     )
                     extractedOrdersDF = extractedOrdersDF.loc[~mask]
@@ -1070,26 +1004,23 @@ class horne_extraction(object):
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
                     minwl = orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
                     mask = (extractedOrdersDF["order"] == o) & (
-                        extractedOrdersDF["wavelengthMedian"]
-                        > orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
+                        extractedOrdersDF["wavelengthMean"] > orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
                     )
                     extractedOrdersDF = extractedOrdersDF.loc[~mask]
 
         if self.arm.upper() == "UVB":
             # CLIP DICHROICH REGION
-            mask = extractedOrdersDF["wavelengthMedian"] > 556
+            mask = extractedOrdersDF["wavelengthMean"] > 556
             extractedOrdersDF = extractedOrdersDF.loc[~mask]
 
         # SORT BY COLUMN NAME
-        extractedOrdersDF.sort_values(
-            ["wavelengthMedian"], ascending=[True], inplace=True
-        )
+        extractedOrdersDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True)
 
         # DEFINE THE WAVELENGTH ARRAY
         # ENSURE THE COLUMN IS NOT EMPTY AND CONTAINS VALID NUMERIC VALUES
-        if extractedOrdersDF["wavelengthMedian"].notna().any():
-            min_wavelength = np.min(extractedOrdersDF["wavelengthMedian"])
-            max_wavelength = np.max(extractedOrdersDF["wavelengthMedian"])
+        if extractedOrdersDF["wavelengthMean"].notna().any():
+            min_wavelength = np.min(extractedOrdersDF["wavelengthMean"])
+            max_wavelength = np.max(extractedOrdersDF["wavelengthMean"])
 
             # ENSURE THE RANGE IS VALID
             if min_wavelength < max_wavelength and stepWavelengthOrderMerge > 0:
@@ -1097,72 +1028,53 @@ class horne_extraction(object):
                 stop = float(format(max_wavelength * ratio, ".0f")) / ratio
 
                 # DEFINE THE WAVELENGTH ARRAY
-                wave_resample_grid = np.arange(
-                    start, stop, step=stepWavelengthOrderMerge
-                )
+                wave_resample_grid = np.arange(start, stop, step=stepWavelengthOrderMerge)
             else:
-                raise ValueError(
-                    "Invalid range or step size for wavelength resampling."
-                )
+                raise ValueError("Invalid range or step size for wavelength resampling.")
         else:
-            raise ValueError(
-                "The 'wavelengthMedian' column is empty or contains invalid values."
-            )
-        # wave_resample_grid = np.arange(float(format(np.min(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, float(
-        #     format(np.max(extractedOrdersDF['wavelengthMedian']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
+            raise ValueError("The 'wavelengthMean' column is empty or contains invalid values.")
+        # wave_resample_grid = np.arange(float(format(np.min(extractedOrdersDF['wavelengthMean']) * ratio, '.0f')) / ratio, float(
+        #     format(np.max(extractedOrdersDF['wavelengthMean']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
 
         # ADD UNITS TO THE VARIOUS COLUMNS
-        extractedOrdersDF["extractedFluxOptimal"] = (
-            extractedOrdersDF["extractedFluxOptimal"].values * u.electron
-        )
-        extractedOrdersDF["extractedFluxBoxcar"] = (
-            extractedOrdersDF["extractedFluxBoxcar"].values * u.electron
-        )
+        extractedOrdersDF["extractedFluxOptimal"] = extractedOrdersDF["extractedFluxOptimal"].values * u.electron
+        extractedOrdersDF["extractedFluxBoxcar"] = extractedOrdersDF["extractedFluxBoxcar"].values * u.electron
         extractedOrdersDF["extractedFluxBoxcarRobust"] = (
             extractedOrdersDF["extractedFluxBoxcarRobust"].values * u.electron
         )
-        extractedOrdersDF["pixelScaleNm"] = (
-            extractedOrdersDF["pixelScaleNm"].values * u.nm
-        )
-        extractedOrdersDF["wavelengthMedian"] = (
-            extractedOrdersDF["wavelengthMedian"].values * u.nm
-        )
+        extractedOrdersDF["pixelScaleNm"] = extractedOrdersDF["pixelScaleNm"].values * u.nm
+        extractedOrdersDF["wavelengthMean"] = extractedOrdersDF["wavelengthMean"].values * u.nm
 
         # SAVE THE FLUX DENSITY COUNTS BY DIVING FOR THE PROPER PIXEL SIZE IN WAVELENGTH SPACE - COUNTS ARE THEN E-/NM
         extractedOrdersDF["extractedFluxDensityOptimal"] = (
-            extractedOrdersDF["extractedFluxOptimal"].values
-            / extractedOrdersDF["pixelScaleNm"].values
+            extractedOrdersDF["extractedFluxOptimal"].values / extractedOrdersDF["pixelScaleNm"].values
         )
         extractedOrdersDF["extractedFluxDensityBoxcar"] = (
-            extractedOrdersDF["extractedFluxBoxcar"].values
-            / extractedOrdersDF["pixelScaleNm"].values
+            extractedOrdersDF["extractedFluxBoxcar"].values / extractedOrdersDF["pixelScaleNm"].values
         )
         extractedOrdersDF["extractedFluxDensityBoxcarRobust"] = (
-            extractedOrdersDF["extractedFluxBoxcarRobust"].values
-            / extractedOrdersDF["pixelScaleNm"].values
+            extractedOrdersDF["extractedFluxBoxcarRobust"].values / extractedOrdersDF["pixelScaleNm"].values
         )
 
         flux_orig = extractedOrdersDF["extractedFluxOptimal"].values
         spectrum_orig = Spectrum1D(
             flux=flux_orig,
-            spectral_axis=extractedOrdersDF["wavelengthMedian"].values,
-            uncertainty=VarianceUncertainty(
-                extractedOrdersDF["varianceSpectrum"].values
-            ),
+            spectral_axis=extractedOrdersDF["wavelengthMean"].values,
+            uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values),
             bin_specification="center",
         )
 
         fluxDensity_orig = extractedOrdersDF["extractedFluxDensityOptimal"].values
         spectrumFD_orig = Spectrum1D(
             flux=fluxDensity_orig,
-            spectral_axis=extractedOrdersDF["wavelengthMedian"].values,
+            spectral_axis=extractedOrdersDF["wavelengthMean"].values,
             bin_specification="center",
         )
 
         sky_orig = extractedOrdersDF["skyFlux"].values * u.electron
         spectrumSky_orig = Spectrum1D(
             flux=sky_orig,
-            spectral_axis=extractedOrdersDF["wavelengthMedian"].values,
+            spectral_axis=extractedOrdersDF["wavelengthMean"].values,
             bin_specification="center",
         )
 
@@ -1212,9 +1124,9 @@ class horne_extraction(object):
         merged_orders["VARIANCE"] = variance_resampled * u.electron
         merged_orders["SKY_COUNTS"] = sky_resampled * u.electron
 
-        merged_orders = calculate_rolling_snr(
-            dataframe=merged_orders, flux_column="FLUX_COUNTS", window_size=300
-        )
+        merged_orders["SNR"] = merged_orders["FLUX_COUNTS"].values / np.sqrt(merged_orders["VARIANCE"].values)
+
+        # merged_orders = calculate_rolling_snr(dataframe=merged_orders, flux_column="FLUX_COUNTS", window_size=300)
 
         merged_orders["FLUX_DENSITY_COUNTS"] = fluxDensity_resampled * u.electron / u.nm
 
@@ -1294,7 +1206,7 @@ class horne_extraction(object):
                 continue
             o = df["order"].values[0]
 
-            extracted_wave_spectrum = df["wavelengthMedian"]
+            extracted_wave_spectrum = df["wavelengthMean"]
             extracted_spectrum = df["extractedFluxOptimal"]
             extracted_spectrum_nonopt = df["extractedFluxBoxcarRobust"]
             extracted_variance_spectrum = df["varianceSpectrum"]
@@ -1310,8 +1222,7 @@ class horne_extraction(object):
                     )
                     toprow.text(
                         extracted_wave_spectrum[10:-10].mean(),
-                        extracted_spectrum_nonopt[10:-10].mean()
-                        + 1.4 * extracted_spectrum_nonopt[10:-10].std(),
+                        extracted_spectrum_nonopt[10:-10].mean() + 1.4 * extracted_spectrum_nonopt[10:-10].std(),
                         int(o),
                         fontsize=10,
                         c=line[0].get_color(),
@@ -1339,15 +1250,10 @@ class horne_extraction(object):
                         zorder=2,
                         linewidth=0.5,
                     )
-                    if (
-                        extracted_spectrum[10:-10].mean()
-                        + 1.4 * extracted_spectrum[10:-10].std()
-                        < maxFlux
-                    ):
+                    if extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std() < maxFlux:
                         toprow.text(
                             extracted_wave_spectrum[10:-10].mean(),
-                            extracted_spectrum[10:-10].mean()
-                            + 1.4 * extracted_spectrum[10:-10].std(),
+                            extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std(),
                             int(o),
                             fontsize=10,
                             c=line[0].get_color(),
@@ -1357,9 +1263,7 @@ class horne_extraction(object):
             except:
                 self.log.warning(f"Order skipped: {o}")
 
-        toprow.set_title(
-            f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11
-        )
+        toprow.set_title(f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
         toprow.set_ylabel("flux ($e^{-}$)", fontsize=10)
         toprow.set_yscale("log")
         toprow.set_xlabel(f"wavelength (nm)", fontsize=10)
@@ -1445,67 +1349,30 @@ def extract_single_order(
     # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
     order = crossDispersionSlices["order"].values[0]
 
-    # REMOVE SLICES WITH ALL NANS
-    crossDispersionSlices["sliceRawFlux"] = [
-        np.nan if np.isnan(x).all() else x
-        for x in crossDispersionSlices["sliceRawFlux"]
-    ]
-    crossDispersionSlices.dropna(
-        axis="index", how="any", subset=["sliceRawFlux"], inplace=True
-    )
+    # SLICE SINGLE IMAGE INTO CROSS-DISPERSION SLICES
+    crossDispersionSlices = create_cross_dispersion_slices(crossDispersionSlices=crossDispersionSlices)
 
-    # MASK THE MOST DEVIANT PIXELS IN EACH SLICE
-    crossDispersionSlices = create_cross_dispersion_slices(
-        crossDispersionSlices=crossDispersionSlices
-    )
-
-    # WEIGHTS ARE NOT YET USED
-    sliceRawFluxMaskedSumSquared = crossDispersionSlices["sliceRawFluxMaskedSum"] ** 2
-    crossDispersionSlices["sliceWeights"] = (
-        ron
-        + np.abs(crossDispersionSlices["sliceRawFlux"]) / sliceRawFluxMaskedSumSquared
-    )
-
-    # REMOVE SLICES WITH FULLY MASKED WAVELENGTH
-    crossDispersionSlices["wavelength"] = [
-        np.nan if x.mask.sum() > x.mask.shape[0] / 1.1 else x
-        for x in crossDispersionSlices["wavelengthMask"]
-    ]
-    crossDispersionSlices.dropna(
-        axis="index", how="any", subset=["wavelength"], inplace=True
-    )
-
-    crossDispersionSlices["fitsImage"] = [
-        np.nan if x.mask.sum() > x.mask.shape[0] / 1.1 else x
-        for x in crossDispersionSlices["sliceRawFluxMasked"]
-    ]
-
+    # RETURN IF NO SLICES WERE CREATED
     if not len(crossDispersionSlices.index):
         return None
 
-    # VERTICALLY STACK THE SLICES INTO PSEDUO-RECTIFIED IMAGE
-    # Optimized stacking of slices
-    # keys_to_stack = [
-    #     "sliceRawFlux", "sliceFluxNormalised", "sliceWeights", "sliceMask",
-    #     "sliceError", "bpMask", "wavelength", "slit"
-    # ]
+    # VERTICALLY STACK THE SLICES INTO PSEUDO-RECTIFIED IMAGE
     keys_to_stack = ["sliceRawFlux", "sliceFluxNormalised", "sliceWeights", "sliceMask"]
 
-    # Preallocate a dictionary for the stacked arrays
-    stacked_images = {
-        key: np.vstack(crossDispersionSlices[key]) for key in keys_to_stack
-    }
+    # PREALLOCATE A DICTIONARY FOR THE STACKED ARRAYS
+    stacked_images = {key: np.vstack(crossDispersionSlices[key]) for key in keys_to_stack}
 
-    # Assign the stacked arrays to variables
+    # ASSIGN THE STACKED ARRAYS TO VARIABLES
     fluxRawImage = stacked_images["sliceRawFlux"]
+    # THIS IS A FIRST GUESS AT P IN HORNE'S ALGORITHM (EQUATION 5) - WE WILL ITERATIVELY FIT THIS PROFILE AND CLIP OUTLIERS TO IMPROVE IT
     fluxNormalisedImage = stacked_images["sliceFluxNormalised"]
-    weightImage = stacked_images["sliceWeights"]
     maskImage = stacked_images["sliceMask"]
     # errorImage = stacked_images["sliceError"]
     # bpMaskImage = stacked_images["bpMask"]
     # wavelengthImage = stacked_images["wavelength"]
     # slitImage = stacked_images["slit"]
 
+    ## SKY-SUBTRACTED FLUX RECTIFIED IMAGE
     fluxRawImageMasked = np.ma.masked_array(fluxRawImage, mask=maskImage)
     fluxRawImageMasked = fluxRawImageMasked.filled(np.nan)
 
@@ -1573,268 +1440,103 @@ def extract_single_order(
 
     # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
-    # sys.stdout.flush()
-    # sys.stdout.write("\x1b[1A\x1b[2K")
-    # log.print(f"\t## FITTING CROSS-SLIT FLUX NORMALISED PROFILES - ORDER {order}")
-    for slitPixelIndex in range(0, slitHalfLength * 2):
-
-        iteration = 1
-        clipped_count = 1
-
-        fractions = fluxNormalisedImage[:, slitPixelIndex]
-        wave_px = crossDispersionSlices[f"{axisB}coord"]
-
-        weights = weightImage[:, slitPixelIndex]
-        mask = maskImage[:, slitPixelIndex]
-
-        # fractions WILL STILL CONTAIN BAD-PIXEL/CRHs SO EXCLUDE PIXELS MASKED IN STEP 1 ABOVE
-        a = [fractions, wave_px, weights]
-        fractions, wave_px, weights = [
-            np.ma.compressed(np.ma.masked_array(i, mask)) for i in a
-        ]
-
-        startCount = len(fractions)
-
-        while (iteration < clippingIterationLimit) and (clipped_count > 0):
-            # FIT A POLYNOMIAL TO THE FRACTIONAL FLUXES
-            if len(wave_px):
-                coeff = np.polyfit(wave_px, fractions, deg=hornePolyOrder)
-            else:
-                coeff = []
-                break
-            residuals = fractions - np.polyval(coeff, wave_px)
-
-            # REMOVE REMAINING OUTLIERS
-            masked_residuals = sigma_clip(
-                residuals,
-                sigma_lower=clippingSigma,
-                sigma_upper=clippingSigma,
-                maxiters=1,
-                cenfunc="mean",
-                stdfunc="std",
-            )
-            # REDUCE ARRAYS TO NON-MASKED VALUES
-            a = [fractions, wave_px, weights]
-            fractions, wave_px, weights = [
-                np.ma.compressed(np.ma.masked_array(i, masked_residuals.mask))
-                for i in a
-            ]
-            clipped_count = startCount - len(fractions)
-            percent = (float(clipped_count) / float(startCount)) * 100.0
-            # self.log.print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
-            iteration = iteration + 1
-            # if iteration > 1:
-            #     sys.stdout.flush()
-            #     sys.stdout.write("\x1b[1A\x1b[2K")
-
-        # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
-        if len(coeff):
-            profile = np.polyval(coeff, crossDispersionSlices[f"{axisB}coord"])
-            # REMOVE -VE VALUE
-            profile[profile < 0] = 0
-        else:
-            profile = np.zeros_like(crossDispersionSlices[f"{axisB}coord"])
-        crossSlitProfiles.append(profile)
-
-        if debug:
-            plt.scatter(wave_px, fractions, alpha=0.2)
-            plt.plot(wave_px, np.polyval(coeff, wave_px), color="red")
-            plt.title(f"Fitted Profile for Order {order}")
-            plt.ylim([-1, 1])
-            plt.show()
-
-    # ADD THE NORMALISED PROFILES TO DATAFRAME
-    crossSlitProfiles = np.array(crossSlitProfiles)
-    transposedProfiles = crossSlitProfiles.T.tolist()
-    crossDispersionSlices["sliceFittedProfile"] = [
-        np.array(t) for t in transposedProfiles
-    ]
-
-    # sys.stdout.flush()
-    # sys.stdout.write("\x1b[1A\x1b[2K")
-    # log.print(f"\t## EXTRACTING THE SPECTRUM - ORDER {order}")
-
-    # NORMALISE THE FLUX IN EACH SLICE
-    sliceFittedProfileSums = [
-        x.sum() for x in crossDispersionSlices["sliceFittedProfile"]
-    ]
-    crossDispersionSlices["sliceFittedProfileNormalised"] = (
-        crossDispersionSlices["sliceFittedProfile"] / sliceFittedProfileSums
+    crossDispersionSlices = fit_profiles_along_dispersion_axis_for_each_slt_position(
+        crossDispersionSlices=crossDispersionSlices,
+        fluxNormalisedImage=fluxNormalisedImage,
+        maskImage=maskImage,
+        slitHalfLength=slitHalfLength,
+        clippingSigma=clippingSigma,
+        clippingIterationLimit=clippingIterationLimit,
+        hornePolyOrder=hornePolyOrder,
+        axisB=axisB,
+        order=order,
+        debug=debug,
+        plt=plt,
     )
 
-    # VARIANCE FROM HORNE 86 PAPER
-    crossDispersionSlices["sliceVariance"] = (
-        ron
-        + np.abs(
-            crossDispersionSlices["sliceRawFlux"]
-            * crossDispersionSlices["sliceFittedProfileNormalised"]
-            + crossDispersionSlices["sliceSky"]
-        )
-        / gain
-    )
-    # VARIANCE REJECTION NUMBER FROM HORNE 86 PAPER
-    fitted_flux = (
-        crossDispersionSlices["sliceRawFluxMaskedSum"]
-        * crossDispersionSlices["sliceFittedProfileNormalised"]
-    )
-    residuals = crossDispersionSlices["sliceRawFlux"] - fitted_flux
-    sliceRejection = np.square(residuals) / crossDispersionSlices["sliceVariance"]
-    # CREATE A MASK FOR PIXELS WHERE VARIANCE IS TOO HIGH
-    mask = np.zeros_like(np.stack(sliceRejection, axis=0))
-    mask[np.stack(sliceRejection, axis=0) > globalClippingSigma] = 1
-    flipMask = 1 - mask
-    goodRowCounts = flipMask.sum(axis=1).astype(int)
+    # VARIANCE AS PROPAGATED THROUGH THE REDUCTION CASCADE
 
-    # 1D ARRAY OF GOOD VALUES RETURNED - RESHAPE INTO SAME LENGTH AS DATAFRAME - FOR MULTIPLE CALCUATIONS
-    oneDGood = np.ma.masked_array(
-        np.stack(crossDispersionSlices["sliceFittedProfileNormalised"], axis=0), mask
-    ).compressed()
-    crossDispersionSlices["sliceFittedProfileNormalisedGood"] = np.split(
-        oneDGood, np.cumsum(goodRowCounts)[:-1]
-    )
-    oneDGood = np.ma.masked_array(
-        np.stack(crossDispersionSlices["sliceRawFlux"], axis=0), mask
-    ).compressed()
-    crossDispersionSlices["sliceRawFluxGood"] = np.split(
-        oneDGood, np.cumsum(goodRowCounts)[:-1]
-    )
-    oneDGood = np.ma.masked_array(
-        np.stack(crossDispersionSlices["sliceVariance"], axis=0), mask
-    ).compressed()
-    crossDispersionSlices["sliceVarianceGood"] = np.split(
-        oneDGood, np.cumsum(goodRowCounts)[:-1]
-    )
-    oneDGood = np.ma.masked_array(
-        np.stack(crossDispersionSlices["wavelength"], axis=0), mask
-    ).compressed()
-    crossDispersionSlices["wavelengthGood"] = np.split(
-        oneDGood, np.cumsum(goodRowCounts)[:-1]
-    )
-
-    # CALCULATE HORNE 86 NUMERATOR AND DENOMINATOR (EQU ?)
-    crossDispersionSlices["horneNumerator"] = (
-        crossDispersionSlices["sliceRawFluxGood"]
-        * crossDispersionSlices["sliceFittedProfileNormalisedGood"]
-        / crossDispersionSlices["sliceVarianceGood"]
-    )
-    crossDispersionSlices["horneNumeratorSum"] = [
-        x.sum() for x in crossDispersionSlices["horneNumerator"]
-    ]
-    crossDispersionSlices["horneDenominator"] = (
-        np.power(crossDispersionSlices["sliceFittedProfileNormalisedGood"], 2)
-        / crossDispersionSlices["sliceVarianceGood"]
-    )
-    crossDispersionSlices["horneDenominatorSum"] = [
-        x.sum() for x in crossDispersionSlices["horneDenominator"]
-    ]
-    wavelengthMasks = np.stack(crossDispersionSlices["wavelengthMask"].values)
-    crossDispersionSlices["wavelengthMedian"] = np.ma.median(wavelengthMasks, axis=1)
-    # crossDispersionSlices["wavelengthMedian"] = [np.ma.median(
-    #     x) for x in crossDispersionSlices["wavelengthMask"]]
-    crossDispersionSlices["fudged"] = False
-
+    # VARIANCE REJECTION NUMBER FROM HORNE 86 PAPER -- XXX THIS IS NOT CLIPPING IN THE CORRECT PLACE - NEEDS TO CLIP AFTER OPTIMAL FLUX CALCULATED
     if False:
-        # print("FIX ME")
-        crossDispersionSlices["sliceRawFluxGoodSum"] = [
-            x.sum() for x in crossDispersionSlices["sliceRawFluxGood"]
-        ]
-        crossDispersionSlices["sliceFittedProfileNormalisedGoodSum"] = [
-            x.sum() for x in crossDispersionSlices["sliceFittedProfileNormalisedGood"]
-        ]
-        crossDispersionSlices["sliceVarianceGoodSum"] = [
-            x.sum() for x in crossDispersionSlices["sliceVarianceGood"]
-        ]
+        crossDispersionSlices["sliceRawFlux"] * crossDispersionSlices["sliceFittedProfileNormalised"]
+        fitted_flux = (
+            crossDispersionSlices["sliceRawFluxMaskedSum"] * crossDispersionSlices["sliceFittedProfileNormalised"]
+        )
+        residuals = crossDispersionSlices["sliceRawFlux"] - fitted_flux
+        sliceRejection = np.square(residuals) / crossDispersionSlices["sliceVariance"]
+        # CREATE A MASK FOR PIXELS WHERE VARIANCE IS TOO HIGH
+        # XXX DO I NEED THIS MASK?
+        mask = np.zeros_like(np.stack(sliceRejection, axis=0))
+        mask[np.stack(sliceRejection, axis=0) > globalClippingSigma] = 1
+        print(sum(mask.flatten()), "pixels masked in global clipping")
+        flipMask = 1 - mask
+        # COUNTS HOW MANY UNMASKED PIXELS REMAIN IN EACH ROW AFTER CLIPPING
+        goodRowCounts = flipMask.sum(axis=1).astype(int)
 
-    # TODO: IF ALL ABOVE sliceVarianceRejectLimit  ... what?
-    mask = crossDispersionSlices["horneDenominatorSum"] == 0
-    crossDispersionSlices.loc[mask, "horneNumerator"] = (
-        crossDispersionSlices.loc[mask, "sliceRawFlux"]
-        * crossDispersionSlices.loc[mask, "sliceFittedProfileNormalised"]
-        / crossDispersionSlices.loc[mask, "sliceVariance"]
+        # 1D ARRAY OF GOOD VALUES RETURNED, & THEN RESHAPE INTO SAME LENGTH AS DATAFRAME (SPLIT BACK INTO CROSS-DISPERSION SLICES)
+        # APPLY THE SAME BAD-PIXEL MASK TO OTHER STACKED ARRAYS TO CREATE "GOOD" VERSIONS OF THESE ARRAYS
+        oneDGood = np.ma.masked_array(
+            np.stack(crossDispersionSlices["sliceFittedProfileNormalised"], axis=0),
+            mask,
+        ).compressed()
+        crossDispersionSlices["sliceFittedProfileNormalisedGood"] = np.split(oneDGood, np.cumsum(goodRowCounts)[:-1])
+        oneDGood = np.ma.masked_array(np.stack(crossDispersionSlices["sliceRawFlux"], axis=0), mask).compressed()
+        crossDispersionSlices["sliceRawFluxGood"] = np.split(oneDGood, np.cumsum(goodRowCounts)[:-1])
+        oneDGood = np.ma.masked_array(np.stack(crossDispersionSlices["sliceVariance"], axis=0), mask).compressed()
+        crossDispersionSlices["sliceVarianceGood"] = np.split(oneDGood, np.cumsum(goodRowCounts)[:-1])
+        oneDGood = np.ma.masked_array(np.stack(crossDispersionSlices["wavelength"], axis=0), mask).compressed()
+        crossDispersionSlices["wavelengthGood"] = np.split(oneDGood, np.cumsum(goodRowCounts)[:-1])
+
+        ## RENORMALISE THE GOOD FLUXES AGAIN
+        sliceFittedProfileSums = [x.sum() for x in crossDispersionSlices["sliceFittedProfileNormalised"]]
+        crossDispersionSlices["sliceFittedProfileNormalised"] = (
+            crossDispersionSlices["sliceFittedProfileNormalised"] / sliceFittedProfileSums
+        )
+
+    # CALCULATE HORNE 86 NUMERATOR (EQU 8)
+    crossDispersionSlices["horneNumerator"] = (
+        crossDispersionSlices["sliceRawFlux"]
+        * crossDispersionSlices["sliceFittedProfileNormalised"]
+        / crossDispersionSlices["sliceVariance"]
     )
-    crossDispersionSlices.loc[mask, "horneNumeratorSum"] = [
-        x.sum() for x in crossDispersionSlices.loc[mask, "horneNumerator"]
-    ]
-    crossDispersionSlices.loc[mask, "horneDenominator"] = (
-        np.power(crossDispersionSlices.loc[mask, "sliceFittedProfileNormalised"], 2)
-        / crossDispersionSlices.loc[mask, "sliceVariance"]
+    crossDispersionSlices["horneNumeratorSum"] = [x.sum() for x in crossDispersionSlices["horneNumerator"]]
+
+    # CALCULATE HORNE 86 DENOMINATOR (EQU 8)
+    crossDispersionSlices["horneDenominator"] = (
+        np.power(crossDispersionSlices["sliceFittedProfileNormalised"], 2) / crossDispersionSlices["sliceVariance"]
     )
-    crossDispersionSlices.loc[mask, "horneDenominatorSum"] = [
-        x.sum() for x in crossDispersionSlices.loc[mask, "horneDenominator"]
-    ]
-    crossDispersionSlices.loc[mask, "fudged"] = True
+    crossDispersionSlices["horneDenominatorSum"] = [x.sum() for x in crossDispersionSlices["horneDenominator"]]
+    wavelengthMasks = np.stack(crossDispersionSlices["wavelengthMask"].values)
+    crossDispersionSlices["wavelengthMean"] = np.ma.mean(wavelengthMasks, axis=1)
 
     # CALCULATE THE FINAL EXTRACTED SPECTRA
-    crossDispersionSlices["varianceSpectrum"] = (
-        1 / crossDispersionSlices["horneDenominatorSum"]
-    )
+    crossDispersionSlices["varianceSpectrum"] = 1 / crossDispersionSlices["horneDenominatorSum"]
     crossDispersionSlices["extractedFluxOptimal"] = (
-        crossDispersionSlices["horneNumeratorSum"]
-        / crossDispersionSlices["horneDenominatorSum"]
+        crossDispersionSlices["horneNumeratorSum"] / crossDispersionSlices["horneDenominatorSum"]
     )
     fluxStack = np.vstack(crossDispersionSlices["sliceRawFlux"])
     crossDispersionSlices["extractedFluxBoxcar"] = fluxStack.sum(axis=1)
     skyFluxStack = np.vstack(crossDispersionSlices["sliceSky"])
     crossDispersionSlices["skyFlux"] = skyFluxStack.mean(axis=1)
-    crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices[
-        "sliceRawFluxMaskedSum"
-    ]
-    crossDispersionSlices["snr"] = crossDispersionSlices[
-        "extractedFluxOptimal"
-    ] / np.power(crossDispersionSlices["varianceSpectrum"], 0.5)
-
-    if False:
-        import sqlite3 as sql
-
-        # CONNECT TO THE DATABASE
-
-        # REGISTER SQL CONVERTERS
-        from astropy.nddata.nduncertainty import StdDevUncertainty
-
-        sql.register_adapter(StdDevUncertainty, lambda arr: str(arr.array.tolist()))
-        sql.register_adapter(list, lambda arr: str(arr))
-        sql.register_adapter(np.array, lambda arr: str(arr.tolist()))
-        sql.register_adapter(np.ndarray, lambda arr: str(arr.tolist()))
-        sql.register_adapter(np.float64, lambda this: this.item())
-        sql.register_adapter(np.ma.core.MaskedArray, lambda arr: str(arr.tolist()))
-
-        # MAKE RELATIVE HOME PATH ABSOLUTE
-        from os.path import expanduser
-
-        home = expanduser("~")
-        conn = sql.connect(f"{home}/Desktop/pandas_export.db")
-        # SEND TO DATABASE
-        crossDispersionSlices.to_sql(
-            f"order_{order}", con=conn, index=False, if_exists="replace"
-        )
-
-    # SORT BY COLUMN NAME
-    crossDispersionSlices.sort_values(
-        ["wavelengthMedian"], ascending=[True], inplace=True
+    crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices["sliceRawFluxMaskedSum"]
+    crossDispersionSlices["snr"] = crossDispersionSlices["extractedFluxOptimal"] / np.power(
+        crossDispersionSlices["varianceSpectrum"], 0.5
     )
 
+    # SORT BY COLUMN NAME
+    crossDispersionSlices.sort_values(["wavelengthMean"], ascending=[True], inplace=True)
+
     # REMOVE 0 WAVELENGTH
-    crossDispersionSlices = crossDispersionSlices.loc[
-        crossDispersionSlices["wavelengthMedian"] > 0
-    ]
+    crossDispersionSlices = crossDispersionSlices.loc[crossDispersionSlices["wavelengthMean"] > 0]
 
-    # DETERMINE THE PIXEL SCALE FOR EACH PIXEL - NEEDED FOR ORDER MERGING
-    this = (
-        crossDispersionSlices["wavelengthMedian"].values[2:]
-        - crossDispersionSlices["wavelengthMedian"].values[:-2]
-    ) / 2
-    this = np.insert(this, 0, np.nan)
-    this = np.append(this, np.nan)
-    crossDispersionSlices["pixelScaleNm"] = this
-
-    crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices[
-        "extractedFluxBoxcarRobust"
-    ].astype(float)
+    crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices["extractedFluxBoxcarRobust"].astype(
+        float
+    )
     crossDispersionSlices.dropna(
         how="any",
         subset=[
             "pixelScaleNm",
-            "wavelengthMedian",
+            "wavelengthMean",
             "extractedFluxOptimal",
             "snr",
             "varianceSpectrum",
@@ -1842,7 +1544,6 @@ def extract_single_order(
         ],
         inplace=True,
     )
-    # CONVERT COLUMN TYPE
 
     # FILTER DATA FRAME
     # FIRST CREATE THE MASK
@@ -1856,7 +1557,7 @@ def extract_single_order(
             "order",
             f"{axisA}coord_centre",
             f"{axisB}coord",
-            "wavelengthMedian",
+            "wavelengthMean",
             "pixelScaleNm",
             "varianceSpectrum",
             "snr",
@@ -1883,62 +1584,41 @@ def create_cross_dispersion_slices(crossDispersionSlices):
     import numpy as np
     from astropy.stats import sigma_clip
 
-    # VERTICALLY STACK THE SLICES INTO PSEDUO-RECTIFIED IMAGE
+    # VERTICALLY STACK THE SLICES INTO PSEUDO-RECTIFIED IMAGE
     bpMask = np.vstack(crossDispersionSlices["bpMask"])
     sliceRawFlux = np.vstack(crossDispersionSlices["sliceRawFlux"])
-    sliceIndexArray = np.tile(
-        np.abs(np.arange(sliceRawFlux.shape[1]) - sliceRawFlux.shape[1] // 2) * 50 + 1,
-        (sliceRawFlux.shape[0], 1),
+    crossDispersionSlices["sliceVariance"] = crossDispersionSlices["sliceError"] ** 2
+    sliceVariance = np.vstack(crossDispersionSlices["sliceVariance"])
+
+    # CALCULATE THE PIXEL SCALE BELOW ANY CLIPPED OCCURS
+    wlTmp = np.vstack(crossDispersionSlices["wavelength"])
+    crossDispersionSlices["pixelScaleNm"] = np.ma.mean(wlTmp, axis=1)
+    this = (crossDispersionSlices["pixelScaleNm"].values[2:] - crossDispersionSlices["pixelScaleNm"].values[:-2]) / 2
+    this = np.insert(this, 0, np.nan)
+    this = np.append(this, np.nan)
+    crossDispersionSlices["pixelScaleNm"] = np.abs(this)
+
+    ## REMOVE BAD PIXELS AND COSMIC RAYS FROM THE FLUX ARRAY
+    maskedArrays, fullColumnMask, sliceRawFluxMasked, sliceVarianceMasked = _mask_slice_raw_flux(
+        sliceRawFlux, sliceVariance, bpMask
     )
-    bpMask[bpMask > 1] = 1
-
-    sliceRawFluxMasked = np.ma.array(sliceRawFlux, mask=np.isnan(sliceRawFlux) | bpMask)
-
-    sliceIndexArrayMasked = sigma_clip(
-        sliceRawFluxMasked * sliceIndexArray,
-        sigma_lower=3000,
-        sigma_upper=7,
-        maxiters=3,
-        cenfunc="mean",
-        stdfunc="std",
-        axis=1,
-    )
-    sliceRawFluxMasked.data[sliceIndexArrayMasked.mask] = 0
-
-    maskedArrays = [
-        np.ma.masked_array(row, mask=sliceIndexArrayMasked.mask[i])
-        for i, row in enumerate(sliceRawFluxMasked.data)
-    ]
-
-    # FULL SLICE MASK IF MORE THAN 1(?) PIXEL CLIPPED
-    fullColumnMask = []
-    for ma in maskedArrays:
-        if np.ma.count_masked(ma) > 1:
-            ma.mask = True
-            fullColumnMask.append(True)
-        else:
-            fullColumnMask.append(False)
 
     crossDispersionSlices["sliceMask"] = [x.mask for x in maskedArrays]
     crossDispersionSlices["sliceRawFluxMasked"] = maskedArrays
     crossDispersionSlices["fullColumnMask"] = fullColumnMask
     sliceRawFluxMaskedSum = sliceRawFluxMasked.sum(axis=1)
-    crossDispersionSlices["sliceRawFluxMaskedSum"] = [
-        row for row in sliceRawFluxMaskedSum
-    ]
+    sliceVarianceMaskedSum = sliceVarianceMasked.sum(axis=1)
+    ## THIS IS EQUATION (2) IN HORNE 1986 PAPER - THIS IS THE BOXCAR EXTRACTION FLUX
+    crossDispersionSlices["sliceRawFluxMaskedSum"] = [row for row in sliceRawFluxMaskedSum]
+    ## THIS IS EQUATION (3) IN HORNE 1986 PAPER - THIS IS THE BOXCAR EXTRACTION VARIANCE
+    crossDispersionSlices["sliceVarianceMaskedSum"] = [row for row in sliceVarianceMaskedSum]
 
+    ## THIS IS THE NORMALISED FLUX USED FOR FITTING THE DISPERSION PROFILES - THIS IS THE FRACTIONAL FLUX IN HORNE 1986 PAPER
     sliceFluxNormalised = sliceRawFluxMasked / sliceRawFluxMaskedSum[:, np.newaxis]
     crossDispersionSlices["sliceFluxNormalised"] = [row for row in sliceFluxNormalised]
-    sliceFluxNormalisedSum = sliceFluxNormalised.sum(axis=1)
-    crossDispersionSlices["sliceFluxNormalisedSum"] = [
-        row for row in sliceFluxNormalisedSum
-    ]
 
-    # SIGMA-CLIP WAVELENGTH
+    # FAIL SAFE FOR BAD WAVELENGTH VALUES - SOME ODD WAVELENGTHS FROM DISPERSION SOLUTION CAN CAUSE PROBLEMS WITH PROFILE FITTING
     wlMask = np.vstack(crossDispersionSlices["wavelength"])
-    sliceRawFlux = np.vstack(crossDispersionSlices["sliceRawFlux"])
-
-    # wlMask = np.array(crossDispersionSlices["wavelength"].tolist())
     wlMask[wlMask > 0] = 3
     wlMask[wlMask < 0.1] = 1
     wlMask[wlMask > 2] = 0
@@ -1953,10 +1633,163 @@ def create_cross_dispersion_slices(crossDispersionSlices):
         stdfunc="std",
         axis=1,
     )
-    maskedArrays = [
-        np.ma.masked_array(row, mask=maskedImage.mask[i])
-        for i, row in enumerate(maskedImage.data)
-    ]
+    maskedArrays = [np.ma.masked_array(row, mask=maskedImage.mask[i]) for i, row in enumerate(maskedImage.data)]
     crossDispersionSlices["wavelengthMask"] = maskedArrays
 
+    # REMOVE SLICES CONTAINING ALL NANS - THIS IS THE SKY-SUBTRACTED FLUX. (D-S) IN HORNE 1986 PAPER
+    crossDispersionSlices["sliceRawFlux"] = [
+        np.nan if np.isnan(x).all() else x for x in crossDispersionSlices["sliceRawFlux"]
+    ]
+    crossDispersionSlices.dropna(axis="index", how="any", subset=["sliceRawFlux"], inplace=True)
+
+    # REMOVE SLICES WITH FULLY MASKED WAVELENGTH
+    crossDispersionSlices["wavelength"] = [
+        np.nan if x.mask.sum() > x.mask.shape[0] / 1.1 else x for x in crossDispersionSlices["wavelengthMask"]
+    ]
+    crossDispersionSlices.dropna(axis="index", how="any", subset=["wavelength"], inplace=True)
+
     return crossDispersionSlices
+
+
+def fit_profiles_along_dispersion_axis_for_each_slt_position(
+    crossDispersionSlices,
+    fluxNormalisedImage,
+    maskImage,
+    slitHalfLength,
+    clippingSigma,
+    clippingIterationLimit,
+    hornePolyOrder,
+    axisB,
+    order,
+    debug,
+    plt,
+):
+    import numpy as np
+    from astropy.stats import sigma_clip
+
+    crossSlitProfiles = []
+    wave_coords = crossDispersionSlices[f"{axisB}coord"]
+
+    # DETERMINE LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS
+    for slitPixelIndex in range(0, slitHalfLength * 2):
+
+        iteration = 1
+        clipped_count = 1
+
+        fractions = fluxNormalisedImage[:, slitPixelIndex]
+        wave_px = wave_coords
+        mask = maskImage[:, slitPixelIndex]
+
+        # fractions WILL STILL CONTAIN BAD-PIXEL/CRHs SO EXCLUDE PIXELS MASKED IN STEP 1 ABOVE
+        a = [fractions, wave_px]
+        fractions, wave_px = [np.ma.compressed(np.ma.masked_array(i, mask)) for i in a]
+
+        startCount = len(fractions)
+        coeff = []
+
+        while (iteration < clippingIterationLimit) and (clipped_count > 0):
+            # FIT A POLYNOMIAL TO THE FRACTIONAL FLUXES
+            if len(wave_px):
+                coeff = np.polyfit(wave_px, fractions, deg=hornePolyOrder)
+            else:
+                coeff = []
+                break
+            residuals = fractions - np.polyval(coeff, wave_px)
+
+            # REMOVE REMAINING OUTLIERS
+            masked_residuals = sigma_clip(
+                residuals,
+                sigma_lower=clippingSigma,
+                sigma_upper=clippingSigma,
+                maxiters=1,
+                cenfunc="mean",
+                stdfunc="std",
+            )
+            # REDUCE ARRAYS TO NON-MASKED VALUES
+            a = [fractions, wave_px]
+            fractions, wave_px = [np.ma.compressed(np.ma.masked_array(i, masked_residuals.mask)) for i in a]
+            clipped_count = startCount - len(fractions)
+            percent = (float(clipped_count) / float(startCount)) * 100.0
+            # self.log.print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
+            iteration = iteration + 1
+
+        # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
+        if len(coeff):
+            profile = np.polyval(coeff, wave_coords)
+            profile[profile < 0] = 0
+        else:
+            profile = np.zeros_like(wave_coords)
+        crossSlitProfiles.append(profile)
+
+        if debug:
+            plt.scatter(wave_px, fractions, alpha=0.2)
+            plt.plot(wave_px, np.polyval(coeff, wave_px), color="red")
+            plt.title(f"Fitted Profile for Order {order}")
+            plt.ylim([-1, 1])
+            plt.show()
+
+    crossSlitProfiles = np.array(crossSlitProfiles)
+    transposedProfiles = crossSlitProfiles.T.tolist()
+    crossDispersionSlices["sliceFittedProfile"] = [np.array(t) for t in transposedProfiles]
+
+    sliceFittedProfileSums = [x.sum() for x in crossDispersionSlices["sliceFittedProfile"]]
+    crossDispersionSlices["sliceFittedProfileNormalised"] = (
+        crossDispersionSlices["sliceFittedProfile"] / sliceFittedProfileSums
+    )
+
+    if debug:
+        fig = plt.figure(
+            num=None,
+            figsize=(135, 1),
+            dpi=None,
+            facecolor=None,
+            edgecolor=None,
+            frameon=True,
+        )
+        fig.suptitle(f"CROSS SLIT PROFILE {order}", fontsize=16)
+        plt.imshow(
+            np.vstack(crossDispersionSlices["sliceFittedProfileNormalised"]).T,
+            interpolation="none",
+            aspect="auto",
+        )
+        plt.show()
+
+    return crossDispersionSlices
+
+
+def _mask_slice_raw_flux(sliceRawFlux, sliceVariance, bpMask):
+    import numpy as np
+    from astropy.stats import sigma_clip
+
+    # BUILDS A 2D DISTANCE-FROM-CENTER WEIGHTING ARRAY .. ONLY USED FOR SIGMA-CLIPPING THE FLUX ARRAY, NOT FOR WEIGHTING THE PROFILE FITTING
+    sliceIndexArray = np.tile(
+        np.abs(np.arange(sliceRawFlux.shape[1]) - sliceRawFlux.shape[1] // 2) * 50 + 1,
+        (sliceRawFlux.shape[0], 1),
+    )
+    bpMask[bpMask > 1] = 1
+    sliceRawFluxMasked = np.ma.array(sliceRawFlux, mask=np.isnan(sliceRawFlux) | bpMask)
+    sliceIndexArrayMasked = sigma_clip(
+        sliceRawFluxMasked * sliceIndexArray,
+        sigma_lower=3000,
+        sigma_upper=7,
+        maxiters=3,
+        cenfunc="mean",
+        stdfunc="std",
+        axis=1,
+    )
+    sliceRawFluxMasked.data[sliceIndexArrayMasked.mask] = 0
+    sliceVarianceMasked = np.ma.array(sliceVariance, mask=sliceIndexArrayMasked.mask)
+    maskedArrays = [
+        np.ma.masked_array(row, mask=sliceIndexArrayMasked.mask[i]) for i, row in enumerate(sliceRawFluxMasked.data)
+    ]
+
+    # FULL SLICE MASK IF MORE THAN 1(?) PIXEL CLIPPED
+    fullColumnMask = []
+    for ma in maskedArrays:
+        if np.ma.count_masked(ma) > 1:
+            ma.mask = True
+            fullColumnMask.append(True)
+        else:
+            fullColumnMask.append(False)
+
+    return maskedArrays, fullColumnMask, sliceRawFluxMasked, sliceVarianceMasked

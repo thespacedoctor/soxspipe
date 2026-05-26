@@ -72,7 +72,7 @@ reset_workspace() {
     echo "" > /tmp/soxspipe_prep.log
     sleep 3
     if [ -f "$HOME/anaconda/etc/profile.d/conda.sh" ]; then
-        open /tmp/soxspipe_prep.log
+        # open /tmp/soxspipe_prep.log
         . "$HOME/anaconda/etc/profile.d/conda.sh"
         conda activate soxspipe
     fi
