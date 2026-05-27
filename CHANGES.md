@@ -1,5 +1,8 @@
 # Release Notes
 
+* **ENHANCEMENT**: added debugging plots to reveal individual order sky lines
+* **ENHANCEMENT**: Expand extracted-order QC plots to show optimal flux, boxcar flux, SNR, and sky flux panels.
+* **REFACTOR**: Reuse the shared skyline loader in quicklook and merged-spectrum QC plotting.
 * **ENHANCEMENT**: Sky is now plotted in the nodding and offset data extraction QC plots
 * **REFACTOR**: Replaced the `skyModelFrame` parameter in `horne_extraction` with `subtractedFrame` for extracting a sky spectrum in nodding mode — the subtracted (B or A) frame is now used directly instead of a separate sky model frame
 * **FIXED**: pass `order` argument to `initial_sigma_clipping` call so per-order clipping is correctly parameterised
