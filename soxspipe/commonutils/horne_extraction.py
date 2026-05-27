@@ -33,7 +33,6 @@ class horne_extraction(object):
     - ``log`` -- logger
     - ``settings`` -- the settings dictionary
     - ``recipeSettings`` -- the recipe specific settings
-    - ``skyModelFrame`` -- path to sky model frame
     - ``skySubtractedFrame`` -- path to sky subtracted frame
     - ``unflattenedFrame`` -- path to unflattened frame
     - ``subtractedFrame`` -- path to the frame that has been subtracted in the AB or BA sequence. This is use to extract a sky spectrum. Default *False* (i.e. not used)
@@ -59,7 +58,6 @@ class horne_extraction(object):
     from soxspipe.commonutils import horne_extraction
     optimalExtractor = horne_extraction(
         log=log,
-        skyModelFrame=skyModelFrame,
         skySubtractedFrame=skySubtractedFrame,
         unflattenedFrame=unflattenedFrame,
         subtractedFrame=subtractedFrame,
@@ -86,7 +84,6 @@ class horne_extraction(object):
         log,
         settings,
         recipeSettings,
-        skyModelFrame,
         skySubtractedFrame,
         unflattenedFrame,
         twoDMapPath,
@@ -132,8 +129,6 @@ class horne_extraction(object):
         self.unflattenedFrame = unflattenedFrame
         self.turnOffMP = turnOffMP
         self.subtractedFrame = subtractedFrame
-
-        print(subtractedFrame)
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -196,16 +191,16 @@ class horne_extraction(object):
 
             self.skySubtractedFrame.data[self.interOrderMask == 1] = np.nan
 
-        # CHECK SKY MODEL FRAME IS USED (ONLY IN STARE MODE)
-        if skyModelFrame == False:
-            self.skyModelFrame = None
+        # USE SUBTRACTED FRAME (NODDING ONLY) TO EXTRACT A SKY SPECTRUM
+        if subtractedFrame == False:
+            self.subtractedFrame = None
         else:
             # OPEN THE SKY-MODEL FRAME
-            if isinstance(skyModelFrame, CCDData):
-                self.skyModelFrame = skyModelFrame
+            if isinstance(subtractedFrame, CCDData):
+                self.subtractedFrame = subtractedFrame
             else:
-                self.skyModelFrame = CCDData.read(
-                    skyModelFrame,
+                self.subtractedFrame = CCDData.read(
+                    subtractedFrame,
                     hdu=0,
                     unit=u.electron,
                     hdu_uncertainty="ERRS",
@@ -480,8 +475,8 @@ class horne_extraction(object):
         slitZoom = _zoom(self.twoDMap["SLIT"].data)
         ## THIS IS (D-S) IN HORNE 1986, I.E. THE SKY-SUBTRACTED FLUX
         rawFluxZoom = _zoom(self.skySubtractedFrame.data)
-        if self.skyModelFrame:
-            skyZoom = _zoom(self.skyModelFrame.data)
+        if self.subtractedFrame:
+            skyZoom = _zoom(self.subtractedFrame.data)
         errorZoom = _zoom(self.skySubtractedFrame.uncertainty.array)
         bpmZoom = _zoom(self.skySubtractedFrame.mask)
 
@@ -573,7 +568,8 @@ class horne_extraction(object):
                             zoomTuple[1],
                         )
                     )
-                    if self.skyModelFrame:
+
+                    if self.subtractedFrame:
                         orderTable["sliceSky"] = list(
                             rebin(
                                 skyZoom[self.axisBcoords, self.axisAcoords],
@@ -621,7 +617,7 @@ class horne_extraction(object):
                             zoomTuple[0],
                         )
                     )
-                    if self.skyModelFrame:
+                    if self.subtractedFrame:
                         orderTable["sliceSky"] = list(
                             rebin(
                                 skyZoom[self.axisAcoords, self.axisBcoords],

@@ -739,7 +739,6 @@ class soxs_nod(base_recipe):
         # EXTRACT THE A MINUS B FRAME
         optimalExtractor = horne_extraction(
             log=self.log,
-            skyModelFrame=False,
             skySubtractedFrame=A_minus_B,
             unflattenedFrame=A_minus_B_notflattened,
             subtractedFrame=bFrame,
@@ -764,7 +763,6 @@ class soxs_nod(base_recipe):
         if "nod" in self.recipeName:
             optimalExtractor = horne_extraction(
                 log=self.log,
-                skyModelFrame=False,
                 skySubtractedFrame=B_minus_A,
                 unflattenedFrame=B_minus_A_notflattened,
                 subtractedFrame=aFrame,
