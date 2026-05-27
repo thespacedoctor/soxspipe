@@ -36,6 +36,7 @@ class horne_extraction(object):
     - ``skyModelFrame`` -- path to sky model frame
     - ``skySubtractedFrame`` -- path to sky subtracted frame
     - ``unflattenedFrame`` -- path to unflattened frame
+    - ``subtractedFrame`` -- path to the frame that has been subtracted in the AB or BA sequence. This is use to extract a sky spectrum. Default *False* (i.e. not used)
     - ``twoDMapPath`` -- path to 2D dispersion map image path
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
     - ``qcTable`` -- the data frame to collect measured QC metrics
@@ -61,6 +62,7 @@ class horne_extraction(object):
         skyModelFrame=skyModelFrame,
         skySubtractedFrame=skySubtractedFrame,
         unflattenedFrame=unflattenedFrame,
+        subtractedFrame=subtractedFrame,
         twoDMapPath=twoDMap,
         settings=settings,
         recipeName="soxs-stare",
@@ -88,6 +90,7 @@ class horne_extraction(object):
         skySubtractedFrame,
         unflattenedFrame,
         twoDMapPath,
+        subtractedFrame=False,
         recipeName=False,
         qcTable=False,
         productsTable=False,
@@ -128,6 +131,9 @@ class horne_extraction(object):
         self.debug = debug
         self.unflattenedFrame = unflattenedFrame
         self.turnOffMP = turnOffMP
+        self.subtractedFrame = subtractedFrame
+
+        print(subtractedFrame)
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -638,7 +644,7 @@ class horne_extraction(object):
                         zoomTuple[0],
                     )
 
-                    newBpm = initial_sigma_clipping(rawFluxRebinned, bpmRebinned)
+                    newBpm = initial_sigma_clipping(rawFluxRebinned, bpmRebinned, order=order)
                     orderTable["bpMask"] = list(newBpm)
 
                 orderSlices.append(orderTable)
