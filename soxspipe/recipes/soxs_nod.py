@@ -730,6 +730,20 @@ class soxs_nod(base_recipe):
                     master_flat=masterFlat,
                     order_table=orderTablePath,
                 )
+            bFrame = self.detrend(
+                inputFrame=bFrame,
+                master_bias=False,
+                dark=False,
+                master_flat=masterFlat,
+                order_table=orderTablePath,
+            )
+            aFrame = self.detrend(
+                inputFrame=aFrame,
+                master_bias=False,
+                dark=False,
+                master_flat=masterFlat,
+                order_table=orderTablePath,
+            )
 
         else:
             A_minus_B = A_minus_B_notflattened

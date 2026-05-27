@@ -1514,7 +1514,7 @@ def extract_single_order(
     fluxStack = np.vstack(crossDispersionSlices["sliceRawFlux"])
     crossDispersionSlices["extractedFluxBoxcar"] = fluxStack.sum(axis=1)
     skyFluxStack = np.vstack(crossDispersionSlices["sliceSky"])
-    crossDispersionSlices["skyFlux"] = skyFluxStack.mean(axis=1)
+    crossDispersionSlices["skyFlux"] = np.median(skyFluxStack, axis=1)
     crossDispersionSlices["extractedFluxBoxcarRobust"] = crossDispersionSlices["sliceRawFluxMaskedSum"]
     crossDispersionSlices["snr"] = crossDispersionSlices["extractedFluxOptimal"] / np.power(
         crossDispersionSlices["varianceSpectrum"], 0.5
