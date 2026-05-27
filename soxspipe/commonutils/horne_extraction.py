@@ -112,6 +112,7 @@ class horne_extraction(object):
         from ccdproc import cosmicray_lacosmic, cosmicray_median
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
         import matplotlib.pyplot as plt
+        from soxspipe.commonutils.toolkit import get_skylines_dataframe
 
         self.log = log
         log.debug("instantiating a new 'horne_extraction' object")
@@ -178,6 +179,9 @@ class horne_extraction(object):
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
+
+        # GET SKYLINES DATAFRAME
+        self.skylinesDF = get_skylines_dataframe(self.log, self.settings, self.arm)
 
         if self.twoDMapPath:
             self.mapDF, self.interOrderMask = twoD_disp_map_image_to_dataframe(
@@ -697,6 +701,8 @@ class horne_extraction(object):
 
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
+        extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF)
+
         mergedSpectumDF, orderJoins = self.merge_extracted_orders(extractedOrdersDF)
 
         self.qc = add_snr_efficiency_qcs(
@@ -884,6 +890,97 @@ class horne_extraction(object):
             group["FLUX_COUNTS"] = group.iloc[0]["flux_resampled"]
 
         return group["FLUX_COUNTS"]
+
+    def tune_wavelength_calibration_to_skylines(self, extractedOrdersDF):
+        """Skyline-based wavelength calibration tuning helper.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+
+        **Return:**
+
+        - ``extractedOrdersDF`` -- unchanged input dataframe
+        """
+
+        self.log.debug("starting the ``tune_wavelength_calibration_to_skylines`` method")
+
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        from datetime import datetime
+
+        skylineWave = pd.to_numeric(self.skylinesDF["WAVELENGTH"], errors="coerce").dropna().to_numpy()
+
+        uniqueOrders = np.sort(extractedOrdersDF["order"].unique())
+        for o in uniqueOrders:
+            mask = extractedOrdersDF["order"] == o
+            orderDF = extractedOrdersDF.loc[mask].copy()
+            if orderDF.empty:
+                continue
+
+            wave = pd.to_numeric(orderDF["wavelengthMean"], errors="coerce")
+            sky = pd.to_numeric(orderDF["skyFlux"], errors="coerce")
+            valid = wave.notna() & sky.notna()
+            if not valid.any():
+                continue
+
+            waveVals = wave.loc[valid].to_numpy()
+            skyVals = sky.loc[valid].to_numpy()
+
+            fig, ax = plt.subplots(figsize=(12, 4), dpi=180)
+            ax.plot(waveVals, skyVals, color="tab:blue", linewidth=0.7, label="skyFlux")
+
+            wmin = np.nanmin(waveVals)
+            wmax = np.nanmax(waveVals)
+            localSkylines = skylineWave[(skylineWave >= wmin) & (skylineWave <= wmax)]
+            for ww in localSkylines:
+                ax.axvline(ww, color="grey", alpha=0.25, linewidth=0.6)
+            if len(localSkylines):
+                ax.plot([], [], color="grey", alpha=0.7, linewidth=0.8, label="skylines")
+
+            ax.set_title(f"Order {int(o)} skyFlux and skylines")
+            ax.set_xlabel("wavelength (nm)")
+            ax.set_ylabel("sky flux ($e^{-}$)")
+            ax.legend(loc="best", fontsize=8)
+
+            # filename = self.filenameTemplate.replace(
+            #     ".fits",
+            #     f"_ORDER_{int(o):02d}_SKYFLUX_SKYLINES_QC{self.noddingSequence}{self.notFlattened}.pdf",
+            # )
+            # filePath = f"{self.qcDir}/{filename}"
+            # fig.savefig(filePath, dpi=120, format="pdf", bbox_inches="tight")
+            # plt.close(fig)
+            import matplotlib
+
+            matplotlib.use("MacOSX")
+            plt.show()
+
+            # if not self.notFlattened and not isinstance(self.products, bool):
+            #     utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+            #     self.products = pd.concat(
+            #         [
+            #             self.products,
+            #             pd.Series(
+            #                 {
+            #                     "soxspipe_recipe": self.recipeName,
+            #                     "product_label": f"EXTRACTED_ORDER_SKYFLUX_SKYLINES_QC{self.noddingSequence}{self.notFlattened}",
+            #                     "file_name": filename,
+            #                     "file_type": "PDF",
+            #                     "obs_date_utc": self.dateObs,
+            #                     "reduction_date_utc": utcnow,
+            #                     "product_desc": f"Per-order sky flux with skyline markers (order {int(o)})",
+            #                     "file_path": filePath,
+            #                     "label": "QC",
+            #                 }
+            #             )
+            #             .to_frame()
+            #             .T,
+            #         ],
+            #         ignore_index=True,
+            #     )
+
+        return extractedOrdersDF
 
     def merge_extracted_orders(self, extractedOrdersDF):
         """*merge the extracted order spectra in one continuous spectrum*
@@ -1121,7 +1218,6 @@ class horne_extraction(object):
         merged_orders["FLUX_COUNTS"] = flux_resampled * u.electron
         merged_orders["VARIANCE"] = variance_resampled * u.electron
         merged_orders["SKY_COUNTS"] = sky_resampled * u.electron
-
         merged_orders["SNR"] = merged_orders["FLUX_COUNTS"].values / np.sqrt(merged_orders["VARIANCE"].values)
 
         # merged_orders = calculate_rolling_snr(dataframe=merged_orders, flux_column="FLUX_COUNTS", window_size=300)
@@ -1164,8 +1260,8 @@ class horne_extraction(object):
         from astropy.stats import sigma_clip
 
         # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
-        if isinstance(self.products, bool) and not self.products:
-            return
+        # if isinstance(self.products, bool) and not self.products:
+        #     return
 
         import matplotlib.pyplot as plt
 
@@ -1173,9 +1269,12 @@ class horne_extraction(object):
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
 
-        fig = plt.figure(figsize=(14, 7), constrained_layout=True, dpi=180)
-        gs = fig.add_gridspec(1, 1)
+        fig = plt.figure(figsize=(14, 12), constrained_layout=True, dpi=180)
+        gs = fig.add_gridspec(4, 1)
         toprow = fig.add_subplot(gs[0:1, :])
+        secondrow = fig.add_subplot(gs[1:2, :], sharex=toprow)
+        thirdrow = fig.add_subplot(gs[2:3, :], sharex=toprow)
+        fourthrow = fig.add_subplot(gs[3:4, :], sharex=toprow)
         addedLegend = True
 
         allExtractions = pd.concat(extractions, ignore_index=True)
@@ -1208,19 +1307,41 @@ class horne_extraction(object):
             extracted_spectrum = df["extractedFluxOptimal"]
             extracted_spectrum_nonopt = df["extractedFluxBoxcarRobust"]
             extracted_variance_spectrum = df["varianceSpectrum"]
+            extracted_sky_spectrum = df["skyFlux"]
             extracted_snr = df["snr"]
 
             try:
                 if "PAE" in self.settings and self.settings["PAE"] and True:
                     line = toprow.plot(
                         extracted_wave_spectrum[10:-10],
+                        extracted_spectrum[10:-10],
+                        zorder=2,
+                        linewidth=0.1,
+                    )
+                    secondrow.plot(
+                        extracted_wave_spectrum[10:-10],
                         extracted_spectrum_nonopt[10:-10],
+                        color=line[0].get_color(),
+                        zorder=2,
+                        linewidth=0.1,
+                    )
+                    thirdrow.plot(
+                        extracted_wave_spectrum[10:-10],
+                        extracted_snr[10:-10],
+                        color=line[0].get_color(),
+                        zorder=2,
+                        linewidth=0.1,
+                    )
+                    fourthrow.plot(
+                        extracted_wave_spectrum[10:-10],
+                        extracted_sky_spectrum[10:-10],
+                        color=line[0].get_color(),
                         zorder=2,
                         linewidth=0.1,
                     )
                     toprow.text(
                         extracted_wave_spectrum[10:-10].mean(),
-                        extracted_spectrum_nonopt[10:-10].mean() + 1.4 * extracted_spectrum_nonopt[10:-10].std(),
+                        extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std(),
                         int(o),
                         fontsize=10,
                         c=line[0].get_color(),
@@ -1229,23 +1350,48 @@ class horne_extraction(object):
 
                 else:
                     if addedLegend:
-                        label = "Robust Boxcar Extraction"
+                        label_opt = "Optimal Extraction"
+                        label_nonopt = "Robust Boxcar Extraction"
+                        label_snr = "SNR"
+                        label_sky = "Sky Flux"
                     else:
-                        label = None
-                    toprow.plot(
-                        extracted_wave_spectrum[10:-10],
-                        extracted_spectrum_nonopt[10:-10],
-                        color="gray",
-                        alpha=0.8,
-                        zorder=1,
-                        label=label,
-                        linewidth=0.5,
-                    )
-                    # plt.plot(extracted_wave_spectrum, extracted_spectrum_nonopt, color="gray", alpha=0.1, zorder=1)
+                        label_opt = None
+                        label_nonopt = None
+                        label_snr = None
+                        label_sky = None
                     line = toprow.plot(
                         extracted_wave_spectrum[10:-10],
                         extracted_spectrum[10:-10],
+                        alpha=0.8,
                         zorder=2,
+                        label=label_opt,
+                        linewidth=0.5,
+                    )
+                    secondrow.plot(
+                        extracted_wave_spectrum[10:-10],
+                        extracted_spectrum_nonopt[10:-10],
+                        color=line[0].get_color(),
+                        alpha=0.8,
+                        zorder=1,
+                        label=label_nonopt,
+                        linewidth=0.5,
+                    )
+                    thirdrow.plot(
+                        extracted_wave_spectrum[10:-10],
+                        extracted_snr[10:-10],
+                        color=line[0].get_color(),
+                        alpha=0.8,
+                        zorder=2,
+                        label=label_snr,
+                        linewidth=0.5,
+                    )
+                    fourthrow.plot(
+                        extracted_wave_spectrum[10:-10],
+                        extracted_sky_spectrum[10:-10],
+                        color=line[0].get_color(),
+                        alpha=0.8,
+                        zorder=2,
+                        label=label_sky,
                         linewidth=0.5,
                     )
                     if extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std() < maxFlux:
@@ -1261,18 +1407,50 @@ class horne_extraction(object):
             except:
                 self.log.warning(f"Order skipped: {o}")
 
-        toprow.set_title(f"Optimally Extracted Object Spectrum ({self.arm.upper()})", fontsize=11)
-        toprow.set_ylabel("flux ($e^{-}$)", fontsize=10)
-        toprow.set_yscale("log")
-        toprow.set_xlabel(f"wavelength (nm)", fontsize=10)
+        if (
+            self.skylinesDF is not None
+            and not self.skylinesDF.empty
+            and {"WAVELENGTH", "FLUX"}.issubset(self.skylinesDF.columns)
+        ):
+            xlim = fourthrow.get_xlim()
+            for wavelength in self.skylinesDF["WAVELENGTH"].to_numpy():
+                fourthrow.axvline(
+                    wavelength,
+                    ymin=0,
+                    ymax=1,
+                    color="grey",
+                    alpha=0.2,
+                    linewidth=0.5,
+                    zorder=0,
+                )
+            fourthrow.set_xlim(xlim)
 
-        plt.ylim(-200, maxFlux)
+        toprow.set_title(f"Extracted Object Spectrum QC ({self.arm.upper()})", fontsize=11)
+        toprow.set_ylabel("flux ($e^{-}$)", fontsize=10)
+        secondrow.set_ylabel("boxcar flux ($e^{-}$)", fontsize=10)
+        thirdrow.set_ylabel("SNR", fontsize=10)
+        fourthrow.set_ylabel("sky flux ($e^{-}$)", fontsize=10)
+
+        # toprow.set_yscale("log")
+        # secondrow.set_yscale("log")
+        fourthrow.set_xlabel(f"wavelength (nm)", fontsize=10)
+
+        toprow.legend(fontsize=8, loc="best")
+        secondrow.legend(fontsize=8, loc="best")
+        thirdrow.legend(fontsize=8, loc="best")
+        fourthrow.legend(fontsize=8, loc="best")
+
+        toprow.set_ylim(-200, maxFlux)
+        secondrow.set_ylim(-200, maxFlux)
         filename = self.filenameTemplate.replace(
             ".fits",
             f"_EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}{self.notFlattened}.pdf",
         )
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
+        # import matplotlib
+
+        # matplotlib.use("MacOSX")
         # plt.show()
         plt.savefig(filePath, dpi=120, format="pdf", bbox_inches="tight")
         plt.close(fig)
@@ -1281,7 +1459,7 @@ class horne_extraction(object):
         utcnow = datetime.utcnow()
         utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
-        if not self.notFlattened:
+        if not self.notFlattened and not isinstance(self.products, bool):
             self.products = pd.concat(
                 [
                     self.products,
@@ -1306,9 +1484,6 @@ class horne_extraction(object):
 
         self.log.debug("completed the ``plot_extracted_spectrum_qc`` method")
         return None
-
-    # use the tab-trigger below for new method
-    # xt-class-method
 
 
 def extract_single_order(

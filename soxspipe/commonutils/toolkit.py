@@ -219,13 +219,7 @@ def quicklook_image(
             inst = "XSHOOTER"
 
     if skylines:
-        calibrationRootPath = get_calibrations_path(log=log, settings=settings)
-        skylines = calibrationRootPath + "/" + dp["skylines"]
-        # SPEC FORMAT TO PANDAS DATAFRAME
-        from astropy.table import Table
-
-        dat = Table.read(skylines, format="fits")
-        skylinesDF = dat.to_pandas()
+        skylinesDF = get_skylines_dataframe(log, settings, arm)
     else:
         skylinesDF = False
 
@@ -1655,24 +1649,7 @@ def plot_merged_spectrum_qc(
     if not noddingSequence:
         noddingSequence = ""
 
-    # DETECTOR PARAMETERS LOOKUP OBJECT
-    dp = detector_lookup(log=log, settings=settings).get(arm)
-
-    # GET SKYLINE DATA
-    calibrationRootPath = get_calibrations_path(log=log, settings=settings)
-    skylines = calibrationRootPath + "/" + dp["skylines"]
-    # SPEC FORMAT TO PANDAS DATAFRAME
-    from astropy.table import Table
-
-    dat = Table.read(skylines, format="fits")
-    skylinesDF = dat.to_pandas()
-    # FILTER TO STRONG SKY LINES ONLY FOR PLOTTING
-    skylinesDF["FLUX"] = skylinesDF["FLUX"].astype(float)
-    if arm == "VIS":
-        mask = skylinesDF["FLUX"] > 5
-    else:
-        mask = skylinesDF["FLUX"] > 500
-    skylinesDF = skylinesDF.loc[mask]
+    skylinesDF = get_skylines_dataframe(log, settings, arm)
 
     fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
     # Adjusted height ratios
@@ -2182,3 +2159,26 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
             )
 
     return qcTable
+
+
+def get_skylines_dataframe(log, settings, arm):
+    """Load and filter strong skylines for QC plotting."""
+    from soxspipe.commonutils import detector_lookup
+    from soxspipe.commonutils.toolkit import get_calibrations_path
+    from astropy.table import Table
+
+    dp = detector_lookup(log=log, settings=settings).get(arm)
+    calibrationRootPath = get_calibrations_path(log=log, settings=settings)
+    skylines = calibrationRootPath + "/" + dp["skylines"]
+
+    dat = Table.read(skylines, format="fits")
+    skylinesDF = dat.to_pandas()
+    skylinesDF["WAVELENGTH"] = skylinesDF["WAVELENGTH"].astype(float)
+    skylinesDF["FLUX"] = skylinesDF["FLUX"].astype(float)
+
+    if arm == "VIS":
+        mask = skylinesDF["FLUX"] > 5
+    else:
+        mask = skylinesDF["FLUX"] > 100
+
+    return skylinesDF.loc[mask]
