@@ -181,7 +181,9 @@ class horne_extraction(object):
         self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
 
         # GET SKYLINES DATAFRAME
-        self.skylinesDF = get_skylines_dataframe(self.log, self.settings, self.arm)
+        self.skylinesDF = get_skylines_dataframe(
+            self.log, self.settings, self.arm, minBrightnessVIS=1, minBrightnessNIR=1
+        )
 
         if self.twoDMapPath:
             self.mapDF, self.interOrderMask = twoD_disp_map_image_to_dataframe(
