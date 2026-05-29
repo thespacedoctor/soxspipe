@@ -917,70 +917,143 @@ class horne_extraction(object):
         uniqueOrders = np.sort(extractedOrdersDF["order"].unique())
         for o in uniqueOrders:
             mask = extractedOrdersDF["order"] == o
-            orderDF = extractedOrdersDF.loc[mask].copy()
+            orderDF = extractedOrdersDF.loc[mask]
+            orderDF["wavelengthMean_shifted"] = orderDF["wavelengthMean"]
             if orderDF.empty:
                 continue
 
-            wave = pd.to_numeric(orderDF["wavelengthMean"], errors="coerce")
-            sky = pd.to_numeric(orderDF["skyFlux"], errors="coerce")
-            valid = wave.notna() & sky.notna()
-            if not valid.any():
-                continue
+            for iteration in range(2):
 
-            waveVals = wave.loc[valid].to_numpy()
-            skyVals = sky.loc[valid].to_numpy()
+                wave = pd.to_numeric(orderDF["wavelengthMean_shifted"], errors="coerce")
+                sky = pd.to_numeric(orderDF["skyFlux"], errors="coerce")
+                valid = wave.notna() & sky.notna()
+                if not valid.any():
+                    continue
 
-            fig, ax = plt.subplots(figsize=(12, 4), dpi=180)
-            ax.plot(waveVals, skyVals, color="tab:blue", linewidth=0.7, label="skyFlux")
+                # FIND AND MARK THE PEAKS IN THE SKY SPECTRUM
+                from scipy.signal import find_peaks, savgol_filter
 
-            wmin = np.nanmin(waveVals)
-            wmax = np.nanmax(waveVals)
-            localSkylines = skylineWave[(skylineWave >= wmin) & (skylineWave <= wmax)]
-            for ww in localSkylines:
-                ax.axvline(ww, color="grey", alpha=0.25, linewidth=0.6)
-            if len(localSkylines):
-                ax.plot([], [], color="grey", alpha=0.7, linewidth=0.8, label="skylines")
+                skySmoothed = savgol_filter(sky[valid], window_length=21, polyorder=2)
 
-            ax.set_title(f"Order {int(o)} skyFlux and skylines")
-            ax.set_xlabel("wavelength (nm)")
-            ax.set_ylabel("sky flux ($e^{-}$)")
-            ax.legend(loc="best", fontsize=8)
+                # Find peaks using vectorized operations
+                peaks, _ = find_peaks(
+                    skySmoothed,
+                    height=np.nanmedian(skySmoothed) + 0.5 * np.nanstd(skySmoothed),
+                    distance=50,
+                )
 
-            # filename = self.filenameTemplate.replace(
-            #     ".fits",
-            #     f"_ORDER_{int(o):02d}_SKYFLUX_SKYLINES_QC{self.noddingSequence}{self.notFlattened}.pdf",
-            # )
-            # filePath = f"{self.qcDir}/{filename}"
-            # fig.savefig(filePath, dpi=120, format="pdf", bbox_inches="tight")
-            # plt.close(fig)
-            import matplotlib
+                waveVals = wave.loc[valid].to_numpy()
+                skyVals = skySmoothed
+                wmin = np.nanmin(waveVals)
+                wmax = np.nanmax(waveVals)
+                localSkylines = skylineWave[(skylineWave >= wmin) & (skylineWave <= wmax)]
 
-            matplotlib.use("MacOSX")
-            plt.show()
+                # MATCH THE PEAKS TO THE SKYLINES
+                peakWave = waveVals[peaks]
+                matched_skyline_waves = []
+                matched_shifts = []
+                for ww in localSkylines:
+                    if len(peakWave) == 0:
+                        continue
+                    idx = np.where(np.abs(peakWave - ww) < 3)[0]
+                    if idx.size:
+                        for i in idx:
+                            matched_skyline_waves.append(ww)
+                            matched_shifts.append(ww - peakWave[i])
 
-            # if not self.notFlattened and not isinstance(self.products, bool):
-            #     utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-            #     self.products = pd.concat(
-            #         [
-            #             self.products,
-            #             pd.Series(
-            #                 {
-            #                     "soxspipe_recipe": self.recipeName,
-            #                     "product_label": f"EXTRACTED_ORDER_SKYFLUX_SKYLINES_QC{self.noddingSequence}{self.notFlattened}",
-            #                     "file_name": filename,
-            #                     "file_type": "PDF",
-            #                     "obs_date_utc": self.dateObs,
-            #                     "reduction_date_utc": utcnow,
-            #                     "product_desc": f"Per-order sky flux with skyline markers (order {int(o)})",
-            #                     "file_path": filePath,
-            #                     "label": "QC",
-            #                 }
-            #             )
-            #             .to_frame()
-            #             .T,
-            #         ],
-            #         ignore_index=True,
-            #     )
+                from astropy.stats import sigma_clip, mad_std
+
+                # SIGMA-CLIP THE DATA
+                masked_matchedShifts = sigma_clip(
+                    matched_shifts, sigma_lower=1.5, sigma_upper=1.5, maxiters=3, cenfunc="mean", stdfunc="std"
+                )
+
+                clippedWave = np.asarray(matched_skyline_waves)[np.asarray(masked_matchedShifts.mask)]
+                clippedShifts = np.asarray(masked_matchedShifts.data)[np.asarray(masked_matchedShifts.mask)]
+                goodWave = np.asarray(matched_skyline_waves)[~np.asarray(masked_matchedShifts.mask)]
+                goodShifts = np.asarray(masked_matchedShifts.data)[~np.asarray(masked_matchedShifts.mask)]
+                medianShift = np.median(goodShifts) if len(goodShifts) > 0 else 0
+                orderDF["wavelengthMean_shifted"] = orderDF["wavelengthMean_shifted"] + medianShift
+
+                if iteration == 0:
+                    utcnow = datetime.utcnow()
+                    utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+
+                    self.qc = pd.concat(
+                        [
+                            self.qc,
+                            pd.Series(
+                                {
+                                    "soxspipe_recipe": self.recipeName,
+                                    "qc_name": "WL SKY SHIFT",
+                                    "qc_value": round(medianShift, 3),
+                                    "qc_comment": "Shift applied to wavelength solution based on skyline matches",
+                                    "qc_order": int(o),
+                                    "qc_unit": "nm",
+                                    "obs_date_utc": self.dateObs,
+                                    "reduction_date_utc": utcnow,
+                                    "to_header": True,
+                                }
+                            )
+                            .to_frame()
+                            .T,
+                        ],
+                        ignore_index=True,
+                    )
+
+                # GENERATE A PLOT TO VISUALISE THE POTENTIAL SHIFTS (SHIFT VS WAVELENGTH OF THE MATCHED SKYLINE)
+                if False:
+
+                    import matplotlib
+
+                    matplotlib.use("MacOSX")
+                    fig, (ax1, ax2) = plt.subplots(
+                        2,
+                        1,
+                        figsize=(12, 6),
+                        dpi=180,
+                        gridspec_kw={"height_ratios": [2, 1]},
+                    )
+
+                    # Top: sky spectrum with peaks and skyline markers
+                    if iteration == 0:
+                        color = "tab:orange"
+                    else:
+                        color = "tab:green"
+                    ax1.plot(waveVals, skyVals, color=color, linewidth=0.7, label="skyFlux")
+                    for ww in localSkylines:
+                        ax1.axvline(ww, color="grey", alpha=0.25, linewidth=0.6)
+                    if len(localSkylines):
+                        ax1.plot([], [], color="grey", alpha=0.7, linewidth=0.8, label="skylines")
+                    ax1.plot(waveVals[peaks], skyVals[peaks], "x", color="red", label="skyFlux peaks")
+                    ax1.set_ylabel("sky flux ($e^{-}$)")
+                    ax1.legend(loc="best", fontsize=8)
+
+                    # Bottom: shifts (skyline_wavelength vs shift)
+                    ax2.axhline(0, color="k", linestyle="--", linewidth=0.7)
+                    if matched_shifts:
+                        ax2.scatter(matched_skyline_waves, matched_shifts, c="tab:green", s=30)
+                        ax2.scatter(clippedWave, clippedShifts, c="tab:red", s=30, marker="x")
+                        # show median shift
+                        ax2.axhline(
+                            medianShift,
+                            color="tab:orange",
+                            linestyle=":",
+                            linewidth=0.8,
+                            label=f"median={medianShift:.3f} nm",
+                        )
+                        ax2.legend(loc="best", fontsize=8)
+                    ax2.set_xlabel("wavelength (nm)")
+                    ax2.set_ylabel("shift (nm)")
+
+                    fig.suptitle(f"Order {int(o)} skyFlux and skyline shifts")
+
+                    plt.pause(1)
+                    plt.clf()
+
+                    plt.close(fig)
+
+            extractedOrdersDF.loc[mask, "wavelengthMean"] = orderDF["wavelengthMean_shifted"]
 
         return extractedOrdersDF
 
