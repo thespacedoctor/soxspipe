@@ -2161,7 +2161,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     return qcTable
 
 
-def get_skylines_dataframe(log, settings, arm):
+def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightnessNIR=100):
     """Load and filter strong skylines for QC plotting."""
     from soxspipe.commonutils import detector_lookup
     from soxspipe.commonutils.toolkit import get_calibrations_path
@@ -2177,8 +2177,8 @@ def get_skylines_dataframe(log, settings, arm):
     skylinesDF["FLUX"] = skylinesDF["FLUX"].astype(float)
 
     if arm == "VIS":
-        mask = skylinesDF["FLUX"] > 5
+        mask = skylinesDF["FLUX"] > minBrightnessVIS
     else:
-        mask = skylinesDF["FLUX"] > 100
+        mask = skylinesDF["FLUX"] > minBrightnessNIR
 
     return skylinesDF.loc[mask]
