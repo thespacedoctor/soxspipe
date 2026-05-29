@@ -1866,7 +1866,7 @@ class subtract_sky(object):
         minWl = minWl - 5
         maxWl = minWl + 5
 
-        # DYANIMICALLY DETERMINE SIZE OF SUB-PIXELS
+        # DYNAMICALLY DETERMINE SIZE OF SUB-PIXELS
         slit_pixel_range = imageMapOrder[self.axisA].max() - imageMapOrder[self.axisA].min()
         wl_pixel_range = imageMapOrder[self.axisB].max() - imageMapOrder[self.axisB].min()
 
@@ -1876,6 +1876,7 @@ class subtract_sky(object):
         sl_range = dp["slit_length"]
         sl_range = 4
 
+        
         straighten_grid_res_wavelength = 2 * (wl_range / wl_pixel_range)  # in nm
         straighten_grid_res_slit = 2 * (sl_range / slit_pixel_range)  # in arcsec
 
