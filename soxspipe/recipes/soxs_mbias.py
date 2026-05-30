@@ -108,9 +108,7 @@ class soxs_mbias(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"]
-        )
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
@@ -180,9 +178,7 @@ class soxs_mbias(base_recipe):
         ]
 
         # OPTIMISE: 33%
-        meanBiasLevels, rons, noiseFrames = zip(
-            *[self.subtract_mean_flux_level(c) for c in ccds]
-        )
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
@@ -191,7 +187,7 @@ class soxs_mbias(base_recipe):
         combined_noise = self.clip_and_stack(
             frames=list(noiseFrames),
             recipe="soxs_mbias",
-            ignore_input_masks=True,
+            ignore_input_masks=False,
             post_stack_clipping=True,
         )
 
@@ -199,10 +195,7 @@ class soxs_mbias(base_recipe):
 
         # USE COMBINED NOISE MASK AS MBIAS MASK
         combined_noise.data = (
-            np.ma.array(
-                combined_noise.data, mask=combined_noise.mask, fill_value=0
-            ).filled()
-            + masterMeanBiasLevel
+            np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
         )
         combined_noise.uncertainty = np.ma.array(
             combined_noise.uncertainty.array,
@@ -430,9 +423,7 @@ class soxs_mbias(base_recipe):
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
             # BIN THE FRAME TO INCREASE SPEED
             maskedDataArray = block_reduce(maskedDataArray, 5, np.mean)
-            dark_image_grey_fourier = np.fft.fftshift(
-                np.fft.fft2(maskedDataArray.filled(np.median(frame.data)))
-            )
+            dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
 
             # SIGMA-CLIP THE DATA
             masked_dark_image_grey_fourier = sigma_clip(
