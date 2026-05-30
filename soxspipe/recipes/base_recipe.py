@@ -1148,6 +1148,8 @@ class base_recipe(object):
         # UNPACK SETTINGS
         stacked_clipping_sigma = self.recipeSettings["stacked-clipping-sigma"]
         stacked_clipping_iterations = self.recipeSettings["stacked-clipping-iterations"]
+        frame_clipping_sigma = self.recipeSettings["frame-clipping-sigma"]
+        frame_clipping_iterations = self.recipeSettings["frame-clipping-iterations"]
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
@@ -1176,7 +1178,7 @@ class base_recipe(object):
         # COMBINE MASKS AND THEN RESET
         combinedMask = ccds[0].mask
         for c in ccds:
-            combinedMask = c.mask | combinedMask
+            combinedMask = c.mask & combinedMask
             if ignore_input_masks:
                 c.mask[:, :] = False
 
@@ -1208,11 +1210,11 @@ class base_recipe(object):
         ## Reduce memory by avoiding an extra full-array copy during clipping
         combiner.data_arr.mask = sigma_clip(
             np.asarray(combiner.data_arr.data, dtype=np.float32),
-            sigma_lower=stacked_clipping_sigma,
-            sigma_upper=stacked_clipping_sigma,
+            sigma_lower=frame_clipping_sigma,
+            sigma_upper=frame_clipping_sigma,
             axis=0,
             copy=False,
-            maxiters=stacked_clipping_iterations,
+            maxiters=frame_clipping_iterations,
             cenfunc="median",
             stdfunc="mad_std",
             masked=True,
@@ -1254,6 +1256,16 @@ class base_recipe(object):
         except:
             pass
 
+        maskedFrame = sigma_clip(
+            combined_frame.data.astype(np.float32),
+            sigma=stacked_clipping_sigma,
+            maxiters=stacked_clipping_iterations,
+            cenfunc="mean",
+            stdfunc="std",
+        )
+        # RECOMBINE THE COMBINED MASK FROM ABOVE
+        combined_frame.mask = combined_frame.mask | maskedFrame.mask
+
         # CALCULATE NEW PIXELS ADDED TO MASK
         if imageType != "BIAS":
             newBadCount = combined_frame.mask.sum()
@@ -1264,6 +1276,11 @@ class base_recipe(object):
                 f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)"
             )
 
+        from soxspipe.commonutils.toolkit import quicklook_image
+
+        quicklook_image(
+            log=self.log, CCDObject=combined_frame, show=True, ext=False, stdWindow=3, title=False, surfacePlot=True
+        )
         self.log.debug("completed the ``clip_and_stack`` method")
         return combined_frame
 
@@ -1738,9 +1755,7 @@ class base_recipe(object):
             dmin, dmax, dmean, dstd = imstats(raw_diff)
 
             if dstd == 0:
-                message = (
-                    "The calculated raw frame readout noise has a value of zero. Please check the raw input frames."
-                )
+                message = "The raw input frames appear to be corrupted. Cannot calculate the read-out noise. Please check the raw frames."
                 raise ValueError(message)
 
             # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
@@ -1910,12 +1925,11 @@ class base_recipe(object):
             rawFrame.data.astype(np.float32),
             sigma=clipping_lower_sigma,
             maxiters=clipping_iteration_count,
-            cenfunc="median",
-            stdfunc="mad_std",
+            cenfunc="mean",
+            stdfunc="std",
         )
 
-        print(maskedFrame.mask.sum(), maskedFrame.mask.sum() / np.size(maskedFrame) * 100)
-
+        rawFrame.mask = maskedFrame.mask
         # DETERMINE MEDIAN BIAS LEVEL
         maskedDataArray = np.ma.array(maskedFrame.data, mask=maskedFrame.mask).astype(np.float32)
 

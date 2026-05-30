@@ -14,9 +14,9 @@ ignore-dome-flats: True
 soxs-mbias:
     # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
     frame-clipping-sigma: 3 
-    frame-clipping-iterations: 1
+    frame-clipping-iterations: 3
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
-    stacked-clipping-sigma: 5
+    stacked-clipping-sigma: 4
     stacked-clipping-iterations: 3
     qc-acceptable-ranges:
         master-ron: [0,10]
@@ -28,12 +28,12 @@ soxs-mbias:
         detector-temp: [0,165]
 
 soxs-mdark:
-    # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
     frame-clipping-sigma: 3 
-    frame-clipping-iterations: 1
+    frame-clipping-iterations: 3
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
-    stacked-clipping-sigma: 5
-    stacked-clipping-iterations: 5
+    stacked-clipping-sigma: 3
+    stacked-clipping-iterations: 3
     qc-acceptable-ranges:
         mdark-median: [-15, 50]
         raw-ron: [0,30]
