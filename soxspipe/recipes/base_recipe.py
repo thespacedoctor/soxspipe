@@ -1256,15 +1256,16 @@ class base_recipe(object):
         except:
             pass
 
-        maskedFrame = sigma_clip(
-            combined_frame.data.astype(np.float32),
-            sigma=stacked_clipping_sigma,
-            maxiters=stacked_clipping_iterations,
-            cenfunc="mean",
-            stdfunc="std",
-        )
-        # RECOMBINE THE COMBINED MASK FROM ABOVE
-        combined_frame.mask = combined_frame.mask | maskedFrame.mask
+        if post_stack_clipping:
+            maskedFrame = sigma_clip(
+                combined_frame.data.astype(np.float32),
+                sigma=stacked_clipping_sigma,
+                maxiters=stacked_clipping_iterations,
+                cenfunc="mean",
+                stdfunc="std",
+            )
+            # RECOMBINE THE COMBINED MASK FROM ABOVE
+            combined_frame.mask = combined_frame.mask | maskedFrame.mask
 
         # CALCULATE NEW PIXELS ADDED TO MASK
         if imageType != "BIAS":
@@ -1279,7 +1280,13 @@ class base_recipe(object):
         from soxspipe.commonutils.toolkit import quicklook_image
 
         quicklook_image(
-            log=self.log, CCDObject=combined_frame, show=True, ext=False, stdWindow=3, title=False, surfacePlot=True
+            log=self.log,
+            CCDObject=combined_frame,
+            show=self.debug,
+            ext=False,
+            stdWindow=3,
+            title=False,
+            surfacePlot=True,
         )
         self.log.debug("completed the ``clip_and_stack`` method")
         return combined_frame
