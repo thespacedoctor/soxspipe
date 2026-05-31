@@ -144,6 +144,9 @@ soxs-order-centres:
 soxs-mflat:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
+    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 15
+    frame-clipping-iterations: 3
     # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 3
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
@@ -205,6 +208,7 @@ soxs-mflat:
             ordexp90: [30000,60000]
             inner-order-pix-sum: [1000000,1200000]
             coldpix-frac: [-0.001,0.01]
+
 
 soxs-spat-solution:
     # DIVIDE IMAGE BY MASTER FLAT FRAME
