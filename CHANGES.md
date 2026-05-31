@@ -1,11 +1,19 @@
 # Release Notes
 
 * **ENHANCEMENT**: added debugging plots to reveal individual order sky lines
+* **ENHANCEMENT**: Logging parallel recipe runtimes
+* **REFACTOR**: Disable post-stack clipping when combining normalised mflat frames
 * **ENHANCEMENT**: Expand extracted-order QC plots to show optimal flux, boxcar flux, SNR, and sky flux panels.
 * **REFACTOR**: Reuse the shared skyline loader in quicklook and merged-spectrum QC plotting.
 * **ENHANCEMENT**: Sky is now plotted in the nodding and offset data extraction QC plots
 * **REFACTOR**: Replaced the `skyModelFrame` parameter in `horne_extraction` with `subtractedFrame` for extracting a sky spectrum in nodding mode — the subtracted (B or A) frame is now used directly instead of a separate sky model frame
+* **ENHANCEMENT**: Reintroduced writing of the modelled scatter background as a QC FITS image product (alongside PDF) 
+* **FIXED**: Respect post-stack clipping setting during frame combination 
+* **FIXED**: Correct top and bottom frame masking in background subtraction
+* **FIXED**: Add separate per-frame clipping settings for pre-stack sigma clipping and apply stacked-frame clipping after combination.
+* **REFACTOR**: Tune default clipping iterations and sigma thresholds for master bias and dark recipes.
 * **FIXED**: pass `order` argument to `initial_sigma_clipping` call so per-order clipping is correctly parameterised
+* **FIXED**: Replace the zero readout-noise error with a clearer corrupted-frame diagnostic.
 * **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
 * **ENHANCEMENT:** moving to github actions (away from jenkins)
 * **REFACTOR:** updated SNR calculation on extracted spectra. The variance using is now from the propagated errors instead of the SNR being derived from the extracted spectrum itself.

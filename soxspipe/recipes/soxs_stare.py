@@ -341,7 +341,7 @@ class soxs_stare(base_recipe):
         combined_object_notflattened = self.clip_and_stack(
             frames=allObjectFrames,
             recipe="soxs_stare",
-            ignore_input_masks=True,
+            ignore_input_masks=False,
             post_stack_clipping=False,
         )
         self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
