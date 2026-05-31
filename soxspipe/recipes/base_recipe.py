@@ -1370,7 +1370,7 @@ class base_recipe(object):
                 exposure_unit=u.second,
             )
         elif dark != False:
-            if self.inst == "SOXS":
+            if self.inst == "SOXS" and False:
                 if not self.darkDetrendWarningIssued2:
                     self.log.warning(
                         f"Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."

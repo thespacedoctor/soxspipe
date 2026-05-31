@@ -326,9 +326,7 @@ class soxs_mflat(base_recipe):
             else:
                 filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
 
-            orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(
-                include_path=True
-            )
+            orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
             if len(orderTablePaths) > 0:
                 orderTablePath = orderTablePaths[0]
                 thisPath = orderTablePath
@@ -337,9 +335,7 @@ class soxs_mflat(base_recipe):
 
             # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
             # FLUX TO THAT LEVEL
-            normalisedFlats = self.normalise_flats(
-                cf, orderTablePath=orderTablePath, lamp=tag
-            )
+            normalisedFlats = self.normalise_flats(cf, orderTablePath=orderTablePath, lamp=tag)
 
             quicklook_image(
                 log=self.log,
@@ -355,7 +351,7 @@ class soxs_mflat(base_recipe):
                 frames=normalisedFlats,
                 recipe="soxs_mflat",
                 ignore_input_masks=False,
-                post_stack_clipping=True,
+                post_stack_clipping=False,
             )
             quicklook_image(
                 log=self.log,
@@ -371,9 +367,7 @@ class soxs_mflat(base_recipe):
             # ILLUMINATION VARIATIONS
             # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
             # FLUX TO THAT LEVEL (AGAIN!)
-            self.log.print(
-                "\n# DIVIDING EACH ORIGINAL FLAT FRAME BY FIRST PASS MASTER FLAT"
-            )
+            self.log.print("\n# DIVIDING EACH ORIGINAL FLAT FRAME BY FIRST PASS MASTER FLAT")
 
             normalisedFlats = self.normalise_flats(
                 cf,
