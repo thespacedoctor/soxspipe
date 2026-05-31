@@ -1,6 +1,13 @@
 # Release Notes
 
-
+* **ENHANCEMENT**: Logging parallel recipe runtimes
+* **REFACTOR**: Disable post-stack clipping when combining normalised mflat frames
+* **ENHANCEMENT**: Reintroduced writing of the modelled scatter background as a QC FITS image product (alongside PDF) 
+* **FIXED**: Respect post-stack clipping setting during frame combination 
+* **FIXED**: Correct top and bottom frame masking in background subtraction
+* **FIXED**: Add separate per-frame clipping settings for pre-stack sigma clipping and apply stacked-frame clipping after combination.
+* **REFACTOR**: Tune default clipping iterations and sigma thresholds for master bias and dark recipes.
+* **FIXED**: Replace the zero readout-noise error with a clearer corrupted-frame diagnostic.
 * **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
 * **ENHANCEMENT:** moving to github actions (away from jenkins)
 * **REFACTOR:** updated SNR calculation on extracted spectra. The variance using is now from the propagated errors instead of the SNR being derived from the extracted spectrum itself.
