@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: Logging parallel recipe runtimes
 * **REFACTOR**: Disable post-stack clipping when combining normalised mflat frames
 * **ENHANCEMENT**: Reintroduced writing of the modelled scatter background as a QC FITS image product (alongside PDF) 
 * **FIXED**: Respect post-stack clipping setting during frame combination 
