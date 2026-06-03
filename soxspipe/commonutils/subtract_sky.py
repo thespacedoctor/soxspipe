@@ -1876,7 +1876,6 @@ class subtract_sky(object):
         sl_range = dp["slit_length"]
         sl_range = 4
 
-        
         straighten_grid_res_wavelength = 2 * (wl_range / wl_pixel_range)  # in nm
         straighten_grid_res_slit = 2 * (sl_range / slit_pixel_range)  # in arcsec
 
@@ -2607,6 +2606,7 @@ class subtract_sky(object):
         import numpy as np
         import scipy.interpolate as ip
         from astropy.stats import sigma_clipped_stats
+        from soxspipe.commonutils.toolkit import get_skylines_dataframe
 
         skylinesDF = get_skylines_dataframe(self.log, self.settings, self.arm)
 
