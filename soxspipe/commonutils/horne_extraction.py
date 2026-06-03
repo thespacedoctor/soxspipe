@@ -182,7 +182,7 @@ class horne_extraction(object):
 
         # GET SKYLINES DATAFRAME
         self.skylinesDF = get_skylines_dataframe(
-            self.log, self.settings, self.arm, minBrightnessVIS=1, minBrightnessNIR=1
+            self.log, self.settings, self.arm, minBrightnessVIS=1, minBrightnessNIR=0.5
         )
 
         if self.twoDMapPath:
@@ -703,7 +703,7 @@ class horne_extraction(object):
 
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
-        extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF)
+        extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm)
 
         mergedSpectumDF, orderJoins = self.merge_extracted_orders(extractedOrdersDF)
 
@@ -893,12 +893,13 @@ class horne_extraction(object):
 
         return group["FLUX_COUNTS"]
 
-    def tune_wavelength_calibration_to_skylines(self, extractedOrdersDF):
+    def tune_wavelength_calibration_to_skylines(self, extractedOrdersDF, arm):
         """Skyline-based wavelength calibration tuning helper.
 
         **Key Arguments:**
 
         - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``arm`` -- the arm of the instrument
 
         **Return:**
 
@@ -915,6 +916,7 @@ class horne_extraction(object):
         skylineWave = pd.to_numeric(self.skylinesDF["WAVELENGTH"], errors="coerce").dropna().to_numpy()
 
         uniqueOrders = np.sort(extractedOrdersDF["order"].unique())
+        orderShifts = []
         for o in uniqueOrders:
             mask = extractedOrdersDF["order"] == o
             orderDF = extractedOrdersDF.loc[mask]
@@ -933,12 +935,12 @@ class horne_extraction(object):
                 # FIND AND MARK THE PEAKS IN THE SKY SPECTRUM
                 from scipy.signal import find_peaks, savgol_filter
 
-                skySmoothed = savgol_filter(sky[valid], window_length=21, polyorder=2)
+                skySmoothed = savgol_filter(sky[valid], window_length=21, polyorder=3)
 
                 # Find peaks using vectorized operations
                 peaks, _ = find_peaks(
                     skySmoothed,
-                    height=np.nanmedian(skySmoothed) + 0.5 * np.nanstd(skySmoothed),
+                    height=np.nanmedian(skySmoothed) + 1 * np.nanstd(skySmoothed),
                     distance=50,
                 )
 
@@ -973,9 +975,13 @@ class horne_extraction(object):
                 goodWave = np.asarray(matched_skyline_waves)[~np.asarray(masked_matchedShifts.mask)]
                 goodShifts = np.asarray(masked_matchedShifts.data)[~np.asarray(masked_matchedShifts.mask)]
                 medianShift = np.median(goodShifts) if len(goodShifts) > 0 else 0
+                if np.isnan(medianShift):
+                    medianShift = 0
                 orderDF["wavelengthMean_shifted"] = orderDF["wavelengthMean_shifted"] + medianShift
 
                 if iteration == 0:
+                    print(medianShift, "nm shift applied to order", o)
+                    orderShifts.append(medianShift)
                     utcnow = datetime.utcnow()
                     utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -985,7 +991,7 @@ class horne_extraction(object):
                             pd.Series(
                                 {
                                     "soxspipe_recipe": self.recipeName,
-                                    "qc_name": "WL SKY SHIFT",
+                                    "qc_name": f"WL SKY SHIFT O{int(o)}",
                                     "qc_value": round(medianShift, 3),
                                     "qc_comment": "Shift applied to wavelength solution based on skyline matches",
                                     "qc_order": int(o),
@@ -1002,7 +1008,7 @@ class horne_extraction(object):
                     )
 
                 # GENERATE A PLOT TO VISUALISE THE POTENTIAL SHIFTS (SHIFT VS WAVELENGTH OF THE MATCHED SKYLINE)
-                if False:
+                if True:
 
                     import matplotlib
 
@@ -1046,14 +1052,26 @@ class horne_extraction(object):
                     ax2.set_xlabel("wavelength (nm)")
                     ax2.set_ylabel("shift (nm)")
 
-                    fig.suptitle(f"Order {int(o)} skyFlux and skyline shifts")
+                    fig.suptitle(f"\nOrder {int(o)} skyFlux and skyline shifts")
 
-                    plt.pause(1)
+                    plt.show()
                     plt.clf()
 
-                    plt.close(fig)
+                    # plt.close(fig)
 
-            extractedOrdersDF.loc[mask, "wavelengthMean"] = orderDF["wavelengthMean_shifted"]
+        for o, s in zip(uniqueOrders, orderShifts):
+            if o == 1:
+                rShift = s
+
+        for o, s in zip(uniqueOrders, orderShifts):
+            mask = extractedOrdersDF["order"] == o
+            extractedOrdersDF.loc[mask, "wavelengthMean"] = extractedOrdersDF.loc[mask, "wavelengthMean"] + s
+            if s == 0 and arm.upper() == "VIS" and o in [2, 3]:
+                print("HERER")
+                extractedOrdersDF.loc[mask, "wavelengthMean"] = extractedOrdersDF.loc[mask, "wavelengthMean"] + rShift
+                # orderDF["wavelengthMean"] -= rShift * 2.5
+            if orderDF.empty:
+                continue
 
         return extractedOrdersDF
 
