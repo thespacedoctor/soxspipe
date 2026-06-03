@@ -341,7 +341,7 @@ class soxs_stare(base_recipe):
         combined_object_notflattened = self.clip_and_stack(
             frames=allObjectFrames,
             recipe="soxs_stare",
-            ignore_input_masks=False,
+            ignore_input_masks=True,
             post_stack_clipping=False,
         )
         self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
@@ -696,11 +696,16 @@ class soxs_stare(base_recipe):
             self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
 
         elif self.generateReponseCurve:
+
+            from tabulate import tabulate
+
+            print(tabulate(self.qc, headers="keys", tablefmt="psql"))
+
             optimalExtractor = horne_extraction(
                 log=self.log,
                 skySubtractedFrame=unflattenedSkySubtractedCCDData,
                 unflattenedFrame=unflattenedSkySubtractedCCDData,
-                subtractedFrame=skyModelCCDData,
+                subtractedFrame=skymodelCCDData,
                 twoDMapPath=twoDMap,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
@@ -719,6 +724,10 @@ class soxs_stare(base_recipe):
             # GETTING THE RESPONSE
             from soxspipe.commonutils import response_function
 
+            from tabulate import tabulate
+
+            print(tabulate(self.qc, headers="keys", tablefmt="psql"))
+
             self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
             response = response_function(
                 log=self.log,
@@ -733,6 +742,10 @@ class soxs_stare(base_recipe):
                 orderJoins=orderJoins,
             )
             self.qc, self.products, forceFailure = response.get()
+
+            from tabulate import tabulate
+
+            print(tabulate(self.qc, headers="keys", tablefmt="psql"))
 
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 

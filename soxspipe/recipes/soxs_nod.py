@@ -451,14 +451,14 @@ class soxs_nod(base_recipe):
                 frames=allFrameA,
                 recipe="soxs_nod",
                 ignore_input_masks=False,
-                post_stack_clipping=True,
+                post_stack_clipping=False,
             )
 
             bFrame = self.clip_and_stack(
                 frames=allFrameB,
                 recipe="soxs_nod",
                 ignore_input_masks=False,
-                post_stack_clipping=True,
+                post_stack_clipping=False,
             )
 
             # INJECT KEYWORDS INTO HEADER
