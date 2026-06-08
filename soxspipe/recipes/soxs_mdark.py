@@ -115,9 +115,7 @@ class soxs_mdark(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"]
-        )
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
@@ -150,9 +148,7 @@ class soxs_mdark(base_recipe):
             if len(exptimes) > 1:
                 exptimes = [str(e) for e in exptimes]
                 exptimes = " and ".join(exptimes)
-                error = (
-                    "Input frames have differing exposure-times %(exptimes)s" % locals()
-                )
+                error = "Input frames have differing exposure-times %(exptimes)s" % locals()
 
         if error:
             sys.stdout.flush()
@@ -196,9 +192,7 @@ class soxs_mdark(base_recipe):
             )
         ]
 
-        meanFluxLevels, rons, noiseFrames = zip(
-            *[self.subtract_mean_flux_level(c) for c in ccds]
-        )
+        meanFluxLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanFluxLevel = np.mean(meanFluxLevels)
         masterMedianFluxLevel = np.median(meanFluxLevels)
         rawRon = np.mean(rons)
@@ -215,10 +209,7 @@ class soxs_mdark(base_recipe):
 
         # FILL MASKED PIXELS WITH 0
         combined_noise.data = (
-            np.ma.array(
-                combined_noise.data, mask=combined_noise.mask, fill_value=0
-            ).filled()
-            + masterMeanFluxLevel
+            np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanFluxLevel
         )
         combined_noise.uncertainty = np.ma.array(
             combined_noise.uncertainty.array,
@@ -245,7 +236,13 @@ class soxs_mdark(base_recipe):
             medianFlux=masterMedianFluxLevel,
         )
 
-        self.qc_ron(frameType="DARK")
+        rawRon, masterRon = self.qc_ron(
+            frameType="MDARK",
+            frameName="master dark",
+            masterFrame=combined_dark_mean,
+            rawRon=rawRon,
+            masterRon=masterRon,
+        )
 
         self.update_fits_keywords(frame=combined_dark_mean)
 

@@ -297,6 +297,8 @@ soxs-stare-std:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True 
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 15
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -360,6 +362,8 @@ soxs-stare-std:
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 15
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -437,6 +441,8 @@ soxs-stare:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True 
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 15
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -500,6 +506,8 @@ soxs-stare:
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 15
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -588,6 +596,8 @@ soxs-nod-std:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -616,6 +626,8 @@ soxs-nod-std:
             n-orders: [3,5]
             samples-clip-frac: [-0.01,0.2]
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -667,6 +679,8 @@ soxs-nod:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -685,6 +699,8 @@ soxs-nod:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -728,6 +744,8 @@ soxs-offset:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -746,6 +764,8 @@ soxs-offset:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -787,6 +807,8 @@ soxs-offset-std:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -807,6 +829,8 @@ soxs-offset-std:
         qc-acceptable-ranges:
             detector-temp: [0,165]
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150

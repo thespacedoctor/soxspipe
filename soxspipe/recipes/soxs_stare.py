@@ -225,7 +225,6 @@ class soxs_stare(base_recipe):
         from astropy import units as u
         import pandas as pd
         from datetime import datetime
-        from ccdproc import cosmicray_lacosmic, cosmicray_median
 
         arm = self.arm
         kw = self.kw
@@ -341,7 +340,7 @@ class soxs_stare(base_recipe):
         combined_object_notflattened = self.clip_and_stack(
             frames=allObjectFrames,
             recipe="soxs_stare",
-            ignore_input_masks=False,
+            ignore_input_masks=True,
             post_stack_clipping=False,
         )
         self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
@@ -646,9 +645,9 @@ class soxs_stare(base_recipe):
 
         optimalExtractor = horne_extraction(
             log=self.log,
-            skyModelFrame=skymodelCCDData,
             skySubtractedFrame=skySubtractedCCDData,
             unflattenedFrame=unflattenedSkySubtractedCCDData,
+            subtractedFrame=skymodelCCDData,
             twoDMapPath=twoDMap,
             settings=self.settings,
             recipeSettings=self.recipeSettings,
@@ -696,11 +695,12 @@ class soxs_stare(base_recipe):
             self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
 
         elif self.generateReponseCurve:
+
             optimalExtractor = horne_extraction(
                 log=self.log,
-                skyModelFrame=unflattenedSkymodelCCDData,
                 skySubtractedFrame=unflattenedSkySubtractedCCDData,
                 unflattenedFrame=unflattenedSkySubtractedCCDData,
+                subtractedFrame=skymodelCCDData,
                 twoDMapPath=twoDMap,
                 settings=self.settings,
                 recipeSettings=self.recipeSettings,
