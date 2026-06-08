@@ -390,16 +390,22 @@ class base_recipe(object):
                 # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
                 self.generateReponseCurve = True
 
-        if "use_lacosmic" in self.recipeSettings and self.recipeSettings["use_lacosmic"]:
+        if (
+            "use_lacosmic" in self.recipeSettings
+            and self.recipeSettings["use_lacosmic"]
+            and "lacosmic-sigma" in self.recipeSettings[self.arm.lower()]
+            and self.recipeSettings[self.arm.lower()]["lacosmic-sigma"]
+        ):
             # oldCount = frame.mask.sum()
             # oldMask = frame.mask.copy()
+
             from ccdproc import cosmicray_lacosmic
 
             frame = cosmicray_lacosmic(
                 frame,
-                sigclip=15.0,
+                sigclip=self.recipeSettings[self.arm.lower()]["lacosmic-sigma"],
                 sigfrac=0.3,
-                objlim=10.0,
+                objlim=5.0,
                 gain_apply=False,
                 niter=2,
                 verbose=False,
@@ -1369,6 +1375,7 @@ class base_recipe(object):
                 exposure_time=kw("EXPTIME"),
                 exposure_unit=u.second,
             )
+
         elif dark != False:
             if self.inst == "SOXS" and False:
                 if not self.darkDetrendWarningIssued2:
@@ -1389,6 +1396,20 @@ class base_recipe(object):
                     exposure_time=kw("EXPTIME"),
                     exposure_unit=u.second,
                     scale=True,
+                )
+                from soxspipe.commonutils.toolkit import quicklook_image
+
+                quicklook_image(
+                    log=self.log, CCDObject=dark, show=True, ext="mask", stdWindow=3, title=False, surfacePlot=True
+                )
+                quicklook_image(
+                    log=self.log,
+                    CCDObject=processedFrame,
+                    show=True,
+                    ext="mask",
+                    stdWindow=3,
+                    title=False,
+                    surfacePlot=True,
                 )
         toolkit.frame_to_32(processedFrame)
 
