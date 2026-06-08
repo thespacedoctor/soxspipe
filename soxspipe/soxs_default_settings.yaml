@@ -14,9 +14,9 @@ ignore-dome-flats: True
 soxs-mbias:
     # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
     frame-clipping-sigma: 3 
-    frame-clipping-iterations: 1
+    frame-clipping-iterations: 3
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
-    stacked-clipping-sigma: 5
+    stacked-clipping-sigma: 4
     stacked-clipping-iterations: 3
     qc-acceptable-ranges:
         master-ron: [0,10]
@@ -28,12 +28,12 @@ soxs-mbias:
         detector-temp: [0,165]
 
 soxs-mdark:
-    # INDIVIDUAL RAW DARK FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
     frame-clipping-sigma: 3 
-    frame-clipping-iterations: 1
+    frame-clipping-iterations: 3
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
-    stacked-clipping-sigma: 5
-    stacked-clipping-iterations: 5
+    stacked-clipping-sigma: 3
+    stacked-clipping-iterations: 3
     qc-acceptable-ranges:
         mdark-median: [-15, 50]
         raw-ron: [0,30]
@@ -144,6 +144,9 @@ soxs-order-centres:
 soxs-mflat:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
+    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 15
+    frame-clipping-iterations: 3
     # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 3
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
@@ -205,6 +208,7 @@ soxs-mflat:
             ordexp90: [30000,60000]
             inner-order-pix-sum: [1000000,1200000]
             coldpix-frac: [-0.001,0.01]
+
 
 soxs-spat-solution:
     # DIVIDE IMAGE BY MASTER FLAT FRAME
@@ -286,6 +290,9 @@ soxs-stare-std:
     use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
+    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 15
+    frame-clipping-iterations: 3
      # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
@@ -293,6 +300,8 @@ soxs-stare-std:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True 
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 15
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -356,6 +365,8 @@ soxs-stare-std:
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 15
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -426,6 +437,9 @@ soxs-stare:
     use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
+    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 15
+    frame-clipping-iterations: 3
      # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
@@ -433,6 +447,8 @@ soxs-stare:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True 
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 15
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -496,6 +512,8 @@ soxs-stare:
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
         horne-extraction-slit-length: 15
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -567,6 +585,9 @@ soxs-nod-std:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 15
+    frame-clipping-iterations: 3
     # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
@@ -584,6 +605,8 @@ soxs-nod-std:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -612,6 +635,8 @@ soxs-nod-std:
             n-orders: [3,5]
             samples-clip-frac: [-0.01,0.2]
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -646,6 +671,9 @@ soxs-nod:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 15
+    frame-clipping-iterations: 3
     # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
@@ -663,6 +691,8 @@ soxs-nod:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -681,6 +711,8 @@ soxs-nod:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -707,6 +739,9 @@ soxs-offset:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 15
+    frame-clipping-iterations: 3
     # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
@@ -724,6 +759,8 @@ soxs-offset:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -742,6 +779,8 @@ soxs-offset:
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -766,6 +805,9 @@ soxs-offset-std:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 15
+    frame-clipping-iterations: 3
     # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
     stacked-clipping-sigma: 5
     # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
@@ -783,6 +825,8 @@ soxs-offset-std:
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -803,6 +847,8 @@ soxs-offset-std:
         qc-acceptable-ranges:
             detector-temp: [0,165]
     nir:
+        # LA COSMIC SIGMA CLIPPING LIMIT
+        lacosmic-sigma: 25
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
