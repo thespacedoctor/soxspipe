@@ -1,5 +1,6 @@
 # Release Notes
 
+adjusting lacosmis settings so not to clip bright skylines
 * **ENHANCEMENT**: added debugging plots to reveal individual order sky lines
 * **ENHANCEMENT**: Logging parallel recipe runtimes
 * **REFACTOR**: Disable post-stack clipping when combining normalised mflat frames

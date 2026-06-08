@@ -109,7 +109,6 @@ class horne_extraction(object):
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import unpack_order_table
         from soxspipe.commonutils import detector_lookup
-        from ccdproc import cosmicray_lacosmic, cosmicray_median
         from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
         import matplotlib.pyplot as plt
         from soxspipe.commonutils.toolkit import get_skylines_dataframe
@@ -703,7 +702,8 @@ class horne_extraction(object):
 
         # MERGE THE ORDER SPECTRA
         extractedOrdersDF = pd.concat(extractions, ignore_index=True)
-        extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm)
+        if False:
+            extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm)
 
         mergedSpectumDF, orderJoins = self.merge_extracted_orders(extractedOrdersDF)
 
@@ -1008,11 +1008,8 @@ class horne_extraction(object):
                     )
 
                 # GENERATE A PLOT TO VISUALISE THE POTENTIAL SHIFTS (SHIFT VS WAVELENGTH OF THE MATCHED SKYLINE)
-                if True:
+                if self.debug:
 
-                    import matplotlib
-
-                    matplotlib.use("MacOSX")
                     fig, (ax1, ax2) = plt.subplots(
                         2,
                         1,
@@ -1067,7 +1064,6 @@ class horne_extraction(object):
             mask = extractedOrdersDF["order"] == o
             extractedOrdersDF.loc[mask, "wavelengthMean"] = extractedOrdersDF.loc[mask, "wavelengthMean"] + s
             if s == 0 and arm.upper() == "VIS" and o in [2, 3]:
-                print("HERER")
                 extractedOrdersDF.loc[mask, "wavelengthMean"] = extractedOrdersDF.loc[mask, "wavelengthMean"] + rShift
                 # orderDF["wavelengthMean"] -= rShift * 2.5
             if orderDF.empty:
