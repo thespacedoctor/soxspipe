@@ -1,16 +1,19 @@
 # Release Notes
 
+* **ENHANCEMENT**: There are now separate recipes for spectroscopic standard star reductions (`soxs_nod_std` and `soxs_stare_std`)
+* **REFACTOR**: clarifying stacked vs frame clipping in settings and docs
+* **DOCS**: updating docs to reflect the decoupling of standard star and science objects in the stare and nodding recipes.
 * **ENHANCEMENT**: Improve sky residual modelling and debug plots
 * **REFACTOR**: Normalised sky residuals by error.
 * **REFACTOR**: Simplify residual floor and skyline flagging logic in determine_residual_floor.
-* **REFACTOR**: adjusted lacosmis settings so not to clip bright skylines
+* **REFACTOR**: adjusted laCosmic settings so as not to clip bright skylines
 * **ENHANCEMENT**: added debugging plots to reveal individual order sky lines
 * **ENHANCEMENT**: Logging parallel recipe runtimes
 * **REFACTOR**: Disable post-stack clipping when combining normalised mflat frames
 * **ENHANCEMENT**: Expand extracted-order QC plots to show optimal flux, boxcar flux, SNR, and sky flux panels.
 * **REFACTOR**: Reuse the shared skyline loader in quicklook and merged-spectrum QC plotting.
 * **ENHANCEMENT**: Sky is now plotted in the nodding and offset data extraction QC plots
-* **REFACTOR**: Replaced the `skyModelFrame` parameter in `horne_extraction` with `subtractedFrame` for extracting a sky spectrum in nodding mode — the subtracted (B or A) frame is now used directly instead of a separate sky model frame
+* **REFACTOR**: Replaced the `skyModelFrame` parameter in `horne_extraction` with `subtractedFrame` for extracting a sky spectrum in nodding mode -- the subtracted (B or A) frame is now used directly instead of a separate sky model frame
 * **ENHANCEMENT**: Reintroduced writing of the modelled scatter background as a QC FITS image product (alongside PDF) 
 * **FIXED**: Respect post-stack clipping setting during frame combination 
 * **FIXED**: Correct top and bottom frame masking in background subtraction
@@ -27,7 +30,7 @@
 * **REFACTOR:** moving to `pyproject.toml` and away from older `setup.py` installation
 * **REFACTOR:** renaming `master` branch to `main`
 * **REFACTOR:** updating NODDING setting to catch continuum traces closer to the edges (spatially) of the orders 
-* **FIXED:** fixing reduction of VIS binned object data - response curve binning verification was too strict 
+* **FIXED:** fixing reduction of VIS binned object data - response curve binning verification was too strict
 
 ## v0.17.1 - May 1, 2026
 
