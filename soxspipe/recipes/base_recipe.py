@@ -1154,8 +1154,12 @@ class base_recipe(object):
         # UNPACK SETTINGS
         stacked_clipping_sigma = self.recipeSettings["stacked-clipping-sigma"]
         stacked_clipping_iterations = self.recipeSettings["stacked-clipping-iterations"]
-        frame_clipping_sigma = self.recipeSettings["frame-clipping-sigma"]
-        frame_clipping_iterations = self.recipeSettings["frame-clipping-iterations"]
+        if post_stack_clipping:
+            frame_clipping_sigma = self.recipeSettings["frame-clipping-sigma"]
+            frame_clipping_iterations = self.recipeSettings["frame-clipping-iterations"]
+        else:
+            frame_clipping_sigma = None
+            frame_clipping_iterations = None
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
@@ -1216,11 +1220,11 @@ class base_recipe(object):
         ## Reduce memory by avoiding an extra full-array copy during clipping
         combiner.data_arr.mask = sigma_clip(
             np.asarray(combiner.data_arr.data, dtype=np.float32),
-            sigma_lower=frame_clipping_sigma,
-            sigma_upper=frame_clipping_sigma,
+            sigma_lower=stacked_clipping_sigma,
+            sigma_upper=stacked_clipping_sigma,
             axis=0,
             copy=False,
-            maxiters=frame_clipping_iterations,
+            maxiters=stacked_clipping_iterations,
             cenfunc="median",
             stdfunc="mad_std",
             masked=True,
@@ -1265,8 +1269,8 @@ class base_recipe(object):
         if post_stack_clipping:
             maskedFrame = sigma_clip(
                 combined_frame.data.astype(np.float32),
-                sigma=stacked_clipping_sigma,
-                maxiters=stacked_clipping_iterations,
+                sigma=frame_clipping_sigma,
+                maxiters=frame_clipping_iterations,
                 cenfunc="mean",
                 stdfunc="std",
             )
