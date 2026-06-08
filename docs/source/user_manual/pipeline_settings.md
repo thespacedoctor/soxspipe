@@ -21,6 +21,13 @@ Here is a list of all the pipeline settings:
 :::{include} ../recipes/parameters/soxs_spatial_solution.inc
 :::
 
+:::{include} ../recipes/parameters/soxs_stare_std.inc
+:::
+
+:::{include} ../recipes/parameters/soxs_nod_std.inc
+:::
+
+
 :::{include} ../recipes/parameters/soxs_stare.inc
 :::
 

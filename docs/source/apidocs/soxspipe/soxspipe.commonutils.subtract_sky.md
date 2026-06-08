@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} subtract_sky(log, settings, recipeSettings, objectFrame, twoDMap, qcTable, productsTable, dispMap=False, sofName=False, recipeName='soxs-stare', startNightDate='')
+`````{py:class} subtract_sky(log, settings, recipeSettings, objectFrame, twoDMap, qcTable, productsTable, dispMap=False, sofName=False, recipeName='soxs-stare', startNightDate='', debug=False, debugInfo=False)
 :canonical: soxspipe.commonutils.subtract_sky.subtract_sky
 
 Bases: {py:obj}`object`
@@ -85,7 +85,7 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} determine_residual_floor(imageMapOrder, tck)
+````{py:method} determine_residual_floor(imageMapOrder, tck, iteration)
 :canonical: soxspipe.commonutils.subtract_sky.subtract_sky.determine_residual_floor
 
 ```{autodoc2-docstring} soxspipe.commonutils.subtract_sky.subtract_sky.determine_residual_floor
@@ -113,6 +113,14 @@ Bases: {py:obj}`object`
 :canonical: soxspipe.commonutils.subtract_sky.subtract_sky.plot_image_comparison
 
 ```{autodoc2-docstring} soxspipe.commonutils.subtract_sky.subtract_sky.plot_image_comparison
+```
+
+````
+
+````{py:method} plot_order_skymodel_fitting_quicklook(imageMapOrder, tck, title=None, knots=False)
+:canonical: soxspipe.commonutils.subtract_sky.subtract_sky.plot_order_skymodel_fitting_quicklook
+
+```{autodoc2-docstring} soxspipe.commonutils.subtract_sky.subtract_sky.plot_order_skymodel_fitting_quicklook
 ```
 
 ````

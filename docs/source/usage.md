@@ -18,8 +18,9 @@
         soxspipe [-Vxd] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
         soxspipe [-Vxd] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vxd] spat_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
-        soxspipe [-Vxd] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-        soxspipe [-Vxd] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-Vxd] (stare|stare_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-Vxd] (nod|nod_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+        soxspipe [-Vxd] offset <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
     
     Options:
@@ -41,6 +42,9 @@
         spat_solution                          the spatial solution recipe
         stare                                  reduce stare mode science frames
         nod                                    reduce nodding mode science frames
+        stare_std                              reduce stare mode standard-star frames
+        nod_std                                reduce nodding mode standard-star frames
+        offset                                 reduce offset mode science frames
     
         start                                   start the watch daemon
         stop                                    stop the watch daemon

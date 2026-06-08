@@ -11,6 +11,8 @@ recipes/soxs_disp_solution
 recipes/soxs_order_centres
 recipes/soxs_mflat
 recipes/soxs_spatial_solution
+recipes/soxs_stare_std
+recipes/soxs_nod_std
 recipes/soxs_stare
 recipes/soxs_nod
 :::
