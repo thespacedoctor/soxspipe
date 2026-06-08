@@ -154,6 +154,7 @@ class soxs_nod(base_recipe):
                         "ECHELLE,SLIT",
                         "ECHELLE,MULTI-PINHOLE",
                         "ECHELLE,SLIT,OFFSET",
+                        "ECHELLE,SLIT,NODDING",
                     ]:
                         error = f"Found a {i} file. Input frames for soxspipe offset need to be an object/std offset frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
         else:
