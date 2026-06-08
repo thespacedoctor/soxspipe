@@ -225,7 +225,6 @@ class soxs_stare(base_recipe):
         from astropy import units as u
         import pandas as pd
         from datetime import datetime
-        from ccdproc import cosmicray_lacosmic, cosmicray_median
 
         arm = self.arm
         kw = self.kw
@@ -697,10 +696,6 @@ class soxs_stare(base_recipe):
 
         elif self.generateReponseCurve:
 
-            from tabulate import tabulate
-
-            print(tabulate(self.qc, headers="keys", tablefmt="psql"))
-
             optimalExtractor = horne_extraction(
                 log=self.log,
                 skySubtractedFrame=unflattenedSkySubtractedCCDData,
@@ -724,10 +719,6 @@ class soxs_stare(base_recipe):
             # GETTING THE RESPONSE
             from soxspipe.commonutils import response_function
 
-            from tabulate import tabulate
-
-            print(tabulate(self.qc, headers="keys", tablefmt="psql"))
-
             self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
             response = response_function(
                 log=self.log,
@@ -742,10 +733,6 @@ class soxs_stare(base_recipe):
                 orderJoins=orderJoins,
             )
             self.qc, self.products, forceFailure = response.get()
-
-            from tabulate import tabulate
-
-            print(tabulate(self.qc, headers="keys", tablefmt="psql"))
 
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
