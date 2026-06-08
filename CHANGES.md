@@ -1,6 +1,9 @@
 # Release Notes
 
-adjusting lacosmis settings so not to clip bright skylines
+* **ENHANCEMENT**: Improve sky residual modelling and debug plots
+* **REFACTOR**: Normalised sky residuals by error.
+* **REFACTOR**: Simplify residual floor and skyline flagging logic in determine_residual_floor.
+* **REFACTOR**: adjusted lacosmis settings so not to clip bright skylines
 * **ENHANCEMENT**: added debugging plots to reveal individual order sky lines
 * **ENHANCEMENT**: Logging parallel recipe runtimes
 * **REFACTOR**: Disable post-stack clipping when combining normalised mflat frames
