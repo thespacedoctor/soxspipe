@@ -15,4 +15,5 @@ recipes/soxs_stare_std
 recipes/soxs_nod_std
 recipes/soxs_stare
 recipes/soxs_nod
+recipes/soxs_offset
 :::

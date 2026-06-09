@@ -25,6 +25,7 @@ soxspipe.commonutils.flux_calibration
 soxspipe.commonutils.getpackagepath
 soxspipe.commonutils.horne_extraction
 soxspipe.commonutils.keyword_lookup
+soxspipe.commonutils.phase3
 soxspipe.commonutils.polynomials
 soxspipe.commonutils.reducer
 soxspipe.commonutils.response_function
