@@ -55,6 +55,7 @@ Options:
     -d, --debug                            show debugging plots
     -h, --help                             show this help message
     -m, --multiprocess                     run reductions of recipe in parallel (experimental, use with caution and check your results carefully if using this flag)
+    -o, --output <outputDirectory>         the output directory for the recipe product
     -p, --prep                             prepare a workspace before reducing data
     -q, --quitOnFail                       stop the pipeline if a recipe fails
     -r, --refresh                          trigger a complete refresh the workspace during preparation (delete database and do a complete prepare)
@@ -214,8 +215,8 @@ def main(arguments=None):
 
     try:
         # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
-        if a["outputDirectory"]:
-            settings["workspace-root-dir"] = a["outputDirectory"]
+        if a["outputFlag"]:
+            settings["workspace-root-dir"] = a["outputFlag"]
 
         command = (" ").join(sys.argv)
 
