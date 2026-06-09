@@ -320,7 +320,7 @@ class base_recipe(object):
         frame = self._trim_frame(frame)
 
         # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
-        frame = ccdproc.gain_correct(frame, dp["gain"])
+        frame = ccdproc.gain_correct(frame, dp["gain"], add_keyword=None)
         toolkit.frame_to_32(frame)
 
         # GENERATE UNCERTAINTY MAP AS EXTENSION
@@ -331,7 +331,7 @@ class base_recipe(object):
             frame.uncertainty = errorMap.astype(np.float32)
         else:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
-            frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True)
+            frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True, add_keyword=None)
         toolkit.frame_to_32(frame)
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
@@ -997,7 +997,7 @@ class base_recipe(object):
             cs = int(cs / binning[1])
             ce = int(ce / binning[1])
 
-        trimmed_frame = ccdproc.trim_image(frame[rs:re, cs:ce])
+        trimmed_frame = ccdproc.trim_image(frame[rs:re, cs:ce], add_keyword=None)
 
         self.log.debug("completed the ``_trim_frame`` method")
         return trimmed_frame
@@ -1032,6 +1032,8 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``write`` method")
 
+        from soxspipe.commonutils.phase3 import basic_header_scrubbing, sort_keywords
+
         kw = self.kw
 
         # WRITE QCs TO HEADERS
@@ -1044,33 +1046,16 @@ class base_recipe(object):
             if h:
                 frame.header[f"ESO QC {n}".upper()] = (v, c)
 
-        # NEATLY SORT KEYWORDS
-        keywords = [k for k in frame.header if len(k)]
-        values = [frame.header[k] for k in frame.header if len(k)]
-        comments = [frame.header.comments[k] for k in frame.header if len(k)]
-        keywords, values, comments = zip(*sorted(zip(keywords, values, comments)))
-        if "COMMENT" not in keywords and "HISTORY" not in keywords:
-            frame.header.clear()
-            for k, v, c in zip(keywords, values, comments):
-                if k == "COMMENT":
-                    frame.header[k] = v
-                else:
-                    frame.header[k] = (v, c)
+        if product:
+            frame.header = basic_header_scrubbing(log=self.log, settings=self.settings, header=frame.header)
+        frame.header = sort_keywords(log=self.log, header=frame.header)
 
         if not filename and self.sofName:
             filename = self.sofName + ".fits"
         if not filename:
-
             filename = filenamer(log=self.log, frame=frame, settings=self.settings)
 
         if product:
-            removeKw = ["DPR_TECH", "DPR_CATG", "DPR_TYPE"]
-            for k in removeKw:
-                try:
-                    frame.header.pop(kw(k))
-                except:
-                    pass
-
             filedir += f"/reduced/{self.startNightDate}/{self.recipeName}/"
             filedir = filedir.replace("//", "/")
             # Recursively create missing directories
@@ -1086,9 +1071,6 @@ class base_recipe(object):
         if maskToZero:
             self.log.print(f"\nSetting {frame.mask.sum()} bad-pixels to a value of 0 while saving '{filename}'.")
             frame.data[frame.mask] = 1
-
-        if "NAXIS" in frame.header and frame.header["NAXIS"] != 0 and "INHERIT" in frame.header:
-            del frame.header["INHERIT"]
 
         HDUList = frame.to_hdu(hdu_mask="QUAL", hdu_uncertainty="ERRS", hdu_flags=None)
         HDUList[0].name = "FLUX"
@@ -1363,7 +1345,7 @@ class base_recipe(object):
         processedFrame = inputFrame
 
         if master_bias != False:
-            processedFrame = ccdproc.subtract_bias(processedFrame, master_bias)
+            processedFrame = ccdproc.subtract_bias(processedFrame, master_bias, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
         # DARK WITH MATCHING EXPOSURE TIME
@@ -1378,6 +1360,7 @@ class base_recipe(object):
                 dark,
                 exposure_time=kw("EXPTIME"),
                 exposure_unit=u.second,
+                add_keyword=None,
             )
 
         elif dark != False:
@@ -1400,6 +1383,7 @@ class base_recipe(object):
                     exposure_time=kw("EXPTIME"),
                     exposure_unit=u.second,
                     scale=True,
+                    add_keyword=None,
                 )
                 from soxspipe.commonutils.toolkit import quicklook_image
 
@@ -1506,7 +1490,7 @@ class base_recipe(object):
                 )
 
         if master_flat != False:
-            processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
+            processedFrame = ccdproc.flat_correct(processedFrame, master_flat, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
         self.log.debug("completed the ``detrend`` method")
