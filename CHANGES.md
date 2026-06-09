@@ -1,5 +1,8 @@
 # Release Notes
 
+added a phase3 module
+fixing output directory cl-switch bug
+* **DOCS**: updating docs to include offset mode.
 * **ENHANCEMENT**: There are now separate recipes for spectroscopic standard star reductions (`soxs_nod_std` and `soxs_stare_std`). Closes #422.
 * **REFACTOR**: clarifying stacked vs frame clipping in settings and docs
 * **DOCS**: updating docs to reflect the decoupling of standard star and science objects in the stare and nodding recipes.
