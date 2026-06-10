@@ -523,11 +523,6 @@ class _base_detect(object):
 
         header["HIERARCH " + kw("PRO_TECH")] = "ECHELLE,SLIT"
 
-        orderPolyTable = Table.from_pandas(orderPolyTable)
-        BinTableHDU = fits.table_to_hdu(orderPolyTable)
-        orderMetaTable = Table.from_pandas(orderMetaTable)
-        BinTableHDU2 = fits.table_to_hdu(orderMetaTable)
-
         header[kw("SEQ_ARM")] = arm
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
         if (
@@ -538,11 +533,17 @@ class _base_detect(object):
             header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
         else:
             header["HIERARCH " + kw("PRO_CATG")] = f"OBJECT_TAB_{arm}".upper()
-        priHDU = fits.PrimaryHDU(header=header)
 
-        hduList = fits.HDUList([priHDU, BinTableHDU, BinTableHDU2])
-        hduList.verify("fix")
-        hduList.writeto(order_table_path, checksum=True, overwrite=True)
+        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+
+        write_fits_table_to_disk(
+            log=self.log,
+            settings=self.settings,
+            header=header,
+            tables=[orderPolyTable, orderMetaTable],
+            filePath=order_table_path,
+            qc=self.qc,
+        )
 
         self.log.debug("completed the ``write_order_table_to_file`` method")
         return order_table_path

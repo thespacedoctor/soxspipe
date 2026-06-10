@@ -842,6 +842,7 @@ class soxs_nod(base_recipe):
         )
         from astropy import units as u
         from specutils import Spectrum1D
+        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         if notFlattened:
             postfix = "_NOTFLAT"
@@ -906,16 +907,19 @@ class soxs_nod(base_recipe):
             dateObs=self.dateObs,
         )
 
-        BinTableHDU = fits.table_to_hdu(stackedSpectrum)
-        priHDU = fits.PrimaryHDU(header=header)
-        hduList = fits.HDUList([priHDU, BinTableHDU])
-
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
         filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
-        hduList.verify("fix")
-        hduList.writeto(filePath, checksum=True, overwrite=True)
+
+        write_fits_table_to_disk(
+            log=self.log,
+            settings=self.settings,
+            header=header,
+            tables=[stackedSpectrum],
+            filePath=filePath,
+            qc=self.qc,
+        )
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
         asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")

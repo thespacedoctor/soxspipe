@@ -411,8 +411,8 @@ class response_function(object):
             import copy
             from astropy.io import fits
             from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
+            from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
-            t = Table.from_pandas(stdEfficiencyEstimateDF)
             filename = f"{self.sofName}_EFFICIENCY.fits"
             filepath = f"{self.productDir}/{filename}"
 
@@ -420,8 +420,6 @@ class response_function(object):
             header[self.kw("SEQ_ARM").upper()] = self.arm
             header[self.kw("PRO_TYPE").upper()] = "REDUCED"
             header[self.kw("PRO_CATG").upper()] = f"EFFICIENCY_TAB_{self.arm}".upper()
-
-            BinTableHDU = fits.table_to_hdu(t)
 
             self.qc = add_snr_efficiency_qcs(
                 log=self.log,
@@ -432,20 +430,14 @@ class response_function(object):
                 dateObs=self.dateObs,
             )
 
-            # ADD QC METRICS TO HEADER
-            for n, v, c, h in zip(
-                self.qc["qc_name"].values,
-                self.qc["qc_value"].values,
-                self.qc["qc_comment"].values,
-                self.qc["to_header"].values,
-            ):
-                if h and v is not np.nan:
-                    header[f"ESO QC {n}".upper()] = (v, c)
-
-            priHDU = fits.PrimaryHDU(header=header)
-            hduList = fits.HDUList([priHDU, BinTableHDU])
-            hduList.verify("fix")
-            hduList.writeto(filepath, checksum=True, overwrite=True)
+            write_fits_table_to_disk(
+                log=self.log,
+                settings=self.settings,
+                header=header,
+                tables=[stdEfficiencyEstimateDF],
+                filePath=filepath,
+                qc=self.qc,
+            )
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")

@@ -131,7 +131,7 @@ class flux_calibration(object):
         import numpy as np
         from astropy.io import fits
         import pandas as pd
-
+        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import extinction_correction_factor
 
         flux_calibration = None
@@ -193,18 +193,16 @@ class flux_calibration(object):
         with suppress(KeyError):
             header.pop(self.kw("RON"))
 
-        fluxcalibratedSpectrum = Table.from_pandas(fluxCalSpectrum)
-        BinTableHDU = fits.table_to_hdu(fluxcalibratedSpectrum)
         header[self.kw("SEQ_ARM")] = self.arm
         header["HIERARCH " + self.kw("PRO_TYPE")] = "REDUCED"
         header["HIERARCH " + self.kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
-        priHDU = fits.PrimaryHDU(header=header)
-        hduList = fits.HDUList([priHDU, BinTableHDU])
 
         filename = f"{self.sofName}_FLUXCAL.fits"
         filePath = f"{self.productDir}/{filename}"
-        hduList.verify("fix")
-        hduList.writeto(filePath, checksum=True, overwrite=True)
+
+        write_fits_table_to_disk(
+            log=self.log, settings=self.settings, header=header, tables=[fluxCalSpectrum], filePath=filePath, qc=None
+        )
 
         from datetime import datetime
 
