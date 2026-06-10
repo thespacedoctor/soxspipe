@@ -8,7 +8,7 @@
 | FITS Table | order location table containing coefficients to the polynomial fits describing the order locations. | - |
 | FITS Table | Dispersion map table giving coefficients of polynomials describing 2D dispersion/spatial solution | - |
 | FITS Image | Dispersion map FITS image with 3-extensions (wavelength, slit-position and echelle order number) | - |
-
+| FITS Table | A table giving the coefficients of polynomials describing the repsonse curve generated from the a standard star | - |
 
 :::
 

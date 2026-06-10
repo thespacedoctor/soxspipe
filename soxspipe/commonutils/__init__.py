@@ -10,6 +10,7 @@ from .detect_continuum import detect_continuum
 from .detect_continuum import _base_detect
 from . import polynomials
 from . import toolkit
+from . import phase3
 from .detect_order_edges import detect_order_edges
 from .filenamer import filenamer
 from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays

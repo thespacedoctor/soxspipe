@@ -17,8 +17,8 @@ Usage:
     soxspipe [-Vxd] order_centres <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
     soxspipe [-Vxd] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] spat_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
-    soxspipe [-Vxd] stare <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
-    soxspipe [-Vxd] nod <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vxd] (stare|stare_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+    soxspipe [-Vxd] (nod|nod_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] offset <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
 
@@ -41,6 +41,8 @@ Options:
     spat_solution                          the spatial solution recipe
     stare                                  reduce stare mode science frames
     nod                                    reduce nodding mode science frames
+    stare_std                              reduce stare mode standard-star frames
+    nod_std                                reduce nodding mode standard-star frames
     offset                                 reduce offset mode science frames
 
     start                                   start the watch daemon
@@ -53,6 +55,7 @@ Options:
     -d, --debug                            show debugging plots
     -h, --help                             show this help message
     -m, --multiprocess                     run reductions of recipe in parallel (experimental, use with caution and check your results carefully if using this flag)
+    -o, --output <outputDirectory>         the output directory for the recipe product
     -p, --prep                             prepare a workspace before reducing data
     -q, --quitOnFail                       stop the pipeline if a recipe fails
     -r, --refresh                          trigger a complete refresh the workspace during preparation (delete database and do a complete prepare)
@@ -119,22 +122,13 @@ def main(arguments=None):
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
-    if (
-        "-s" not in sys.argv
-        and "prep" not in sys.argv
-        and "session" not in sys.argv
-        and currentSession
-    ):
+    if "-s" not in sys.argv and "prep" not in sys.argv and "session" not in sys.argv and currentSession:
         settingsFile = f"./sessions/{currentSession}/soxspipe.yaml"
         exists = os.path.exists(settingsFile)
         sys.argv.append("-s")
         sys.argv.append(settingsFile)
 
-    if (
-        "prep" in sys.argv
-        or "watch" in sys.argv
-        or ("reduce" in sys.argv and "-s" not in sys.argv)
-    ):
+    if "prep" in sys.argv or "watch" in sys.argv or ("reduce" in sys.argv and "-s" not in sys.argv):
         arguments = docopt(__doc__)
         if "--settings" in arguments.keys():
             del arguments["--settings"]
@@ -221,8 +215,8 @@ def main(arguments=None):
 
     try:
         # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
-        if a["outputDirectory"]:
-            settings["workspace-root-dir"] = a["outputDirectory"]
+        if a["outputFlag"]:
+            settings["workspace-root-dir"] = a["outputFlag"]
 
         command = (" ").join(sys.argv)
 
@@ -310,7 +304,7 @@ def main(arguments=None):
             )
             mflatFrame = recipe.produce_product()
 
-        if a["stare"]:
+        if a["stare"] or a["stare_std"]:
             from soxspipe.recipes import soxs_stare
 
             recipe = soxs_stare(
@@ -324,7 +318,7 @@ def main(arguments=None):
             )
             reducedStare = recipe.produce_product()
 
-        if a["nod"]:
+        if a["nod"] or a["nod_std"]:
             from soxspipe.recipes import soxs_nod
 
             recipe = soxs_nod(
@@ -353,9 +347,7 @@ def main(arguments=None):
             reducedOffset = recipe.produce_product()
 
         if a["prep"]:
-            do = data_organiser(
-                log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"]
-            )
+            do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
             do.prepare(refresh=a["refreshFlag"])
 
         if a["session"] and a["ls"]:
@@ -593,13 +585,7 @@ def main(arguments=None):
     runningTime = times.calculate_time_difference(startTime, endTime)
     sys.argv[0] = os.path.basename(sys.argv[0])
 
-    if (
-        not a["prep"]
-        and not a["session"]
-        and not a["reduce"]
-        and not a["watch"]
-        and not a["list"]
-    ):
+    if not a["prep"] and not a["session"] and not a["reduce"] and not a["watch"] and not a["list"]:
         log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
         log.print(f"Recipe Run Time: {runningTime}\n\n")
         print(f"{'='*70}\n")

@@ -12,12 +12,12 @@ ignore-dflats: True
 ignore-dome-flats: True
 
 soxs-mbias:
-    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 3 
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 3
+    stacked-clipping-iterations: 3 
+    # MASTER BIAS FRAME CLIPPING PARAMETERS. 
+    frame-clipping-sigma: 4 
     frame-clipping-iterations: 3
-    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
-    stacked-clipping-sigma: 4
-    stacked-clipping-iterations: 3
     qc-acceptable-ranges:
         master-ron: [0,10]
         fpn-fracmax: [0,3]
@@ -28,12 +28,12 @@ soxs-mbias:
         detector-temp: [0,165]
 
 soxs-mdark:
-    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 3 
-    frame-clipping-iterations: 3
-    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 3
     stacked-clipping-iterations: 3
+    # MASTER DARK FRAME CLIPPING PARAMETERS. 
+    frame-clipping-sigma: 3 
+    frame-clipping-iterations: 3
     qc-acceptable-ranges:
         mdark-median: [-15, 50]
         raw-ron: [0,30]
@@ -144,12 +144,8 @@ soxs-order-centres:
 soxs-mflat:
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
-    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 15
-    frame-clipping-iterations: 3
-    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-sigma: 3
-    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3
     # VIS TUNED USING ORDER-CENTRE POLY DEGS
     vis:
@@ -290,13 +286,9 @@ soxs-stare-std:
     use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
-    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 15
-    frame-clipping-iterations: 3
-     # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-sigma: 5
-    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-iterations: 5
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 15
+    stacked-clipping-iterations: 3
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True 
     vis:
@@ -437,13 +429,9 @@ soxs-stare:
     use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
     subtract_background: True
-    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 15
-    frame-clipping-iterations: 3
-     # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-sigma: 5
-    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-iterations: 5
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 15
+    stacked-clipping-iterations: 3
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True 
     vis:
@@ -585,13 +573,9 @@ soxs-nod-std:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
-    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 15
-    frame-clipping-iterations: 3
-    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-sigma: 5
-    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-iterations: 5
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 15
+    stacked-clipping-iterations: 3
     # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
     horne-extraction-slit-length: 11
     # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -671,13 +655,9 @@ soxs-nod:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
-    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 15
-    frame-clipping-iterations: 3
-    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-sigma: 5
-    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-iterations: 5
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 15
+    stacked-clipping-iterations: 3
     # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
     horne-extraction-slit-length: 11
     # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -739,13 +719,9 @@ soxs-offset:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
-    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 15
-    frame-clipping-iterations: 3
-    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-sigma: 5
-    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-iterations: 5
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 15
+    stacked-clipping-iterations: 3
     # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
     horne-extraction-slit-length: 10
     # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
@@ -805,13 +781,9 @@ soxs-offset-std:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
-    # INDIVIDUAL RAW FLAT FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 15
-    frame-clipping-iterations: 3
-    # THE SIGMA CLIPPING LIMIT USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-sigma: 5
-    # THE MAXIMUM SIGMA-CLIPPING ITERATIONS USED WHEN STACKING FRAMES INTO A COMPOSITE FRAME
-    stacked-clipping-iterations: 5
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 15
+    stacked-clipping-iterations: 3
     # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
     horne-extraction-slit-length: 10
     # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT

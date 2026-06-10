@@ -1,0 +1,2 @@
+The [`soxs_stare_std`](#soxspipe.recipes.soxs_stare_std)  recipe reduces spectroscopic standard star frames taken in stare mode. It models and removes the on-frame sky contribution to the flux. The standard trace is then fitted and extracted using an optimal extraction routine. Finally, the extracted flux of the standard is compared with its absolute-flux-calibrated spectrum (stored in a library of standard stars shipped with the pipeline) to generate a system response curve for flux-calibrating science object extractions.
+

@@ -67,6 +67,10 @@
   - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.get_calibrations_path
     :summary:
     ```
+* - {py:obj}`get_skylines_dataframe <soxspipe.commonutils.toolkit.get_skylines_dataframe>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.get_skylines_dataframe
+    :summary:
+    ```
 * - {py:obj}`plot_merged_spectrum_qc <soxspipe.commonutils.toolkit.plot_merged_spectrum_qc>`
   - ```{autodoc2-docstring} soxspipe.commonutils.toolkit.plot_merged_spectrum_qc
     :summary:
@@ -199,7 +203,14 @@
 ```
 ````
 
-````{py:function} plot_merged_spectrum_qc(merged_orders, products, log, qcDir, filenameTemplate, noddingSequence, dateObs, arm, recipeName, orderJoins=False, debug=False, fluxCalibrated=False)
+````{py:function} get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightnessNIR=100)
+:canonical: soxspipe.commonutils.toolkit.get_skylines_dataframe
+
+```{autodoc2-docstring} soxspipe.commonutils.toolkit.get_skylines_dataframe
+```
+````
+
+````{py:function} plot_merged_spectrum_qc(merged_orders, products, log, qcDir, filenameTemplate, noddingSequence, dateObs, arm, recipeName, orderJoins=False, debug=False, fluxCalibrated=False, qcTable=False, settings=False)
 :canonical: soxspipe.commonutils.toolkit.plot_merged_spectrum_qc
 
 ```{autodoc2-docstring} soxspipe.commonutils.toolkit.plot_merged_spectrum_qc

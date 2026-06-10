@@ -35,6 +35,10 @@
   - ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.extract_single_order
     :summary:
     ```
+* - {py:obj}`fit_profiles_along_dispersion_axis_for_each_slt_position <soxspipe.commonutils.horne_extraction.fit_profiles_along_dispersion_axis_for_each_slt_position>`
+  - ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.fit_profiles_along_dispersion_axis_for_each_slt_position
+    :summary:
+    ```
 ````
 
 ### API
@@ -46,14 +50,21 @@
 ```
 ````
 
-````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, gain=1.0, hornePolyOrder=3, debug=False)
+````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, hornePolyOrder=3, debug=False)
 :canonical: soxspipe.commonutils.horne_extraction.extract_single_order
 
 ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.extract_single_order
 ```
 ````
 
-`````{py:class} horne_extraction(log, settings, recipeSettings, skyModelFrame, skySubtractedFrame, unflattenedFrame, twoDMapPath, recipeName=False, qcTable=False, productsTable=False, dispersionMap=False, sofName=False, locationSetIndex=False, startNightDate='', notFlattened=False, debug=False, turnOffMP=False)
+````{py:function} fit_profiles_along_dispersion_axis_for_each_slt_position(crossDispersionSlices, fluxNormalisedImage, maskImage, slitHalfLength, clippingSigma, clippingIterationLimit, hornePolyOrder, axisB, order, debug, plt)
+:canonical: soxspipe.commonutils.horne_extraction.fit_profiles_along_dispersion_axis_for_each_slt_position
+
+```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.fit_profiles_along_dispersion_axis_for_each_slt_position
+```
+````
+
+`````{py:class} horne_extraction(log, settings, recipeSettings, skySubtractedFrame, unflattenedFrame, twoDMapPath, subtractedFrame=False, recipeName=False, qcTable=False, productsTable=False, dispersionMap=False, sofName=False, locationSetIndex=False, startNightDate='', notFlattened=False, debug=False, turnOffMP=False)
 :canonical: soxspipe.commonutils.horne_extraction.horne_extraction
 
 Bases: {py:obj}`object`
@@ -95,6 +106,14 @@ Bases: {py:obj}`object`
 :canonical: soxspipe.commonutils.horne_extraction.horne_extraction.residual_merge
 
 ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.horne_extraction.residual_merge
+```
+
+````
+
+````{py:method} tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm)
+:canonical: soxspipe.commonutils.horne_extraction.horne_extraction.tune_wavelength_calibration_to_skylines
+
+```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.horne_extraction.tune_wavelength_calibration_to_skylines
 ```
 
 ````

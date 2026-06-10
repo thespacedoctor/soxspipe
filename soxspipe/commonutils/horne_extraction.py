@@ -416,6 +416,7 @@ class horne_extraction(object):
         import scipy.ndimage
         from astropy.stats import sigma_clip
         import skimage.transform as skt
+        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         kw = self.kw
         arm = self.arm
@@ -734,13 +735,10 @@ class horne_extraction(object):
                 header.pop(kw("RON"))
 
             # header["HIERARCH " + kw("PRO_TECH")] = header.pop(kw("DPR_TECH"))
-            extractedOrdersTable = Table.from_pandas(extractedOrdersDF)
-            BinTableHDU = fits.table_to_hdu(extractedOrdersTable)
+
             header[kw("SEQ_ARM")] = arm
             header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
             header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{arm}".upper()
-            priHDU = fits.PrimaryHDU(header=header)
-            hduList = fits.HDUList([priHDU, BinTableHDU])
 
             # DISCRETE ORDERS
             filename = self.filenameTemplate.replace(
@@ -748,8 +746,15 @@ class horne_extraction(object):
                 f"_EXTRACTED_ORDERS{self.noddingSequence}{self.notFlattened}.fits",
             )
             filePath = f"{self.productDir}/{filename}"
-            hduList.verify("fix")
-            hduList.writeto(filePath, checksum=True, overwrite=True)
+
+            write_fits_table_to_disk(
+                log=self.log,
+                settings=self.settings,
+                header=header,
+                tables=[extractedOrdersDF],
+                filePath=filePath,
+                qc=self.qc,
+            )
 
             utcnow = datetime.utcnow()
             utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
@@ -798,10 +803,14 @@ class horne_extraction(object):
                 mergedSpectumDF[col] = mergedSpectumDF[col].apply(lambda x: _round_scalar_or_quantity(x, decimals))
 
             mergedTable = Table.from_pandas(mergedSpectumDF)
-            BinTableHDU = fits.table_to_hdu(mergedTable)
-            hduList = fits.HDUList([priHDU, BinTableHDU])
-            hduList.verify("fix")
-            hduList.writeto(filePath, checksum=True, overwrite=True)
+            write_fits_table_to_disk(
+                log=self.log,
+                settings=self.settings,
+                header=header,
+                tables=[mergedTable],
+                filePath=filePath,
+                qc=self.qc,
+            )
 
             # EXPORTING SPECTRUM IN ASCII FORMAT
 
