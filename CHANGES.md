@@ -1,7 +1,8 @@
 # Release Notes
 
-added a phase3 module
-fixing output directory cl-switch bug
+added a 'write_fits_table_to_disk' function to consolidate code writting FITS binary tables to file.
+added da phase3 module.
+fixing output directory cl-switch bug.
 * **DOCS**: updating docs to include offset mode.
 * **ENHANCEMENT**: There are now separate recipes for spectroscopic standard star reductions (`soxs_nod_std` and `soxs_stare_std`). Closes #422.
 * **REFACTOR**: clarifying stacked vs frame clipping in settings and docs
