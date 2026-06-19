@@ -246,8 +246,7 @@ class soxs_mbias(base_recipe):
         )
         filename = os.path.basename(productPath)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.dateObs = combined_bias_mean.header[self.kw("DATE_OBS")]
 
@@ -329,8 +328,7 @@ class soxs_mbias(base_recipe):
             plt.ylabel("Summed Pixel Values")
             plt.show()
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.qc = pd.concat(
             [
@@ -461,8 +459,7 @@ class soxs_mbias(base_recipe):
 
             ratios.append(frame_std / frame_mad)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         ppnmax = max(ratios)
 

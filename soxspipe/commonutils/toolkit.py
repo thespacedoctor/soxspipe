@@ -596,8 +596,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
 
     # nanCount = np.count_nonzero(np.isnan(frame.data))
 
-    utcnow = datetime.now(UTC)
-    utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+    utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
     # COUNT BAD-PIXELS
     badCount = frame.mask.sum()
@@ -764,8 +763,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     mean = np.ma.mean(maskedFrame)
     flux = np.ma.sum(maskedFrame)
 
-    utcnow = datetime.utcnow()
-    utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+    utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
     mean = "%0.*f" % (3, mean)
     flux = "%0.*f" % (3, flux)
@@ -2057,8 +2055,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
             "ORDER",
         ] = order
 
-    utcnow = datetime.utcnow()
-    utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+    utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
     # CALCULATE THE MEDIAN EFFICIENCY ACROSS ALL ORDERS
     if "EFFICIENCY" in spectrumDF.columns:

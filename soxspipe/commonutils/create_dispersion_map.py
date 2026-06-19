@@ -843,7 +843,7 @@ class create_dispersion_map(object):
             percentageDetectedLines = float("{:.6f}".format(float(detectedLines) / float(totalLines)))
 
             # GET CURRENT UTC TIMESTAMP FOR QC RECORDS
-            utcnow = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
             # GROUP FOUND LINES INTO SETS AND CLIP ON MEAN XY SHIFT RESIDUALS
             if True:
@@ -1772,8 +1772,7 @@ class create_dispersion_map(object):
 
         arm = self.arm
 
-        utcnow = datetime.now(timezone.utc)
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # ADD EXPONENTS TO ORDERTABLE UP-FRONT
         if isinstance(orderDeg, list):
@@ -3767,8 +3766,7 @@ class create_dispersion_map(object):
         resAx.set_ylim([lowerR, upperR])
         resAx.set_xlim(x_limits)
 
-        utcnow = datetime.now(timezone.utc)
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # GET FILENAME FOR THE RESIDUAL PLOT
         if not self.sofName:

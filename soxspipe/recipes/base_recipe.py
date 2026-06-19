@@ -1432,8 +1432,7 @@ class base_recipe(object):
                 surfacePlot=True,
             )
 
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         if master_flat != False:
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat, add_keyword=None)
@@ -1563,8 +1562,7 @@ class base_recipe(object):
         from datetime import datetime
         import pandas as pd
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         if self.inst.upper() == "SOXS":
             self.qc = pd.concat(
@@ -1674,8 +1672,7 @@ class base_recipe(object):
         from datetime import datetime
         from soxspipe.commonutils import toolkit
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         if not rawRon and len(self.inputFrames.files) > 1:
             # LIST OF RAW CCDDATA OBJECTS
@@ -1826,8 +1823,7 @@ class base_recipe(object):
             self.kw("EXPTIME")
         ]
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.qc = pd.concat(
             [

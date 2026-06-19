@@ -894,8 +894,7 @@ class soxs_nod(base_recipe):
             groupedDataframe[col] = groupedDataframe[col].apply(lambda x: round(float(x), decimals))
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)
 
-        utcnow = datetime.utcnow()
-        self.utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        self.utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         self.dateObs = header[kw("DATE_OBS")]
 
         self.qc = add_snr_efficiency_qcs(

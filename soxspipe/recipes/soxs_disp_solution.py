@@ -406,8 +406,7 @@ class soxs_disp_solution(base_recipe):
 
             filename = os.path.basename(productPath)
 
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
             self.products = pd.concat([self.products, productsTable])
             self.qc = pd.concat([self.qc, qcTable])

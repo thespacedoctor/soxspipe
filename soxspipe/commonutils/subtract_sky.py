@@ -209,8 +209,7 @@ class subtract_sky(object):
         skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData = self.create_placeholder_images()
 
         uniqueOrders = self.mapDF["order"].unique()
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # THE BSPLINE ORDER TO FIT SKY WITH
         self.bspline_order = self.recipeSettings["sky-subtraction"]["bspline_order"]
@@ -2038,8 +2037,7 @@ class subtract_sky(object):
 
         arm = self.arm
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # POLY FUNCTION NEEDS A DATAFRAME AS INPUT
         poly = chebyshev_order_wavelength_polynomials(

@@ -432,8 +432,7 @@ class soxs_order_centres(base_recipe):
 
         filename = os.path.basename(productPath)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         self.dateObs = self.orderFrame.header[kw("DATE_OBS")]
 
         self.products = pd.concat(

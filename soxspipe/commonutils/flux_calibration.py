@@ -206,8 +206,7 @@ class flux_calibration(object):
 
         from datetime import datetime
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.products = pd.concat(
             [

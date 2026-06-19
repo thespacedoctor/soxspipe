@@ -439,8 +439,7 @@ class response_function(object):
                 qc=self.qc,
             )
 
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
             self.products = pd.concat(
                 [
@@ -609,8 +608,7 @@ class response_function(object):
         plt.savefig(plotFilePath, dpi=120, format="pdf", bbox_inches="tight")
         plt.close("all")
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.products = pd.concat(
             [
@@ -700,8 +698,7 @@ class response_function(object):
         hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.products = pd.concat(
             [

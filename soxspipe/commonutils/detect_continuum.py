@@ -341,8 +341,7 @@ class _base_detect(object):
         res_median = np.ma.median(np.ma.abs(res))
 
         if writeQCs:
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
             tag = "continuum"
             if "order-centres" in self.recipeName.lower():
@@ -799,8 +798,7 @@ class detect_continuum(_base_detect):
                 if self.settings["tune-pipeline"]:
                     raise e
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         try:
             nclip = len(clippedData.index)
@@ -871,8 +869,7 @@ class detect_continuum(_base_detect):
             clippedData=clippedData,
         )
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         basename = os.path.basename(plotPath)
 
@@ -1868,8 +1865,7 @@ class detect_continuum(_base_detect):
         foundLines = len(orderPixelTable.loc[~mask].index)
         percent = 100 * foundLines / allLines
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.qc = pd.concat(
             [
