@@ -455,25 +455,13 @@ class horne_extraction(object):
             zoomTuple = (1, zoomFactor)
         else:
             zoomTuple = (zoomFactor, 1)
-        if self.detectorParams["dispersion-axis"] == "x":
-            output_shape = (
-                self.twoDMap["WAVELENGTH"].data.shape[0],
-                self.twoDMap["WAVELENGTH"].data.shape[1] * zoomFactor,
-            )
-        else:
-            output_shape = (
-                self.twoDMap["WAVELENGTH"].data.shape[0] * zoomFactor,
-                self.twoDMap["WAVELENGTH"].data.shape[1],
-            )
+
 
         # NEAREST NEIGHBOUR INTERPOLATION USING NUMPY REPEAT (FASTER THAN skt.resize)
         if self.detectorParams["dispersion-axis"] == "x":
-
             def _zoom(arr):
                 return np.repeat(arr, zoomFactor, axis=1)
-
         else:
-
             def _zoom(arr):
                 return np.repeat(arr, zoomFactor, axis=0)
 
