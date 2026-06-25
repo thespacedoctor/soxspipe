@@ -120,9 +120,7 @@ class soxs_disp_solution(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"]
-        )
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
@@ -289,9 +287,7 @@ class soxs_disp_solution(base_recipe):
                 {kw("DPR_TYPE"): "WAVE,LAMP", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
             ]
         else:
-            filter_list = [
-                {kw("DPR_TYPE"): "LAMP,FMTCHK", kw("DPR_TECH"): "ECHELLE,PINHOLE"}
-            ]
+            filter_list = [{kw("DPR_TYPE"): "LAMP,FMTCHK", kw("DPR_TECH"): "ECHELLE,PINHOLE"}]
 
         for add_filters in filter_list:
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -305,9 +301,7 @@ class soxs_disp_solution(base_recipe):
                     key_uncertainty_type="UTYPE",
                 )
 
-        self.pinholeFrame = self.detrend(
-            inputFrame=pinhole_image, master_bias=master_bias, dark=dark
-        )
+        self.pinholeFrame = self.detrend(inputFrame=pinhole_image, master_bias=master_bias, dark=dark)
 
         self.update_fits_keywords(frame=self.pinholeFrame)
 

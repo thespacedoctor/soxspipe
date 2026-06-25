@@ -1828,16 +1828,31 @@ def plot_merged_spectrum_qc(
                 )
 
     # PLOT SKY LINES AS VERTICAL LINES ON SKY PANEL
-    for _, row in skylinesDF.iterrows():
+    mask = skylinesDF["ISOLATED"] == True
+    calibrationSkylines = pd.to_numeric(skylinesDF.loc[mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
+    otherSkylines = pd.to_numeric(skylinesDF.loc[~mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
+
+    for ww in calibrationSkylines:
         for panel in [top_panel, middle_panel, bottom_panel, sky_panel]:
             panel.axvline(
-                row["WAVELENGTH"],
+                ww,
                 color="blue",
                 linestyle="-",
                 linewidth=0.2,
                 alpha=0.08,
                 zorder=0,
-                label="Sky Line" if panel == top_panel else "",
+                label="calibration skyline" if panel == top_panel else "",
+            )
+    for ww in otherSkylines:
+        for panel in [top_panel, middle_panel, bottom_panel, sky_panel]:
+            panel.axvline(
+                ww,
+                color="grey",
+                linestyle="-",
+                linewidth=0.2,
+                alpha=0.08,
+                zorder=0,
+                label="skyline" if panel == top_panel else "",
             )
 
     if fluxCalibrated:
@@ -2163,6 +2178,7 @@ def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightness
     from soxspipe.commonutils import detector_lookup
     from soxspipe.commonutils.toolkit import get_calibrations_path
     from astropy.table import Table
+    from soxspipe.commonutils import dispersion_map_to_pixel_arrays
 
     dp = detector_lookup(log=log, settings=settings).get(arm)
     calibrationRootPath = get_calibrations_path(log=log, settings=settings)
@@ -2172,6 +2188,8 @@ def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightness
     skylinesDF = dat.to_pandas()
     skylinesDF["WAVELENGTH"] = skylinesDF["WAVELENGTH"].astype(float)
     skylinesDF["FLUX"] = skylinesDF["FLUX"].astype(float)
+    if "ISOLATED" in skylinesDF.columns:
+        skylinesDF["ISOLATED"] = skylinesDF["ISOLATED"].astype(bool)
 
     if arm == "VIS":
         mask = skylinesDF["FLUX"] > minBrightnessVIS

@@ -73,7 +73,8 @@ tests = [
 dev = [
     "soxspipe[tests, docs]",
     "build",
-    "twine"
+    "twine",
+    "debuggy"
 ]
 
 # THESE ARE ENTRY POINTS USED FOR THE CL-INTERFACE

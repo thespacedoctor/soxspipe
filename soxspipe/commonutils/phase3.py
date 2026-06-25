@@ -152,6 +152,4 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
     hduList.verify("fix")
     hduList.writeto(filePath, checksum=True, overwrite=True)
 
-    print(">>>> Successfully wrote file to disk: ", filePath)
-
     log.debug("completed the ``write_fits_table_to_disk`` method")

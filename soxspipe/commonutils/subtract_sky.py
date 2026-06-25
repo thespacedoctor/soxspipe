@@ -123,7 +123,7 @@ class subtract_sky(object):
 
         # UNPACK THE 2D DISP IMAGE MAP AND THE OBJECT IMAGE TO GIVE A
         # DATA FRAME CONTAINING ONE ROW FOR EACH PIXEL WITH COLUMNS X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDER
-        self.mapDF, self.interOrderMask = twoD_disp_map_image_to_dataframe(
+        self.mapDF, self.interOrderMaskNDArray = twoD_disp_map_image_to_dataframe(
             log=self.log,
             slit_length=dp["slit_length"],
             twoDMapPath=twoDMap,
@@ -1550,20 +1550,20 @@ class subtract_sky(object):
 
             if iterationCount > 0:
                 imageMapOrder, residualFloor = self.determine_residual_floor(imageMapOrder, tck, iterationCount)
+            else:
+                # COMPUTE NORMALISED ABSOLUTE RESIDUALS (flux - bspline model) / error
+                imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = imageMapOrder.loc[
+                    ~mask_all_clipped, "flux"
+                ].values - ip.splev(imageMapOrder.loc[~mask_all_clipped, "wavelength"].values, tck)
+                imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = (
+                    imageMapOrder.loc[~mask_all_clipped, "sky_residuals"].abs()
+                    / imageMapOrder.loc[~mask_all_clipped, "error"]
+                )
 
             if iterationCount >= 5:
                 window = 15
             else:
                 window = 25
-
-            # COMPUTE NORMALISED ABSOLUTE RESIDUALS (flux - bspline model) / error
-            imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = imageMapOrder.loc[
-                ~mask_all_clipped, "flux"
-            ].values - ip.splev(imageMapOrder.loc[~mask_all_clipped, "wavelength"].values, tck)
-            imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = (
-                imageMapOrder.loc[~mask_all_clipped, "sky_residuals"].abs()
-                / imageMapOrder.loc[~mask_all_clipped, "error"]
-            )
 
             def sliding_mean(arr, window):
                 if window % 2 == 0:
@@ -2532,6 +2532,7 @@ class subtract_sky(object):
         import scipy.interpolate as ip
         from astropy.stats import sigma_clipped_stats
         from soxspipe.commonutils.toolkit import get_skylines_dataframe
+        import pandas as pd
 
         skylinesDF = get_skylines_dataframe(self.log, self.settings, self.arm)
 
@@ -2635,28 +2636,25 @@ class subtract_sky(object):
         ax.set_ylim(mean - std, mean + range_sigma * std)
 
         # PLOT SKY LINES AS VERTICAL LINES ON SKY PANEL
-        label = "catalogue skyline"
-        for _, row in skylinesDF.iterrows():
-            ax.axvline(
-                row["WAVELENGTH"],
-                color="gray",
-                linestyle="-",
-                linewidth=0.5,
-                alpha=0.5,
-                zorder=0,
-                label=label,
-            )
-            ax2.axvline(
-                row["WAVELENGTH"],
-                color="gray",
-                linestyle="-",
-                linewidth=0.5,
-                alpha=0.5,
-                zorder=0,
-                label=label,
-            )
-            if label:
-                label = None
+        mask = skylinesDF["ISOLATED"] == True
+        calibrationSkylines = (
+            pd.to_numeric(skylinesDF.loc[mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
+        )
+        otherSkylines = pd.to_numeric(skylinesDF.loc[~mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
+
+        for ww in calibrationSkylines:
+            ax.axvline(ww, color="blue", alpha=0.5, linewidth=0.6)
+            ax2.axvline(ww, color="blue", alpha=0.5, linewidth=0.6)
+        if len(calibrationSkylines):
+            ax.plot([], [], color="blue", alpha=0.7, linewidth=0.8, label="calibration skyline")
+            ax2.plot([], [], color="blue", alpha=0.7, linewidth=0.8, label="calibration skyline")
+
+        for ww in otherSkylines:
+            ax.axvline(ww, color="gray", alpha=0.5, linewidth=0.6)
+            ax2.axvline(ww, color="gray", alpha=0.5, linewidth=0.6)
+        if len(otherSkylines):
+            ax.plot([], [], color="gray", alpha=0.7, linewidth=0.8, label="skyline")
+            ax2.plot([], [], color="gray", alpha=0.7, linewidth=0.8, label="skyline")
 
         mmin = imageMapOrder.loc[(~mask_object), "wavelength"].values.min()
         mmax = imageMapOrder.loc[(~mask_object), "wavelength"].values.max()

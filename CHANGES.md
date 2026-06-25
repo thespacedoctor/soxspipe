@@ -1,8 +1,13 @@
 # Release Notes
 
-added a 'write_fits_table_to_disk' function to consolidate code writting FITS binary tables to file.
-added da phase3 module.
-fixing output directory cl-switch bug.
+
+* **FEATURE**: Added `image_transformer` module to help with image rectification.
+* **REFACTOR**: Move shared detector, skyline, map, binning setup etc into `base_util` to remove duplicate code.
+* **FIXED**: Update UTC timestamp handling to avoid deprecated `utcnow` usage.
+* **ENHANCEMENT**: Refreshed static skyline list resource.
+* **ENHANCEMENT**: added a 'write_fits_table_to_disk' function to consolidate code writting FITS binary tables to file.
+* **ENHANCEMENT**: added a phase3 module (yet to be completed)
+* **FIXED**: fixing output directory cl-switch bug.
 * **DOCS**: updating docs to include offset mode.
 * **ENHANCEMENT**: There are now separate recipes for spectroscopic standard star reductions (`soxs_nod_std` and `soxs_stare_std`). Closes #422.
 * **REFACTOR**: clarifying stacked vs frame clipping in settings and docs
