@@ -147,8 +147,7 @@ class response_function(object):
         self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")  # Hack to reduce xsh data
 
         # REMOVE SPACES IN NAME
-        self.std_objName = self.std_objName.replace(" ", "")
-
+        self.std_objName = self.std_objName.replace(" ", "").replace("-", "").replace("_", "")
         self.std_objName = self.std_objName.replace("_NOD", "")
 
         if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
@@ -232,13 +231,10 @@ class response_function(object):
                 kind="next",
                 fill_value="extrapolate",
             )
-            # print("YESSTD")
         except Exception as e:
-            # print("NOSTD")
             self.log.warning(
                 f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(stdAbsFluxDF.columns[1:])}"
             )
-            forceFailure = True
             return (
                 self.qc,
                 self.products,

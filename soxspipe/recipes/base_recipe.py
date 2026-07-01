@@ -915,6 +915,14 @@ class base_recipe(object):
                 do.session_refresh(failure=failure)
                 do.close()
 
+            if forceFail and isinstance(forceFail, str):
+                c = self.conn.cursor()
+                sqlQuery = (
+                    f"update product_frames set error_message = '{forceFail}' where sof = '{self.sofName}.sof'"
+                )
+                c.execute(sqlQuery)
+                c.close()
+
             self.conn.close()
 
         del self.conn
@@ -926,6 +934,7 @@ class base_recipe(object):
 
         if forceFail and isinstance(forceFail, str):
             self.log.error(f"\nRecipe marked as failed in the database. {forceFail}")
+
 
         elif forceFail:
             self.log.error(
