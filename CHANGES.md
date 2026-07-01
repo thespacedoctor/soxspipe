@@ -1,5 +1,7 @@
 # Release Notes
 
+## v0.17.2 - July 1, 2026
+
 * **FEATURE**: Added `image_transformer` module to help with image rectification.
 * **ENHANCEMENT**: Add order-level rectified image handling for flux, variance, sky, masks, wavelength, and object profile data.
 * **ENHANCEMENT**: Split extraction into dedicated mask generation, profile fitting, extraction computation, and debug plotting helpers.
