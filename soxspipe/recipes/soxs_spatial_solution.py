@@ -119,9 +119,7 @@ class soxs_spatial_solution(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"]
-        )
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
@@ -301,9 +299,7 @@ class soxs_spatial_solution(base_recipe):
                 {kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,MULTI-PINHOLE"},
             ]
         else:
-            filter_list = [
-                {kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,MULTI-PINHOLE"}
-            ]
+            filter_list = [{kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,MULTI-PINHOLE"}]
 
         for add_filters in filter_list:
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -327,9 +323,7 @@ class soxs_spatial_solution(base_recipe):
                 {kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,SLIT"},
             ]
         else:
-            filter_list = [
-                {kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,SLIT"}
-            ]
+            filter_list = [{kw("DPR_TYPE"): "LAMP,WAVE", kw("DPR_TECH"): "ECHELLE,SLIT"}]
         for add_filters in filter_list:
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 slit_arc = CCDData.read(
@@ -351,9 +345,7 @@ class soxs_spatial_solution(base_recipe):
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
-        order_table = self.inputFrames.filter(**filterDict).files_filtered(
-            include_path=True
-        )[0]
+        order_table = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
         add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -406,9 +398,7 @@ class soxs_spatial_solution(base_recipe):
                 overwrite=True,
                 product=False,
             )
-            self.log.print(
-                f"\nCalibrated multi pinhole frame frame saved to {filepath}\n"
-            )
+            self.log.print(f"\nCalibrated multi pinhole frame frame saved to {filepath}\n")
 
         if self.settings["tune-pipeline"]:
             from itertools import product
@@ -512,8 +502,7 @@ class soxs_spatial_solution(base_recipe):
 
         filename = os.path.basename(mapPath)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.products = pd.concat([self.products, productsTable])
         self.qc = pd.concat([self.qc, qcTable])

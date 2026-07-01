@@ -320,7 +320,7 @@ class base_recipe(object):
         frame = self._trim_frame(frame)
 
         # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
-        frame = ccdproc.gain_correct(frame, dp["gain"])
+        frame = ccdproc.gain_correct(frame, dp["gain"], add_keyword=None)
         toolkit.frame_to_32(frame)
 
         # GENERATE UNCERTAINTY MAP AS EXTENSION
@@ -331,7 +331,7 @@ class base_recipe(object):
             frame.uncertainty = errorMap.astype(np.float32)
         else:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
-            frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True)
+            frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True, add_keyword=None)
         toolkit.frame_to_32(frame)
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
@@ -997,7 +997,7 @@ class base_recipe(object):
             cs = int(cs / binning[1])
             ce = int(ce / binning[1])
 
-        trimmed_frame = ccdproc.trim_image(frame[rs:re, cs:ce])
+        trimmed_frame = ccdproc.trim_image(frame[rs:re, cs:ce], add_keyword=None)
 
         self.log.debug("completed the ``_trim_frame`` method")
         return trimmed_frame
@@ -1032,6 +1032,8 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``write`` method")
 
+        from soxspipe.commonutils.phase3 import basic_header_scrubbing, sort_keywords
+
         kw = self.kw
 
         # WRITE QCs TO HEADERS
@@ -1044,33 +1046,16 @@ class base_recipe(object):
             if h:
                 frame.header[f"ESO QC {n}".upper()] = (v, c)
 
-        # NEATLY SORT KEYWORDS
-        keywords = [k for k in frame.header if len(k)]
-        values = [frame.header[k] for k in frame.header if len(k)]
-        comments = [frame.header.comments[k] for k in frame.header if len(k)]
-        keywords, values, comments = zip(*sorted(zip(keywords, values, comments)))
-        if "COMMENT" not in keywords and "HISTORY" not in keywords:
-            frame.header.clear()
-            for k, v, c in zip(keywords, values, comments):
-                if k == "COMMENT":
-                    frame.header[k] = v
-                else:
-                    frame.header[k] = (v, c)
+        if product:
+            frame.header = basic_header_scrubbing(log=self.log, settings=self.settings, header=frame.header)
+        frame.header = sort_keywords(log=self.log, header=frame.header)
 
         if not filename and self.sofName:
             filename = self.sofName + ".fits"
         if not filename:
-
             filename = filenamer(log=self.log, frame=frame, settings=self.settings)
 
         if product:
-            removeKw = ["DPR_TECH", "DPR_CATG", "DPR_TYPE"]
-            for k in removeKw:
-                try:
-                    frame.header.pop(kw(k))
-                except:
-                    pass
-
             filedir += f"/reduced/{self.startNightDate}/{self.recipeName}/"
             filedir = filedir.replace("//", "/")
             # Recursively create missing directories
@@ -1086,9 +1071,6 @@ class base_recipe(object):
         if maskToZero:
             self.log.print(f"\nSetting {frame.mask.sum()} bad-pixels to a value of 0 while saving '{filename}'.")
             frame.data[frame.mask] = 1
-
-        if "NAXIS" in frame.header and frame.header["NAXIS"] != 0 and "INHERIT" in frame.header:
-            del frame.header["INHERIT"]
 
         HDUList = frame.to_hdu(hdu_mask="QUAL", hdu_uncertainty="ERRS", hdu_flags=None)
         HDUList[0].name = "FLUX"
@@ -1154,8 +1136,12 @@ class base_recipe(object):
         # UNPACK SETTINGS
         stacked_clipping_sigma = self.recipeSettings["stacked-clipping-sigma"]
         stacked_clipping_iterations = self.recipeSettings["stacked-clipping-iterations"]
-        frame_clipping_sigma = self.recipeSettings["frame-clipping-sigma"]
-        frame_clipping_iterations = self.recipeSettings["frame-clipping-iterations"]
+        if post_stack_clipping:
+            frame_clipping_sigma = self.recipeSettings["frame-clipping-sigma"]
+            frame_clipping_iterations = self.recipeSettings["frame-clipping-iterations"]
+        else:
+            frame_clipping_sigma = None
+            frame_clipping_iterations = None
 
         # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
         if not isinstance(frames, list):
@@ -1216,11 +1202,11 @@ class base_recipe(object):
         ## Reduce memory by avoiding an extra full-array copy during clipping
         combiner.data_arr.mask = sigma_clip(
             np.asarray(combiner.data_arr.data, dtype=np.float32),
-            sigma_lower=frame_clipping_sigma,
-            sigma_upper=frame_clipping_sigma,
+            sigma_lower=stacked_clipping_sigma,
+            sigma_upper=stacked_clipping_sigma,
             axis=0,
             copy=False,
-            maxiters=frame_clipping_iterations,
+            maxiters=stacked_clipping_iterations,
             cenfunc="median",
             stdfunc="mad_std",
             masked=True,
@@ -1265,8 +1251,8 @@ class base_recipe(object):
         if post_stack_clipping:
             maskedFrame = sigma_clip(
                 combined_frame.data.astype(np.float32),
-                sigma=stacked_clipping_sigma,
-                maxiters=stacked_clipping_iterations,
+                sigma=frame_clipping_sigma,
+                maxiters=frame_clipping_iterations,
                 cenfunc="mean",
                 stdfunc="std",
             )
@@ -1359,7 +1345,7 @@ class base_recipe(object):
         processedFrame = inputFrame
 
         if master_bias != False:
-            processedFrame = ccdproc.subtract_bias(processedFrame, master_bias)
+            processedFrame = ccdproc.subtract_bias(processedFrame, master_bias, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
         # DARK WITH MATCHING EXPOSURE TIME
@@ -1374,6 +1360,7 @@ class base_recipe(object):
                 dark,
                 exposure_time=kw("EXPTIME"),
                 exposure_unit=u.second,
+                add_keyword=None,
             )
 
         elif dark != False:
@@ -1396,6 +1383,7 @@ class base_recipe(object):
                     exposure_time=kw("EXPTIME"),
                     exposure_unit=u.second,
                     scale=True,
+                    add_keyword=None,
                 )
                 from soxspipe.commonutils.toolkit import quicklook_image
 
@@ -1444,65 +1432,10 @@ class base_recipe(object):
                 surfacePlot=True,
             )
 
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
-
-            # WRITE FITS FRAME OF BACKGROUND IMAGE ... PDF BEING GENERATED INSTEAD
-            if False:
-                # DETERMINE WHERE TO WRITE THE FILE
-                home = expanduser("~")
-
-                if self.currentSession:
-                    outDir = (
-                        self.settings["workspace-root-dir"].replace("~", home)
-                        + f"/sessions/{self.currentSession}/qc/{self.startNightDate}/{self.recipeName}"
-                    )
-                else:
-                    outDir = (
-                        self.settings["workspace-root-dir"].replace("~", home)
-                        + f"/qc/{self.startNightDate}/{self.recipeName}"
-                    )
-                outDir = outDir.replace("//", "/")
-                # RECURSIVELY CREATE MISSING DIRECTORIES
-                if not os.path.exists(outDir):
-                    try:
-                        os.makedirs(outDir)
-                    except:
-                        pass
-
-                # GET THE EXTENSION (WITH DOT PREFIX)
-                filename = self.sofName + "_BKGROUND.fits"
-                filepath = f"{outDir}/{filename}"
-                header = copy.deepcopy(inputFrame.header)
-                primary_hdu = fits.PrimaryHDU(backgroundFrame.data, header=header)
-                hdul = fits.HDUList([primary_hdu])
-                hdul.verify("fix")
-                hdul.writeto(filepath, output_verify="exception", overwrite=True, checksum=True)
-
-                self.products = pd.concat(
-                    [
-                        self.products,
-                        pd.Series(
-                            {
-                                "soxspipe_recipe": self.recipeName,
-                                "product_label": "BKGROUND",
-                                "file_name": filename,
-                                "file_type": "FITS",
-                                "obs_date_utc": self.dateObs,
-                                "reduction_date_utc": utcnow,
-                                "product_desc": f"Fitted intra-order image background",
-                                "file_path": filepath,
-                                "label": "QC",
-                            }
-                        )
-                        .to_frame()
-                        .T,
-                    ],
-                    ignore_index=True,
-                )
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         if master_flat != False:
-            processedFrame = ccdproc.flat_correct(processedFrame, master_flat)
+            processedFrame = ccdproc.flat_correct(processedFrame, master_flat, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
         self.log.debug("completed the ``detrend`` method")
@@ -1629,8 +1562,7 @@ class base_recipe(object):
         from datetime import datetime
         import pandas as pd
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         if self.inst.upper() == "SOXS":
             self.qc = pd.concat(
@@ -1740,8 +1672,7 @@ class base_recipe(object):
         from datetime import datetime
         from soxspipe.commonutils import toolkit
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         if not rawRon and len(self.inputFrames.files) > 1:
             # LIST OF RAW CCDDATA OBJECTS
@@ -1892,8 +1823,7 @@ class base_recipe(object):
             self.kw("EXPTIME")
         ]
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.qc = pd.concat(
             [

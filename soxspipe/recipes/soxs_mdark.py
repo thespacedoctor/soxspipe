@@ -255,8 +255,7 @@ class soxs_mdark(base_recipe):
         )
         filename = os.path.basename(productPath)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         self.dateObs = combined_dark_mean.header[kw("DATE_OBS")]
 

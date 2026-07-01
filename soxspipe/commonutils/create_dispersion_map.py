@@ -843,7 +843,7 @@ class create_dispersion_map(object):
             percentageDetectedLines = float("{:.6f}".format(float(detectedLines) / float(totalLines)))
 
             # GET CURRENT UTC TIMESTAMP FOR QC RECORDS
-            utcnow = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
             # GROUP FOUND LINES INTO SETS AND CLIP ON MEAN XY SHIFT RESIDUALS
             if True:
@@ -1596,6 +1596,7 @@ class create_dispersion_map(object):
         import copy
         import math
         import numpy as np
+        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         arm = self.arm
         kw = self.kw
@@ -1697,30 +1698,15 @@ class create_dispersion_map(object):
         cols = startList + cols
         t = t[cols]
 
-        # CONVERT TO FITS BINARY TABLE HDU
-        BinTableHDU = fits.table_to_hdu(t)
-
         # UPDATE HEADER WITH STANDARD PROCESSING KEYWORDS
         header[kw("SEQ_ARM").upper()] = arm
         header[kw("PRO_TYPE").upper()] = "REDUCED"
         header[kw("PRO_CATG").upper()] = f"DISP_TAB_{arm}".upper()
         self.dispMapHeader = header
 
-        # ADD QC METRICS TO HEADER
-        for n, v, c, h in zip(
-            self.qc["qc_name"].values,
-            self.qc["qc_value"].values,
-            self.qc["qc_comment"].values,
-            self.qc["to_header"].values,
-        ):
-            if h and v is not np.nan:
-                header[f"ESO QC {n}".upper()] = (v, c)
-
-        # CREATE PRIMARY HDU AND WRITE FITS FILE
-        priHDU = fits.PrimaryHDU(header=header)
-        hduList = fits.HDUList([priHDU, BinTableHDU])
-        hduList.verify("fix")
-        hduList.writeto(filePath, checksum=True, overwrite=True)
+        write_fits_table_to_disk(
+            log=self.log, settings=self.settings, header=header, tables=[t], filePath=filePath, qc=self.qc
+        )
 
         if False:
             # MAKE RELATIVE HOME PATH ABSOLUTE
@@ -1786,8 +1772,7 @@ class create_dispersion_map(object):
 
         arm = self.arm
 
-        utcnow = datetime.now(timezone.utc)
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # ADD EXPONENTS TO ORDERTABLE UP-FRONT
         if isinstance(orderDeg, list):
@@ -3781,8 +3766,7 @@ class create_dispersion_map(object):
         resAx.set_ylim([lowerR, upperR])
         resAx.set_xlim(x_limits)
 
-        utcnow = datetime.now(timezone.utc)
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # GET FILENAME FOR THE RESIDUAL PLOT
         if not self.sofName:

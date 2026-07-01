@@ -23,7 +23,7 @@
 
 ### API
 
-`````{py:class} soxs_nod(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False, debug=False, turnOffMP=False)
+`````{py:class} soxs_nod(log, settings=False, inputFrames=[], verbose=False, overwrite=False, command=False, debug=False, turnOffMP=False, recipeName='soxs-nod')
 :canonical: soxspipe.recipes.soxs_nod.soxs_nod
 
 Bases: {py:obj}`soxspipe.recipes.base_recipe.base_recipe`
