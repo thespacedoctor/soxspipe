@@ -1,6 +1,10 @@
 # Release Notes
 
-
+* **FIXED**: soxspipe version checking does not preemptively uncompress files. Thanks @kalabartainaf
+* **ENHANCEMENT**: Add order-level rectified image handling for flux, variance, sky, masks, wavelength, and object profile data.
+* **ENHANCEMENT**: Split extraction into dedicated mask generation, profile fitting, extraction computation, and debug plotting helpers.
+* **ENHANCEMENT**: finding of standard name in FITS headers more robust
+* **FIXED:** A fix to the uncompression of last few .Z frames in a batch. Thanks @kalabartainaf
 * **FEATURE**: Added `image_transformer` module to help with image rectification.
 * **REFACTOR**: Move shared detector, skyline, map, binning setup etc into `base_util` to remove duplicate code.
 * **FIXED**: Update UTC timestamp handling to avoid deprecated `utcnow` usage.
