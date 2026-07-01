@@ -1,41 +1,30 @@
 # Release Notes
 
-* **FIXED**: soxspipe version checking does not preemptively uncompress files. Thanks @kalabartainaf
+* **FEATURE**: Added `image_transformer` module to help with image rectification.
 * **ENHANCEMENT**: Add order-level rectified image handling for flux, variance, sky, masks, wavelength, and object profile data.
 * **ENHANCEMENT**: Split extraction into dedicated mask generation, profile fitting, extraction computation, and debug plotting helpers.
 * **ENHANCEMENT**: finding of standard name in FITS headers more robust
-* **FIXED:** A fix to the uncompression of last few .Z frames in a batch. Thanks @kalabartainaf
-* **FEATURE**: Added `image_transformer` module to help with image rectification.
-* **REFACTOR**: Move shared detector, skyline, map, binning setup etc into `base_util` to remove duplicate code.
-* **FIXED**: Update UTC timestamp handling to avoid deprecated `utcnow` usage.
 * **ENHANCEMENT**: Refreshed static skyline list resource.
 * **ENHANCEMENT**: added a 'write_fits_table_to_disk' function to consolidate code writting FITS binary tables to file.
 * **ENHANCEMENT**: added a phase3 module (yet to be completed)
-* **FIXED**: fixing output directory cl-switch bug.
-* **DOCS**: updating docs to include offset mode.
 * **ENHANCEMENT**: There are now separate recipes for spectroscopic standard star reductions (`soxs_nod_std` and `soxs_stare_std`). Closes #422.
-* **REFACTOR**: clarifying stacked vs frame clipping in settings and docs
-* **DOCS**: updating docs to reflect the decoupling of standard star and science objects in the stare and nodding recipes.
 * **ENHANCEMENT**: Improve sky residual modelling and debug plots
+* **ENHANCEMENT**: added debugging plots to reveal individual order sky lines
+* **ENHANCEMENT**: Logging parallel recipe runtimes
+* **ENHANCEMENT**: Expand extracted-order QC plots to show optimal flux, boxcar flux, SNR, and sky flux panels.
+* **ENHANCEMENT**: Sky is now plotted in the nodding and offset data extraction QC plots
+* **ENHANCEMENT**: Reintroduced writing of the modelled scatter background as a QC FITS image product (alongside PDF) 
+* **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
+* **ENHANCEMENT:** moving to github actions (away from jenkins)
+* **REFACTOR**: Move shared detector, skyline, map, binning setup etc into `base_util` to remove duplicate code.
+* **REFACTOR**: clarifying stacked vs frame clipping in settings and docs
 * **REFACTOR**: Normalised sky residuals by error.
 * **REFACTOR**: Simplify residual floor and skyline flagging logic in determine_residual_floor.
 * **REFACTOR**: adjusted laCosmic settings so as not to clip bright skylines
-* **ENHANCEMENT**: added debugging plots to reveal individual order sky lines
-* **ENHANCEMENT**: Logging parallel recipe runtimes
 * **REFACTOR**: Disable post-stack clipping when combining normalised mflat frames
-* **ENHANCEMENT**: Expand extracted-order QC plots to show optimal flux, boxcar flux, SNR, and sky flux panels.
 * **REFACTOR**: Reuse the shared skyline loader in quicklook and merged-spectrum QC plotting.
-* **ENHANCEMENT**: Sky is now plotted in the nodding and offset data extraction QC plots
 * **REFACTOR**: Replaced the `skyModelFrame` parameter in `horne_extraction` with `subtractedFrame` for extracting a sky spectrum in nodding mode -- the subtracted (B or A) frame is now used directly instead of a separate sky model frame
-* **ENHANCEMENT**: Reintroduced writing of the modelled scatter background as a QC FITS image product (alongside PDF) 
-* **FIXED**: Respect post-stack clipping setting during frame combination 
-* **FIXED**: Correct top and bottom frame masking in background subtraction
-* **FIXED**: Add separate per-frame clipping settings for pre-stack sigma clipping and apply stacked-frame clipping after combination.
 * **REFACTOR**: Tune default clipping iterations and sigma thresholds for master bias and dark recipes.
-* **FIXED**: pass `order` argument to `initial_sigma_clipping` call so per-order clipping is correctly parameterised
-* **FIXED**: Replace the zero readout-noise error with a clearer corrupted-frame diagnostic.
-* **ENHANCEMENT:** adding quickstart data link to the docs (thanks Markus)
-* **ENHANCEMENT:** moving to github actions (away from jenkins)
 * **REFACTOR:** updated SNR calculation on extracted spectra. The variance using is now from the propagated errors instead of the SNR being derived from the extracted spectrum itself.
 * **REFACTOR:** allowing for NODDING to continue if no trace found in single AB sequence.
 * **REFACTOR:** forcing sky-subtraction to be switched off for relatively bright sources in VIS
@@ -43,6 +32,17 @@
 * **REFACTOR:** moving to `pyproject.toml` and away from older `setup.py` installation
 * **REFACTOR:** renaming `master` branch to `main`
 * **REFACTOR:** updating NODDING setting to catch continuum traces closer to the edges (spatially) of the orders 
+* **DOCS**: updating docs to include offset mode.
+* **DOCS**: updating docs to reflect the decoupling of standard star and science objects in the stare and nodding recipes.
+* **FIXED**: soxspipe version checking does not preemptively uncompress files. Thanks @kalabartainaf
+* **FIXED:** A fix to the uncompression of last few .Z frames in a batch. Thanks @kalabartainaf
+* **FIXED**: Update UTC timestamp handling to avoid deprecated `utcnow` usage.
+* **FIXED**: fixing output directory cl-switch bug.
+* **FIXED**: Respect post-stack clipping setting during frame combination 
+* **FIXED**: Correct top and bottom frame masking in background subtraction
+* **FIXED**: Add separate per-frame clipping settings for pre-stack sigma clipping and apply stacked-frame clipping after combination.
+* **FIXED**: pass `order` argument to `initial_sigma_clipping` call so per-order clipping is correctly parameterised
+* **FIXED**: Replace the zero readout-noise error with a clearer corrupted-frame diagnostic.
 * **FIXED:** fixing reduction of VIS binned object data - response curve binning verification was too strict
 
 ## v0.17.1 - May 1, 2026
