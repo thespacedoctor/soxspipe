@@ -103,10 +103,6 @@ def main(arguments=None):
     # setup the command-line util settings
     arguments = None
 
-    eLog = emptyLogger()
-    do = data_organiser(log=eLog, rootDir=".")
-    currentSession, allSessions = do.session_list(silent=True)
-
     # QUICKLY SKIP IF PRODUCT EXIST
     if len(sys.argv[1:]) == 2 or len(sys.argv[1:]) == 4:
         if len(sys.argv[2]) > 3 and sys.argv[2].split(".")[-1].lower() == "sof":
@@ -120,18 +116,23 @@ def main(arguments=None):
                 )
                 sys.exit(0)
 
-    clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
+    if "-v" not in sys.argv:
+        eLog = emptyLogger()
+        do = data_organiser(log=eLog, rootDir=".")
+        currentSession, allSessions = do.session_list(silent=True)
 
-    if "-s" not in sys.argv and "prep" not in sys.argv and "session" not in sys.argv and currentSession:
-        settingsFile = f"./sessions/{currentSession}/soxspipe.yaml"
-        exists = os.path.exists(settingsFile)
-        sys.argv.append("-s")
-        sys.argv.append(settingsFile)
+        clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
-    if "prep" in sys.argv or "watch" in sys.argv or ("reduce" in sys.argv and "-s" not in sys.argv):
-        arguments = docopt(__doc__)
-        if "--settings" in arguments.keys():
-            del arguments["--settings"]
+        if "-s" not in sys.argv and "prep" not in sys.argv and "session" not in sys.argv and currentSession:
+            settingsFile = f"./sessions/{currentSession}/soxspipe.yaml"
+            exists = os.path.exists(settingsFile)
+            sys.argv.append("-s")
+            sys.argv.append(settingsFile)
+
+        if "prep" in sys.argv or "watch" in sys.argv or ("reduce" in sys.argv and "-s" not in sys.argv):
+            arguments = docopt(__doc__)
+            if "--settings" in arguments.keys():
+                del arguments["--settings"]
 
     su = tools(
         arguments=arguments,
