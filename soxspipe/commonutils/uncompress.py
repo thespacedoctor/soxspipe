@@ -55,6 +55,9 @@ def uncompress(log, directory):
             if len(batch) == 25:
                 batches.append(batch)
                 batch = []
+    if len(batch) > 0:
+        batches.append(batch)
+    
 
     uncompressedCount = 0
     for batch in batches:
