@@ -64,7 +64,7 @@ class image_transformer(base_util):
         zoomFactor=11
     )
     transformer.cache_image(
-        imageName="sliceRawFlux",
+        imageName="fluxRaw",
         ndarray=skySubtractedFrame,
         associatedMask=badPixelMask
     )
@@ -101,6 +101,8 @@ class image_transformer(base_util):
 
         # SETUP THE ORDER TABLE DATAFRAMES FOR EACH ORDER, INCLUDING SUB-PIXEL INDEXES INTO THE ZOOMED ARRAYS
         self._setup_order_table_dataframes()
+
+        self._cache_image_names = set()
 
         # CACHE THE WAVELENGTH AND SLIT POSITION MAPS FOR LATER RECTIFICATION
         self.cache_image(
@@ -145,15 +147,17 @@ class image_transformer(base_util):
             # ZOOM AND REBIN EACH THE NDARRY AND STORE AS A COLUMN IN THE ORDER TABLE
             rebinned = self._rebin_2d(zoomedArray[SPIndex], *self.rebinShape)
             orderTable[imageName] = list(rebinned)
+            self._cache_image_names.add(imageName)
 
             # REBIN THE BAD-PIXEL MASK AND SIGMA-CLIP AGAINST THE RAW FLUX TO FLAG ADDITIONAL BAD PIXELS
-            if imageName == "sliceRawFlux" and associatedMask is not None:
+            if imageName == "fluxRaw" and associatedMask is not None:
                 bpmArray = associatedMask
                 if bpmArray is not None:
                     bpmArray = self._zoom_array(bpmArray, self.zoomFactor, self.dispersionAxis)
                     bpmRebinned = self._rebin_2d(bpmArray[SPIndex], *self.rebinShape)
                     bpmRebinned = self._sigma_clip_bpm(rebinned, bpmRebinned, order=order)
                     orderTable["bpMask"] = list(bpmRebinned)
+                    self._cache_image_names.add("bpMask")
 
         self.log.debug('completed the ``cache_image`` method')
         return None
@@ -292,5 +296,46 @@ class image_transformer(base_util):
         return None
 
     def get_order_slices(self):
-        return self.orderSlices, self.wlMinMax
+        return self.orderSlices
+    
+    def get_order_wavelength_ranges(self):
+        return self.wlMinMax
+
+    def get_order_rectified(self):
+        """*Return the rectified wavelength and slit position images for each order*
+
+        **Return:**
+
+            - ``orderRectifiedImages`` -- list of tuples of the form ``(wlImage, slitImage)`` for each order in ``self.orderSlices``
+        """
+        import numpy as np 
+        self.log.debug('starting the ``get_order_rectified`` method')
+
+        orderRectifiedImages = []
+        for orderTable in self.orderSlices:
+            order = orderTable["order"].iloc[0]
+            rectifiedImageDict = {}
+            for imageName in self._cache_image_names:
+                rectifiedImageDict[imageName] = np.vstack(orderTable[imageName])
+
+                if False:
+                    import matplotlib
+                    matplotlib.use("MacOSX")
+                    import matplotlib.pyplot as plt
+                    fig = plt.figure(
+                        num=None,
+                        figsize=(135, 1),
+                        dpi=None,
+                        facecolor=None,
+                        edgecolor=None,
+                        frameon=True,
+                    )
+                    fig.suptitle(f"{imageName}, order {order}", fontsize=16)
+                    plt.imshow(rectifiedImageDict[imageName].T, interpolation="none", aspect="auto")
+                    plt.show()
+
+            orderRectifiedImages.append(rectifiedImageDict)
+
+        self.log.debug('completed the ``get_order_rectified`` method')
+        return orderRectifiedImages
 
