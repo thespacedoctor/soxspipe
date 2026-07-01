@@ -201,14 +201,8 @@ class detect_order_edges(_base_detect):
         self.sliceLength = int(self.recipeSettings["slice-length-for-edge-detection"])
 
         self.sliceWidth = int(self.recipeSettings["slice-width-for-edge-detection"])
-        self.minThresholdPercenage = (
-            int(self.recipeSettings["min-percentage-threshold-for-edge-detection"])
-            / 100
-        )
-        self.maxThresholdPercenage = (
-            int(self.recipeSettings["max-percentage-threshold-for-edge-detection"])
-            / 100
-        )
+        self.minThresholdPercenage = int(self.recipeSettings["min-percentage-threshold-for-edge-detection"]) / 100
+        self.maxThresholdPercenage = int(self.recipeSettings["max-percentage-threshold-for-edge-detection"]) / 100
 
         # UNPACK THE ORDER TABLE (CENTRE LOCATION ONLY AT THIS STAGE)
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
@@ -238,37 +232,25 @@ class detect_order_edges(_base_detect):
         uniqueOrders = orderMetaTable["order"].unique()
 
         for o in uniqueOrders:
-            orderPixelTable.loc[
-                (orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]
-            ] = orderMetaTable.loc[
+            orderPixelTable.loc[(orderPixelTable["order"] == o), ["minThreshold", "maxThreshold"]] = orderMetaTable.loc[
                 (orderMetaTable["order"] == o), ["minThreshold", "maxThreshold"]
             ].values
 
-        self.log.print(
-            "\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET"
-        )
+        self.log.print("\tMEASURING PIXEL-POSITIONS AT ORDER-EDGES WHERE FLUX THRESHOLDS ARE MET")
         orderPixelTable[f"{self.axisA}coord_upper"] = np.nan
         orderPixelTable[f"{self.axisA}coord_lower"] = np.nan
-        orderPixelTable = orderPixelTable.apply(
-            self.determine_lower_upper_edge_pixel_positions, axis=1
-        )
+        orderPixelTable = orderPixelTable.apply(self.determine_lower_upper_edge_pixel_positions, axis=1)
 
         # DROP ROWS WITH NAN VALUES
-        orderPixelTable.dropna(
-            axis="index", how="any", subset=[f"{self.axisA}coord_upper"], inplace=True
-        )
-        orderPixelTable.dropna(
-            axis="index", how="any", subset=[f"{self.axisA}coord_lower"], inplace=True
-        )
+        orderPixelTable.dropna(axis="index", how="any", subset=[f"{self.axisA}coord_upper"], inplace=True)
+        orderPixelTable.dropna(axis="index", how="any", subset=[f"{self.axisA}coord_lower"], inplace=True)
 
         # MEASURE ORDER HEIGHT, FIND MEDIAN AND RE-ADJUST LOWER FROM UPPER EDGE
         orderPixelTable["order_height_upper"] = (
-            orderPixelTable[f"{self.axisA}coord_upper"]
-            - orderPixelTable[f"{self.axisA}coord_centre"]
+            orderPixelTable[f"{self.axisA}coord_upper"] - orderPixelTable[f"{self.axisA}coord_centre"]
         )
         orderPixelTable["order_height_lower"] = (
-            orderPixelTable[f"{self.axisA}coord_centre"]
-            - orderPixelTable[f"{self.axisA}coord_lower"]
+            orderPixelTable[f"{self.axisA}coord_centre"] - orderPixelTable[f"{self.axisA}coord_lower"]
         )
 
         # REDEFINE UNIQUE ORDERS IN CASE ONE OR MORE IS COMPLETELY MISSING
@@ -277,15 +259,15 @@ class detect_order_edges(_base_detect):
         # COUPLE THE UPPER AND LOWER EDGES FOR HOMOGENEOUS HEIGHT
         for o in uniqueOrders:
             mask = orderPixelTable["order"] == o
-            medianHeight = orderPixelTable.loc[mask][
-                "order_height_upper"
-            ].median() + mad_std(orderPixelTable.loc[mask]["order_height_upper"] * 3.0)
+            medianHeight = orderPixelTable.loc[mask]["order_height_upper"].median() + mad_std(
+                orderPixelTable.loc[mask]["order_height_upper"] * 3.0
+            )
             orderPixelTable.loc[mask, f"{self.axisA}coord_upper"] = (
                 orderPixelTable.loc[mask, f"{self.axisA}coord_centre"] + medianHeight
             )
-            medianHeight = orderPixelTable.loc[mask][
-                "order_height_lower"
-            ].median() + mad_std(orderPixelTable.loc[mask]["order_height_lower"] * 3.0)
+            medianHeight = orderPixelTable.loc[mask]["order_height_lower"].median() + mad_std(
+                orderPixelTable.loc[mask]["order_height_lower"] * 3.0
+            )
             orderPixelTable.loc[mask, f"{self.axisA}coord_lower"] = (
                 orderPixelTable.loc[mask, f"{self.axisA}coord_centre"] - medianHeight
             )
@@ -306,55 +288,33 @@ class detect_order_edges(_base_detect):
 
         for o in uniqueOrders:
             if self.extendToEdges:
-                orderMetaTable.loc[
-                    (orderMetaTable["order"] == o), f"{self.axisB}min"
-                ] = 0
-                orderMetaTable.loc[
-                    (orderMetaTable["order"] == o), f"{self.axisB}max"
-                ] = self.flatFrame.data.shape[maxAxis]
+                orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"] = 0
+                orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"] = self.flatFrame.data.shape[
+                    maxAxis
+                ]
             else:
-                orderMetaTable.loc[
-                    (orderMetaTable["order"] == o), f"{self.axisB}min"
-                ] = np.nanmin(
-                    orderPixelTable.loc[
-                        (orderPixelTable["order"] == o), [f"{self.axisB}coord"]
-                    ].values
+                orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"] = np.nanmin(
+                    orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values
                 )
-                orderMetaTable.loc[
-                    (orderMetaTable["order"] == o), f"{self.axisB}max"
-                ] = np.nanmax(
-                    orderPixelTable.loc[
-                        (orderPixelTable["order"] == o), [f"{self.axisB}coord"]
-                    ].values
+                orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"] = np.nanmax(
+                    orderPixelTable.loc[(orderPixelTable["order"] == o), [f"{self.axisB}coord"]].values
                 )
 
         # CONVERT COLUMN TYPE
-        orderPixelTable[f"{self.axisB}coord"] = orderPixelTable[
-            f"{self.axisB}coord"
-        ].astype(float)
-        orderPixelTable[f"{self.axisA}coord_upper"] = orderPixelTable[
-            f"{self.axisA}coord_upper"
-        ].astype(float)
-        orderPixelTable[f"{self.axisA}coord_lower"] = orderPixelTable[
-            f"{self.axisA}coord_lower"
-        ].astype(float)
+        orderPixelTable[f"{self.axisB}coord"] = orderPixelTable[f"{self.axisB}coord"].astype(float)
+        orderPixelTable[f"{self.axisA}coord_upper"] = orderPixelTable[f"{self.axisA}coord_upper"].astype(float)
+        orderPixelTable[f"{self.axisA}coord_lower"] = orderPixelTable[f"{self.axisA}coord_lower"].astype(float)
 
         # SETUP EXPONENTS AHEAD OF TIME - SAVES TIME ON POLY FITTING
         for i in range(0, self.axisBDeg + 1):
-            orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[
-                f"{self.axisB}coord"
-            ].pow(i)
+            orderPixelTable[f"{self.axisB}_pow_{i}"] = orderPixelTable[f"{self.axisB}coord"].pow(i)
         for i in range(0, self.orderDeg + 1):
             orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        self.log.print(
-            "\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n"
-        )
+        self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT UPPER ORDER-EDGES\n")
 
-        orderPixelTableUpper = orderPixelTable.dropna(
-            axis="index", how="any", subset=[f"{self.axisA}coord_upper"]
-        )
+        orderPixelTableUpper = orderPixelTable.dropna(axis="index", how="any", subset=[f"{self.axisA}coord_upper"])
 
         upperCoeff, orderPixelTableUpper, clippedUpper = self.fit_global_polynomial(
             pixelList=orderPixelTableUpper,
@@ -381,12 +341,8 @@ class detect_order_edges(_base_detect):
         )
 
         # ITERATIVELY FIT THE POLYNOMIAL SOLUTIONS TO THE DATA
-        self.log.print(
-            "\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n"
-        )
-        orderPixelTableLower = orderPixelTable.dropna(
-            axis="index", how="any", subset=[f"{self.axisA}coord_lower"]
-        )
+        self.log.print("\tFITTING POLYNOMIALS TO MEASURED PIXEL-POSITIONS AT LOWER ORDER-EDGES\n")
+        orderPixelTableLower = orderPixelTable.dropna(axis="index", how="any", subset=[f"{self.axisA}coord_lower"])
 
         lowerCoeff, orderPixelTableLower, clippedLower = self.fit_global_polynomial(
             pixelList=orderPixelTable,
@@ -413,9 +369,7 @@ class detect_order_edges(_base_detect):
         )
 
         if isinstance(lowerCoeff, type(None)) or isinstance(upperCoeff, type(None)):
-            raise Exception(
-                "Pipeline failed to determine the edges of the orders in this lamp-flat"
-            )
+            raise Exception("Pipeline failed to determine the edges of the orders in this lamp-flat")
 
         # orderLocations[o] = coeff
         coeff_dict = {
@@ -433,12 +387,7 @@ class detect_order_edges(_base_detect):
         coeffColumns = coeff_dict.keys()
 
         # RETURN BREAKDOWN OF ORDER EDGE DETECTION POSITION COUNTS (NEEDED TO COMPARE D and Q LAMPS)
-        orderDetectionCounts = (
-            orderPixelTable["order"]
-            .value_counts(normalize=False)
-            .sort_index()
-            .to_frame()
-        )
+        orderDetectionCounts = orderPixelTable["order"].value_counts(normalize=False).sort_index().to_frame()
 
         orderEdgePolyTable = pd.DataFrame([coeff_dict])
 
@@ -464,8 +413,7 @@ class detect_order_edges(_base_detect):
         max_res = np.max(np.abs(allResiduals))
         std_res = np.std(np.abs(allResiduals))
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # RECORD QCs
         if not isinstance(self.qc, bool):
@@ -793,12 +741,8 @@ class detect_order_edges(_base_detect):
         labelAdded = None
         for o in uniqueOrders:
             o = int(o)
-            axisBmin = orderMetaTable.loc[
-                (orderMetaTable["order"] == o), f"{self.axisB}min"
-            ].values[0]
-            axisBmax = orderMetaTable.loc[
-                (orderMetaTable["order"] == o), f"{self.axisB}max"
-            ].values[0]
+            axisBmin = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}min"].values[0]
+            axisBmax = orderMetaTable.loc[(orderMetaTable["order"] == o), f"{self.axisB}max"].values[0]
 
             df["order"] = o
             axisAfitupStart = poly(df, *coeffupper)
@@ -812,18 +756,10 @@ class detect_order_edges(_base_detect):
             #     self.flatFrame.data.shape[1] - xfit
             try:
                 axisAfitup, axisBfitup = zip(
-                    *[
-                        (a, b)
-                        for a, b in zip(axisAfitupStart, axisBlinelist)
-                        if a > 0 and a < (axisALength) - 10
-                    ]
+                    *[(a, b) for a, b in zip(axisAfitupStart, axisBlinelist) if a > 0 and a < (axisALength) - 10]
                 )
                 axisAfitlow, axisBfitlow = zip(
-                    *[
-                        (a, b)
-                        for a, b in zip(axisAfitlowStart, axisBlinelist)
-                        if a > 0 and a < (axisALength) - 10
-                    ]
+                    *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10]
                 )
             except:
                 continue
@@ -834,9 +770,7 @@ class detect_order_edges(_base_detect):
                     axisAfitlowExtra, axisBfitlowExtra = zip(
                         *[
                             (0, b)
-                            for a, b in zip(
-                                axisAfitlowStart[:half], axisBlinelist[:half]
-                            )
+                            for a, b in zip(axisAfitlowStart[:half], axisBlinelist[:half])
                             if (a < 0 or a > (axisALength) - 10) and b in axisBfitup
                         ]
                     )
@@ -848,9 +782,7 @@ class detect_order_edges(_base_detect):
                     axisAfitlowExtra, axisBfitlowExtra = zip(
                         *[
                             (0, b)
-                            for a, b in zip(
-                                axisAfitlowStart[half:], axisBlinelist[half:]
-                            )
+                            for a, b in zip(axisAfitlowStart[half:], axisBlinelist[half:])
                             if (a < 0 or a > (axisALength) - 10) and b in axisBfitup
                         ]
                     )
@@ -877,9 +809,7 @@ class detect_order_edges(_base_detect):
                 label1 = None
                 label2 = None
 
-            u = midrow.plot(
-                axisBfitup, axisAfitup, c=l[0].get_color(), label=label1, linewidth=0.1
-            )
+            u = midrow.plot(axisBfitup, axisAfitup, c=l[0].get_color(), label=label1, linewidth=0.1)
             try:
                 midrow.fill_between(
                     axisBfitlow,
@@ -935,17 +865,11 @@ class detect_order_edges(_base_detect):
                 )
                 orderResiduals = np.concatenate(
                     (
-                        orderPixelTableLower.loc[maskLower][
-                            f"{self.axisA}coord_lower_fit_res"
-                        ],
-                        orderPixelTableUpper.loc[maskUpper][
-                            f"{self.axisA}coord_upper_fit_res"
-                        ],
+                        orderPixelTableLower.loc[maskLower][f"{self.axisA}coord_lower_fit_res"],
+                        orderPixelTableUpper.loc[maskUpper][f"{self.axisA}coord_upper_fit_res"],
                     )
                 )
-                bottomleft.scatter(
-                    orderAxisACoords, orderResiduals, alpha=0.6, s=0.2, c=c
-                )
+                bottomleft.scatter(orderAxisACoords, orderResiduals, alpha=0.6, s=0.2, c=c)
                 try:
                     bottomleft.text(
                         orderAxisACoords[10],
@@ -957,9 +881,7 @@ class detect_order_edges(_base_detect):
                     )
                 except:
                     pass
-                bottomright.scatter(
-                    orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c
-                )
+                bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
                 try:
                     bottomright.text(
                         orderAxisBCoords[10],
@@ -1011,9 +933,7 @@ class detect_order_edges(_base_detect):
         if self.sofName:
             filename = self.sofName + f"_ORD_LOC.pdf"
         else:
-            filename = filenamer(
-                log=self.log, frame=self.flatFrame, settings=self.settings
-            )
+            filename = filenamer(log=self.log, frame=self.flatFrame, settings=self.settings)
             filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
@@ -1083,17 +1003,11 @@ class detect_order_edges(_base_detect):
         # SMOOTH WITH A MEDIAN FILTER
         medSlide = medfilt(slice, 9)
         # DETERMINE THRESHOLD FLUX VALUE
-        maxvalue = np.max(
-            medSlide[int(len(medSlide) / 2 - 8) : int(len(medSlide) / 2 + 8)]
-        )
+        maxvalue = np.max(medSlide[int(len(medSlide) / 2 - 8) : int(len(medSlide) / 2 + 8)])
         minvalue = np.min(medSlide)
 
-        orderData["minThreshold"] = (
-            minvalue + (maxvalue - minvalue) * minThresholdPercenage
-        )
-        orderData["maxThreshold"] = (
-            minvalue + (maxvalue - minvalue) * maxThresholdPercenage
-        )
+        orderData["minThreshold"] = minvalue + (maxvalue - minvalue) * minThresholdPercenage
+        orderData["maxThreshold"] = minvalue + (maxvalue - minvalue) * maxThresholdPercenage
         orderData["maxvalue"] = maxvalue
 
         # SANITY CHECK PLOT OF CROSS-SECTION
@@ -1182,17 +1096,11 @@ class detect_order_edges(_base_detect):
         medSlide = medfilt(slice, 9)
 
         # DETERMINE THRESHOLD FLUX VALUE
-        maxvalue = np.max(
-            medSlide[int(len(medSlide) / 2 - 8) : int(len(medSlide) / 2 + 8)]
-        )
+        maxvalue = np.max(medSlide[int(len(medSlide) / 2 - 8) : int(len(medSlide) / 2 + 8)])
         minvalue = np.min(medSlide)
 
-        orderData["minThreshold"] = (
-            minvalue + (maxvalue - minvalue) * minThresholdPercenage
-        )
-        orderData["maxThreshold"] = (
-            minvalue + (maxvalue - minvalue) * maxThresholdPercenage
-        )
+        orderData["minThreshold"] = minvalue + (maxvalue - minvalue) * minThresholdPercenage
+        orderData["maxThreshold"] = minvalue + (maxvalue - minvalue) * maxThresholdPercenage
         minThreshold = orderData["minThreshold"]
         maxThreshold = orderData["maxThreshold"]
         threshold = minThreshold
@@ -1228,22 +1136,18 @@ class detect_order_edges(_base_detect):
         # REPORT THE EXACT PIXEL POSTION AT THE FLUX THRESHOLD
         axisAmax = (
             axisAmaxguess
-            - (threshold - medSlide[axisAmaxguess])
-            / (medSlide[axisAmaxguess - 1] - medSlide[axisAmaxguess])
+            - (threshold - medSlide[axisAmaxguess]) / (medSlide[axisAmaxguess - 1] - medSlide[axisAmaxguess])
             - 2
         )
 
         axisAmin = (
             axisAminguess
-            + (threshold - medSlide[axisAminguess])
-            / (medSlide[axisAminguess + 1] - medSlide[axisAminguess])
+            + (threshold - medSlide[axisAminguess]) / (medSlide[axisAminguess + 1] - medSlide[axisAminguess])
             + 2
         )
 
         # IF THE WIDTH BETWEEN MIN AND MAX IS TOO SMALL THEN REJECT .. OR NEGATIVE MIN AND MAX THRESHOLDS
-        if (axisAmax - axisAmin < 10) or (
-            self.arm != "VIS" and (minThreshold < 0.01 or maxThreshold < 0.01)
-        ):
+        if (axisAmax - axisAmin < 10) or (self.arm != "VIS" and (minThreshold < 0.01 or maxThreshold < 0.01)):
             # SANITY CHECK PLOT OF CROSS-SECTION
             if False:
                 import matplotlib.pyplot as plt
@@ -1270,12 +1174,8 @@ class detect_order_edges(_base_detect):
                 plt.show()
             return orderData
         else:
-            orderData[f"{self.axisA}coord_upper"] = (
-                axisAmax + int(axisACoord - halfSlice) + 1
-            )
-            orderData[f"{self.axisA}coord_lower"] = (
-                axisAmin + int(axisACoord - halfSlice) - 1
-            )
+            orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice) + 1
+            orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice) - 1
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if False and random.randint(1, 5001) < 2000:

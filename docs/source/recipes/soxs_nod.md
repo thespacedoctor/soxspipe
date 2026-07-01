@@ -22,12 +22,12 @@
 
 ## Method
 
-The algorithm used in the `soxs_nod` recipe is shown in {numref}`soxs_nod_diagram`.
+The algorithm used in the `soxs_nod` and `soxs_nod_std` recipe is shown in {numref}`soxs_nod_diagram`.
 
 :::{figure-md} soxs_nod_diagram
 ![](soxs_nod.png){width=600px}
 
-The `soxs_nod` recipe reduced SOXS data acquired in nodding mode with one or multiple ABBA (jitter offsets) sequences. 
+The `soxs_nod` and `soxs_nod_std` recipes reduced SOXS data acquired in nodding mode with one or multiple ABBA (jitter offsets) sequences. 
 :::
 
 During nodding observations, as described in the SOXS Observing Mode sections, 2 locations on the slit, A and B, separated by a few arcseconds, are considered. Observations are performed in pairs of equal-length exposures called cycles. First, a spectrum is taken with the target located at slit-position A. The telescope is then shifted, or 'nodded', so the target is at slit-position B and a second spectrum is taken. This process is then repeated in reverse to acquire the third and fourth exposures at slit-positions B and A, a BA cycle.

@@ -198,7 +198,7 @@ class reducer(object):
                             self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
                             break
 
-                        recipe = row["recipe"].replace("_std", "").replace("_obj", "")
+                        recipe = row["recipe"].replace("_obj", "")
                         sof = row["sof"]
                         startTime = times.get_now_sql_datetime()
                         sof = self.sessionPath + "/sof/" + sof
@@ -238,9 +238,7 @@ class reducer(object):
                         runningTime = times.calculate_time_difference(startTime, endTime)
                         sys.argv[0] = os.path.basename(sys.argv[0])
 
-                        self.log.print(
-                            f'\nRecipe Command: {row["command"].replace("_obj ", " ").replace("_std ", " ")} '
-                        )
+                        self.log.print(f'\nRecipe Command: {row["command"].replace("_obj ", " ")} ')
                         self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                         if not self.daemon:
                             print(f"{'='*70}\n")
@@ -359,11 +357,7 @@ class reducer(object):
 
         rawGroups["command"] = (
             "soxspipe "
-            + rawGroups["recipe"]
-            .str.replace("-obj", "")
-            .str.replace("_obj", "")
-            .str.replace("-std", "")
-            .str.replace("_std", "")
+            + rawGroups["recipe"].str.replace("-obj", "").str.replace("_obj", "")
             + " sof/"
             + rawGroups["sof"]
         )
@@ -604,9 +598,7 @@ def run_recipe_bulk(
         except Exception as e:
             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
             log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-            log.error(
-                f'\nRecipe Command: {inputDict["command"].replace("-obj ", " ").replace("_obj ", " ").replace("-std ", " ").replace("_std ", " ")}\n\n'
-            )
+            log.error(f'\nRecipe Command: {inputDict["command"].replace("-obj ", " ").replace("_obj ", " ")}\n\n')
             returnDict["status"] = "fail"
             returnDict["error_message"] = e
 

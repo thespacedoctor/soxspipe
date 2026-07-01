@@ -1,0 +1,2 @@
+The [`soxs_nod_std`](#soxspipe.recipes.soxs_nod_std) recipe reduces the spectroscopic standard star frames produced by the NTT and SOXS from a nodding mode observation block. The standard trace is then fitted and extracted using an optimal extraction routine. Finally, the extracted flux of the standard is compared with its absolute-flux-calibrated spectrum (stored in a library of standard stars shipped with the pipeline) to generate a system response curve for flux-calibrating science object extractions.
+

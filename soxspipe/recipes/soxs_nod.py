@@ -154,6 +154,7 @@ class soxs_nod(base_recipe):
                         "ECHELLE,SLIT",
                         "ECHELLE,MULTI-PINHOLE",
                         "ECHELLE,SLIT,OFFSET",
+                        "ECHELLE,SLIT,NODDING",
                     ]:
                         error = f"Found a {i} file. Input frames for soxspipe offset need to be an object/std offset frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
         else:
@@ -841,6 +842,7 @@ class soxs_nod(base_recipe):
         )
         from astropy import units as u
         from specutils import Spectrum1D
+        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         if notFlattened:
             postfix = "_NOTFLAT"
@@ -892,8 +894,7 @@ class soxs_nod(base_recipe):
             groupedDataframe[col] = groupedDataframe[col].apply(lambda x: round(float(x), decimals))
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)
 
-        utcnow = datetime.utcnow()
-        self.utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        self.utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         self.dateObs = header[kw("DATE_OBS")]
 
         self.qc = add_snr_efficiency_qcs(
@@ -905,16 +906,19 @@ class soxs_nod(base_recipe):
             dateObs=self.dateObs,
         )
 
-        BinTableHDU = fits.table_to_hdu(stackedSpectrum)
-        priHDU = fits.PrimaryHDU(header=header)
-        hduList = fits.HDUList([priHDU, BinTableHDU])
-
         # WRITE PRODUCT TO DISK
         home = expanduser("~")
         filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
-        hduList.verify("fix")
-        hduList.writeto(filePath, checksum=True, overwrite=True)
+
+        write_fits_table_to_disk(
+            log=self.log,
+            settings=self.settings,
+            header=header,
+            tables=[stackedSpectrum],
+            filePath=filePath,
+            qc=self.qc,
+        )
 
         # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
         asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")

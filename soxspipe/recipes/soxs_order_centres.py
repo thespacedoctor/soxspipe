@@ -121,9 +121,7 @@ class soxs_order_centres(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"]
-        )
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
@@ -312,20 +310,14 @@ class soxs_order_centres(base_recipe):
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
             disp_map_table = i
 
-        self.orderFrame = self.detrend(
-            inputFrame=orderDef_image, master_bias=master_bias, dark=dark
-        )
+        self.orderFrame = self.detrend(inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
         self.update_fits_keywords(frame=self.orderFrame)
 
         if self.settings["save-intermediate-products"]:
             fileDir = self.workspaceRootPath
-            filepath = self._write(
-                self.orderFrame, fileDir, filename=False, overwrite=True, product=False
-            )
-            self.log.print(
-                f"\nCalibrated single pinhole frame frame saved to {filepath}\n"
-            )
+            filepath = self._write(self.orderFrame, fileDir, filename=False, overwrite=True, product=False)
+            self.log.print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
         # FIND THE APPROPRIATE PREDICTED LINE-LIST
         if arm != "NIR" and kw("WIN_BINX") in self.orderFrame.header:
@@ -395,12 +387,8 @@ class soxs_order_centres(base_recipe):
             if self.polyOrders:
                 self.polyOrders = str(self.polyOrders)
                 self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
-                self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[
-                    0
-                ]
-                self.recipeSettings["detect-continuum"]["disp-axis-deg"] = (
-                    self.polyOrders[1]
-                )
+                self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
+                self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
 
             # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
             # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
@@ -432,8 +420,7 @@ class soxs_order_centres(base_recipe):
 
         filename = os.path.basename(productPath)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         self.dateObs = self.orderFrame.header[kw("DATE_OBS")]
 
         self.products = pd.concat(

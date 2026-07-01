@@ -10,6 +10,7 @@ from .detect_continuum import detect_continuum
 from .detect_continuum import _base_detect
 from . import polynomials
 from . import toolkit
+from . import phase3
 from .detect_order_edges import detect_order_edges
 from .filenamer import filenamer
 from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
@@ -22,5 +23,7 @@ from .horne_extraction import horne_extraction
 from .response_function import response_function
 from .flux_calibration import flux_calibration
 from .reducer import reducer
+from .image_transformer import image_transformer
+from .base_util import base_util
 
 # from .set_of_files import set_of_files

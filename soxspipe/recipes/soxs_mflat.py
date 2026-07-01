@@ -475,8 +475,7 @@ class soxs_mflat(base_recipe):
                     surfacePlot=True,
                 )
 
-                utcnow = datetime.utcnow()
-                utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+                utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
                 backgroundFrame.header = copy.deepcopy(combined_normalised_flat.header)
                 backgroundQCImage = self.sofName + "_BKGROUND.fits"
@@ -516,8 +515,7 @@ class soxs_mflat(base_recipe):
             # WRITE MFLAT TO FILE
             productPath = self._write(mflat.copy(), outDir, filename=self.sofName + ".fits", overwrite=True)
 
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
             basename = os.path.basename(productPath)
 
             if len(tag):
@@ -576,8 +574,7 @@ class soxs_mflat(base_recipe):
         # WRITE MFLAT TO FILE
         productPath = self._write(mflat, outDir, overwrite=True)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         basename = os.path.basename(productPath)
         self.products = pd.concat(
             [
@@ -994,8 +991,7 @@ class soxs_mflat(base_recipe):
             # if ORDEXP50 < 100:
             #     raise ValueError("FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
 
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
             self.qc = pd.concat(
                 [
@@ -1222,8 +1218,7 @@ class soxs_mflat(base_recipe):
         lowSensPixelCount = lowSensitivityPixelMask.sum()
 
         if writeQC:
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
             self.qc = pd.concat(
                 [
                     self.qc,

@@ -505,8 +505,7 @@ class soxs_stare(base_recipe):
                     maskToZero=True,
                 )
                 filename = os.path.basename(productPath)
-                utcnow = datetime.utcnow()
-                utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+                utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
                 self.products = pd.concat(
                     [
                         self.products,
@@ -613,33 +612,21 @@ class soxs_stare(base_recipe):
             skySubtractedCCDData = combined_object
 
         if self.subtractSky:
-            skymodel = subtract_sky(
-                log=self.log,
-                settings=self.settings,
-                recipeSettings=self.recipeSettings,
-                objectFrame=combined_object_notflattened,
-                twoDMap=twoDMap,
-                qcTable=self.qc,
-                productsTable=self.products,
-                dispMap=dispMap,
-                sofName=self.sofName,
-                recipeName=self.recipeName,
-                startNightDate=self.startNightDate,
-                debug=self.debug,
-            )
-            (
-                unflattenedSkymodelCCDData,
-                unflattenedSkySubtractedCCDData,
-                unflattenedSkySubtractedResidualsCCDData,
-                self.qc,
-                self.products,
-            ) = skymodel.subtract()
-            if not unflattenedSkymodelCCDData:
-                unflattenedSkySubtractedCCDData = combined_object_notflattened
-                unflattenedSkymodelCCDData = False
+            if master_flat:
+                unflattenedSkySubtractedCCDData = skySubtractedCCDData.multiply(master_flat)
+                unflattenedSkySubtractedCCDData.uncertainty = combined_object.uncertainty.array
+                unflattenedSkySubtractedCCDData.header = skySubtractedCCDData.header
+            else:
+                unflattenedSkySubtractedCCDData = skySubtractedCCDData
         else:
             unflattenedSkySubtractedCCDData = combined_object_notflattened
             unflattenedSkymodelCCDData = False
+
+        
+        from soxspipe.commonutils.toolkit import quicklook_image
+        quicklook_image(
+            log=self.log, CCDObject=combined_object_notflattened, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
+        
 
         from soxspipe.commonutils import horne_extraction
 

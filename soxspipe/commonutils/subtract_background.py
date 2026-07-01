@@ -187,9 +187,7 @@ class subtract_background(object):
 
         backgroundFrame = self.create_background_image(
             rowFitOrder=self.settings["background-subtraction"]["bspline-deg"],
-            gaussianSigma=self.settings["background-subtraction"][
-                "gaussian-blur-sigma"
-            ],
+            gaussianSigma=self.settings["background-subtraction"]["gaussian-blur-sigma"],
         )
         toolkit.frame_to_32(backgroundFrame)
 
@@ -220,8 +218,7 @@ class subtract_background(object):
         if saveToPath and not isinstance(self.products, bool):
             from datetime import datetime
 
-            utcnow = datetime.utcnow()
-            utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
             self.products = pd.concat(
                 [
                     self.products,

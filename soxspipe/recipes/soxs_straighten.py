@@ -90,9 +90,7 @@ class soxs_straighten(base_recipe):
 
         # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
         # EXTENSIONS
-        self.inputFrames = self.prepare_frames(
-            save=self.settings["save-intermediate-products"]
-        )
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return None
 
@@ -142,13 +140,9 @@ class soxs_straighten(base_recipe):
 
         # LOOK FOR ****
         arm = self.arm
-        if (
-            arm not in self.supplementaryInput
-            or "2D_MAP" not in self.supplementaryInput[arm]
-        ):
+        if arm not in self.supplementaryInput or "2D_MAP" not in self.supplementaryInput[arm]:
             raise TypeError(
-                "Need a full dispersion/spatial solution for %(arm)s - none found with the input files"
-                % locals()
+                "Need a full dispersion/spatial solution for %(arm)s - none found with the input files" % locals()
             )
 
         if error:
@@ -192,8 +186,7 @@ class soxs_straighten(base_recipe):
 
         # filename = os.path.basename(productPath)
 
-        utcnow = datetime.utcnow()
-        utcnow = utcnow.strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # xsoxs-append-to-product-report-table
 
