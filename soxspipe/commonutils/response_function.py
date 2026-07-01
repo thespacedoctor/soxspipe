@@ -88,6 +88,20 @@ class response_function(object):
         from soxspipe.commonutils.toolkit import get_calibrations_path
         from astropy.table import Table
         from astropy.io import fits
+        from soxspipe.commonutils import detector_lookup
+        from soxspipe.commonutils import keyword_lookup
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        self.kw = keyword_lookup(log=self.log, settings=self.settings).get
+        kw = self.kw
+
+        hdul = fits.open(self.stdExtractionPath)
+        self.header = hdul[0].header
+        self.arm = self.header[kw("SEQ_ARM")].strip().upper()  # KW lookup
+        self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
+        self.dateObs = self.header[kw("DATE_OBS")]
+        self.texp = float(self.header[kw("EXPTIME")])
 
         # CONVERTING EXTRACTION (BACK) TO DATAFRAME
         self.stdExtractionDF = Table.read(self.stdExtractionPath, format="fits")
@@ -98,20 +112,23 @@ class response_function(object):
 
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
-        from soxspipe.commonutils import keyword_lookup
+        
 
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        self.kw = keyword_lookup(log=self.log, settings=self.settings).get
-        kw = self.kw
+        
+
+        # GET THE ABSOLUTE STANDARD STAR FLUXES, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
+        stdAbsFluxDF = Table.read(
+            self.calibrationRootPath + "/" + self.detectorParams["flux-standards"],
+            format="fits",
+        )
+        self.stdAbsFluxDF = stdAbsFluxDF.to_pandas()
+        # MAKE ALL COLUMNS UPPERCASE
+        self.stdAbsFluxDF.columns = [d.upper() for d in self.stdAbsFluxDF.columns]
 
         stdNames = ["LTT7987", "EG274", "LTT3218", "EG21"]
         stdAkas = ["CD-3017706", "CD-3810980", "CD-325613", "CPD-69177"]
 
-        hdul = fits.open(self.stdExtractionPath)
-        self.header = hdul[0].header
-        self.dateObs = self.header[kw("DATE_OBS")]
-        self.texp = float(self.header[kw("EXPTIME")])
+        
         if self.instrument == "xsh":
             # Name is in the format 'EG 274'
             self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()
@@ -124,6 +141,8 @@ class response_function(object):
                     self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()
                 except:
                     pass
+
+
 
         self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")  # Hack to reduce xsh data
 
@@ -141,6 +160,13 @@ class response_function(object):
                 if self.std_objName == a:
                     self.std_objName = s
 
+        if self.std_objName not in self.stdAbsFluxDF.columns:
+            for name in self.stdAbsFluxDF.columns:
+                if name in self.std_objName:
+                    self.std_objName = name
+                    break
+
+
         self.log.print(f"STANDARD-STAR: {self.std_objName}")
         # USING THE AVERAGE AIR MASS
         if self.instrument == "soxs":
@@ -151,12 +177,7 @@ class response_function(object):
             airmass_start = float(self.header[kw("AIRM_START")])
             airmass_end = float(self.header[kw("AIRM_END")])
         self.airmass = (airmass_start + airmass_end) / 2
-        self.arm = self.header[kw("SEQ_ARM")].strip().upper()  # KW lookup
-
-        # DETECTOR PARAMETERS LOOKUP OBJECT
-        from soxspipe.commonutils import detector_lookup
-
-        self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
+        
 
         from soxspipe.commonutils.toolkit import utility_setup
 
@@ -194,16 +215,10 @@ class response_function(object):
         stdExtWaveNotFlat = self.stdExtractionNotFlatDF["WAVE"].values
         stdExtFluxNotFlat = self.stdExtractionNotFlatDF["FLUX_DENSITY_COUNTS"].values
 
-        # GET THE ABSOLUTE STANDARD STAR FLUXES, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
-        stdAbsFluxDF = Table.read(
-            self.calibrationRootPath + "/" + self.detectorParams["flux-standards"],
-            format="fits",
-        )
-        stdAbsFluxDF = stdAbsFluxDF.to_pandas()
-        # MAKE ALL COLUMNS UPPERCASE
-        stdAbsFluxDF.columns = [d.upper() for d in stdAbsFluxDF.columns]
+        
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
+        stdAbsFluxDF = self.stdAbsFluxDF
         stdAbsFluxDF = stdAbsFluxDF[
             (stdAbsFluxDF["WAVE"] > np.min(stdExtWaveNotFlat) - 10)
             & (stdAbsFluxDF["WAVE"] < 10 + np.max(stdExtWaveNotFlat))
