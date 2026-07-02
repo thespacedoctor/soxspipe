@@ -2082,7 +2082,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                     {
                         "soxspipe_recipe": recipeName,
                         "qc_name": "EFF MEDIAN",
-                        "qc_value": float(f"{medianEfficiency:0.2f}"),
+                        "qc_value": float(f"{medianEfficiency:0.4f}"),
                         "qc_comment": "Median efficiency across all orders",
                         "qc_unit": None,
                         "obs_date_utc": dateObs,
@@ -2107,7 +2107,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                         {
                             "soxspipe_recipe": recipeName,
                             "qc_name": f"EFF MEDIAN",
-                            "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.2f}"),
+                            "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.4f}"),
                             "qc_comment": f"Median efficiency in order {row['ORDER']}",
                             "qc_order": row["ORDER"],
                             "qc_unit": None,
@@ -2131,7 +2131,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                     {
                         "soxspipe_recipe": recipeName,
                         "qc_name": "SNR MEDIAN",
-                        "qc_value": float(f"{medianSNR:0.2f}"),
+                        "qc_value": float(f"{medianSNR:0.3f}"),
                         "qc_comment": "Median SNR across all orders",
                         "qc_unit": None,
                         "obs_date_utc": dateObs,
@@ -2155,7 +2155,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                         {
                             "soxspipe_recipe": recipeName,
                             "qc_name": f"SNR MEDIAN",
-                            "qc_value": float(f"{row['MEDIAN_SNR']:0.2f}"),
+                            "qc_value": float(f"{row['MEDIAN_SNR']:0.3f}"),
                             "qc_comment": f"Median SNR in order {row['ORDER']}",
                             "qc_order": row["ORDER"],
                             "qc_unit": None,

@@ -1000,7 +1000,7 @@ class soxs_mflat(base_recipe):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "ORDEXP10",
-                            "qc_value": f"{ORDEXP10:0.2f}",
+                            "qc_value": f"{ORDEXP10:0.23f}",
                             "qc_comment": "[e-] 10th percentile inter-order flux",
                             "qc_unit": "electrons",
                             "obs_date_utc": self.dateObs,
@@ -1020,7 +1020,7 @@ class soxs_mflat(base_recipe):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "ORDEXP50",
-                            "qc_value": f"{ORDEXP50:0.2f}",
+                            "qc_value": f"{ORDEXP50:0.3f}",
                             "qc_comment": "[e-] 50th percentile inter-order flux",
                             "qc_unit": "electrons",
                             "obs_date_utc": self.dateObs,
@@ -1040,7 +1040,7 @@ class soxs_mflat(base_recipe):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "ORDEXP90",
-                            "qc_value": f"{ORDEXP90:0.2f}",
+                            "qc_value": f"{ORDEXP90:0.3f}",
                             "qc_comment": "[e-] 90th percentile inter-order flux",
                             "qc_unit": "electrons",
                             "obs_date_utc": self.dateObs,

@@ -1521,7 +1521,7 @@ class base_recipe(object):
             for col in qc_display.columns:
                 qc_display[col] = qc_display[col].apply(
                     lambda x: (
-                        f"{float(x):.3f}"
+                        f"{float(x):.4f}"
                         if isinstance(x, (int, float))
                         or (isinstance(x, str) and x.replace(".", "", 1).replace("-", "", 1).isdigit())
                         else x

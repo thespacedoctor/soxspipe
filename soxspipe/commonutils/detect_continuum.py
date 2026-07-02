@@ -354,7 +354,7 @@ class _base_detect(object):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MIN",
-                            "qc_value": f"{res.min():0.2f}",
+                            "qc_value": f"{res.min():0.3f}",
                             "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
@@ -374,7 +374,7 @@ class _base_detect(object):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MAX",
-                            "qc_value": f"{res.max():0.2f}",
+                            "qc_value": f"{res.max():0.3f}",
                             "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
@@ -394,7 +394,7 @@ class _base_detect(object):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES SD",
-                            "qc_value": f"{res_std:0.2f}",
+                            "qc_value": f"{res_std:0.3f}",
                             "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
@@ -415,7 +415,7 @@ class _base_detect(object):
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MEDIAN",
-                            "qc_value": f"{res_mean:0.2f}",
+                            "qc_value": f"{res_mean:0.3f}",
                             "qc_comment": f"[px] Median abolute residual {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
