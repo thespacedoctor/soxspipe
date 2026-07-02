@@ -12,20 +12,21 @@ ignore-dflats: True
 ignore-dome-flats: True
 
 soxs-mbias:
-    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
-    stacked-clipping-sigma: 3
-    stacked-clipping-iterations: 3 
-    # MASTER BIAS FRAME CLIPPING PARAMETERS. 
-    frame-clipping-sigma: 4 
+    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
+    frame-clipping-sigma: 3 
     frame-clipping-iterations: 3
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
+    stacked-clipping-sigma: 4
+    stacked-clipping-iterations: 3
     qc-acceptable-ranges:
         master-ron: [0,10]
         fpn-fracmax: [0,3]
         mbias-median: [0, 2000]
         raw-ron: [0,15]
-        structx: [-3,1]
-        structy: [-0.01,0.6]
+        structx: [-4,+4]
+        structy: [-0.6,0.6]
         detector-temp: [0,165]
+        
 
 soxs-mdark:
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
