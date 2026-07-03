@@ -125,46 +125,33 @@ class response_function(object):
         # MAKE ALL COLUMNS UPPERCASE
         self.stdAbsFluxDF.columns = [d.upper() for d in self.stdAbsFluxDF.columns]
 
-        stdNames = ["LTT7987", "EG274", "LTT3218", "EG21"]
-        stdAkas = ["CD-3017706", "CD-3810980", "CD-325613", "CPD-69177"]
+        # NAME: AKA
+        stdAkas = {
+            "LTT7987": "CD3017706",
+            "EG274": "CD3810980",
+            "LTT3218": "CD325613",
+            "EG21": "CPD69177",
+        }
 
-        
-        if self.instrument == "xsh":
-            # Name is in the format 'EG 274'
-            self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()
-        else:
-            # Name is in the format 'EG 274'
-            self.std_objName = self.header[kw("OBJECT")].strip().upper()
+        self.std_objName = ""
+        for ii in kw("OBS_TARG_NAME"), kw("OBJECT"), kw("OBS_NAME"):
+            if ii in self.header:
+                self.std_objName += self.header[ii].strip().upper().replace(" ", "").replace("-", "").replace("_", "")
 
-            if "STD," in self.std_objName:
-                try:
-                    self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()
-                except:
-                    pass
+        for k,v in stdAkas.items():
+            if v in self.std_objName:
+                self.std_objName = k
+                break   
 
-
-
-        self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")  # Hack to reduce xsh data
-
-        # REMOVE SPACES IN NAME
-        self.std_objName = self.std_objName.replace(" ", "").replace("-", "").replace("_", "")
-        self.std_objName = self.std_objName.replace("_NOD", "")
-
+        for ii in self.stdAbsFluxDF.columns:
+            if ii in self.std_objName:
+                self.std_objName = ii
+                break
+    
         if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
             # STD STAR GIVEN, READING THE NON FLAT FIELDED SPECTRUM
             self.stdExtractionNotFlatDF = Table.read(stdNotFlatExtractionPath, format="fits")
             self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF.to_pandas()
-        if self.std_objName in stdAkas:
-            for s, a in zip(stdNames, stdAkas):
-                if self.std_objName == a:
-                    self.std_objName = s
-
-        if self.std_objName not in self.stdAbsFluxDF.columns:
-            for name in self.stdAbsFluxDF.columns:
-                if name in self.std_objName:
-                    self.std_objName = name
-                    break
-
 
         self.log.print(f"STANDARD-STAR: {self.std_objName}")
         # USING THE AVERAGE AIR MASS
@@ -214,7 +201,11 @@ class response_function(object):
         stdExtWaveNotFlat = self.stdExtractionNotFlatDF["WAVE"].values
         stdExtFluxNotFlat = self.stdExtractionNotFlatDF["FLUX_DENSITY_COUNTS"].values
 
-        
+        if self.std_objName not in self.stdAbsFluxDF.columns:
+            self.log.error(
+                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
+            )            
+            raise LookupError(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}")
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
         stdAbsFluxDF = self.stdAbsFluxDF
@@ -223,23 +214,13 @@ class response_function(object):
             & (stdAbsFluxDF["WAVE"] < 10 + np.max(stdExtWaveNotFlat))
         ]
 
-        # FLUX IS CONVERTED IN ERG / CM2 / S / ANG
-        try:
-            self.std_wavelength_to_abs_flux = interp1d(
-                np.array(stdAbsFluxDF["WAVE"]),
-                np.array(stdAbsFluxDF[self.std_objName]) * 10**17,
-                kind="next",
-                fill_value="extrapolate",
-            )
-        except Exception as e:
-            self.log.warning(
-                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(stdAbsFluxDF.columns[1:])}"
-            )
-            return (
-                self.qc,
-                self.products,
-                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(stdAbsFluxDF.columns[1:])}",
-            )
+        # FLUX IS CONVERTED IN ERG / CM2 / S / ANGs
+        self.std_wavelength_to_abs_flux = interp1d(
+            np.array(stdAbsFluxDF["WAVE"]),
+            np.array(stdAbsFluxDF[self.std_objName]) * 10**17,
+            kind="next",
+            fill_value="extrapolate",
+        )
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
         if self.arm == "NIR":
