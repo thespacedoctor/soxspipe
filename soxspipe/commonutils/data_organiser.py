@@ -1866,6 +1866,37 @@ class data_organiser(object):
         c.execute(sqlQuery)
         self.conn.commit()
 
+        # FLAG STANDARDS NOT IN STATIC LIBRARY TO IGNORE
+        sqlQuery = """UPDATE raw_frames
+        SET IGNORE = 1
+        WHERE rowid IN (
+            SELECT rowid
+            FROM (
+                SELECT
+                    rowid,
+                    replace(replace(replace(IFNULL("eso obs name","") || IFNULL("eso obs targ name",""), "_", ""), " ", ""), "-", "") AS matchStr,
+                    "eso dpr type" AS dprType
+                FROM raw_frames
+            )
+            WHERE
+                dprType LIKE "%STD,FLUX%"
+                AND NOT (
+                    matchStr LIKE "%GD71%" OR
+                    matchStr LIKE "%LTT3218%" OR
+                    matchStr LIKE "%GD153%" OR
+                    matchStr LIKE "%EG274%" OR
+                    matchStr LIKE "%LTT7987%" OR
+                    matchStr LIKE "%FEIGE110%" OR
+                    matchStr LIKE "%EG21%" OR
+                    matchStr LIKE "%CD3017706%" OR
+                    matchStr LIKE "%CD3810980%" OR
+                    matchStr LIKE "%CD325613%" OR
+                    matchStr LIKE "%CPD69177%"
+            )
+        );"""
+        c.execute(sqlQuery)
+        self.conn.commit()
+
         # FLAG SIMULATION FILES TO IGNORE
         sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not like '%OBJECT%' and `eso dpr type` not like '%STD%' and simulation = 1"
         c.execute(sqlQuery)
