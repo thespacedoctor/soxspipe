@@ -1,5 +1,11 @@
 # Release Notes
 
+* **REFACTOR**: Update predicted paths for standard response products (now looks for RESP function instead of merge spectra when deciding if the data has been reduced yet).
+* **FIXED**: Improve flux standard matching via 3 FITS header keywords
+* **FIXED**: Ignore flux standards missing from the static library when creating SOF files
+* **REFACTOR**: Broaden master bias structure QC acceptable ranges.
+* **REFACTOR**: Increase decimal precision for many QC metrics.
+
 ## v0.17.2 - July 1, 2026
 
 * **FEATURE**: Added `image_transformer` module to help with image rectification.
