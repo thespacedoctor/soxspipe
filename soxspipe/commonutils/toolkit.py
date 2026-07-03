@@ -1183,9 +1183,13 @@ def predict_product_path(sofName, recipeName=False):
     currentSession, allSessions = do.session_list(silent=True)
     do.close()
 
-    if "_STARE" in sofName:
+    if "_STARE_STD" in sofName:
+        sofName += "_RESP"
+    elif "_NOD_STD" in sofName:
+        sofName += "_RESP"
+    elif "_STARE_STD" in sofName:
         sofName += "_EXTRACTED_MERGED"
-    if "_NOD" in sofName:
+    elif "_NOD_STD" in sofName:
         sofName += "_EXTRACTED_MERGED"
     productPath = (
         f"./sessions/{currentSession}/reduced/{startNightDate}/"
