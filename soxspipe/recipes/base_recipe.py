@@ -1444,7 +1444,7 @@ class base_recipe(object):
             utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         if master_flat != False:
-            processedFrame = ccdproc.flat_correct(processedFrame, master_flat, add_keyword=None)
+            processedFrame = ccdproc.flat_correct(processedFrame, master_flat, norm_value=1.0, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
         self.log.debug("completed the ``detrend`` method")
