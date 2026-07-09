@@ -1,5 +1,8 @@
 # Release Notes
 
+fixing issue with stare efficiencies
+fixing database to collect the correct response curves
+
 ## v0.17.2 - July 1, 2026
 
 * **FEATURE**: Added `image_transformer` module to help with image rectification.
