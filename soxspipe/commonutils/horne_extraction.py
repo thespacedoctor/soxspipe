@@ -1629,7 +1629,8 @@ def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
         horneNumeratorSum / horneDenominatorSum
     )
     crossDispersionSlicesDF["extractedFluxBoxcar"] = orderRectifiedImages["fluxRaw"].sum(axis=1)
-    crossDispersionSlicesDF["skyFlux"] = orderRectifiedImages["fluxSky"].mean(axis=1)
+    if "fluxSky" in orderRectifiedImages.keys():
+        crossDispersionSlicesDF["skyFlux"] = orderRectifiedImages["fluxSky"].mean(axis=1)
     crossDispersionSlicesDF["extractedFluxBoxcarRobust"] = np.ma.masked_array(orderRectifiedImages["fluxRaw"], mask=orderRectifiedImages["mask"]).sum(axis=1).astype(float)
     crossDispersionSlicesDF["snr"] = crossDispersionSlicesDF["extractedFluxOptimal"] / np.power(
         crossDispersionSlicesDF["varianceSpectrum"], 0.5

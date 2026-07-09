@@ -1,5 +1,8 @@
 # Release Notes
 
+## v0.17.4 - July 9, 2026
+
+* **FIXED**: standard extraction fail when no sky have been subtracted.
 
 ## v0.17.3 - July 9, 2026
 
