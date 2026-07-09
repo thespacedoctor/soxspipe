@@ -93,7 +93,7 @@ where = ["."]
 exclude = ["tests", "tests.*"]
 
 
-[tool.setuptools_scm]
+[tool.setuptools.scm]
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 write_to = "soxspipe/__version__.py"
