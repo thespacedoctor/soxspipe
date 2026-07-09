@@ -1,5 +1,12 @@
 # Release Notes
 
+
+## v0.17.3 - July 9, 2026
+
+* **FIXED**: typo in `pyproject.toml` causing version to be reported as `v0.0.0`.
+* **FIXED**: issue with stare efficiencies being reported lower than expected (issue with unflattening sky-subtracted data).
+* **FIXED**: database to collect the correct response curves for science objects.
+
 ## v0.17.2 - July 1, 2026
 
 * **FEATURE**: Added `image_transformer` module to help with image rectification.

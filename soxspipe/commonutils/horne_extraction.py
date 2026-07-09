@@ -532,7 +532,7 @@ class horne_extraction(base_util):
         extractedOrdersDF = extractedOrdersDF.loc[
             extractedOrdersDF["pixelScaleNm"] < 3
         ]  # FILTER OUT ANY REMAINING BAD PIXELS WITH UNREALISTICALLY LARGE PIXEL SCALE (I.E. WAVELENGTH JUMPS BETWEEN ADJACENT PIXELS)
-        if True:
+        if False:
             extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm)
             extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm, byOrder=False)
 
