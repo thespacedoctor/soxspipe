@@ -126,7 +126,7 @@ class response_function(object):
         self.stdAbsFluxDF.columns = [d.upper() for d in self.stdAbsFluxDF.columns]
 
         stdNames = ["LTT7987", "EG274", "LTT3218", "EG21"]
-        stdAkas = ["CD-3017706", "CD-3810980", "CD-325613", "CPD-69177"]
+        stdAkas = ["CD3017706", "CD3810980", "CD325613", "CPD69177"]
 
         
         if self.instrument == "xsh":
