@@ -442,9 +442,6 @@ class soxs_nod(base_recipe):
                 [allSpectrumA, allSpectrumB], orderJoins=orderJoins
             )
 
-            if self.generateReponseCurve:
-                forceFailure = True
-
         else:
 
             # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
