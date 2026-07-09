@@ -6,6 +6,7 @@
 * **FIXED**: issue with stare efficiencies being reported lower than expected (issue with unflattening sky-subtracted data).
 * **FIXED**: database to collect the correct response curves for science objects.
 * **FIXED**: matching against STD akas.
+* **FIXED**: other bugs squashed
 
 ## v0.17.2 - July 1, 2026
 
