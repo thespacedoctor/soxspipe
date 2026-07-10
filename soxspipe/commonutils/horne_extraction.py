@@ -1587,6 +1587,9 @@ def extract_single_order(
 
     extractions = compute_extractions(crossDispersionSlicesDF=crossDispersionSlicesDF, orderRectifiedImages=orderRectifiedImages, order=order)
 
+    if "skyFlux" not in extractions.columns:
+        extractions["skyFlux"] = np.nan
+
     return extractions[
         [
             "order",
