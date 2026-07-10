@@ -3,6 +3,10 @@
 pinning the normalisation factor using by ccdproc for flat correction
 * **REFACTOR**: Update predicted paths for standard response products (now looks for RESP function instead of merge spectra when deciding if the data has been reduced yet).
 * **FIXED**: Improve flux standard matching via 3 FITS header keywords
+
+## v0.17.4 - July 9, 2026
+
+* **FIXED**: standard extraction fail when no sky have been subtracted.
 * **FIXED**: Ignore flux standards missing from the static library when creating SOF files
 * **REFACTOR**: Broaden master bias structure QC acceptable ranges.
 * **REFACTOR**: Increase decimal precision for many QC metrics.
