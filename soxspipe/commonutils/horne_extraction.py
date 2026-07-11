@@ -343,7 +343,6 @@ class horne_extraction(base_util):
             poolSize=False,
             timeout=300,
             funclog=self.log,
-            ron=self.ron,
             slitHalfLength=self.slitHalfLength,
             clippingSigma=self.clippingSigma,
             clippingIterationLimit=self.clippingIterationLimit,
@@ -1367,7 +1366,6 @@ class horne_extraction(base_util):
 def extract_single_order(
     inputData,
     funclog,
-    ron,
     slitHalfLength,
     clippingSigma,
     clippingIterationLimit,
