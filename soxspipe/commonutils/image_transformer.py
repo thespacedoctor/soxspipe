@@ -180,7 +180,16 @@ class image_transformer(base_util):
                     frameon=True,
                 )
                 fig.suptitle(f"{imageName}, order {order}", fontsize=16)
-                plt.imshow(flux, interpolation="none", aspect="auto")
+                # ROWS ARE SLIT POSITION (Y-AXIS), COLUMNS ARE WAVELENGTH (X-AXIS)
+                plt.imshow(
+                    flux,
+                    interpolation="none",
+                    aspect="auto",
+                    origin="lower",
+                    extent=[wl_edges[0], wl_edges[-1], sp_edges[0], sp_edges[-1]],
+                )
+                plt.xlabel("Wavelength (Å)")
+                plt.ylabel("Slit Position (arcsec)")
                 plt.show()
 
         self.log.debug('completed the ``cache_image`` method')
@@ -233,6 +242,8 @@ class image_transformer(base_util):
             "slit_position": np.concatenate(spChunks),
         })
 
+        cornersDF = cornersDF.astype({"order": int, "wavelength": float, "slit_position": float})
+
         # SINGLE BATCHED CONVERSION OF ALL BOUNDARY CORNER POINTS FROM WAVELENGTH/SLIT/ORDER TO DETECTOR X,Y
         # removeOffDetectorLocation=False: EVERY CORNER (EVEN OFF-DETECTOR) MUST BE KEPT TO PRESERVE POLYGON GEOMETRY AND ROW ORDER
         resultDF = dispersion_map_to_pixel_arrays(
@@ -240,10 +251,16 @@ class image_transformer(base_util):
             dispersionMapPath=self.dispersionMap,
             orderPixelTable=cornersDF,
             removeOffDetectorLocation=False,
-            trimColumns=False,
+            trimColumns=True,
         )
         fit_x = resultDF["fit_x"].to_numpy()
         fit_y = resultDF["fit_y"].to_numpy()
+
+        
+        from tabulate import tabulate
+        print(tabulate(resultDF, headers='keys', tablefmt='psql'))
+        
+        
 
         # REBUILD THE PER-ORDER RESAMPLING WEIGHTS FROM THE FLAT BOUNDARY CORNER TABLE
         resamplingWeights = {}
@@ -505,7 +522,7 @@ class image_transformer(base_util):
         self.log.debug('starting the ``get_order_rectified`` method')
 
         orderRectifiedImages = []
-        for orderTable in self.orderSlices:
+        for orderTable, sp_edges, wl_edges in zip(self.orderSlices, self.orderSlitEdges, self.orderWlEdges):
             order = orderTable["order"].iloc[0]
             rectifiedImageDict = {}
             for imageName in self._cache_image_names:
@@ -524,7 +541,16 @@ class image_transformer(base_util):
                         frameon=True,
                     )
                     fig.suptitle(f"{imageName}, order {order}", fontsize=16)
-                    plt.imshow(rectifiedImageDict[imageName].T, interpolation="none", aspect="auto")
+                    # ROWS ARE SLIT POSITION (Y-AXIS), COLUMNS ARE WAVELENGTH (X-AXIS)
+                    plt.imshow(
+                        rectifiedImageDict[imageName],
+                        interpolation="none",
+                        aspect="auto",
+                        origin="lower",
+                        extent=[wl_edges[0], wl_edges[-1], sp_edges[0], sp_edges[-1]],
+                    )
+                    plt.xlabel("Wavelength (Å)")
+                    plt.ylabel("Slit Position (arcsec)")
                     plt.show()
 
             orderRectifiedImages.append(rectifiedImageDict)
