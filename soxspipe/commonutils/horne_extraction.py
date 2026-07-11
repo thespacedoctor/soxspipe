@@ -97,20 +97,12 @@ class horne_extraction(base_util):
         debug=False,
         turnOffMP=False,
     ):
-        import numpy as np
-        import pandas as pd
-        from astropy.io import fits
         from astropy.nddata import CCDData
         from astropy import units as u
-        from os.path import expanduser
-        from soxspipe.commonutils import keyword_lookup
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import unpack_order_table
-        from soxspipe.commonutils import detector_lookup
-        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-        import matplotlib.pyplot as plt
-        
 
+        
         super(horne_extraction, self).__init__(log, settings, associatedFrame=skySubtractedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath)
 
         log.debug("instantiating a new 'horne_extraction' object")
@@ -149,9 +141,6 @@ class horne_extraction(base_util):
         self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
         self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
 
-        # TODO: replace this value with true value from FITS header object
-        self.ron = 3.0
-
         # OPEN THE SKY-SUBTRACTED FRAME
         if isinstance(skySubtractedFrame, CCDData):
             self.skySubtractedFrame = skySubtractedFrame
@@ -165,33 +154,6 @@ class horne_extraction(base_util):
                 hdu_flags="FLAGS",
                 key_uncertainty_type="UTYPE",
             )
-
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        # self.kw = keyword_lookup(log=self.log, settings=self.settings).get
-        # kw = self.kw
-        # self.arm = self.skySubtractedFrame.header[kw("SEQ_ARM")]
-        # self.dateObs = self.skySubtractedFrame.header[kw("DATE_OBS")]
-
-        # # DETECTOR PARAMETERS LOOKUP OBJECT
-        # self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
-
-        # GET SKYLINES DATAFRAME
-        # self.skylinesDF = get_skylines_dataframe(
-        #     self.log, self.settings, self.arm, minBrightnessVIS=1, minBrightnessNIR=0.5
-        # )
-
-        # if self.twoDMapPath:
-        #     self.mapDF, self.interOrderMaskNDArray = twoD_disp_map_image_to_dataframe(
-        #         log=self.log,
-        #         slit_length=self.detectorParams["slit_length"],
-        #         twoDMapPath=twoDMapPath,
-        #         associatedFrame=self.skySubtractedFrame,
-        #         kw=self.kw,
-        #         dispAxis=self.detectorParams["dispersion-axis"],
-        #     )
-
-        #     self.skySubtractedFrame.data[self.interOrderMaskNDArray == 1] = np.nan
 
         # USE SUBTRACTED FRAME (NODDING ONLY) TO EXTRACT A SKY SPECTRUM
         if subtractedFrame == False:
@@ -211,14 +173,6 @@ class horne_extraction(base_util):
                     key_uncertainty_type="UTYPE",
                 )
 
-        # # SET IMAGE ORIENTATION
-        # if self.detectorParams["dispersion-axis"] == "x":
-        #     self.axisA = "x"
-        #     self.axisB = "y"
-        # else:
-        #     self.axisA = "y"
-        #     self.axisB = "x"
-
         # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
         if self.sofName:
             self.filenameTemplate = self.sofName + ".fits"
@@ -234,25 +188,6 @@ class horne_extraction(base_util):
             startNightDate=startNightDate,
         )
 
-        # # OPEN AND UNPACK THE 2D IMAGE MAP
-        # self.twoDMap = fits.open(twoDMapPath)
-
-        # try:
-        #     dpBinx = self.twoDMap[0].header[kw("WIN_BINX")]
-        #     dpBiny = self.twoDMap[0].header[kw("WIN_BINY")]
-        # except:
-        #     dpBinx = 1
-        #     dpBiny = 1
-
-        # # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
-        # binx = 1
-        # biny = 1
-        # try:
-        #     binx = int(self.skySubtractedFrame.header[kw("WIN_BINX")])
-        #     biny = int(self.skySubtractedFrame.header[kw("WIN_BINY")])
-        # except:
-        #     pass
-
         # ADJUST SLIT HEIGHT IF BINNING IN USE
         if self.binx > 1 or self.biny > 1:
             if self.detectorParams["dispersion-axis"] == "x":
@@ -260,70 +195,6 @@ class horne_extraction(base_util):
             else:
                 self.slitHalfLength /= self.biny
             self.slitHalfLength = round(self.slitHalfLength)
-
-        # binxRatio = binx / dpBinx
-        # binyRatio = biny / dpBiny
-
-        # xdim = int(self.twoDMap[0].data.shape[1] / binxRatio)
-        # ydim = int(self.twoDMap[0].data.shape[0] / binyRatio)
-        # xarray = np.tile(np.arange(0, xdim), ydim)
-        # yarray = np.repeat(np.arange(0, ydim), xdim)
-
-        # self.skySubtractedFrame.data[self.skySubtractedFrame.data == 0] = np.nan
-
-        # if binxRatio > 1 or binyRatio > 1:
-        #     from astropy.nddata import block_reduce
-
-        #     self.twoDMap["WAVELENGTH"].data = block_reduce(
-        #         self.twoDMap["WAVELENGTH"].data, (binyRatio, binxRatio), func=np.mean
-        #     )
-        #     self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (binyRatio, binxRatio), func=np.mean)
-        #     self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (binyRatio, binxRatio), func=np.mean)
-
-        # self.imageMap = pd.DataFrame.from_dict(
-        #     {
-        #         "x": xarray,
-        #         "y": yarray,
-        #         "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(np.float32),
-        #         "slit_position": self.twoDMap["SLIT"].data.flatten().astype(np.float32),
-        #         "order": self.twoDMap["ORDER"].data.flatten().astype(np.float32),
-        #         "flux": self.skySubtractedFrame.data.flatten().astype(np.float32),
-        #     }
-        # )
-        # self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-
-        # REMOVE IF THE ABOVE .astype(float) CONVERSION IS WORKING
-        # try:
-        #     self.imageMap = pd.DataFrame.from_dict({
-        #         "x": xarray,
-        #         "y": yarray,
-        #         "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(float),
-        #         "slit_position": self.twoDMap["SLIT"].data.flatten().astype(float),
-        #         "order": self.twoDMap["ORDER"].data.flatten().astype(int),
-        #         "flux": self.skySubtractedFrame.data.flatten().astype(float)
-        #     })
-        #     self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-        # except:
-        #     try:
-        #         self.imageMap = pd.DataFrame.from_dict({
-        #             "x": xarray,
-        #             "y": yarray,
-        #             "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().byteswap().newbyteorder(),
-        #             "slit_position": self.twoDMap["SLIT"].data.flatten().byteswap().newbyteorder(),
-        #             "order": self.twoDMap["ORDER"].data.flatten().byteswap().newbyteorder(),
-        #             "flux": self.skySubtractedFrame.data.flatten().byteswap().newbyteorder()
-        #         })
-        #         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-        #     except:
-        #         self.imageMap = pd.DataFrame.from_dict({
-        #             "x": xarray,
-        #             "y": yarray,
-        #             "wavelength": self.twoDMap["WAVELENGTH"].data.flatten(),
-        #             "slit_position": self.twoDMap["SLIT"].data.flatten(),
-        #             "order": self.twoDMap["ORDER"].data.flatten(),
-        #             "flux": self.skySubtractedFrame.data.flatten()
-        #         })
-        #         self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
         # REMOVE ZEROS
         mask = (self.imageMap["wavelength"] == 0) & (self.imageMap["slit_position"] == 0)
@@ -394,54 +265,24 @@ class horne_extraction(base_util):
             self.log.error("No trace found in the data, optimal extraction cannot be performed.")
             return self.qc, self.products, None, None, None
 
-        import matplotlib.pyplot as plt
         import pandas as pd
         from astropy.table import Table
         import copy
         from contextlib import suppress
-        from astropy.io import fits
 
         # MAKE RELATIVE HOME PATH ABSOLUTE
-        from os.path import expanduser
         from datetime import datetime
         from soxspipe.commonutils.toolkit import (
-            read_spectral_format,
             add_snr_efficiency_qcs,
         )
-        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
-        import numpy as np
-        import scipy.ndimage
-        from astropy.stats import sigma_clip
-        import skimage.transform as skt
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         kw = self.kw
         arm = self.arm
 
-        uniqueOrders = self.orderPixelTable["order"].unique()
         extractions = []
 
         self.log.print("\n# PERFORMING OPTIMAL SOURCE EXTRACTION (Horne Method)")
-
-        # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
-        binx = 1
-        biny = 1
-        try:
-            binx = int(self.skySubtractedFrame.header[kw("WIN_BINX")])
-            biny = int(self.skySubtractedFrame.header[kw("WIN_BINY")])
-        except:
-            pass
-
-        # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
-        orderNums, waveLengthMin, waveLengthMax, amins, amaxs = read_spectral_format(
-            log=self.log,
-            settings=self.settings,
-            arm=self.arm,
-            dispersionMap=self.dispersionMap,
-            extended=False,
-            binx=binx,
-            biny=biny,
-        )
 
         self.log.print("\tBuilding wavelength, slit-position, flux, error and bad-pixel arrays")
 
@@ -462,6 +303,7 @@ class horne_extraction(base_util):
         transformer = image_transformer(
             log=self.log,
             settings=self.settings,
+            mapDF=self.mapDF,
             orderPixelTable=self.orderPixelTable,
             twoDMapPath=self.twoDMapPath,
             dispersionMap=self.dispersionMap,

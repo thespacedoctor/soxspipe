@@ -1,5 +1,7 @@
 # Release Notes
 
+fixing database to collect the correct response curves
+adding to doc FAQs
 pinning the normalisation factor using by ccdproc for flat correction
 * **REFACTOR**: Update predicted paths for standard response products (now looks for RESP function instead of merge spectra when deciding if the data has been reduced yet).
 * **FIXED**: Improve flux standard matching via 3 FITS header keywords
