@@ -15,6 +15,10 @@ import os
 os.environ['TERM'] = 'vt100'
 from fundamentals import tools
 from .base_util import base_util
+# NUMPY/NUMBA IMPORTED AT MODULE SCOPE (NOT METHOD-LOCAL) SO THE @numba.njit
+# DECORATORS BELOW ARE EVALUATED ONCE AT IMPORT TIME
+import numpy as np
+import numba
 
 
 
@@ -273,19 +277,13 @@ class image_transformer(base_util):
             orderChunks.append(np.full(nrows, order))
             records.append({"order": order, "n_sp": n_sp, "n_wl": n_wl, "nrows": nrows})
 
-        print(11)
-
         cornersDF = pd.DataFrame({
             "order": np.concatenate(orderChunks),
             "wavelength": np.concatenate(wlChunks),
             "slit_position": np.concatenate(spChunks),
         })
 
-        print(12)
-
         cornersDF = cornersDF.astype({"order": int, "wavelength": float, "slit_position": float})
-
-        print(13)
 
         # SINGLE BATCHED CONVERSION OF ALL BOUNDARY CORNER POINTS FROM WAVELENGTH/SLIT/ORDER TO DETECTOR X,Y
         # removeOffDetectorLocation=False: EVERY CORNER (EVEN OFF-DETECTOR) MUST BE KEPT TO PRESERVE POLYGON GEOMETRY AND ROW ORDER
@@ -297,67 +295,68 @@ class image_transformer(base_util):
             trimColumns=True,
         )
         fit_x = resultDF["fit_x"].to_numpy()
-        fit_y = resultDF["fit_y"].to_numpy()  
+        fit_y = resultDF["fit_y"].to_numpy()
 
-        print(14)      
-
-        # REBUILD THE PER-ORDER RESAMPLING WEIGHTS FROM THE FLAT BOUNDARY CORNER TABLE
+        # REBUILD THE PER-ORDER RESAMPLING WEIGHTS FROM THE FLAT BOUNDARY CORNER TABLE.
+        # THE PER-CELL PIXEL-OVERLAP CLIP/AREA WORK ITSELF RUNS IN THE NUMBA-JIT-COMPILED
+        # _resample_weights_kernel (MILLIONS OF CELLS ACROSS ALL ORDERS) — EVERYTHING HERE
+        # IS EITHER A ONE-OFF VECTORIZED NUMPY PRE-PASS OR O(NUMBER OF ORDERS) BOOKKEEPING
         resamplingWeights = {}
         offset = 0
-        print(1)
         for record in records:
             order = record["order"]
             n_sp = record["n_sp"]
             n_wl = record["n_wl"]
             nrows = record["nrows"]
 
-            print(order)
-
-            xb = fit_x[offset:offset + nrows].reshape(n_sp, n_wl, ncorners)
-            yb = fit_y[offset:offset + nrows].reshape(n_sp, n_wl, ncorners)
+            xb = np.ascontiguousarray(fit_x[offset:offset + nrows].reshape(n_sp, n_wl, ncorners))
+            yb = np.ascontiguousarray(fit_y[offset:offset + nrows].reshape(n_sp, n_wl, ncorners))
             offset += nrows
 
-            iList, jList, pxList, pyList, areaList = [], [], [], [], []
+            # VECTORIZED PER-CELL CANDIDATE-PIXEL BOUNDING BOX (REPLACES THE OLD PER-CELL
+            # np.isfinite()/.min()/.max() PYTHON LOOP)
+            valid = np.all(np.isfinite(xb), axis=2) & np.all(np.isfinite(yb), axis=2)
+            xmin = np.where(valid, np.nanmin(xb, axis=2), 0.0)
+            xmax = np.where(valid, np.nanmax(xb, axis=2), -1.0)
+            ymin = np.where(valid, np.nanmin(yb, axis=2), 0.0)
+            ymax = np.where(valid, np.nanmax(yb, axis=2), -1.0)
+
+            px_lo = np.clip(np.floor(xmin + 0.5).astype(np.int64), 0, self.nx - 1)
+            px_hi = np.clip(np.floor(xmax + 0.5).astype(np.int64), 0, self.nx - 1)
+            py_lo = np.clip(np.floor(ymin + 0.5).astype(np.int64), 0, self.ny - 1)
+            py_hi = np.clip(np.floor(ymax + 0.5).astype(np.int64), 0, self.ny - 1)
+            # px_hi < px_lo IS THE "SKIP THIS CELL" SENTINEL CONSUMED BY THE KERNEL
+            # (MARKS NON-FINITE/OFF-BOUNDARY-DEGENERATE CELLS)
+            px_hi = np.where(valid, px_hi, px_lo - 1)
+
+            # SAFE UPPER BOUND ON KERNEL OUTPUT LENGTH: ONLY CANDIDATE PIXELS WITH
+            # POSITIVE CLIPPED OVERLAP AREA ARE ACTUALLY KEPT
+            candCount = np.where(valid, (px_hi - px_lo + 1) * (py_hi - py_lo + 1), 0).astype(np.int64)
+            maxTotal = int(candCount.sum())
+
+            iOut = np.empty(maxTotal, dtype=np.int64)
+            jOut = np.empty(maxTotal, dtype=np.int64)
+            pxOut = np.empty(maxTotal, dtype=np.int64)
+            pyOut = np.empty(maxTotal, dtype=np.int64)
+            areaOut = np.empty(maxTotal, dtype=np.float64)
             coverage = np.zeros((n_sp, n_wl))
-            print(2)
-            for i in range(n_sp):
-                for j in range(n_wl):
-                    print(i, j)
-                    xs, ys = xb[i, j], yb[i, j]
-                    if not (np.all(np.isfinite(xs)) and np.all(np.isfinite(ys))):
-                        continue
 
-                    poly = list(zip(xs, ys))
+            nOut = _resample_weights_kernel(
+                xb, yb, px_lo, px_hi, py_lo, py_hi,
+                iOut, jOut, pxOut, pyOut, areaOut, coverage,
+            )
 
-                    # DETECTOR PIXELS POSSIBLY OVERLAPPED BY THIS POLYGON
-                    px_lo = max(int(np.floor(xs.min() + 0.5)), 0)
-                    px_hi = min(int(np.floor(xs.max() + 0.5)), self.nx - 1)
-                    py_lo = max(int(np.floor(ys.min() + 0.5)), 0)
-                    py_hi = min(int(np.floor(ys.max() + 0.5)), self.ny - 1)
-
-                    for py in range(py_lo, py_hi + 1):
-                        for px in range(px_lo, px_hi + 1):
-                            a = _polygon_area(_clip_to_pixel(poly, px, py))
-                            if a > 0.0:
-                                iList.append(i)
-                                jList.append(j)
-                                pxList.append(px)
-                                pyList.append(py)
-                                areaList.append(a)
-                                coverage[i, j] += a
-
-            iArr = np.array(iList, dtype=np.int64)
-            jArr = np.array(jList, dtype=np.int64)
+            iArr = iOut[:nOut]
+            jArr = jOut[:nOut]
             resamplingWeights[order] = {
                 "i": iArr,
                 "j": jArr,
-                "px": np.array(pxList, dtype=np.int64),
-                "py": np.array(pyList, dtype=np.int64),
-                "area": np.array(areaList, dtype=np.float64),
+                "px": pxOut[:nOut],
+                "py": pyOut[:nOut],
+                "area": areaOut[:nOut],
                 "flatIdx": iArr * n_wl + jArr,
                 "coverage": coverage,
             }
-            print(6)
 
         self.log.debug('completed the ``_precompute_resampling_weights`` method')
         return resamplingWeights
@@ -494,53 +493,131 @@ class image_transformer(base_util):
         return orderRectifiedImages
     
 # ----------------------------------------------------------------------
-# Geometry helpers: Sutherland-Hodgman clipping against a unit pixel
+# Geometry kernels: Sutherland-Hodgman clipping against a unit pixel,
+# NUMBA-JIT-COMPILED — SEE _precompute_resampling_weights FOR THE HOT
+# LOOP THESE ARE CALLED FROM (MILLIONS OF CELLS PER image_transformer
+# INSTANTIATION, SO THIS MUST RUN AT COMPILED SPEED, NOT PURE PYTHON)
 # ----------------------------------------------------------------------
- 
-def _clip_halfplane(poly, axis, value, keep_below):
-    """Clip polygon (list of (x, y)) against one axis-aligned half-plane."""
-    out = []
-    n = len(poly)
-    for k in range(n):
-        p = poly[k]
-        q = poly[(k + 1) % n]
-        p_in = (p[axis] <= value) if keep_below else (p[axis] >= value)
-        q_in = (q[axis] <= value) if keep_below else (q[axis] >= value)
+
+@numba.njit(cache=True, inline="always")
+def _clip_halfplane_nb(xs_in, ys_in, n_in, axis, value, keep_below, xs_out, ys_out):
+    """CLIP AN n_in-VERTEX POLYGON AGAINST ONE AXIS-ALIGNED HALF-PLANE,
+    WRITING THE RESULT INTO CALLER-PROVIDED xs_out/ys_out (LENGTH >= n_in + 1).
+    RETURNS n_out, THE NUMBER OF OUTPUT VERTICES."""
+    n_out = 0
+    for k in range(n_in):
+        px_ = xs_in[k]
+        py_ = ys_in[k]
+        kk = k + 1
+        if kk == n_in:
+            kk = 0
+        qx = xs_in[kk]
+        qy = ys_in[kk]
+
+        if axis == 0:
+            pval, qval = px_, qx
+        else:
+            pval, qval = py_, qy
+
+        if keep_below:
+            p_in = pval <= value
+            q_in = qval <= value
+        else:
+            p_in = pval >= value
+            q_in = qval >= value
+
         if p_in:
-            out.append(p)
-        if p_in != q_in:                       # edge crosses the boundary
-            t = (value - p[axis]) / (q[axis] - p[axis])
-            out.append((p[0] + t * (q[0] - p[0]),
-                        p[1] + t * (q[1] - p[1])))
-    return out
- 
-    
-def _clip_to_pixel(poly, px, py):
-    """Clip polygon to the unit square of detector pixel (px, py)."""
-    poly = _clip_halfplane(poly, 0, px - 0.5, keep_below=False)
-    if not poly:
-        return poly
-    poly = _clip_halfplane(poly, 0, px + 0.5, keep_below=True)
-    if not poly:
-        return poly
-    poly = _clip_halfplane(poly, 1, py - 0.5, keep_below=False)
-    if not poly:
-        return poly
-    return _clip_halfplane(poly, 1, py + 0.5, keep_below=True)
- 
- 
-def _polygon_area(poly):
-    """Unsigned area via the shoelace formula."""
-    if len(poly) < 3:
+            xs_out[n_out] = px_
+            ys_out[n_out] = py_
+            n_out += 1
+        if p_in != q_in:
+            t = (value - pval) / (qval - pval)
+            xs_out[n_out] = px_ + t * (qx - px_)
+            ys_out[n_out] = py_ + t * (qy - py_)
+            n_out += 1
+    return n_out
+
+
+@numba.njit(cache=True, inline="always")
+def _clip_to_pixel_area_nb(xs, ys, ncorners, px, py, bufA_x, bufA_y, bufB_x, bufB_y):
+    """CLIP THE ncorners-VERTEX POLYGON (xs, ys) TO THE UNIT SQUARE OF
+    DETECTOR PIXEL (px, py) AND RETURN THE CLIPPED POLYGON'S UNSIGNED AREA.
+    USES CALLER-PROVIDED SCRATCH BUFFERS (LENGTH >= ncorners + 4) PING-PONG
+    STYLE ACROSS THE 4 HALF-PLANE CLIPS — NO PER-CALL ALLOCATION."""
+    n = _clip_halfplane_nb(xs, ys, ncorners, 0, px - 0.5, False, bufA_x, bufA_y)
+    if n < 3:
         return 0.0
+    n = _clip_halfplane_nb(bufA_x, bufA_y, n, 0, px + 0.5, True, bufB_x, bufB_y)
+    if n < 3:
+        return 0.0
+    n = _clip_halfplane_nb(bufB_x, bufB_y, n, 1, py - 0.5, False, bufA_x, bufA_y)
+    if n < 3:
+        return 0.0
+    n = _clip_halfplane_nb(bufA_x, bufA_y, n, 1, py + 0.5, True, bufB_x, bufB_y)
+    if n < 3:
+        return 0.0
+
+    # SHOELACE AREA ON THE FINAL CLIPPED POLYGON
     a = 0.0
-    n = len(poly)
     for k in range(n):
-        x0, y0 = poly[k]
-        x1, y1 = poly[(k + 1) % n]
-        a += x0 * y1 - x1 * y0
+        kk = k + 1
+        if kk == n:
+            kk = 0
+        a += bufB_x[k] * bufB_y[kk] - bufB_x[kk] * bufB_y[k]
     return 0.5 * abs(a)
-    
+
+
+@numba.njit(cache=True)
+def _resample_weights_kernel(
+        xb, yb,
+        px_lo, px_hi, py_lo, py_hi,
+        iOut, jOut, pxOut, pyOut,
+        areaOut,
+        coverage,
+    ):
+    """FOR EVERY (i, j) OUTPUT CELL, CLIP ITS BOUNDARY POLYGON AGAINST EVERY
+    CANDIDATE DETECTOR PIXEL IN ITS [px_lo, px_hi] x [py_lo, py_hi] BOUNDING
+    BOX AND RECORD THE OVERLAP AREA. CELLS WITH px_hi < px_lo ARE SKIPPED
+    (OFF-DETECTOR/NON-FINITE SENTINEL, SET BY THE CALLER).
+
+    RETURNS nOut, THE NUMBER OF (i, j, px, py, area) ENTRIES WRITTEN INTO
+    THE PREALLOCATED iOut/jOut/pxOut/pyOut/areaOut[:nOut]. coverage IS
+    ACCUMULATED IN PLACE."""
+    n_sp, n_wl, ncorners = xb.shape
+    MAXV = ncorners + 4
+    bufA_x = np.empty(MAXV, dtype=np.float64)
+    bufA_y = np.empty(MAXV, dtype=np.float64)
+    bufB_x = np.empty(MAXV, dtype=np.float64)
+    bufB_y = np.empty(MAXV, dtype=np.float64)
+
+    nOut = 0
+    for i in range(n_sp):
+        for j in range(n_wl):
+            plo = px_lo[i, j]
+            phi = px_hi[i, j]
+            if phi < plo:
+                continue
+            qlo = py_lo[i, j]
+            qhi = py_hi[i, j]
+            xs = xb[i, j]
+            ys = yb[i, j]
+
+            for py in range(qlo, qhi + 1):
+                for px in range(plo, phi + 1):
+                    a = _clip_to_pixel_area_nb(
+                        xs, ys, ncorners, px, py, bufA_x, bufA_y, bufB_x, bufB_y
+                    )
+                    if a > 0.0:
+                        iOut[nOut] = i
+                        jOut[nOut] = j
+                        pxOut[nOut] = px
+                        pyOut[nOut] = py
+                        areaOut[nOut] = a
+                        nOut += 1
+                        coverage[i, j] += a
+    return nOut
+
+
 def _pixel_boundaries_grid(sp_edges, wl_edges, edge_samples):
     """
     Boundary of every output-pixel cell in (SP, WL) space for a full

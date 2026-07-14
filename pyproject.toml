@@ -28,6 +28,7 @@ dependencies = [
     'photutils==1.13.0',
     'matplotlib',
     'numpy==2.1.0',
+    'numba>=0.61',
     'unicodecsv==0.14.1',
     'pandas>=2.2.3,<3',
     'tabulate==0.9.0',
