@@ -1433,8 +1433,6 @@ def extract_single_order(
     return extractions[
         [
             "order",
-            f"{axisA}coord_centre",
-            f"{axisB}coord",
             "wavelengthMean",
             "pixelScaleNm",
             "varianceSpectrum",
@@ -1453,28 +1451,28 @@ def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
 
     # CALCULATE HORNE 86 NUMERATOR (EQU 8)
     orderRectifiedImages["horneNumerator"] = np.ma.masked_array(orderRectifiedImages["fluxRaw"] * orderRectifiedImages["objectProfile"] / orderRectifiedImages["variance"], mask=orderRectifiedImages["mask"])
-    horneNumeratorSum = orderRectifiedImages["horneNumerator"].sum(axis=1)
+    horneNumeratorSum = orderRectifiedImages["horneNumerator"].T.sum(axis=1)
 
     # CALCULATE HORNE 86 DENOMINATOR (EQU 8)
     orderRectifiedImages["horneDenominator"] = np.ma.masked_array(np.power(orderRectifiedImages["objectProfile"],2) / orderRectifiedImages["variance"], mask=orderRectifiedImages["mask"])
-    horneDenominatorSum = orderRectifiedImages["horneDenominator"].sum(axis=1)
+    horneDenominatorSum = orderRectifiedImages["horneDenominator"].T.sum(axis=1)
 
     orderRectifiedImages["optimalExtraction"] = np.ma.masked_array(orderRectifiedImages["horneNumerator"] / orderRectifiedImages["horneDenominator"], mask=orderRectifiedImages["mask"])
 
     # plot_rectified_images(orderRectifiedImages=orderRectifiedImages, order=order)
 
     wavelengthMasked = np.ma.masked_array(orderRectifiedImages["wavelength"], mask=orderRectifiedImages["mask"])
-    crossDispersionSlicesDF["wavelengthMean"] = np.ma.mean(wavelengthMasked, axis=1)
+    crossDispersionSlicesDF["wavelengthMean"] = np.ma.mean(wavelengthMasked.T, axis=1)
 
     # CALCULATE THE FINAL EXTRACTED SPECTRA
     crossDispersionSlicesDF["varianceSpectrum"] = 1 / horneDenominatorSum
     crossDispersionSlicesDF["extractedFluxOptimal"] = (
         horneNumeratorSum / horneDenominatorSum
     )
-    crossDispersionSlicesDF["extractedFluxBoxcar"] = orderRectifiedImages["fluxRaw"].sum(axis=1)
+    crossDispersionSlicesDF["extractedFluxBoxcar"] = orderRectifiedImages["fluxRaw"].T.sum(axis=1)
     if "fluxSky" in orderRectifiedImages.keys():
-        crossDispersionSlicesDF["skyFlux"] = orderRectifiedImages["fluxSky"].mean(axis=1)
-    crossDispersionSlicesDF["extractedFluxBoxcarRobust"] = np.ma.masked_array(orderRectifiedImages["fluxRaw"], mask=orderRectifiedImages["mask"]).sum(axis=1).astype(float)
+        crossDispersionSlicesDF["skyFlux"] = orderRectifiedImages["fluxSky"].T.mean(axis=1)
+    crossDispersionSlicesDF["extractedFluxBoxcarRobust"] = np.ma.masked_array(orderRectifiedImages["fluxRaw"].T, mask=orderRectifiedImages["mask"].T).sum(axis=1).astype(float)
     crossDispersionSlicesDF["snr"] = crossDispersionSlicesDF["extractedFluxOptimal"] / np.power(
         crossDispersionSlicesDF["varianceSpectrum"], 0.5
     )
@@ -1559,7 +1557,7 @@ def generate_masks(crossDispersionSlicesDF, orderRectifiedImages):
     wavelength = orderRectifiedImages["wavelength"]
 
     # CALCULATE THE PIXEL SCALE BEFORE ANY CLIPPING OCCURS
-    crossDispersionSlicesDF["pixelScaleNm"] = np.ma.mean(wavelength, axis=1)
+    crossDispersionSlicesDF["pixelScaleNm"] = np.ma.mean(wavelength, axis=0)
     this = (crossDispersionSlicesDF["pixelScaleNm"].values[2:] - crossDispersionSlicesDF["pixelScaleNm"].values[:-2]) / 2
     this = np.insert(this, 0, np.nan)
     this = np.append(this, np.nan)
@@ -1590,9 +1588,9 @@ def generate_masks(crossDispersionSlicesDF, orderRectifiedImages):
 
     # IF THERE IS MORE THAN 1 PIXEL MASKED IN THE CROSS-DISPERSION DIRECTION, THEN FLAG THE ENTIRE COLUMN AS BAD
     fullColumnMaskFlags = np.sum(orderRectifiedImages["mask"], axis=1)
-    fullColumnMaskFlags = fullColumnMaskFlags > 1
-    orderRectifiedImages["mask"][fullColumnMaskFlags] = True
-    crossDispersionSlicesDF["mask"] = [x for x in orderRectifiedImages["mask"]]
+    # fullColumnMaskFlags = fullColumnMaskFlags > 1
+    # orderRectifiedImages["mask"][fullColumnMaskFlags] = True
+    crossDispersionSlicesDF["mask"] = [x for x in orderRectifiedImages["mask"].T]
 
     return crossDispersionSlicesDF, orderRectifiedImages
 
@@ -1614,26 +1612,56 @@ def fit_object_profile(
 
     crossSlitProfiles = []
 
+    shape = orderRectifiedImages["fluxRaw"].shape
+    ww = shape[1]
+    ss = shape[0]
+
+    print(f"crossDispersionSlicesDF length: {len(crossDispersionSlicesDF.index)}")
+    for c in crossDispersionSlicesDF.columns:
+        try:
+            print(f"{c}: {len(crossDispersionSlicesDF[c][0])}")
+        except:
+            print(f"{c}, {type(crossDispersionSlicesDF[c][0])}")
+    print("RECTIFIED IMAGES")
+    
+    for k, v in orderRectifiedImages.items():
+        print(f"{k}, {v.shape}")
+        
+    
+
+    print(orderRectifiedImages["fluxRaw"].shape, orderRectifiedImages["mask"].shape, orderRectifiedImages["wavelength"].shape)
+    
     fluxRawMasked = np.ma.masked_array(orderRectifiedImages["fluxRaw"], mask=orderRectifiedImages["mask"])
     # RETURN THE SUM OF THE ARRAY ELEMENTS OVER THE GIVEN AXIS. MASKED ELEMENTS ARE SET TO 0 INTERNALLY.
-    fluxRawMaskedSum = fluxRawMasked.sum(axis=1)    
+    fluxRawMaskedSum = fluxRawMasked.sum(axis=0) 
+    print(fluxRawMaskedSum.shape)   
 
     ## THIS IS THE NORMALISED FLUX USED FOR FITTING THE DISPERSION PROFILES - THIS IS THE FRACTIONAL FLUX IN HORNE 1986 PAPER
-    fluxRawNormalisedMasked = fluxRawMasked / fluxRawMaskedSum[:, np.newaxis]
+    fluxRawNormalisedMasked = fluxRawMasked / fluxRawMaskedSum[np.newaxis,:]
+    print(fluxRawNormalisedMasked.shape) 
+
+    dispersionAxisPixelsOrignal = range(0,ww)
     
     # DETERMINE LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS
-    for slitPixelIndex in range(0, slitHalfLength * 2):
+    for slitPixelIndex in range(0, ss):
 
         iteration = 1
         clipped_count = 1
 
-        fractions = fluxRawNormalisedMasked[:, slitPixelIndex]
-        dispersionAxisPixels = crossDispersionSlicesDF[f"{axisB}coord"]
-        mask = orderRectifiedImages["mask"][:, slitPixelIndex]
+        fractions = fluxRawNormalisedMasked[slitPixelIndex,: ]        
+        dispersionAxisPixels = np.ma.masked_array(range(0, ww),mask=fractions.mask)
+
+        mask = orderRectifiedImages["mask"][slitPixelIndex,: ]   
+        print(len(fractions), len(dispersionAxisPixels), len(mask))
+        print(fractions.shape, mask.shape)
 
         # fractions MAY STILL CONTAIN BAD-PIXEL/CRHs SO DROP PIXELS MASKED IN STEP 1 ABOVE
         a = [fractions, dispersionAxisPixels]
         fractions, dispersionAxisPixels = [np.ma.compressed(np.ma.masked_array(i, mask)) for i in a]
+
+
+        print(len(fractions), len(dispersionAxisPixels))
+
 
         startCount = len(fractions)
         coeff = []
@@ -1661,33 +1689,38 @@ def fit_object_profile(
             fractions, dispersionAxisPixels = [np.ma.compressed(np.ma.masked_array(i, masked_residuals.mask)) for i in a]
             clipped_count = startCount - len(fractions)
             percent = (float(clipped_count) / float(startCount)) * 100.0
-            # print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
+            print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
             iteration = iteration + 1
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
         if len(coeff):
-            profile = np.polyval(coeff, crossDispersionSlicesDF[f"{axisB}coord"])
+            profile = np.polyval(coeff, dispersionAxisPixelsOrignal)
             profile[profile < 0] = 0
         else:
-            profile = np.zeros_like(crossDispersionSlicesDF[f"{axisB}coord"])
+            profile = np.zeros_like(dispersionAxisPixelsOrignal)
+        print(profile.shape)
         crossSlitProfiles.append(profile)
 
         if debug:
+            import matplotlib
+            import matplotlib.pyplot as plt
+
+            matplotlib.use("MacOSX")
             plt.scatter(dispersionAxisPixels, fractions, alpha=0.2)
-            plt.plot(crossDispersionSlicesDF[f"{axisB}coord"], profile, color="red")
+            plt.plot(dispersionAxisPixelsOrignal, profile, color="red")
             plt.title(f"Fitted Profile for Order {order}")
             plt.ylim([-1, 1])
             plt.show()
 
     crossSlitProfiles = np.array(crossSlitProfiles)
-    transposedProfiles = crossSlitProfiles.T.tolist()
+    transposedProfiles = crossSlitProfiles.tolist()
     crossDispersionProfile = np.array([np.array(t) for t in transposedProfiles])
 
-    crossDispersionProfileSums = np.array([x.sum() for x in crossDispersionProfile])
+    crossDispersionProfileSums = np.array([x.sum() for x in crossDispersionProfile.T])
     orderRectifiedImages["objectProfile"] = (
-        crossDispersionProfile / crossDispersionProfileSums[:, np.newaxis]
+        crossDispersionProfile / crossDispersionProfileSums[np.newaxis:]
     )
-    crossDispersionSlicesDF["objectProfile"] = [x for x in orderRectifiedImages["objectProfile"]]
+    crossDispersionSlicesDF["objectProfile"] = [x for x in orderRectifiedImages["objectProfile"].T]
 
     return crossDispersionSlicesDF, orderRectifiedImages
 
