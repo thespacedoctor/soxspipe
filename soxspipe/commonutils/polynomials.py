@@ -80,39 +80,47 @@ class chebyshev_order_wavelength_polynomials:
         wavelengthDeg = self.wavelengthDeg
         slitDeg = self.slitDeg
 
-        n_coeff = 0
-        lhsVals = np.zeros(len(orderPixelTable.index))
+        n = len(orderPixelTable.index)
+        if n == 0:
+            self.log.debug("completed the ``poly`` method")
+            return np.zeros(0)
 
-        # FOR LOOPS ARE THE RIGHT TOOL TO PERFORM COMPUTATIONS OR RUN FUNCTIONS. LIST COMPREHENSION IS SLOW IN THESE CASES
-
+        # BUILD EACH VARIABLE'S POWER MATRIX ONCE (SHAPE (N, DEG+1)) INSTEAD
+        # OF RECOMPUTING/RE-FETCHING POWERS PER POLYNOMIAL TERM
         if self.exponentsIncluded == False:
-            orderVals = orderPixelTable["order"].values.astype("float")
-            wlVals = orderPixelTable["wavelength"].values.astype("float")
-            spVals = orderPixelTable["slit_position"].values.astype("float")
+            orderVals = orderPixelTable["order"].to_numpy(dtype=float)
+            wlVals = orderPixelTable["wavelength"].to_numpy(dtype=float)
+            spVals = orderPixelTable["slit_position"].to_numpy(dtype=float)
 
-            for i in range(0, orderDeg + 1):
-                for j in range(0, wavelengthDeg + 1):
-                    for k in range(0, slitDeg + 1):
-                        lhsVals += coeff[n_coeff] * orderVals**i * wlVals**j * spVals**k
-                        n_coeff += 1
+            orderPow = np.power.outer(orderVals, np.arange(orderDeg + 1))
+            wlPow = np.power.outer(wlVals, np.arange(wavelengthDeg + 1))
+            spPow = np.power.outer(spVals, np.arange(slitDeg + 1))
         else:
-            for i in range(0, orderDeg + 1):
-                for j in range(0, wavelengthDeg + 1):
-                    for k in range(0, slitDeg + 1):
-                        # OPTIMISE: 95%
-                        lhsVals += (
-                            coeff[n_coeff]
-                            * orderPixelTable[
-                                f"order_pow_{self.axis}{i}"
-                            ].values.astype("float")
-                            * orderPixelTable[
-                                f"wavelength_pow_{self.axis}{j}"
-                            ].values.astype("float")
-                            * orderPixelTable[
-                                f"slit_position_pow_{self.axis}{k}"
-                            ].values.astype("float")
-                        )
-                        n_coeff += 1
+            axis = self.axis
+            orderPow = orderPixelTable[
+                [f"order_pow_{axis}{i}" for i in range(orderDeg + 1)]
+            ].to_numpy(dtype=float)
+            wlPow = orderPixelTable[
+                [f"wavelength_pow_{axis}{j}" for j in range(wavelengthDeg + 1)]
+            ].to_numpy(dtype=float)
+            spPow = orderPixelTable[
+                [f"slit_position_pow_{axis}{k}" for k in range(slitDeg + 1)]
+            ].to_numpy(dtype=float)
+
+        # RESHAPE THE FLAT COEFF TUPLE INTO (I, J, K); ROW-MAJOR MATCHES THE
+        # i-OUTER/j-MIDDLE/k-INNER ORDER THE COEFFS WERE ORIGINALLY WRITTEN IN.
+        # NOTE: THIS RELIES ON ALL POLY DEGREES BEING SINGLE-DIGIT (TRUE FOR
+        # ALL CURRENT SETTINGS FILES), A PRE-EXISTING ASSUMPTION, NOT
+        # INTRODUCED HERE.
+        coeffArr = np.asarray(coeff, dtype=float).reshape(
+            orderDeg + 1, wavelengthDeg + 1, slitDeg + 1
+        )
+
+        # CONTRACT ONE AXIS AT A TIME SO WE NEVER MATERIALISE AN
+        # (N, I, J, K) INTERMEDIATE ARRAY
+        step1 = np.tensordot(orderPow, coeffArr, axes=([1], [0]))
+        step2 = np.einsum("njk,nj->nk", step1, wlPow, optimize=True)
+        lhsVals = np.einsum("nk,nk->n", step2, spPow, optimize=True)
 
         self.log.debug("completed the ``poly`` method")
 

@@ -1,5 +1,6 @@
 # Release Notes
 
+vectorising calculation of rectification weights
 fixing database to collect the correct response curves
 adding to doc FAQs
 pinning the normalisation factor using by ccdproc for flat correction

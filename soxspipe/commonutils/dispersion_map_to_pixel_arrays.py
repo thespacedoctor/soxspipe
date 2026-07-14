@@ -14,10 +14,53 @@ from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomi
 from os.path import expanduser
 from fundamentals import tools
 from builtins import object
+from functools import lru_cache
 import sys
 import os
 
 os.environ["TERM"] = "vt100"
+
+
+@lru_cache(maxsize=32)
+def _read_dispersion_map_axes(resolvedPath, mtime):
+    """*parse a dispersion-map FITS file's per-axis polynomial degrees and flat coefficient list, cached per (resolved path, mtime)*
+
+    **Key Arguments:**
+
+    - ``resolvedPath`` -- the fully resolved (realpath) path to the dispersion-map FITS file
+    - ``mtime`` -- the file's last-modified time (cache is keyed on this so it self-invalidates if the file changes)
+
+    **Return:**
+
+    - ``axesData`` -- dictionary keyed by axis ("x"/"y") of {"orderDeg", "wavelengthDeg", "slitDeg", "coeff"}
+
+    **Usage:**
+
+    ```python
+    axesData = _read_dispersion_map_axes(resolvedPath, mtime)
+    ```
+    """
+    from astropy.table import Table
+    import math
+
+    dat = Table.read(resolvedPath, format="fits")
+    tableData = dat.to_pandas()
+
+    axesData = {}
+    for index, row in tableData.iterrows():
+        axis = row["axis"].decode("utf-8")
+        axesData[axis] = {
+            "orderDeg": int(row["order_deg"]),
+            "wavelengthDeg": int(row["wavelength_deg"]),
+            "slitDeg": int(row["slit_deg"]),
+            "coeff": tuple(
+                float(v)
+                for k, v in row.items()
+                if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"]
+                and not math.isnan(v)
+            ),
+        }
+    return axesData
 
 
 def dispersion_map_to_pixel_arrays(
@@ -58,58 +101,29 @@ def dispersion_map_to_pixel_arrays(
     """
     log.debug("starting the ``dispersion_map_to_pixel_arrays`` function")
 
-    from astropy.table import Table
-    import math
     import numpy as np
 
-    # READ THE FILE
+    # READ THE FILE (CACHED PER RESOLVED PATH + MTIME SO REPEATED CALLS
+    # AGAINST THE SAME MAP SKIP DISK I/O AND RE-PARSING)
     home = expanduser("~")
     dispersion_map = dispersionMapPath.replace("~", home)
+    resolvedPath = os.path.realpath(dispersion_map)
+    mtime = os.path.getmtime(resolvedPath)
 
-    # SPEC FORMAT TO PANDAS DATAFRAME
-    dat = Table.read(dispersion_map, format="fits")
-    tableData = dat.to_pandas()
+    axesData = _read_dispersion_map_axes(resolvedPath, mtime)
 
     # READ IN THE X- AND Y- GENERATING POLYNOMIALS FROM DISPERSION MAP FILE
     coeff = {}
     poly = {}
-    check = 1
-
-    for index, row in tableData.iterrows():
-        axis = row["axis"].decode("utf-8")
-        orderDeg = int(row["order_deg"])
-        wavelengthDeg = int(row["wavelength_deg"])
-        slitDeg = int(row["slit_deg"])
-
-        # print(axis, orderDeg, wavelengthDeg, slitDeg)
-
-        if check:
-            for i in range(0, orderDeg + 1):
-                orderPixelTable[f"order_pow_{axis}_{i}"] = orderPixelTable["order"].pow(
-                    i
-                )
-            for j in range(0, wavelengthDeg + 1):
-                orderPixelTable[f"wavelength_pow_{axis}_{j}"] = orderPixelTable[
-                    "wavelength"
-                ].pow(j)
-            for k in range(0, slitDeg + 1):
-                orderPixelTable[f"slit_position_pow_{axis}_{k}"] = orderPixelTable[
-                    "slit_position"
-                ].pow(k)
-            # check = 0
-
-        coeff[axis] = [
-            float(v)
-            for k, v in row.items()
-            if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"]
-            and not math.isnan(v)
-        ]
+    for axis in ("x", "y"):
+        d = axesData[axis]
+        coeff[axis] = d["coeff"]
         poly[axis] = chebyshev_order_wavelength_polynomials(
             log=log,
-            orderDeg=orderDeg,
-            wavelengthDeg=wavelengthDeg,
-            slitDeg=slitDeg,
-            exponentsIncluded=True,
+            orderDeg=d["orderDeg"],
+            wavelengthDeg=d["wavelengthDeg"],
+            slitDeg=d["slitDeg"],
+            exponentsIncluded=False,
             axis=axis,
         ).poly
 
