@@ -19,6 +19,7 @@ from .base_util import base_util
 # DECORATORS BELOW ARE EVALUATED ONCE AT IMPORT TIME
 import numpy as np
 import numba
+from time import perf_counter
 
 
 
@@ -97,17 +98,20 @@ class image_transformer(base_util):
         # NUMBER OF BOUNDARY SAMPLE POINTS PER CELL EDGE — FIXED FOR THE LIFE OF THE INSTANCE SO THE
         # RESAMPLING GEOMETRY CAN BE PRECOMPUTED ONCE AND SHARED ACROSS ALL cache_image CALLS
         self.edgeSamples = edgeSamples
-
-        # TODO: MAKE THIS A SETTING IN THE YAML FILE
-        self.slitLengthArcsec = 3.0
         self.zoomFactor = 5
+        self.pixelScale = 0.3  # arcsec/pixel
+
+        ## TYPICAL 11" SLIT LENGTH COVERS ~30-40 PIXELS - 1 pixel ~ 0.3
+        self.slitLengthArcsec = self.slitHalfLength * 2 * self.pixelScale 
 
         # ORDERS PRESENT IN THE TRACE TABLE — USED TO SKIP ORDERS WITH NO DETECTED TRACE
         # self.orderPixelTable = self.orderPixelTable.loc[self.orderPixelTable["order"] == 16]
         self.uniqueOrders = self.orderPixelTable["order"].unique()
 
         # DETERMINE THE BOUNDS OF EACH ORDER IN WS-PIXEL SPACE
+        t0 = perf_counter()
         self.orderSlitEdges, self.orderWlEdges = self._determine_rectified_image_boundaries()
+        self.log.print(f"_determine_rectified_image_boundaries took {perf_counter() - t0:.3f}s")
 
         # DETECTOR SHAPE — SAME FOR EVERY NDARRAY EVER PASSED TO cache_image, SO ONLY DERIVED ONCE
         self.ny, self.nx = self.twoDMap["WAVELENGTH"].data.shape
@@ -115,11 +119,15 @@ class image_transformer(base_util):
         self._cache_image_names = set()
 
         # PRECOMPUTE THE PIXEL-BOUNDARY/POLYGON-AREA RESAMPLING WEIGHTS ONCE, SHARED BY EVERY cache_image CALL
+        t0 = perf_counter()
         self._resamplingWeights = self._precompute_resampling_weights()
+        self.log.print(f"_precompute_resampling_weights took {perf_counter() - t0:.3f}s")
 
         # CACHE THE WAVELENGTH AND SLIT POSITION MAPS FOR LATER RECTIFICATION —
         # BUILT ANALYTICALLY FROM EACH ORDER'S OWN BIN EDGES, NOT RESAMPLED FROM self.twoDMap PIXEL DATA
+        t0 = perf_counter()
         self._cache_true_wavelength_slit_images()
+        self.log.print(f"_cache_true_wavelength_slit_images took {perf_counter() - t0:.3f}s")
 
         return None
 
@@ -158,8 +166,10 @@ class image_transformer(base_util):
             weights = self._resamplingWeights[order]
 
             # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED PIXEL/POLYGON-AREA WEIGHTS
+            t0 = perf_counter()
             weighted = ndarray[weights["py"], weights["px"]] * weights["area"]
             flux = np.bincount(weights["flatIdx"], weights=weighted, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
+            flux = self._unzoom(flux)
 
             orderTable[imageName] = list(flux.T)
             # SCALAR BROADCASTS ONCE THE TABLE'S ROW COUNT IS ESTABLISHED — READ BY get_order_rectified()
@@ -173,9 +183,11 @@ class image_transformer(base_util):
                 # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED PIXEL/POLYGON-AREA WEIGHTS
                 weightedBpm = bpmArray[weights["py"], weights["px"]] * weights["area"]
                 bpm = np.bincount(weights["flatIdx"], weights=weightedBpm, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
+                bpm = self._unzoom(bpm)
                 bpm = bpm > 0
                 orderTable[f"bpMask"] = list(bpm.T)
                 self._cache_image_names.add("bpMask")
+            # self.log.print(f"Rectified image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl}) in {perf_counter() - t0:.3f}s")
 
             if debug:
                 print(f"Rectifying image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl})")
@@ -206,6 +218,20 @@ class image_transformer(base_util):
         self.log.debug('completed the ``cache_image`` method')
         return orderCoverage
 
+    def _unzoom(self, arr2d, operation="sum"):
+        """Flux-conserving NxN binning (sum within each zoomFactor block)."""
+        by = arr2d.shape[0] // self.zoomFactor
+        bx = arr2d.shape[1] // self.zoomFactor
+        if by == 0 or bx == 0:
+            return arr2d
+        trimmed = arr2d[:by * self.zoomFactor, :bx * self.zoomFactor]
+        if operation == "sum":
+            return trimmed.reshape(by, self.zoomFactor, bx, self.zoomFactor).sum(axis=(1, 3))
+        elif operation == "mean":
+            return trimmed.reshape(by, self.zoomFactor, bx, self.zoomFactor).mean(axis=(1, 3))
+        else:
+            raise ValueError("Invalid operation. Use 'sum' or 'mean'.")
+
     def _cache_true_wavelength_slit_images(self):
         """*Cache the analytic (non-resampled) wavelength and slit-position images for each order*
 
@@ -232,6 +258,9 @@ class image_transformer(base_util):
             # BROADCAST VIEWS INSTEAD OF MATERIALISING FULL TILED ARRAYS
             wavelengthImage = np.broadcast_to(wl_centers, (n_sp, n_wl))
             slitImage = np.broadcast_to(sp_centers[:, None], (n_sp, n_wl))
+
+            wavelengthImage = self._unzoom(wavelengthImage, operation="mean")
+            slitImage = self._unzoom(slitImage, operation="mean")
 
             orderTable["wavelength"] = [row for row in wavelengthImage.T]
             orderTable["slit"] = [row for row in slitImage.T]
@@ -321,23 +350,23 @@ class image_transformer(base_util):
             ymin = np.where(valid, np.nanmin(yb, axis=2), 0.0)
             ymax = np.where(valid, np.nanmax(yb, axis=2), -1.0)
 
-            px_lo = np.clip(np.floor(xmin + 0.5).astype(np.int64), 0, self.nx - 1)
-            px_hi = np.clip(np.floor(xmax + 0.5).astype(np.int64), 0, self.nx - 1)
-            py_lo = np.clip(np.floor(ymin + 0.5).astype(np.int64), 0, self.ny - 1)
-            py_hi = np.clip(np.floor(ymax + 0.5).astype(np.int64), 0, self.ny - 1)
+            px_lo = np.clip(np.floor(xmin + 0.5).astype(np.int32), 0, self.nx - 1)
+            px_hi = np.clip(np.floor(xmax + 0.5).astype(np.int32), 0, self.nx - 1)
+            py_lo = np.clip(np.floor(ymin + 0.5).astype(np.int32), 0, self.ny - 1)
+            py_hi = np.clip(np.floor(ymax + 0.5).astype(np.int32), 0, self.ny - 1)
             # px_hi < px_lo IS THE "SKIP THIS CELL" SENTINEL CONSUMED BY THE KERNEL
             # (MARKS NON-FINITE/OFF-BOUNDARY-DEGENERATE CELLS)
             px_hi = np.where(valid, px_hi, px_lo - 1)
 
             # SAFE UPPER BOUND ON KERNEL OUTPUT LENGTH: ONLY CANDIDATE PIXELS WITH
             # POSITIVE CLIPPED OVERLAP AREA ARE ACTUALLY KEPT
-            candCount = np.where(valid, (px_hi - px_lo + 1) * (py_hi - py_lo + 1), 0).astype(np.int64)
+            candCount = np.where(valid, (px_hi - px_lo + 1) * (py_hi - py_lo + 1), 0).astype(np.int32)
             maxTotal = int(candCount.sum())
 
-            iOut = np.empty(maxTotal, dtype=np.int64)
-            jOut = np.empty(maxTotal, dtype=np.int64)
-            pxOut = np.empty(maxTotal, dtype=np.int64)
-            pyOut = np.empty(maxTotal, dtype=np.int64)
+            iOut = np.empty(maxTotal, dtype=np.int32)
+            jOut = np.empty(maxTotal, dtype=np.int32)
+            pxOut = np.empty(maxTotal, dtype=np.int32)
+            pyOut = np.empty(maxTotal, dtype=np.int32)
             areaOut = np.empty(maxTotal, dtype=np.float64)
             coverage = np.zeros((n_sp, n_wl))
 
@@ -408,7 +437,7 @@ class image_transformer(base_util):
         self.orderPixelTable["slit_position"] = mapLookup.reindex(list(zip(aArray, bArray))).to_numpy()
         slitCentreArcsec = np.nanmean(self.orderPixelTable["slit_position"])
 
-        subPixelSize = 0.25 / self.zoomFactor
+        subPixelSize = self.pixelScale / self.zoomFactor
         slitStart = slitCentreArcsec - self.slitLengthArcsec/2
         slitStop = slitCentreArcsec + self.slitLengthArcsec/2
         slitEdges = np.arange(slitStart, slitStop, subPixelSize)
@@ -423,7 +452,9 @@ class image_transformer(base_util):
         for order, amin, amax, wlmin, wlmax in zip(self.orderNums, self.amins, self.amaxs, self.waveLengthMin, self.waveLengthMax):
             if order not in self.uniqueOrders:
                 continue
-            wl_edges = np.arange(wlmin, wlmax, 0.02/self.zoomFactor)
+            pixelRange = amax - amin
+            wlIncrement = ((wlmax - wlmin) / pixelRange) / self.zoomFactor
+            wl_edges = np.arange(wlmin, wlmax, wlIncrement)
             orderSlitEdges.append(slitEdges)
             orderWlEdges.append(wl_edges)
             sliceOrders.append(order)

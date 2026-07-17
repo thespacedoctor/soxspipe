@@ -1,5 +1,6 @@
 # Release Notes
 
+using numba JIT to speed up image rectification
 optimising converting dispersion map to pixel arrays
 vectorising calculation of rectification weights
 fixing database to collect the correct response curves
