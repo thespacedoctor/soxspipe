@@ -1615,30 +1615,13 @@ def fit_object_profile(
     shape = orderRectifiedImages["fluxRaw"].shape
     ww = shape[1]
     ss = shape[0]
-
-    print(f"crossDispersionSlicesDF length: {len(crossDispersionSlicesDF.index)}")
-    for c in crossDispersionSlicesDF.columns:
-        try:
-            print(f"{c}: {len(crossDispersionSlicesDF[c][0])}")
-        except:
-            print(f"{c}, {type(crossDispersionSlicesDF[c][0])}")
-    print("RECTIFIED IMAGES")
-    
-    for k, v in orderRectifiedImages.items():
-        print(f"{k}, {v.shape}")
-        
-    
-
-    print(orderRectifiedImages["fluxRaw"].shape, orderRectifiedImages["mask"].shape, orderRectifiedImages["wavelength"].shape)
     
     fluxRawMasked = np.ma.masked_array(orderRectifiedImages["fluxRaw"], mask=orderRectifiedImages["mask"])
     # RETURN THE SUM OF THE ARRAY ELEMENTS OVER THE GIVEN AXIS. MASKED ELEMENTS ARE SET TO 0 INTERNALLY.
     fluxRawMaskedSum = fluxRawMasked.sum(axis=0) 
-    print(fluxRawMaskedSum.shape)   
 
     ## THIS IS THE NORMALISED FLUX USED FOR FITTING THE DISPERSION PROFILES - THIS IS THE FRACTIONAL FLUX IN HORNE 1986 PAPER
     fluxRawNormalisedMasked = fluxRawMasked / fluxRawMaskedSum[np.newaxis,:]
-    print(fluxRawNormalisedMasked.shape) 
 
     dispersionAxisPixelsOrignal = range(0,ww)
     
@@ -1652,16 +1635,10 @@ def fit_object_profile(
         dispersionAxisPixels = np.ma.masked_array(range(0, ww),mask=fractions.mask)
 
         mask = orderRectifiedImages["mask"][slitPixelIndex,: ]   
-        print(len(fractions), len(dispersionAxisPixels), len(mask))
-        print(fractions.shape, mask.shape)
 
         # fractions MAY STILL CONTAIN BAD-PIXEL/CRHs SO DROP PIXELS MASKED IN STEP 1 ABOVE
         a = [fractions, dispersionAxisPixels]
         fractions, dispersionAxisPixels = [np.ma.compressed(np.ma.masked_array(i, mask)) for i in a]
-
-
-        print(len(fractions), len(dispersionAxisPixels))
-
 
         startCount = len(fractions)
         coeff = []
@@ -1689,7 +1666,7 @@ def fit_object_profile(
             fractions, dispersionAxisPixels = [np.ma.compressed(np.ma.masked_array(i, masked_residuals.mask)) for i in a]
             clipped_count = startCount - len(fractions)
             percent = (float(clipped_count) / float(startCount)) * 100.0
-            print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
+            # print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
             iteration = iteration + 1
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
@@ -1698,7 +1675,6 @@ def fit_object_profile(
             profile[profile < 0] = 0
         else:
             profile = np.zeros_like(dispersionAxisPixelsOrignal)
-        print(profile.shape)
         crossSlitProfiles.append(profile)
 
         if debug:
