@@ -79,7 +79,6 @@ class image_transformer(base_util):
             self,
             log,
             settings,
-            mapDF,
             orderPixelTable,
             twoDMapPath,
             dispersionMap,
@@ -93,19 +92,18 @@ class image_transformer(base_util):
         self.orderPixelTable = orderPixelTable
         self.twoDMapPath = twoDMapPath
         self.slitHalfLength = slitHalfLength
-        self.mapDF = mapDF
 
         # NUMBER OF BOUNDARY SAMPLE POINTS PER CELL EDGE — FIXED FOR THE LIFE OF THE INSTANCE SO THE
         # RESAMPLING GEOMETRY CAN BE PRECOMPUTED ONCE AND SHARED ACROSS ALL cache_image CALLS
         self.edgeSamples = edgeSamples
         self.zoomFactor = 5
-        self.pixelScale = 0.3  # arcsec/pixel
+        self.pixelScale = 0.28  # arcsec/pixel
 
         ## TYPICAL 11" SLIT LENGTH COVERS ~30-40 PIXELS - 1 pixel ~ 0.3
         self.slitLengthArcsec = self.slitHalfLength * 2 * self.pixelScale 
 
         # ORDERS PRESENT IN THE TRACE TABLE — USED TO SKIP ORDERS WITH NO DETECTED TRACE
-        # self.orderPixelTable = self.orderPixelTable.loc[self.orderPixelTable["order"] == 16]
+        # self.orderPixelTable = self.orderPixelTable.loc[self.orderPixelTable["order"] == 16]        
         self.uniqueOrders = self.orderPixelTable["order"].unique()
 
         # DETERMINE THE BOUNDS OF EACH ORDER IN WS-PIXEL SPACE
@@ -169,7 +167,7 @@ class image_transformer(base_util):
             t0 = perf_counter()
             weighted = ndarray[weights["py"], weights["px"]] * weights["area"]
             flux = np.bincount(weights["flatIdx"], weights=weighted, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
-            flux = self._unzoom(flux)
+            # flux = self._unzoom(flux)
 
             orderTable[imageName] = list(flux.T)
             # SCALAR BROADCASTS ONCE THE TABLE'S ROW COUNT IS ESTABLISHED — READ BY get_order_rectified()
@@ -183,8 +181,8 @@ class image_transformer(base_util):
                 # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED PIXEL/POLYGON-AREA WEIGHTS
                 weightedBpm = bpmArray[weights["py"], weights["px"]] * weights["area"]
                 bpm = np.bincount(weights["flatIdx"], weights=weightedBpm, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
-                bpm = self._unzoom(bpm)
-                bpm = bpm > 0
+                # bpm = self._unzoom(bpm)
+                bpm = bpm > 0.2
                 orderTable[f"bpMask"] = list(bpm.T)
                 self._cache_image_names.add("bpMask")
             # self.log.print(f"Rectified image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl}) in {perf_counter() - t0:.3f}s")
@@ -259,8 +257,8 @@ class image_transformer(base_util):
             wavelengthImage = np.broadcast_to(wl_centers, (n_sp, n_wl))
             slitImage = np.broadcast_to(sp_centers[:, None], (n_sp, n_wl))
 
-            wavelengthImage = self._unzoom(wavelengthImage, operation="mean")
-            slitImage = self._unzoom(slitImage, operation="mean")
+            # wavelengthImage = self._unzoom(wavelengthImage, operation="mean")
+            # slitImage = self._unzoom(slitImage, operation="mean")
 
             orderTable["wavelength"] = [row for row in wavelengthImage.T]
             orderTable["slit"] = [row for row in slitImage.T]
@@ -433,13 +431,19 @@ class image_transformer(base_util):
         aArray = self.orderPixelTable[f"{self.axisA}coord_centre"].round().astype(int)
         bArray = self.orderPixelTable[f"{self.axisB}coord"]
 
-        mapLookup = self.mapDF.set_index([f"{self.axisB}", f"{self.axisA}"])["slit_position"]
-        self.orderPixelTable["slit_position"] = mapLookup.reindex(list(zip(aArray, bArray))).to_numpy()
+        if self.dispersionAxis == "x":
+            mapLookup = self.mapDF.set_index([f"{self.axisA}", f"{self.axisB}"])[["slit_position","wavelength"]]
+            self.orderPixelTable[["slit_position","wavelength"]] = mapLookup.reindex(list(zip(aArray,bArray))).to_numpy()
+        else:
+            mapLookup = self.mapDF.set_index([f"{self.axisB}", f"{self.axisA}"])[["slit_position","wavelength"]]
+            self.orderPixelTable[["slit_position","wavelength"]] = mapLookup.reindex(list(zip(bArray,aArray))).to_numpy()
+            
         slitCentreArcsec = np.nanmean(self.orderPixelTable["slit_position"])
+        slitStdArcsec = np.nanstd(self.orderPixelTable["slit_position"])
 
         subPixelSize = self.pixelScale / self.zoomFactor
-        slitStart = slitCentreArcsec - self.slitLengthArcsec/2
-        slitStop = slitCentreArcsec + self.slitLengthArcsec/2
+        slitStart = slitCentreArcsec - self.slitLengthArcsec/2 - 1*slitStdArcsec
+        slitStop = slitCentreArcsec + self.slitLengthArcsec/2 + 1*slitStdArcsec
         slitEdges = np.arange(slitStart, slitStop, subPixelSize)
 
         orderSlitEdges, orderWlEdges = [], []
@@ -507,12 +511,21 @@ class image_transformer(base_util):
                     )
                     fig.suptitle(f"{imageName}, order {order}", fontsize=16)
                     # ROWS ARE SLIT POSITION (Y-AXIS), COLUMNS ARE WAVELENGTH (X-AXIS)
+
+                    # Calculate sigma-clipped mean and std
+                    from astropy.stats import sigma_clip
+                    clipped_data = sigma_clip(rectifiedImageDict[imageName], sigma=3, maxiters=5)
+                    clipped_mean = clipped_data.mean()
+                    clipped_std = clipped_data.std()
+                    
                     plt.imshow(
                         rectifiedImageDict[imageName],
                         interpolation="none",
                         aspect="auto",
                         origin="lower",
                         extent=[wl_edges[0], wl_edges[-1], sp_edges[0], sp_edges[-1]],
+                        vmin=clipped_mean-clipped_std,
+                        vmax=clipped_mean + 7* clipped_std
                     )
                     plt.xlabel("Wavelength (Å)")
                     plt.ylabel("Slit Position (arcsec)")
