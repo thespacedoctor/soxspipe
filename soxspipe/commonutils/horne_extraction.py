@@ -303,7 +303,6 @@ class horne_extraction(base_util):
         transformer = image_transformer(
             log=self.log,
             settings=self.settings,
-            mapDF=self.mapDF,
             orderPixelTable=self.orderPixelTable,
             twoDMapPath=self.twoDMapPath,
             dispersionMap=self.dispersionMap,
