@@ -1,5 +1,6 @@
 # Release Notes
 
+* **REFACTOR**: Limit multiprocessing pool size for stare, nod, and offset recipes to avoid memory issues.
 using numba JIT to speed up image rectification
 optimising converting dispersion map to pixel arrays
 vectorising calculation of rectification weights
