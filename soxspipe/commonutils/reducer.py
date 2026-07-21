@@ -610,7 +610,7 @@ def run_recipe_bulk(
     turnOffMP = False
     wrapperTurnOffMP = True
 
-    if "mflat" in recipe:
+    if "mflat" in recipe or "stare" in recipe or "nod" in recipe or "offset" in recipe:
         poolSize = 3
         print(
             f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode with a pool size of {poolSize} to avoid memory issues..."
