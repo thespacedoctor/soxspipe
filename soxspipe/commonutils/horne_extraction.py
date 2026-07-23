@@ -372,9 +372,9 @@ class horne_extraction(base_util):
         extractedOrdersDF = extractedOrdersDF.loc[
             extractedOrdersDF["pixelScaleNm"] < 3
         ]  # FILTER OUT ANY REMAINING BAD PIXELS WITH UNREALISTICALLY LARGE PIXEL SCALE (I.E. WAVELENGTH JUMPS BETWEEN ADJACENT PIXELS)
-        if False:
+        if True:
             extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm)
-            extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm, byOrder=False)
+            # extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm, byOrder=False)
 
         mergedSpectumDF, orderJoins = self.merge_extracted_orders(extractedOrdersDF)
 
@@ -630,13 +630,13 @@ class horne_extraction(base_util):
 
             for iteration in range(2):
                 # EXTRACT NUMERIC ARRAYS FROM ORDER DATAFRAME
-                wave, axisBcoord, sky, objectFlux = self._extract_order_arrays(orderDF)
+                wave, sky, objectFlux = self._extract_order_arrays(orderDF)
                 valid = wave.notna() & sky.notna()
                 if not valid.any():
                     continue
 
                 # DETECT PEAKS IN SMOOTHED SKY SPECTRUM
-                skyValsOriginal, skyVals, peaks, waveVals, objectVals, axisBVals = self._detect_sky_peaks(wave, sky, objectFlux, axisBcoord, valid)
+                skyValsOriginal, skyVals, peaks, waveVals, objectVals = self._detect_sky_peaks(wave, sky, objectFlux, valid)
                 wmin, wmax = np.nanmin(waveVals), np.nanmax(waveVals)
                 pixelScaleMedian = np.median(orderDF["pixelScaleNm"])
 
@@ -704,16 +704,16 @@ class horne_extraction(base_util):
         import numpy as np
 
         wave = pd.to_numeric(orderDF["wavelength_shifted"], errors="coerce")
-        axisBcoord = pd.to_numeric(orderDF[f"{self.axisB}coord"], errors="coerce")
+        #axisBcoord = pd.to_numeric(orderDF[f"{self.axisB}coord"], errors="coerce")
         sky = pd.to_numeric(orderDF["skyFlux"], errors="coerce")
         if "extractedFluxOptimal" in orderDF.columns:
             objectFlux = pd.to_numeric(orderDF["extractedFluxOptimal"], errors="coerce")
         else:
             objectFlux = pd.Series(np.nan, index=orderDF.index)
 
-        return wave, axisBcoord, sky, objectFlux
+        return wave, sky, objectFlux
 
-    def _detect_sky_peaks(self, wave, sky, objectFlux, axisBcoord, valid):
+    def _detect_sky_peaks(self, wave, sky, objectFlux, valid):
         """Smooth sky spectrum with Savitzky-Golay filter and detect peaks above median."""
         import numpy as np
         from scipy.signal import find_peaks, savgol_filter
@@ -724,9 +724,9 @@ class horne_extraction(base_util):
 
         waveVals = wave.loc[valid].to_numpy()
         objectVals = objectFlux.loc[valid].to_numpy()
-        axisBVals = axisBcoord.loc[valid].to_numpy()
+        # axisBVals = axisBcoord.loc[valid].to_numpy()
 
-        return skyValsOriginal, skyVals, peaks, waveVals, objectVals, axisBVals
+        return skyValsOriginal, skyVals, peaks, waveVals, objectVals
 
     def _get_local_skylines_for_order(self, wmin, wmax, order, calibrationCol):
         """Fetch catalogue skylines within wavelength range and project to pixel/wavelength coordinates."""

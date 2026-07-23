@@ -2588,6 +2588,7 @@ class create_dispersion_map(object):
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTable, extend=0.0, order=order
         )
+        self.orderPixelTable = orderPixelTable
 
         # CREATE THE IMAGE SAME SIZE AS DETECTOR - NAN INSIDE ORDERS, 0 OUTSIDE
         science_pixels = dp["science-pixels"]
@@ -2810,6 +2811,21 @@ class create_dispersion_map(object):
             overwrite=True,
             checksum=True,
         )
+
+        if self.debug or True:
+            from soxspipe.commonutils.image_transformer import image_transformer
+            # ZOOM AND REBIN ALL ARRAYS ORDER-BY-ORDER, ALSO SIGMA-CLIPPING THE BAD-PIXEL MASK
+            transformer = image_transformer(
+                log=self.log,
+                settings=self.settings,
+                orderPixelTable=self.orderPixelTable,
+                twoDMapPath=dispersion_image_filePath,
+                dispersionMap=self.dispersionMapPath,
+                associatedFrame=self.pinholeFrame,
+                slitHalfLength=20,
+            )
+            transformer.cache_image("multi-pinhole", self.pinholeFrame.data)
+            orderRectifiedImages = transformer.get_order_rectified()
 
         self.log.debug("completed the ``map_to_image`` method")
         return dispersion_image_filePath

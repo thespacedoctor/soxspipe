@@ -167,7 +167,7 @@ class image_transformer(base_util):
             t0 = perf_counter()
             weighted = ndarray[weights["py"], weights["px"]] * weights["area"]
             flux = np.bincount(weights["flatIdx"], weights=weighted, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
-            # flux = self._unzoom(flux)
+            flux = self._unzoom(flux)
 
             orderTable[imageName] = list(flux.T)
             # SCALAR BROADCASTS ONCE THE TABLE'S ROW COUNT IS ESTABLISHED — READ BY get_order_rectified()
@@ -181,7 +181,7 @@ class image_transformer(base_util):
                 # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED PIXEL/POLYGON-AREA WEIGHTS
                 weightedBpm = bpmArray[weights["py"], weights["px"]] * weights["area"]
                 bpm = np.bincount(weights["flatIdx"], weights=weightedBpm, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
-                # bpm = self._unzoom(bpm)
+                bpm = self._unzoom(bpm)
                 bpm = bpm > 0.2
                 orderTable[f"bpMask"] = list(bpm.T)
                 self._cache_image_names.add("bpMask")
@@ -257,8 +257,8 @@ class image_transformer(base_util):
             wavelengthImage = np.broadcast_to(wl_centers, (n_sp, n_wl))
             slitImage = np.broadcast_to(sp_centers[:, None], (n_sp, n_wl))
 
-            # wavelengthImage = self._unzoom(wavelengthImage, operation="mean")
-            # slitImage = self._unzoom(slitImage, operation="mean")
+            wavelengthImage = self._unzoom(wavelengthImage, operation="mean")
+            slitImage = self._unzoom(slitImage, operation="mean")
 
             orderTable["wavelength"] = [row for row in wavelengthImage.T]
             orderTable["slit"] = [row for row in slitImage.T]
@@ -440,6 +440,12 @@ class image_transformer(base_util):
             
         slitCentreArcsec = np.nanmean(self.orderPixelTable["slit_position"])
         slitStdArcsec = np.nanstd(self.orderPixelTable["slit_position"])
+
+
+        # from astropy.table import Table
+        # t = Table.from_pandas(self.orderPixelTable)
+        # t.write("/tmp/table.fits", overwrite=True)
+        
 
         subPixelSize = self.pixelScale / self.zoomFactor
         slitStart = slitCentreArcsec - self.slitLengthArcsec/2 - 1*slitStdArcsec
