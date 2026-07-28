@@ -1800,7 +1800,7 @@ def plot_merged_spectrum_qc(
 
     sky_panel.set_yscale("log")
 
-    if "SKY_COUNTS" in merged_orders.columns:
+    if "SKY_COUNTS" in merged_orders.columns and merged_orders["SKY_COUNTS"].max()  > 0:
         sky_panel.plot(
             merged_orders["WAVE"],
             merged_orders["SKY_COUNTS"],
