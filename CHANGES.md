@@ -1,12 +1,18 @@
 # Release Notes
 
+* **ENHANCEMENT**: refine skyline-based wavelength-shift calibration
+* **ENHANCEMENT**: tune skyline detection, iterative matching, clipping, and VIS-order shift fallback behavior.
+* **FIXED**: prevent dispersion-map transformations from running outside debug mode and handle invalid sky-plot statistics.
+* **ENHANCEMENT**: update calibration data and default dispersion, spatial, and sky-subtraction thresholds.
+* **REFACTOR**: correct rectified-image diagnostic orientation and add local CodeGraph metadata exclusions.
+* **FIXED**: Guard merged spectrum QC sky plotting against non-positive sky counts
 * **REFACTOR**: Limit multiprocessing pool size for stare, nod, and offset recipes to avoid memory issues.
-using numba JIT to speed up image rectification
-optimising converting dispersion map to pixel arrays
-vectorising calculation of rectification weights
-fixing database to collect the correct response curves
-adding to doc FAQs
-pinning the normalisation factor using by ccdproc for flat correction
+* **ENHANCEMENT**: using numba JIT to speed up image rectification
+* **REFACTOR**: optimising converting dispersion map to pixel arrays
+* **REFACTOR**: vectorising calculation of rectification weights
+* **FIXED**: fixing database to collect the correct response curves
+* **DOCS**: adding to doc FAQs
+* **FIXED**: pinning the normalisation factor using by ccdproc for flat correction
 * **REFACTOR**: Update predicted paths for standard response products (now looks for RESP function instead of merge spectra when deciding if the data has been reduced yet).
 * **FIXED**: Improve flux standard matching via 3 FITS header keywords
 

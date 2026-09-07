@@ -248,6 +248,13 @@ class horne_extraction(base_util):
             mask = self.orderPixelTable["order"].isin(keepOrders)
             self.orderPixelTable = self.orderPixelTable.loc[mask]
 
+        # CHECK DIFFERENCE IN TIME BETWEEN OBJECT AND MPH FRAME
+        mjdDispMap = self.twoDMap["WAVELENGTH"].header[self.kw("MJDOBS")]
+        mjdObject = self.skySubtractedFrame.header[self.kw("MJDOBS")]
+        print(mjdDispMap)
+        print(mjdObject)
+        print(f"Time difference between object and dispersion map: {mjdObject - mjdDispMap} days")
+
         # xpd-update-filter-dataframe-column-values
 
     def extract(self):
@@ -596,13 +603,13 @@ class horne_extraction(base_util):
             calibrationColSkylines = "wavelength"
             shiftLabel = "wavelength (nm)"
             shiftUnits = "nm"
-            tolerance=5
+            tolerance=[0.5,0.1,0.1]
         else:
             calibrationCol = f"{self.axisB}coord"
             shiftLabel = f"{self.axisB} (pixels)"
             calibrationColSkylines = f"fit_{self.axisB}"
             shiftUnits = "px"
-            tolerance=15
+            tolerance=[15,3,3]
 
         uniqueOrders = np.sort(extractedOrdersDF["order"].unique())
         orderShifts = []
@@ -628,56 +635,58 @@ class horne_extraction(base_util):
             # PRIME THE SHIFT COLUMN WITH THE ORIGINAL VALUES
             orderDF["wavelength_shifted"] = orderDF["wavelengthMean"]
 
-            for iteration in range(2):
-                # EXTRACT NUMERIC ARRAYS FROM ORDER DATAFRAME
-                wave, sky, objectFlux = self._extract_order_arrays(orderDF)
-                valid = wave.notna() & sky.notna()
-                if not valid.any():
-                    continue
+            orderShift = 0.
+            if not (o in [ 2, 3] and arm.upper() == "VIS"):
+                for iteration in range(3):
+                    # EXTRACT NUMERIC ARRAYS FROM ORDER DATAFRAME
+                    wave, sky, objectFlux = self._extract_order_arrays(orderDF)
+                    valid = wave.notna() & sky.notna()
+                    if not valid.any():
+                        continue
 
-                # DETECT PEAKS IN SMOOTHED SKY SPECTRUM
-                skyValsOriginal, skyVals, peaks, waveVals, objectVals = self._detect_sky_peaks(wave, sky, objectFlux, valid)
-                wmin, wmax = np.nanmin(waveVals), np.nanmax(waveVals)
-                pixelScaleMedian = np.median(orderDF["pixelScaleNm"])
+                    # DETECT PEAKS IN SMOOTHED SKY SPECTRUM
+                    skyValsOriginal, skyVals, peaks, waveVals, objectVals = self._detect_sky_peaks(wave, sky, objectFlux, valid)
+                    wmin, wmax = np.nanmin(waveVals), np.nanmax(waveVals)
+                    pixelScaleMedian = np.median(orderDF["pixelScaleNm"])
 
-                # MAP CATALOGUE SKYLINES TO PIXEL/WAVELENGTH COORDINATES FOR THIS ORDER
-                localSkylines, calibrationSkylines = self._get_local_skylines_for_order(wmin, wmax, o, calibrationColSkylines)
+                    # MAP CATALOGUE SKYLINES TO PIXEL/WAVELENGTH COORDINATES FOR THIS ORDER
+                    localSkylines, calibrationSkylines = self._get_local_skylines_for_order(wmin, wmax, o, calibrationColSkylines)
 
-                if calibrationCol == "wavelengthMean":
-                    shiftArray = waveVals
-                else:
-                    shiftArray = axisBVals
+                    if calibrationCol == "wavelengthMean":
+                        shiftArray = waveVals
+                    else:
+                        shiftArray = axisBVals
 
-                # MATCH DETECTED PEAKS TO ISOLATED CATALOGUE SKYLINES
-                matchedSkylinePixels, matchedShifts = self._match_peaks_to_skylines(shiftArray, peaks, calibrationSkylines, tolerance=tolerance)
+                    # MATCH DETECTED PEAKS TO ISOLATED CATALOGUE SKYLINES
+                    matchedSkylinePixels, matchedShifts = self._match_peaks_to_skylines(shiftArray, peaks, calibrationSkylines, tolerance=tolerance[iteration])
 
-                # SIGMA-CLIP SHIFT DISTRIBUTION AND COMPUTE MEDIAN
-                clippedWave, clippedShifts, medianShift = self._compute_clipped_shift(matchedSkylinePixels, matchedShifts)
+                    # SIGMA-CLIP SHIFT DISTRIBUTION AND COMPUTE MEDIAN
+                    clippedWave, clippedShifts, medianShift = self._compute_clipped_shift(matchedSkylinePixels, matchedShifts)
 
-                # APPLY MEDIAN SHIFT TO CURRENT ITERATION
-                orderDF["wavelength_shifted"] += medianShift
+                    # APPLY MEDIAN SHIFT TO CURRENT ITERATION
+                    orderDF["wavelength_shifted"] += medianShift
 
-                if iteration == 0:
-                    nmShift = medianShift * pixelScaleMedian
-                    # print(f"{medianShift:0.2f} {shiftUnits} shift applied to order", o)
-                    orderShifts.append(medianShift)
-                    if byOrder:
-                        self._record_order_shift_qc(o, medianShift)
+                    orderShift += medianShift
+                    
 
-                # DIAGNOSTIC PLOT SHOWING SKY, SHIFTS, AND OBJECT SPECTRA
-                if self.debug:
-                    self._plot_skyline_shift_diagnostic(
-                        shiftArray, skyValsOriginal, skyVals, peaks, objectVals,
-                        localSkylines, calibrationSkylines, matchedSkylinePixels, matchedShifts,
-                        clippedWave, clippedShifts, medianShift, o, wmin, wmax,
-                        pixelScaleMedian, shiftLabel, iteration, shiftUnits
-                    )
+                    # DIAGNOSTIC PLOT SHOWING SKY, SHIFTS, AND OBJECT SPECTRA
+                    if self.debug or False:
+                        self._plot_skyline_shift_diagnostic(
+                            shiftArray, skyValsOriginal, skyVals, peaks, objectVals,
+                            localSkylines, calibrationSkylines, matchedSkylinePixels, matchedShifts,
+                            clippedWave, clippedShifts, medianShift, o, wmin, wmax,
+                            pixelScaleMedian, shiftLabel, iteration, shiftUnits
+                        )
+
+            orderShifts.append(orderShift)
+            if byOrder:
+                self._record_order_shift_qc(o, orderShift)
 
         # SHIFT FROM ORDER 1 IS USED AS FALLBACK FOR VIS ORDERS WITH NO SKYLINE MATCHES
         if arm.upper() == "VIS" and byOrder:
-            rShift = next((s for o, s in zip(uniqueOrders, orderShifts) if o == 1), 0)
+            iShift = next((s for o, s in zip(uniqueOrders, orderShifts) if o == 4), 0)
         else:
-            rShift = 0
+            iShift = 0
 
         # APPLY PER-ORDER PIXEL SHIFTS TO WAVELENGTH COLUMN IN FULL DATAFRAME
         for o, s in zip(uniqueOrders, orderShifts):
@@ -686,7 +695,7 @@ class horne_extraction(base_util):
             else:
                 mask = extractedOrdersDF["order"] == o
             # PROPAGATE RED-ORDER SHIFT TO VIS ORDERS THAT HAD NO SKYLINE MATCHES
-            effectiveShift = rShift if (s == 0 and arm.upper() == "VIS" and o in [2, 3]) else s
+            effectiveShift = iShift if (s == 0 and arm.upper() == "VIS" and o in [11, 22, 33]) else s
             if calibrationCol == "wavelengthMean":
                 self.log.print(f"\t\t{effectiveShift:0.2f} {shiftUnits} shift applied to order {o}")
                 extractedOrdersDF.loc[mask, "wavelengthMean"] += effectiveShift
@@ -717,10 +726,22 @@ class horne_extraction(base_util):
         """Smooth sky spectrum with Savitzky-Golay filter and detect peaks above median."""
         import numpy as np
         from scipy.signal import find_peaks, savgol_filter
+        from astropy import units as u
+        from specutils.fitting import fit_generic_continuum
+        from specutils import Spectrum1D
 
         skyValsOriginal = sky[valid].to_numpy()
-        skyVals = savgol_filter(sky[valid], window_length=21, polyorder=2)
-        peaks, _ = find_peaks(skyVals, height=np.median(skyVals), distance=25)
+        waveVals = wave.loc[valid].to_numpy()
+        objectVals = objectFlux.loc[valid].to_numpy()
+        skyVals = savgol_filter(sky[valid], window_length=3, polyorder=2)
+
+
+        spec = Spectrum1D(flux=skyValsOriginal*u.Unit(''), spectral_axis=waveVals*u.nm)
+        cont_fit = fit_generic_continuum(spec)
+        continuum = cont_fit(waveVals*u.nm)
+        skyVals = skyValsOriginal / continuum.value
+
+        peaks, _ = find_peaks(skyVals, height=np.mean(skyVals)+1*np.std(skyVals) , distance=5)
 
         waveVals = wave.loc[valid].to_numpy()
         objectVals = objectFlux.loc[valid].to_numpy()
@@ -776,7 +797,7 @@ class horne_extraction(base_util):
         import numpy as np
         from astropy.stats import sigma_clip
 
-        maskedShifts = sigma_clip(matchedShifts, sigma_lower=1.5, sigma_upper=1.5, maxiters=5, cenfunc="mean", stdfunc="std")
+        maskedShifts = sigma_clip(matchedShifts, sigma_lower=2.5, sigma_upper=2.5, maxiters=5, cenfunc="mean", stdfunc="std")
         clippedWave = np.asarray(matchedSkylinePixels)[np.asarray(maskedShifts.mask)]
         clippedShifts = np.asarray(maskedShifts.data)[np.asarray(maskedShifts.mask)]
         goodShifts = np.asarray(maskedShifts.data)[~np.asarray(maskedShifts.mask)]
@@ -821,7 +842,7 @@ class horne_extraction(base_util):
         smoothColor = "tab:orange" if iteration == 0 else "tab:green"
 
         # SKY SPECTRUM WITH DETECTED PEAKS AND CATALOGUE SKYLINE POSITIONS
-        ax1.plot(shiftArray, skyValsOriginal, color="black", alpha=0.7, linewidth=0.7, label="skyFlux - original")
+        # ax1.plot(shiftArray, skyValsOriginal, color="black", alpha=0.7, linewidth=0.7, label="skyFlux - original")
         ax1.plot(shiftArray, skyVals, color=smoothColor, linewidth=0.7, label="skyFlux - smoothed")
         for ww in localSkylines:
             ax1.axvline(ww, color="grey", alpha=0.25, linewidth=0.5)
@@ -1525,9 +1546,9 @@ def plot_rectified_images(orderRectifiedImages, order):
         )
         fig.suptitle(f"{key} for Order {order}", fontsize=16)
         if "mask" in key.lower():
-            plt.imshow(value.T, interpolation="none", aspect="auto", vmin=0, vmax=1, cmap="viridis")
+            plt.imshow(value, interpolation="none", aspect="auto", vmin=0, vmax=1, cmap="viridis")
         else:
-            plt.imshow(value.T, interpolation="none", aspect="auto", vmin=mean-2*std, vmax=mean+2*std, cmap="viridis")
+            plt.imshow(value, interpolation="none", aspect="auto", vmin=mean-2*std, vmax=mean+2*std, cmap="viridis")
         plt.show()
 
     return None

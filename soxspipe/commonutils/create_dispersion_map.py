@@ -2812,7 +2812,7 @@ class create_dispersion_map(object):
             checksum=True,
         )
 
-        if self.debug or True:
+        if self.debug:
             from soxspipe.commonutils.image_transformer import image_transformer
             # ZOOM AND REBIN ALL ARRAYS ORDER-BY-ORDER, ALSO SIGMA-CLIPPING THE BAD-PIXEL MASK
             transformer = image_transformer(

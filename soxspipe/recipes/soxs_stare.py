@@ -418,6 +418,8 @@ class soxs_stare(base_recipe):
         filterDict = {kw("PRO_CATG"): f"DISP_TAB_{arm}"}
         dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
+        
+
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
         twoDMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]

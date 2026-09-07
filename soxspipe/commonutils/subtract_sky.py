@@ -690,6 +690,15 @@ class subtract_sky(object):
                 alpha=al,
             )
 
+        print(f"DEBUG: median {median}, std {std}")
+
+        if np.isnan(std):
+            std = 500
+
+        if np.isnan(median):
+            median = 0
+
+
         threerow.set_ylim(median - 3 * std, median + 7 * std)
         threerow.set_xlabel("slit-position relative to slit centre (arcsec)", fontsize=10)
         threerow.set_ylabel("flux minus smoothed flux residual ($\\sigma$)", fontsize=10)
@@ -1134,7 +1143,7 @@ class subtract_sky(object):
                 break
             lastClipped = totalClipped
 
-            if self.debug and False:
+            if self.debug and True:
                 # PLOT THE CLIPPED PIXELS IN EACH ITERATION
                 self.plot_order_skymodel_fitting_quicklook(
                     imageMapOrderDF,
