@@ -1,5 +1,7 @@
 # Release Notes
 
+* **FIXED**: Restore editable installs by using the supported default setuptools-scm parser for `v`-prefixed tags.
+* **TEST**: Add an isolated synthetic test foundation, branch-coverage ratchet, and repository-owned required CI workflow.
 * **ENHANCEMENT**: refine skyline-based wavelength-shift calibration
 * **ENHANCEMENT**: tune skyline detection, iterative matching, clipping, and VIS-order shift fallback behavior.
 * **FIXED**: prevent dispersion-map transformations from running outside debug mode and handle invalid sky-plot statistics.
