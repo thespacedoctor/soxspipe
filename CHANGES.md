@@ -1,6 +1,8 @@
 # Release Notes
 
 * **FIXED**: Restore editable installs by using the supported default setuptools-scm parser for `v`-prefixed tags.
+* **FIXED**: Handle empty and prepared-extension file inputs safely, omit NaN Phase 3 QC headers, and invoke FITS decompression without a shell.
+* **TEST**: Add synthetic file-contract coverage for SOF inputs, FITS frame preparation, and Phase 3 products.
 * **TEST**: Add an isolated synthetic test foundation, branch-coverage ratchet, and repository-owned required CI workflow.
 * **ENHANCEMENT**: refine skyline-based wavelength-shift calibration
 * **ENHANCEMENT**: tune skyline detection, iterative matching, clipping, and VIS-order shift fallback behavior.
