@@ -21,19 +21,19 @@ jobs:
     timeout-minutes: 10
     env:
       BLAS_NUM_THREADS: "1"
-      HOME: ${{ runner.temp }}/home
+      HOME: /tmp/soxspipe-required/home
       MKL_NUM_THREADS: "1"
       MPLBACKEND: Agg
-      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
-      NUMBA_CACHE_DIR: ${{ runner.temp }}/numba
+      MPLCONFIGDIR: /tmp/soxspipe-required/matplotlib
+      NUMBA_CACHE_DIR: /tmp/soxspipe-required/numba
       NUMEXPR_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"
       OMP_NUM_THREADS: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONHASHSEED: "0"
       VECLIB_MAXIMUM_THREADS: "1"
-      XDG_CACHE_HOME: ${{ runner.temp }}/cache
-      XDG_CONFIG_HOME: ${{ runner.temp }}/config
+      XDG_CACHE_HOME: /tmp/soxspipe-required/cache
+      XDG_CONFIG_HOME: /tmp/soxspipe-required/config
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
