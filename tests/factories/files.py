@@ -6,9 +6,41 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from astropy.io import fits
+from astropy.table import Table
 
+from .dataframes import dispersion_table
 from .frames import synthetic_ccd
+
+
+def dispersion_map_fits(
+    destination: Path,
+    *,
+    coefficients: pd.DataFrame | None = None,
+) -> Path:
+    """Write a deterministic dispersion-map coefficient table."""
+    table = dispersion_table() if coefficients is None else coefficients.copy()
+    Table.from_pandas(table).write(destination, format="fits")
+    return destination
+
+
+def order_table_fits(
+    destination: Path,
+    *,
+    polynomials: pd.DataFrame,
+    metadata: pd.DataFrame,
+) -> Path:
+    """Write polynomial and metadata extensions in the order-table layout."""
+    hdus = fits.HDUList(
+        [
+            fits.PrimaryHDU(),
+            fits.BinTableHDU(Table.from_pandas(polynomials.copy())),
+            fits.BinTableHDU(Table.from_pandas(metadata.copy())),
+        ]
+    )
+    hdus.writeto(destination)
+    return destination
 
 
 def raw_fits(
