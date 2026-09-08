@@ -1,5 +1,6 @@
 # Release Notes
 
+* **TEST**: Characterize dispersion conversion, order tables, stacking, subtraction, extraction, response, flux calibration, continuum fitting, and order-edge detection with deterministic synthetic data.
 * **FIXED**: Restore editable installs by using the supported default setuptools-scm parser for `v`-prefixed tags.
 * **FIXED**: Handle empty and prepared-extension file inputs safely, omit NaN Phase 3 QC headers, and invoke FITS decompression without a shell.
 * **TEST**: Add synthetic file-contract coverage for SOF inputs, FITS frame preparation, and Phase 3 products.
