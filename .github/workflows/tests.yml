@@ -1,0 +1,119 @@
+name: Required tests
+
+on:
+  pull_request:
+    branches:
+      - develop
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: required-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BLAS_NUM_THREADS: "1"
+      HOME: ${{ runner.temp }}/home
+      MKL_NUM_THREADS: "1"
+      MPLBACKEND: Agg
+      MPLCONFIGDIR: ${{ runner.temp }}/matplotlib
+      NUMBA_CACHE_DIR: ${{ runner.temp }}/numba
+      NUMEXPR_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONHASHSEED: "0"
+      VECLIB_MAXIMUM_THREADS: "1"
+      XDG_CACHE_HOME: ${{ runner.temp }}/cache
+      XDG_CONFIG_HOME: ${{ runner.temp }}/config
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and test dependencies
+        run: |
+          mkdir -p "$HOME" "$MPLCONFIGDIR" "$NUMBA_CACHE_DIR" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME"
+          python -m pip install -e ".[tests]"
+
+      - name: Run required suite
+        run: |
+          mkdir -p reports
+          chmod -R a-w soxspipe
+          python_path="$(command -v python)"
+          runner_uid="$(id -u)"
+          runner_gid="$(id -g)"
+          sudo unshare --net --setgid="$runner_gid" --setuid="$runner_uid" -- \
+            /usr/bin/env \
+            BLAS_NUM_THREADS="$BLAS_NUM_THREADS" \
+            EXPECTED_UID="$runner_uid" \
+            HOME="$HOME" \
+            MKL_NUM_THREADS="$MKL_NUM_THREADS" \
+            MPLBACKEND="$MPLBACKEND" \
+            MPLCONFIGDIR="$MPLCONFIGDIR" \
+            NUMBA_CACHE_DIR="$NUMBA_CACHE_DIR" \
+            NUMEXPR_NUM_THREADS="$NUMEXPR_NUM_THREADS" \
+            OPENBLAS_NUM_THREADS="$OPENBLAS_NUM_THREADS" \
+            OMP_NUM_THREADS="$OMP_NUM_THREADS" \
+            PYTHONDONTWRITEBYTECODE="$PYTHONDONTWRITEBYTECODE" \
+            PYTHONHASHSEED="$PYTHONHASHSEED" \
+            PYTHON_PATH="$python_path" \
+            VECLIB_MAXIMUM_THREADS="$VECLIB_MAXIMUM_THREADS" \
+            XDG_CACHE_HOME="$XDG_CACHE_HOME" \
+            XDG_CONFIG_HOME="$XDG_CONFIG_HOME" \
+            /bin/bash -c '
+              test "$(id -u)" = "$EXPECTED_UID"
+              test ! -w soxspipe
+              exec "$PYTHON_PATH" -m pytest tests/unit tests/integration \
+                -m "not slow" \
+                --cov=soxspipe \
+                --cov-branch \
+                --cov-report=term-missing \
+                --cov-report=xml:reports/coverage.xml \
+                --cov-report=json:reports/coverage.json \
+                --junitxml=reports/junit.xml
+            '
+
+      - name: Enforce whole-package coverage ratchet
+        run: coverage report | tee reports/coverage.txt
+
+      - name: Enforce changed-line coverage
+        run: diff-cover reports/coverage.xml --compare-branch=origin/develop --fail-under=80
+
+      - name: Add coverage to job summary
+        if: always()
+        run: |
+          echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f reports/coverage.txt ]]; then
+            cat reports/coverage.txt >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Coverage report unavailable because an earlier step failed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: required-test-reports
+          path: |
+            reports/coverage.xml
+            reports/coverage.json
+            reports/coverage.txt
+            reports/junit.xml
