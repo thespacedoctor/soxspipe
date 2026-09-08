@@ -10,10 +10,8 @@ Date Created
 : April 11, 2023
 """
 
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+import sys
 
 os.environ["TERM"] = "vt100"
 
@@ -37,13 +35,13 @@ def uncompress(log, directory):
 
     log.debug("starting the ``uncompress`` function")
 
-    from subprocess import Popen, PIPE, STDOUT
+    from subprocess import PIPE, Popen
 
     # GENERATE A LIST OF FILE PATHS
     count = 0
     batches = []
     batch = []
-    for d in os.listdir(directory):
+    for d in sorted(os.listdir(directory)):
         filepath = os.path.join(directory, d)
         if (
             os.path.isfile(filepath)
@@ -57,34 +55,45 @@ def uncompress(log, directory):
                 batch = []
     if len(batch) > 0:
         batches.append(batch)
-    
 
     uncompressedCount = 0
+    missingCommandMessage = (
+        "The uncompress command was not found. Please install it or manually "
+        "uncompress all `.Z` files before running `soxspipe prep` again."
+    )
     for batch in batches:
         uncompressedCount += len(batch)
-        cmd = f"""uncompress -f {' '.join(batch)}"""
+        cmd = ["uncompress", "-f", *batch]
         try:
-            p = Popen(cmd, stdout=PIPE, stderr=PIPE, shell=True)
+            p = Popen(cmd, stdout=PIPE, stderr=PIPE)
             stdout, stderr = p.communicate()
             log.debug(f"output: {stdout}")
-            if not stderr:
+            if not stderr and p.returncode == 0:
                 if uncompressedCount > len(batch):
-                    # Cursor up one line and clear line
+                    # CURSOR UP ONE LINE AND CLEAR LINE
                     sys.stdout.flush()
                     sys.stdout.write("\x1b[1A\x1b[2K")
                 percent = (float(uncompressedCount) / float(count)) * 100.0
                 print(
                     f"Decompressed {uncompressedCount}/{count} fits.Z files ({percent:.1f}%)"
                 )
-        except Exception as e:
-            log.error(f"Could not uncompress .Z files")
-
-        if stderr and "uncompress" in stderr.decode("ascii"):
-            print(stderr.decode("ascii"))
-            print(
-                f"The uncompress command was not found. Please install it or manually uncompress all `.Z` files before running `soxspipe prep` again."
-            )
+        except FileNotFoundError:
+            print(missingCommandMessage)
             sys.exit(0)
+        except OSError as error:
+            log.error(f"Could not uncompress .Z files: {error}")
+            continue
+
+        stderrMessage = stderr.decode("ascii", errors="replace")
+        if p.returncode == 127:
+            print(stderrMessage)
+            print(missingCommandMessage)
+            sys.exit(0)
+        if p.returncode:
+            log.error(
+                f"Could not uncompress .Z files (exit code {p.returncode}): "
+                f"{stderrMessage}"
+            )
 
     log.debug("completed the ``uncompress`` function")
     return None

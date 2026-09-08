@@ -134,7 +134,8 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
             qc["qc_comment"].values,
             qc["to_header"].values,
         ):
-            if h and v is not np.nan:
+            isMissing = isinstance(v, (float, np.floating)) and np.isnan(v)
+            if h and not isMissing:
                 header[f"ESO QC {n}".upper()] = (v, c)
 
     # CONVERT TO FITS BINARY TABLE HDU

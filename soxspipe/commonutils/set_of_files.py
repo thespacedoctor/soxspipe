@@ -120,6 +120,35 @@ class ImageFileCollection(ImageFileCollection):
 os.environ["TERM"] = "vt100"
 
 
+def _supplementary_path_from_sof_line(line, home):
+    """Return the path column from a supplementary SOF row."""
+    expandedLine = line.replace("~/", home + "/")
+    if os.path.exists(expandedLine):
+        return expandedLine
+    columns = expandedLine.rsplit(maxsplit=1)
+    if (
+        len(columns) == 2
+        and columns[1].isupper()
+        and columns[1].replace("_", "").isalnum()
+        and columns[1].endswith(("_NIR", "_UVB", "_VIS"))
+    ):
+        return columns[0]
+    return expandedLine
+
+
+def _join_fits_summaries_in_input_order(primarySummary, extensionSummary):
+    """Join primary and extension headers without reordering input frames."""
+    from astropy.table import join
+
+    inputOrderColumn = "_soxspipe_input_order"
+    orderedExtension = extensionSummary.copy()
+    orderedExtension[inputOrderColumn] = range(len(orderedExtension))
+    joinedSummary = join(primarySummary, orderedExtension, keys="file")
+    joinedSummary.sort(inputOrderColumn)
+    joinedSummary.remove_column(inputOrderColumn)
+    return joinedSummary
+
+
 class set_of_files(object):
     """
     *The worker class for the sof module used to homogenize various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
@@ -194,7 +223,7 @@ class set_of_files(object):
         from os.path import expanduser
 
         home = expanduser("~")
-        if isinstance(self.inputFrames, str) and self.inputFrames[0] == "~":
+        if isinstance(self.inputFrames, str) and self.inputFrames.startswith("~"):
             self.inputFrames = home + "/" + self.inputFrames[1:]
 
         # GRAB THE WORKSPACE SESSION
@@ -314,13 +343,12 @@ class set_of_files(object):
         """
         self.log.debug("starting the ``get`` method")
 
-        from astropy.table import join
         import codecs
         from os.path import expanduser
 
         home = expanduser("~")
 
-        if isinstance(self.inputFrames, str) and self.inputFrames[0] == "~":
+        if isinstance(self.inputFrames, str) and self.inputFrames.startswith("~"):
             self.inputFrames = home + "/" + self.inputFrames[1:]
 
         # DIRECTORY OF FRAMES
@@ -350,7 +378,10 @@ class set_of_files(object):
                     primExt = ImageFileCollection(
                         keywords=missingKeys, location=self.inputFrames, ext=0
                     )
-                    sof._summary = join(primExt._summary, sof._summary, keys="file")
+                    sof._summary = _join_fits_summaries_in_input_order(
+                        primExt._summary,
+                        sof._summary,
+                    )
             else:
                 sof = ImageFileCollection(
                     location=self.inputFrames, keywords=self.keys, ext=self.ext
@@ -388,7 +419,7 @@ class set_of_files(object):
             ]
 
             supplementaryFilepaths = [
-                l.replace("~/", home + "/")
+                _supplementary_path_from_sof_line(l, home)
                 for l in lines
                 if ".fits" not in l.lower() and len(l) > 3
             ]
@@ -453,7 +484,10 @@ class set_of_files(object):
                         location=location,
                         ext=0,
                     )
-                    sof._summary = join(primExt._summary, sof._summary, keys="file")
+                    sof._summary = _join_fits_summaries_in_input_order(
+                        primExt._summary,
+                        sof._summary,
+                    )
             else:
                 sof = ImageFileCollection(
                     filenames=fitsFiles,
@@ -472,15 +506,17 @@ class set_of_files(object):
             else:
                 location = None
 
-            sof = ImageFileCollection(
-                filenames=fitsFiles, keywords=self.keys, location=location, ext=self.ext
-            )
-
             if self.ext > 0:
+                sofSeed = ImageFileCollection(
+                    filenames=fitsFiles, location=location, ext=self.ext
+                )
                 foundKeys = [
                     k
                     for k in self.keys
-                    if (k.lower() in sof.summary.colnames or k in sof.summary.colnames)
+                    if (
+                        k.lower() in sofSeed.summary.colnames
+                        or k in sofSeed.summary.colnames
+                    )
                 ]
                 sof = ImageFileCollection(
                     filenames=fitsFiles,
@@ -492,8 +528,8 @@ class set_of_files(object):
                     k
                     for k in self.keys
                     if (
-                        k.lower() not in sof.summary.colnames
-                        and k not in sof.summary.colnames
+                        k.lower() not in sofSeed.summary.colnames
+                        and k not in sofSeed.summary.colnames
                     )
                 ]
                 if len(missingKeys):
@@ -503,7 +539,17 @@ class set_of_files(object):
                         location=location,
                         ext=0,
                     )
-                    sof._summary = join(primExt._summary, sof._summary, keys="file")
+                    sof._summary = _join_fits_summaries_in_input_order(
+                        primExt._summary,
+                        sof._summary,
+                    )
+            else:
+                sof = ImageFileCollection(
+                    filenames=fitsFiles,
+                    keywords=self.keys,
+                    location=location,
+                    ext=self.ext,
+                )
             fitsFiles = [os.path.basename(f) for f in fitsFiles]
             sof._summary["filename"] = fitsFiles
             self.keys = ["filename"] + self.keys
