@@ -1,5 +1,6 @@
 # Release Notes
 
+* **TEST**: Characterize recipe construction, validation, orchestration, product metadata, and failure behavior with isolated synthetic inputs.
 * **TEST**: Limit the legacy integration workflow to pull requests targeting `main` and a weekly scheduled run.
 * **TEST**: Characterize dispersion conversion, order tables, stacking, subtraction, extraction, response, flux calibration, continuum fitting, and order-edge detection with deterministic synthetic data.
 * **FIXED**: Restore editable installs by using the supported default setuptools-scm parser for `v`-prefixed tags.

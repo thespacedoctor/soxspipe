@@ -1,6 +1,6 @@
 """Fresh deterministic test-data factories."""
 
-from .dataframes import dispersion_table, order_table, product_table, qc_table
+from .dataframes import dispersion_table, order_table, product_table, qc_row, qc_table
 from .files import (
     dispersion_map_fits,
     order_table_fits,
@@ -21,6 +21,7 @@ __all__ = [
     "pipeline_settings",
     "prepared_fits",
     "product_table",
+    "qc_row",
     "qc_table",
     "raw_fits",
     "sof_file",
