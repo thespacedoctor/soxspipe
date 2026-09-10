@@ -53,6 +53,26 @@ def qc_table() -> pd.DataFrame:
     )
 
 
+def qc_row(
+    *,
+    recipeName: str,
+    name: str,
+    value: object,
+    unit: str,
+    comment: str,
+    toHeader: bool = True,
+) -> pd.DataFrame:
+    """Return one deterministic QC row with the complete production contract."""
+    return qc_table().assign(
+        soxspipe_recipe=recipeName,
+        qc_name=name,
+        qc_value=value,
+        qc_unit=unit,
+        qc_comment=comment,
+        to_header=toHeader,
+    )
+
+
 def product_table() -> pd.DataFrame:
     """Return a fresh product table with deterministic metadata."""
     return pd.DataFrame(

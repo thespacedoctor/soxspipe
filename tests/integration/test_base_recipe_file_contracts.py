@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 from astropy import units as u
 from astropy.io import fits
@@ -33,6 +34,76 @@ def _recipe(tmp_path: Path, log: object) -> base_recipe:
     recipe.workspaceRootPath = str(tmp_path)
     recipe.inst = "XSHOOTER"
     return recipe
+
+
+def test_update_fits_keywords_records_recipe_provenance(
+    log: object,
+    tmp_path: Path,
+) -> None:
+    """Recipe outputs retain stable product, provenance, and parameter cards."""
+    calibrationPath = tmp_path / "MASTER_DARK_VIS.fits"
+    calibrationPath.write_bytes(b"synthetic calibration")
+    inventory = pd.DataFrame(
+        [
+            {
+                "filename": "raw-science_pre.fits",
+                "TYPE": "BIAS",
+                "ARM": "VIS",
+                "ESO PRO TYPE": float("nan"),
+                "ESO PRO CATG": None,
+                "file": str(tmp_path / "raw-science_pre.fits"),
+            },
+            {
+                "filename": calibrationPath.name,
+                "TYPE": "DARK",
+                "ARM": "VIS",
+                "ESO PRO TYPE": "REDUCED",
+                "ESO PRO CATG": "MASTER_DARK_VIS",
+                "file": str(calibrationPath),
+            },
+        ]
+    )
+    recipe = base_recipe.__new__(base_recipe)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.kw = keyword_lookup(log=log, settings={"instrument": "soxs"}).get
+    recipe.detectorParams = {}
+    recipe.imageType = "BIAS"
+    recipe.recipeName = "soxs-mbias"
+    recipe.settings = pipeline_settings(
+        tmp_path,
+        overrides={
+            "soxs-mbias": {
+                "frame-clipping-sigma": 3.0,
+                "stacking": {"method": "median"},
+            }
+        },
+    )
+    recipe.rawFrames = type(
+        "SyntheticRawFrames",
+        (),
+        {"to_pandas": lambda self: inventory.copy(deep=True)},
+    )()
+    outputFrame = synthetic_ccd(seed=101, prepared=True)
+
+    recipe.update_fits_keywords(outputFrame, rawFrames=["raw-science.fits"])
+
+    header = outputFrame.header
+    assert header["ESO SEQ ARM"] == "VIS"
+    assert header["ESO PRO TYPE"] == "REDUCED"
+    assert header["ESO PRO CATG"] == "MASTER_BIAS_VIS"
+    assert header["ESO PRO TECH"] == "IMAGE"
+    assert header["ESO PRO REC1 ID"] == "soxs-mbias"
+    assert str(header["ESO PRO REC1 PIPE ID"]).startswith("soxspipe/v")
+    assert header["ESO PRO REC1 RAW1 NAME"] == "raw-science.fits"
+    assert header["ESO PRO REC1 RAW1 CATG"] == "BIAS_VIS"
+    assert header["ESO PRO REC1 CAL1 NAME"] == calibrationPath.name
+    assert header["ESO PRO REC1 CAL1 CATG"] == "MASTER_DARK_VIS"
+    assert header["ESO PRO REC1 CAL1 DATAMD5"] == "70237715eb696d0cf9dc67431f353b44"
+    assert header["ESO PRO REC1 PARAM1 NAME"] == "frame-clipping-sigma"
+    assert header["ESO PRO REC1 PARAM1 VALUE"] == 3.0
+    assert header["ESO PRO REC1 PARAM2 NAME"] == "method"
+    assert header["ESO PRO REC1 PARAM2 VALUE"] == "median"
 
 
 def test_prepare_frames_preserves_processing_order_then_sorts_by_observation_time(
