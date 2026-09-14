@@ -17,9 +17,7 @@
 
 <!-- STATUS BADGES -->  
 
-[![](https://soxs-eso-data.org/ci/buildStatus/icon?job=soxspipe%2Fmaster&subject=build%20master)](https://soxs-eso-data.org/ci/blue/organizations/jenkins/soxspipe/activity?branch=master)
-[![](https://soxs-eso-data.org/ci/buildStatus/icon?job=soxspipe%2Fdevelop&subject=build%20dev)](https://soxs-eso-data.org/ci/blue/organizations/jenkins/soxspipe/activity?branch=develop)
-[![](https://cdn.jsdelivr.net/gh/thespacedoctor/soxspipe@main/coverage.svg)](https://raw.githack.com/thespacedoctor/soxspipe/main/htmlcov/index.html)
+[![Required tests](https://github.com/thespacedoctor/soxspipe/actions/workflows/tests.yml/badge.svg?branch=develop)](https://github.com/thespacedoctor/soxspipe/actions/workflows/tests.yml)
 [![](https://readthedocs.org/projects/soxspipe/badge/?version=main)](https://soxspipe.readthedocs.io/en/main/)
 [![](https://img.shields.io/github/issues/thespacedoctor/soxspipe/type:%20bug?label=bug%20issues)](https://github.com/thespacedoctor/soxspipe/issues?q=is%3Aissue+is%3Aopen+label%3A%22type%3A+bug%22+)
 
@@ -40,6 +38,21 @@ If you have previously installed soxspipe, a warning will be issued stating that
 
 To check installation was successful run `soxspipe -v`. This should return the version number of the install.
 
+## Testing
+
+Install the test dependencies and run the required offline suite with Python 3.12:
+
+```bash
+python -m pip install -e ".[tests]"
+python -m pytest tests/unit tests/integration -m "not slow"
+```
+
+The real-data acceptance test is opt-in. The scheduled GitHub Actions workflow downloads the immutable archive named by `tests/real_data/manifest.json`, verifies it, creates a disposable workspace, and runs the representative NIR-offset reduction. To run the acceptance assertions locally after preparing that workspace, set `SOXSPIPE_REAL_DATA_DIR` to its absolute path:
+
+```bash
+SOXSPIPE_REAL_DATA_DIR=/absolute/path/to/workspace python -m pytest tests/real_data
+```
+
 ## How to cite soxspipe
 
 If you use `soxspipe` in your work, please cite using the following BibTeX entry: 
@@ -53,4 +66,3 @@ If you use `soxspipe` in your work, please cite using the following BibTeX entry
     url = {https://zenodo.org/doi/10.5281/zenodo.8038264}
 }
 ```
-

@@ -1,5 +1,6 @@
 # Release Notes
 
+* **TEST**: Add a verified, opt-in real-data NIR-offset acceptance workflow with immutable archive inventory checks and approved scalar baselines.
 * **ENHANCEMENT**: Raise the whole-package branch-coverage threshold to 70% and add broad deterministic unit and integration coverage for pipeline utilities and recipes.
 * **ENHANCEMENT**: refine skyline-based wavelength-shift calibration
 * **ENHANCEMENT**: tune skyline detection, iterative matching, clipping, and VIS-order shift fallback behavior.

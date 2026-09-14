@@ -70,7 +70,6 @@ tests = [
     "diff-cover==10.5.1",
     "pytest",
     "pytest-cov",
-    "nose2"
 ]
 dev = [
     "soxspipe[tests, docs]",
