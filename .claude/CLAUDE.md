@@ -15,11 +15,19 @@ pip install -e ".[dev]"
 
 Run tests:
 ```bash
-pytest                                    # full suite (uses pytest.ini markers)
-pytest -m "not full"                      # skip slow/full tests (aka `make litetest`)
-pytest -k "test_horne_extraction_function" --pdb -v -s   # single test, drop into debugger on failure
+pytest                                    # the canonical suite: tests/ (pyproject sets testpaths = ["tests"])
+pytest tests/unit tests/integration -m "not slow"   # the offline suite CI enforces
+pytest -k "test_horne_extraction" --pdb -v -s       # single test, drop into debugger on failure
 ```
-Note: recipe/commonutils tests read settings from `test_settings_xsh.yaml` and `test_settings_soxs_sim.yaml` at the repo root (see `soxspipe/utKit.py`). These are local, untracked files pointing at unit-test data on disk — they are not part of the repo, so tests will fail with a `FileNotFoundError` in an environment that lacks them.
+
+The real-data acceptance test is opt-in and needs a prepared workspace:
+```bash
+SOXSPIPE_REAL_DATA_DIR=/absolute/path/to/workspace pytest tests/real_data
+```
+
+Coverage floor is `fail_under = 70` in `pyproject.toml`; CI additionally enforces `diff-cover --fail-under=80` against `develop`.
+
+The settings files `test_settings_soxs.yaml`, `test_settings_soxs_sim.yaml`, and `test_settings_xsh.yaml` live under `soxspipe/` and **are tracked in the repo**. They point at unit-test data on local disk (`~/xshooter-pipeline-data/`, `~/soxspipe-unittests/`) that is not distributed, so anything reading them fails in an environment that lacks that data.
 
 Build docs (Sphinx):
 ```bash
@@ -56,9 +64,16 @@ The codebase supports both SOXS and X-Shooter via a settings-driven `instrument`
 - `flux_calibration.py`, `response_function.py` — instrument response and flux calibration.
 - `filenamer.py`, `toolkit.py`, `phase3.py` — product naming, shared helper functions, ESO Phase 3 archive export formatting.
 
-### Tests mirror source layout
+### Test layout
 
-Tests live alongside the code they cover: `soxspipe/recipes/tests/test_<recipe>.py` and `soxspipe/commonutils/tests/test_<module>.py`, using `soxspipe/utKit.py` (a project override of `fundamentals.utKit`) for shared fixtures/paths (`input/`, `output/` dirs per test module).
+The canonical test tree is the top-level `tests/` directory, and it is the only one `pytest` collects:
+
+- `tests/unit/` — fast, offline, isolated tests.
+- `tests/integration/` — contract tests across module boundaries (data organiser, recipe orchestration, SQLite, FITS).
+- `tests/real_data/` — opt-in acceptance test against a downloaded archive, gated on `SOXSPIPE_REAL_DATA_DIR`.
+- `tests/factories/` — builders for synthetic frames, dataframes, settings, and workspaces.
+
+An older inline tree mirroring the source layout (`soxspipe/recipes/tests/`, `soxspipe/commonutils/tests/`, `soxspipe/tests/`) is deprecated and scheduled for removal. It is excluded from `testpaths`, asserts almost nothing, and only runs against undistributed local data. Do not add tests to it, and do not treat it as a safety net.
 
 ## Code style
 
