@@ -1,5 +1,11 @@
 # Release Notes
 
+* **TEST**: Reduce the required whole-package branch-coverage threshold to 70%.
+* **TEST**: Cover isolated workspace preparation, session inventories, FITS organization, secure stale-file cleanup, base-recipe calibration, merged-spectrum QC plots, full sky-model diagnostics, master-flat calibration, dispersion-map products, master-bias QC, filename rules, and AB/BA nodding extraction and stacking, and raise the branch-coverage ratchet to 72%.
+* **FIXED**: Detrend master-dark flat frames once and preserve slit-position data when writing dispersion-map images.
+* **TEST**: Add deterministic continuum, response-function, recipe-finalization, background-subtraction, flux-calibration, and Horne-extraction coverage, and raise the branch-coverage ratchet to 50%.
+* **FIXED**: Skip efficiency-product creation when the optional response efficiency estimate is unavailable.
+* **TEST**: Add synthetic master-flat, order-edge, and response workflow coverage, and raise the branch-coverage ratchet to 46%.
 * **TEST**: Characterize recipe construction, validation, orchestration, product metadata, and failure behavior with isolated synthetic inputs.
 * **TEST**: Limit the legacy integration workflow to pull requests targeting `main` and a weekly scheduled run.
 * **TEST**: Characterize dispersion conversion, order tables, stacking, subtraction, extraction, response, flux calibration, continuum fitting, and order-edge detection with deterministic synthetic data.

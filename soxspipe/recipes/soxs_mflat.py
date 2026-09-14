@@ -831,7 +831,6 @@ class soxs_mflat(base_recipe):
                 mjd = flat.header[kw("MJDOBS")]
                 matchValue, matchIndex = nearest_neighbour(flat.header[kw("MJDOBS")], darkMjds)
                 dark = darks[matchIndex]
-                this = self.detrend(inputFrame=flat, master_bias=bias, dark=dark)
                 calibratedFlats.append(self.detrend(inputFrame=flat, master_bias=bias, dark=dark))
 
         if 1 == 0:

@@ -159,9 +159,17 @@ class reducer(object):
 
                 if multiprocess:
                     import sqlite3 as sql
+                    from soxspipe.commonutils.data_organiser import (
+                        _validate_owned_path,
+                    )
 
-                    conn = sql.connect(
+                    databasePath = _validate_owned_path(
                         self.sessionDB,
+                        self.workspaceDirectory,
+                        "database path",
+                    )
+                    conn = sql.connect(
+                        databasePath,
                         timeout=300,
                         autocommit=True,
                         check_same_thread=False,
@@ -301,8 +309,12 @@ class reducer(object):
 
         import pandas as pd
         import sqlite3 as sql
+        from soxspipe.commonutils.data_organiser import _validate_owned_path
 
-        conn = sql.connect(self.sessionDB, timeout=300, autocommit=True, check_same_thread=False)
+        databasePath = _validate_owned_path(
+            self.sessionDB, self.workspaceDirectory, "database path"
+        )
+        conn = sql.connect(databasePath, timeout=300, autocommit=True, check_same_thread=False)
         c = conn.cursor()
         c.execute("PRAGMA busy_timeout = 100000")
         c.execute("PRAGMA synchronous = OFF")

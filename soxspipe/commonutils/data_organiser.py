@@ -15,10 +15,43 @@ from fundamentals import tools
 from builtins import object
 import sys
 import os
+from pathlib import Path
 from soxspipe.commonutils import uncompress
 from soxspipe.commonutils.toolkit import get_calibrations_path
 
 os.environ["TERM"] = "vt100"
+
+
+class _UnsafePathError(ValueError):
+    """Report an unsafe path or workspace identifier at a trust boundary."""
+
+
+def _validate_owned_path(path, owner, label):
+    """Return a path only when its resolved target remains below its owner."""
+    candidatePath = Path(path)
+    ownerPath = Path(owner)
+    try:
+        resolvedOwnerPath = ownerPath.resolve()
+        resolvedCandidatePath = candidatePath.resolve()
+        resolvedCandidatePath.relative_to(resolvedOwnerPath)
+    except (OSError, RuntimeError, ValueError) as error:
+        raise _UnsafePathError(
+            f"Unsafe {label}: path resolves outside {ownerPath}"
+        ) from error
+    return resolvedCandidatePath
+
+
+def _validate_session_id(sessionId):
+    """Enforce the documented grammar for workspace session identifiers."""
+    import re
+
+    if not isinstance(sessionId, str) or re.fullmatch(
+        r"[0-9A-Za-z_-]{1,16}", sessionId
+    ) is None:
+        raise _UnsafePathError(
+            "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-"
+        )
+    return sessionId
 
 
 class data_organiser(object):
@@ -68,26 +101,48 @@ class data_organiser(object):
             directory = directory.replace("~", home)
 
         self.rootDir = rootDir
-        self.rawDir = rootDir + "/raw"
-        self.miscDir = rootDir + "/misc"
-        self.sessionsDir = rootDir + "/sessions"
+        self.rawDir = str(
+            _validate_owned_path(Path(rootDir) / "raw", rootDir, "raw directory")
+        )
+        self.miscDir = str(
+            _validate_owned_path(Path(rootDir) / "misc", rootDir, "misc directory")
+        )
+        self.sessionsDir = str(
+            _validate_owned_path(
+                Path(rootDir) / "sessions", rootDir, "sessions directory"
+            )
+        )
 
         if self.vlt:
             self.vltReduced = self.use_vlt_environment_folders()
 
         # SESSION ID PLACEHOLDER FILE
-        self.sessionIdFile = self.sessionsDir + "/.sessionid"
+        self.sessionIdFile = str(
+            _validate_owned_path(
+                Path(self.sessionsDir) / ".sessionid",
+                self.sessionsDir,
+                "session ID path",
+            )
+        )
         exists = os.path.exists(self.sessionIdFile)
         if exists:
             with codecs.open(
                 self.sessionIdFile, encoding="utf-8", mode="r"
             ) as readFile:
-                sessionId = readFile.read()
-                self.sessionPath = self.sessionsDir + "/" + sessionId
+                sessionId = _validate_session_id(readFile.read())
+                self.sessionPath = str(
+                    _validate_owned_path(
+                        Path(self.sessionsDir) / sessionId,
+                        self.sessionsDir,
+                        "session path",
+                    )
+                )
                 self.sessionId = sessionId
 
         # DATABASE FILE
-        self.rootDbPath = rootDir + "/soxspipe.db"
+        self.rootDbPath = str(
+            _validate_owned_path(Path(rootDir) / "soxspipe.db", rootDir, "database path")
+        )
 
         # RETURN HERE: add these to yaml file
         # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE LIFTED FROM ALL FITS FILES
@@ -388,8 +443,14 @@ class data_organiser(object):
             with codecs.open(
                 self.sessionIdFile, encoding="utf-8", mode="r"
             ) as readFile:
-                sessionId = readFile.read()
-                self.sessionPath = self.sessionsDir + "/" + sessionId
+                sessionId = _validate_session_id(readFile.read())
+                self.sessionPath = str(
+                    _validate_owned_path(
+                        Path(self.sessionsDir) / sessionId,
+                        self.sessionsDir,
+                        "session path",
+                    )
+                )
 
         # GET SETTINGS
         settingsPath = self.sessionPath + "/soxspipe.yaml"
@@ -896,6 +957,9 @@ class data_organiser(object):
         import sqlite3 as sql
         import shutil
 
+        if tableName != "raw_frames":
+            raise ValueError("Only the raw_frames table can be synchronized")
+
         # GENERATE A LIST OF FITS FILE PATHS IN RAW DIR
         from fundamentals.files import recursive_directory_listing
 
@@ -910,24 +974,37 @@ class data_organiser(object):
         sqlQuery = f"select filepath from {tableName};"
         c.execute(sqlQuery)
 
-        # MAKE PATHS ABSOLUTE
+        # NORMALIZE DATABASE PATHS BEFORE COMPARING THEM WITH THE ABSOLUTE LISTING.
         dbFiles = [r[0].replace("//", "/") for r in c.fetchall()]
+        normalizedDbFiles = {
+            filePath: str(
+                _validate_owned_path(
+                    Path(filePath)
+                    if os.path.isabs(filePath)
+                    else Path(self.rootDir) / filePath,
+                    self.rootDir,
+                    "database filepath",
+                )
+            )
+            for filePath in dbFiles
+        }
+        absoluteDbFiles = set(normalizedDbFiles.values())
 
         # DELETED FILES
-        filesNotInDB = list(set(fitsPaths) - set(dbFiles))
-        filesNotInFS = list(set(dbFiles) - set(fitsPaths))
-        # MAKE PATHS RELATIVE TO rawDir
+        filesNotInDB = list(set(fitsPaths) - absoluteDbFiles)
         filesNotInFS = [
-            f.replace(self.rawDir + "/", "./raw/").replace("//", "/")
-            for f in filesNotInFS
+            filePath
+            for filePath, normalizedPath in normalizedDbFiles.items()
+            if normalizedPath not in fitsPaths
         ]
-
         if len(filesNotInFS):
-            filesNotInFS = ("','").join(filesNotInFS)
-            sqlQuery = f"delete from {tableName} where filepath in ('{filesNotInFS}');"
-            c.execute(sqlQuery)
-            sqlQuery = f"delete from sof_map_{self.sessionId} where sof in (select sof from sof_map_{self.sessionId} where filepath in ('{filesNotInFS}'));"
-            c.execute(sqlQuery)
+            placeholders = ", ".join("?" for _ in filesNotInFS)
+            sqlQuery = f"delete from {tableName} where filepath in ({placeholders});"
+            c.execute(sqlQuery, filesNotInFS)
+            sessionId = _validate_session_id(self.sessionId)
+            sofTableName = f"sof_map_{sessionId}"
+            sqlQuery = f"delete from {sofTableName} where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"
+            c.execute(sqlQuery, filesNotInFS)
 
         if len(filesNotInDB):
 
@@ -1227,6 +1304,12 @@ class data_organiser(object):
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         self.sofDir = self.sessionPath + "/sof"
+        self.sessionPath = str(
+            _validate_owned_path(self.sessionPath, self.sessionsDir, "session path")
+        )
+        self.sofDir = str(
+            _validate_owned_path(self.sofDir, self.sessionPath, "SOF directory")
+        )
         if not os.path.exists(self.sofDir):
             os.makedirs(self.sofDir)
 
@@ -1236,7 +1319,17 @@ class data_organiser(object):
 
         # GROUP RESULTS
         for name, group in df.groupby("sof"):
-            sofPath = self.sofDir + "/" + name
+            if not isinstance(name, str) or Path(name).name != name:
+                raise _UnsafePathError(
+                    "SOF filename must be a filename without directory components"
+                )
+            sofPath = str(
+                _validate_owned_path(
+                    Path(self.sofDir) / name,
+                    self.sofDir,
+                    "SOF path",
+                )
+            )
             if os.path.exists(sofPath):
                 continue
             myFile = open(sofPath, "w")
@@ -1273,9 +1366,11 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``session_create`` method")
 
-        import re
         import shutil
         import sqlite3 as sql
+
+        if sessionId:
+            sessionId = _validate_session_id(sessionId)
 
         rootDbExists = os.path.exists(self.rootDbPath)
         if rootDbExists:
@@ -1295,27 +1390,24 @@ class data_organiser(object):
             )
             sys.exit(0)
 
-        if sessionId:
-            if len(sessionId) > 16:
-                print(
-                    "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-"
-                )
-            matchObjectList = re.findall(r"[^0-9a-zA-Z\-\_]+", sessionId)
-            if matchObjectList:
-                print(
-                    "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-"
-                )
-        else:
+        if not sessionId:
             # CREATE SESSION ID FROM TIME STAMP
             from datetime import datetime, date, time
 
             now = datetime.now()
             sessionId = now.strftime("%Y%m%dt%H%M%S")
+            sessionId = _validate_session_id(sessionId)
 
         self.sessionId = sessionId
 
         # MAKE THE SESSION DIRECTORY
-        self.sessionPath = self.sessionsDir + "/" + sessionId
+        self.sessionPath = str(
+            _validate_owned_path(
+                Path(self.sessionsDir) / sessionId,
+                self.sessionsDir,
+                "session path",
+            )
+        )
         if not os.path.exists(self.sessionPath):
             os.makedirs(self.sessionPath)
 
@@ -1396,7 +1488,10 @@ class data_organiser(object):
         # WRITE THE SESSION ID FILE
         import codecs
 
-        with codecs.open(self.sessionIdFile, encoding="utf-8", mode="w") as writeFile:
+        sessionIdFile = _validate_owned_path(
+            self.sessionIdFile, self.sessionsDir, "session ID path"
+        )
+        with codecs.open(sessionIdFile, encoding="utf-8", mode="w") as writeFile:
             writeFile.write(sessionId)
 
         message = f"A new data-reduction session has been created with sessionId '{sessionId}'"
@@ -1436,7 +1531,13 @@ class data_organiser(object):
         import codecs
 
         # IF SESSION ID FILE DOES NOT EXIST, REPORT
-        self.sessionIdFile = self.sessionsDir + "/.sessionid"
+        self.sessionIdFile = str(
+            _validate_owned_path(
+                Path(self.sessionsDir) / ".sessionid",
+                self.sessionsDir,
+                "session ID path",
+            )
+        )
         exists = os.path.exists(self.sessionIdFile)
         if not exists:
             if not silent:
@@ -1446,7 +1547,7 @@ class data_organiser(object):
             with codecs.open(
                 self.sessionIdFile, encoding="utf-8", mode="r"
             ) as readFile:
-                currentSession = readFile.read()
+                currentSession = _validate_session_id(readFile.read())
 
         # LIST ALL SESSIONS
         allSessions = [
@@ -1487,16 +1588,24 @@ class data_organiser(object):
         self.log.debug("starting the ``session_switch`` method")
         import codecs
 
+        sessionId = _validate_session_id(sessionId)
+
         currentSession, allSessions = self.session_list(silent=True)
 
         if sessionId == currentSession:
             print(f"Session '{sessionId}' is already in use.")
             return None
         elif sessionId in allSessions:
+            sessionPath = _validate_owned_path(
+                Path(self.sessionsDir) / sessionId,
+                self.sessionsDir,
+                "session path",
+            )
             # WRITE THE SESSION ID FILE
-            with codecs.open(
-                self.sessionIdFile, encoding="utf-8", mode="w"
-            ) as writeFile:
+            sessionIdFile = _validate_owned_path(
+                self.sessionIdFile, self.sessionsDir, "session ID path"
+            )
+            with codecs.open(sessionIdFile, encoding="utf-8", mode="w") as writeFile:
                 writeFile.write(sessionId)
         else:
             print(
@@ -1504,7 +1613,7 @@ class data_organiser(object):
             )
             return None
 
-        self.sessionPath = self.sessionsDir + "/" + sessionId
+        self.sessionPath = str(sessionPath)
         self._symlink_session_assets_to_workspace_root()
         print(f"Session successfully switched to '{sessionId}'.")
 
@@ -1586,6 +1695,11 @@ class data_organiser(object):
         import codecs
 
         # IF SESSION ID FILE DOES NOT EXIST, REPORT
+        self.sessionIdFile = str(
+            _validate_owned_path(
+                self.sessionIdFile, self.sessionsDir, "session ID path"
+            )
+        )
         exists = os.path.exists(self.sessionIdFile)
         if not exists:
             if not silent:
@@ -1595,9 +1709,14 @@ class data_organiser(object):
             with codecs.open(
                 self.sessionIdFile, encoding="utf-8", mode="r"
             ) as readFile:
-                sessionId = readFile.read()
-        self.sessionPath = self.sessionsDir + "/" + sessionId
-        self.sessionPath = self.sessionsDir + "/" + sessionId
+                sessionId = _validate_session_id(readFile.read())
+        self.sessionPath = str(
+            _validate_owned_path(
+                Path(self.sessionsDir) / sessionId,
+                self.sessionsDir,
+                "session path",
+            )
+        )
         self.sessionId = sessionId
 
         self.conn, reset = self._get_or_create_db_connection()
@@ -1739,6 +1858,10 @@ class data_organiser(object):
         import time
 
         reset = False
+
+        self.rootDbPath = str(
+            _validate_owned_path(self.rootDbPath, self.rootDir, "database path")
+        )
 
         conn = None
         i = 0

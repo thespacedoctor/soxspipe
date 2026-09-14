@@ -234,3 +234,19 @@ def test_prepare_single_frame_uses_shape_matched_bad_pixel_map(
     assert prepared.uncertainty.array.dtype.itemsize == np.dtype(np.float32).itemsize
     np.testing.assert_allclose(prepared.uncertainty.array, 3.0)
     np.testing.assert_allclose(prepared.data, fits.getdata(inputPath) * 2.0)
+
+
+def test_prepare_single_frame_leaves_existing_prepared_layout_unchanged(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    """Prepared FITS input remains a stable path instead of being prepared twice."""
+    recipe = _recipe(tmp_path, log)
+    recipe.detectorParams = {}
+    inputPath = prepared_fits(tmp_path / "already-prepared.fits", seed=7)
+
+    result = recipe._prepare_single_frame(str(inputPath))
+
+    assert result == str(inputPath)
+    with fits.open(inputPath) as hdus:
+        assert [hdu.name for hdu in hdus] == ["FLUX", "QUAL", "ERRS"]

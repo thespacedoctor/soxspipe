@@ -13,10 +13,47 @@ from astropy.nddata import CCDData, StdDevUncertainty
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.subtract_background import subtract_background
-from tests.factories import instrument_header, pipeline_settings
+from tests.factories import instrument_header, pipeline_settings, product_table
 
 pytestmark = pytest.mark.unit
 backgroundModule = importlib.import_module("soxspipe.commonutils.subtract_background")
+
+
+def test_constructor_resolves_frame_metadata_and_isolated_output_paths(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Initialize a subtractor from a synthetic prepared frame."""
+    import soxspipe.commonutils.toolkit as toolkit
+
+    settings = pipeline_settings(tmp_path)
+    monkeypatch.setattr(backgroundModule, "quicklook_image", lambda **kwargs: None)
+    monkeypatch.setattr(
+        toolkit,
+        "utility_setup",
+        lambda **_: (str(tmp_path / "qc"), str(tmp_path / "products")),
+    )
+
+    worker = subtract_background(
+        log=log,
+        frame=_frame(),
+        orderTable=str(tmp_path / "orders.fits"),
+        sofName="SYNTHETIC",
+        recipeName="soxs-mflat",
+        settings=settings,
+        qcTable=pd.DataFrame(),
+        productsTable=product_table().iloc[0:0],
+        lamp="_QTH",
+        startNightDate="2024-01-02",
+    )
+
+    assert worker.arm == "VIS"
+    assert worker.inst == "SOXS"
+    assert (worker.axisA, worker.axisB) == ("x", "y")
+    assert worker.dateObs == "2024-01-02T03:04:05.678"
+    assert worker.qcDir == str(tmp_path / "qc")
+    assert worker.productDir == str(tmp_path / "products")
 
 
 def _frame(shape: tuple[int, int] = (32, 32), value: float = 10.0) -> CCDData:
@@ -105,3 +142,77 @@ def test_subtract_restores_input_mask_and_subtracts_background(
     np.testing.assert_array_equal(worker.frame.mask, originalMask)
     np.testing.assert_array_equal(subtracted.mask, originalMask)
     assert products is False
+
+
+def test_create_background_image_models_nonnegative_synthetic_surface(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fit the real row-wise background model without filesystem side effects."""
+    worker = _subtractor(tmp_path, log)
+    rowGradient = np.linspace(0.0, 10.0, 64)
+    worker.frame = CCDData(
+        np.tile(rowGradient, (64, 1)) + 5.0,
+        unit=u.electron,
+        meta=instrument_header(),
+        mask=np.zeros((64, 64), dtype=bool),
+    )
+    monkeypatch.setattr(backgroundModule, "quicklook_image", lambda **kwargs: None)
+
+    background = worker.create_background_image(rowFitOrder=3, gaussianSigma=1)
+
+    assert background.shape == (64, 64)
+    assert background.unit == u.electron
+    assert np.isfinite(background.data).all()
+    assert np.all(background.data >= 0)
+    assert 5.0 <= background.data[32, 32] <= 15.0
+
+
+def test_subtract_records_background_qc_product(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Register the generated background plot when a SOF name is available."""
+    worker = _subtractor(tmp_path, log)
+    worker.frame = _frame(shape=(8, 8))
+    worker.sofName = "SYNTHETIC"
+    worker.qcDir = str(tmp_path)
+    worker.products = product_table().iloc[0:0]
+    worker.recipeName = "soxs-mflat"
+    worker.dateObs = "2024-01-02T03:04:05"
+    worker.lamp = "_QTH"
+    background = _frame(shape=(8, 8), value=2.0)
+    orderPixels = pd.DataFrame(
+        {
+            "order": [10],
+            "ycoord": [4],
+            "xcoord_edgeup": [6.0],
+            "xcoord_edgelow": [2.0],
+        }
+    )
+    monkeypatch.setattr(
+        backgroundModule,
+        "unpack_order_table",
+        lambda **kwargs: (pd.DataFrame(), orderPixels, pd.DataFrame()),
+    )
+    monkeypatch.setattr(backgroundModule, "quicklook_image", lambda **kwargs: None)
+    monkeypatch.setattr(worker, "mask_order_locations", lambda table: None)
+    monkeypatch.setattr(worker, "create_background_image", lambda **kwargs: background)
+
+    _, _, products = worker.subtract()
+
+    assert products.to_dict("records") == [
+        {
+            "soxspipe_recipe": "soxs-mflat",
+            "product_label": "BKGROUND_QTH",
+            "file_name": "SYNTHETIC_BKGROUND.pdf",
+            "file_type": "PDF",
+            "obs_date_utc": "2024-01-02T03:04:05",
+            "reduction_date_utc": products.loc[0, "reduction_date_utc"],
+            "product_desc": "Fitted intra-order image background QTH",
+            "file_path": str(tmp_path / "SYNTHETIC_BKGROUND.pdf"),
+            "label": "QC",
+        }
+    ]

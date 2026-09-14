@@ -735,3 +735,149 @@ def test_single_lamp_master_flat_records_stable_product_and_preserves_qc(
         "report",
         "clean_up",
     ]
+
+
+def test_multi_lamp_master_flat_stitches_independent_lamp_products(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Three lamp sets produce tagged flats before the public UV stitch step."""
+    orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=81)
+    productPath = tmp_path / "MASTER_FLAT_VIS.fits"
+    frames = [synthetic_ccd(seed=seed, prepared=True) for seed in range(82, 85)]
+    recipe = soxs_mflat.__new__(soxs_mflat)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.inst = "SOXS"
+    recipe.kw = lambda keyword: "DATE-OBS" if keyword == "DATE_OBS" else keyword
+    recipe.inputFrames = FakeFrameCollection(
+        filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]}
+    )
+    recipe.recipeName = "soxs-mflat"
+    recipe.settings = pipeline_settings(tmp_path)
+    recipe.recipeSettings = {"subtract_background": False}
+    recipe.sofName = "MASTER_FLAT_VIS"
+    recipe.startNightDate = "2024-01-02"
+    recipe.binRatioX = 1
+    recipe.binRatioY = 1
+    recipe.calibratedFlatFiles = ["orderdef.fits"]
+    recipe.dFlatFiles = ["dorderdef.fits"]
+    recipe.qFlatFiles = ["qorderdef.fits"]
+    recipe.domeFlatFiles = []
+    recipe.qc = qc_table()
+    recipe.products = _empty_products()
+    calls: list[tuple[str, str]] = []
+    normaliseCalls = 0
+
+    monkeypatch.setattr(
+        recipe,
+        "calibrate_frame_set",
+        lambda: ([frames[0]], [frames[1]], [frames[2]], []),
+    )
+
+    def fake_normalise(*args: object, **kwargs: object) -> list[object]:
+        nonlocal normaliseCalls
+        lamp = str(kwargs["lamp"])
+        calls.append(("normalise", lamp))
+        frameIndex = {"": 0, "_DLAMP": 1, "_QLAMP": 2}[lamp]
+        assert args[0] == [frames[frameIndex]]
+        assert kwargs["orderTablePath"] == str(orderPath)
+        if normaliseCalls % 2:
+            assert "firstPassMasterFlat" in kwargs
+        else:
+            assert "firstPassMasterFlat" not in kwargs
+        normaliseCalls += 1
+        return [frames[frameIndex].copy()]
+
+    monkeypatch.setattr(recipe, "normalise_flats", fake_normalise)
+    monkeypatch.setattr(
+        recipe,
+        "clip_and_stack",
+        lambda **kwargs: kwargs["frames"][0].copy(),
+    )
+    monkeypatch.setattr(recipe, "update_fits_keywords", lambda **kwargs: None)
+    monkeypatch.setattr(
+        recipe,
+        "mask_low_sens_pixels",
+        lambda **kwargs: (
+            kwargs["frame"].copy(),
+            pd.DataFrame({"order": [10], "medianFlux": [100.0]}),
+        ),
+    )
+    monkeypatch.setattr(recipe, "_write", lambda *args, **kwargs: str(productPath))
+    monkeypatch.setattr(recipe, "report_output", lambda: recipe.qc)
+    monkeypatch.setattr(recipe, "clean_up", lambda: None)
+
+    def fake_stitch(medianFlux: pd.DataFrame, *, orderTablePath: str) -> object:
+        assert orderTablePath == str(orderPath)
+        assert set(medianFlux.columns) == {"order", "_DLAMP", "_QLAMP"}
+        calls.append(("stitch", ""))
+        return frames[0].copy()
+
+    monkeypatch.setattr(recipe, "stitch_uv_mflats", fake_stitch)
+    flatModule = import_module("soxspipe.recipes.soxs_mflat")
+    monkeypatch.setattr(flatModule, "quicklook_image", lambda **kwargs: None)
+    monkeypatch.setattr(
+        flatModule,
+        "unpack_order_table",
+        lambda **kwargs: (pd.DataFrame(), pd.DataFrame(), pd.DataFrame()),
+    )
+    monkeypatch.setattr(
+        flatModule,
+        "generic_quality_checks",
+        lambda **kwargs: kwargs["qcTable"],
+    )
+    monkeypatch.setattr(
+        flatModule,
+        "spectroscopic_image_quality_checks",
+        lambda **kwargs: kwargs["qcTable"],
+    )
+
+    class FakeEdges:
+        def __init__(self, **kwargs: object) -> None:
+            self.tag = str(kwargs["tag"])
+            calls.append(("edges", self.tag))
+
+        def get(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            label = f"ORDER_LOC{self.tag}"
+            products = recipe.products.copy()
+            products.loc[len(products)] = {
+                "soxspipe_recipe": recipe.recipeName,
+                "product_label": label,
+                "file_name": orderPath.name,
+                "file_type": "FITS",
+                "obs_date_utc": "2024-01-02T03:04:05.678",
+                "reduction_date_utc": "2024-01-02T04:05:06.789",
+                "product_desc": "Synthetic order locations",
+                "file_path": str(orderPath),
+                "label": "PROD",
+            }
+            return products, recipe.qc.copy(), pd.DataFrame({"order": [10], "count": [32]})
+
+    monkeypatch.setattr(flatModule, "detect_order_edges", FakeEdges)
+
+    returnedPath, returnedQc = recipe.produce_product()
+
+    assert returnedPath == str(productPath)
+    assert returnedQc is recipe.qc
+    assert calls == [
+        ("normalise", ""),
+        ("normalise", ""),
+        ("edges", ""),
+        ("normalise", "_DLAMP"),
+        ("normalise", "_DLAMP"),
+        ("edges", "_DLAMP"),
+        ("normalise", "_QLAMP"),
+        ("normalise", "_QLAMP"),
+        ("edges", "_QLAMP"),
+        ("stitch", ""),
+    ]
+    assert set(recipe.products["product_label"]) == {
+        "ORDER_LOC",
+        "ORDER_LOC_DLAMP",
+        "ORDER_LOC_QLAMP",
+        "MFLAT",
+        "MFLAT_DLAMP",
+        "MFLAT_QLAMP",
+    }

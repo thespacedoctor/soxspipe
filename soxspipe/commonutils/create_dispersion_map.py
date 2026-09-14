@@ -2782,7 +2782,7 @@ class create_dispersion_map(object):
         combinedWlImage = combinedWlImage.sum_combine()
 
         combinedWlImage.data += wlMap.data
-        combinedSlitImage.data += wlMap.data
+        combinedSlitImage.data += slitMap.data
 
         toolkit.frame_to_32(combinedWlImage)
         toolkit.frame_to_32(combinedSlitImage)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -13,6 +15,9 @@ from soxspipe.commonutils.response_function import (
 )
 
 pytestmark = pytest.mark.unit
+responseModule = importlib.import_module("soxspipe.commonutils.response_function")
+toolkitModule = importlib.import_module("soxspipe.commonutils.toolkit")
+phase3Module = importlib.import_module("soxspipe.commonutils.phase3")
 
 
 def _legacy_fit_response_polynomial(
@@ -192,3 +197,74 @@ def test_response_get_rejects_an_unknown_standard_star(log: object) -> None:
         match="Standard star UNKNOWN_STAR not found.*KNOWN_STAR",
     ):
         response.get()
+
+
+def test_response_get_writes_response_and_efficiency_products(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wavelengths = np.linspace(500.0, 520.0, 21)
+    response = object.__new__(response_function)
+    response.log = log
+    response.stdExtractionDF = pd.DataFrame(
+        {"WAVE": wavelengths, "FLUX_COUNTS": np.full(21, 10.0)}
+    )
+    response.stdExtractionNotFlatDF = pd.DataFrame(
+        {"WAVE": wavelengths, "FLUX_DENSITY_COUNTS": np.full(21, 10.0)}
+    )
+    response.stdAbsFluxDF = pd.DataFrame(
+        {"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(21, 2.0)}
+    )
+    response.std_objName = "SYNTHETIC_STAR"
+    response.arm = "VIS"
+    response.instrument = "soxs"
+    response.texp = 10.0
+    response.recipeSettings = {"vis": {"poly_order": 0, "max_iteration": 2}}
+    response.calibrationRootPath = "/calibration"
+    response.detectorParams = {"extinction": "extinction.fits"}
+    response.airmass = 1.0
+    response.qc = pd.DataFrame()
+    response.products = pd.DataFrame()
+    response.recipeName = "soxs-response"
+    response.sofName = "SYNTHETIC"
+    response.qcDir = "/qc"
+    response.productDir = "/products"
+    response.header = {}
+    response.kw = lambda key: key
+    response.settings = {"instrument": "soxs"}
+    response.dateObs = "2024-01-01T00:00:00"
+    response.orderJoins = []
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        responseModule,
+        "extinction_correction_factor",
+        lambda wavelengths, *args: np.ones_like(wavelengths),
+    )
+    monkeypatch.setattr(
+        toolkitModule,
+        "add_snr_efficiency_qcs",
+        lambda **kwargs: kwargs["qcTable"],
+    )
+    monkeypatch.setattr(
+        phase3Module,
+        "write_fits_table_to_disk",
+        lambda **kwargs: captured.update({"efficiencyWrite": kwargs}),
+    )
+    response.write_response_function_to_file = lambda **kwargs: captured.update(
+        {"responseWrite": kwargs}
+    )
+    response.plot_response_curve = lambda **kwargs: captured.update({"plot": kwargs})
+
+    qc, products, recipeError = response.get()
+
+    assert recipeError is False
+    assert qc.empty
+    assert products["product_label"].tolist() == ["EFFICIENCY"]
+    np.testing.assert_allclose(
+        captured["responseWrite"]["responseFuncCoeffs"],
+        [2.0e17],
+        rtol=1e-12,
+    )
+    assert captured["responseWrite"]["polyOrder"] == 0
+    assert captured["efficiencyWrite"]["filePath"] == "/products/SYNTHETIC_EFFICIENCY.fits"
+    assert captured["plot"]["stdEfficiencyEstimate"].shape == (21,)

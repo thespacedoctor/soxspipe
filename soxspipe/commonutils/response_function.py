@@ -432,7 +432,7 @@ class response_function(object):
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
         self.write_response_function_to_file(responseFuncCoeffs=responseFuncCoeffs, polyOrder=polyOrder)
 
-        if not isinstance(stdEfficiencyEstimate, bool):
+        if stdEfficiencyEstimate is not None:
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
             stdEfficiencyEstimateDF = pd.DataFrame({"WAVE": stdExtWaveNotFlat, "EFFICIENCY": stdEfficiencyEstimate})
             # WRITE THE EFFICIENCY ESTIMATE TO FITS BINARY TABLE

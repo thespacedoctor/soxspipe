@@ -93,6 +93,7 @@ def main(arguments=None):
     # DETERMINE CURRENT DATA-REDUCTION SESSION
     from fundamentals.logs import emptyLogger
     from soxspipe.commonutils import data_organiser
+    from soxspipe.commonutils.data_organiser import _UnsafePathError
 
     arguments = docopt(__doc__)
     if arguments["<workspaceDirectory>"]:
@@ -118,8 +119,12 @@ def main(arguments=None):
 
     if "-v" not in sys.argv:
         eLog = emptyLogger()
-        do = data_organiser(log=eLog, rootDir=".")
-        currentSession, allSessions = do.session_list(silent=True)
+        try:
+            do = data_organiser(log=eLog, rootDir=".")
+            currentSession, allSessions = do.session_list(silent=True)
+        except _UnsafePathError as error:
+            eLog.error(error)
+            raise SystemExit(1) from error
 
         clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
@@ -405,11 +410,36 @@ def main(arguments=None):
                     )
                 else:
                     exportDir = a["workspaceDirectory"] + "/exported"
+                    from pathlib import Path
+                    from soxspipe.commonutils.data_organiser import (
+                        _validate_owned_path,
+                    )
+
+                    exportDir = str(
+                        _validate_owned_path(
+                            exportDir,
+                            a["workspaceDirectory"],
+                            "export directory",
+                        )
+                    )
+                    rawDir = _validate_owned_path(
+                        Path(a["workspaceDirectory"]) / "raw",
+                        a["workspaceDirectory"],
+                        "raw directory",
+                    )
                     if not os.path.exists(exportDir):
                         os.makedirs(exportDir)
                     for rawFramePath in rawFramePaths:
+                        rawFramePath = str(
+                            _validate_owned_path(
+                                rawFramePath, rawDir, "raw frame path"
+                            )
+                        )
                         basename = os.path.basename(rawFramePath)
                         exportPath = exportDir + "/" + basename
+                        exportPath = str(
+                            _validate_owned_path(exportPath, exportDir, "export path")
+                        )
                         if not os.path.exists(exportPath):
                             shutil.copy(rawFramePath, exportPath)
                     print(
@@ -419,6 +449,10 @@ def main(arguments=None):
 
     except FileExistsError as e:
         sys.exit(0)
+
+    except _UnsafePathError as error:
+        log.error(f"{error}\n{clCommand}", exc_info=True)
+        raise SystemExit(1) from error
 
     except Exception as e:
         log.error(f"{e}\n{clCommand}", exc_info=True)

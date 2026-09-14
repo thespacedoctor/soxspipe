@@ -252,6 +252,132 @@ def _assert_merged_product(products: pd.DataFrame, plotPath: Path) -> None:
     }
 
 
+def test_nod_cycle_extracts_both_difference_frames_without_flattening(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An AB cycle preserves its two directional difference-spectrum contracts."""
+    import soxspipe.commonutils as commonutils
+    nod_module = import_module("soxspipe.recipes.soxs_nod")
+
+    recipe = soxs_nod.__new__(soxs_nod)
+    recipe.log = log
+    recipe.recipeName = "soxs-nod"
+    recipe.sofName = "SYNTHETIC"
+    recipe.debug = False
+    recipe.qc = qc_table().iloc[0:0].copy()
+    recipe.products = _empty_products()
+    recipe.settings = {"instrument": "soxs"}
+    recipe.recipeSettings = {"save_single_frame_extractions": False}
+    recipe.twoDMap = "two-d-map.fits"
+    recipe.dispMap = "dispersion-map.fits"
+    recipe.startNightDate = "2024-01-02"
+    recipe.turnOffMP = True
+    recipe.arm = "VIS"
+    recipe.kw = _keyword
+    recipe.productDir = str(tmp_path)
+    calls: list[dict[str, object]] = []
+
+    class Extractor:
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(kwargs)
+
+        def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
+            spectrum = pd.DataFrame({"WAVE": [500.0], "FLUX": [1.0]})
+            return recipe.qc, recipe.products, spectrum, {10: 1}, "extraction.fits"
+
+    monkeypatch.setattr(commonutils, "horne_extraction", Extractor)
+    monkeypatch.setattr(
+        nod_module,
+        "generic_quality_checks",
+        lambda **kwargs: kwargs["qcTable"],
+    )
+    monkeypatch.setattr(
+        nod_module,
+        "spectroscopic_image_quality_checks",
+        lambda **kwargs: kwargs["qcTable"],
+    )
+    aFrame = synthetic_ccd(shape=(3, 3), seed=11, prepared=True)
+    bFrame = synthetic_ccd(shape=(3, 3), seed=12, prepared=True)
+
+    spectrumA, spectrumB, joins = recipe.process_single_ab_nodding_cycle(
+        aFrame=aFrame,
+        bFrame=bFrame,
+        locationSetIndex=1,
+        orderTablePath="orders.fits",
+        notFlattened=True,
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["skySubtractedFrame"].data[0, 0] == pytest.approx(
+        aFrame.data[0, 0] - bFrame.data[0, 0]
+    )
+    assert calls[1]["skySubtractedFrame"].data[0, 0] == pytest.approx(
+        bFrame.data[0, 0] - aFrame.data[0, 0]
+    )
+    assert spectrumA["WAVE"].tolist() == [500.0]
+    assert spectrumB["WAVE"].tolist() == [500.0]
+    assert joins == {10: 1}
+
+
+def test_nod_stack_extractions_writes_merged_fits_and_ascii_products(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Merged AB spectra retain their median flux, SNR, and product records."""
+    from astropy import units as u
+    from astropy.io import fits
+    from soxspipe.commonutils import toolkit
+
+    recipe = soxs_nod.__new__(soxs_nod)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.recipeName = "soxs-nod"
+    recipe.sofName = "SYNTHETIC"
+    recipe.settings = pipeline_settings(tmp_path)
+    recipe.productDir = str(tmp_path)
+    recipe.qc = qc_table().iloc[0:0].copy()
+    recipe.products = _empty_products()
+    recipe.masterHeaderFrame = synthetic_ccd(shape=(3, 3), prepared=True)
+    recipe.update_fits_keywords = lambda **_: None
+    monkeypatch.setattr(
+        toolkit,
+        "add_snr_efficiency_qcs",
+        lambda **kwargs: kwargs["qcTable"],
+    )
+    first = pd.DataFrame(
+        {
+            "WAVE": [500.12344 * u.nm, 501.0 * u.nm],
+            "FLUX_COUNTS": [9.0, 16.0],
+            "VARIANCE": [9.0, 4.0],
+            "FLUX_DENSITY_COUNTS": [1.0, 2.0],
+        }
+    )
+    second = pd.DataFrame(
+        {
+            "WAVE": [500.12345 * u.nm, 501.0 * u.nm],
+            "FLUX_COUNTS": [15.0, 20.0],
+            "VARIANCE": [9.0, 4.0],
+            "FLUX_DENSITY_COUNTS": [3.0, 4.0],
+        }
+    )
+
+    stacked, fitsPath = recipe.stack_extractions([first, second], orderJoins={10: 1})
+
+    assert Path(fitsPath).is_file()
+    assert Path(fitsPath.replace(".fits", ".txt")).is_file()
+    assert stacked["FLUX_COUNTS"].tolist() == [12.0, 18.0]
+    assert stacked["SNR"].tolist() == [4.0, 9.0]
+    assert recipe.products["product_label"].tolist() == [
+        "EXTRACTED_MERGED_TABLE",
+        "EXTRACTED_MERGED_ASCII",
+    ]
+    with fits.open(fitsPath) as hdus:
+        assert hdus[0].header["ESO PRO CATG"] == "SCI_SLIT_FLUX_VIS"
+
+
 def test_nod_success_records_qc_and_characterizes_none_product_path(
     log: Any,
     tmp_path: Path,
@@ -402,6 +528,62 @@ def test_offset_success_returns_extraction_and_records_qc(
     assert plotArgs["filenameTemplate"] == "OBJECT_VIS.fits"
     assert plotArgs["settings"] is recipe.settings
     assert plotArgs["qcTable"] is recipe.qc
+    assert captured["clean_up"] == [{"forceFail": False}]
+
+
+def test_offset_multiple_locations_extracts_each_pair_before_final_stack(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Distinct offset locations retain one directional extraction per pair."""
+    headers = [
+        {"HIERARCH ESO SEQ FIXOFF RA": -3.0, "HIERARCH ESO SEQ FIXOFF DEC": 1.0},
+        {"HIERARCH ESO SEQ FIXOFF RA": -4.0, "HIERARCH ESO SEQ FIXOFF DEC": 2.0},
+        {"HIERARCH ESO SEQ FIXOFF RA": 0.0, "HIERARCH ESO SEQ FIXOFF DEC": 1.0},
+        {"HIERARCH ESO SEQ FIXOFF RA": 0.0, "HIERARCH ESO SEQ FIXOFF DEC": 2.0},
+    ]
+    paths = [
+        _write_prepared_frame(
+            tmp_path / f"offset-{index}.fits",
+            seed=90 + index,
+            headerOverrides={**header, "MJD-OBS": 60_000.0 + index},
+        )
+        for index, header in enumerate(headers)
+    ]
+    recipe = soxs_offset.__new__(soxs_offset)
+    _configure_nodding_recipe(
+        recipe,
+        log=log,
+        tmp_path=tmp_path,
+        objectPaths=paths,
+        technique="ECHELLE,SLIT,OFFSET",
+    )
+    calls, captured, _ = _patch_nodding_collaborators(
+        recipe,
+        monkeypatch=monkeypatch,
+        plotPath=tmp_path / "OBJECT_VIS_MERGED_QC.pdf",
+        extractionPath=tmp_path / "OBJECT_VIS_EXTRACTED.fits",
+    )
+
+    productPath, _ = recipe.produce_product()
+
+    assert productPath == str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
+    assert calls == [
+        "keywords",
+        "keywords",
+        "extract_cycle",
+        "keywords",
+        "keywords",
+        "extract_cycle",
+        "stack_extractions",
+        "plot",
+        "report",
+        "clean_up",
+    ]
+    assert [entry["locationSetIndex"] for entry in captured["extract_cycle"]] == [1, 2]
+    assert len(captured["stack_extractions"][0]["args"]) == 1
+    assert len(captured["stack_extractions"][0]["args"][0][0]) == 2
     assert captured["clean_up"] == [{"forceFail": False}]
 
 
@@ -779,3 +961,334 @@ def test_stare_success_returns_last_sky_path_and_records_products(
     assert plotArgs["qcDir"] == str(tmp_path / "qc")
     assert plotArgs["settings"] is recipe.settings
     assert captured["clean_up"] == [{"forceFail": False}]
+
+
+def test_stare_uses_flux_standard_frames_when_object_frames_are_absent(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A flux standard is the established fallback input for response generation."""
+    standardPath = _write_prepared_frame(
+        tmp_path / "flux-standard.fits",
+        seed=71,
+        headerOverrides={
+            "DPR_TYPE": "STD,FLUX",
+            "DPR_TECH": "ECHELLE,SLIT,STARE",
+        },
+    )
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.kw = _keyword
+    recipe.detectorParams = {}
+    recipe.inputFrames = RouteCollection(
+        {
+            _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [],
+            _route(DPR_TYPE="OBJECT,ASYNC", DPR_TECH="ECHELLE,SLIT,STARE"): [],
+            _route(DPR_TYPE="STD,FLUX", DPR_TECH="ECHELLE,SLIT,STARE"): [str(standardPath)],
+        }
+    )
+    recipe.recipeSettings = {"sky-subtraction": {"subtract_sky": False}}
+    recipe.settings = pipeline_settings(tmp_path)
+    recipe.generateReponseCurve = False
+
+    class StopAfterInputSelection(Exception):
+        """Terminate the test at the first downstream orchestration boundary."""
+
+    def stop_after_stack(**kwargs: object) -> None:
+        assert len(kwargs["frames"]) == 1
+        raise StopAfterInputSelection()
+
+    monkeypatch.setattr(recipe, "clip_and_stack", stop_after_stack)
+
+    with pytest.raises(StopAfterInputSelection):
+        recipe.produce_product()
+
+    assert recipe.generateReponseCurve is True
+
+
+@pytest.mark.parametrize(
+    ("frameType", "technique", "settingsOverrides", "expectedSkySubtraction"),
+    [
+        ("STD,TELLURIC", "ECHELLE,SLIT,STARE", {}, True),
+        ("LAMP,FLAT", "ECHELLE,PINHOLE", {"PAE": True}, False),
+        ("STD,FLUX", "ECHELLE,SLIT,NODDING", {}, True),
+    ],
+)
+def test_stare_selects_supported_non_object_fallbacks(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    frameType: str,
+    technique: str,
+    settingsOverrides: dict[str, object],
+    expectedSkySubtraction: bool,
+) -> None:
+    """Each documented non-object frame type reaches the shared stack boundary."""
+    fallbackPath = _write_prepared_frame(
+        tmp_path / f"{frameType.replace(',', '_')}.fits",
+        seed=74,
+        headerOverrides={"DPR_TYPE": frameType, "DPR_TECH": technique},
+    )
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.kw = _keyword
+    recipe.detectorParams = {}
+    routes = {
+        _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [],
+        _route(DPR_TYPE="OBJECT,ASYNC", DPR_TECH="ECHELLE,SLIT,STARE"): [],
+        _route(DPR_TYPE="STD,FLUX", DPR_TECH="ECHELLE,SLIT,STARE"): [],
+        _route(DPR_TYPE="STD,TELLURIC", DPR_TECH="ECHELLE,SLIT,STARE"): [],
+        _route(DPR_TYPE="LAMP,FLAT", DPR_TECH="ECHELLE,PINHOLE"): [],
+        _route(DPR_TYPE="STD,FLUX", DPR_TECH="ECHELLE,SLIT,NODDING"): [],
+        _route(DPR_TYPE=frameType, DPR_TECH=technique): [str(fallbackPath)],
+    }
+    recipe.inputFrames = RouteCollection(routes)
+    recipe.recipeSettings = {"sky-subtraction": {"subtract_sky": True}}
+    recipe.settings = {**pipeline_settings(tmp_path), **settingsOverrides}
+    recipe.generateReponseCurve = False
+
+    class StopAfterInputSelection(Exception):
+        """Terminate at the first shared downstream collaborator."""
+
+    def stop_after_stack(**kwargs: object) -> None:
+        assert len(kwargs["frames"]) == 1
+        raise StopAfterInputSelection()
+
+    monkeypatch.setattr(recipe, "clip_and_stack", stop_after_stack)
+
+    with pytest.raises(StopAfterInputSelection):
+        recipe.produce_product()
+
+    assert recipe.subtractSky is expectedSkySubtraction
+
+
+def test_stare_generates_a_response_from_a_flux_standard(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A flux standard takes the unflattened extraction through response creation."""
+    standardPath = _write_prepared_frame(
+        tmp_path / "response-standard.fits",
+        seed=72,
+        headerOverrides={
+            "DPR_TYPE": "STD,FLUX",
+            "DPR_TECH": "ECHELLE,SLIT,STARE",
+        },
+    )
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.kw = _keyword
+    recipe.detectorParams = {}
+    recipe.inputFrames = RouteCollection(
+        {
+            _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [],
+            _route(DPR_TYPE="OBJECT,ASYNC", DPR_TECH="ECHELLE,SLIT,STARE"): [],
+            _route(DPR_TYPE="STD,FLUX", DPR_TECH="ECHELLE,SLIT,STARE"): [str(standardPath)],
+            _route(PRO_CATG="ORDER_TAB_VIS"): [str(tmp_path / "ORDER_TAB_VIS.fits")],
+            _route(PRO_CATG="DISP_TAB_VIS"): [str(tmp_path / "DISP_TAB_VIS.fits")],
+            _route(PRO_CATG="DISP_IMAGE_VIS"): [str(tmp_path / "DISP_IMAGE_VIS.fits")],
+        }
+    )
+    recipe.recipeName = "soxs-stare"
+    recipe.recipeSettings = {"use_flat": False, "sky-subtraction": {"subtract_sky": False}}
+    recipe.settings = pipeline_settings(tmp_path)
+    recipe.generateReponseCurve = False
+    recipe.sofName = "STANDARD_VIS"
+    recipe.startNightDate = "2024-01-02"
+    recipe.workspaceRootPath = str(tmp_path)
+    recipe.qcDir = str(tmp_path / "qc")
+    recipe.filenameTemplate = "STANDARD_VIS.fits"
+    recipe.debug = False
+    recipe.turnOffMP = True
+    recipe.qc = qc_table()
+    recipe.products = _empty_products()
+    combinedFrame = synthetic_ccd(seed=73, prepared=True)
+    calls: list[str] = []
+    extractionArguments: list[dict[str, object]] = []
+    responseArguments: list[dict[str, object]] = []
+
+    monkeypatch.setattr(recipe, "clip_and_stack", lambda **_: combinedFrame.copy())
+    monkeypatch.setattr(recipe, "detrend", lambda **_: combinedFrame.copy())
+    monkeypatch.setattr(recipe, "update_fits_keywords", lambda **_: calls.append("keywords"))
+    monkeypatch.setattr(recipe, "report_output", lambda: calls.append("report") or recipe.qc)
+    monkeypatch.setattr(
+        recipe,
+        "clean_up",
+        lambda **kwargs: calls.append(f"clean_up:{kwargs['forceFail']}"),
+    )
+
+    class FakeExtractor:
+        def __init__(self, **kwargs: object) -> None:
+            extractionArguments.append(kwargs)
+            calls.append("extractor")
+
+        def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
+            calls.append("extract")
+            extractionNumber = len(extractionArguments)
+            spectrum = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [3.0]})
+            return (
+                recipe.qc,
+                recipe.products,
+                spectrum,
+                {10: 11},
+                str(tmp_path / f"extracted-{extractionNumber}.fits"),
+            )
+
+    class FakeResponse:
+        def __init__(self, **kwargs: object) -> None:
+            responseArguments.append(kwargs)
+            calls.append("response")
+
+        def get(self) -> tuple[pd.DataFrame, pd.DataFrame, str]:
+            calls.append("response_get")
+            return recipe.qc, recipe.products, "synthetic response mismatch"
+
+    commonutils = import_module("soxspipe.commonutils")
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    monkeypatch.setattr(commonutils, "horne_extraction", FakeExtractor)
+    monkeypatch.setattr(commonutils, "response_function", FakeResponse)
+    monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
+    monkeypatch.setattr(
+        toolkit,
+        "plot_merged_spectrum_qc",
+        lambda **kwargs: (kwargs["products"], str(tmp_path / "merged.pdf")),
+    )
+
+    productPath, returnedQc = recipe.produce_product()
+
+    assert productPath is None
+    assert returnedQc is recipe.qc
+    assert recipe.generateReponseCurve is True
+    assert calls == [
+        "keywords",
+        "extractor",
+        "extract",
+        "extractor",
+        "extract",
+        "response",
+        "response_get",
+        "report",
+        "clean_up:synthetic response mismatch",
+    ]
+    assert extractionArguments[0].get("notFlattened", False) is False
+    assert extractionArguments[1]["notFlattened"] is True
+    assert responseArguments[0]["stdExtractionPath"] == str(tmp_path / "extracted-1.fits")
+    assert responseArguments[0]["stdNotFlatExtractionPath"] == str(tmp_path / "extracted-2.fits")
+    assert responseArguments[0]["orderJoins"] == {10: 11}
+
+
+def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stare applies a supplied response and creates calibrated QC output."""
+    from astropy.table import Table
+
+    objectPath = _write_prepared_frame(
+        tmp_path / "stare-standard.fits",
+        seed=66,
+        headerOverrides={
+            "DPR_TYPE": "OBJECT",
+            "DPR_TECH": "ECHELLE,SLIT,STARE",
+            "HIERARCH ESO TEL AIRM END": 1.2,
+            "EXPTIME": 120.0,
+        },
+    )
+    responsePath = tmp_path / "RESP_TAB_VIS.fits"
+    responsePath.touch()
+    fluxPath = tmp_path / "OBJECT_VIS_FLUXCAL.fits"
+    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.kw = _keyword
+    recipe.detectorParams = {}
+    recipe.inputFrames = RouteCollection(
+        {
+            _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [str(objectPath)],
+            _route(PRO_CATG="ORDER_TAB_VIS"): [str(tmp_path / "ORDER_TAB_VIS.fits")],
+            _route(PRO_CATG="DISP_TAB_VIS"): [str(tmp_path / "DISP_TAB_VIS.fits")],
+            _route(PRO_CATG="DISP_IMAGE_VIS"): [str(tmp_path / "DISP_IMAGE_VIS.fits")],
+            _route(PRO_CATG="RESP_TAB_VIS"): [str(responsePath)],
+        }
+    )
+    recipe.recipeName = "soxs-stare"
+    recipe.recipeSettings = {"use_flat": False, "sky-subtraction": {"subtract_sky": False}}
+    recipe.settings = pipeline_settings(tmp_path)
+    recipe.generateReponseCurve = False
+    recipe.sofName = "OBJECT_VIS"
+    recipe.startNightDate = "2024-01-02"
+    recipe.workspaceRootPath = str(tmp_path)
+    recipe.qcDir = str(tmp_path / "qc")
+    recipe.filenameTemplate = "OBJECT_VIS.fits"
+    recipe.debug = False
+    recipe.turnOffMP = True
+    recipe.qc = qc_table()
+    recipe.products = _empty_products()
+    combinedFrame = synthetic_ccd(seed=67, prepared=True)
+    combinedFrame.header["HIERARCH ESO TEL AIRM END"] = 1.2
+    combinedFrame.header["EXPTIME"] = 120.0
+    calls: list[str] = []
+
+    monkeypatch.setattr(recipe, "clip_and_stack", lambda **_: combinedFrame.copy())
+    monkeypatch.setattr(recipe, "detrend", lambda **_: combinedFrame.copy())
+    monkeypatch.setattr(recipe, "update_fits_keywords", lambda **_: calls.append("keywords"))
+    monkeypatch.setattr(recipe, "report_output", lambda: calls.append("report") or recipe.qc)
+    monkeypatch.setattr(recipe, "clean_up", lambda **kwargs: calls.append(f"clean_up:{kwargs['forceFail']}"))
+
+    class FakeExtractor:
+        def __init__(self, **kwargs: object) -> None:
+            calls.append("extractor")
+
+        def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
+            calls.append("extract")
+            spectrum = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [3.0]})
+            return recipe.qc, recipe.products, spectrum, {10: 11}, str(tmp_path / "extracted.fits")
+
+    class FakeFluxCalibrator:
+        def __init__(self, **kwargs: object) -> None:
+            assert kwargs["responseFunction"] == str(responsePath)
+            assert kwargs["airmass"] == 1.2
+            assert kwargs["exptime"] == 120.0
+            calls.append("flux_calibrator")
+
+        def calibrate(self) -> tuple[str, pd.DataFrame]:
+            calls.append("calibrate")
+            return str(fluxPath), _empty_products()
+
+    commonutils = import_module("soxspipe.commonutils")
+    stareModule = import_module("soxspipe.recipes.soxs_stare")
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    monkeypatch.setattr(commonutils, "horne_extraction", FakeExtractor)
+    monkeypatch.setattr(commonutils, "flux_calibration", FakeFluxCalibrator)
+    monkeypatch.setattr(stareModule, "detector_lookup", lambda **_: type("Lookup", (), {"get": lambda _, __: {"extinction": "extinction.dat"}})())
+    monkeypatch.setattr(stareModule, "get_calibrations_path", lambda **_: str(tmp_path))
+    monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
+
+    def fake_plot(**kwargs: object) -> tuple[pd.DataFrame, str]:
+        calls.append(f"plot:{kwargs['fluxCalibrated']}")
+        return kwargs["products"], str(tmp_path / "merged.pdf")
+
+    monkeypatch.setattr(toolkit, "plot_merged_spectrum_qc", fake_plot)
+
+    productPath, returnedQc = recipe.produce_product()
+
+    assert productPath is None
+    assert returnedQc is recipe.qc
+    assert calls == [
+        "keywords",
+        "extractor",
+        "extract",
+        "flux_calibrator",
+        "calibrate",
+        "plot:False",
+        "plot:True",
+        "report",
+        "clean_up:False",
+    ]
