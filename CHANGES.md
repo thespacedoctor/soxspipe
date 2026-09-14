@@ -1,33 +1,31 @@
 # Release Notes
 
-* **TEST**: Reduce the required whole-package branch-coverage threshold to 70%.
-* **TEST**: Cover isolated workspace preparation, session inventories, FITS organization, secure stale-file cleanup, base-recipe calibration, merged-spectrum QC plots, full sky-model diagnostics, master-flat calibration, dispersion-map products, master-bias QC, filename rules, and AB/BA nodding extraction and stacking, and raise the branch-coverage ratchet to 72%.
-* **FIXED**: Detrend master-dark flat frames once and preserve slit-position data when writing dispersion-map images.
-* **TEST**: Add deterministic continuum, response-function, recipe-finalization, background-subtraction, flux-calibration, and Horne-extraction coverage, and raise the branch-coverage ratchet to 50%.
-* **FIXED**: Skip efficiency-product creation when the optional response efficiency estimate is unavailable.
-* **TEST**: Add synthetic master-flat, order-edge, and response workflow coverage, and raise the branch-coverage ratchet to 46%.
-* **TEST**: Characterize recipe construction, validation, orchestration, product metadata, and failure behavior with isolated synthetic inputs.
-* **TEST**: Limit the legacy integration workflow to pull requests targeting `main` and a weekly scheduled run.
-* **TEST**: Characterize dispersion conversion, order tables, stacking, subtraction, extraction, response, flux calibration, continuum fitting, and order-edge detection with deterministic synthetic data.
-* **FIXED**: Restore editable installs by using the supported default setuptools-scm parser for `v`-prefixed tags.
-* **FIXED**: Handle empty and prepared-extension file inputs safely, omit NaN Phase 3 QC headers, and invoke FITS decompression without a shell.
-* **TEST**: Add synthetic file-contract coverage for SOF inputs, FITS frame preparation, and Phase 3 products.
-* **TEST**: Add an isolated synthetic test foundation, branch-coverage ratchet, and repository-owned required CI workflow.
+* **ENHANCEMENT**: Raise the whole-package branch-coverage threshold to 70% and add broad deterministic unit and integration coverage for pipeline utilities and recipes.
 * **ENHANCEMENT**: refine skyline-based wavelength-shift calibration
 * **ENHANCEMENT**: tune skyline detection, iterative matching, clipping, and VIS-order shift fallback behavior.
-* **FIXED**: prevent dispersion-map transformations from running outside debug mode and handle invalid sky-plot statistics.
 * **ENHANCEMENT**: update calibration data and default dispersion, spatial, and sky-subtraction thresholds.
-* **REFACTOR**: correct rectified-image diagnostic orientation and add local CodeGraph metadata exclusions.
-* **FIXED**: Guard merged spectrum QC sky plotting against non-positive sky counts
-* **REFACTOR**: Limit multiprocessing pool size for stare, nod, and offset recipes to avoid memory issues.
 * **ENHANCEMENT**: using numba JIT to speed up image rectification
+* **REFACTOR**: Limit multiprocessing pool size for stare, nod, and offset recipes to avoid memory issues.
+* **REFACTOR**: Update predicted paths for standard response products (now looks for RESP function instead of merge spectra when deciding if the data has been reduced yet).
+* **REFACTOR**: correct rectified-image diagnostic orientation and add local CodeGraph metadata exclusions.
 * **REFACTOR**: optimising converting dispersion map to pixel arrays
 * **REFACTOR**: vectorising calculation of rectification weights
-* **FIXED**: fixing database to collect the correct response curves
 * **DOCS**: adding to doc FAQs
-* **FIXED**: pinning the normalisation factor using by ccdproc for flat correction
-* **REFACTOR**: Update predicted paths for standard response products (now looks for RESP function instead of merge spectra when deciding if the data has been reduced yet).
+* **FIXED**: Detrend master-dark flat frames once, preserve slit-position data in dispersion-map images, and skip optional efficiency products when no estimate is available.
+* **FIXED**: Guard merged spectrum QC sky plotting against non-positive sky counts
+* **FIXED**: Handle empty and prepared-extension file inputs safely, omit NaN Phase 3 QC headers, and invoke FITS decompression without a shell.
 * **FIXED**: Improve flux standard matching via 3 FITS header keywords
+* **FIXED**: Restore editable installs by using the supported default setuptools-scm parser for `v`-prefixed tags.
+* **FIXED**: Skip efficiency-product creation when the optional response efficiency estimate is unavailable.
+* **FIXED**: fixing database to collect the correct response curves
+* **FIXED**: pinning the normalisation factor using by ccdproc for flat correction
+* **FIXED**: prevent dispersion-map transformations from running outside debug mode and handle invalid sky-plot statistics.
+* **TEST**: Add an isolated synthetic test foundation, branch-coverage ratchet, and repository-owned required CI workflow.
+* **TEST**: Add synthetic file-contract coverage for SOF inputs, FITS frame preparation, and Phase 3 products.
+* **TEST**: Add synthetic master-flat, order-edge, and response workflow coverage, and raise the branch-coverage ratchet to 46%.
+* **TEST**: Characterize dispersion conversion, order tables, stacking, subtraction, extraction, response, flux calibration, continuum fitting, and order-edge detection with deterministic synthetic data.
+* **TEST**: Characterize recipe construction, validation, orchestration, product metadata, and failure behavior with isolated synthetic inputs.
+* **TEST**: Limit the legacy integration workflow to pull requests targeting `main` and a weekly scheduled run.
 
 ## v0.17.4 - July 9, 2026
 
