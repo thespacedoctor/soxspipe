@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *small reusable functions used throughout soxspipe*
 
@@ -10,22 +9,18 @@ Date Created
 : September 18, 2020
 """
 
-from os.path import expanduser
-from soxspipe.commonutils import detector_lookup
-from datetime import datetime, UTC
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils.polynomials import (
-    chebyshev_xy_polynomial,
-    chebyshev_order_xy_polynomials,
-)
-from fundamentals import tools
-from builtins import object
+import os
 import sys
+from datetime import UTC, datetime
+from os.path import expanduser
+
+from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
-import os
-from line_profiler import profile
+from soxspipe.commonutils.polynomials import (
+    chebyshev_order_xy_polynomials,
+)
 
 os.environ["TERM"] = "vt100"
 
@@ -57,9 +52,10 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     """
     log.debug("starting the ``cut_image_slice`` function")
 
-    import numpy.ma as ma
-    import numpy as np
     import random
+
+    import numpy as np
+    import numpy.ma as ma
 
     halfSlice = length / 2
     # NEED AN EVEN PIXEL SIZE
@@ -177,13 +173,12 @@ def quicklook_image(
     if not show and not saveToPath:
         return
 
-    import pandas as pd
+    from copy import copy
+
     import matplotlib as mpl
     import numpy as np
-    from copy import copy
-    from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-    from soxspipe.commonutils import keyword_lookup
-    from soxspipe.commonutils import detector_lookup
+
+    from soxspipe.commonutils import detector_lookup, keyword_lookup
 
     originalRC = dict(mpl.rcParams)
     import matplotlib.pyplot as plt
@@ -404,7 +399,7 @@ def quicklook_image(
     plt.close("all")
 
     log.debug("completed the ``quicklook_image`` function")
-    return None
+    return
 
 
 def unpack_order_table(
@@ -441,10 +436,11 @@ def unpack_order_table(
     ```
     """
     log.debug("starting the ``functionName`` function")
-    from astropy.table import Table
-    import pandas as pd
-    import numpy as np
     import math
+
+    import numpy as np
+    import pandas as pd
+    from astropy.table import Table
 
     # PIXEL DELTA NEEDS TO BE ODD .. ELSE MASKING ON BINNED DATA GETS MESSED UP
     if pixelDelta % 2 == 0:
@@ -602,7 +598,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     badCount = frame.mask.sum()
     totalPixels = np.size(frame.mask)
     percent = float(badCount) / float(totalPixels)
-    percent = float("{:.6f}".format(percent))
+    percent = float(f"{percent:.6f}")
 
     if "dark" in recipeName.lower():
         qcComment = "Number of hot pixels"
@@ -688,11 +684,11 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     """
     log.debug("starting the ``functionName`` function")
 
-    import numpy.ma as ma
     import numpy as np
+    import numpy.ma as ma
     import pandas as pd
+
     from soxspipe.commonutils import detector_lookup
-    from astropy.io import fits
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -838,7 +834,6 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
 
     import numpy as np
     import pandas as pd
-    from astropy.io import fits
 
     # DETECTOR PARAMETERS LOOKUP OBJECT
     dp = detector_lookup(log=log, settings=settings).get(arm)
@@ -978,12 +973,12 @@ def twoD_disp_map_image_to_dataframe(
     """
     log.debug("starting the ``twoD_disp_map_image_to_dataframe`` function")
 
-    import pandas as pd
-    import numpy as np
-    from astropy.io import fits
-
     # MAKE RELATIVE HOME PATH ABSOLUTE
     from os.path import expanduser
+
+    import numpy as np
+    import pandas as pd
+    from astropy.io import fits
 
     home = expanduser("~")
     if twoDMapPath[0] == "~":
@@ -1125,9 +1120,8 @@ def predict_product_path(sofName, recipeName=False):
     productPath, startNightDate = toolkit.predict_product_path(sofFilePath)
     ```
     """
-    from astropy.time import Time, TimeDelta
 
-    import codecs
+    from astropy.time import Time, TimeDelta
 
     startNightDate = False
 
@@ -1167,21 +1161,18 @@ def predict_product_path(sofName, recipeName=False):
             print("Could not determine OBSDATE from sof filename")
             pass
 
-    from soxspipe.commonutils import data_organiser
     from fundamentals.logs import emptyLogger
+
+    from soxspipe.commonutils import data_organiser
 
     log = emptyLogger()
     do = data_organiser(log=log, rootDir=".", dbConnect=False)
     currentSession, allSessions = do.session_list(silent=True)
     do.close()
 
-    if "_STARE_STD" in sofName:
+    if "_STARE_STD" in sofName or "_NOD_STD" in sofName:
         sofName += "_RESP"
-    elif "_NOD_STD" in sofName:
-        sofName += "_RESP"
-    elif "_STARE_STD" in sofName:
-        sofName += "_EXTRACTED_MERGED"
-    elif "_NOD_STD" in sofName:
+    elif "_STARE_STD" in sofName or "_NOD_STD" in sofName:
         sofName += "_EXTRACTED_MERGED"
     productPath = (
         f"./sessions/{currentSession}/reduced/{startNightDate}/"
@@ -1543,7 +1534,7 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
         a.axis("off")
 
     log.debug("completed the ``qc_settings_plot_tables`` function")
-    return None
+    return
 
 
 def utility_setup(log, settings, recipeName, startNightDate):
@@ -1584,7 +1575,7 @@ def utility_setup(log, settings, recipeName, startNightDate):
     if not os.path.exists(qcDir):
         try:
             os.makedirs(qcDir)
-        except Exception as e:
+        except Exception:
             pass
 
     # PRODUCT DIR
@@ -1594,7 +1585,7 @@ def utility_setup(log, settings, recipeName, startNightDate):
     if not os.path.exists(productDir):
         try:
             os.makedirs(productDir)
-        except Exception as e:
+        except Exception:
             pass
 
     log.debug("completed the ``utility_setup`` function")
@@ -1627,18 +1618,17 @@ def plot_merged_spectrum_qc(
     log.debug("starting the ``plot_merged_spectrum_qc`` function")
 
     # DETECTOR PARAMETERS LOOKUP OBJECT
-    from soxspipe.commonutils import detector_lookup
 
     # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
     if isinstance(products, bool) and not products:
         return products, None
 
-    import matplotlib.pyplot as plt
     from datetime import datetime
-    import pandas as pd
-    from astropy import units as u
-    from astropy.stats import sigma_clipped_stats
+
+    import matplotlib.pyplot as plt
     import numpy as np
+    import pandas as pd
+    from astropy.stats import sigma_clipped_stats
 
     if not noddingSequence:
         noddingSequence = ""
@@ -1692,7 +1682,7 @@ def plot_merged_spectrum_qc(
         zorder=1,
     )
 
-    from astropy.stats import sigma_clip, mad_std
+    from astropy.stats import sigma_clip
 
     # SIGMA-CLIP THE DATA
     arrayMask = sigma_clip(
@@ -1947,11 +1937,9 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
 
 
 def extinction_correction_factor(wave, extinctionTablePath, airmass):
-    from scipy.interpolate import interp1d
     import numpy as np
-    import matplotlib.pyplot as plt
-    import pandas as pd
     from astropy.table import Table
+    from scipy.interpolate import interp1d
 
     # READ THE EXTINCTION CURVE FOR THE OBSERVATORY
     # DATA IS ORGANIZED AS FOLLOWS:
@@ -1992,7 +1980,6 @@ def frame_to_32(frame):
     frame = frame_to_32(frame)
     ```
     """
-    from astropy.nddata import CCDData
     import numpy as np
 
     try:
@@ -2031,9 +2018,10 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     qcTable = add_snr_qcs(log, spectrumDF, qcTable, orderJoins)
     ```
     """
+    from datetime import datetime
+
     import numpy as np
     import pandas as pd
-    from datetime import datetime
 
     spectrumDF = spectrumDF.copy(deep=False)
     spectrumDF["ORDER"] = np.nan
@@ -2045,7 +2033,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST
     orderJoins = dict(reversed(list(orderJoins.items())))
 
-    for i, (orders, wl) in enumerate(zip(orderJoins.keys(), orderJoins.values())):
+    for i, (orders, wl) in enumerate(orderJoins.items()):
         if len(orders) == 2:
             visOrders = ["i", "r", "g", "u"]
             lastOrder = visOrders[int(orders[0])]
@@ -2098,7 +2086,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                     pd.DataFrame([
                         {
                             "soxspipe_recipe": recipeName,
-                            "qc_name": f"EFF MEDIAN",
+                            "qc_name": "EFF MEDIAN",
                             "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.4f}"),
                             "qc_comment": f"Median efficiency in order {row['ORDER']}",
                             "qc_order": row["ORDER"],
@@ -2142,7 +2130,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                     pd.DataFrame([
                         {
                             "soxspipe_recipe": recipeName,
-                            "qc_name": f"SNR MEDIAN",
+                            "qc_name": "SNR MEDIAN",
                             "qc_value": float(f"{row['MEDIAN_SNR']:0.3f}"),
                             "qc_comment": f"Median SNR in order {row['ORDER']}",
                             "qc_order": row["ORDER"],
@@ -2161,10 +2149,10 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
 
 def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightnessNIR=100):
     """Load and filter strong skylines for QC plotting."""
+    from astropy.table import Table
+
     from soxspipe.commonutils import detector_lookup
     from soxspipe.commonutils.toolkit import get_calibrations_path
-    from astropy.table import Table
-    from soxspipe.commonutils import dispersion_map_to_pixel_arrays
 
     dp = detector_lookup(log=log, settings=settings).get(arm)
     calibrationRootPath = get_calibrations_path(log=log, settings=settings)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Flux calibrate an extracted science spectrum using an instrument response function*
 
@@ -10,7 +9,6 @@ Date Created
 : July 28, 2023
 """
 
-from builtins import object
 import os
 from typing import Any
 
@@ -35,7 +33,7 @@ def _calculate_flux_calibration(
 # xt-worker-def
 
 
-class flux_calibration(object):
+class flux_calibration:
     """
     *The worker class for the flux_calibration module*
 
@@ -102,8 +100,9 @@ class flux_calibration(object):
         self.sofName = sofName
 
         import pandas as pd
-        from soxspipe.commonutils.toolkit import utility_setup
+
         from soxspipe.commonutils import keyword_lookup
+        from soxspipe.commonutils.toolkit import utility_setup
 
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
 
@@ -115,7 +114,7 @@ class flux_calibration(object):
         )
         self.products = pd.DataFrame()
 
-        return None
+        return
 
     def calibrate(self):
         """
@@ -142,8 +141,10 @@ class flux_calibration(object):
 
         import copy
         from contextlib import suppress
-        from astropy.table import Table
+
         import pandas as pd
+        from astropy.table import Table
+
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import extinction_correction_factor
 
@@ -228,11 +229,11 @@ class flux_calibration(object):
                 pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "product_label": f"EXTRACTED_FLUXCAL_SPECTRUM",
+                        "product_label": "EXTRACTED_FLUXCAL_SPECTRUM",
                         "file_name": filename,
                         "file_type": "FITS",
                         "reduction_date_utc": utcnow,
-                        "product_desc": f"Flux calibrated extracted spectrum",
+                        "product_desc": "Flux calibrated extracted spectrum",
                         "file_path": filePath,
                         "obs_date_utc": header["DATE-OBS"],
                         "label": "PROD",

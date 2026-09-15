@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Reduce SOXS/Xshooter data taken in nodding mode*
 
@@ -11,20 +10,18 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
-from soxspipe.commonutils.toolkit import (
-    add_snr_efficiency_qcs,
-    generic_quality_checks,
-    spectroscopic_image_quality_checks,
-    get_calibrations_path,
-)
-from fundamentals import tools
-from builtins import object
-import sys
 import os
-from soxspipe.commonutils.filenamer import filenamer
+import sys
 from os.path import expanduser
+
+from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils.toolkit import (
+    generic_quality_checks,
+    get_calibrations_path,
+    spectroscopic_image_quality_checks,
+)
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
@@ -72,7 +69,7 @@ class soxs_nod(base_recipe):
         recipeName="soxs-nod",
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_nod, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -122,7 +119,7 @@ class soxs_nod(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_nod recipe*
@@ -189,7 +186,7 @@ class soxs_nod(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*The code to generate the product of the soxs_nod recipe*
@@ -212,13 +209,14 @@ class soxs_nod(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        from astropy.nddata import CCDData
-        from astropy import units as u
+
         import pandas as pd
-        from datetime import datetime
+        from astropy import units as u
+        from astropy.nddata import CCDData
+
         from soxspipe.commonutils.toolkit import (
-            quicklook_image,
             plot_merged_spectrum_qc,
+            quicklook_image,
         )
 
         arm = self.arm
@@ -320,7 +318,7 @@ class soxs_nod(base_recipe):
         # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
         for frame, filename in zip(allObjectFrames, allFilenames):
             # offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSET{self.axisA.upper()}")]
-            offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSETY")]
+            offset = frame.header[kw("NOD_CUMULATIVE_OFFSETY")]
             if offset == 0:
                 pass
             if offset > 0:
@@ -342,13 +340,13 @@ class soxs_nod(base_recipe):
             raise Exception(error)
 
         if len(uniqueOffsets) == 0:
-            error = f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
+            error = "Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
             self.log.error(
-                f"Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
+                "Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
             )
             raise Exception(error)
 
-        elif len(uniqueOffsets) > 1:
+        if len(uniqueOffsets) > 1:
             s = "S"
         else:
             s = ""
@@ -496,7 +494,7 @@ class soxs_nod(base_recipe):
                     orderJoins=orderJoins,
                 )
                 # GETTING THE RESPONSE
-                self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
+                self.log.print("# CALCULATING RESPONSE FUNCTION\n")
                 response = response_function(
                     log=self.log,
                     settings=self.settings,
@@ -518,7 +516,7 @@ class soxs_nod(base_recipe):
             calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
             from soxspipe.commonutils.flux_calibration import flux_calibration
 
-            self.log.print(f"# PERFORMING FLUX CALIBRATION\n")
+            self.log.print("# PERFORMING FLUX CALIBRATION\n")
             # TODO CHECK IF TAKING THE HEADER OF ONE FRAME IS OK
             fluxCalibrator = flux_calibration(
                 log=self.log,
@@ -537,7 +535,7 @@ class soxs_nod(base_recipe):
             )
             filePath_fluxcal, products = fluxCalibrator.calibrate()
             self.products = pd.concat([self.products, products], ignore_index=True)
-            self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
+            self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
         self.products, filePath = plot_merged_spectrum_qc(
             merged_orders=stackedSpectrum,
@@ -557,9 +555,8 @@ class soxs_nod(base_recipe):
         )
 
         if filePath_fluxcal:
-            from astropy.table import Table
-            from astropy.io import fits
             from astropy import units as u
+            from astropy.table import Table
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
@@ -626,8 +623,8 @@ class soxs_nod(base_recipe):
         """
         self.log.debug("starting the ``process_single_ab_nodding_cycle`` method")
 
+
         from soxspipe.commonutils import horne_extraction
-        import pandas as pd
 
         # SUBTRACTING A FROM B
         A_minus_B_notflattened = aFrame.subtract(bFrame)
@@ -828,18 +825,18 @@ class soxs_nod(base_recipe):
         """
         self.log.debug("starting the ``stack_extractions`` method")
 
-        import pandas as pd
         from datetime import datetime
-        from astropy.io import fits
-        from astropy.table import Table
+
         import numpy as np
+        import pandas as pd
+        from astropy import units as u
+        from astropy.table import Table
+        from specutils import Spectrum1D
+
+        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import (
-            calculate_rolling_snr,
             add_snr_efficiency_qcs,
         )
-        from astropy import units as u
-        from specutils import Spectrum1D
-        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         if notFlattened:
             postfix = "_NOTFLAT"
@@ -936,7 +933,7 @@ class soxs_nod(base_recipe):
                         "file_type": "FITS",
                         "obs_date_utc": self.dateObs,
                         "reduction_date_utc": self.utcnow,
-                        "product_desc": f"Table of the extracted source in each order. All nodding cycles combined.",
+                        "product_desc": "Table of the extracted source in each order. All nodding cycles combined.",
                         "file_path": filePath,
                         "label": "PROD",
                     }
@@ -956,7 +953,7 @@ class soxs_nod(base_recipe):
                         "file_type": "TXT",
                         "obs_date_utc": self.dateObs,
                         "reduction_date_utc": self.utcnow,
-                        "product_desc": f"Ascii version of extracted source spectrum",
+                        "product_desc": "Ascii version of extracted source spectrum",
                         "file_path": asciiFilePath,
                         "label": "PROD",
                     }

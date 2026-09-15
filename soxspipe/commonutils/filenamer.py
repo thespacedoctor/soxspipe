@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Given a FITS object, use the SOXS file-naming scheme to return a filename to be used to save the FITS object to disk*
 
@@ -10,12 +9,9 @@ Date Created
 : March  9, 2021
 """
 
-from soxspipe.commonutils import detector_lookup
-from soxspipe.commonutils import keyword_lookup
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+
+from soxspipe.commonutils import detector_lookup, keyword_lookup
 
 os.environ["TERM"] = "vt100"
 
@@ -89,7 +85,7 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
                 romode = "_fast"
             else:
                 log.print(frame.header[kw("DET_READ_SPEED")])
-                raise LookupError(f"Cound not parse readout mode")
+                raise LookupError("Cound not parse readout mode")
 
     filename = f"{dateStamp}_{arm}{binning}{romode}"
 

@@ -14,7 +14,6 @@ from astropy.table import Table
 from soxspipe.commonutils.response_function import response_function
 from tests.factories import product_table, qc_table
 
-
 pytestmark = pytest.mark.unit
 
 

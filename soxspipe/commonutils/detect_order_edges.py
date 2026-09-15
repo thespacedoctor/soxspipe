@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *using a fully-illuminated slit flat frame detect and record the order-edges*
 
@@ -10,19 +9,13 @@ Date Created
 : September 18, 2020
 """
 
-from datetime import datetime, date, time
-from soxspipe.commonutils.filenamer import filenamer
-from soxspipe.commonutils.toolkit import unpack_order_table, get_calibration_lamp
-from soxspipe.commonutils import detector_lookup
-from soxspipe.commonutils import keyword_lookup
-from os.path import expanduser
-from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
-from soxspipe.commonutils import _base_detect
-from soxspipe.commonutils.toolkit import cut_image_slice
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+from datetime import datetime
+
+from soxspipe.commonutils import _base_detect, detector_lookup, keyword_lookup
+from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
+from soxspipe.commonutils.toolkit import cut_image_slice, unpack_order_table
 
 os.environ["TERM"] = "vt100"
 
@@ -176,7 +169,7 @@ class detect_order_edges(_base_detect):
             surfacePlot=True,
         )
 
-        return None
+        return
 
     def get(self):
         """
@@ -191,7 +184,7 @@ class detect_order_edges(_base_detect):
         import numpy as np
         import pandas as pd
         from astropy.stats import mad_std
-        from soxspipe.commonutils.toolkit import read_spectral_format
+
 
         self.log.print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
 
@@ -560,9 +553,9 @@ class detect_order_edges(_base_detect):
         """
         self.log.debug("starting the ``plot_results`` method")
 
+        import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
-        import matplotlib.pyplot as plt
 
         allResiduals = np.concatenate(
             (
@@ -921,7 +914,7 @@ class detect_order_edges(_base_detect):
         )
 
         if self.sofName:
-            filename = self.sofName + f"_ORD_LOC.pdf"
+            filename = self.sofName + "_ORD_LOC.pdf"
         else:
             filename = filenamer(log=self.log, frame=self.flatFrame, settings=self.settings)
             filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
@@ -1045,9 +1038,10 @@ class detect_order_edges(_base_detect):
         minThresholdPercenage = self.minThresholdPercenage
         maxThresholdPercenage = self.maxThresholdPercenage
 
+        import random
+
         import numpy as np
         from scipy.signal import medfilt
-        import random
 
         sliceWidth = self.sliceWidth
         sliceLength = self.sliceLength
@@ -1163,9 +1157,8 @@ class detect_order_edges(_base_detect):
                 plt.legend()
                 plt.show()
             return orderData
-        else:
-            orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice) + 1
-            orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice) - 1
+        orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice) + 1
+        orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice) - 1
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if False and random.randint(1, 5001) < 2000:

@@ -329,6 +329,7 @@ def test_nod_stack_extractions_writes_merged_fits_and_ascii_products(
     """Merged AB spectra retain their median flux, SNR, and product records."""
     from astropy import units as u
     from astropy.io import fits
+
     from soxspipe.commonutils import toolkit
 
     recipe = soxs_nod.__new__(soxs_nod)

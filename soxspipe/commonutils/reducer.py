@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *reduce all the data in a workspace, or target specific obs and files for reduction*
 
@@ -11,18 +10,15 @@ Date Created
 """
 
 # from memory_profiler import profile
-from fundamentals import tools
-from builtins import object
-import sys
 import os
-import multiprocessing
+import sys
 
 # multiprocessing.set_start_method("spawn")
 
 os.environ["TERM"] = "vt100"
 
 
-class reducer(object):
+class reducer:
     """
         *reduce all the data in a workspace, or target specific obs and files for reduction*
 
@@ -92,7 +88,7 @@ class reducer(object):
         do.close()
 
         if self.sessionId is None:
-            return None
+            return
 
         self.recipeList = [
             "mbias",
@@ -118,7 +114,7 @@ class reducer(object):
             do.prepare(refresh=False, report=False)
             do.close()
 
-        return None
+        return
 
     def reduce(self, batch=False, multiprocess=False):
         """
@@ -128,10 +124,12 @@ class reducer(object):
 
         if self.sessionId is None:
             print("Please prepare this workspace using `soxspipe prep` before attempting to reduce the data.")
-            return None
+            return
+
+        import traceback
 
         from fundamentals import times
-        import traceback
+
         from soxspipe.commonutils import data_organiser
 
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
@@ -159,6 +157,7 @@ class reducer(object):
 
                 if multiprocess:
                     import sqlite3 as sql
+
                     from soxspipe.commonutils.data_organiser import (
                         _validate_owned_path,
                     )
@@ -198,67 +197,66 @@ class reducer(object):
                     self.log.print(f"Multiprocess for {rootRecipe} recipe completed for {len(sofList)} files.")
                     self.log.print(f"Multiprocess Recipe Run Time: {runningTime}\n\n")
                     break
-                else:
 
-                    fail = False
-                    for index, row in rawGroups.iterrows():
-                        if batchCount >= batch:
-                            self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
-                            break
+                fail = False
+                for index, row in rawGroups.iterrows():
+                    if batchCount >= batch:
+                        self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
+                        break
 
-                        recipe = row["recipe"].replace("_obj", "")
-                        sof = row["sof"]
-                        startTime = times.get_now_sql_datetime()
-                        sof = self.sessionPath + "/sof/" + sof
+                    recipe = row["recipe"].replace("_obj", "")
+                    sof = row["sof"]
+                    startTime = times.get_now_sql_datetime()
+                    sof = self.sessionPath + "/sof/" + sof
 
-                        try:
-                            run_recipe(
-                                self.log,
-                                recipe,
-                                sof,
-                                settings=self.settings,
-                                overwrite=self.overwrite,
-                                command=row["command"],
-                                verbose=self.verbose,
-                            )
-                            batchCount += 1
-                        except FileExistsError as e:
-                            continue
-                        except Exception as e:
-                            # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                            self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-                            self.log.error(
-                                f'\nRecipe Command: {row["command"].replace("-obj ", " ").replace("-std ", " ")}\n\n'
-                            )
-                            fail = True
+                    try:
+                        run_recipe(
+                            self.log,
+                            recipe,
+                            sof,
+                            settings=self.settings,
+                            overwrite=self.overwrite,
+                            command=row["command"],
+                            verbose=self.verbose,
+                        )
+                        batchCount += 1
+                    except FileExistsError:
+                        continue
+                    except Exception:
+                        # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                        self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                        self.log.error(
+                            f'\nRecipe Command: {row["command"].replace("-obj ", " ").replace("-std ", " ")}\n\n'
+                        )
+                        fail = True
 
-                            if self.quitOnFail:
-                                sys.exit(1)
+                        if self.quitOnFail:
+                            sys.exit(1)
 
-                            if self.reductionTarget != "all":
-                                self.overwrite = False
+                        if self.reductionTarget != "all":
+                            self.overwrite = False
 
-                            if not self.daemon:
-                                print(f"{'='*70}\n")
-
-                        ## FINISH LOGGING ##
-                        endTime = times.get_now_sql_datetime()
-                        runningTime = times.calculate_time_difference(startTime, endTime)
-                        sys.argv[0] = os.path.basename(sys.argv[0])
-
-                        self.log.print(f'\nRecipe Command: {row["command"].replace("_obj ", " ")} ')
-                        self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                         if not self.daemon:
                             print(f"{'='*70}\n")
 
-                    if fail:
-                        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-                        reset = do.session_refresh()
-                        do.close()
-                        if reset:
-                            print(f"BACK TO THE START! {rootRecipe}\n\n")
-                            break
-                    break
+                    ## FINISH LOGGING ##
+                    endTime = times.get_now_sql_datetime()
+                    runningTime = times.calculate_time_difference(startTime, endTime)
+                    sys.argv[0] = os.path.basename(sys.argv[0])
+
+                    self.log.print(f'\nRecipe Command: {row["command"].replace("_obj ", " ")} ')
+                    self.log.print(f"Recipe Run Time: {runningTime}\n\n")
+                    if not self.daemon:
+                        print(f"{'='*70}\n")
+
+                if fail:
+                    do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                    reset = do.session_refresh()
+                    do.close()
+                    if reset:
+                        print(f"BACK TO THE START! {rootRecipe}\n\n")
+                        break
+                break
 
         if self.reductionTarget == "all":
             do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
@@ -284,7 +282,7 @@ class reducer(object):
         do.close()
 
         self.log.debug("completed the ``reduce`` method")
-        return None
+        return
 
     def select_sof_files_to_process(self, recipe=False, reductionTarget=False, batch=False, arm=False):
         """*select all of the SOF files still requiring processing*
@@ -307,8 +305,10 @@ class reducer(object):
         """
         self.log.debug("starting the ``select_sof_files_to_process`` method")
 
-        import pandas as pd
         import sqlite3 as sql
+
+        import pandas as pd
+
         from soxspipe.commonutils.data_organiser import _validate_owned_path
 
         databasePath = _validate_owned_path(
@@ -553,10 +553,12 @@ def run_recipe_bulk(
     """
     log.debug("starting the ``run_recipe_bulk`` method")
 
-    from fundamentals import fmultiprocess
-    from soxspipe.commonutils import data_organiser
-    import pandas as pd
     import shutil
+
+    import pandas as pd
+    from fundamentals import fmultiprocess
+
+    from soxspipe.commonutils import data_organiser
 
     def wrapper(
         inputDict,
@@ -568,7 +570,6 @@ def run_recipe_bulk(
         wrapperTurnOffMP=True,
     ):
         import traceback
-        import os
 
         returnDict = {
             "status": None,
@@ -726,4 +727,4 @@ def run_recipe_bulk(
         shutil.rmtree(workspaceDirectory + "/tmp/")
 
     log.debug("completed the ``run_recipe_bulk`` method")
-    return None
+    return

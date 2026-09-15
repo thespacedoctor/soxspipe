@@ -10,13 +10,11 @@
 :Date Created:
     June 22, 2026
 """
-from builtins import object
-import sys
 import os
-os.environ['TERM'] = 'vt100'
-from fundamentals import tools
 
-class base_util(object):
+os.environ['TERM'] = 'vt100'
+
+class base_util:
     """
     *The base utility class which all other utilities inherit*
 
@@ -63,13 +61,15 @@ class base_util(object):
         self.twoDMapPath = twoDMapPath
 
         import numpy as np
-        from astropy.io import fits
-        import numpy as np
         import pandas as pd
-        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe, read_spectral_format
+        from astropy.io import fits
+
         from soxspipe.commonutils import detector_lookup, keyword_lookup
-        from soxspipe.commonutils.toolkit import get_skylines_dataframe
-        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+        from soxspipe.commonutils.toolkit import (
+            get_skylines_dataframe,
+            read_spectral_format,
+            twoD_disp_map_image_to_dataframe,
+        )
 
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
         if associatedFrame is not False:
@@ -166,6 +166,6 @@ class base_util(object):
             self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
 
 
-        return None
+        return
 
     

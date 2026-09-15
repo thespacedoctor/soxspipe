@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
@@ -69,15 +68,15 @@ Options:
 """
 
 ################# GLOBAL IMPORTS ####################
-import time
-import os
-import sys
-import readline
 import glob
-from docopt import docopt
-from fundamentals import tools, times
-from subprocess import Popen, PIPE, STDOUT
+import os
 import pickle
+import readline
+import sys
+import time
+
+from docopt import docopt
+from fundamentals import times, tools
 
 os.environ["TERM"] = "vt100"
 
@@ -92,6 +91,7 @@ def main(arguments=None):
     """
     # DETERMINE CURRENT DATA-REDUCTION SESSION
     from fundamentals.logs import emptyLogger
+
     from soxspipe.commonutils import data_organiser
     from soxspipe.commonutils.data_organiser import _UnsafePathError
 
@@ -386,8 +386,9 @@ def main(arguments=None):
         if a["raw"]:
 
             # EXPORT THE RAW FRAMES NEEDED TO REDUCE A SOF FILE TO AN `exported` DIRECTORY IN THE WORKSPACE DIRECTORY
-            from soxspipe.commonutils import data_organiser
             import shutil
+
+            from soxspipe.commonutils import data_organiser
 
             do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
             if a["sof"]:
@@ -411,6 +412,7 @@ def main(arguments=None):
                 else:
                     exportDir = a["workspaceDirectory"] + "/exported"
                     from pathlib import Path
+
                     from soxspipe.commonutils.data_organiser import (
                         _validate_owned_path,
                     )
@@ -447,7 +449,7 @@ def main(arguments=None):
                     )
                 return
 
-    except FileExistsError as e:
+    except FileExistsError:
         sys.exit(0)
 
     except _UnsafePathError as error:
@@ -541,8 +543,8 @@ def main(arguments=None):
                     currentSession, allSessions = do.session_list(silent=True)
 
                     if currentSession:
-                        from importlib import reload
                         import logging
+                        from importlib import reload
 
                         logging.shutdown()
                         reload(logging)
@@ -583,7 +585,7 @@ def main(arguments=None):
                 time.sleep(xsec)
 
             self.log.info("completed the ``action`` method")
-            return None
+            return
 
     # MAKE RELATIVE HOME PATH ABSOLUTE
     from os.path import expanduser
@@ -601,8 +603,8 @@ def main(arguments=None):
     arguments, settings, log, dbConn = su.setup()
 
     d = myDaemon(log=log, name="soxspipe", pwd=os.getcwd())
-    d.errLog = home + f"/.config/soxspipe/daemon.log"
-    d.rootDir = home + f"/.config/soxspipe/"
+    d.errLog = home + "/.config/soxspipe/daemon.log"
+    d.rootDir = home + "/.config/soxspipe/"
 
     if a["start"]:
         d.start()

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *The recipe to generate a master dark frame*
 
@@ -11,16 +10,14 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils import keyword_lookup
+
+import os
+import sys
+from datetime import datetime
+
+from soxspipe.commonutils.toolkit import generic_quality_checks
 
 from .base_recipe import base_recipe
-
-from fundamentals import tools
-from builtins import object
-from datetime import datetime
-from soxspipe.commonutils.toolkit import generic_quality_checks
-import sys
-import os
 
 os.environ["TERM"] = "vt100"
 
@@ -67,7 +64,7 @@ class soxs_mdark(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_mdark, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -117,7 +114,7 @@ class soxs_mdark(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify input frame match those required by the soxs_mdark recipe*
@@ -160,7 +157,7 @@ class soxs_mdark(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*generate a master dark frame*
@@ -173,6 +170,7 @@ class soxs_mdark(base_recipe):
 
         import numpy as np
         import pandas as pd
+
         from soxspipe.commonutils import toolkit
 
         arm = self.arm

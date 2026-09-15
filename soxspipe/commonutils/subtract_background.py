@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *fit and subtract background flux from scattered light from frame*
 
@@ -10,19 +9,15 @@ Date Created
 : June  3, 2021
 """
 
-from soxspipe.commonutils import keyword_lookup
-from os.path import expanduser
-from soxspipe.commonutils.toolkit import quicklook_image
-from soxspipe.commonutils.toolkit import unpack_order_table
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+
+from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils.toolkit import quicklook_image, unpack_order_table
 
 os.environ["TERM"] = "vt100"
 
 
-class subtract_background(object):
+class subtract_background:
     """
     *fit and subtract background flux from scattered light from frame*
 
@@ -124,7 +119,7 @@ class subtract_background(object):
             title="Initial input frame needing scattered light subtraction",
         )
 
-        return None
+        return
 
     def subtract(self):
         """
@@ -138,6 +133,7 @@ class subtract_background(object):
 
         import numpy as np
         import pandas as pd
+
         from soxspipe.commonutils import toolkit
 
         kw = self.kw
@@ -201,7 +197,7 @@ class subtract_background(object):
         # GET FILENAME FOR THE RESIDUAL PLOT
         saveToPath = False
         if self.sofName:
-            backgroundQCImage = self.sofName + f"_BKGROUND.pdf"
+            backgroundQCImage = self.sofName + "_BKGROUND.pdf"
             saveToPath = self.qcDir + "/" + backgroundQCImage
 
         quicklook_image(
@@ -345,7 +341,7 @@ class subtract_background(object):
                         self.frame.mask[:m, b] = 1
 
         self.log.debug("completed the ``mask_order_locations`` method")
-        return None
+        return
 
     def create_background_image(self, rowFitOrder, gaussianSigma):
         """*model the background image from intra-order flux detected*
@@ -357,18 +353,17 @@ class subtract_background(object):
         """
         self.log.debug("starting the ``create_background_image`` method")
 
-        from astropy.stats import sigma_clip, mad_std
-        import numpy as np
-        import pandas as pd
-        from astropy.nddata import CCDData
-        from scipy.signal import medfilt2d
-        from scipy.interpolate import splrep, splev
-        import scipy
-        import numpy.ma as ma
         import math
         import random
-        from soxspipe.commonutils.filenamer import filenamer
-        from os.path import expanduser
+
+        import numpy as np
+        import numpy.ma as ma
+        import pandas as pd
+        import scipy
+        from astropy.nddata import CCDData
+        from astropy.stats import sigma_clip
+        from scipy.interpolate import splev, splrep
+
 
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *further constrain the first guess locations of the order centres derived in `soxs_disp_solution`*
 
@@ -11,12 +10,12 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils import detect_continuum
-from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
-from fundamentals import tools
-import sys
 import os
+import sys
+
+from soxspipe.commonutils import detect_continuum
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
@@ -65,7 +64,7 @@ class soxs_order_centres(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_order_centres, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -123,7 +122,7 @@ class soxs_order_centres(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify input frames match those required by the soxs_order_centres recipe*
@@ -209,7 +208,7 @@ class soxs_order_centres(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*generate the order-table with polynomal fits of order-centres*
@@ -220,10 +219,11 @@ class soxs_order_centres(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        from astropy.nddata import CCDData
-        from astropy import units as u
-        import pandas as pd
         from datetime import datetime
+
+        import pandas as pd
+        from astropy import units as u
+        from astropy.nddata import CCDData
 
         arm = self.arm
         kw = self.kw
@@ -383,37 +383,36 @@ class soxs_order_centres(base_recipe):
             )
             return None
 
-        else:
-            if self.polyOrders:
-                self.polyOrders = str(self.polyOrders)
-                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
-                self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
-                self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
+        if self.polyOrders:
+            self.polyOrders = str(self.polyOrders)
+            self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+            self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
+            self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
 
-            # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
-            # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
-            detector = detect_continuum(
-                log=self.log,
-                traceFrame=self.orderFrame,
-                dispersion_map=disp_map_table,
-                settings=self.settings,
-                recipeSettings=self.recipeSettings,
-                recipeName="soxs-order-centres",
-                qcTable=self.qc,
-                productsTable=self.products,
-                sofName=self.sofName,
-                binx=binx,
-                biny=biny,
-                startNightDate=self.startNightDate,
-            )
-            (
-                productPath,
-                qcTable,
-                productsTable,
-                orderPolyTable,
-                orderPixelTable,
-                orderMetaTable,
-            ) = detector.get()
+        # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+        # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
+        detector = detect_continuum(
+            log=self.log,
+            traceFrame=self.orderFrame,
+            dispersion_map=disp_map_table,
+            settings=self.settings,
+            recipeSettings=self.recipeSettings,
+            recipeName="soxs-order-centres",
+            qcTable=self.qc,
+            productsTable=self.products,
+            sofName=self.sofName,
+            binx=binx,
+            biny=biny,
+            startNightDate=self.startNightDate,
+        )
+        (
+            productPath,
+            qcTable,
+            productsTable,
+            orderPolyTable,
+            orderPixelTable,
+            orderMetaTable,
+        ) = detector.get()
 
         self.products = pd.concat([self.products, productsTable])
         self.qc = pd.concat([self.qc, qcTable])
@@ -496,7 +495,7 @@ def parameterTuning(
     except:
         pass
 
-    return None
+    return
 
     # use the tab-trigger below for new method
     # xt-class-method

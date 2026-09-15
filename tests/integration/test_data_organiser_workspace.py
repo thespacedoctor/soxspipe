@@ -12,8 +12,8 @@ from astropy.io import fits
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.data_organiser import (
-    _UnsafePathError,
     _harvest_fits_headers,
+    _UnsafePathError,
 )
 from tests.factories import raw_fits, workspace_organiser
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *transform spectral image from detector pixel space to wavelength and slit-position space*
 
@@ -11,13 +10,11 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from datetime import datetime
-from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+import sys
+from datetime import datetime
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
@@ -43,7 +40,7 @@ class soxs_straighten(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_straighten, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -92,7 +89,7 @@ class soxs_straighten(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_straighten recipe*
@@ -155,7 +152,7 @@ class soxs_straighten(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*The code to generate the product of the soxs_straighten recipe*
