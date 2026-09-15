@@ -16,6 +16,12 @@ import sys
 
 from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, subtract_background
 
+# THE "CALLER DID NOT PASS THIS KEYWORD" SENTINEL USED BY THE add_qc AND
+# add_product DELEGATORS BELOW. IMPORTED FROM `toolkit` RATHER THAN REDEFINED
+# HERE SO THE DELEGATORS FORWARD THE SAME OBJECT `append_qc` AND
+# `append_product` TEST FOR, AND SO A CALLER MAY PASS `OMITTED` EXPLICITLY.
+from soxspipe.commonutils.toolkit import OMITTED
+
 os.environ["TERM"] = "vt100"
 
 
@@ -2084,6 +2090,145 @@ class base_recipe:
                     raise Exception(e)
                 time.sleep(1)
                 keepTrying += 1
+
+    def add_qc(
+        self,
+        qcName,
+        qcValue,
+        qcComment,
+        reductionDateUtc,
+        qcUnit=OMITTED,
+        toHeader=OMITTED,
+        qcOrder=OMITTED,
+        recipeName=None,
+        obsDateUtc=None,
+    ):
+        """*append a QC row to `self.qc`, saving recipe call sites from repeating `self.qc`,
+        `self.recipeName` and `self.dateObs`*
+
+        This is a thin delegator around
+        `soxspipe.commonutils.toolkit.append_qc` -- it contains no logic
+        beyond forwarding. ``recipeName`` and ``obsDateUtc`` fall back to
+        `self.recipeName` and `self.dateObs` when not supplied, but can be
+        overridden (some call sites hardcode a different recipe name, or
+        need to record a different observation date). The optional
+        ``qcUnit``/``toHeader``/``qcOrder`` keywords are only forwarded when
+        the caller passes them, so an unpassed optional column stays absent
+        from the appended row exactly as `append_qc` would leave it.
+
+        **Key Arguments:**
+
+        - ``qcName`` -- the QC metric name
+        - ``qcValue`` -- the QC metric value
+        - ``qcComment`` -- the QC metric comment
+        - ``reductionDateUtc`` -- the reduction date (UTC) to record against the QC row. Shared
+          across several rows by the caller, never generated here
+        - ``qcUnit`` -- the QC metric unit. Omit to leave the column absent for this row
+        - ``toHeader`` -- whether the QC metric should be written to the FITS header. Omit to
+          leave the column absent for this row
+        - ``qcOrder`` -- the echelle order the QC metric applies to. Omit to leave the column absent for this row
+        - ``recipeName`` -- override for the recipe name recorded against the QC row. Defaults to `self.recipeName`
+        - ``obsDateUtc`` -- override for the observation date recorded against the QC row. Defaults
+          to `self.dateObs`
+
+        **Usage:**
+
+        ```python
+        self.add_qc(
+            qcName="RON",
+            qcValue=1.2,
+            qcComment="[e-] RON in single BIAS",
+            reductionDateUtc=utcnow,
+            qcUnit="electron",
+            toHeader=True,
+        )
+        ```
+        """
+        from soxspipe.commonutils.toolkit import append_qc
+
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName if recipeName is None else recipeName,
+            qcName=qcName,
+            qcValue=qcValue,
+            qcComment=qcComment,
+            obsDateUtc=self.dateObs if obsDateUtc is None else obsDateUtc,
+            reductionDateUtc=reductionDateUtc,
+            qcUnit=qcUnit,
+            toHeader=toHeader,
+            qcOrder=qcOrder,
+        )
+        return
+
+    def add_product(
+        self,
+        productLabel,
+        fileName,
+        filePath,
+        productDesc,
+        reductionDateUtc,
+        fileType=OMITTED,
+        label=OMITTED,
+        recipeName=None,
+        obsDateUtc=None,
+    ):
+        """*append a product row to `self.products`, saving recipe call sites from repeating
+        `self.products`, `self.recipeName` and `self.dateObs`*
+
+        This is a thin delegator around
+        `soxspipe.commonutils.toolkit.append_product` -- it contains no
+        logic beyond forwarding. ``recipeName`` and ``obsDateUtc`` fall back
+        to `self.recipeName` and `self.dateObs` when not supplied, but can
+        be overridden: several product rows hardcode a literal recipe name
+        regardless of the running recipe, and `base_recipe` itself rewrites
+        `self.recipeName` to a `-std` variant for standard-star input. The
+        optional ``fileType``/``label`` keywords are only forwarded when the
+        caller passes them, so an unpassed optional column stays absent
+        from the appended row exactly as `append_product` would leave it.
+
+        **Key Arguments:**
+
+        - ``productLabel`` -- the product label
+        - ``fileName`` -- the product file name
+        - ``filePath`` -- the product file path
+        - ``productDesc`` -- the product description
+        - ``reductionDateUtc`` -- the reduction date (UTC) to record against the product row. Shared
+          across several rows by the caller, never generated here
+        - ``fileType`` -- the product file type. Omit to leave the column absent for this row
+        - ``label`` -- the product label category (e.g. `PROD`). Omit to leave the column absent for this row
+        - ``recipeName`` -- override for the recipe name recorded against the product row. Defaults to `self.recipeName`
+        - ``obsDateUtc`` -- override for the observation date recorded against the product row. Defaults
+          to `self.dateObs`
+
+        **Usage:**
+
+        ```python
+        self.add_product(
+            productLabel="MBIAS",
+            fileName=filename,
+            filePath=productPath,
+            productDesc=f"{self.arm} Master bias frame",
+            reductionDateUtc=utcnow,
+            fileType="FITS",
+            label="PROD",
+        )
+        ```
+        """
+        from soxspipe.commonutils.toolkit import append_product
+
+        self.products = append_product(
+            self.products,
+            recipeName=self.recipeName if recipeName is None else recipeName,
+            productLabel=productLabel,
+            fileName=fileName,
+            filePath=filePath,
+            productDesc=productDesc,
+            obsDateUtc=self.dateObs if obsDateUtc is None else obsDateUtc,
+            reductionDateUtc=reductionDateUtc,
+            fileType=fileType,
+            label=label,
+        )
+        return
 
     # use the tab-trigger below for new method
     # xt-class-method

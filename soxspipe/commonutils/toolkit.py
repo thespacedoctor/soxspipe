@@ -2147,6 +2147,254 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     return qcTable
 
 
+################# SHARED QC / PRODUCT / PLOT HELPERS ####################
+# THESE HELPERS FACTOR OUT THE ROW-BUILDING BOILERPLATE CURRENTLY DUPLICATED
+# AT DOZENS OF CALL SITES ACROSS THE RECIPES. THEY ADD CODE ONLY -- NO
+# EXISTING CALL SITE IS CONVERTED TO USE THEM HERE.
+
+
+def utcnow_string(microseconds=False):
+    """*return the current UTC timestamp formatted the way the codebase's
+    40 existing ``datetime.utcnow().strftime(...)`` call sites already do*
+
+    The rendered string is byte-identical to those call sites because the
+    format string contains no `%z`/`%Z` offset marker -- swapping the naive
+    ``datetime.utcnow()`` for the timezone-aware ``datetime.now(UTC)`` (this
+    module already imports ``UTC`` at the top) changes nothing about the
+    rendered text, only about whether the underlying `datetime` object
+    carries timezone info.
+
+    **Key Arguments:**
+
+    - ``microseconds`` -- also render the `%f` fractional-second component. Default *False*
+
+    **Return:**
+
+    - ``timestamp`` -- the formatted UTC timestamp string
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import utcnow_string
+    utcnow = utcnow_string()
+    ```
+    """
+    timestampFormat = "%Y-%m-%dT%H:%M:%S"
+    if microseconds:
+        timestampFormat += ".%f"
+    return datetime.now(UTC).strftime(timestampFormat)
+
+
+class _omitted:
+    def __repr__(self):
+        return "<omitted>"
+
+
+# SENTINEL USED TO DISTINGUISH "CALLER DID NOT PASS THIS KEYWORD" FROM
+# "CALLER PASSED None" -- None IS A REAL VALUE IN THESE QC/PRODUCT COLUMNS
+# (E.G. `soxs_mflat.py:1225` BUILDS A QC ROW WITH NO `to_header` KEY AT ALL;
+# A HELPER THAT DEFAULTED `toHeader=True` WOULD FLIP THAT ROW FROM NaN TO
+# True, WHICH IS A REAL BEHAVIOUR CHANGE), SO "NOT PASSED" AND "PASSED AS
+# None" MUST STAY DISTINGUISHABLE.
+OMITTED = _omitted()
+
+
+def append_qc(
+    qcTable,
+    recipeName,
+    qcName,
+    qcValue,
+    qcComment,
+    obsDateUtc,
+    reductionDateUtc,
+    qcUnit=OMITTED,
+    toHeader=OMITTED,
+    qcOrder=OMITTED,
+):
+    """*append a single QC row to a QC table without mutating the input table*
+
+    ``reductionDateUtc`` is a required argument and this helper never mints
+    its own timestamp: call sites deliberately share one timestamp across
+    several rows (e.g. `soxs_mbias.py:329` covers two QC rows,
+    `soxs_stare.py:510` covers three product rows), and a per-call
+    timestamp would split those apart.
+
+    The optional keyword arguments (``qcUnit``, ``toHeader``, ``qcOrder``)
+    only appear in the built row when the caller actually passes them --
+    passing ``None`` explicitly still adds the column (with a `None`/NaN
+    value); not passing it at all omits the column entirely.
+
+    **Key Arguments:**
+
+    - ``qcTable`` -- the QC table to append to (not mutated)
+    - ``recipeName`` -- the recipe name to record against the QC row
+    - ``qcName`` -- the QC metric name
+    - ``qcValue`` -- the QC metric value
+    - ``qcComment`` -- the QC metric comment
+    - ``obsDateUtc`` -- the observation date (UTC) to record against the QC row
+    - ``reductionDateUtc`` -- the reduction date (UTC) to record against the QC row. Shared
+      across several rows by the caller, never generated here
+    - ``qcUnit`` -- the QC metric unit. Omit to leave the column absent for this row
+    - ``toHeader`` -- whether the QC metric should be written to the FITS header. Omit to
+      leave the column absent for this row
+    - ``qcOrder`` -- the echelle order the QC metric applies to. Omit to leave the column absent for this row
+
+    **Return:**
+
+    - ``qcTable`` -- a new QC table with the row appended
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import append_qc
+    self.qc = append_qc(
+        self.qc,
+        recipeName=self.recipeName,
+        qcName="RON",
+        qcValue=1.2,
+        qcComment="[e-] RON in single BIAS",
+        obsDateUtc=self.dateObs,
+        reductionDateUtc=utcnow,
+        qcUnit="electron",
+        toHeader=True,
+    )
+    ```
+    """
+    import pandas as pd
+
+    row = {
+        "soxspipe_recipe": recipeName,
+        "qc_name": qcName,
+        "qc_value": qcValue,
+    }
+    if not isinstance(qcUnit, _omitted):
+        row["qc_unit"] = qcUnit
+    if not isinstance(qcOrder, _omitted):
+        row["qc_order"] = qcOrder
+    row["qc_comment"] = qcComment
+    row["obs_date_utc"] = obsDateUtc
+    row["reduction_date_utc"] = reductionDateUtc
+    if not isinstance(toHeader, _omitted):
+        row["to_header"] = toHeader
+
+    return pd.concat([qcTable, pd.DataFrame([row])], ignore_index=True)
+
+
+def append_product(
+    productsTable,
+    recipeName,
+    productLabel,
+    fileName,
+    filePath,
+    productDesc,
+    obsDateUtc,
+    reductionDateUtc,
+    fileType=OMITTED,
+    label=OMITTED,
+):
+    """*append a single product row to a products table without mutating the input table*
+
+    ``recipeName`` is required and deliberately NOT read from `self`: eight
+    rows across the codebase hardcode the literal `"soxs-stare"` regardless
+    of the running recipe (`soxs_stare.py:516`, `:547`, `:579`,
+    `subtract_sky.py:307`, `:339`, `horne_extraction.py:444`, `:532`,
+    `:1366`), and `base_recipe.py` rewrites `self.recipeName` to a `-std`
+    variant for standard-star input.
+
+    As with `append_qc`, ``reductionDateUtc`` is required and never minted
+    here, and the optional keyword arguments (``fileType``, ``label``) only
+    appear in the built row when the caller actually passes them.
+
+    **Key Arguments:**
+
+    - ``productsTable`` -- the products table to append to (not mutated)
+    - ``recipeName`` -- the recipe name to record against the product row
+    - ``productLabel`` -- the product label
+    - ``fileName`` -- the product file name
+    - ``filePath`` -- the product file path
+    - ``productDesc`` -- the product description
+    - ``obsDateUtc`` -- the observation date (UTC) to record against the product row
+    - ``reductionDateUtc`` -- the reduction date (UTC) to record against the product row. Shared
+      across several rows by the caller, never generated here
+    - ``fileType`` -- the product file type. Omit to leave the column absent for this row
+    - ``label`` -- the product label category (e.g. `PROD`). Omit to leave the column absent for this row
+
+    **Return:**
+
+    - ``productsTable`` -- a new products table with the row appended
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import append_product
+    self.products = append_product(
+        self.products,
+        recipeName=self.recipeName,
+        productLabel="MBIAS",
+        fileName=filename,
+        filePath=productPath,
+        productDesc=f"{self.arm} Master bias frame",
+        obsDateUtc=self.dateObs,
+        reductionDateUtc=utcnow,
+        fileType="FITS",
+        label="PROD",
+    )
+    ```
+    """
+    import pandas as pd
+
+    row = {
+        "soxspipe_recipe": recipeName,
+        "product_label": productLabel,
+        "file_name": fileName,
+    }
+    if not isinstance(fileType, _omitted):
+        row["file_type"] = fileType
+    row["obs_date_utc"] = obsDateUtc
+    row["reduction_date_utc"] = reductionDateUtc
+    row["product_desc"] = productDesc
+    row["file_path"] = filePath
+    if not isinstance(label, _omitted):
+        row["label"] = label
+
+    return pd.concat([productsTable, pd.DataFrame([row])], ignore_index=True)
+
+
+def save_qc_plot(filePath, dpi=120, bboxInches="tight"):
+    """*save the current matplotlib figure as a QC PDF plot*
+
+    ``bboxInches=None`` means OMIT the `bbox_inches` keyword from the
+    `plt.savefig` call entirely, not pass `bbox_inches=None` -- that is what
+    reproduces the existing `subtract_sky.py` and `create_dispersion_map.py`
+    call sites exactly, where `bbox_inches` is never passed at all.
+
+    **Key Arguments:**
+
+    - ``filePath`` -- the path to save the plot to
+    - ``dpi`` -- the plot resolution in dots per inch. Default *120*
+    - ``bboxInches`` -- the `bbox_inches` value to forward to `plt.savefig`, or `None` to omit
+      the keyword entirely. Default *"tight"*
+
+    **Return:**
+
+    - ``filePath`` -- the path the plot was saved to
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import save_qc_plot
+    save_qc_plot(filePath)
+    ```
+    """
+    import matplotlib.pyplot as plt
+
+    kwargs = {"dpi": dpi, "format": "pdf"}
+    if bboxInches is not None:
+        kwargs["bbox_inches"] = bboxInches
+    plt.savefig(filePath, **kwargs)
+    return filePath
+
+
 def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightnessNIR=100):
     """Load and filter strong skylines for QC plotting."""
     from astropy.table import Table
