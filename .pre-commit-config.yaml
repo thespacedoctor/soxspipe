@@ -1,0 +1,13 @@
+# LOCAL CONVENIENCE ONLY. THE GATE THAT ACTUALLY ENFORCES THE LINT RATCHET IS THE
+# "Enforce changed-line lint" STEP IN .github/workflows/tests.yml, BECAUSE --no-verify
+# SKIPS ANYTHING HERE AND AN AGENT COMMITTING IN A SANDBOX MAY NEVER INSTALL pre-commit.
+repos:
+  - repo: local
+    hooks:
+      - id: lint-ratchet
+        name: ruff lint ratchet (staged lines only)
+        entry: python tools/lint_ratchet.py --staged
+        language: system
+        pass_filenames: false
+        types: [python]
+        require_serial: true

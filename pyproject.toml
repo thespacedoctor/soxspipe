@@ -70,13 +70,16 @@ tests = [
     "diff-cover==10.5.1",
     "pytest",
     "pytest-cov",
-    "ruff",
+    # PINNED BECAUSE THE LINT RATCHET GATES ON RUFF'S OUTPUT: A FLOATING VERSION WOULD
+    # FAIL A PULL REQUEST THAT CHANGED NOTHING, THE WAY diff-cover IS PINNED ABOVE.
+    "ruff==0.16.5",
 ]
 dev = [
     "soxspipe[tests, docs]",
     "build",
     "twine",
-    "debuggy"
+    "debuggy",
+    "pre-commit"
 ]
 
 # THESE ARE ENTRY POINTS USED FOR THE CL-INTERFACE
@@ -138,7 +141,8 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["soxspipe"]
+# tools/ HOLDS THE REPOSITORY'S OWN GATES, WHICH ARE MEASURED LIKE ANY OTHER CODE
+source = ["soxspipe", "tools"]
 relative_files = true
 omit = [
     "*/tests/*",

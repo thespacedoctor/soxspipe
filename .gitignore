@@ -8,6 +8,7 @@
 _git*
 *.orig
 .coverage
+.coverage.*
 .noseids
 cover/
 html_test_coverage_report/

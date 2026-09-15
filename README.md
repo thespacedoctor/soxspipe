@@ -53,6 +53,28 @@ The real-data acceptance test is opt-in. The scheduled GitHub Actions workflow d
 SOXSPIPE_REAL_DATA_DIR=/absolute/path/to/workspace python -m pytest tests/real_data
 ```
 
+## Changed-line gates
+
+Two gates run on every pull request into `develop`, and both judge only the lines the pull request changed. Neither one asks the whole package to be clean, so existing debt never blocks an unrelated change:
+
+- **Coverage.** `diff-cover reports/coverage.xml --compare-branch=origin/develop --fail-under=80` requires 80% coverage of changed lines.
+- **Lint.** `python tools/lint_ratchet.py --compare-branch origin/develop` fails when a ruff finding lands on a changed line. Ruff has no baseline feature, so the tool intersects `ruff check --output-format json` with the diff hunks itself. Pre-existing findings in the files you touched are counted and printed as context, never gated; the package carries roughly 1,380 of them in total, and `ruff check soxspipe` reports that whole-package figure.
+
+A finding is matched on the line ruff anchors it to. A finding that covers many lines, such as `PLR0915` for an over-long function, is anchored at the `def` line: writing a new over-long function fails the gate, while adding a statement to one that is already over-long does not.
+
+Run the lint gate locally against your staged changes before committing:
+
+```bash
+python tools/lint_ratchet.py --staged
+```
+
+To run it automatically on every commit, install the hook. It is a convenience, not the gate — `git commit --no-verify` skips it, and the CI step does not:
+
+```bash
+python -m pip install -e ".[dev]"
+pre-commit install
+```
+
 ## How to cite soxspipe
 
 If you use `soxspipe` in your work, please cite using the following BibTeX entry: 
