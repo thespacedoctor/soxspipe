@@ -2107,11 +2107,12 @@ class base_recipe:
         `self.recipeName` and `self.dateObs`*
 
         This is a thin delegator around
-        `soxspipe.commonutils.toolkit.append_qc` -- it contains no logic
-        beyond forwarding. ``recipeName`` and ``obsDateUtc`` fall back to
-        `self.recipeName` and `self.dateObs` when not supplied, but can be
-        overridden (some call sites hardcode a different recipe name, or
-        need to record a different observation date). The optional
+        `soxspipe.commonutils.toolkit.append_qc`. It builds no row and makes
+        no decision about one: the only thing it does beyond forwarding is
+        fall back to `self.recipeName` and `self.dateObs` when ``recipeName``
+        and ``obsDateUtc`` are not supplied. Both can be overridden, because
+        some call sites hardcode a different recipe name, or need to record
+        a different observation date. The optional
         ``qcUnit``/``toHeader``/``qcOrder`` keywords are only forwarded when
         the caller passes them, so an unpassed optional column stays absent
         from the appended row exactly as `append_qc` would leave it.
@@ -2144,6 +2145,12 @@ class base_recipe:
         )
         ```
         """
+        # DELIBERATELY A FUNCTION-LOCAL IMPORT, MATCHING EVERY OTHER `toolkit`
+        # IMPORT IN THIS FILE. ONLY `OMITTED` IS IMPORTED AT MODULE LEVEL, AND
+        # ONLY BECAUSE A DEFAULT ARGUMENT VALUE IS EVALUATED AT MODULE LOAD AND
+        # SO CANNOT COME FROM A LOCAL IMPORT. THE ASYMMETRY IS INTENTIONAL: DO
+        # NOT HOIST THESE WITHOUT RE-TESTING THE COLD-IMPORT PATHS, SINCE THIS
+        # PACKAGE'S `__init__` IMPORT ORDER IS LOAD-BEARING.
         from soxspipe.commonutils.toolkit import append_qc
 
         self.qc = append_qc(
@@ -2176,9 +2183,10 @@ class base_recipe:
         `self.products`, `self.recipeName` and `self.dateObs`*
 
         This is a thin delegator around
-        `soxspipe.commonutils.toolkit.append_product` -- it contains no
-        logic beyond forwarding. ``recipeName`` and ``obsDateUtc`` fall back
-        to `self.recipeName` and `self.dateObs` when not supplied, but can
+        `soxspipe.commonutils.toolkit.append_product`. It builds no row and
+        makes no decision about one: the only thing it does beyond
+        forwarding is fall back to `self.recipeName` and `self.dateObs` when
+        ``recipeName`` and ``obsDateUtc`` are not supplied. Both can
         be overridden: several product rows hardcode a literal recipe name
         regardless of the running recipe, and `base_recipe` itself rewrites
         `self.recipeName` to a `-std` variant for standard-star input. The
@@ -2214,6 +2222,12 @@ class base_recipe:
         )
         ```
         """
+        # DELIBERATELY A FUNCTION-LOCAL IMPORT, MATCHING EVERY OTHER `toolkit`
+        # IMPORT IN THIS FILE. ONLY `OMITTED` IS IMPORTED AT MODULE LEVEL, AND
+        # ONLY BECAUSE A DEFAULT ARGUMENT VALUE IS EVALUATED AT MODULE LOAD AND
+        # SO CANNOT COME FROM A LOCAL IMPORT. THE ASYMMETRY IS INTENTIONAL: DO
+        # NOT HOIST THESE WITHOUT RE-TESTING THE COLD-IMPORT PATHS, SINCE THIS
+        # PACKAGE'S `__init__` IMPORT ORDER IS LOAD-BEARING.
         from soxspipe.commonutils.toolkit import append_product
 
         self.products = append_product(

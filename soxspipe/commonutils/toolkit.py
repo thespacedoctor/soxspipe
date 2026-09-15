@@ -2196,6 +2196,11 @@ class _omitted:
 # A HELPER THAT DEFAULTED `toHeader=True` WOULD FLIP THAT ROW FROM NaN TO
 # True, WHICH IS A REAL BEHAVIOUR CHANGE), SO "NOT PASSED" AND "PASSED AS
 # None" MUST STAY DISTINGUISHABLE.
+#
+# THE HELPERS BELOW TEST FOR IT BY IDENTITY (`value is not OMITTED`), NOT BY
+# `isinstance(value, _omitted)`: THIS ONE OBJECT IS THE SENTINEL, AND A SECOND
+# `_omitted()` ARRIVING FROM ANYWHERE -- A deepcopy, A pickle ROUND TRIP, A
+# FUTURE REFACTOR -- MUST NOT READ AS "OMITTED".
 OMITTED = _omitted()
 
 
@@ -2267,14 +2272,14 @@ def append_qc(
         "qc_name": qcName,
         "qc_value": qcValue,
     }
-    if not isinstance(qcUnit, _omitted):
+    if qcUnit is not OMITTED:
         row["qc_unit"] = qcUnit
-    if not isinstance(qcOrder, _omitted):
+    if qcOrder is not OMITTED:
         row["qc_order"] = qcOrder
     row["qc_comment"] = qcComment
     row["obs_date_utc"] = obsDateUtc
     row["reduction_date_utc"] = reductionDateUtc
-    if not isinstance(toHeader, _omitted):
+    if toHeader is not OMITTED:
         row["to_header"] = toHeader
 
     return pd.concat([qcTable, pd.DataFrame([row])], ignore_index=True)
@@ -2348,13 +2353,13 @@ def append_product(
         "product_label": productLabel,
         "file_name": fileName,
     }
-    if not isinstance(fileType, _omitted):
+    if fileType is not OMITTED:
         row["file_type"] = fileType
     row["obs_date_utc"] = obsDateUtc
     row["reduction_date_utc"] = reductionDateUtc
     row["product_desc"] = productDesc
     row["file_path"] = filePath
-    if not isinstance(label, _omitted):
+    if label is not OMITTED:
         row["label"] = label
 
     return pd.concat([productsTable, pd.DataFrame([row])], ignore_index=True)
