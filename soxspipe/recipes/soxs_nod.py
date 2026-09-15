@@ -928,7 +928,7 @@ class soxs_nod(base_recipe):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "EXTRACTED_MERGED_TABLE",
@@ -940,9 +940,7 @@ class soxs_nod(base_recipe):
                         "file_path": filePath,
                         "label": "PROD",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -950,7 +948,7 @@ class soxs_nod(base_recipe):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "EXTRACTED_MERGED_ASCII",
@@ -962,9 +960,7 @@ class soxs_nod(base_recipe):
                         "file_path": asciiFilePath,
                         "label": "PROD",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )

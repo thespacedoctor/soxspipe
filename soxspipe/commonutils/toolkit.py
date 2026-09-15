@@ -617,7 +617,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     qcTable = pd.concat(
         [
             qcTable,
-            pd.Series(
+            pd.DataFrame([
                 {
                     "soxspipe_recipe": recipeName,
                     "qc_name": qcName,
@@ -628,9 +628,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
                     "reduction_date_utc": utcnow,
                     "to_header": True,
                 }
-            )
-            .to_frame()
-            .T,
+            ]),
         ],
         ignore_index=True,
     )
@@ -648,7 +646,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     qcTable = pd.concat(
         [
             qcTable,
-            pd.Series(
+            pd.DataFrame([
                 {
                     "soxspipe_recipe": recipeName,
                     "qc_name": qcName,
@@ -659,9 +657,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
                     "reduction_date_utc": utcnow,
                     "to_header": True,
                 }
-            )
-            .to_frame()
-            .T,
+            ]),
         ],
         ignore_index=True,
     )
@@ -771,7 +767,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     qcTable = pd.concat(
         [
             qcTable,
-            pd.Series(
+            pd.DataFrame([
                 {
                     "soxspipe_recipe": recipeName,
                     "qc_name": "INNER ORDER PIX MEAN",
@@ -782,9 +778,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
                     "reduction_date_utc": utcnow,
                     "to_header": True,
                 }
-            )
-            .to_frame()
-            .T,
+            ]),
         ],
         ignore_index=True,
     )
@@ -792,7 +786,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     qcTable = pd.concat(
         [
             qcTable,
-            pd.Series(
+            pd.DataFrame([
                 {
                     "soxspipe_recipe": recipeName,
                     "qc_name": "INNER ORDER PIX SUM",
@@ -803,9 +797,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
                     "reduction_date_utc": utcnow,
                     "to_header": True,
                 }
-            )
-            .to_frame()
-            .T,
+            ]),
         ],
         ignore_index=True,
     )
@@ -1873,7 +1865,7 @@ def plot_merged_spectrum_qc(
     products = pd.concat(
         [
             products,
-            pd.Series(
+            pd.DataFrame([
                 {
                     "soxspipe_recipe": recipeName,
                     "product_label": (
@@ -1889,9 +1881,7 @@ def plot_merged_spectrum_qc(
                     "file_path": filePath,
                     "label": "QC",
                 }
-            )
-            .to_frame()
-            .T,
+            ]),
         ],
         ignore_index=True,
     )
@@ -2082,7 +2072,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
         qcTable = pd.concat(
             [
                 qcTable,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": recipeName,
                         "qc_name": "EFF MEDIAN",
@@ -2093,9 +2083,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -2107,7 +2095,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
             qcTable = pd.concat(
                 [
                     qcTable,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": recipeName,
                             "qc_name": f"EFF MEDIAN",
@@ -2119,9 +2107,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -2131,7 +2117,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
         qcTable = pd.concat(
             [
                 qcTable,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": recipeName,
                         "qc_name": "SNR MEDIAN",
@@ -2142,9 +2128,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -2155,7 +2139,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
             qcTable = pd.concat(
                 [
                     qcTable,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": recipeName,
                             "qc_name": f"SNR MEDIAN",
@@ -2167,9 +2151,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )

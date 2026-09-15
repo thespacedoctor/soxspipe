@@ -253,7 +253,7 @@ class soxs_mbias(base_recipe):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "MBIAS",
@@ -265,9 +265,7 @@ class soxs_mbias(base_recipe):
                         "file_path": productPath,
                         "label": "PROD",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -333,7 +331,7 @@ class soxs_mbias(base_recipe):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "STRUCTX",
@@ -344,9 +342,7 @@ class soxs_mbias(base_recipe):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -354,7 +350,7 @@ class soxs_mbias(base_recipe):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "STRUCTY",
@@ -365,9 +361,7 @@ class soxs_mbias(base_recipe):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -466,7 +460,7 @@ class soxs_mbias(base_recipe):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "FPN FRACMAX",
@@ -477,9 +471,7 @@ class soxs_mbias(base_recipe):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )

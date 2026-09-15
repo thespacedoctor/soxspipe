@@ -100,7 +100,8 @@ def test_qc_median_flux_level_excludes_masked_pixels_and_records_metric(
     assert metric["qc_value"] == pytest.approx(3.0)
     assert metric["qc_comment"] == "[e-] Median flux level of synthetic dark"
     assert metric["qc_unit"] == "electrons"
-    assert metric["to_header"] is True
+    # NUMPY BOOL, NOT PYTHON BOOL, NOW THE COLUMN CARRIES A REAL BOOL DTYPE
+    assert bool(metric["to_header"]) is True
 
 
 def test_qc_ron_records_supplied_raw_and_master_noise_values(log: Any) -> None:
@@ -121,6 +122,32 @@ def test_qc_ron_records_supplied_raw_and_master_noise_values(log: Any) -> None:
     assert metrics.loc["RAW RON", "qc_comment"] == "[e-] RON in single BIAS"
     assert metrics.loc["MASTER RON", "qc_value"] == pytest.approx(0.8)
     assert metrics.loc["MASTER RON", "qc_comment"] == "[e-] Combined RON in MBIAS"
+
+
+def test_appended_qc_rows_keep_qc_value_numeric(log: Any) -> None:
+    """Appending several QC rows never collapses the qc_value column to object."""
+    # ARRANGE
+    recipe = _recipe(log)
+    recipe.inst = "SOXS"
+    recipe.detectorTemp = 82.5
+    recipe.cptemp = 11.2
+    recipe.recipeSettings = {}
+    recipe.qc = qc_table()
+
+    # ACT
+    recipe.qc_ron(
+        frameType="MBIAS",
+        frameName="master bias",
+        rawRon=2.5,
+        masterRon=0.8,
+    )
+    recipe.flag_poor_data()
+
+    # ASSERT
+    assert len(recipe.qc) == 5
+    assert set(recipe.qc["qc_order"]) == {"-1"}
+    assert pd.api.types.is_numeric_dtype(recipe.qc["qc_value"])
+    assert recipe.qc["qc_value"].max() == pytest.approx(82.5)
 
 
 def test_subtract_mean_flux_level_clips_outlier_and_preserves_frame_contract(

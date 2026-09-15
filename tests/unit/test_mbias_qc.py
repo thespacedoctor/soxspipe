@@ -83,4 +83,5 @@ def test_qc_periodic_pattern_noise_records_maximum_frame_ratio(
     assert len(quicklookCalls) == 4
     assert recipe.qc["qc_name"].tolist() == ["FPN FRACMAX"]
     assert recipe.qc.loc[0, "qc_value"] == pytest.approx(periodicNoise)
-    assert recipe.qc.loc[0, "to_header"] is True
+    # NUMPY BOOL, NOT PYTHON BOOL, NOW THE COLUMN CARRIES A REAL BOOL DTYPE
+    assert bool(recipe.qc.loc[0, "to_header"]) is True

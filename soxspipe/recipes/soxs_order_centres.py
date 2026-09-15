@@ -426,7 +426,7 @@ class soxs_order_centres(base_recipe):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "ORDER_CENTRES",
@@ -438,9 +438,7 @@ class soxs_order_centres(base_recipe):
                         "file_path": productPath,
                         "label": "PROD",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )

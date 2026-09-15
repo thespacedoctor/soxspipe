@@ -484,7 +484,7 @@ class soxs_mflat(base_recipe):
                 self.products = pd.concat(
                     [
                         self.products,
-                        pd.Series(
+                        pd.DataFrame([
                             {
                                 "soxspipe_recipe": self.recipeName,
                                 "product_label": "BKGROUND",
@@ -496,9 +496,7 @@ class soxs_mflat(base_recipe):
                                 "file_path": filepath,
                                 "label": "QC",
                             }
-                        )
-                        .to_frame()
-                        .T,
+                        ]),
                     ],
                     ignore_index=True,
                 )
@@ -526,7 +524,7 @@ class soxs_mflat(base_recipe):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"MFLAT{tag}",
@@ -538,9 +536,7 @@ class soxs_mflat(base_recipe):
                             "file_path": productPath,
                             "label": "PROD",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -579,7 +575,7 @@ class soxs_mflat(base_recipe):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": f"MFLAT",
@@ -591,9 +587,7 @@ class soxs_mflat(base_recipe):
                         "file_path": productPath,
                         "label": "PROD",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -606,7 +600,7 @@ class soxs_mflat(base_recipe):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": "",
@@ -618,9 +612,7 @@ class soxs_mflat(base_recipe):
                             "file_path": backgroundFrame,
                             "label": "PROD",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -995,7 +987,7 @@ class soxs_mflat(base_recipe):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "ORDEXP10",
@@ -1006,16 +998,14 @@ class soxs_mflat(base_recipe):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "ORDEXP50",
@@ -1026,16 +1016,14 @@ class soxs_mflat(base_recipe):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "ORDEXP90",
@@ -1046,9 +1034,7 @@ class soxs_mflat(base_recipe):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -1221,7 +1207,7 @@ class soxs_mflat(base_recipe):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "N LOW SENS",
@@ -1231,9 +1217,7 @@ class soxs_mflat(base_recipe):
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )

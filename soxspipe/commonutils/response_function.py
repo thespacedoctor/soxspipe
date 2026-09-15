@@ -473,7 +473,7 @@ class response_function(object):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": "EFFICIENCY",
@@ -485,9 +485,7 @@ class response_function(object):
                             "file_path": filepath,
                             "label": "QC",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -642,7 +640,7 @@ class response_function(object):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "RESPONSE_QC_PLOT",
@@ -654,9 +652,7 @@ class response_function(object):
                         "file_path": plotFilePath,
                         "label": "QC",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -732,7 +728,7 @@ class response_function(object):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "RESPONSE_FUNC",
@@ -744,9 +740,7 @@ class response_function(object):
                         "file_path": filePath,
                         "label": "PROD",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )

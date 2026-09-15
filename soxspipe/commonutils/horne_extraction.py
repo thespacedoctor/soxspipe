@@ -439,7 +439,7 @@ class horne_extraction(base_util):
                 self.products = pd.concat(
                     [
                         self.products,
-                        pd.Series(
+                        pd.DataFrame([
                             {
                                 "soxspipe_recipe": "soxs-stare",
                                 "product_label": f"EXTRACTED_ORDERS_TABLE{self.noddingSequence}{self.notFlattened}",
@@ -451,9 +451,7 @@ class horne_extraction(base_util):
                                 "file_path": filePath,
                                 "label": "PROD",
                             }
-                        )
-                        .to_frame()
-                        .T,
+                        ]),
                     ],
                     ignore_index=True,
                 )
@@ -505,7 +503,7 @@ class horne_extraction(base_util):
                 self.products = pd.concat(
                     [
                         self.products,
-                        pd.Series(
+                        pd.DataFrame([
                             {
                                 "soxspipe_recipe": self.recipeName,
                                 "product_label": f"EXTRACTED_MERGED_ASCII{self.notFlattened}",
@@ -517,9 +515,7 @@ class horne_extraction(base_util):
                                 "file_path": asciiFilepath,
                                 "label": "PROD",
                             }
-                        )
-                        .to_frame()
-                        .T,
+                        ]),
                     ],
                     ignore_index=True,
                 )
@@ -527,7 +523,7 @@ class horne_extraction(base_util):
                 self.products = pd.concat(
                     [
                         self.products,
-                        pd.Series(
+                        pd.DataFrame([
                             {
                                 "soxspipe_recipe": "soxs-stare",
                                 "product_label": f"EXTRACTED_MERGED_TABLE{self.noddingSequence}{self.notFlattened}",
@@ -539,9 +535,7 @@ class horne_extraction(base_util):
                                 "file_path": filePath,
                                 "label": "PROD",
                             }
-                        )
-                        .to_frame()
-                        .T,
+                        ]),
                     ],
                     ignore_index=True,
                 )
@@ -816,7 +810,7 @@ class horne_extraction(base_util):
         utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         self.qc = pd.concat([
             self.qc,
-            pd.Series({
+            pd.DataFrame([{
                 "soxspipe_recipe": self.recipeName,
                 "qc_name": f"SKY SHIFT O{int(order)}",
                 "qc_value": round(medianShift, 3),
@@ -826,7 +820,7 @@ class horne_extraction(base_util):
                 "obs_date_utc": self.dateObs,
                 "reduction_date_utc": utcnow,
                 "to_header": True,
-            }).to_frame().T,
+            }]),
         ], ignore_index=True)
 
     def _plot_skyline_shift_diagnostic(self, shiftArray, skyValsOriginal, skyVals, peaks, objectVals,
@@ -1361,7 +1355,7 @@ class horne_extraction(base_util):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": "soxs-stare",
                             "product_label": f"EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}{self.notFlattened}",
@@ -1373,9 +1367,7 @@ class horne_extraction(base_util):
                             "file_path": filePath,
                             "label": "QC",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
