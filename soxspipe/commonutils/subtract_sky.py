@@ -302,7 +302,7 @@ class subtract_sky(object):
                     self.products = pd.concat(
                         [
                             self.products,
-                            pd.Series(
+                            pd.DataFrame([
                                 {
                                     "soxspipe_recipe": "soxs-stare",
                                     "product_label": "SKY_MODEL_QC_PLOTS",
@@ -314,9 +314,7 @@ class subtract_sky(object):
                                     "file_path": qc_plot_path,
                                     "label": "QC",
                                 }
-                            )
-                            .to_frame()
-                            .T,
+                            ]),
                         ],
                         ignore_index=True,
                     )
@@ -334,7 +332,7 @@ class subtract_sky(object):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": "soxs-stare",
                             "product_label": "SKY SUBTRACTION QUICKLOOK",
@@ -346,9 +344,7 @@ class subtract_sky(object):
                             "file_path": comparisonPdf,
                             "label": "QC",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )

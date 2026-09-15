@@ -1577,7 +1577,7 @@ class base_recipe(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "DETECTOR TEMP",
@@ -1588,16 +1588,14 @@ class base_recipe(object):
                             "reduction_date_utc": utcnow,
                             "to_header": False,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "CPATH TEMP",
@@ -1608,9 +1606,7 @@ class base_recipe(object):
                             "reduction_date_utc": utcnow,
                             "to_header": False,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -1737,7 +1733,7 @@ class base_recipe(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "RAW RON",
@@ -1748,9 +1744,7 @@ class base_recipe(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -1771,7 +1765,7 @@ class base_recipe(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "MASTER RON",
@@ -1782,9 +1776,7 @@ class base_recipe(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -1837,7 +1829,7 @@ class base_recipe(object):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": f"{frameType} MEDIAN".upper(),
@@ -1848,9 +1840,7 @@ class base_recipe(object):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )

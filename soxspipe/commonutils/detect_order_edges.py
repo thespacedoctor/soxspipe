@@ -420,7 +420,7 @@ class detect_order_edges(_base_detect):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES MIN",
@@ -431,16 +431,14 @@ class detect_order_edges(_base_detect):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES MAX",
@@ -451,16 +449,14 @@ class detect_order_edges(_base_detect):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES SD",
@@ -471,9 +467,7 @@ class detect_order_edges(_base_detect):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -500,7 +494,7 @@ class detect_order_edges(_base_detect):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"ORDER_LOC{self.tag}",
@@ -512,16 +506,14 @@ class detect_order_edges(_base_detect):
                             "file_path": orderTablePath,
                             "label": "PROD",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"ORDER_LOC_RES{self.tag}",
@@ -533,9 +525,7 @@ class detect_order_edges(_base_detect):
                             "file_path": plotPath,
                             "label": "QC",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )

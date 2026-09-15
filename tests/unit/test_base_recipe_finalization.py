@@ -292,6 +292,31 @@ def test_input_frame_validation_records_consistent_vis_detector_metadata(
     assert set(imageCategories) == {"SCIENCE", "SCIENCE_VIS"}
 
 
+def test_report_output_formats_whole_number_qc_values_to_four_decimals(
+    log: Any,
+) -> None:
+    """A qc_value column of whole numbers is numpy int64, and still prints formatted."""
+    # ARRANGE
+    recipe = base_recipe.__new__(base_recipe)
+    recipe.log = log
+    recipe.verbose = False
+    recipe.conn = None
+    recipe.sofName = "synthetic"
+    recipe.dateObs = "2024-01-02T03:04:05"
+    recipe.recipeName = "soxs-mbias"
+    recipe.inst = "XSHOOTER"
+    recipe.recipeSettings = {}
+    recipe.qc = qc_table().assign(qc_name="N ORDERS", qc_value=5)
+    recipe.products = product_table()
+
+    # ACT
+    recipe.report_output()
+
+    # ASSERT
+    assert recipe.qc["qc_value"].dtype == "int64"
+    assert any("5.0000" in message for level, message in log.messages)
+
+
 def test_report_output_deduplicates_qc_and_hides_paths_in_console_mode(
     log: Any,
 ) -> None:

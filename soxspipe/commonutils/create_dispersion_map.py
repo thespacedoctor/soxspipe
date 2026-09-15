@@ -434,7 +434,7 @@ class create_dispersion_map(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": qc_name,
@@ -445,9 +445,7 @@ class create_dispersion_map(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -948,7 +946,7 @@ class create_dispersion_map(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "PINHOLE COUNT MIN",
@@ -959,9 +957,7 @@ class create_dispersion_map(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -1300,7 +1296,7 @@ class create_dispersion_map(object):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "DETLINES CLIP NUM",
@@ -1311,9 +1307,7 @@ class create_dispersion_map(object):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -1396,7 +1390,7 @@ class create_dispersion_map(object):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "DISP_MAP_LINES",
@@ -1408,9 +1402,7 @@ class create_dispersion_map(object):
                         "file_path": filePath,
                         "label": "QC",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -1440,7 +1432,7 @@ class create_dispersion_map(object):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "DISP_MAP_LINES_MISSING",
@@ -1452,9 +1444,7 @@ class create_dispersion_map(object):
                         "file_path": filePath,
                         "label": "QC",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -2083,7 +2073,7 @@ class create_dispersion_map(object):
                 self.qc = pd.concat(
                     [
                         self.qc,
-                        pd.Series(
+                        pd.DataFrame([
                             {
                                 "soxspipe_recipe": self.recipeName,
                                 "qc_name": name,
@@ -2095,9 +2085,7 @@ class create_dispersion_map(object):
                                 "reduction_date_utc": utcnow,
                                 "to_header": True,
                             }
-                        )
-                        .to_frame()
-                        .T,
+                        ]),
                     ],
                     ignore_index=True,
                 )
@@ -3806,7 +3794,7 @@ class create_dispersion_map(object):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "DISP_MAP_RES",
@@ -3818,9 +3806,7 @@ class create_dispersion_map(object):
                         "file_path": filePath,
                         "label": "QC",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )

@@ -350,7 +350,7 @@ class _base_detect(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MIN",
@@ -361,16 +361,14 @@ class _base_detect(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MAX",
@@ -381,16 +379,14 @@ class _base_detect(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES SD",
@@ -401,9 +397,7 @@ class _base_detect(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -411,7 +405,7 @@ class _base_detect(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MEDIAN",
@@ -422,9 +416,7 @@ class _base_detect(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -437,7 +429,7 @@ class _base_detect(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "N ORDERS",
@@ -448,9 +440,7 @@ class _base_detect(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -807,7 +797,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES CLIP NUM",
@@ -818,9 +808,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -829,7 +817,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES CLIP FRAC",
@@ -840,9 +828,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -884,7 +870,7 @@ class detect_continuum(_base_detect):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": label + self.noddingSequence,
@@ -896,9 +882,7 @@ class detect_continuum(_base_detect):
                             "file_path": plotPath,
                             "label": "QC",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -1870,7 +1854,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES TOT NUM",
@@ -1881,9 +1865,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -1891,7 +1873,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES DET NUM",
@@ -1902,9 +1884,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -1913,7 +1893,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES DET FRAC",
@@ -1924,9 +1904,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )

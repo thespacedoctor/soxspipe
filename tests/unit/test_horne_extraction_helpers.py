@@ -436,7 +436,8 @@ def test_order_shift_qc_records_rounded_pixel_correction(log: object) -> None:
     assert extractor.qc.loc[0, "qc_name"] == "SKY SHIFT O12"
     assert extractor.qc.loc[0, "qc_value"] == pytest.approx(0.123)
     assert extractor.qc.loc[0, "qc_unit"] == "pixels"
-    assert extractor.qc.loc[0, "to_header"] is True
+    # NUMPY BOOL, NOT PYTHON BOOL, NOW THE COLUMN CARRIES A REAL BOOL DTYPE
+    assert bool(extractor.qc.loc[0, "to_header"]) is True
 
 
 def test_sky_peak_detection_retains_original_flux_and_peak_coordinates(

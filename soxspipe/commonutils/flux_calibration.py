@@ -225,7 +225,7 @@ class flux_calibration(object):
         self.products = pd.concat(
             [
                 self.products,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": f"EXTRACTED_FLUXCAL_SPECTRUM",
@@ -237,9 +237,7 @@ class flux_calibration(object):
                         "obs_date_utc": header["DATE-OBS"],
                         "label": "PROD",
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )

@@ -511,7 +511,7 @@ class soxs_stare(base_recipe):
                 self.products = pd.concat(
                     [
                         self.products,
-                        pd.Series(
+                        pd.DataFrame([
                             {
                                 "soxspipe_recipe": "soxs-stare",
                                 "product_label": "SKY_SUBTRACTED_OBJECT",
@@ -523,9 +523,7 @@ class soxs_stare(base_recipe):
                                 "file_path": productPath,
                                 "label": "PROD",
                             }
-                        )
-                        .to_frame()
-                        .T,
+                        ]),
                     ],
                     ignore_index=True,
                 )
@@ -542,7 +540,7 @@ class soxs_stare(base_recipe):
                 self.products = pd.concat(
                     [
                         self.products,
-                        pd.Series(
+                        pd.DataFrame([
                             {
                                 "soxspipe_recipe": "soxs-stare",
                                 "product_label": "SKY_MODEL",
@@ -554,9 +552,7 @@ class soxs_stare(base_recipe):
                                 "file_path": productPath,
                                 "label": "PROD",
                             }
-                        )
-                        .to_frame()
-                        .T,
+                        ]),
                     ],
                     ignore_index=True,
                 )
@@ -574,7 +570,7 @@ class soxs_stare(base_recipe):
                     self.products = pd.concat(
                         [
                             self.products,
-                            pd.Series(
+                            pd.DataFrame([
                                 {
                                     "soxspipe_recipe": "soxs-stare",
                                     "product_label": "SKY_SUB_RESIDUALS",
@@ -586,9 +582,7 @@ class soxs_stare(base_recipe):
                                     "file_path": productPath,
                                     "label": "PROD",
                                 }
-                            )
-                            .to_frame()
-                            .T,
+                            ]),
                         ],
                         ignore_index=True,
                     )

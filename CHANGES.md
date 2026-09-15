@@ -1,6 +1,7 @@
 # Release Notes
 
 
+* **FIXED**: QC and product rows are now built with `pd.DataFrame([row])` instead of `pd.Series(row).to_frame().T`, so appending a row no longer upcasts the whole `qc_value` column to `object` and numeric QC values keep their dtype through to the FITS headers.
 * **REFACTOR**: removed the deprecated inline test tree (`soxspipe/recipes/tests/`, `soxspipe/commonutils/tests/`, `soxspipe/tests/`), 33 files and 3,892 lines. The top-level `tests/` tree is canonical. `soxspipe/utKit.py` is retained, since `tests/unit/` still imports it.
 * **TEST**: Add a verified, opt-in real-data NIR-offset acceptance workflow with immutable archive inventory checks and approved scalar baselines.
 * **ENHANCEMENT**: Raise the whole-package branch-coverage threshold to 70% and add broad deterministic unit and integration coverage for pipeline utilities and recipes.

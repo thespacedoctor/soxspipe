@@ -222,7 +222,7 @@ class subtract_background(object):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"BKGROUND{self.lamp}",
@@ -234,9 +234,7 @@ class subtract_background(object):
                             "file_path": saveToPath,
                             "label": "QC",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )

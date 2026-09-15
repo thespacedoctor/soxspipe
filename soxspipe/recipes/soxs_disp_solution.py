@@ -410,7 +410,7 @@ class soxs_disp_solution(base_recipe):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": "DISP_MAP",
@@ -422,9 +422,7 @@ class soxs_disp_solution(base_recipe):
                             "file_path": productPath,
                             "label": "PROD",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
