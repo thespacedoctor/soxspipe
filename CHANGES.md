@@ -1,6 +1,7 @@
 # Release Notes
 
 
+* **FEATURE**: added the lint ratchet, `tools/lint_ratchet.py`, and the CI step that runs it. A pull request now fails when a ruff finding lands on a line it changed, while the roughly 1,380 pre-existing findings stay ignored, mirroring the `diff-cover --fail-under=80` coverage gate. A `.pre-commit-config.yaml` hook runs the same check locally, and `ruff` is pinned so a new ruff release cannot fail a pull request that changed nothing.
 * **FEATURE**: added a `[tool.ruff]` house-rule configuration to `pyproject.toml` (line length 120, camelCase-friendly naming ignores, `max-statements = 50`) and applied the 705 safe ruff fixes ahead of it. Import sorting is deliberately withheld from the three package `__init__.py` files, whose import order works around a circular import.
 * **FIXED**: QC and product rows are now built with `pd.DataFrame([row])` instead of `pd.Series(row).to_frame().T`, so appending a row no longer upcasts the whole `qc_value` column to `object` and numeric QC values keep their dtype through to the FITS headers.
 * **REFACTOR**: removed the deprecated inline test tree (`soxspipe/recipes/tests/`, `soxspipe/commonutils/tests/`, `soxspipe/tests/`), 33 files and 3,892 lines. The top-level `tests/` tree is canonical. `soxspipe/utKit.py` is retained, since `tests/unit/` still imports it.
