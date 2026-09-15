@@ -1,6 +1,7 @@
 # Release Notes
 
 
+* **FIXED**: the real-data snapshot unit tests now use a dedicated `cache_root` fixture and look the cached snapshot up by its manifest digest, instead of sharing `tmp_path/cache` with the autouse `isolated_runtime` fixture and taking the first `iterdir()` entry. The old arrangement passed locally and failed on CI, where directory order could put the matplotlib or numba cache first.
 * **FIXED**: QC and product rows are now built with `pd.DataFrame([row])` instead of `pd.Series(row).to_frame().T`, so appending a row no longer upcasts the whole `qc_value` column to `object` and numeric QC values keep their dtype through to the FITS headers.
 * **REFACTOR**: removed the deprecated inline test tree (`soxspipe/recipes/tests/`, `soxspipe/commonutils/tests/`, `soxspipe/tests/`), 33 files and 3,892 lines. The top-level `tests/` tree is canonical. `soxspipe/utKit.py` is retained, since `tests/unit/` still imports it.
 * **TEST**: Add a verified, opt-in real-data NIR-offset acceptance workflow with immutable archive inventory checks and approved scalar baselines.
