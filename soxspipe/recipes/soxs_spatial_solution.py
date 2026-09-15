@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *enhance the wavelength solution achieved with `soxs_disp_solution` by expanding the solution into the spatial dimension (along the slit)*
 
@@ -11,12 +10,10 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+import sys
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
@@ -59,7 +56,7 @@ class soxs_spatial_solution(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_spatial_solution, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -121,7 +118,7 @@ class soxs_spatial_solution(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify input frames match those required by the `soxs_spatial_solution` recipe*
@@ -180,7 +177,7 @@ class soxs_spatial_solution(base_recipe):
                     f"DISP_TAB_{self.arm}",
                 ]:
                     if i not in imageCat:
-                        error = f"Input frames for soxspipe spatial_solution need to be LAMP,WAVE, a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
+                        error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE, a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
 
         if error:
             sys.stdout.flush()
@@ -192,7 +189,7 @@ class soxs_spatial_solution(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*generate the 2D dispersion map*
@@ -215,11 +212,12 @@ class soxs_spatial_solution(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        from astropy.nddata import CCDData
-        from astropy import units as u
         import pandas as pd
-        from soxspipe.commonutils.toolkit import quicklook_image
+        from astropy import units as u
+        from astropy.nddata import CCDData
+
         from soxspipe.commonutils import create_dispersion_map
+        from soxspipe.commonutils.toolkit import quicklook_image
 
         # TEMPORARY WARNING
         # if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
@@ -461,42 +459,41 @@ class soxs_spatial_solution(base_recipe):
                 progressBar=True,
             )
             return None, None, None
-        else:
-            if self.polyOrders:
-                self.polyOrders = str(self.polyOrders)
-                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
-                self.recipeSettings["order-deg"] = self.polyOrders[:2]
-                self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
-                self.recipeSettings["slit-deg"] = self.polyOrders[4:]
+        if self.polyOrders:
+            self.polyOrders = str(self.polyOrders)
+            self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+            self.recipeSettings["order-deg"] = self.polyOrders[:2]
+            self.recipeSettings["wavelength-deg"] = self.polyOrders[2:4]
+            self.recipeSettings["slit-deg"] = self.polyOrders[4:]
 
-            if self.debug:
-                self.create2DMap = False
-                self.slit_arc = False
+        if self.debug:
+            self.create2DMap = False
+            self.slit_arc = False
 
-            # GENERATE AN UPDATED DISPERSION MAP
-            (
-                mapPath,
-                mapImagePath,
-                res_plots,
-                qcTable,
-                productsTable,
-                lineDetectionTable,
-            ) = create_dispersion_map(
-                log=self.log,
-                settings=self.settings,
-                recipeSettings=self.recipeSettings,
-                pinholeFrame=self.multiPinholeFrame,
-                firstGuessMap=disp_map_table,
-                orderTable=order_table,
-                qcTable=self.qc,
-                productsTable=self.products,
-                sofName=self.sofName,
-                create2DMap=self.create2DMap,
-                startNightDate=self.startNightDate,
-                arcFrame=self.slit_arc,
-                debug=self.debug,
-                turnOffMP=self.turnOffMP,
-            ).get()
+        # GENERATE AN UPDATED DISPERSION MAP
+        (
+            mapPath,
+            mapImagePath,
+            res_plots,
+            qcTable,
+            productsTable,
+            lineDetectionTable,
+        ) = create_dispersion_map(
+            log=self.log,
+            settings=self.settings,
+            recipeSettings=self.recipeSettings,
+            pinholeFrame=self.multiPinholeFrame,
+            firstGuessMap=disp_map_table,
+            orderTable=order_table,
+            qcTable=self.qc,
+            productsTable=self.products,
+            sofName=self.sofName,
+            create2DMap=self.create2DMap,
+            startNightDate=self.startNightDate,
+            arcFrame=self.slit_arc,
+            debug=self.debug,
+            turnOffMP=self.turnOffMP,
+        ).get()
 
         from datetime import datetime
 
@@ -619,4 +616,4 @@ def parameterTuning(
     except:
         pass
 
-    return None
+    return

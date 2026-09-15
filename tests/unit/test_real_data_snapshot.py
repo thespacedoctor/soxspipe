@@ -80,11 +80,10 @@ def test_prepare_snapshot_rejects_invalid_root_directory_metadata(tmp_path: Path
 def test_prepare_snapshot_rejects_duplicate_root_directory_metadata(tmp_path: Path) -> None:
     archive_path = tmp_path / "dataset.zip"
     manifest_path = tmp_path / "manifest.json"
-    with pytest.warns(UserWarning, match="Duplicate name"):
-        with zipfile.ZipFile(archive_path, "w") as archive:
-            archive.writestr("/", b"")
-            archive.writestr("/", b"")
-            archive.writestr("frame.fits", b"fits")
+    with pytest.warns(UserWarning, match="Duplicate name"), zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("/", b"")
+        archive.writestr("/", b"")
+        archive.writestr("frame.fits", b"fits")
     _write_manifest(manifest_path, "https://example.test/dataset.zip", {"frame.fits": b"fits"})
 
     with pytest.raises(ValueError, match="duplicate root"):
@@ -139,10 +138,9 @@ def test_prepare_snapshot_rejects_missing_extra_and_duplicate_archive_members(tm
     with pytest.raises(ValueError, match="checksum mismatch"):
         prepare_snapshot(archive_path, manifest_path, tmp_path / "cache", tmp_path / "workspace")
 
-    with pytest.warns(UserWarning, match="Duplicate name"):
-        with zipfile.ZipFile(archive_path, "w") as archive:
-            archive.writestr("frame.fits", b"fits")
-            archive.writestr("frame.fits", b"fits")
+    with pytest.warns(UserWarning, match="Duplicate name"), zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("frame.fits", b"fits")
+        archive.writestr("frame.fits", b"fits")
     with pytest.raises(ValueError, match="duplicate"):
         prepare_snapshot(archive_path, manifest_path, tmp_path / "cache", tmp_path / "workspace")
 

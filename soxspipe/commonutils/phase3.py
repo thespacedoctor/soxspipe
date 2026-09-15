@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *functions used to make soxs products ESO Phase 3 compliant*
 
@@ -122,9 +121,9 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
     ```
     """
     log.debug("starting the ``write_fits_table_to_disk`` method")
+    import numpy as np
     from astropy.io import fits
     from astropy.table import Table
-    import numpy as np
 
     if qc is not None:
         # ADD QC METRICS TO HEADER

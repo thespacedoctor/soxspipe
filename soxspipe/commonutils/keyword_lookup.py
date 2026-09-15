@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Given a keyword token and instrument name return the exact FITS Header keyword*
 
@@ -11,15 +10,12 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from fundamentals import tools
-from builtins import object
-import sys
 import os
 
 os.environ["TERM"] = "vt100"
 
 
-class keyword_lookup(object):
+class keyword_lookup:
     """
     *The worker class for the keyword_lookup module*
 
@@ -90,7 +86,7 @@ class keyword_lookup(object):
             self.instrument = "soxs"
         self.kwDict = self._select_dictionary()
 
-        return None
+        return
 
     def get(self, tag, index=False):
         """
@@ -170,7 +166,7 @@ class keyword_lookup(object):
         # YAML CONTENT TO DICTIONARY
         import yaml
 
-        with open(yamlFilePath, "r") as stream:
+        with open(yamlFilePath) as stream:
             kwDict = yaml.safe_load(stream)
 
         self.log.debug("completed the ``_select_dictionary`` method")

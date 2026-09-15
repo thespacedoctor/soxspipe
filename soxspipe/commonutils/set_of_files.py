@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Tools for working with 'set-of-files' (sof) files*
 
@@ -10,12 +9,11 @@ Date Created
 : January 22, 2020
 """
 
-from os import listdir, path
-from ccdproc import ImageFileCollection
 import os
-import sys
-from builtins import object
-from fundamentals import tools
+from os import path
+
+from ccdproc import ImageFileCollection
+
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
 
@@ -24,8 +22,9 @@ class ImageFileCollection(ImageFileCollection):
         self, file_name, input_summary=None, missing_marker=None
     ):
         """ """
-        from astropy.io import fits
         from collections import OrderedDict
+
+        from astropy.io import fits
 
         def _add_val_to_dict(key, value, tbl_dict, n_previous, missing_marker):
             try:
@@ -76,7 +75,7 @@ class ImageFileCollection(ImageFileCollection):
                 # Accumulate these in a separate dictionary until the
                 # end to avoid adding multiple entries to summary.
                 continue
-            elif k in alreadyencountered:
+            if k in alreadyencountered:
                 # The "normal" multi-entries HISTORY, COMMENT and BLANK are
                 # already processed so any further duplication is probably
                 # a mistake. It would lead to problems in ImageFileCollection
@@ -84,16 +83,14 @@ class ImageFileCollection(ImageFileCollection):
                 import warnings
 
                 warnings.warn(
-                    'Header from file "{f}" contains multiple entries for '
-                    '"{k}", the pair "{k}={v}" will be ignored.'
-                    "".format(k=k, v=v, f=file_name),
+                    f'Header from file "{file_name}" contains multiple entries for '
+                    f'"{k}", the pair "{k}={v}" will be ignored.',
                     UserWarning,
                 )
                 continue
-            else:
-                # Add the key to the already encountered keys so we don't add
-                # it more than once.
-                alreadyencountered.add(k)
+            # Add the key to the already encountered keys so we don't add
+            # it more than once.
+            alreadyencountered.add(k)
 
             _add_val_to_dict(k, v, summary, n_previous, missing_marker)
 
@@ -149,7 +146,7 @@ def _join_fits_summaries_in_input_order(primarySummary, extensionSummary):
     return joinedSummary
 
 
-class set_of_files(object):
+class set_of_files:
     """
     *The worker class for the sof module used to homogenize various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
 
@@ -233,7 +230,7 @@ class set_of_files(object):
         self.currentSession, allSessions = do.session_list(silent=True)
         do.close()
 
-        return None
+        return
 
     def _generate_sof_file_from_directory(self, directory, sofPath):
         """*generate an sof file from a directory of FITS frames*
@@ -585,7 +582,7 @@ class set_of_files(object):
         supplementary_sof = {}
         for f in supplementaryFilepaths:
             for a in ["NIR", "UVB", "VIS"]:
-                if a.lower() in f.lower() and a not in supplementary_sof.keys():
+                if a.lower() in f.lower() and a not in supplementary_sof:
                     supplementary_sof[a] = {}
 
         for f in supplementaryFilepaths:

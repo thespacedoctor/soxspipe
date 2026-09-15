@@ -19,7 +19,6 @@ from soxspipe.commonutils.create_dispersion_map import (
     measure_line_position,
 )
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -506,8 +505,8 @@ def test_detect_pinhole_arc_lines_uses_shifted_positions_and_collects_measuremen
         "fwhm_pin_px",
     ]
     measurements = [
-        [{name: 10.0 for name in metricNames}],
-        [{name: 20.0 for name in metricNames}],
+        [dict.fromkeys(metricNames, 10.0)],
+        [dict.fromkeys(metricNames, 20.0)],
     ]
 
     def measure_stamps(**kwargs: object) -> list[list[dict[str, float]]]:
@@ -874,8 +873,9 @@ def test_predicted_line_list_loads_cleans_and_selects_the_mid_slit(
     tmp_path: object,
 ) -> None:
     """Load the calibration table through the public prediction workflow."""
-    from astropy.table import Table
     from types import SimpleNamespace
+
+    from astropy.table import Table
 
     mapper = object.__new__(create_dispersion_map)
     mapper.log = log

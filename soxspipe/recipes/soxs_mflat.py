@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *generate a single normalised master flat-field frame*
 
@@ -10,26 +9,22 @@ Date Created
 : September 16, 2020
 """
 
-from soxspipe.commonutils.toolkit import (
-    generic_quality_checks,
-    spectroscopic_image_quality_checks,
-)
-from datetime import datetime
-
-from soxspipe.commonutils.filenamer import filenamer
-from os.path import expanduser
-from soxspipe.commonutils import subtract_background
-from soxspipe.commonutils import detect_order_edges
-from soxspipe.commonutils.toolkit import quicklook_image
-from soxspipe.commonutils.toolkit import unpack_order_table
-from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
-from fundamentals import tools
-from builtins import object
-import sys
-
 #
 import os
+import sys
+from datetime import datetime
+from os.path import expanduser
+
+from soxspipe.commonutils import detect_order_edges, subtract_background
+from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.toolkit import (
+    generic_quality_checks,
+    quicklook_image,
+    spectroscopic_image_quality_checks,
+    unpack_order_table,
+)
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
@@ -75,7 +70,7 @@ class soxs_mflat(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_mflat, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -123,7 +118,7 @@ class soxs_mflat(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify the input frames match those required by the soxs_mflat recipe*
@@ -137,6 +132,7 @@ class soxs_mflat(base_recipe):
         error = False
 
         import warnings
+
         from astropy.utils.exceptions import AstropyWarning
 
         warnings.simplefilter("ignore", AstropyWarning)
@@ -256,7 +252,7 @@ class soxs_mflat(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*generate the master flat frames updated order location table (with egde detection)*
@@ -267,9 +263,9 @@ class soxs_mflat(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        import pandas as pd
-        import numpy as np
         import copy
+
+        import pandas as pd
 
         productPath = None
         arm = self.arm
@@ -492,7 +488,7 @@ class soxs_mflat(base_recipe):
                                 "file_type": "FITS",
                                 "obs_date_utc": self.dateObs,
                                 "reduction_date_utc": utcnow,
-                                "product_desc": f"modelled scatter background light image (removed from master flat)",
+                                "product_desc": "modelled scatter background light image (removed from master flat)",
                                 "file_path": filepath,
                                 "label": "QC",
                             }
@@ -578,7 +574,7 @@ class soxs_mflat(base_recipe):
                 pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "product_label": f"MFLAT",
+                        "product_label": "MFLAT",
                         "file_name": basename,
                         "file_type": "FITS",
                         "obs_date_utc": self.dateObs,
@@ -608,7 +604,7 @@ class soxs_mflat(base_recipe):
                             "file_type": "FITS",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
-                            "product_desc": f"modelled scatter background light image (removed from master flat)",
+                            "product_desc": "modelled scatter background light image (removed from master flat)",
                             "file_path": backgroundFrame,
                             "label": "PROD",
                         }
@@ -818,7 +814,6 @@ class soxs_mflat(base_recipe):
             ]
             self.log.print("\n# SUBTRACTING MASTER DARK/OFF-LAMP FROM FRAMES")
             for flat in flats:
-                from soxspipe.commonutils.toolkit import quicklook_image
 
                 mjd = flat.header[kw("MJDOBS")]
                 matchValue, matchIndex = nearest_neighbour(flat.header[kw("MJDOBS")], darkMjds)
@@ -855,7 +850,6 @@ class soxs_mflat(base_recipe):
         """
         self.log.debug("starting the ``normalise_flats`` method")
 
-        import numpy.ma as ma
         import numpy as np
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
@@ -1116,9 +1110,9 @@ class soxs_mflat(base_recipe):
         """
         self.log.debug("starting the ``mask_low_sens_pixels`` method")
 
-        import pandas as pd
-        import numpy.ma as ma
         import numpy as np
+        import numpy.ma as ma
+        import pandas as pd
         from astropy.stats import sigma_clip
 
         self.log.print("\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY")
@@ -1270,9 +1264,7 @@ class soxs_mflat(base_recipe):
         """
         self.log.debug("starting the ``stitch_uv_mflats`` method")
 
-        import pandas as pd
         import numpy as np
-        from tabulate import tabulate
 
         kw = self.kw
 
@@ -1361,7 +1353,7 @@ class soxs_mflat(base_recipe):
         self.products, self.qc, orderDetectionCounts = edges.get()
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
-        mask = self.products["product_label"] == f"ORDER_LOC"
+        mask = self.products["product_label"] == "ORDER_LOC"
         orderTablePath = self.products.loc[mask]["file_path"].values[0]
 
         stitchedFlat = self.mask_low_sens_pixels(frame=stitchedFlat, orderTablePath=orderTablePath)
@@ -1465,8 +1457,8 @@ def nearest_neighbour(singleValue, listOfValues):
 
 def print_memory_usage(pprint=False, message=""):
     if pprint:
-        import psutil
         import humanize
+        import psutil
 
         process = psutil.Process()
         print(humanize.naturalsize(process.memory_info().rss), message)

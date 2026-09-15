@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *perform optimal source extraction using the Horne method (Horne 1986)*
 
@@ -10,11 +9,8 @@ Date Created
 : May 17, 2023
 """
 
-from fundamentals import tools
-from builtins import object
-import sys
 import os
-from line_profiler import profile
+
 from .base_util import base_util
 
 os.environ["TERM"] = "vt100"
@@ -97,13 +93,14 @@ class horne_extraction(base_util):
         debug=False,
         turnOffMP=False,
     ):
-        from astropy.nddata import CCDData
         from astropy import units as u
+        from astropy.nddata import CCDData
+
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import unpack_order_table
 
         
-        super(horne_extraction, self).__init__(log, settings, associatedFrame=skySubtractedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath)
+        super().__init__(log, settings, associatedFrame=skySubtractedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath)
 
         log.debug("instantiating a new 'horne_extraction' object")
         self.twoDMapPath = twoDMapPath
@@ -226,7 +223,7 @@ class horne_extraction(base_util):
 
         # FAILED TO FIND THE TRACE
         if productPath is None:
-            return None
+            return
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
@@ -272,17 +269,19 @@ class horne_extraction(base_util):
             self.log.error("No trace found in the data, optimal extraction cannot be performed.")
             return self.qc, self.products, None, None, None
 
-        import pandas as pd
-        from astropy.table import Table
         import copy
         from contextlib import suppress
 
         # MAKE RELATIVE HOME PATH ABSOLUTE
         from datetime import datetime
+
+        import pandas as pd
+        from astropy.table import Table
+
+        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
         )
-        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         kw = self.kw
         arm = self.arm
@@ -447,7 +446,7 @@ class horne_extraction(base_util):
                                 "file_type": "FITS",
                                 "obs_date_utc": self.dateObs,
                                 "reduction_date_utc": utcnow,
-                                "product_desc": f"Table of the extracted source in each order",
+                                "product_desc": "Table of the extracted source in each order",
                                 "file_path": filePath,
                                 "label": "PROD",
                             }
@@ -494,8 +493,8 @@ class horne_extraction(base_util):
             elif not self.notFlattened:
                 # SAVE THE MERGED ASTROPY TABLE TO TXT FILE
                 # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
-                asciiFilepath = filePath.replace(".fits", f".txt")
-                asciiFilename = filename.replace(".fits", f".txt")
+                asciiFilepath = filePath.replace(".fits", ".txt")
+                asciiFilename = filename.replace(".fits", ".txt")
                 mergedTable["WAVE"] = mergedTable["WAVE"] * 10  # CONVERTING TO ANGSTROMS
                 mergedTable["WAVE"].format = "{:.2f}"
                 mergedTable.write(asciiFilepath, format="ascii", overwrite=True)
@@ -511,7 +510,7 @@ class horne_extraction(base_util):
                                 "file_type": "TXT",
                                 "obs_date_utc": self.dateObs,
                                 "reduction_date_utc": utcnow,
-                                "product_desc": f"Ascii version of extracted source spectrum",
+                                "product_desc": "Ascii version of extracted source spectrum",
                                 "file_path": asciiFilepath,
                                 "label": "PROD",
                             }
@@ -531,7 +530,7 @@ class horne_extraction(base_util):
                                 "file_type": "FITS",
                                 "obs_date_utc": self.dateObs,
                                 "reduction_date_utc": utcnow,
-                                "product_desc": f"Table of the extracted, order-merged",
+                                "product_desc": "Table of the extracted, order-merged",
                                 "file_path": filePath,
                                 "label": "PROD",
                             }
@@ -589,7 +588,6 @@ class horne_extraction(base_util):
         self.log.debug("starting the ``tune_wavelength_calibration_to_skylines`` method")
 
         import numpy as np
-        import pandas as pd
 
         # WAVELENGTH OR B-AXIS (DISPERSION AXIS) COLUMN NAMES
         if True:
@@ -703,8 +701,8 @@ class horne_extraction(base_util):
 
     def _extract_order_arrays(self, orderDF):
         """Extract numeric series for wave, spatial coord, sky, and object flux from an order slice."""
-        import pandas as pd
         import numpy as np
+        import pandas as pd
 
         wave = pd.to_numeric(orderDF["wavelength_shifted"], errors="coerce")
         #axisBcoord = pd.to_numeric(orderDF[f"{self.axisB}coord"], errors="coerce")
@@ -719,10 +717,10 @@ class horne_extraction(base_util):
     def _detect_sky_peaks(self, wave, sky, objectFlux, valid):
         """Smooth sky spectrum with Savitzky-Golay filter and detect peaks above median."""
         import numpy as np
-        from scipy.signal import find_peaks, savgol_filter
         from astropy import units as u
-        from specutils.fitting import fit_generic_continuum
+        from scipy.signal import find_peaks, savgol_filter
         from specutils import Spectrum1D
+        from specutils.fitting import fit_generic_continuum
 
         skyValsOriginal = sky[valid].to_numpy()
         waveVals = wave.loc[valid].to_numpy()
@@ -746,6 +744,7 @@ class horne_extraction(base_util):
     def _get_local_skylines_for_order(self, wmin, wmax, order, calibrationCol):
         """Fetch catalogue skylines within wavelength range and project to pixel/wavelength coordinates."""
         import pandas as pd
+
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
 
         localSkylinesDF = self.skylinesDF.loc[self.skylinesDF["WAVELENGTH"].between(wmin, wmax)].copy()
@@ -804,8 +803,9 @@ class horne_extraction(base_util):
 
     def _record_order_shift_qc(self, order, medianShift):
         """Append a QC entry recording the sky-shift applied to the given order."""
-        import pandas as pd
         from datetime import datetime
+
+        import pandas as pd
 
         utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         self.qc = pd.concat([
@@ -895,31 +895,18 @@ class horne_extraction(base_util):
         # - set a S/N threshold, below which the data point is ignored
         # - run some kind of median smoothing to remove obvious spikes (with higher resolution than spectrograph)
 
-        self.log.print(f"\n# MERGING ORDERS INTO SINGLE SPECTRUM")
-
-        import numpy as np
-        from astropy.table import Table
-        from specutils.manipulation import (
-            FluxConservingResampler,
-            LinearInterpolatedResampler,
-        )
-        from specutils import Spectrum1D
-        import astropy.units as u
-        import pandas as pd
-        from astropy.io import fits
-        import matplotlib.pyplot as plt
-
-        import matplotlib
-        from datetime import datetime
-        from astropy.nddata import VarianceUncertainty
-        from specutils.manipulation import median_smooth
-        from astropy.stats import sigma_clipped_stats
-        from scipy.interpolate import interp1d
-        from soxspipe.commonutils.toolkit import calculate_rolling_snr
-        from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
+        self.log.print("\n# MERGING ORDERS INTO SINGLE SPECTRUM")
 
         # ASTROPY HAS RESET LOGGING LEVEL -- FIX
         import logging
+
+        import astropy.units as u
+        import numpy as np
+        import pandas as pd
+        from astropy.nddata import VarianceUncertainty
+        from specutils import Spectrum1D
+
+        from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
         logging.getLogger().setLevel(logging.INFO + 5)
 
@@ -930,9 +917,7 @@ class horne_extraction(base_util):
         # THIS IS THE STEP SIZE IN NM (0.06 nm IS SIMILAR TO XSHOOTER EXTRACTION)
         if self.arm.upper() == "NIR":
             stepWavelengthOrderMerge = 0.06
-        elif self.arm.upper() == "UVB":
-            stepWavelengthOrderMerge = 0.02
-        elif self.arm.upper() == "VIS":
+        elif self.arm.upper() == "UVB" or self.arm.upper() == "VIS":
             stepWavelengthOrderMerge = 0.02
 
         ratio = 1 / stepWavelengthOrderMerge
@@ -976,7 +961,7 @@ class horne_extraction(base_util):
         for o in uniqueOrders:
             o = int(o)
             thisKey = f"{o-1}{o}"
-            if thisKey in orderJoins.keys():
+            if thisKey in orderJoins:
                 mask = extractedOrdersDF["order"] == o - 1
                 gap = orderGaps[f"{o-1}{o}"]
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
@@ -987,7 +972,7 @@ class horne_extraction(base_util):
                     )
                     extractedOrdersDF = extractedOrdersDF.loc[~mask]
 
-                if f"{o}{o+1}" in orderGaps.keys():
+                if f"{o}{o+1}" in orderGaps:
                     gap = orderGaps[f"{o-1}{o}"]
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
                     minwl = orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
@@ -1150,17 +1135,14 @@ class horne_extraction(base_util):
         """
         self.log.debug("starting the ``plot_extracted_spectrum_qc`` method")
 
-        from astropy.stats import sigma_clip
+        from datetime import datetime
 
         # DO NOT PLOT IF PRODUCT TABLE HAS NOT BEEN PASSED
         # if isinstance(self.products, bool) and not self.products:
         #     return
-
         import matplotlib.pyplot as plt
-
-        from datetime import datetime
         import pandas as pd
-        from astropy.stats import sigma_clipped_stats
+        from astropy.stats import sigma_clip, sigma_clipped_stats
 
         fig = plt.figure(figsize=(14, 12), constrained_layout=True, dpi=180)
         gs = fig.add_gridspec(4, 1)
@@ -1326,7 +1308,7 @@ class horne_extraction(base_util):
 
         # toprow.set_yscale("log")
         # secondrow.set_yscale("log")
-        fourthrow.set_xlabel(f"wavelength (nm)", fontsize=10)
+        fourthrow.set_xlabel("wavelength (nm)", fontsize=10)
 
         toprow.legend(fontsize=8, loc="best")
         secondrow.legend(fontsize=8, loc="best")
@@ -1363,7 +1345,7 @@ class horne_extraction(base_util):
                             "file_type": "PDF",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
-                            "product_desc": f"QC plot of extracted source",
+                            "product_desc": "QC plot of extracted source",
                             "file_path": filePath,
                             "label": "QC",
                         }
@@ -1373,7 +1355,7 @@ class horne_extraction(base_util):
             )
 
         self.log.debug("completed the ``plot_extracted_spectrum_qc`` method")
-        return None
+        return
 
 def extract_single_order(
     inputData,
@@ -1396,10 +1378,8 @@ def extract_single_order(
     """
     # log.debug('starting the ``extract_single_order`` method')
 
-    import pandas as pd
-    import numpy as np
-    from astropy.stats import sigma_clip
     import matplotlib.pyplot as plt
+    import numpy as np
 
     crossDispersionSlicesDF, orderRectifiedImages = inputData[0], inputData[1]
 
@@ -1514,12 +1494,11 @@ def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
 def plot_rectified_images(orderRectifiedImages, order):
     """Plot available rectified order image layers for debug inspection."""
 
-    import numpy as np
     import matplotlib.pyplot as plt
     from astropy.stats import sigma_clipped_stats
 
     if not isinstance(orderRectifiedImages, dict) or len(orderRectifiedImages) == 0:
-        return None
+        return
     
     import matplotlib
     matplotlib.use("MacOSX")
@@ -1543,7 +1522,7 @@ def plot_rectified_images(orderRectifiedImages, order):
             plt.imshow(value, interpolation="none", aspect="auto", vmin=mean-2*std, vmax=mean+2*std, cmap="viridis")
         plt.show()
 
-    return None
+    return
 
 
 def generate_masks(crossDispersionSlicesDF, orderRectifiedImages):

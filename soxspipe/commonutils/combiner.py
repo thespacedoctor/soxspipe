@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Sub-class of CCDProc Combiner to fix error map combination*
 
@@ -10,11 +9,9 @@ Date Created
 : October 27, 2022
 """
 
-from ccdproc import Combiner as OriginalCombiner
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+
+from ccdproc import Combiner as OriginalCombiner
 
 os.environ["TERM"] = "vt100"
 
@@ -23,9 +20,9 @@ class Combiner(OriginalCombiner):
 
     def average_combine(self):
         """ """
-        from astropy.nddata import CCDData
-        import numpy as np
         import bottleneck as bn
+        import numpy as np
+        from astropy.nddata import CCDData
 
         data, masked_values, scale_func = self._combination_setup(
             None, bn.nanmean, None

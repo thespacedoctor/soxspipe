@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *The recipe for creating master-bias frames *
 
@@ -12,15 +11,13 @@ Date Created
 
 ################# GLOBAL IMPORTS ####################
 
-from soxspipe.commonutils.toolkit import generic_quality_checks
-from datetime import datetime
-from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
-from fundamentals import tools
-from builtins import object
-from line_profiler import profile
-import sys
 import os
+import sys
+from datetime import datetime
+
+from soxspipe.commonutils.toolkit import generic_quality_checks
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
@@ -66,7 +63,7 @@ class soxs_mbias(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        this = super(soxs_mbias, self).__init__(
+        this = super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -110,7 +107,7 @@ class soxs_mbias(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_mbias recipe*
@@ -144,7 +141,7 @@ class soxs_mbias(base_recipe):
         self.imageType = imageTypes[0]
 
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*generate a master bias frame*
@@ -157,6 +154,7 @@ class soxs_mbias(base_recipe):
 
         import numpy as np
         import pandas as pd
+
         from soxspipe.commonutils import toolkit
 
         arm = self.arm
@@ -390,11 +388,11 @@ class soxs_mbias(base_recipe):
         """
         self.log.debug("starting the ``qc_periodic_pattern_noise`` method")
 
-        from scipy.stats import median_abs_deviation
-        from astropy.stats import sigma_clip
         import numpy as np
         import pandas as pd
+        from astropy.stats import sigma_clip
         from ccdproc import block_reduce
+        from scipy.stats import median_abs_deviation
 
         # LIST OF CCDDATA OBJECTS
         ccds = [

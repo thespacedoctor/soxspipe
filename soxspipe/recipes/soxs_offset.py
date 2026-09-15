@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Reduce SOXS/Xshooter data taken in offset mode*
 
@@ -11,20 +10,15 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils import keyword_lookup
-from .soxs_nod import soxs_nod
+import os
+import sys
+from os.path import expanduser
+
 from soxspipe.commonutils.toolkit import (
-    add_snr_efficiency_qcs,
-    generic_quality_checks,
-    spectroscopic_image_quality_checks,
     get_calibrations_path,
 )
-from fundamentals import tools
-from builtins import object
-import sys
-import os
-from soxspipe.commonutils.filenamer import filenamer
-from os.path import expanduser
+
+from .soxs_nod import soxs_nod
 
 os.environ["TERM"] = "vt100"
 
@@ -70,7 +64,7 @@ class soxs_offset(soxs_nod):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_offset, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -120,7 +114,7 @@ class soxs_offset(soxs_nod):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def produce_product(self):
         """*The code to generate the product of the soxs_offset recipe*
@@ -143,13 +137,14 @@ class soxs_offset(soxs_nod):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        from astropy.nddata import CCDData
-        from astropy import units as u
+
         import pandas as pd
-        from datetime import datetime
+        from astropy import units as u
+        from astropy.nddata import CCDData
+
         from soxspipe.commonutils.toolkit import (
-            quicklook_image,
             plot_merged_spectrum_qc,
+            quicklook_image,
         )
 
         arm = self.arm
@@ -253,8 +248,8 @@ class soxs_offset(soxs_nod):
         # SPLIT FRAMES INTO ON (negative net offset: offsetRA + offsetDec < 0) AND OFF (zero or positive net offset)
         for frame, filename in zip(allObjectFrames, allFilenames):
 
-            offsetRA = frame.header[kw(f"OFFSET_RA")]
-            offsetDec = frame.header[kw(f"OFFSET_DEC")]
+            offsetRA = frame.header[kw("OFFSET_RA")]
+            offsetDec = frame.header[kw("OFFSET_DEC")]
 
             if (offsetRA + offsetDec) < 0:
                 allFrameONOffsets.append(offsetDec)
@@ -275,13 +270,13 @@ class soxs_offset(soxs_nod):
             raise Exception(error)
 
         if len(uniqueOffsets) == 0:
-            error = f"Did not find any ON frames (frames with a negative net offset, i.e. offsetRA + offsetDec < 0). Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the provided offset frames."
+            error = "Did not find any ON frames (frames with a negative net offset, i.e. offsetRA + offsetDec < 0). Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the provided offset frames."
             self.log.error(
-                f"Did not find any ON frames (frames with a negative net offset, i.e. offsetRA + offsetDec < 0). Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the provided offset frames."
+                "Did not find any ON frames (frames with a negative net offset, i.e. offsetRA + offsetDec < 0). Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the provided offset frames."
             )
             raise Exception(error)
 
-        elif len(uniqueOffsets) > 1:
+        if len(uniqueOffsets) > 1:
             s = "S"
         else:
             s = ""
@@ -439,7 +434,7 @@ class soxs_offset(soxs_nod):
                     orderJoins=orderJoins,
                 )
                 # GETTING THE RESPONSE
-                self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
+                self.log.print("# CALCULATING RESPONSE FUNCTION\n")
                 response = response_function(
                     log=self.log,
                     settings=self.settings,
@@ -461,7 +456,7 @@ class soxs_offset(soxs_nod):
             calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
             from soxspipe.commonutils.flux_calibration import flux_calibration
 
-            self.log.print(f"# PERFORMING FLUX CALIBRATION\n")
+            self.log.print("# PERFORMING FLUX CALIBRATION\n")
             # TODO CHECK IF TAKING THE HEADER OF ONE FRAME IS OK
             fluxCalibrator = flux_calibration(
                 log=self.log,
@@ -480,7 +475,7 @@ class soxs_offset(soxs_nod):
             )
             filePath_fluxcal, products = fluxCalibrator.calibrate()
             self.products = pd.concat([self.products, products], ignore_index=True)
-            self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
+            self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
         self.products, filePath = plot_merged_spectrum_qc(
             merged_orders=stackedSpectrum,
@@ -500,9 +495,8 @@ class soxs_offset(soxs_nod):
         )
 
         if filePath_fluxcal:
-            from astropy.table import Table
-            from astropy.io import fits
             from astropy import units as u
+            from astropy.table import Table
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm

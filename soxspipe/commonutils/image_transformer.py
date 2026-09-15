@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Using a 2D dispersion image map, transform a SOXS data frame from xy detector pixel space to wavelength-slit position space.*
 
@@ -9,18 +8,18 @@
 :Date Created:
     June 22, 2026
 """
-from builtins import object
-import sys
 import os
+
 os.environ['TERM'] = 'vt100'
-from fundamentals import tools
-from .base_util import base_util
+from time import perf_counter
+
+import numba
+
 # NUMPY/NUMBA IMPORTED AT MODULE SCOPE (NOT METHOD-LOCAL) SO THE @numba.njit
 # DECORATORS BELOW ARE EVALUATED ONCE AT IMPORT TIME
 import numpy as np
-import numba
-from time import perf_counter
 
+from .base_util import base_util
 
 
 class image_transformer(base_util):
@@ -86,7 +85,7 @@ class image_transformer(base_util):
             slitHalfLength,
             edgeSamples=1
     ):
-        super(image_transformer, self).__init__(log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath)
+        super().__init__(log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath)
 
         self.log.debug("Starting the image_transformer object")
         self.orderPixelTable = orderPixelTable
@@ -127,7 +126,7 @@ class image_transformer(base_util):
         self._cache_true_wavelength_slit_images()
         self.log.print(f"_cache_true_wavelength_slit_images took {perf_counter() - t0:.3f}s")
 
-        return None
+        return
 
     def cache_image(
             self,
@@ -183,7 +182,7 @@ class image_transformer(base_util):
                 bpm = np.bincount(weights["flatIdx"], weights=weightedBpm, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
                 bpm = self._unzoom(bpm)
                 bpm = bpm > 0.2
-                orderTable[f"bpMask"] = list(bpm.T)
+                orderTable["bpMask"] = list(bpm.T)
                 self._cache_image_names.add("bpMask")
             # self.log.print(f"Rectified image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl}) in {perf_counter() - t0:.3f}s")
 
@@ -225,10 +224,9 @@ class image_transformer(base_util):
         trimmed = arr2d[:by * self.zoomFactor, :bx * self.zoomFactor]
         if operation == "sum":
             return trimmed.reshape(by, self.zoomFactor, bx, self.zoomFactor).sum(axis=(1, 3))
-        elif operation == "mean":
+        if operation == "mean":
             return trimmed.reshape(by, self.zoomFactor, bx, self.zoomFactor).mean(axis=(1, 3))
-        else:
-            raise ValueError("Invalid operation. Use 'sum' or 'mean'.")
+        raise ValueError("Invalid operation. Use 'sum' or 'mean'.")
 
     def _cache_true_wavelength_slit_images(self):
         """*Cache the analytic (non-resampled) wavelength and slit-position images for each order*
@@ -268,7 +266,7 @@ class image_transformer(base_util):
         cache_image_names.add("slit")
 
         self.log.debug('completed the ``_cache_true_wavelength_slit_images`` method')
-        return None
+        return
 
     def _precompute_resampling_weights(self):
         """*Precompute, once per instance, the detector-pixel/output-cell polygon-overlap weights used to rectify any cached image*
@@ -286,6 +284,7 @@ class image_transformer(base_util):
 
         import numpy as np
         import pandas as pd
+
         from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 
         ncorners = 4 * self.edgeSamples
@@ -493,7 +492,7 @@ class image_transformer(base_util):
 
             - ``orderRectifiedImages`` -- list of tuples of the form ``(wlImage, slitImage)`` for each order in ``self.orderSlices``
         """
-        import numpy as np 
+        import numpy as np
         self.log.debug('starting the ``get_order_rectified`` method')
 
         orderRectifiedImages = []

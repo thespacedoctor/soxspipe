@@ -8,7 +8,6 @@ import pytest
 
 from soxspipe.commonutils.getpackagepath import getpackagepath
 
-
 pytestmark = pytest.mark.unit
 
 

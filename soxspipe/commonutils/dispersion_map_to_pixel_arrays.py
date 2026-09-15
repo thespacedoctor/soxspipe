@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *use a first-guess dispersion map to convert wavelengths to pixels*
 
@@ -10,13 +9,11 @@ Date Created
 : April 15, 2021
 """
 
-from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-from os.path import expanduser
-from fundamentals import tools
-from builtins import object
-from functools import lru_cache
-import sys
 import os
+from functools import lru_cache
+from os.path import expanduser
+
+from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 
 os.environ["TERM"] = "vt100"
 
@@ -40,8 +37,9 @@ def _read_dispersion_map_axes(resolvedPath, mtime):
     axesData = _read_dispersion_map_axes(resolvedPath, mtime)
     ```
     """
-    from astropy.table import Table
     import math
+
+    from astropy.table import Table
 
     dat = Table.read(resolvedPath, format="fits")
     tableData = dat.to_pandas()
@@ -184,9 +182,10 @@ def get_cached_coeffs(
     """
     log.debug("starting the ``get_cached_coeffs`` function")
 
-    from astropy.table import Table
     import math
+
     import numpy as np
+    from astropy.table import Table
 
     # READ THE FILE
     home = expanduser("~")

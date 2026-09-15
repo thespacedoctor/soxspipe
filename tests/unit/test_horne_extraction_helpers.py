@@ -36,6 +36,7 @@ def _configure_synthetic_orchestration(
 ) -> tuple[horne_extraction, pd.DataFrame, dict[str, object]]:
     """Build an extractor with deterministic collaborators for public orchestration tests."""
     import fundamentals
+
     import soxspipe.commonutils.toolkit as toolkit
 
     transformerModule = importlib.import_module(

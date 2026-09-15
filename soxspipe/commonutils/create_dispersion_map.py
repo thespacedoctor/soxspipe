@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *detect arc-lines on a pinhole frame to generate a dispersion solution*
 
@@ -30,30 +29,27 @@ Module Structure
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils.toolkit import (
-    unpack_order_table,
-    read_spectral_format,
-    twoD_disp_map_image_to_dataframe,
-)
+import os
+import sys
+from datetime import datetime
+
+from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-from soxspipe.commonutils.toolkit import get_calibrations_path
-from os.path import expanduser
-from soxspipe.commonutils import detector_lookup
-from soxspipe.commonutils import keyword_lookup
-from fundamentals import tools
-from builtins import object
-import sys
-import os
-from datetime import datetime, timezone
+from soxspipe.commonutils.toolkit import (
+    get_calibrations_path,
+    read_spectral_format,
+    twoD_disp_map_image_to_dataframe,
+    unpack_order_table,
+)
 
 os.environ["TERM"] = "vt100"
 
 
-class create_dispersion_map(object):
+class create_dispersion_map:
     """
     *detect arc-lines on a pinhole frame to generate a dispersion solution*
 
@@ -118,8 +114,8 @@ class create_dispersion_map(object):
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
 
-        import warnings
         import copy
+        import warnings
 
         # STORE INITIALIZATION PARAMETERS
         self._store_init_params(
@@ -161,7 +157,7 @@ class create_dispersion_map(object):
         # CREATE OUTPUT DIRECTORIES FOR QC AND PRODUCTS
         self._setup_output_directories()
 
-        return None
+        return
 
     def _store_init_params(
         self,
@@ -235,8 +231,9 @@ class create_dispersion_map(object):
 
     def _configure_warnings_and_logging(self, warnings):
         """*Configure warning filters and reset logging levels*"""
-        from photutils.utils import NoDetectionsWarning
         import logging
+
+        from photutils.utils import NoDetectionsWarning
 
         # SUPPRESS PHOTUTILS NO DETECTIONS WARNINGS
         warnings.simplefilter("ignore", NoDetectionsWarning)
@@ -476,7 +473,6 @@ class create_dispersion_map(object):
     def _calculate_order_shift_statistics(self, orderPixelTable, mask):
         """*CALCULATE SHIFT STATISTICS FOR A SINGLE ORDER*"""
         from astropy.stats import sigma_clipped_stats
-        import numpy as np
 
         # CALCULATE XY DISTANCE STATISTICS
         meanxy, medianxy, stdxy = sigma_clipped_stats(
@@ -538,7 +534,6 @@ class create_dispersion_map(object):
     def _handle_multipin_hole_big_shift(self, orderPixelTable, order_num, mask, iteration):
         """*DETECT AND CORRECT LARGE SHIFTS BETWEEN SINGLE/MULTI-PINHOLE FRAMES*"""
         from astropy.stats import sigma_clipped_stats
-        import numpy as np
 
         # ONLY CHECK ON FIRST ITERATION
         if iteration > 1:
@@ -645,11 +640,8 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``get`` method")
 
-        import pandas as pd
-        from astropy.table import Table
         import numpy as np
-        from astropy.stats import sigma_clipped_stats
-        from astropy.stats import sigma_clip
+        import pandas as pd
 
         # STEP 1: INITIALIZE RECIPE SETTINGS AND POLYNOMIAL DEGREES
         bootstrap_dispersion_solution, tightFit, orderDeg, wavelengthDeg, slitDeg = self._initialize_recipe_settings()
@@ -682,7 +674,7 @@ class create_dispersion_map(object):
                 # DETECT THE LINES ON THE PINHOLE FRAME AND
                 # ADD OBSERVED LINES TO DATAFRAME
                 iteration = 0
-                self.log.print(f"\n# FINDING PINHOLE ARC-LINES ON IMAGE\n")
+                self.log.print("\n# FINDING PINHOLE ARC-LINES ON IMAGE\n")
                 iraf = False
                 while iteration < 3:
 
@@ -838,7 +830,7 @@ class create_dispersion_map(object):
                 )
 
             # CALCULATE LINE DETECTION STATISTICS
-            percentageDetectedLines = float("{:.6f}".format(float(detectedLines) / float(totalLines)))
+            percentageDetectedLines = float(f"{float(detectedLines) / float(totalLines):.6f}")
 
             # GET CURRENT UTC TIMESTAMP FOR QC RECORDS
             utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -908,7 +900,7 @@ class create_dispersion_map(object):
         goodLinesFN, missingLinesFN = self._get_output_filenames()
 
         # CALCULATE GOOD LINES PERCENTAGE STATISTICS
-        percentageGoodLines = float("{:.6f}".format(float(len(goodLinesTable.index)) / float(totalLines)))
+        percentageGoodLines = float(f"{float(len(goodLinesTable.index)) / float(totalLines):.6f}")
 
         # WRITE LINE DETECTION QC METRICS
         self._write_qc_metrics(
@@ -1020,9 +1012,6 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``get_predicted_line_list`` method")
 
-        from astropy.table import Table
-        from astropy.stats import sigma_clipped_stats
-        import numpy as np
 
         # DETERMINE FRAME TYPE (SINGLE OR MULTI-PINHOLE)
         frameTech = self._determine_frame_tech()
@@ -1057,10 +1046,9 @@ class create_dispersion_map(object):
 
         if tech == "ECHELLE,PINHOLE":
             return "single"
-        elif tech == "ECHELLE,MULTI-PINHOLE":
+        if tech == "ECHELLE,MULTI-PINHOLE":
             return "multi"
-        else:
-            raise TypeError("The input frame needs to be a calibrated single- or multi-pinhole arc lamp frame")
+        raise TypeError("The input frame needs to be a calibrated single- or multi-pinhole arc lamp frame")
 
     def _get_binning_params(self):
         """*Extract binning parameters from frame header*"""
@@ -1151,8 +1139,8 @@ class create_dispersion_map(object):
 
     def _apply_first_guess_corrections(self, df):
         """*Apply systematic shifts from first guess dispersion solution*"""
-        from astropy.stats import sigma_clipped_stats
         import numpy as np
+        from astropy.stats import sigma_clipped_stats
 
         slitIndex = int(self.detectorParams["mid_slit_index"])
 
@@ -1314,8 +1302,8 @@ class create_dispersion_map(object):
 
     def _prepare_line_list_columns(self, goodLinesTable, clippedLinesTable):
         """*Prepare and combine good and clipped line lists with proper columns*"""
-        import pandas as pd
         import numpy as np
+        import pandas as pd
 
         # DEFINE COLUMNS TO KEEP
         keepColumns = [
@@ -1378,8 +1366,8 @@ class create_dispersion_map(object):
 
     def _write_fitted_lines_file(self, goodAndClippedLines, goodLinesFN, utcnow):
         """*Write fitted lines (good + clipped) to FITS file*"""
-        from astropy.table import Table
         import pandas as pd
+        from astropy.table import Table
 
         t = Table.from_pandas(goodAndClippedLines)
         filePath = f"{self.qcDir}/{goodLinesFN}"
@@ -1409,8 +1397,8 @@ class create_dispersion_map(object):
 
     def _write_missing_lines_file(self, missingLines, missingLinesFN, utcnow):
         """*Write missing lines to FITS file*"""
-        from astropy.table import Table
         import pandas as pd
+        from astropy.table import Table
 
         keepColumns = [
             "wavelength",
@@ -1476,9 +1464,10 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``detect_pinhole_arc_lines`` method")
 
+        import logging
+
         import numpy as np
         from fundamentals import fmultiprocess
-        import logging
 
         # FIX ASTROPY LOGGING LEVEL RESET ISSUE
         logging.getLogger().setLevel(logging.INFO + 5)
@@ -1550,7 +1539,7 @@ class create_dispersion_map(object):
 
         # AGGREGATE RESULTS FROM ALL STAMP MEASUREMENTS
         for rr in results:
-            for k in predictedLines.keys():
+            for k in predictedLines:
                 thisList = [r[k] for r in rr]
                 predictedLines[k].append(thisList)
         print()
@@ -1579,13 +1568,12 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``write_map_to_file`` method")
 
+        import copy
+        from contextlib import suppress
+
         import pandas as pd
         from astropy.table import Table
-        from astropy.io import fits
-        from contextlib import suppress
-        import copy
-        import math
-        import numpy as np
+
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         arm = self.arm
@@ -1992,22 +1980,22 @@ class create_dispersion_map(object):
                     odb = o
 
                 arrayOfNames = [
-                    f"X RES MEDIAN",
-                    f"Y RES MEDIAN",
-                    f"XY RES MEDIAN",
-                    f"X RES SD",
-                    f"Y RES SD",
-                    f"XY RES SD",
-                    f"X DIFF MEDIAN",
-                    f"Y DIFF MEDIAN",
-                    f"XY DIFF MEDIAN",
-                    f"X DIFF SD",
-                    f"Y DIFF SD",
-                    f"XY DIFF SD",
-                    f"FWHM PIN MEDIAN",
-                    f"FWHM PIN SD",
-                    f"R PIN MEDIAN",
-                    f"R PIN SD",
+                    "X RES MEDIAN",
+                    "Y RES MEDIAN",
+                    "XY RES MEDIAN",
+                    "X RES SD",
+                    "Y RES SD",
+                    "XY RES SD",
+                    "X DIFF MEDIAN",
+                    "Y DIFF MEDIAN",
+                    "XY DIFF MEDIAN",
+                    "X DIFF SD",
+                    "Y DIFF SD",
+                    "XY DIFF SD",
+                    "FWHM PIN MEDIAN",
+                    "FWHM PIN SD",
+                    "R PIN MEDIAN",
+                    "R PIN SD",
                 ]
 
                 qc_names.extend(arrayOfNames)
@@ -2095,10 +2083,11 @@ class create_dispersion_map(object):
 
     def _calculate_resolution_on_slit(self, row):
         import math
-        from astropy.modeling import models, fitting
-        import numpy as np
+
         import matplotlib.pyplot as plt
+        import numpy as np
         import pandas as pd
+        from astropy.modeling import fitting, models
 
         stdToFwhm = 2 * (2 * math.log(2)) ** 0.5
 
@@ -2154,7 +2143,7 @@ class create_dispersion_map(object):
                 )
                 plt.legend()
                 plt.show()
-        except Exception as e:
+        except Exception:
             return pd.Series([None, None])
 
         # stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
@@ -2195,10 +2184,10 @@ class create_dispersion_map(object):
         allClippedLines.append(orderPixelTable.loc[mask])
         orderPixelTable = orderPixelTable.loc[~mask]
 
-        import numpy as np
+        import pandas as pd
         from astropy.stats import sigma_clip
         from scipy.optimize import curve_fit
-        import pandas as pd
+
         from soxspipe.commonutils import get_cached_coeffs
 
         arm = self.arm
@@ -2691,12 +2680,14 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``map_to_image`` method")
 
-        from soxspipe.commonutils.combiner import Combiner
+        import copy
+
         import numpy as np
         from astropy.io import fits
-        import copy
         from fundamentals import fmultiprocess
+
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.combiner import Combiner
 
         self.log.print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
@@ -2938,8 +2929,8 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``convert_and_fit`` method")
 
-        import pandas as pd
         import numpy as np
+        import pandas as pd
 
         # CREATE PANDAS DATAFRAME WITH LARGE ARRAYS - ONE ROW PER
         # WAVELENGTH-SLIT GRID CELL
@@ -3030,8 +3021,8 @@ class create_dispersion_map(object):
             pass
 
         if plots:
-            from matplotlib import cm
             import matplotlib.pyplot as plt
+            from matplotlib import cm
 
             # PLOT CCDDATA OBJECT
             rotatedImg = slitMap.data
@@ -3094,12 +3085,13 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``create_dispersion_map_qc_plot`` method")
 
-        import numpy as np
-        from astropy.visualization import hist
         import matplotlib.pyplot as plt
+        import numpy as np
         import pandas as pd
-        from soxspipe.commonutils.toolkit import qc_settings_plot_tables
         from astropy.stats import sigma_clipped_stats
+        from astropy.visualization import hist
+
+        from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
         arm = self.arm
         kw = self.kw
@@ -3459,7 +3451,7 @@ class create_dispersion_map(object):
                 orderPixelTable[f"fit_{self.axisA}"],
                 marker="o",
                 c="blue",
-                s=orderPixelTable[f"residuals_xy"] * 30,
+                s=orderPixelTable["residuals_xy"] * 30,
                 alpha=0.1 * alphaBoost,
                 label="fitted line (size proportional to line-fit residual)",
             )
@@ -3624,7 +3616,7 @@ class create_dispersion_map(object):
                 orderGeoTable[f"{self.axisA}coord_edgeup"] - orderGeoTable[f"{self.axisA}coord_edgelow"]
             )
             orderGeoTable["slitLengthArcsec"] = np.abs(
-                orderGeoTable[f"slit_position_u"] - orderGeoTable[f"slit_position_l"]
+                orderGeoTable["slit_position_u"] - orderGeoTable["slit_position_l"]
             )
             orderGeoTable["pixelScale"] = orderGeoTable["slitLengthArcsec"] / orderGeoTable["slitLengthPixelsInt"]
             orderGeoTable["slitLengthArcsec"] = orderGeoTable["slitLengthPixels"] * orderGeoTable["pixelScale"]
@@ -3696,7 +3688,7 @@ class create_dispersion_map(object):
                     sizeAx.set_xlim(x_limits)
                     sizeAx.tick_params(axis="both", which="major", labelsize=8)
                     sizeAx.set_title(
-                        f"Slit height as measured between the lower and upper order edges",
+                        "Slit height as measured between the lower and upper order edges",
                         fontsize=9,
                     )
 
@@ -3723,7 +3715,7 @@ class create_dispersion_map(object):
                         gapAx.set_xlim(x_limits)
                         gapAx.tick_params(axis="both", which="major", labelsize=8)
                         gapAx.set_title(
-                            f"Inter-order gap measured between adjacent orders",
+                            "Inter-order gap measured between adjacent orders",
                             fontsize=9,
                         )
 
@@ -3831,12 +3823,12 @@ class create_dispersion_map(object):
         if self.settings["tune-pipeline"]:
             import codecs
 
-            filePath = f"residuals.txt"
+            filePath = "residuals.txt"
             exists = os.path.exists(filePath)
             if not exists:
                 with codecs.open(filePath, encoding="utf-8", mode="w") as writeFile:
                     writeFile.write(
-                        f"polyOrders,mean_x_res,mean_y_res,mean_res,std_res,median_res,median_x_res,median_y_res,CLINE \n"
+                        "polyOrders,mean_x_res,mean_y_res,mean_res,std_res,median_res,median_x_res,median_y_res,CLINE \n"
                     )
             with codecs.open(filePath, encoding="utf-8", mode="a") as writeFile:
                 writeFile.write(
@@ -3860,7 +3852,7 @@ class create_dispersion_map(object):
         self.log.debug("starting the ``_clip_on_measured_line_metrics`` method")
 
         import matplotlib.pyplot as plt
-        from astropy.stats import sigma_clip, sigma_clipped_stats
+        from astropy.stats import sigma_clip
         from astropy.visualization import hist
 
         # LAYOUT THE FIGURE
@@ -3959,8 +3951,8 @@ class create_dispersion_map(object):
                 label="clipped arc lines",
             )
 
-            bottomleft.set_ylabel(f"y-shift SD (px)", fontsize=12)
-            bottomleft.set_xlabel(f"x-shift SD (px)", fontsize=12)
+            bottomleft.set_ylabel("y-shift SD (px)", fontsize=12)
+            bottomleft.set_xlabel("x-shift SD (px)", fontsize=12)
             bottomleft.tick_params(axis="both", which="major", labelsize=9)
             bottomleft.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
@@ -4025,8 +4017,8 @@ class create_dispersion_map(object):
             label="clipped pinhole lines",
         )
 
-        toprow.set_ylabel(f"fwhm (px)", fontsize=12)
-        toprow.set_xlabel(f"wavelength (nm)", fontsize=12)
+        toprow.set_ylabel("fwhm (px)", fontsize=12)
+        toprow.set_xlabel("wavelength (nm)", fontsize=12)
         toprow.tick_params(axis="both", which="major", labelsize=9)
         toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
@@ -4063,8 +4055,8 @@ class create_dispersion_map(object):
             label="pinhole flux",
         )
 
-        midrow.set_ylabel(f"pinhole flux", fontsize=12)
-        midrow.set_xlabel(f"wavelength (nm)", fontsize=12)
+        midrow.set_ylabel("pinhole flux", fontsize=12)
+        midrow.set_xlabel("wavelength (nm)", fontsize=12)
         midrow.tick_params(axis="both", which="major", labelsize=9)
         midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
@@ -4115,8 +4107,8 @@ class create_dispersion_map(object):
             label="pinhole peak flux / mean flux",
         )
 
-        midrow2.set_ylabel(f"pinhole peak flux", fontsize=12)
-        midrow2.set_xlabel(f"wavelength (nm)", fontsize=12)
+        midrow2.set_ylabel("pinhole peak flux", fontsize=12)
+        midrow2.set_xlabel("wavelength (nm)", fontsize=12)
         midrow2.tick_params(axis="both", which="major", labelsize=9)
         midrow2.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
@@ -4164,10 +4156,9 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``update_static_line_list_detector_positions`` method")
 
-        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
-        from soxspipe.commonutils.toolkit import read_spectral_format
         import pandas as pd
-        from astropy.table import Table
+
+        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
 
         # GET UNIQUE VALUES OF order AND WAVELENGTH
         uniquecolNames = originalOrderPixelTable[["order", "wavelength"]].drop_duplicates()
@@ -4232,10 +4223,11 @@ class create_dispersion_map(object):
         """
         self.log.debug("starting the ``create_new_static_line_list`` method")
 
-        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
-        from soxspipe.commonutils.toolkit import read_spectral_format
         import pandas as pd
         from astropy.table import Table
+
+        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
+        from soxspipe.commonutils.toolkit import read_spectral_format
 
         dp = self.detectorParams
 
@@ -4392,10 +4384,11 @@ def measure_line_position(
     """
     log.debug("starting the ``measure_line_position`` function")
 
-    import numpy as np
-    from photutils import DAOStarFinder, IRAFStarFinder
-    from astropy.stats import sigma_clipped_stats
     import logging
+
+    import numpy as np
+    from astropy.stats import sigma_clipped_stats
+    from photutils import DAOStarFinder, IRAFStarFinder
 
     # FIX ASTROPY LOGGING LEVEL RESET
     logging.getLogger().setLevel(logging.INFO + 5)
@@ -4431,7 +4424,7 @@ def measure_line_position(
         )
         # SUBTRACT MEDIAN FOR BETTER DETECTION IN LOW SIGNAL IMAGES
         sources = daofind(stamp.data - median, mask=stamp.mask)
-    except Exception as e:
+    except Exception:
         sources = None
 
     # INITIALIZE DETECTION VARIABLES
@@ -4654,8 +4647,8 @@ def _plot_slit_index_comparisons(df):
     Each panel title includes the global mean and std for that metric.
     Adds a fourth panel: scatter plot of x_diff vs y_diff, color-coded by slit_index.
     """
-    import numpy as np
     import matplotlib.pyplot as plt
+    import numpy as np
 
     slit_indexes = np.sort(df["slit_index"].unique())
     try:

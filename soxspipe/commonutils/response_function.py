@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Given a standard star extracted spectrum, generate the instrument response function needed to flux calibrate science spectra*
 
@@ -10,10 +9,8 @@
     July 28, 2023
 """
 
-import sys
 import os
 from typing import Any
-from builtins import object
 
 from soxspipe.commonutils.toolkit import extinction_correction_factor
 
@@ -93,7 +90,7 @@ def _fit_response_polynomial(
     return responseCoefficients, fittedWavelength, fittedResponse
 
 
-class response_function(object):
+class response_function:
     """
     *Given a standard star extracted spectrum, generate the instrument response function needed to flux calibrate science spectra*
 
@@ -159,11 +156,11 @@ class response_function(object):
         self.sofName = sofName
         self.orderJoins = orderJoins
 
-        from soxspipe.commonutils.toolkit import get_calibrations_path
-        from astropy.table import Table
         from astropy.io import fits
-        from soxspipe.commonutils import detector_lookup
-        from soxspipe.commonutils import keyword_lookup
+        from astropy.table import Table
+
+        from soxspipe.commonutils import detector_lookup, keyword_lookup
+        from soxspipe.commonutils.toolkit import get_calibrations_path
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -248,7 +245,7 @@ class response_function(object):
             startNightDate=startNightDate,
         )
 
-        return None
+        return
 
     def get(self):
         """
@@ -259,13 +256,13 @@ class response_function(object):
         """
         self.log.debug("starting the ``get`` method")
 
-        import pandas as pd
-        from scipy.interpolate import interp1d
-        import numpy as np
-        from scipy.signal import savgol_filter
         from datetime import datetime
-        from astropy.table import Table
+
+        import numpy as np
+        import pandas as pd
         from matplotlib import pyplot as plt
+        from scipy.interpolate import interp1d
+        from scipy.signal import savgol_filter
 
         response_function = None
 
@@ -436,11 +433,10 @@ class response_function(object):
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
             stdEfficiencyEstimateDF = pd.DataFrame({"WAVE": stdExtWaveNotFlat, "EFFICIENCY": stdEfficiencyEstimate})
             # WRITE THE EFFICIENCY ESTIMATE TO FITS BINARY TABLE
-            from astropy.table import Table
             import copy
-            from astropy.io import fits
-            from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
+
             from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+            from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
 
             filename = f"{self.sofName}_EFFICIENCY.fits"
             filepath = f"{self.productDir}/{filename}"
@@ -481,7 +477,7 @@ class response_function(object):
                             "file_type": "FITS",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
-                            "product_desc": f"SOXS efficiency estimate",
+                            "product_desc": "SOXS efficiency estimate",
                             "file_path": filepath,
                             "label": "QC",
                         }
@@ -535,9 +531,10 @@ class response_function(object):
         """
         self.log.debug("starting the ``plot_response_curve`` method")
 
+        from datetime import datetime
+
         import matplotlib.pyplot as plt
         import numpy as np
-        from datetime import datetime
         import pandas as pd
 
         # WRITE THE QC PLOT TO PDF
@@ -560,7 +557,7 @@ class response_function(object):
             linewidth=0.2,
         )
         onerow.set_title(f"{self.std_objName} absolute flux spectrum", fontsize=12)
-        onerow.set_xlabel(f"wavelength (nm)", fontsize=9)
+        onerow.set_xlabel("wavelength (nm)", fontsize=9)
         onerow.set_ylabel("flux ($\\mathrm{erg/cm^{2}/s/angstom}$)", fontsize=9)
         onerow.tick_params(axis="both", which="major", labelsize=9)
         # Set y-limits based on the absolute flux spectrum
@@ -571,7 +568,7 @@ class response_function(object):
 
         tworow.scatter(binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.5)
         tworow.set_title("Raw ratio", fontsize=12)
-        tworow.set_xlabel(f"wavelength (nm)", fontsize=9)
+        tworow.set_xlabel("wavelength (nm)", fontsize=9)
         tworow.set_ylabel("Ratio $\\frac{F_{\\lambda}}{F_c}$", fontsize=9)
         tworow.tick_params(axis="both", which="major", labelsize=9)
 
@@ -588,7 +585,7 @@ class response_function(object):
         threerow.scatter(binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.2)
         # threerow.set_xlim(min(binCentreWave), max(binCentreWave))
         # threerow.set_ylim(min(absToExtFluxRatio), max(absToExtFluxRatio))
-        threerow.set_xlabel(f"wavelength (nm)", fontsize=9)
+        threerow.set_xlabel("wavelength (nm)", fontsize=9)
         threerow.set_ylabel("absolute-extracted flux ratio", fontsize=9)
         threerow.tick_params(axis="both", which="major", labelsize=9)
 
@@ -600,7 +597,7 @@ class response_function(object):
         flux_calib = flux_calib * 10**-17  # CONVERTING BACK TO PHYS UNITS
         fourrow.plot(stdExtWave, flux_calib, linewidth=0.2)
         fourrow.set_title("Self calibration of std star", fontsize=12)
-        fourrow.set_xlabel(f"wavelength (nm)", fontsize=9)
+        fourrow.set_xlabel("wavelength (nm)", fontsize=9)
         fourrow.set_ylabel("flux ($\\mathrm{erg/cm^{2}/s/angstom}$)", fontsize=9)
         fourrow.tick_params(axis="both", which="major", labelsize=9)
         # fourrow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
@@ -615,7 +612,7 @@ class response_function(object):
         # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
         plt.subplots_adjust(hspace=1.0)
         fiverow.set_title("Relative residuals", fontsize=12)
-        fiverow.set_xlabel(f"wavelength (nm)", fontsize=9)
+        fiverow.set_xlabel("wavelength (nm)", fontsize=9)
         fiverow.set_ylabel("residual", fontsize=9)
         fiverow.tick_params(axis="both", which="major", labelsize=9)
 
@@ -626,7 +623,7 @@ class response_function(object):
             # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
             plt.subplots_adjust(hspace=1.0)
             sixrow.set_title("Efficiency (end-to-end)", fontsize=12)
-            sixrow.set_xlabel(f"wavelength (nm)", fontsize=9)
+            sixrow.set_xlabel("wavelength (nm)", fontsize=9)
             sixrow.set_ylabel("Efficiency", fontsize=9)
             sixrow.tick_params(axis="both", which="major", labelsize=9)
 
@@ -648,7 +645,7 @@ class response_function(object):
                         "file_type": "PDF",
                         "obs_date_utc": self.dateObs,
                         "reduction_date_utc": utcnow,
-                        "product_desc": f"Response curve QC plot.",
+                        "product_desc": "Response curve QC plot.",
                         "file_path": plotFilePath,
                         "label": "QC",
                     }
@@ -677,11 +674,12 @@ class response_function(object):
         """
         self.log.debug("starting the ``write_response_function_to_file`` method")
 
-        import pandas as pd
-        from astropy.table import Table
-        from astropy.io import fits
-        from datetime import datetime
         import copy
+        from datetime import datetime
+
+        import pandas as pd
+        from astropy.io import fits
+        from astropy.table import Table
 
         arm = self.arm
         kw = self.kw
@@ -736,7 +734,7 @@ class response_function(object):
                         "file_type": "FITS",
                         "obs_date_utc": self.dateObs,
                         "reduction_date_utc": utcnow,
-                        "product_desc": f"Response function coeffs.",
+                        "product_desc": "Response function coeffs.",
                         "file_path": filePath,
                         "label": "PROD",
                     }

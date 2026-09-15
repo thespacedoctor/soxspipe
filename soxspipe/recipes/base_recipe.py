@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *The base recipe class which all other recipes inherit*
 
@@ -12,20 +11,15 @@ Date Created
 
 ################# GLOBAL IMPORTS ####################
 
-from soxspipe.commonutils import filenamer
-from soxspipe.commonutils import detector_lookup
-from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils import subtract_background
-
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+import sys
+
+from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, subtract_background
 
 os.environ["TERM"] = "vt100"
 
 
-class base_recipe(object):
+class base_recipe:
     """
     The base recipe class which all other recipes inherit
 
@@ -59,12 +53,14 @@ class base_recipe(object):
         debug=False,
         turnOffMP=False,
     ):
-        import yaml
-        import pandas as pd
-        from soxspipe.commonutils import toolkit
-        import sqlite3 as sql
-        import matplotlib
         import random
+        import sqlite3 as sql
+
+        import matplotlib
+        import pandas as pd
+        import yaml
+
+        from soxspipe.commonutils import toolkit
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
@@ -102,7 +98,7 @@ class base_recipe(object):
                 raise FileExistsError(
                     f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
                 )
-            elif os.path.exists(self.productPath) and not overwrite:
+            if os.path.exists(self.productPath) and not overwrite:
                 basename = os.path.basename(self.productPath)
                 if verbose:
                     print(
@@ -201,7 +197,7 @@ class base_recipe(object):
         if not exists:
             advs = {}
         else:
-            with open(advs, "r") as stream:
+            with open(advs) as stream:
                 advs = yaml.safe_load(stream)
         # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
         self.settings = {**advs, **self.settings}
@@ -248,7 +244,7 @@ class base_recipe(object):
 
         self.generateReponseCurve = False
 
-        return None
+        return
 
     def _prepare_single_frame(self, frame, save=False):
         """*prepare a single raw frame by converting pixel data from ADU to electrons and adding mask and uncertainty extensions*
@@ -267,13 +263,15 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``_prepare_single_frame`` method")
 
-        from astropy.nddata import CCDData
-        import ccdproc
-        from astropy import units as u
-        import numpy as np
         import logging
         import warnings
         from datetime import datetime
+
+        import ccdproc
+        import numpy as np
+        from astropy import units as u
+        from astropy.nddata import CCDData
+
         from soxspipe.commonutils import toolkit
 
         warnings.filterwarnings(action="ignore")
@@ -306,9 +304,8 @@ class base_recipe(object):
                         f"Buffer is too small for frame {filepath}. The frame is likely corrupted and will not be used in the reduction.\n"
                     )
                     return None
-                else:
-                    self.log.info(f"{filepath} is a FITS Binary Table")
-                    return filepath
+                self.log.info(f"{filepath} is a FITS Binary Table")
+                return filepath
 
         # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SXSPRE" DOES NOT
         # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
@@ -363,7 +360,7 @@ class base_recipe(object):
                 HDUList.writeto(bitMapPath, output_verify="exception", overwrite=True, checksum=True)
 
             self.log.critical(message)
-            raise IOError(message)
+            raise OSError(message)
 
         bitMap = CCDData.read(bitMapPath, hdu=0, unit=u.dimensionless_unscaled)
 
@@ -524,8 +521,9 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``prepare_frames`` method")
 
-        from soxspipe.commonutils.set_of_files import set_of_files
         import numpy as np
+
+        from soxspipe.commonutils.set_of_files import set_of_files
 
         kw = self.kw
 
@@ -643,9 +641,10 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``_verify_input_frames_basics`` method")
 
-        from astropy import units as u
         from contextlib import suppress
+
         import numpy as np
+        from astropy import units as u
 
         kw = self.kw
 
@@ -676,8 +675,7 @@ class base_recipe(object):
             self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
             self.log.print(self.inputFrames.summary)
             raise TypeError("Input frames are a mix of %(imageTypes)s" % locals())
-        else:
-            self.arm = arm[0]
+        self.arm = arm[0]
 
         # CREATE DETECTOR LOOKUP DICTIONARY - SOME VALUES CAN BE OVERWRITTEN
         # WITH WHAT IS FOUND HERE IN FITS HEADERS
@@ -880,7 +878,6 @@ class base_recipe(object):
         self.log.debug("starting the ``clean_up`` method")
 
         import shutil
-        import time
 
         # FILTER QC TABLE ON qc_flag
         mask = self.qc["qc_flag"] == "fail"
@@ -942,7 +939,7 @@ class base_recipe(object):
             )
 
         self.log.debug("completed the ``clean_up`` method")
-        return None
+        return
 
     def xsh2soxs(self, frame):
         """*perform some massaging of the xshooter data so it more closely resembles soxs data -  this function can be removed once code is production ready*
@@ -1119,18 +1116,19 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``clip_and_stack`` method")
 
-        from astropy.stats import sigma_clip, mad_std
-        from soxspipe.commonutils.combiner import Combiner
-        from astropy import units as u
         import numpy as np
+        from astropy import units as u
+        from astropy.stats import sigma_clip
+
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.combiner import Combiner
 
         if len(frames) == 1:
             self.log.info(
                 "Only 1 frame was sent to the clip and stack method. Returning the frame with no further processing."
             )
             return frames[0]
-        elif len(frames) == 0:
+        if len(frames) == 0:
             self.log.critical("No frames were sent to the clip and stack method. Cannot proceed.")
             raise ValueError("No frames were sent to the clip and stack method.")
 
@@ -1325,13 +1323,11 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``detrend`` method")
 
+        from datetime import datetime
+
         import ccdproc
         from astropy import units as u
-        import copy
-        from astropy.io import fits
-        import pandas as pd
-        from datetime import datetime
-        from os.path import expanduser
+
         from soxspipe.commonutils import toolkit
 
         arm = self.arm
@@ -1376,13 +1372,13 @@ class base_recipe(object):
             if self.inst == "SOXS" and False:
                 if not self.darkDetrendWarningIssued2:
                     self.log.warning(
-                        f"Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."
+                        "Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."
                     )
                     self.darkDetrendWarningIssued2 = True
             else:
                 if not self.darkDetrendWarningIssued2:
                     self.log.warning(
-                        f"Dark and science/calibration frame have differing exposure-times. Scaling dark to match science/calibration frame."
+                        "Dark and science/calibration frame have differing exposure-times. Scaling dark to match science/calibration frame."
                     )
                     self.darkDetrendWarningIssued2 = True
                     self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
@@ -1569,6 +1565,7 @@ class base_recipe(object):
         self.log.debug("starting the ``flag_poor_data`` method")
 
         from datetime import datetime
+
         import pandas as pd
 
         utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -1582,7 +1579,7 @@ class base_recipe(object):
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "DETECTOR TEMP",
                             "qc_value": self.detectorTemp,
-                            "qc_comment": f"[K] temp of detector",
+                            "qc_comment": "[K] temp of detector",
                             "qc_unit": "kelvin",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
@@ -1600,7 +1597,7 @@ class base_recipe(object):
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "CPATH TEMP",
                             "qc_value": self.cptemp,
-                            "qc_comment": f"[C] temp of common path",
+                            "qc_comment": "[C] temp of common path",
                             "qc_unit": "celsius",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
@@ -1618,7 +1615,7 @@ class base_recipe(object):
 
         if "qc-acceptable-ranges" not in self.recipeSettings:
             self.log.debug("No acceptable ranges defined in settings file. Skipping the ``flag_poor_data`` method.")
-            return None
+            return
 
         for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
             matchName = k.lower().replace("-", " ").replace("_", " ")
@@ -1633,7 +1630,7 @@ class base_recipe(object):
             self.qc.loc[(self.qc["qc_name"].str.lower() == matchName), "qc_value_max"] = v[1]
 
         self.log.debug("completed the ``flag_poor_data`` method")
-        return None
+        return
 
     def qc_ron(
         self,
@@ -1670,11 +1667,13 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``qc_bias_ron`` method")
 
-        from astropy.stats import sigma_clip
-        import numpy as np
-        import pandas as pd
         import math
         from datetime import datetime
+
+        import numpy as np
+        import pandas as pd
+        from astropy.stats import sigma_clip
+
         from soxspipe.commonutils import toolkit
 
         utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -1811,9 +1810,10 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``qc_median_flux_level`` method")
 
+        from datetime import datetime
+
         import numpy as np
         import pandas as pd
-        from datetime import datetime
 
         if not medianFlux:
             # DETERMINE MEDIAN BIAS LEVEL
@@ -1869,8 +1869,9 @@ class base_recipe(object):
         """
         self.log.debug("starting the ``subtract_mean_flux_level`` method")
 
-        from astropy.stats import sigma_clip
         import numpy as np
+        from astropy.stats import sigma_clip
+
         from soxspipe.commonutils import toolkit
 
         # UNPACK SETTINGS
@@ -1926,7 +1927,9 @@ class base_recipe(object):
         self.log.debug("starting the ``update_fits_keywords`` method")
 
         import math
+
         from astropy.utils.data import compute_hash
+
         import soxspipe.__version__ as version
 
         arm = self.arm
@@ -2003,17 +2006,17 @@ class base_recipe(object):
                     iterator += 1
 
         # SOXSPIPE VERSION
-        frame.header[f"ESO PRO REC1 PIPE ID"] = f"soxspipe/v{version}"
+        frame.header["ESO PRO REC1 PIPE ID"] = f"soxspipe/v{version}"
 
         # RECIPE
         if self.recipeName:
-            frame.header[f"ESO PRO REC1 ID"] = self.recipeName
+            frame.header["ESO PRO REC1 ID"] = self.recipeName
 
         # from tabulate import tabulate
         # print(tabulate(tableData, headers='keys', tablefmt='github'))
 
         self.log.debug("completed the ``update_fits_keywords`` method")
-        return None
+        return
 
     def get_recipe_settings(self):
         """*get the recipe and arm specific settings*

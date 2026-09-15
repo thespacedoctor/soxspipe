@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Uncompress ESO fits.Z frames*
 
@@ -96,4 +95,4 @@ def uncompress(log, directory):
             )
 
     log.debug("completed the ``uncompress`` function")
-    return None
+    return

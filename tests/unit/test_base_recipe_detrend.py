@@ -105,6 +105,7 @@ def test_detrend_delegates_background_subtraction_when_enabled(
 ) -> None:
     """An order table delegates to background subtraction before flat correction."""
     import importlib
+
     import soxspipe.commonutils.toolkit as toolkit
 
     recipeModule = importlib.import_module("soxspipe.recipes.base_recipe")

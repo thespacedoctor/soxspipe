@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Recipe to generate a first approximation of the dispersion solution from single pinhole frames*
 
@@ -11,14 +10,12 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
-
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+import sys
+
 from soxspipe.commonutils import create_dispersion_map
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
@@ -64,7 +61,7 @@ class soxs_disp_solution(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_disp_solution, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -122,7 +119,7 @@ class soxs_disp_solution(base_recipe):
         # EXTENSIONS
         self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify input frames match those required by the `soxs_disp_solution` recipe*
@@ -209,7 +206,7 @@ class soxs_disp_solution(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*generate a fisrt guess of the dispersion solution*
@@ -220,10 +217,11 @@ class soxs_disp_solution(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        from astropy.nddata import CCDData
-        from astropy import units as u
-        import pandas as pd
         from datetime import datetime
+
+        import pandas as pd
+        from astropy import units as u
+        from astropy.nddata import CCDData
 
         arm = self.arm
         kw = self.kw
@@ -476,4 +474,4 @@ def parameterTuning(
     except:
         pass
 
-    return None
+    return

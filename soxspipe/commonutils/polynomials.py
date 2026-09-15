@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *definition of polynomial functions needed throughout code*
 
@@ -12,9 +11,6 @@ Date Created
 
 ################# GLOBAL IMPORTS ####################
 
-from fundamentals import tools
-from builtins import object
-import sys
 import os
 
 # from line_profiler import profile
@@ -57,7 +53,7 @@ class chebyshev_order_wavelength_polynomials:
         else:
             self.axis = ""
 
-        return None
+        return
 
     def poly(self, orderPixelTable, *coeff):
         """the polynomial definition
@@ -152,7 +148,7 @@ class chebyshev_xy_polynomial:
         self.yCol = yCol
         self.exponentsIncluded = exponentsIncluded
 
-        return None
+        return
 
     def poly(self, orderPixelTable, *coeff):
         """the polynomial definition
@@ -236,7 +232,7 @@ class chebyshev_order_xy_polynomials:
         self.orderCol = orderCol
         self.exponentsIncluded = exponentsIncluded
 
-        return None
+        return
 
     def poly(self, orderPixelTable, *coeff):
         """the polynomial definition

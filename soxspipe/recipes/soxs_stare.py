@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Reduce SOXS/Xshooter data taken in stare mode*
 
@@ -11,18 +10,17 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils import detector_lookup, keyword_lookup
-from .base_recipe import base_recipe
-from soxspipe.commonutils import subtract_sky
+import os
+import sys
+
+from soxspipe.commonutils import detector_lookup, subtract_sky
 from soxspipe.commonutils.toolkit import (
     generic_quality_checks,
     get_calibrations_path,
     spectroscopic_image_quality_checks,
 )
-from fundamentals import tools
-from builtins import object
-import sys
-import os
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
@@ -61,7 +59,7 @@ class soxs_stare(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_stare, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -114,7 +112,7 @@ class soxs_stare(base_recipe):
 
         self.generateReponseCurve = False
 
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_stare recipe*
@@ -198,7 +196,7 @@ class soxs_stare(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*The code to generate the product of the soxs_stare recipe*
@@ -221,10 +219,11 @@ class soxs_stare(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        from astropy.nddata import CCDData
-        from astropy import units as u
-        import pandas as pd
         from datetime import datetime
+
+        import pandas as pd
+        from astropy import units as u
+        from astropy.nddata import CCDData
 
         arm = self.arm
         kw = self.kw
@@ -519,7 +518,7 @@ class soxs_stare(base_recipe):
                                 "file_type": "FITS",
                                 "obs_date_utc": self.dateObs,
                                 "reduction_date_utc": utcnow,
-                                "product_desc": f"The sky-subtracted object",
+                                "product_desc": "The sky-subtracted object",
                                 "file_path": productPath,
                                 "label": "PROD",
                             }
@@ -548,7 +547,7 @@ class soxs_stare(base_recipe):
                                 "file_type": "FITS",
                                 "obs_date_utc": self.dateObs,
                                 "reduction_date_utc": utcnow,
-                                "product_desc": f"The sky background model",
+                                "product_desc": "The sky background model",
                                 "file_path": productPath,
                                 "label": "PROD",
                             }
@@ -578,7 +577,7 @@ class soxs_stare(base_recipe):
                                     "file_type": "FITS",
                                     "obs_date_utc": self.dateObs,
                                     "reduction_date_utc": utcnow,
-                                    "product_desc": f"The sky subtraction residuals",
+                                    "product_desc": "The sky subtraction residuals",
                                     "file_path": productPath,
                                     "label": "PROD",
                                 }
@@ -656,7 +655,7 @@ class soxs_stare(base_recipe):
 
             detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
 
-            self.log.print(f"# FLUX CALIBRATING THE SPECTRUM\n")
+            self.log.print("# FLUX CALIBRATING THE SPECTRUM\n")
             fluxCalibrator = flux_calibration(
                 log=self.log,
                 responseFunction=responseFunctionPath,
@@ -675,7 +674,7 @@ class soxs_stare(base_recipe):
             filePath_fluxcal, prod = fluxCalibrator.calibrate()
             self.products = pd.concat([self.products, prod], ignore_index=True)
             # self.qc, self.products, calibratedSpectrumDF, calibrationPath = fluxCalibrator.calibrate()
-            self.log.print(f"# FLUX CALIBRATION COMPLETED\n")
+            self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
         elif self.generateReponseCurve:
 
@@ -702,7 +701,7 @@ class soxs_stare(base_recipe):
             # GETTING THE RESPONSE
             from soxspipe.commonutils import response_function
 
-            self.log.print(f"# CALCULATING RESPONSE FUNCTION\n")
+            self.log.print("# CALCULATING RESPONSE FUNCTION\n")
             response = response_function(
                 log=self.log,
                 settings=self.settings,
@@ -737,9 +736,8 @@ class soxs_stare(base_recipe):
         )
 
         if filePath_fluxcal:
-            from astropy.table import Table
-            from astropy.io import fits
             from astropy import units as u
+            from astropy.table import Table
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
