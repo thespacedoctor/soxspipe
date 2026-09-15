@@ -224,6 +224,47 @@ def measure(frame):
     assert _kinds(findings) == ["undocumented-return"]
 
 
+def test_an_empty_return_section_does_not_document_a_return(tmp_path: Path) -> None:
+    source = '''
+def measure(frame):
+    """*measure a frame*
+
+    **Key Arguments:**
+
+    - ``frame`` -- the frame to measure
+
+    **Return:**
+    """
+    return frame.mean()
+'''
+
+    findings = _check_source(tmp_path, source)
+
+    assert _kinds(findings) == ["undocumented-return"]
+
+
+def test_a_return_section_documented_without_the_canonical_bullet_is_accepted(tmp_path: Path) -> None:
+    # SEVERAL MODULES DOCUMENT RETURNS WITHOUT THE ``--`` SEPARATOR, AND THAT STILL COUNTS AS DOCUMENTED
+    source = '''
+def measure(frame):
+    """*measure a frame*
+
+    **Key Arguments:**
+
+    - ``frame`` -- the frame to measure
+
+    **Return:**
+
+    - ``mean``
+    """
+    return frame.mean()
+'''
+
+    findings = _check_source(tmp_path, source)
+
+    assert _kinds(findings) == []
+
+
 def test_a_yield_counts_as_a_returned_value(tmp_path: Path) -> None:
     source = '''
 def rows(frame):
@@ -455,13 +496,31 @@ def test_find_python_files_walks_a_directory_and_accepts_a_file(tmp_path: Path) 
 
 def test_main_exits_non_zero_when_a_module_has_findings(tmp_path: Path) -> None:
     modulePath = tmp_path / "sample.py"
-    modulePath.write_text('def measure(frame, save):\n    """*measure*\n\n    **Key Arguments:**\n\n    - ``frame`` -- a frame\n    """\n    return None\n')
+    modulePath.write_text('''
+def measure(frame, save):
+    """*measure*
+
+    **Key Arguments:**
+
+    - ``frame`` -- a frame
+    """
+    return None
+''')
 
     assert checker.main([str(modulePath)]) == 1
 
 
 def test_main_exits_zero_for_a_clean_module(tmp_path: Path) -> None:
     modulePath = tmp_path / "sample.py"
-    modulePath.write_text('def measure(frame):\n    """*measure*\n\n    **Key Arguments:**\n\n    - ``frame`` -- a frame\n    """\n    return None\n')
+    modulePath.write_text('''
+def measure(frame):
+    """*measure*
+
+    **Key Arguments:**
+
+    - ``frame`` -- a frame
+    """
+    return None
+''')
 
     assert checker.main([str(modulePath)]) == 0

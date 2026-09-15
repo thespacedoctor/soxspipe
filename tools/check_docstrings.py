@@ -142,7 +142,11 @@ def has_arguments_section(docstring: str) -> bool:
 
 
 def has_return_section(docstring: str) -> bool:
-    """*does the docstring carry a Return section?*
+    """*does the docstring carry a Return section with something in it?*
+
+    A bare `**Return:**` header with an empty body documents nothing, so it does
+    not count as a Return section. The body is not required to use the canonical
+    `` -- `` bullet, since several modules document returns in other styles.
 
     **Key Arguments:**
 
@@ -150,9 +154,11 @@ def has_return_section(docstring: str) -> bool:
 
     **Return:**
 
-    - ``present`` -- True if a Return header is present
+    - ``present`` -- True if a Return header is present and its body is not blank
     """
-    return RETURN_HEADER_PATTERN.search(docstring) is not None
+    body = _section_body(docstring, RETURN_HEADER_PATTERN)
+
+    return body is not None and bool(body.strip())
 
 
 def signature_arguments(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
@@ -242,13 +248,19 @@ def check_function(
         bullets = documented_argument_bullets(docstring)
         documented = [name for name, _ in bullets]
         findings.extend(
-            Finding(path, node.lineno, qualifiedName, "undocumented-argument", name) for name in arguments if name not in documented
+            Finding(path, node.lineno, qualifiedName, "undocumented-argument", name)
+            for name in arguments
+            if name not in documented
         )
         findings.extend(
-            Finding(path, node.lineno, qualifiedName, "phantom-argument", name) for name in documented if name not in arguments
+            Finding(path, node.lineno, qualifiedName, "phantom-argument", name)
+            for name in documented
+            if name not in arguments
         )
         findings.extend(
-            Finding(path, node.lineno, qualifiedName, "malformed-argument-bullet", name) for name, wellFormed in bullets if not wellFormed
+            Finding(path, node.lineno, qualifiedName, "malformed-argument-bullet", name)
+            for name, wellFormed in bullets
+            if not wellFormed
         )
 
     returns = returns_a_value(node)
@@ -380,7 +392,9 @@ def _print_summary(findings: list[Finding], fileCount: int) -> None:
             print(f"  {kind}: {count}")
 
     driftedFunctions = {
-        (finding.path, finding.function) for finding in findings if finding.kind in ("undocumented-argument", "phantom-argument")
+        (finding.path, finding.function)
+        for finding in findings
+        if finding.kind in ("undocumented-argument", "phantom-argument")
     }
     print(f"  drifted functions: {len(driftedFunctions)}")
 
@@ -439,7 +453,9 @@ def _walk_functions(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.As
     yield from _walk_scope(tree, prefix="", classDocstring=None)
 
 
-def _walk_scope(node: ast.AST, prefix: str, classDocstring: str | None) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, str, str | None]]:
+def _walk_scope(
+    node: ast.AST, prefix: str, classDocstring: str | None
+) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, str, str | None]]:
     """*walk one scope, recursing into classes and nested functions*
 
     **Key Arguments:**
