@@ -380,3 +380,62 @@ def test_add_product_honours_explicit_recipe_name_and_obs_date_overrides(log: An
 
     assert recipe.products.loc[0, "soxspipe_recipe"] == "soxs-stare"
     assert recipe.products.loc[0, "obs_date_utc"] == "2099-01-01T00:00:00"
+
+
+def test_add_qc_forwards_an_explicit_none_optional_through_to_the_row(log: Any) -> None:
+    # ARRANGE
+    recipe = _recipe(log)
+
+    # ACT -- PASSING None EXPLICITLY IS NOT THE SAME AS OMITTING THE KEYWORD
+    recipe.add_qc(
+        qcName="RON",
+        qcValue=1.2,
+        qcComment="Read noise",
+        reductionDateUtc="2024-01-02T04:05:06",
+        qcUnit=None,
+    )
+
+    # ASSERT
+    assert "qc_unit" in recipe.qc.columns
+    assert recipe.qc.loc[0, "qc_unit"] is None
+
+
+def test_add_product_forwards_an_explicit_none_optional_through_to_the_row(log: Any) -> None:
+    # ARRANGE
+    recipe = _recipe(log)
+
+    # ACT
+    recipe.add_product(
+        productLabel="MBIAS",
+        fileName="MASTER_BIAS.fits",
+        filePath="products/MASTER_BIAS.fits",
+        productDesc="Master bias frame",
+        reductionDateUtc="2024-01-02T04:05:06",
+        fileType=None,
+    )
+
+    # ASSERT
+    assert "file_type" in recipe.products.columns
+    assert recipe.products.loc[0, "file_type"] is None
+
+
+def test_append_qc_treats_only_the_one_sentinel_object_as_omitted() -> None:
+    # ARRANGE -- A SECOND INSTANCE OF THE SENTINEL CLASS IS NOT THE SENTINEL.
+    # IT COULD ARRIVE FROM A deepcopy, A pickle ROUND TRIP, OR A REFACTOR, AND
+    # MUST BE WRITTEN INTO THE ROW AS A VALUE RATHER THAN READ AS "OMITTED".
+    impostor = type(toolkit.OMITTED)()
+
+    # ACT
+    result = toolkit.append_qc(
+        qc_table(),
+        recipeName="soxs-mbias",
+        qcName="RON",
+        qcValue=1.2,
+        qcComment="Read noise",
+        obsDateUtc="2024-01-02T03:04:05",
+        reductionDateUtc="2024-01-02T04:05:06",
+        qcUnit=impostor,
+    )
+
+    # ASSERT -- THE FACTORY TABLE IS SEEDED, SO THE APPENDED ROW IS THE LAST ONE
+    assert result.iloc[-1]["qc_unit"] is impostor
