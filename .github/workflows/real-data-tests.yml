@@ -16,6 +16,7 @@ jobs:
       CACHE_ROOT: ${{ github.workspace }}/.real-data-cache
       WORKSPACE: ${{ github.workspace }}/.real-data-workspace
       SOF_NAME: 20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof
+      REDUCTION_LOG: ${{ github.workspace }}/reduction-log/reduction.log
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -48,14 +49,28 @@ jobs:
 
       - name: Prepare representative NIR offset reduction
         run: |
+          mkdir -p "$(dirname "$REDUCTION_LOG")"
           cd "$WORKSPACE"
           python -m soxspipe.cl_utils prep .
           python -m soxspipe.cl_utils list sof
           test -f "$SOF_NAME"
           python -m soxspipe.cl_utils raw sof "$SOF_NAME"
-          python -m soxspipe.cl_utils -q reduce sof "$SOF_NAME"
+          # THE REDUCTION PRINTS PER-RECIPE RUN TIMES, SO ITS OUTPUT IS KEPT AS AN
+          # ARTIFACT FOR A COARSE PERFORMANCE TREND THE RUN LOG WOULD OTHERWISE LOSE
+          set -o pipefail
+          python -m soxspipe.cl_utils -q reduce sof "$SOF_NAME" 2>&1 | tee -a "$REDUCTION_LOG"
 
       - name: Run real-data acceptance tests
         env:
           SOXSPIPE_REAL_DATA_DIR: ${{ env.WORKSPACE }}
         run: python -m pytest tests/real_data
+
+      - name: Upload the reduction log
+        # ALWAYS, BECAUSE A FAILED REDUCTION IS THE RUN WHOSE LOG IS WORTH MOST
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: reduction-log
+          path: ${{ github.workspace }}/reduction-log/
+          if-no-files-found: warn
+          retention-days: 90
