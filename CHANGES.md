@@ -1,4 +1,4 @@
-c# Release Notes
+c/compla# Release Notes
 
 
 * **ENHANCEMENT**: the real-data workflow now tees the reduction's output to a file and uploads it as a `reduction-log` run artifact, kept for 90 days and uploaded even when the run fails. The per-recipe run times the pipeline already prints are otherwise lost when the run log ages out, so this captures a coarse performance trend at no new infrastructure cost.

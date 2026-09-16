@@ -85,3 +85,87 @@ def test_a_threshold_comparison_is_stable_across_last_bit_noise():
 
     # ASSERT
     assert clippedA.tolist() == clippedB.tolist()
+
+
+def _clip(values, **kwargs):
+    """Run the pipeline's clip helper and return the boolean mask it produces."""
+    import numpy as np
+
+    from soxspipe.commonutils.create_dispersion_map import sigma_clip_stable
+
+    result = sigma_clip_stable(values, **kwargs)
+    return np.ma.getmaskarray(result)
+
+
+def _residuals_with_a_point_on_the_boundary():
+    """Return residuals plus the exact upper clip bound they produce."""
+    import numpy as np
+    from astropy.stats import sigma_clip
+
+    # ARRANGE: A TIGHT CLUSTER AND ONE POINT PLACED EXACTLY ON THE CUT
+    base = np.array([0.10, 0.11, 0.09, 0.12, 0.08, 0.10, 0.11, 0.09], dtype=float)
+    _, _, upper = sigma_clip(base, sigma_lower=3000, sigma_upper=2, maxiters=1, cenfunc="mean", stdfunc="std", return_bounds=True)
+    return base, float(upper)
+
+
+def test_a_residual_astride_the_clip_bound_is_not_clipped():
+    """A point within the dead-band of the cut is kept, whichever side of it lands on."""
+    # ARRANGE
+    import numpy as np
+
+    base, upper = _residuals_with_a_point_on_the_boundary()
+    justOver = np.append(base, np.nextafter(upper, np.inf))
+    justUnder = np.append(base, np.nextafter(upper, -np.inf))
+
+    # ACT
+    overMask = _clip(justOver, sigma_lower=3000, sigma_upper=2, maxiters=1, cenfunc="mean", stdfunc="std")
+    underMask = _clip(justUnder, sigma_lower=3000, sigma_upper=2, maxiters=1, cenfunc="mean", stdfunc="std")
+
+    # ASSERT: THE DECISION IS THE SAME EITHER SIDE OF THE CUT, SO IT CANNOT FLIP
+    assert overMask.tolist() == underMask.tolist()
+    assert not overMask[-1], "a residual indistinguishable from the cut should be kept"
+
+
+def test_a_genuine_outlier_is_still_clipped():
+    """The dead-band does not rescue a point that is really deviant."""
+    # ARRANGE
+    import numpy as np
+
+    base, _ = _residuals_with_a_point_on_the_boundary()
+    withOutlier = np.append(base, 5.0)
+
+    # ACT
+    mask = _clip(withOutlier, sigma_lower=3000, sigma_upper=2, maxiters=1, cenfunc="mean", stdfunc="std")
+
+    # ASSERT
+    assert mask[-1], "a residual far beyond the cut must still be clipped"
+
+
+def test_a_nan_residual_stays_masked():
+    """A NaN carries no position relative to the cut and must not be un-masked."""
+    # ARRANGE
+    import numpy as np
+
+    base, _ = _residuals_with_a_point_on_the_boundary()
+    withNan = np.append(base, np.nan)
+
+    # ACT
+    mask = _clip(withNan, sigma_lower=3000, sigma_upper=2, maxiters=1, cenfunc="mean", stdfunc="std")
+
+    # ASSERT
+    assert mask[-1]
+
+
+def test_the_dead_band_is_far_below_the_measurement_precision():
+    """The dead-band is negligible against centroiding precision, so no science changes."""
+    # ARRANGE
+    from soxspipe.commonutils.create_dispersion_map import CLIP_DEADBAND_RELATIVE
+
+    centroidingPrecisionPixels = 0.01
+    typicalClipBoundPixels = 0.5
+
+    # ACT
+    deadband = CLIP_DEADBAND_RELATIVE * typicalClipBoundPixels
+
+    # ASSERT: AT LEAST FOUR ORDERS OF MAGNITUDE FINER THAN ANYTHING MEASURABLE
+    assert deadband < centroidingPrecisionPixels / 1_000

@@ -88,6 +88,57 @@ def quantise_residuals(residuals: "npt.ArrayLike") -> "np.ndarray":
     return np.round(np.asarray(residuals, dtype=float), RESIDUAL_QUANTISATION_DECIMALS)
 
 
+# THE SIGMA-CLIP CUT IS A KNIFE EDGE: A RESIDUAL A FRACTION OF AN ULP EITHER SIDE OF IT
+# IS CLIPPED OR KEPT, AND THE CLIP LOOP RE-FITS ON WHATEVER SURVIVES, SO THE DIFFERENCE
+# COMPOUNDS. A DEAD-BAND ROUND THE CUT RESOLVES THE UNDECIDABLE CASES ONE WAY: ANYTHING
+# INDISTINGUISHABLE FROM THE CUT IS KEPT. AT 1e-7 OF THE CUT THIS IS FIVE ORDERS OF
+# MAGNITUDE BELOW THE ~0.01 PIXEL CENTROIDING PRECISION, SO IT DECIDES ONLY CASES THE
+# MEASUREMENT CANNOT SEPARATE, AND NINE ORDERS ABOVE THE ~1e-16 BY WHICH A LEAST-SQUARES
+# SOLVE VARIES BETWEEN MACHINES, SO IT COVERS THE DIFFERENCES THAT ACTUALLY ARISE
+CLIP_DEADBAND_RELATIVE = 1e-7
+
+
+def sigma_clip_stable(data, deadbandRelative=CLIP_DEADBAND_RELATIVE, **kwargs):
+    """*sigma-clip an array, keeping any point too close to the cut to be told apart from it*
+
+    **Key Arguments:**
+
+    - ``data`` -- the values to clip
+    - ``deadbandRelative`` -- half-width of the dead-band, as a fraction of the clip bound
+    - ``kwargs`` -- passed straight through to `astropy.stats.sigma_clip`
+
+    **Return:**
+
+    - ``clipped`` -- a masked array, masked where the value lies beyond the cut by more than the dead-band
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.create_dispersion_map import sigma_clip_stable
+    masked = sigma_clip_stable(residuals, sigma_lower=3000, sigma_upper=3, maxiters=1, cenfunc="mean", stdfunc="std")
+    ```
+
+    This narrows the window in which a machine-to-machine floating-point difference can
+    change the clip decision; it does not abolish it, since the dead-band has edges of
+    its own. What makes the reduction reproducible is that the fits receive bit-identical
+    input, which the line table's total sort key provides. This is the second line of defence.
+    """
+    import numpy as np
+    from astropy.stats import sigma_clip
+
+    values = np.asarray(data, dtype=float)
+    clipped, lower, upper = sigma_clip(values, return_bounds=True, **kwargs)
+    mask = np.ma.getmaskarray(clipped).copy()
+
+    deadband = deadbandRelative * max(abs(float(lower)), abs(float(upper)))
+
+    # A NaN COMPARES FALSE AGAINST BOTH BOUNDS, SO IT IS NEVER PULLED BACK IN
+    borderline = mask & (values > lower - deadband) & (values < upper + deadband)
+    mask = mask & ~borderline
+
+    return np.ma.MaskedArray(values, mask=mask)
+
+
 class create_dispersion_map:
     """
     *detect arc-lines on a pinhole frame to generate a dispersion solution*
@@ -699,15 +750,17 @@ class create_dispersion_map:
 
         boost = True
         while boost:
-            # SORT BY COLUMN NAME. WAVELENGTH REPEATS ACROSS ORDERS AND SLIT POSITIONS,
-            # SO IT IS NOT A TOTAL KEY ON ITS OWN: PANDAS DEFAULTS TO AN UNSTABLE
-            # QUICKSORT AND NUMPY DISPATCHES FLOAT SORTS TO SIMD KERNELS WHOSE
-            # PERMUTATION OF TIED ROWS DEPENDS ON THE CPU, SO SORTING ON WAVELENGTH
-            # ALONE PUT THE SAME ROWS IN DIFFERENT ORDERS ON DIFFERENT MACHINES. THAT
-            # CHANGED SUMMATION ORDER IN THE POLYNOMIAL FITS AND FLIPPED LINES ACROSS
-            # THE SIGMA-CLIPPING THRESHOLD, MOVING THE MERGED SPECTRUM'S RED END
-            sortKey = [c for c in ("wavelength", "order", "slit_index") if c in orderPixelTable.columns]
-            orderPixelTable.sort_values(sortKey, kind="stable", inplace=True)
+            # SORT ON A KEY THAT IS UNIQUE PER ROW. WAVELENGTH IS NOT A TOTAL KEY ON ITS
+            # OWN: IT REPEATS ACROSS ORDERS AND SLIT POSITIONS, PANDAS DEFAULTS TO AN
+            # UNSTABLE QUICKSORT AND NUMPY DISPATCHES FLOAT SORTS TO SIMD KERNELS WHOSE
+            # PERMUTATION OF TIED ROWS DEPENDS ON THE CPU, SO SORTING ON WAVELENGTH ALONE
+            # PUT THE SAME ROWS IN DIFFERENT ORDERS ON DIFFERENT MACHINES. THAT CHANGED
+            # SUMMATION ORDER IN THE POLYNOMIAL FITS AND FLIPPED LINES ACROSS THE
+            # SIGMA-CLIPPING THRESHOLD, MOVING THE MERGED SPECTRUM'S RED END.
+            # WAVELENGTH, ORDER AND SLIT INDEX ARE STILL NOT ENOUGH: THE SHIPPED NIR ARC
+            # LINE LIST CONTAINS TWO LINES SHARING ALL THREE AND DIFFERING ONLY IN THEIR
+            # DETECTOR POSITION, SO THE DETECTOR COORDINATES COMPLETE THE KEY
+            orderPixelTable = self._sort_line_table_on_a_total_key(orderPixelTable)
 
             # BOOST WILL BE SET TO TRUE LATER IF FOUND TO BE TRUE IN THE SETTINGS FILE
             boost = False
@@ -2211,6 +2264,52 @@ class create_dispersion_map:
 
         return pd.Series([resolution_line, fwhm])
 
+    def _sort_line_table_on_a_total_key(self, orderPixelTable):
+        """*sort the line table on a key that is unique per row, so the row order is fixed*
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table to sort
+
+        **Return:**
+
+        - ``orderPixelTable`` -- the same rows in an order that does not depend on how they arrived
+
+        The physical columns are used first, so the resulting order still reads as
+        wavelength within order within slit position. A row's position in the incoming
+        table completes the key, which guarantees the sort is total even when two lines
+        agree on every physical column.
+        """
+        self.log.debug("starting the ``_sort_line_table_on_a_total_key`` method")
+
+        import numpy as np
+
+        physicalKey = [c for c in ("wavelength", "order", "slit_index", "detector_x", "detector_y") if c in orderPixelTable.columns]
+
+        if not physicalKey:
+            raise ValueError("the line table carries none of the columns the deterministic sort needs")
+
+        # A ROW'S POSITION IN THE INCOMING TABLE IS ITSELF DETERMINISTIC, SINCE THE TABLE
+        # IS READ FROM A FITS FILE IN FILE ORDER. APPENDING IT MAKES THE KEY TOTAL BY
+        # CONSTRUCTION, SO NO TIE IS EVER LEFT TO THE PLATFORM'S SORT KERNEL
+        orderPixelTable = orderPixelTable.copy()
+        orderPixelTable["incoming_position"] = np.arange(len(orderPixelTable.index))
+
+        duplicated = orderPixelTable.duplicated(subset=physicalKey, keep=False)
+        if duplicated.any():
+            # NOT FATAL, BUT WORTH SEEING: THE SHIPPED NIR ARC LINE LIST CONTAINS ONE SUCH
+            # PAIR, TWO LINES AT 1588.31 NM IN ORDER 12 THAT DIFFER ONLY IN DETECTOR POSITION
+            self.log.warning(f"{int(duplicated.sum())} line-table rows share the physical sort key {physicalKey}; their relative order is taken from the input file")
+
+        # PANDAS ROUTES A MULTI-COLUMN SORT THROUGH np.lexsort, WHICH IS STABLE, AND
+        # IGNORES kind ENTIRELY. THE UNIQUE KEY IS WHAT FIXES THE ORDER HERE
+        orderPixelTable = orderPixelTable.sort_values(physicalKey + ["incoming_position"])
+        orderPixelTable.drop(columns=["incoming_position"], inplace=True)
+
+        self.log.debug("completed the ``_sort_line_table_on_a_total_key`` method")
+
+        return orderPixelTable
+
     def fit_polynomials(self, orderPixelTable, wavelengthDeg, orderDeg, slitDeg, missingLines=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
@@ -2238,7 +2337,6 @@ class create_dispersion_map:
         orderPixelTable = orderPixelTable.loc[~mask]
 
         import pandas as pd
-        from astropy.stats import sigma_clip
         from scipy.optimize import curve_fit
 
         from soxspipe.commonutils import get_cached_coeffs
@@ -2401,7 +2499,7 @@ class create_dispersion_map:
                 lineGroups = lineGroups.reset_index()
 
                 # SIGMA-CLIP THE DATA ON SCATTER
-                masked_residuals = sigma_clip(
+                masked_residuals = sigma_clip_stable(
                     lineGroups["residuals_x"].abs(),
                     sigma_lower=3000,
                     sigma_upper=clippingSigmaX,
@@ -2410,7 +2508,7 @@ class create_dispersion_map:
                     stdfunc="std",
                 )
                 lineGroups["sigma_clipped_x"] = masked_residuals.mask
-                masked_residuals = sigma_clip(
+                masked_residuals = sigma_clip_stable(
                     lineGroups["residuals_y"].abs(),
                     sigma_lower=3000,
                     sigma_upper=clippingSigmaY,
@@ -2426,7 +2524,7 @@ class create_dispersion_map:
 
                 if True:
                     # CLIP ALSO ON COMBINED RESIDUALS
-                    masked_residuals = sigma_clip(
+                    masked_residuals = sigma_clip_stable(
                         lineGroups["residuals_xy"],
                         sigma_lower=5000,
                         sigma_upper=clippingSigma,
@@ -2456,7 +2554,7 @@ class create_dispersion_map:
 
                 # CLIP THE MOST DEVIATE SINGLE PINHOLES
                 if iteration == 1 and True:
-                    masked_residuals = sigma_clip(
+                    masked_residuals = sigma_clip_stable(
                         orderPixelTable["residuals_x"].abs(),
                         sigma_lower=3000,
                         sigma_upper=clippingSigmaX * 3,
@@ -2465,7 +2563,7 @@ class create_dispersion_map:
                         stdfunc="std",
                     )
                     orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
-                    masked_residuals = sigma_clip(
+                    masked_residuals = sigma_clip_stable(
                         orderPixelTable["residuals_y"].abs(),
                         sigma_lower=3000,
                         sigma_upper=clippingSigmaY * 3,
@@ -2474,7 +2572,7 @@ class create_dispersion_map:
                         stdfunc="std",
                     )
                     orderPixelTable["sigma_clipped_y"] = masked_residuals.mask
-                    masked_residuals = sigma_clip(
+                    masked_residuals = sigma_clip_stable(
                         orderPixelTable["R_pin"],
                         sigma_lower=3000,
                         sigma_upper=10,
@@ -2493,7 +2591,7 @@ class create_dispersion_map:
                     ] = True
 
             else:
-                masked_residuals = sigma_clip(
+                masked_residuals = sigma_clip_stable(
                     orderPixelTable["residuals_x"].abs(),
                     sigma_lower=3000,
                     sigma_upper=clippingSigmaX * 1,
@@ -2502,7 +2600,7 @@ class create_dispersion_map:
                     stdfunc="std",
                 )
                 orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
-                masked_residuals = sigma_clip(
+                masked_residuals = sigma_clip_stable(
                     orderPixelTable["residuals_y"].abs(),
                     sigma_lower=3000,
                     sigma_upper=clippingSigmaY * 1,
@@ -2518,7 +2616,7 @@ class create_dispersion_map:
 
                 if True:
                     # CLIP ALSO ON COMBINED RESIDUALS
-                    masked_residuals = sigma_clip(
+                    masked_residuals = sigma_clip_stable(
                         orderPixelTable["residuals_xy"],
                         sigma_lower=5000,
                         sigma_upper=clippingSigma,
@@ -3905,7 +4003,6 @@ class create_dispersion_map:
         self.log.debug("starting the ``_clip_on_measured_line_metrics`` method")
 
         import matplotlib.pyplot as plt
-        from astropy.stats import sigma_clip
         from astropy.visualization import hist
 
         # LAYOUT THE FIGURE
@@ -3944,7 +4041,7 @@ class create_dispersion_map:
 
             # SIGMA-CLIP THE DATA ON SCATTER
             lineGroups["sigma_clipped_scatter"] = False
-            masked_residuals = sigma_clip(
+            masked_residuals = sigma_clip_stable(
                 lineGroups["x_diff"],
                 sigma_lower=5000,
                 sigma_upper=7,
@@ -3953,7 +4050,7 @@ class create_dispersion_map:
                 stdfunc="mad_std",
             )
             lineGroups["sigma_clipped_x"] = masked_residuals.mask
-            masked_residuals = sigma_clip(
+            masked_residuals = sigma_clip_stable(
                 lineGroups["y_diff"],
                 sigma_lower=5000,
                 sigma_upper=7,
@@ -3962,7 +4059,7 @@ class create_dispersion_map:
                 stdfunc="mad_std",
             )
             lineGroups["sigma_clipped_y"] = masked_residuals.mask
-            masked_residuals = sigma_clip(
+            masked_residuals = sigma_clip_stable(
                 lineGroups["xy_diff"],
                 sigma_lower=5000,
                 sigma_upper=7,
@@ -4037,7 +4134,7 @@ class create_dispersion_map:
             .mean()
         )
         lineGroups = lineGroups.reset_index()
-        masked_residuals = sigma_clip(
+        masked_residuals = sigma_clip_stable(
             lineGroups["fwhm_pin_px"],
             sigma_lower=2.5,
             sigma_upper=5,
@@ -4087,7 +4184,7 @@ class create_dispersion_map:
 
         # SIGMA-CLIP THE DATA ON FLUX
         lineGroups = lineGroups.loc[~mask]
-        masked_residuals = sigma_clip(
+        masked_residuals = sigma_clip_stable(
             lineGroups["flux"],
             sigma_lower=5,
             sigma_upper=5,
@@ -4139,7 +4236,7 @@ class create_dispersion_map:
         # SIGMA-CLIP THE DATA ON FLUX
         lineGroups = lineGroups.loc[~mask]
         lineGroups["peak"] = lineGroups["peak"] / lineGroups["flux"]
-        masked_residuals = sigma_clip(
+        masked_residuals = sigma_clip_stable(
             lineGroups["peak"],
             sigma_lower=5000,
             sigma_upper=7,

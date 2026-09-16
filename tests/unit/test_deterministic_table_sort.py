@@ -92,3 +92,153 @@ def test_a_stable_sort_preserves_the_incoming_order_of_tied_rows():
 
     # ASSERT
     assert result == ["b", "d", "a", "c"]
+
+
+def _static_calibration(relativePath: str):
+    """Return the path to a shipped static calibration, or None when it is absent."""
+    from pathlib import Path
+
+    import soxspipe
+
+    candidate = Path(soxspipe.__file__).parent / "resources" / "static_calibrations" / relativePath
+    return candidate if candidate.exists() else None
+
+
+def _dispersion_map_source() -> str:
+    """Return the on-disk source of the create_dispersion_map module."""
+    import inspect
+    from pathlib import Path
+
+    from soxspipe.commonutils.create_dispersion_map import create_dispersion_map
+
+    return Path(inspect.getsourcefile(create_dispersion_map)).read_text(encoding="utf-8")
+
+
+def _calibration_shaped_line_table() -> pd.DataFrame:
+    """Return the duplicate-key pair that the shipped NIR arc line list actually contains.
+
+    `ArHgNeXe_clean_within_2.0pixel.fits` holds two rows sharing
+    `(wavelength=1588.31, order=12, slit_index=0)` that differ only in their
+    detector position, so those three columns are not a total key on real data.
+    """
+    # ARRANGE: THE TWO REAL ROWS, PLUS ONE ORDINARY ROW EITHER SIDE OF THEM
+    return pd.DataFrame(
+        {
+            "wavelength": [1588.31, 1588.31, 1500.0, 1600.0],
+            "order": [12, 12, 12, 12],
+            "slit_index": [0, 0, 0, 0],
+            "slit_position": [-5.74545, -5.74545, -5.74545, -5.74545],
+            "detector_x": [531.281742, 534.379648, 400.0, 600.0],
+            "detector_y": [465.973724, 465.659446, 300.0, 500.0],
+        }
+    )
+
+
+def test_the_shipped_arc_line_list_repeats_wavelength_order_and_slit_index():
+    """The three-column key is not total on the data the pipeline actually reduces."""
+    # ARRANGE
+    from astropy.table import Table
+
+    lineList = _static_calibration("soxs/ArHgNeXe_clean_within_2.0pixel.fits")
+    if lineList is None:
+        pytest.skip("the shipped NIR arc line list is not installed")
+
+    # ACT
+    lines = Table.read(lineList).to_pandas()
+    duplicated = lines.duplicated(subset=["wavelength", "order", "slit_index"], keep=False)
+
+    # ASSERT: IF THIS EVER BECOMES EMPTY THE THREE-COLUMN KEY WOULD SUFFICE, BUT
+    # THE SORT SHOULD STILL NAME THE DETECTOR POSITION SO IT CANNOT REGRESS
+    assert duplicated.any(), "expected the shipped line list to contain a repeated (wavelength, order, slit_index)"
+
+
+def test_sorting_a_calibration_shaped_tie_is_independent_of_the_incoming_order():
+    """Two lines sharing wavelength, order and slit index still sort to one fixed order."""
+    # ARRANGE
+    table = _calibration_shaped_line_table()
+    shuffled = table.iloc[[1, 0, 3, 2]].reset_index(drop=True)
+    sortKey = ["wavelength", "order", "slit_index", "detector_x", "detector_y"]
+
+    # ACT
+    sortedTable = table.sort_values(sortKey, kind="stable").reset_index(drop=True)
+    sortedShuffled = shuffled.sort_values(sortKey, kind="stable").reset_index(drop=True)
+
+    # ASSERT
+    pd.testing.assert_frame_equal(sortedTable, sortedShuffled)
+
+
+def _sorter():
+    """Return the dispersion map's sort helper bound to a stub carrying only a logger."""
+    import logging
+    from types import SimpleNamespace
+
+    from soxspipe.commonutils.create_dispersion_map import create_dispersion_map
+
+    stub = SimpleNamespace(log=logging.getLogger("test_deterministic_table_sort"))
+    return lambda frame: create_dispersion_map._sort_line_table_on_a_total_key(stub, frame)
+
+
+def test_the_dispersion_map_pins_the_order_of_a_calibration_shaped_tie():
+    """Two lines agreeing on wavelength, order and slit index still sort to one order."""
+    # ARRANGE
+    sort = _sorter()
+    table = _calibration_shaped_line_table()
+    shuffled = table.iloc[[1, 0, 3, 2]].reset_index(drop=True)
+
+    # ACT
+    sortedTable = sort(table).reset_index(drop=True)
+    sortedShuffled = sort(shuffled).reset_index(drop=True)
+
+    # ASSERT: THE DETECTOR POSITION BREAKS THE TIE, SO BOTH ARRIVE AT THE SAME ORDER
+    pd.testing.assert_frame_equal(sortedTable, sortedShuffled)
+
+
+def test_the_dispersion_map_pins_the_order_of_rows_alike_on_every_physical_column():
+    """Rows identical on every physical column are ordered by their incoming position."""
+    # ARRANGE: TWO ROWS THE PHYSICAL KEY CANNOT SEPARATE AT ALL
+    sort = _sorter()
+    table = pd.DataFrame(
+        {
+            "wavelength": [1588.31, 1588.31, 1500.0],
+            "order": [12, 12, 12],
+            "slit_index": [0, 0, 0],
+            "detector_x": [531.281742, 531.281742, 400.0],
+            "detector_y": [465.973724, 465.973724, 300.0],
+            "tag": ["first", "second", "other"],
+        }
+    )
+
+    # ACT
+    result = sort(table)
+
+    # ASSERT: THE INPUT ORDER DECIDES, AND IT IS THE SAME EVERY RUN
+    assert result["tag"].tolist() == ["other", "first", "second"]
+
+
+def test_the_sort_helper_does_not_leave_its_tie_breaker_behind():
+    """The sort adds no column to the table it returns."""
+    # ARRANGE
+    sort = _sorter()
+    table = _calibration_shaped_line_table()
+
+    # ACT
+    result = sort(table)
+
+    # ASSERT
+    assert list(result.columns) == list(table.columns)
+
+
+def test_the_dispersion_map_sort_key_names_the_detector_position():
+    """The line-table sort key includes the columns that break a calibration tie."""
+    # ARRANGE
+    source = _dispersion_map_source()
+
+    # ACT
+    sortKeyLine = [line for line in source.splitlines() if "physicalKey = [" in line]
+
+    # ASSERT
+    assert sortKeyLine, "expected create_dispersion_map to build an explicit sort key"
+    assert all("detector_x" in line and "detector_y" in line for line in sortKeyLine), (
+        "wavelength, order and slit_index repeat in the shipped arc line list, so the "
+        "sort key must also name the detector position to be total"
+    )
