@@ -49,6 +49,38 @@ from soxspipe.commonutils.toolkit import (
 os.environ["TERM"] = "vt100"
 
 
+# RESIDUALS ARE QUANTISED BEFORE THEY ARE COMPARED AGAINST THE SIGMA-CLIP THRESHOLD.
+# THE CLIP LOOP RE-FITS ON WHATEVER SURVIVES, SO A RESIDUAL DIFFERING ONLY IN ITS
+# LAST BITS CAN LAND ON EITHER SIDE OF THE THRESHOLD AND CHANGE EVERY LATER
+# ITERATION. NINE DECIMAL PLACES IS SEVEN ORDERS OF MAGNITUDE FINER THAN THE ~0.01
+# PIXEL CENTROIDING PRECISION, SO NO REAL MEASUREMENT IS AFFECTED, AND FAR COARSER
+# THAN THE ~1e-16 NOISE A LEAST-SQUARES SOLVE VARIES BY BETWEEN MACHINES
+RESIDUAL_QUANTISATION_DECIMALS = 9
+
+
+def quantise_residuals(residuals):
+    """*round residuals to a fixed precision so the clip decision cannot flip on float noise*
+
+    **Key Arguments:**
+
+    - ``residuals`` -- an array of fit residuals, in pixels
+
+    **Return:**
+
+    - ``quantised`` -- the residuals rounded to `RESIDUAL_QUANTISATION_DECIMALS` places
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.create_dispersion_map import quantise_residuals
+    stable = quantise_residuals(orderPixelTable["residuals_xy"].to_numpy())
+    ```
+    """
+    import numpy as np
+
+    return np.round(np.asarray(residuals, dtype=float), RESIDUAL_QUANTISATION_DECIMALS)
+
+
 class create_dispersion_map:
     """
     *detect arc-lines on a pinhole frame to generate a dispersion solution*
@@ -1845,12 +1877,19 @@ class create_dispersion_map:
                 inplace=True,
             )
 
-        orderPixelTable["residuals_x"] = orderPixelTable["fit_x"] - orderPixelTable["observed_x"]
-        orderPixelTable["residuals_y"] = orderPixelTable["fit_y"] - orderPixelTable["observed_y"]
+        # RESIDUALS ARE QUANTISED AS THEY ARE CALCULATED, SO EVERY CONSUMER — THE
+        # SIGMA-CLIPPING BELOW ABOVE ALL — SEES A VALUE THAT DOES NOT MOVE WITH THE
+        # LAST BITS OF THE SOLVE. SEE quantise_residuals
+        orderPixelTable["residuals_x"] = quantise_residuals(
+            orderPixelTable["fit_x"] - orderPixelTable["observed_x"]
+        )
+        orderPixelTable["residuals_y"] = quantise_residuals(
+            orderPixelTable["fit_y"] - orderPixelTable["observed_y"]
+        )
 
         # CALCULATE COMBINED RESIDUALS AND STATS
-        orderPixelTable["residuals_xy"] = np.sqrt(
-            np.square(orderPixelTable["residuals_x"]) + np.square(orderPixelTable["residuals_y"])
+        orderPixelTable["residuals_xy"] = quantise_residuals(
+            np.sqrt(np.square(orderPixelTable["residuals_x"]) + np.square(orderPixelTable["residuals_y"]))
         )
         combined_res_mean = np.mean(orderPixelTable["residuals_xy"])
         combined_res_std = np.std(orderPixelTable["residuals_xy"])
