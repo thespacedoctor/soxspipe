@@ -2284,7 +2284,8 @@ class create_dispersion_map:
 
         import numpy as np
 
-        physicalKey = [c for c in ("wavelength", "order", "slit_index", "detector_x", "detector_y") if c in orderPixelTable.columns]
+        candidateKey = ("wavelength", "order", "slit_index", "detector_x", "detector_y")
+        physicalKey = [c for c in candidateKey if c in orderPixelTable.columns]
 
         if not physicalKey:
             raise ValueError("the line table carries none of the columns the deterministic sort needs")
@@ -2299,7 +2300,10 @@ class create_dispersion_map:
         if duplicated.any():
             # NOT FATAL, BUT WORTH SEEING: THE SHIPPED NIR ARC LINE LIST CONTAINS ONE SUCH
             # PAIR, TWO LINES AT 1588.31 NM IN ORDER 12 THAT DIFFER ONLY IN DETECTOR POSITION
-            self.log.warning(f"{int(duplicated.sum())} line-table rows share the physical sort key {physicalKey}; their relative order is taken from the input file")
+            self.log.warning(
+                f"{int(duplicated.sum())} line-table rows share the physical sort key "
+                f"{physicalKey}; their relative order is taken from the input file"
+            )
 
         # PANDAS ROUTES A MULTI-COLUMN SORT THROUGH np.lexsort, WHICH IS STABLE, AND
         # IGNORES kind ENTIRELY. THE UNIQUE KEY IS WHAT FIXES THE ORDER HERE
@@ -4180,7 +4184,7 @@ class create_dispersion_map:
         s["dropped"] = False
         s.loc[(s["_merge"] == "both"), "dropped"] = True
         orderPixelTable["droppedOnFWHM"] = s["dropped"].values
-        orderPixelTable.loc[(orderPixelTable["droppedOnFWHM"] == True), "dropped"] = True
+        orderPixelTable.loc[orderPixelTable["droppedOnFWHM"], "dropped"] = True
 
         # SIGMA-CLIP THE DATA ON FLUX
         lineGroups = lineGroups.loc[~mask]

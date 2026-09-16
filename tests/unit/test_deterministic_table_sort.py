@@ -234,11 +234,15 @@ def test_the_dispersion_map_sort_key_names_the_detector_position():
     source = _dispersion_map_source()
 
     # ACT
-    sortKeyLine = [line for line in source.splitlines() if "physicalKey = [" in line]
+    # THE KEY IS DECLARED AS A TUPLE AND THEN FILTERED AGAINST THE TABLE'S COLUMNS, SO THE
+    # NAMES AND THE COMPREHENSION THAT CONSUMES THEM CAN SIT ON SEPARATE LINES
+    candidateKeys = [line for line in source.splitlines() if "candidateKey = (" in line]
+    filteredKeys = [line for line in source.splitlines() if "physicalKey = [" in line]
 
     # ASSERT
-    assert sortKeyLine, "expected create_dispersion_map to build an explicit sort key"
-    assert all("detector_x" in line and "detector_y" in line for line in sortKeyLine), (
+    assert candidateKeys, "expected create_dispersion_map to declare an explicit sort key"
+    assert filteredKeys, "expected the sort key to be filtered against the table's columns"
+    assert all("detector_x" in line and "detector_y" in line for line in candidateKeys), (
         "wavelength, order and slit_index repeat in the shipped arc line list, so the "
         "sort key must also name the detector position to be total"
     )

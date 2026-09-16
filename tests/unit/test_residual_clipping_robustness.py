@@ -104,7 +104,9 @@ def _residuals_with_a_point_on_the_boundary():
 
     # ARRANGE: A TIGHT CLUSTER AND ONE POINT PLACED EXACTLY ON THE CUT
     base = np.array([0.10, 0.11, 0.09, 0.12, 0.08, 0.10, 0.11, 0.09], dtype=float)
-    _, _, upper = sigma_clip(base, sigma_lower=3000, sigma_upper=2, maxiters=1, cenfunc="mean", stdfunc="std", return_bounds=True)
+    _, _, upper = sigma_clip(
+        base, sigma_lower=3000, sigma_upper=2, maxiters=1, cenfunc="mean", stdfunc="std", return_bounds=True
+    )
     return base, float(upper)
 
 
