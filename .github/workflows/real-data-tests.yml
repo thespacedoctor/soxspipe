@@ -68,7 +68,10 @@ jobs:
       - name: Run real-data acceptance tests
         env:
           SOXSPIPE_REAL_DATA_DIR: ${{ env.WORKSPACE }}
-        run: python -m pytest tests/real_data
+        # -s LETS THE TEST'S OWN BASELINE REPORT REACH THE LOG. PYTEST OTHERWISE
+        # SWALLOWS THE STDOUT OF A PASSING TEST, WHICH IS EXACTLY THE CASE WHOSE
+        # NUMBERS ARE NEEDED WHEN RE-RECORDING THE BANDS
+        run: python -m pytest tests/real_data -s
 
       - name: Upload the reduction log
         # ALWAYS, BECAUSE A FAILED REDUCTION IS THE RUN WHOSE LOG IS WORTH MOST
