@@ -620,7 +620,7 @@ class horne_extraction(base_util):
                 mask = extractedOrdersDF["order"] < 100
             else:
                 mask = extractedOrdersDF["order"] == o
-            orderDF = extractedOrdersDF.loc[mask].sort_values(calibrationCol).copy(kind="stable")
+            orderDF = extractedOrdersDF.loc[mask].sort_values(calibrationCol, kind="stable").copy()
             if orderDF.empty:
                 continue
 
