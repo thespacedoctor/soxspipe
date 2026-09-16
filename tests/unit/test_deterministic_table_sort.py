@@ -62,9 +62,8 @@ def test_sorting_on_the_full_key_pins_the_row_order_whatever_the_incoming_order(
 def test_the_dispersion_map_sorts_its_line_table_on_a_total_key():
     """The wavelength sort in create_dispersion_map names a key that is unique per row."""
     # ARRANGE
-    from pathlib import Path
-
     import inspect
+    from pathlib import Path
 
     from soxspipe.commonutils.create_dispersion_map import create_dispersion_map
 

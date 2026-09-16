@@ -32,6 +32,13 @@ Module Structure
 import os
 import sys
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # TYPING-ONLY IMPORT. NUMPY IS IMPORTED INSIDE THE FUNCTIONS THAT USE IT AT
+    # RUNTIME, SO THIS BLOCK COSTS NOTHING AT IMPORT TIME
+    import numpy as np
+    import numpy.typing as npt
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
@@ -58,7 +65,7 @@ os.environ["TERM"] = "vt100"
 RESIDUAL_QUANTISATION_DECIMALS = 9
 
 
-def quantise_residuals(residuals):
+def quantise_residuals(residuals: "npt.ArrayLike") -> "np.ndarray":
     """*round residuals to a fixed precision so the clip decision cannot flip on float noise*
 
     **Key Arguments:**
