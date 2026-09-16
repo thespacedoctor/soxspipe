@@ -47,6 +47,22 @@ jobs:
             --cache-root "$CACHE_ROOT" \
             --workspace "$WORKSPACE"
 
+      - name: Probe the runner hardware
+        run: |
+          echo "PROBE cpu_model=$(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | xargs)"
+          echo "PROBE cpu_flags_avx512=$(grep -m1 -o 'avx512f' /proc/cpuinfo || echo none)"
+          echo "PROBE nproc=$(nproc)"
+          python - <<'PROBE'
+          import numpy as np
+          print("PROBE numpy", np.__version__, flush=True)
+          try:
+              from numpy.core._multiarray_umath import __cpu_features__
+              enabled = sorted(k for k, v in __cpu_features__.items() if v)
+              print("PROBE simd", ",".join(enabled), flush=True)
+          except Exception as error:
+              print("PROBE simd unavailable", error, flush=True)
+          PROBE
+
       - name: Prepare representative NIR offset reduction
         run: |
           # EVERY COMMAND HERE IS PIPED INTO tee, SO WITHOUT THIS A FAILING PIPELINE
@@ -64,6 +80,10 @@ jobs:
           # THE REDUCTION PRINTS PER-RECIPE RUN TIMES, SO ITS OUTPUT IS KEPT AS AN
           # ARTIFACT FOR A COARSE PERFORMANCE TREND THE RUN LOG WOULD OTHERWISE LOSE
           python -m soxspipe.cl_utils -q reduce sof "$SOF_NAME" 2>&1 | tee -a "$REDUCTION_LOG"
+
+      - name: Probe product digests
+        if: always()
+        run: python tools/probe_product_digests.py "$WORKSPACE"
 
       - name: Run real-data acceptance tests
         env:
