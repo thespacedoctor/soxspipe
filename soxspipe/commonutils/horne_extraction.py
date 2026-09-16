@@ -620,7 +620,7 @@ class horne_extraction(base_util):
                 mask = extractedOrdersDF["order"] < 100
             else:
                 mask = extractedOrdersDF["order"] == o
-            orderDF = extractedOrdersDF.loc[mask].sort_values(calibrationCol).copy()
+            orderDF = extractedOrdersDF.loc[mask].sort_values(calibrationCol).copy(kind="stable")
             if orderDF.empty:
                 continue
 
@@ -987,7 +987,7 @@ class horne_extraction(base_util):
             extractedOrdersDF = extractedOrdersDF.loc[~mask]
 
         # SORT BY COLUMN NAME
-        extractedOrdersDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True)
+        extractedOrdersDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True, kind="stable")
 
         # DEFINE THE WAVELENGTH ARRAY
         # ENSURE THE COLUMN IS NOT EMPTY AND CONTAINS VALID NUMERIC VALUES
@@ -1470,7 +1470,7 @@ def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
     )
 
     # SORT BY COLUMN NAME
-    crossDispersionSlicesDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True)
+    crossDispersionSlicesDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True, kind="stable")
 
     # REMOVE 0 WAVELENGTH
     crossDispersionSlicesDF = crossDispersionSlicesDF.loc[crossDispersionSlicesDF["wavelengthMean"] > 0]

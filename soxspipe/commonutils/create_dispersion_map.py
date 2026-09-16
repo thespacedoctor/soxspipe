@@ -660,8 +660,15 @@ class create_dispersion_map:
 
         boost = True
         while boost:
-            # SORT BY COLUMN NAME
-            orderPixelTable.sort_values(["wavelength"], inplace=True)
+            # SORT BY COLUMN NAME. WAVELENGTH REPEATS ACROSS ORDERS AND SLIT POSITIONS,
+            # SO IT IS NOT A TOTAL KEY ON ITS OWN: PANDAS DEFAULTS TO AN UNSTABLE
+            # QUICKSORT AND NUMPY DISPATCHES FLOAT SORTS TO SIMD KERNELS WHOSE
+            # PERMUTATION OF TIED ROWS DEPENDS ON THE CPU, SO SORTING ON WAVELENGTH
+            # ALONE PUT THE SAME ROWS IN DIFFERENT ORDERS ON DIFFERENT MACHINES. THAT
+            # CHANGED SUMMATION ORDER IN THE POLYNOMIAL FITS AND FLIPPED LINES ACROSS
+            # THE SIGMA-CLIPPING THRESHOLD, MOVING THE MERGED SPECTRUM'S RED END
+            sortKey = [c for c in ("wavelength", "order", "slit_index") if c in orderPixelTable.columns]
+            orderPixelTable.sort_values(sortKey, kind="stable", inplace=True)
 
             # BOOST WILL BE SET TO TRUE LATER IF FOUND TO BE TRUE IN THE SETTINGS FILE
             boost = False
@@ -1358,9 +1365,9 @@ class create_dispersion_map:
             goodAndClippedLines = goodLinesTable[keepColumns]
 
         # SORT BOTH DATAFRAMES
-        goodAndClippedLines.sort_values(["order", "wavelength", "slit_index"], inplace=True)
+        goodAndClippedLines.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
         goodLinesTable = goodLinesTable[keepColumns]
-        goodLinesTable.sort_values(["order", "wavelength", "slit_index"], inplace=True)
+        goodLinesTable.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
 
         return goodAndClippedLines, goodLinesTable
 
@@ -1410,7 +1417,7 @@ class create_dispersion_map:
         ]
 
         # SORT AND EXTRACT RELEVANT COLUMNS
-        missingLines.sort_values(["order", "wavelength", "slit_index"], inplace=True)
+        missingLines.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
         t = Table.from_pandas(missingLines[keepColumns])
         filePath = f"{self.qcDir}/{missingLinesFN}"
 
@@ -2976,7 +2983,7 @@ class create_dispersion_map:
             left_on=["pixel_x", "pixel_y"],
             right_on=["pixel_x", "pixel_y"],
         )
-        orderPixelTable = orderPixelTable.sort_values(["order", "pixel_x", "pixel_y", "residual_xy"])
+        orderPixelTable = orderPixelTable.sort_values(["order", "pixel_x", "pixel_y", "residual_xy"], kind="stable")
 
         # FILTER TO WL/SLIT POSITION CLOSE ENOUGH TO CENTRE OF PIXEL
         mask = orderPixelTable["residual_xy"] < self.map_to_image_displacement_threshold
@@ -4262,7 +4269,7 @@ class create_dispersion_map:
         # lineAtlas = lineAtlas.loc[mask]
 
         # ORDER BY MOST INTENSE LINES
-        lineAtlas.sort_values(["amplitude"], ascending=[False], inplace=True)
+        lineAtlas.sort_values(["amplitude"], ascending=[False], inplace=True, kind="stable")
         lineAtlas = lineAtlas.head(500)
 
         # try:

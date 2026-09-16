@@ -1483,7 +1483,7 @@ class base_recipe:
         self.qc["obs_date_utc"] = self.dateObs
 
         # SORT BY COLUMN NAME
-        self.qc.sort_values(["qc_name"], inplace=True)
+        self.qc.sort_values(["qc_name"], inplace=True, kind="stable")
         columns = list(self.qc.columns)
         columns.remove("to_header")
         columns.remove("obs_date_utc")
@@ -1500,7 +1500,7 @@ class base_recipe:
         dbColumns.remove("to_header")
 
         # SORT BY COLUMN NAME
-        self.products.sort_values(["label"], ascending=[True], inplace=True)
+        self.products.sort_values(["label"], ascending=[True], inplace=True, kind="stable")
 
         self.products.drop_duplicates(inplace=True)
 

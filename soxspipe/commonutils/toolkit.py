@@ -1083,13 +1083,13 @@ def twoD_disp_map_image_to_dataframe(
 
     # SORT BY COLUMN NAME
     if not mapDF.empty:
-        mapDF.sort_values(["wavelength"], inplace=True)
+        mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
 
         # CALCULATE PIXEL SCALE
         if dispAxis == "y":
-            mapDF.sort_values(["x", "y"], inplace=True)
+            mapDF.sort_values(["x", "y"], inplace=True, kind="stable")
         else:
-            mapDF.sort_values(["y", "x"], inplace=True)
+            mapDF.sort_values(["y", "x"], inplace=True, kind="stable")
         shiftedWlArray = list(mapDF["wavelength"].values)[1:]
         shiftedWlArray.append(np.nan)
         mapDF["pixelScale"] = mapDF["wavelength"] - shiftedWlArray
@@ -1098,7 +1098,7 @@ def twoD_disp_map_image_to_dataframe(
         mapDF["pixelScale"] = mapDF["pixelScale"].abs()
 
         # SORT BY COLUMN NAME
-        mapDF.sort_values(["wavelength"], inplace=True)
+        mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
 
     log.debug("completed the ``twoD_disp_map_image_to_dataframe`` function")
     return mapDF, interOrderMask
