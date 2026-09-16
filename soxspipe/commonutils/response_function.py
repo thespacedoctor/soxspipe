@@ -179,7 +179,7 @@ class response_function:
         self.stdExtractionDF = self.stdExtractionDF.to_pandas()
 
         # SORT BY COLUMN NAME
-        self.stdExtractionDF.sort_values(["WAVE"], inplace=True)
+        self.stdExtractionDF.sort_values(["WAVE"], inplace=True, kind="stable")
 
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 

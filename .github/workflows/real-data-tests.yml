@@ -16,6 +16,25 @@ jobs:
       CACHE_ROOT: ${{ github.workspace }}/.real-data-cache
       WORKSPACE: ${{ github.workspace }}/.real-data-workspace
       SOF_NAME: 20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof
+      REDUCTION_LOG: ${{ github.workspace }}/reduction-log/reduction.log
+      # GITHUB HANDS OUT RUNNERS ON DIFFERENT CPUs. numpy PICKS ITS SIMD KERNELS FROM
+      # WHAT THE CPU OFFERS, SO AN AVX512 RUNNER REDUCES THE SAME RAW FRAMES DOWN A
+      # DIFFERENT FLOAT PATH AND THE PRODUCTS DIVERGE FROM THE AVX2 RUNNERS. PINNING
+      # EVERY RUNNER TO THE AVX2 PATH MAKES THE REDUCTION BIT-IDENTICAL ACROSS HARDWARE.
+      # THIS IS A DENYLIST: A CPU WITH AN INSTRUCTION SET NOT NAMED HERE WILL DIVERGE
+      # AGAIN, SO ADD NEW SETS (AVX10, APX) WHEN RUNNER HARDWARE MOVES ON.
+      NPY_DISABLE_CPU_FEATURES: >-
+        AVX512F AVX512CD AVX512BW AVX512DQ AVX512VL
+        AVX512FP16 AVX512IFMA AVX512BITALG AVX512VBMI
+        AVX512VBMI2 AVX512VNNI AVX512VPOPCNTDQ
+      # numpy's OWN SIMD PIN DOES NOT REACH OpenBLAS, WHICH SELECTS ITS KERNELS FROM THE
+      # MICROARCHITECTURE. np.polyfit IN response_function GOES THROUGH np.linalg.lstsq INTO
+      # LAPACK, SO A Zen3 AND A Zen4 RUNNER FIT DIFFERENT RESPONSE COEFFICIENTS WITHOUT THIS.
+      # THE THREAD PIN MATTERS TOO: A THREADED REDUCTION SUMS IN WHATEVER ORDER THE THREADS
+      # FINISH IN. THE ONLY BLAS CALL IN THE HOT PATH IS A SMALL FIT, SO THE COST IS NOISE.
+      OPENBLAS_CORETYPE: Haswell
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -48,14 +67,36 @@ jobs:
 
       - name: Prepare representative NIR offset reduction
         run: |
+          # EVERY COMMAND HERE IS PIPED INTO tee, SO WITHOUT THIS A FAILING PIPELINE
+          # WOULD REPORT tee'S EXIT STATUS AND THE STEP WOULD PASS
+          set -o pipefail
+          mkdir -p "$(dirname "$REDUCTION_LOG")"
           cd "$WORKSPACE"
           python -m soxspipe.cl_utils prep .
-          python -m soxspipe.cl_utils list sof
-          test -f "$SOF_NAME"
+          # `reduce sof` AND `raw sof` TAKE A SOF NAME THAT THE DATA ORGANISER RESOLVES
+          # AGAINST soxspipe.db, NOT A PATH IN THE WORKING DIRECTORY, SO THE DATASET IS
+          # CHECKED BY LOOKING FOR THE NAME IN THE LISTING RATHER THAN ON DISK
+          python -m soxspipe.cl_utils list sof | tee "$RUNNER_TEMP/sof-listing.txt"
+          grep -qF "$SOF_NAME" "$RUNNER_TEMP/sof-listing.txt"
           python -m soxspipe.cl_utils raw sof "$SOF_NAME"
-          python -m soxspipe.cl_utils -q reduce sof "$SOF_NAME"
+          # THE REDUCTION PRINTS PER-RECIPE RUN TIMES, SO ITS OUTPUT IS KEPT AS AN
+          # ARTIFACT FOR A COARSE PERFORMANCE TREND THE RUN LOG WOULD OTHERWISE LOSE
+          python -m soxspipe.cl_utils -q reduce sof "$SOF_NAME" 2>&1 | tee -a "$REDUCTION_LOG"
 
       - name: Run real-data acceptance tests
         env:
           SOXSPIPE_REAL_DATA_DIR: ${{ env.WORKSPACE }}
-        run: python -m pytest tests/real_data
+        # -s LETS THE TEST'S OWN BASELINE REPORT REACH THE LOG. PYTEST OTHERWISE
+        # SWALLOWS THE STDOUT OF A PASSING TEST, WHICH IS EXACTLY THE CASE WHOSE
+        # NUMBERS ARE NEEDED WHEN RE-RECORDING THE BANDS
+        run: python -m pytest tests/real_data -s
+
+      - name: Upload the reduction log
+        # ALWAYS, BECAUSE A FAILED REDUCTION IS THE RUN WHOSE LOG IS WORTH MOST
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: reduction-log
+          path: ${{ github.workspace }}/reduction-log/
+          if-no-files-found: warn
+          retention-days: 90

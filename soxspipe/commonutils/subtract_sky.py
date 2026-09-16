@@ -1224,7 +1224,7 @@ class subtract_sky:
         residual_floor_percentile = self.recipeSettings["sky-subtraction"]["residual_floor_percentile"]
 
         # SORT BY COLUMN NAME
-        imageMapOrder.sort_values(by=["wavelength"], inplace=True)
+        imageMapOrder.sort_values(by=["wavelength"], inplace=True, kind="stable")
         order = imageMapOrder["order"].values[0]
 
         # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
@@ -2233,7 +2233,7 @@ class subtract_sky:
         thisOrder = orderDF.loc[mask]
 
         # SORT BY COLUMN NAME
-        thisOrder.sort_values(["slit_position"], inplace=True)
+        thisOrder.sort_values(["slit_position"], inplace=True, kind="stable")
 
         # GROUP INTO DISCRETE WAVELENGTH BINS
         # DEFINE THE BINS FOR COLUMN 'wavelength'
@@ -2397,7 +2397,7 @@ class subtract_sky:
 
         # orderDF['wavelength'] = orderDF["wavelength"] - orderDF["slit_position"] * orderDF["pixelScale"] * bestShift
 
-        orderDF.sort_values(by=["wavelength"], inplace=True)
+        orderDF.sort_values(by=["wavelength"], inplace=True, kind="stable")
 
         self.log.debug("completed the ``adjust_tilt`` method")
         return orderDF
