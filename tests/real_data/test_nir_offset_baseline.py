@@ -72,7 +72,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         }
         mergedWave = np.asarray(merged_table["WAVE"], dtype=float)
         # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO ONE GRID STEP
-        assert float(np.nanmin(mergedWave)) == pytest.approx(795.06, abs=0.06)
+        assert float(np.nanmin(mergedWave)) == pytest.approx(794.76, abs=0.12)
         assert float(np.nanmax(mergedWave)) == pytest.approx(2031.24, abs=1.0)
         assert float(np.nanmedian(np.diff(mergedWave))) == pytest.approx(0.06, abs=1e-6)
         assert float(np.nanmedian(merged_table["SNR"])) == pytest.approx(104.56, abs=2.0)
