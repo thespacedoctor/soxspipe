@@ -247,9 +247,8 @@ class soxs_mbias(base_recipe):
 
         # LIST OF CCDDATA OBJECTS
         # OPTIMISE: 9%
-        ccds = [
-            c
-            for c in self.inputFrames.ccds(
+        ccds = list(
+            self.inputFrames.ccds(
                 ccd_kwargs={
                     "hdu_uncertainty": "ERRS",
                     "hdu_mask": "QUAL",
@@ -257,10 +256,13 @@ class soxs_mbias(base_recipe):
                     "key_uncertainty_type": "UTYPE",
                 }
             )
-        ]
+        )
 
         # OPTIMISE: 33%
-        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
+        # `strict=False` IS THE CURRENT BEHAVIOUR MADE EXPLICIT, NOT A CHANGE
+        meanBiasLevels, rons, noiseFrames = zip(
+            *[self.subtract_mean_flux_level(c) for c in ccds], strict=False
+        )
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
