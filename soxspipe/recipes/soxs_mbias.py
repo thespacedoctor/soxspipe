@@ -151,55 +151,18 @@ class soxs_mbias(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        import numpy as np
-
         from soxspipe.commonutils import toolkit
 
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
 
-        # LIST OF CCDDATA OBJECTS
-        # OPTIMISE: 9%
-        ccds = [
-            c
-            for c in self.inputFrames.ccds(
-                ccd_kwargs={
-                    "hdu_uncertainty": "ERRS",
-                    "hdu_mask": "QUAL",
-                    "hdu_flags": "FLAGS",
-                    "key_uncertainty_type": "UTYPE",
-                }
-            )
-        ]
-
-        # OPTIMISE: 33%
-        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
-        masterMeanBiasLevel = np.mean(meanBiasLevels)
-        masterMedianBiasLevel = np.median(meanBiasLevels)
-        rawRon = np.mean(rons)
-
-        # OPTIMISE: 19%
-        combined_noise = self.clip_and_stack(
-            frames=list(noiseFrames),
-            recipe="soxs_mbias",
-            ignore_input_masks=False,
-            post_stack_clipping=True,
-        )
-
-        masterRon = np.std(combined_noise.data)
-
-        # USE COMBINED NOISE MASK AS MBIAS MASK
-        combined_noise.data = (
-            np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
-        )
-        combined_noise.uncertainty = np.ma.array(
-            combined_noise.uncertainty.array,
-            mask=combined_noise.mask,
-            fill_value=rawRon,
-        ).filled()
-        combined_bias_mean = combined_noise
-        combined_bias_mean.mask = combined_noise.mask
+        (
+            combined_bias_mean,
+            masterMedianBiasLevel,
+            rawRon,
+            masterRon,
+        ) = self._combine_bias_frames()
 
         # OPTIMISE: 24%
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
@@ -261,6 +224,71 @@ class soxs_mbias(base_recipe):
 
         self.log.debug("completed the ``produce_product`` method")
         return productPath, qcTable
+
+    def _combine_bias_frames(self):
+        """*stack the raw bias frames into the master-bias frame*
+
+        **Return:**
+
+        - ``combined_bias_mean`` -- the stacked master-bias frame
+        - ``masterMedianBiasLevel`` -- the median of the per-frame mean bias levels
+        - ``rawRon`` -- the mean of the per-frame read-out noise values
+        - ``masterRon`` -- the standard deviation of the stacked noise frame
+
+        **Usage:**
+
+        ```python
+        combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon = self._combine_bias_frames()
+        ```
+        """
+        self.log.debug("starting the ``_combine_bias_frames`` method")
+
+        import numpy as np
+
+        # LIST OF CCDDATA OBJECTS
+        # OPTIMISE: 9%
+        ccds = [
+            c
+            for c in self.inputFrames.ccds(
+                ccd_kwargs={
+                    "hdu_uncertainty": "ERRS",
+                    "hdu_mask": "QUAL",
+                    "hdu_flags": "FLAGS",
+                    "key_uncertainty_type": "UTYPE",
+                }
+            )
+        ]
+
+        # OPTIMISE: 33%
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
+        masterMeanBiasLevel = np.mean(meanBiasLevels)
+        masterMedianBiasLevel = np.median(meanBiasLevels)
+        rawRon = np.mean(rons)
+
+        # OPTIMISE: 19%
+        combined_noise = self.clip_and_stack(
+            frames=list(noiseFrames),
+            recipe="soxs_mbias",
+            ignore_input_masks=False,
+            post_stack_clipping=True,
+        )
+
+        masterRon = np.std(combined_noise.data)
+
+        # USE COMBINED NOISE MASK AS MBIAS MASK
+        combined_noise.data = (
+            np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
+        )
+        combined_noise.uncertainty = np.ma.array(
+            combined_noise.uncertainty.array,
+            mask=combined_noise.mask,
+            fill_value=rawRon,
+        ).filled()
+        combined_bias_mean = combined_noise
+        combined_bias_mean.mask = combined_noise.mask
+
+        self.log.debug("completed the ``_combine_bias_frames`` method")
+        return combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon
 
     def qc_bias_structure(self, combined_bias_mean):
         """*calculate the structure of the bias*
@@ -335,6 +363,66 @@ class soxs_mbias(base_recipe):
         self.log.debug("completed the ``qc_bias_structure`` method")
         return coeff_ax1[0], coeff_ax2[0]
 
+    def _periodic_noise_ratio(self, frame):
+        """*return the periodic-pattern-noise ratio of a single raw bias frame*
+
+        **Key Arguments:**
+
+        - ``frame`` -- a single raw bias frame (CCDData)
+
+        **Return:**
+
+        - ``ratio`` -- the standard deviation of the sigma-clipped 2D FFT divided by its median absolute deviation
+
+        **Usage:**
+
+        ```python
+        ratio = self._periodic_noise_ratio(frame)
+        ```
+        """
+        import numpy as np
+        from astropy.stats import sigma_clip
+        from ccdproc import block_reduce
+        from scipy.stats import median_abs_deviation
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+
+        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+        maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
+        # BIN THE FRAME TO INCREASE SPEED
+        maskedDataArray = block_reduce(maskedDataArray, 5, np.mean)
+        dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
+
+        # SIGMA-CLIP THE DATA
+        masked_dark_image_grey_fourier = sigma_clip(
+            dark_image_grey_fourier,
+            sigma_lower=100,
+            sigma_upper=100,
+            maxiters=1,
+            cenfunc="mean",
+        )
+        goodData = np.ma.compressed(masked_dark_image_grey_fourier)
+
+        frame_mad = median_abs_deviation(goodData, axis=None)
+        frame_std = np.std(goodData)
+
+        quicklook_image(
+            log=self.log,
+            CCDObject=abs(masked_dark_image_grey_fourier),
+            show=False,
+            ext=None,
+            stdWindow=0.1,
+        )
+        quicklook_image(
+            log=self.log,
+            CCDObject=abs(dark_image_grey_fourier),
+            show=False,
+            ext=None,
+            stdWindow=0.1,
+        )
+
+        return frame_std / frame_mad
+
     def qc_periodic_pattern_noise(self, frames):
         """*calculate the periodic pattern noise based on the raw input bias frames*
 
@@ -356,11 +444,6 @@ class soxs_mbias(base_recipe):
         """
         self.log.debug("starting the ``qc_periodic_pattern_noise`` method")
 
-        import numpy as np
-        from astropy.stats import sigma_clip
-        from ccdproc import block_reduce
-        from scipy.stats import median_abs_deviation
-
         # LIST OF CCDDATA OBJECTS
         ccds = [
             c
@@ -374,49 +457,7 @@ class soxs_mbias(base_recipe):
             )
         ]
 
-        ratios = []
-        for frame in ccds:
-            # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
-            maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
-            # BIN THE FRAME TO INCREASE SPEED
-            maskedDataArray = block_reduce(maskedDataArray, 5, np.mean)
-            dark_image_grey_fourier = np.fft.fftshift(np.fft.fft2(maskedDataArray.filled(np.median(frame.data))))
-
-            # SIGMA-CLIP THE DATA
-            masked_dark_image_grey_fourier = sigma_clip(
-                dark_image_grey_fourier,
-                sigma_lower=100,
-                sigma_upper=100,
-                maxiters=1,
-                cenfunc="mean",
-            )
-            goodData = np.ma.compressed(masked_dark_image_grey_fourier)
-
-            # frame_mad = median_abs_deviation(dark_image_grey_fourier, axis=None)
-            # frame_std = np.std(dark_image_grey_fourier)
-            # self.log.print(frame_std, frame_mad, frame_std / frame_mad)
-
-            frame_mad = median_abs_deviation(goodData, axis=None)
-            frame_std = np.std(goodData)
-
-            from soxspipe.commonutils.toolkit import quicklook_image
-
-            quicklook_image(
-                log=self.log,
-                CCDObject=abs(masked_dark_image_grey_fourier),
-                show=False,
-                ext=None,
-                stdWindow=0.1,
-            )
-            quicklook_image(
-                log=self.log,
-                CCDObject=abs(dark_image_grey_fourier),
-                show=False,
-                ext=None,
-                stdWindow=0.1,
-            )
-
-            ratios.append(frame_std / frame_mad)
+        ratios = [self._periodic_noise_ratio(frame) for frame in ccds]
 
         utcnow = utcnow_string()
 
