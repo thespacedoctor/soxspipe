@@ -207,13 +207,19 @@ def test_utility_setup_creates_recipe_directories_under_workspace(
     assert Path(productDir).is_dir()
 
 
+@pytest.mark.parametrize("failingSegment", ["/qc/", "/reduced/"])
 def test_utility_setup_propagates_directory_creation_failures(
-    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, failingSegment: str
 ) -> None:
+    """Both directory-creation sites propagate; neither swallows."""
     workspace = tmp_path / "workspace"
+    realMakedirs = toolkit.os.makedirs
 
     def refuse(path, *args, **kwargs):
-        raise PermissionError(13, "Permission denied", str(path))
+        # REFUSE ONLY THE DIRECTORY UNDER TEST, SO EACH SITE IS PINNED SEPARATELY
+        if failingSegment in str(path):
+            raise PermissionError(13, "Permission denied", str(path))
+        return realMakedirs(path, *args, **kwargs)
 
     monkeypatch.setattr(toolkit.os, "makedirs", refuse)
 
