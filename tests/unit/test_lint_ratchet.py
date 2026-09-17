@@ -513,3 +513,50 @@ def test_a_hard_rule_finding_on_a_changed_line_is_not_reported_twice(monkeypatch
     assert status == lint_ratchet.EXIT_FINDINGS
     assert output.count("soxspipe/x.py:2: E722") == 1
     assert "No findings on changed lines." in output
+
+
+def test_ruff_is_run_through_the_interpreter_when_it_is_installed_beside_it(monkeypatch):
+    # ARRANGE
+    monkeypatch.setattr(lint_ratchet.importlib.util, "find_spec", lambda name: object())
+
+    # ACT
+    command = lint_ratchet.ruff_command()
+
+    # ASSERT
+    assert command == [lint_ratchet.sys.executable, "-m", "ruff"]
+
+
+def test_ruff_falls_back_to_the_path_when_it_is_not_installed_beside_the_interpreter(monkeypatch):
+    # ARRANGE
+    monkeypatch.setattr(lint_ratchet.importlib.util, "find_spec", lambda name: None)
+
+    # ACT
+    command = lint_ratchet.ruff_command()
+
+    # ASSERT
+    assert command == ["ruff"]
+
+
+def test_the_ruff_runners_do_not_depend_on_the_path(monkeypatch):
+    # ARRANGE
+    # A FRESH MODULE, SO THE AUTOUSE STUB OF run_ruff_selected DOES NOT HIDE ITS COMMAND
+    ratchet = _load_lint_ratchet()
+    calls = []
+
+    def _record(command, **keywordArguments):
+        calls.append(command)
+
+        return _CompletedCommand(returncode=0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(ratchet.subprocess, "run", _record)
+    monkeypatch.setattr(ratchet, "ruff_command", lambda: ["/somewhere/python", "-m", "ruff"])
+
+    # ACT
+    ratchet.run_ruff(["soxspipe/recipes/soxs_mbias.py"], REPO_ROOT)
+    ratchet.run_ruff_selected(ratchet.HARD_RULE_CODES, ["."], REPO_ROOT)
+
+    # ASSERT
+    assert [command[:4] for command in calls] == [
+        ["/somewhere/python", "-m", "ruff", "check"],
+        ["/somewhere/python", "-m", "ruff", "check"],
+    ]
