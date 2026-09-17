@@ -1576,22 +1576,16 @@ def utility_setup(log, settings, recipeName, startNightDate):
     # QC DIR
     qcDir = settings["workspace-root-dir"].replace("~", home) + f"/qc/{startNightDate}/{recipeName}/"
     qcDir = qcDir.replace("//", "/")
-    # RECURSIVELY CREATE MISSING DIRECTORIES
-    if not os.path.exists(qcDir):
-        try:
-            os.makedirs(qcDir)
-        except OSError as e:
-            log.warning(f"utility_setup: `os.makedirs(qcDir)` failed, continuing: {e}")
+    # RECURSIVELY CREATE MISSING DIRECTORIES. A CONCURRENT RUN MAY WIN THE RACE,
+    # SO exist_ok ABSORBS THAT; ANY OTHER FAILURE PROPAGATES.
+    os.makedirs(qcDir, exist_ok=True)
 
     # PRODUCT DIR
     productDir = settings["workspace-root-dir"].replace("~", home) + f"/reduced/{startNightDate}/{recipeName}/"
     productDir = productDir.replace("//", "/")
-    # RECURSIVELY CREATE MISSING DIRECTORIES
-    if not os.path.exists(productDir):
-        try:
-            os.makedirs(productDir)
-        except OSError as e:
-            log.warning(f"utility_setup: `os.makedirs(productDir)` failed, continuing: {e}")
+    # RECURSIVELY CREATE MISSING DIRECTORIES. A CONCURRENT RUN MAY WIN THE RACE,
+    # SO exist_ok ABSORBS THAT; ANY OTHER FAILURE PROPAGATES.
+    os.makedirs(productDir, exist_ok=True)
 
     log.debug("completed the ``utility_setup`` function")
     return qcDir, productDir

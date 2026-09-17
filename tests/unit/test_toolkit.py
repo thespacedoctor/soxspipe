@@ -207,6 +207,25 @@ def test_utility_setup_creates_recipe_directories_under_workspace(
     assert Path(productDir).is_dir()
 
 
+def test_utility_setup_propagates_directory_creation_failures(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+
+    def refuse(path, *args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(toolkit.os, "makedirs", refuse)
+
+    with pytest.raises(PermissionError):
+        toolkit.utility_setup(
+            log,
+            {"workspace-root-dir": str(workspace)},
+            "soxs-stare-obj",
+            "2024-01-01",
+        )
+
+
 def test_calculate_rolling_snr_places_finite_values_at_window_centers() -> None:
     source = pd.DataFrame({"flux": [10.0, 11.0, 9.0, 10.0, 10.0, 12.0, 8.0]})
 
