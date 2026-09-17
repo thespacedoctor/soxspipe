@@ -13,9 +13,8 @@ Date Created
 
 import os
 import sys
-from datetime import datetime
 
-from soxspipe.commonutils.toolkit import generic_quality_checks
+from soxspipe.commonutils.toolkit import generic_quality_checks, utcnow_string
 
 from .base_recipe import base_recipe
 
@@ -153,7 +152,6 @@ class soxs_mbias(base_recipe):
         self.log.debug("starting the ``produce_product`` method")
 
         import numpy as np
-        import pandas as pd
 
         from soxspipe.commonutils import toolkit
 
@@ -244,28 +242,18 @@ class soxs_mbias(base_recipe):
         )
         filename = os.path.basename(productPath)
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = utcnow_string()
 
         self.dateObs = combined_bias_mean.header[self.kw("DATE_OBS")]
 
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "MBIAS",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": f"{self.arm} Master bias frame",
-                        "file_path": productPath,
-                        "label": "PROD",
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.add_product(
+            productLabel="MBIAS",
+            fileName=filename,
+            filePath=productPath,
+            productDesc=f"{self.arm} Master bias frame",
+            reductionDateUtc=utcnow,
+            fileType="FITS",
+            label="PROD",
         )
 
         qcTable = self.report_output()
@@ -295,7 +283,6 @@ class soxs_mbias(base_recipe):
         self.log.debug("starting the ``qc_bias_structure`` method")
 
         import numpy as np
-        import pandas as pd
 
         plot = False
 
@@ -324,44 +311,25 @@ class soxs_mbias(base_recipe):
             plt.ylabel("Summed Pixel Values")
             plt.show()
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        # ONE TIMESTAMP DELIBERATELY SHARED ACROSS BOTH QC ROWS BELOW
+        utcnow = utcnow_string()
 
-        self.qc = pd.concat(
-            [
-                self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "STRUCTX",
-                        "qc_value": coeff_ax1[0],
-                        "qc_comment": "Slope of BIAS in X direction",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.add_qc(
+            qcName="STRUCTX",
+            qcValue=coeff_ax1[0],
+            qcComment="Slope of BIAS in X direction",
+            reductionDateUtc=utcnow,
+            qcUnit=None,
+            toHeader=True,
         )
 
-        self.qc = pd.concat(
-            [
-                self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "STRUCTY",
-                        "qc_value": coeff_ax2[0],
-                        "qc_comment": "Slope of BIAS in Y direction",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.add_qc(
+            qcName="STRUCTY",
+            qcValue=coeff_ax2[0],
+            qcComment="Slope of BIAS in Y direction",
+            reductionDateUtc=utcnow,
+            qcUnit=None,
+            toHeader=True,
         )
 
         self.log.debug("completed the ``qc_bias_structure`` method")
@@ -389,7 +357,6 @@ class soxs_mbias(base_recipe):
         self.log.debug("starting the ``qc_periodic_pattern_noise`` method")
 
         import numpy as np
-        import pandas as pd
         from astropy.stats import sigma_clip
         from ccdproc import block_reduce
         from scipy.stats import median_abs_deviation
@@ -451,27 +418,17 @@ class soxs_mbias(base_recipe):
 
             ratios.append(frame_std / frame_mad)
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = utcnow_string()
 
         ppnmax = max(ratios)
 
-        self.qc = pd.concat(
-            [
-                self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "FPN FRACMAX",
-                        "qc_value": ppnmax,
-                        "qc_comment": "Max periodic pattern noise ratio in raw bias frames",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.add_qc(
+            qcName="FPN FRACMAX",
+            qcValue=ppnmax,
+            qcComment="Max periodic pattern noise ratio in raw bias frames",
+            reductionDateUtc=utcnow,
+            qcUnit=None,
+            toHeader=True,
         )
 
         self.log.debug("completed the ``qc_periodic_pattern_noise`` method")
