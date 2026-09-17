@@ -78,6 +78,31 @@ def test_fit_bspline_curve_models_constant_sky_for_both_weighting_paths(
     np.testing.assert_allclose(fluxErrorRatio, 1.0)
 
 
+def test_fit_bspline_curve_propagates_knot_quantile_failures(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed knot-quantile computation surfaces instead of being retried."""
+    subtractor = _subtractor(log, arm="VIS")
+    skyPixels = _constant_sky_pixels()
+    realLinspace = np.linspace
+    calls = {"count": 0}
+
+    def fail_first(*args: Any, **kwargs: Any) -> Any:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise ValueError("knot quantiles could not be computed")
+        return realLinspace(*args, **kwargs)
+
+    # THE MODULE IMPORTS numpy INSIDE THE FUNCTION, SO PATCH numpy ITSELF
+    monkeypatch.setattr(np, "linspace", fail_first)
+
+    with pytest.raises(ValueError, match="knot quantiles"):
+        subtractor.fit_bspline_curve_to_sky(skyPixels)
+
+    assert calls["count"] == 1
+
+
 def test_fit_bspline_curve_excludes_nan_flux_from_model_quality_metrics(
     log: Any,
 ) -> None:
