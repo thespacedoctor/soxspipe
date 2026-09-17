@@ -45,6 +45,7 @@ python tools/lint_ratchet.py --compare-branch origin/develop
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
@@ -209,6 +210,25 @@ def run_git_diff(compareBranch: str | None, repoRoot: Path) -> str:
     return _run(command, repoRoot)
 
 
+def ruff_command() -> list[str]:
+    """*the command that runs ruff, without depending on `PATH`*
+
+    The hermetic test suite runs pytest through `env` with an explicit variable list that
+    leaves `PATH` at its default, so the environment's `bin` directory is not on it. Running
+    ruff as a module of the running interpreter sidesteps that, and pins the run to the
+    version installed beside the interpreter rather than whichever one `PATH` happens to
+    reach first. Only when ruff is not installed there does this fall back to `PATH`.
+
+    **Return:**
+
+    - ``command`` -- the command prefix to run ruff with
+    """
+    if importlib.util.find_spec("ruff") is not None:
+        return [sys.executable, "-m", "ruff"]
+
+    return ["ruff"]
+
+
 def run_ruff(paths: list[str], repoRoot: Path) -> str:
     """*the ruff report for the given paths, as JSON*
 
@@ -225,7 +245,7 @@ def run_ruff(paths: list[str], repoRoot: Path) -> str:
         return "[]"
 
     # THE -- STOPS A PATH THAT BEGINS WITH A DASH BEING READ AS AN OPTION
-    command = ["ruff", "check", "--output-format", "json", "--force-exclude", "--", *paths]
+    command = [*ruff_command(), "check", "--output-format", "json", "--force-exclude", "--", *paths]
 
     # RUFF EXITS 1 WHEN IT FINDS SOMETHING, WHICH IS NOT AN ERROR HERE
     return _run(command, repoRoot, allowedStatuses=(0, 1))
@@ -252,7 +272,7 @@ def run_ruff_selected(codes: tuple[str, ...], paths: list[str], repoRoot: Path) 
     # --isolated DROPS THE PROJECT CONFIGURATION, SO A per-file-ignores ENTRY ADDED LATER
     # CANNOT QUIETLY REOPEN THE HOLE, AND --ignore-noqa STOPS A # noqa COMMENT DOING THE SAME.
     # A HARD RULE THAT CAN BE SWITCHED OFF IN THE FILE THAT BREAKS IT IS NOT A HARD RULE.
-    command = ["ruff", "check", "--isolated", "--ignore-noqa", "--select", ",".join(codes)]
+    command = [*ruff_command(), "check", "--isolated", "--ignore-noqa", "--select", ",".join(codes)]
     command += ["--output-format", "json", "--force-exclude"]
     # THE -- STOPS A PATH THAT BEGINS WITH A DASH BEING READ AS AN OPTION
     command += ["--", *paths]
@@ -278,13 +298,31 @@ def _run(command: list[str], repoRoot: Path, allowedStatuses: tuple[int, ...] = 
         # NO SHELL, A FIXED EXECUTABLE, AND EVERY PATH ARGUMENT PLACED AFTER A -- SEPARATOR
         completed = subprocess.run(command, cwd=repoRoot, capture_output=True, text=True, check=False)  # noqa: S603
     except OSError as error:
-        raise RatchetError(f"could not run {command[0]}: {error}") from error
+        raise RatchetError(f"could not run {_command_name(command)}: {error}") from error
 
     if completed.returncode not in allowedStatuses:
         failure = f"{' '.join(command)} failed with status {completed.returncode}"
         raise RatchetError(f"{failure}:\n{completed.stderr.strip()}")
 
     return completed.stdout
+
+
+def _command_name(command: list[str]) -> str:
+    """*the name to report a command by in an error message*
+
+    **Key Arguments:**
+
+    - ``command`` -- the command and its arguments
+
+    **Return:**
+
+    - ``name`` -- the tool's own name, not the interpreter that runs it as a module
+    """
+    # A COMMAND RUN AS python -m <tool> IS THE TOOL'S FAILURE TO REPORT, NOT THE INTERPRETER'S
+    if len(command) > 2 and command[1] == "-m":
+        return command[2]
+
+    return command[0]
 
 
 class RatchetError(RuntimeError):

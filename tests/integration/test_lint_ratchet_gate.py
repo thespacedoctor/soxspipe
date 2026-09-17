@@ -72,7 +72,8 @@ def test_the_hard_rules_reach_every_tracked_python_file():
     tracked = {(repoRoot / path).as_posix() for path in lint_ratchet._run(["git", "ls-files", "*.py"], repoRoot).split()}
 
     # ACT
-    command = ["ruff", "check", "--show-files", "--force-exclude", "--", *lint_ratchet.HARD_RULE_PATHS]
+    command = [*lint_ratchet.ruff_command(), "check", "--show-files", "--force-exclude"]
+    command += ["--", *lint_ratchet.HARD_RULE_PATHS]
     scanned = {Path(line).as_posix() for line in lint_ratchet._run(command, repoRoot, allowedStatuses=(0, 1)).splitlines()}
 
     # ASSERT
