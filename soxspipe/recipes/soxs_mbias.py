@@ -478,3 +478,4 @@ class soxs_mbias(base_recipe):
     # xt-class-method
 
 # PROBE COMMENT FOR DAVE-57: VERIFIES THE REAL-DATA PULL REQUEST TRIGGER FIRES ON soxspipe/**. DELETE WITH THIS BRANCH.
+# SECOND PROBE COMMENT: EXERCISES cancel-in-progress.
