@@ -14,23 +14,37 @@ on:
     # THE JOB-LEVEL DRAFT GUARD BELOW IS WHAT KEEPS DRAFTS OFF THE RUNNER
     types: [opened, ready_for_review, synchronize, reopened]
     # DOCUMENTATION AND TOOLING PULL REQUESTS CANNOT CHANGE A REDUCTION, SO THEY SKIP
-    # THE JOB ENTIRELY
+    # THE JOB ENTIRELY. EVERYTHING THE GATE ITSELF IS MADE OF IS LISTED TOO: THE
+    # BASELINES AND THE ARCHIVE MANIFEST, THE PINNED DEPENDENCIES THE REDUCTION RUNS
+    # AGAINST, AND THIS WORKFLOW FILE
     paths:
       - "soxspipe/**"
+      - "tests/real_data/**"
+      - "pyproject.toml"
+      - ".github/workflows/real-data-tests.yml"
 
 permissions:
   contents: read
 
-# A SUPERSEDED PUSH SHOULD NOT KEEP BURNING A RUNNER FOR UP TO 120 MINUTES
+# A SUPERSEDED PUSH SHOULD NOT KEEP BURNING A RUNNER FOR UP TO 120 MINUTES. ON A
+# PULL REQUEST `github.ref` IS `refs/pull/<number>/merge`, SO EACH PULL REQUEST GETS
+# ITS OWN GROUP. A MANUAL DISPATCH AND THE WEEKLY SCHEDULE SHARE A REF, SO THEY ARE
+# KEYED BY RUN ID INSTEAD AND CANNOT CANCEL EACH OTHER
 concurrency:
-  group: real-data-${{ github.ref }}
+  group: real-data-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   real-data-tests:
     # A DRAFT PULL REQUEST STILL EMITS `synchronize` ON EVERY PUSH, SO THE TRIGGER
-    # LIST ALONE CANNOT KEEP DRAFTS OFF THE RUNNER
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    # LIST ALONE CANNOT KEEP DRAFTS OFF THE RUNNER. A PULL REQUEST FROM A FORK IS
+    # SKIPPED TOO: THE ARCHIVE URL AND ITS HASHES COME FROM THE MANIFEST IN THE DIFF,
+    # SO A FORK COULD OTHERWISE POINT A 120-MINUTE RUNNER AT ANY ARCHIVE IT LIKED.
+    # REACH THOSE PULL REQUESTS WITH `workflow_dispatch` AFTER READING THE DIFF
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.fork == false)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -79,7 +93,7 @@ jobs:
         run: |
           archive_path="$RUNNER_TEMP/soxspipe-real-data.zip"
           archive_url="$(python -c 'import json; print(json.load(open("tests/real_data/manifest.json", encoding="utf-8"))["archive_url"])')"
-          curl --fail --location --proto '=https' --tlsv1.2 --output "$archive_path" "$archive_url"
+          curl --fail --location --proto '=https' --tlsv1.2 --max-time 1800 --output "$archive_path" "$archive_url"
           python -m tests.real_data.snapshot \
             --archive "$archive_path" \
             --manifest tests/real_data/manifest.json \
