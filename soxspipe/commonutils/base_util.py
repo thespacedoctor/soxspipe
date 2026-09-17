@@ -86,6 +86,7 @@ class base_util:
             self.binx = int(associatedFrame.header[self.kw("WIN_BINX")])
             self.biny = int(associatedFrame.header[self.kw("WIN_BINY")])
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/base_util.py', 88, __import__('sys').exc_info()[1])
             pass
 
         # GET SKYLINES DATAFRAME
@@ -133,6 +134,7 @@ class base_util:
                 dpBinx = self.twoDMap[0].header[self.kw("WIN_BINX")]
                 dpBiny = self.twoDMap[0].header[self.kw("WIN_BINY")]
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/base_util.py', 135, __import__('sys').exc_info()[1])
                 dpBinx = 1
                 dpBiny = 1
 

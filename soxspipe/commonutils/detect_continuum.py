@@ -596,6 +596,7 @@ class detect_continuum(_base_detect):
             if locationSetIndex:
                 self.noddingSequence += str(locationSetIndex)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 598, __import__('sys').exc_info()[1])
             self.noddingSequence = ""
 
         self.recipeName = recipeName
@@ -782,6 +783,7 @@ class detect_continuum(_base_detect):
         try:
             nclip = len(clippedData.index)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 784, __import__('sys').exc_info()[1])
             nclip = 0
         self.qc = pd.concat(
             [
@@ -967,6 +969,7 @@ class detect_continuum(_base_detect):
             dmBinx = header[self.kw("WIN_BINX")]
             dmBiny = header[self.kw("WIN_BINY")]
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 969, __import__('sys').exc_info()[1])
             dmBinx = 1
             dmBiny = 1
 
@@ -1063,6 +1066,7 @@ class detect_continuum(_base_detect):
                     gauss_mean[i] = g.mean.value
 
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 1065, __import__('sys').exc_info()[1])
                 continue
 
         # Assign results back to DataFrame using vectorized operations
@@ -1245,6 +1249,7 @@ class detect_continuum(_base_detect):
                     ]
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 1247, __import__('sys').exc_info()[1])
                 continue
             if flipImage and not rotateImage:
                 xfit = aLen - np.array(xfit)
@@ -1278,6 +1283,7 @@ class detect_continuum(_base_detect):
                     verticalalignment="bottom",
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 1280, __import__('sys').exc_info()[1])
                 pass
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
@@ -1329,6 +1335,7 @@ class detect_continuum(_base_detect):
                     verticalalignment="bottom",
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 1331, __import__('sys').exc_info()[1])
                 pass
 
         bottomleft.set_xlabel(f"{self.axisA} pixel position", fontsize=10)
@@ -1360,6 +1367,7 @@ class detect_continuum(_base_detect):
                     verticalalignment="bottom",
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 1362, __import__('sys').exc_info()[1])
                 pass
 
         bottomright.set_xlabel(f"{self.axisB} pixel position", fontsize=10)
@@ -1391,6 +1399,7 @@ class detect_continuum(_base_detect):
                     verticalalignment="bottom",
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 1393, __import__('sys').exc_info()[1])
                 pass
         fwhmaxis.set_xlabel("wavelength (nm)", fontsize=10)
         fwhmaxis.set_ylabel("Cross-dispersion\nFWHM (pixels)", fontsize=10)
@@ -1460,6 +1469,7 @@ class detect_continuum(_base_detect):
                 item.cla()
                 del item
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 1462, __import__('sys').exc_info()[1])
                 pass
 
         if self.settings["tune-pipeline"]:
@@ -1500,6 +1510,7 @@ class detect_continuum(_base_detect):
             binx = self.traceFrame.header[self.kw("WIN_BINX")] / dmBinx
             biny = self.traceFrame.header[self.kw("WIN_BINY")] / dmBiny
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_continuum.py', 1502, __import__('sys').exc_info()[1])
             pass
 
         # FIT_X AND FIT_Y FROM DISP-SOLUTION

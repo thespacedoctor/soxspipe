@@ -80,6 +80,7 @@ class soxs_spatial_solution(base_recipe):
             try:
                 self.polyOrders = int(self.polyOrders)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_spatial_solution.py', 82, __import__('sys').exc_info()[1])
                 pass
             if not isinstance(self.polyOrders, int):
                 raise TypeError("THE poly VALUE NEEDS TO BE A 6 DIGIT INTEGER")
@@ -409,6 +410,7 @@ class soxs_spatial_solution(base_recipe):
             try:
                 os.remove("residuals.txt")
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_spatial_solution.py', 411, __import__('sys').exc_info()[1])
                 pass
 
             # GET THE LINE DETECTION LIST BEFORE JUMPING TO PERMUTATIONS
@@ -614,6 +616,7 @@ def parameterTuning(
             lineDetectionTable,
         ) = this.get()
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_spatial_solution.py', 616, __import__('sys').exc_info()[1])
         pass
 
     return

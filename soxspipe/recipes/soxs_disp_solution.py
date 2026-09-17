@@ -84,6 +84,7 @@ class soxs_disp_solution(base_recipe):
             try:
                 self.polyOrders = int(self.polyOrders)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_disp_solution.py', 86, __import__('sys').exc_info()[1])
                 pass
             if not isinstance(self.polyOrders, int):
                 raise TypeError("THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER")
@@ -322,6 +323,7 @@ class soxs_disp_solution(base_recipe):
             try:
                 os.remove("residuals.txt")
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_disp_solution.py', 324, __import__('sys').exc_info()[1])
                 pass
 
             # GET THE LINE DETECTION LIST BEFORE JUMPING TO PERMUTATIONS
@@ -472,6 +474,7 @@ def parameterTuning(
             lineDetectionTable,
         ) = this.get()
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_disp_solution.py', 474, __import__('sys').exc_info()[1])
         pass
 
     return

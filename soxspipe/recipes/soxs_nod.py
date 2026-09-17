@@ -285,6 +285,7 @@ class soxs_nod(base_recipe):
             responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_nod.py', 287, __import__('sys').exc_info()[1])
             responseFunctionPath = False
 
         quicklook_image(

@@ -86,6 +86,7 @@ class soxs_order_centres(base_recipe):
             try:
                 self.polyOrders = int(self.polyOrders)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_order_centres.py', 88, __import__('sys').exc_info()[1])
                 pass
             if not isinstance(self.polyOrders, int):
                 raise TypeError("THE poly VALUE NEEDS TO BE A 2 DIGIT INTEGER")
@@ -335,6 +336,7 @@ class soxs_order_centres(base_recipe):
             try:
                 os.remove("residuals.txt")
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_order_centres.py', 337, __import__('sys').exc_info()[1])
                 pass
 
             # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
@@ -493,6 +495,7 @@ def parameterTuning(
             orderMetaTable,
         ) = detector.get()
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_order_centres.py', 495, __import__('sys').exc_info()[1])
         pass
 
     return

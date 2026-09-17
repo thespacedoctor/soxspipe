@@ -43,6 +43,7 @@ class ImageFileCollection(ImageFileCollection):
         try:
             h = fits.getheader(file_name, self.ext)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/set_of_files.py', 45, __import__('sys').exc_info()[1])
             h = fits.getheader(file_name, 0)
 
         assert "file" not in h
@@ -111,6 +112,7 @@ class ImageFileCollection(ImageFileCollection):
                 try:
                     summary_table.rename_column(k_lower, k)
                 except KeyError:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/set_of_files.py', 113, __import__('sys').exc_info()[1])
                     pass
 
 

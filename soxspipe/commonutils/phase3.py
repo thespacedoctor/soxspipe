@@ -39,6 +39,7 @@ def basic_header_scrubbing(log, settings, header):
         try:
             header.pop(kw(k))
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/phase3.py', 41, __import__('sys').exc_info()[1])
             pass
 
     if "NAXIS" in header and header["NAXIS"] != 0 and "INHERIT" in header:
@@ -50,6 +51,7 @@ def basic_header_scrubbing(log, settings, header):
         try:
             header.pop(k)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/phase3.py', 52, __import__('sys').exc_info()[1])
             pass
 
     # KEYWORDS TO RENAME

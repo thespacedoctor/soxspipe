@@ -158,6 +158,7 @@ def main(arguments=None):
 
         astrolog.setLevel("WARNING")
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/cl_utils.py', 160, __import__('sys').exc_info()[1])
         pass
 
     # tab completion for raw_input
@@ -200,6 +201,7 @@ def main(arguments=None):
                 pass
             previousSettingsExist = True
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/cl_utils.py', 202, __import__('sys').exc_info()[1])
             previousSettingsExist = False
         previousSettings = {}
         if previousSettingsExist:

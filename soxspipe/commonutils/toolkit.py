@@ -211,6 +211,7 @@ def quicklook_image(
         try:
             inst = CCDObject.header["INSTRUME"]
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 213, __import__('sys').exc_info()[1])
             inst = "XSHOOTER"
 
     if skylines:
@@ -233,10 +234,12 @@ def quicklook_image(
         try:
             mask = (frame.mask == 1) | (interOrderMask == 1)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 235, __import__('sys').exc_info()[1])
             mask = interOrderMask == 1
         try:
             frame.mask = mask
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 239, __import__('sys').exc_info()[1])
             pass
 
     if inst == "SOXS":
@@ -701,6 +704,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
         binx = frame.header[kw("WIN_BINX")]
         biny = frame.header[kw("WIN_BINY")]
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 703, __import__('sys').exc_info()[1])
         if arm.lower() == "nir":
             binx = 1
             biny = 1
@@ -1136,6 +1140,7 @@ def predict_product_path(sofName, recipeName=False):
     try:
         sofName = os.path.basename(sofName)
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1138, __import__('sys').exc_info()[1])
         pass
 
     if not recipeName:
@@ -1158,6 +1163,7 @@ def predict_product_path(sofName, recipeName=False):
             startNightDate = obsDate - night_start_offset
             startNightDate = startNightDate.strftime("%Y-%m-%d")
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1160, __import__('sys').exc_info()[1])
             print("Could not determine OBSDATE from sof filename")
             pass
 
@@ -1221,6 +1227,7 @@ def add_recipe_logger(log, productPath):
         os.remove(loggingPath)
         os.remove(loggingErrorPath)
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1223, __import__('sys').exc_info()[1])
         pass
 
     # PARENT DIRECTORY PATH NEEDS TO EXIST FOR LOGGER TO WRITE
@@ -1229,6 +1236,7 @@ def add_recipe_logger(log, productPath):
         try:
             os.makedirs(parentDirectory)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1231, __import__('sys').exc_info()[1])
             pass
 
     recipeLog = logging.FileHandler(loggingPath, mode="a", encoding=None, delay=False)
@@ -1576,6 +1584,7 @@ def utility_setup(log, settings, recipeName, startNightDate):
         try:
             os.makedirs(qcDir)
         except Exception:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1578, __import__('sys').exc_info()[1])
             pass
 
     # PRODUCT DIR
@@ -1586,6 +1595,7 @@ def utility_setup(log, settings, recipeName, startNightDate):
         try:
             os.makedirs(productDir)
         except Exception:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1588, __import__('sys').exc_info()[1])
             pass
 
     log.debug("completed the ``utility_setup`` function")
@@ -1724,6 +1734,7 @@ def plot_merged_spectrum_qc(
             try:
                 orderValue[i] = int(orderValue[i])
             except (ValueError, TypeError):
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1726, __import__('sys').exc_info()[1])
                 pass
 
         orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
@@ -1986,11 +1997,13 @@ def frame_to_32(frame):
         if frame.data.dtype != np.float32:
             frame.data = frame.data.astype(np.float32, copy=False)
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1988, __import__('sys').exc_info()[1])
         pass
 
     try:
         frame.uncertainty.array = frame.uncertainty.array.astype(np.float32, copy=False)
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 1993, __import__('sys').exc_info()[1])
         pass
 
     return frame
@@ -2028,6 +2041,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     try:
         spectrumDF["WAVE"] = spectrumDF["WAVE"].values.value
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/toolkit.py', 2030, __import__('sys').exc_info()[1])
         pass
 
     ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST

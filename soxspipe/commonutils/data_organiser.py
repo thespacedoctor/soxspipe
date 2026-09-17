@@ -386,10 +386,12 @@ class data_organiser:
                 try:
                     os.remove(self.rootDbPath + "-shm")
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 388, __import__('sys').exc_info()[1])
                     pass
                 try:
                     os.remove(self.rootDbPath + "-wal")
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 392, __import__('sys').exc_info()[1])
                     pass
             # DELETE ALL ERROR LOG AND SOF FILES
             if False:
@@ -695,6 +697,7 @@ class data_organiser:
                             try:
                                 os.remove(file)
                             except:
+                                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 697, __import__('sys').exc_info()[1])
                                 pass
                         # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
                         rawFrames = rawFrames[
@@ -1427,6 +1430,7 @@ class data_organiser:
             try:
                 os.symlink(self.vltReduced, dest)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1429, __import__('sys').exc_info()[1])
                 pass
 
         folders = ["sof", "qc", "reduced"]
@@ -1442,6 +1446,7 @@ class data_organiser:
         try:
             c.execute(sqlQuery)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1444, __import__('sys').exc_info()[1])
             pass
 
         # DUPLICATE TEH SOF_MAP TABLE
@@ -1454,6 +1459,7 @@ class data_organiser:
         try:
             c.execute(sqlQuery)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1456, __import__('sys').exc_info()[1])
             pass
 
         sqlQueries = [
@@ -1485,6 +1491,7 @@ class data_organiser:
         try:
             self.log.print(message)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1487, __import__('sys').exc_info()[1])
             print(message)
         self.log.debug("completed the ``session_create`` method")
 
@@ -1631,6 +1638,7 @@ class data_organiser:
             try:
                 os.symlink(src, dest)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1633, __import__('sys').exc_info()[1])
                 os.unlink(dest)
                 os.symlink(src, dest)
 
@@ -1643,6 +1651,7 @@ class data_organiser:
                 try:
                     os.symlink(src, dest)
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1645, __import__('sys').exc_info()[1])
                     os.unlink(dest)
                     os.symlink(src, dest)
 
@@ -1731,6 +1740,7 @@ class data_organiser:
         try:
             self.conn.close()
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1733, __import__('sys').exc_info()[1])
             pass
 
         self.log.debug("completed the ``session_refresh`` method")
@@ -1800,6 +1810,7 @@ class data_organiser:
         try:
             os.symlink(vltRaw, self.rawDir)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1802, __import__('sys').exc_info()[1])
             os.unlink(self.rawDir)
             os.symlink(vltRaw, self.rawDir)
 
@@ -1858,6 +1869,7 @@ class data_organiser:
                     if self.conn:
                         conn = self.conn
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1860, __import__('sys').exc_info()[1])
                     pass
 
             if not conn:
@@ -1896,6 +1908,7 @@ class data_organiser:
                     del conn
                     del self.conn
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1898, __import__('sys').exc_info()[1])
                     pass
 
                 time.sleep(1)
@@ -1943,6 +1956,7 @@ class data_organiser:
                 self.instrument = c.fetchall()[0][0]
                 c.close()
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 1945, __import__('sys').exc_info()[1])
                 return
 
         if "SOXS" not in self.instrument.upper():
@@ -2134,6 +2148,7 @@ class data_organiser:
             try:
                 os.remove(sofPath)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 2136, __import__('sys').exc_info()[1])
                 pass
 
         # RESET ALL PRODUCTS TO INCOMPLETE
@@ -2700,6 +2715,7 @@ class data_organiser:
             try:
                 c.execute(sqlQuery)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 2702, __import__('sys').exc_info()[1])
                 pass
             c.close()
 
@@ -2733,6 +2749,7 @@ def _harvest_fits_headers(
             try:
                 masterTable[fil].fill_value = "--"
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 2735, __import__('sys').exc_info()[1])
                 masterTable.replace_column(fil, masterTable[fil].astype(str))
                 masterTable[fil].fill_value = "--"
         # elif fil in ["exptime"]:
@@ -2741,6 +2758,7 @@ def _harvest_fits_headers(
             try:
                 masterTable[fil].fill_value = -99.99
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 2743, __import__('sys').exc_info()[1])
                 masterTable[fil].fill_value = "--"
     masterTable = masterTable.filled()
 
@@ -2810,6 +2828,7 @@ def _harvest_fits_headers(
             try:
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 2812, __import__('sys').exc_info()[1])
                 masterTable["rospeed"] = masterTable["rospeed"].astype(str)
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
             masterTable["rospeed"][masterTable["rospeed"] == "1pt/400k/lg"] = "fast"
@@ -2824,6 +2843,7 @@ def _harvest_fits_headers(
             try:
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 2826, __import__('sys').exc_info()[1])
                 masterTable["rospeed"] = masterTable["rospeed"].astype(str)
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
 
@@ -2861,6 +2881,7 @@ def _harvest_fits_headers(
         try:
             masterTable.add_index(k)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/data_organiser.py', 2863, __import__('sys').exc_info()[1])
             pass
 
     # SORT IMAGE COLLECTION

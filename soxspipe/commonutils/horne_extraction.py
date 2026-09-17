@@ -130,6 +130,7 @@ class horne_extraction(base_util):
             if locationSetIndex:
                 self.noddingSequence += str(locationSetIndex)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/horne_extraction.py', 132, __import__('sys').exc_info()[1])
             self.noddingSequence = ""
 
         # COLLECT SETTINGS FROM SETTINGS FILE
@@ -1280,6 +1281,7 @@ class horne_extraction(base_util):
                         )
                     addedLegend = False
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/horne_extraction.py', 1282, __import__('sys').exc_info()[1])
                 self.log.warning(f"Order skipped: {o}")
 
         if (

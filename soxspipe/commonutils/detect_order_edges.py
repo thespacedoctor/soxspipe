@@ -112,6 +112,7 @@ class detect_order_edges(_base_detect):
         try:
             self.slit = flatFrame.header[kw(f"SLIT_{self.arm}".upper())]
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_order_edges.py', 114, __import__('sys').exc_info()[1])
             self.log.warning(kw(f"SLIT_{self.arm}".upper()) + " keyword not found")
             self.slit = ""
 
@@ -745,6 +746,7 @@ class detect_order_edges(_base_detect):
                     *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10]
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_order_edges.py', 747, __import__('sys').exc_info()[1])
                 continue
 
             if len(axisBfitlow) < len(axisBfitup):
@@ -760,6 +762,7 @@ class detect_order_edges(_base_detect):
                     axisAfitlow = axisAfitlowExtra + axisAfitlow
                     axisBfitlow = axisBfitlowExtra + axisBfitlow
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_order_edges.py', 762, __import__('sys').exc_info()[1])
                     pass
                 try:
                     axisAfitlowExtra, axisBfitlowExtra = zip(
@@ -772,6 +775,7 @@ class detect_order_edges(_base_detect):
                     axisAfitlow += axisAfitlowExtra
                     axisBfitlow += axisBfitlowExtra
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_order_edges.py', 774, __import__('sys').exc_info()[1])
                     pass
 
             if self.axisAbin > 1:
@@ -803,6 +807,7 @@ class detect_order_edges(_base_detect):
                     label=label2,
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_order_edges.py', 805, __import__('sys').exc_info()[1])
                 pass
             midrow.text(
                 axisBfitlow[10],
@@ -863,6 +868,7 @@ class detect_order_edges(_base_detect):
                         verticalalignment="bottom",
                     )
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_order_edges.py', 865, __import__('sys').exc_info()[1])
                     pass
                 bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
                 try:
@@ -875,6 +881,7 @@ class detect_order_edges(_base_detect):
                         verticalalignment="bottom",
                     )
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_order_edges.py', 877, __import__('sys').exc_info()[1])
                     pass
 
             bottomleft.set_xlabel(f"{self.axisA} pixel position")
@@ -1105,6 +1112,7 @@ class detect_order_edges(_base_detect):
                 axisAminguess = np.where(firstHalf < threshold)[0][-1]
                 hit = True
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/detect_order_edges.py', 1107, __import__('sys').exc_info()[1])
                 threshold = threshold + thresholdRange * 0.1
 
         # IF WE STILL DIDN'T GET A HIT THEN REJECT

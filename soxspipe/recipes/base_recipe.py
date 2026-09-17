@@ -184,6 +184,7 @@ class base_recipe:
                     sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
                     c.execute(sqlQuery)
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 186, __import__('sys').exc_info()[1])
                     self.status = None
 
                 c.close()
@@ -381,6 +382,7 @@ class base_recipe:
             boolMask.shape
 
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 383, __import__('sys').exc_info()[1])
             arr = np.frombuffer(boolMask, dtype=np.uint8)
             arr.shape = frame.data.shape
             boolMask = arr
@@ -449,6 +451,7 @@ class base_recipe:
             try:
                 os.makedirs(outDir)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 451, __import__('sys').exc_info()[1])
                 pass
         # CONVERT CCDData TO FITS HDU (INCLUDING HEADER) AND SAVE WITH PRE TAG
         # PREPENDED TO FILENAME
@@ -565,6 +568,7 @@ class base_recipe:
         try:
             preframes.summary["SLIT"] = preframes.summary[slitname]
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 567, __import__('sys').exc_info()[1])
             pass
 
         preframes.summary["LAMP"] = "------------"
@@ -593,14 +597,17 @@ class base_recipe:
         try:
             columns.remove(kw("SLIT_NIR"))
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 595, __import__('sys').exc_info()[1])
             pass
         try:
             columns.remove(kw("SLIT_VIS"))
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 599, __import__('sys').exc_info()[1])
             pass
         try:
             columns.remove(kw("SLIT_UVB"))
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 603, __import__('sys').exc_info()[1])
             pass
 
         if "filename" in columns:
@@ -716,6 +723,7 @@ class base_recipe:
                 cdelt1.remove(None)
                 cdelt2.remove(None)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 718, __import__('sys').exc_info()[1])
                 pass
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
@@ -854,10 +862,12 @@ class base_recipe:
             try:
                 myList.remove(None)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 856, __import__('sys').exc_info()[1])
                 pass
             try:
                 myList.remove("REDUCED")
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 860, __import__('sys').exc_info()[1])
                 pass
 
             return myList
@@ -933,6 +943,7 @@ class base_recipe:
         try:
             shutil.rmtree(self.outDir)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 935, __import__('sys').exc_info()[1])
             pass
 
         if forceFail and isinstance(forceFail, str):
@@ -1075,6 +1086,7 @@ class base_recipe:
                 try:
                     os.makedirs(filedir)
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 1077, __import__('sys').exc_info()[1])
                     pass
 
         filepath = filedir + "/" + filename
@@ -1259,6 +1271,7 @@ class base_recipe:
         try:
             combined_frame.wcs = ccds[0].wcs
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 1261, __import__('sys').exc_info()[1])
             pass
 
         if post_stack_clipping:
@@ -1495,6 +1508,7 @@ class base_recipe:
             columns.remove("qc_value_min")
             columns.remove("qc_value_max")
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 1497, __import__('sys').exc_info()[1])
             pass
         dbColumns = list(self.qc.columns)
         dbColumns.remove("to_header")
@@ -1511,6 +1525,7 @@ class base_recipe:
         try:
             soxspipe_recipe = self.qc["soxspipe_recipe"].values[0].upper()
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 1513, __import__('sys').exc_info()[1])
             soxspipe_recipe = self.recipeName.upper()
 
         if rformat == "stdout":
@@ -2069,6 +2084,7 @@ class base_recipe:
             try:
                 c.execute(sqlQuery)
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/base_recipe.py', 2071, __import__('sys').exc_info()[1])
                 pass
             c.close()
 

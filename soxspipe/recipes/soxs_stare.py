@@ -429,12 +429,14 @@ class soxs_stare(base_recipe):
             responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_stare.py', 431, __import__('sys').exc_info()[1])
             responseFunctionPath = False
 
         try:
             if not self.recipeSettings["use_flat"]:
                 master_flat = False
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_stare.py', 437, __import__('sys').exc_info()[1])
             master_flat = False
 
         combined_object = self.detrend(

@@ -151,6 +151,7 @@ class subtract_background:
             binx = self.frame.header[self.kw("WIN_BINX")]
             biny = self.frame.header[self.kw("WIN_BINY")]
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_background.py', 153, __import__('sys').exc_info()[1])
             pass
 
         # UNPACK THE ORDER TABLE
@@ -301,6 +302,7 @@ class subtract_background:
                     ]
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_background.py', 303, __import__('sys').exc_info()[1])
                 continue
             for b, u, l in zip(
                 axisBcoord,
@@ -434,6 +436,7 @@ class subtract_background:
             try:
                 rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_background.py', 436, __import__('sys').exc_info()[1])
                 rowmasked = rowmasked.astype(float)
                 # rowmasked = rowmasked.byteswap().newbyteorder() ## REMOVE IF ABOVE .astype(float) WORKS
                 rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()

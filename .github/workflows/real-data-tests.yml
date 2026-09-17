@@ -17,6 +17,8 @@ jobs:
       WORKSPACE: ${{ github.workspace }}/.real-data-workspace
       SOF_NAME: 20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof
       REDUCTION_LOG: ${{ github.workspace }}/reduction-log/reduction.log
+      # THROWAWAY INSTRUMENTATION FOR DAVE-28 — NEVER MERGE
+      SOXSPIPE_EXC_PROBE: ${{ github.workspace }}/exc-probe/probe.jsonl
       # GITHUB HANDS OUT RUNNERS ON DIFFERENT CPUs. numpy PICKS ITS SIMD KERNELS FROM
       # WHAT THE CPU OFFERS, SO AN AVX512 RUNNER REDUCES THE SAME RAW FRAMES DOWN A
       # DIFFERENT FLOAT PATH AND THE PRODUCTS DIVERGE FROM THE AVX2 RUNNERS. PINNING
@@ -71,6 +73,7 @@ jobs:
           # WOULD REPORT tee'S EXIT STATUS AND THE STEP WOULD PASS
           set -o pipefail
           mkdir -p "$(dirname "$REDUCTION_LOG")"
+          mkdir -p "$(dirname "$SOXSPIPE_EXC_PROBE")"
           cd "$WORKSPACE"
           python -m soxspipe.cl_utils prep .
           # `reduce sof` AND `raw sof` TAKE A SOF NAME THAT THE DATA ORGANISER RESOLVES
@@ -90,6 +93,16 @@ jobs:
         # SWALLOWS THE STDOUT OF A PASSING TEST, WHICH IS EXACTLY THE CASE WHOSE
         # NUMBERS ARE NEEDED WHEN RE-RECORDING THE BANDS
         run: python -m pytest tests/real_data -s
+
+      - name: Upload the exception probe
+        # THROWAWAY INSTRUMENTATION FOR DAVE-28 — NEVER MERGE
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: exception-probe
+          path: ${{ github.workspace }}/exc-probe/
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload the reduction log
         # ALWAYS, BECAUSE A FAILED REDUCTION IS THE RUN WHOSE LOG IS WORTH MOST

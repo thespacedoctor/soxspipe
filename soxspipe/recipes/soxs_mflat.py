@@ -861,6 +861,7 @@ class soxs_mflat(base_recipe):
             self.binx = inputFlats[0].header[kw("WIN_BINX")]
             self.biny = inputFlats[0].header[kw("WIN_BINY")]
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_mflat.py', 863, __import__('sys').exc_info()[1])
             if self.arm.lower() == "nir":
                 self.binx = 1
                 self.biny = 1
@@ -872,6 +873,7 @@ class soxs_mflat(base_recipe):
             dpBinx = header[kw("WIN_BINX")]
             dpBiny = header[kw("WIN_BINY")]
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/recipes/soxs_mflat.py', 874, __import__('sys').exc_info()[1])
             dpBinx = 1
             dpBiny = 1
 

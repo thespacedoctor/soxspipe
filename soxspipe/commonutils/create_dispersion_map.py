@@ -1188,6 +1188,7 @@ class create_dispersion_map:
                 try:
                     df[col] = df[col].astype(float)
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 1190, __import__('sys').exc_info()[1])
                     pass
 
         for col in intCols:
@@ -1195,6 +1196,7 @@ class create_dispersion_map:
                 try:
                     df[col] = df[col].astype(int)
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 1197, __import__('sys').exc_info()[1])
                     pass
 
         for col in stringCols:
@@ -1202,6 +1204,7 @@ class create_dispersion_map:
                 try:
                     df[col] = df[col].astype(str)
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 1204, __import__('sys').exc_info()[1])
                     pass
 
         # REMOVE FLAGGED LINES
@@ -2449,6 +2452,7 @@ class create_dispersion_map:
                     maxfev=30000,
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 2451, __import__('sys').exc_info()[1])
                 return "xerror", None, None, None
 
             # NOW Y
@@ -2463,6 +2467,7 @@ class create_dispersion_map:
                     maxfev=30000,
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 2465, __import__('sys').exc_info()[1])
                 return None, "yerror", None, None
 
             self.log.info("""calculate_residuals""" % locals())
@@ -2496,6 +2501,7 @@ class create_dispersion_map:
                 try:
                     columnsNoStrings.remove("ion")
                 except:
+                    __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 2498, __import__('sys').exc_info()[1])
                     pass
 
                 # GROUP BY ARC LINES (MPH SETS)
@@ -2639,6 +2645,7 @@ class create_dispersion_map:
                             "sigma_clipped",
                         ] = True
                     except:
+                        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 2641, __import__('sys').exc_info()[1])
                         orderPixelTable.loc[
                             (orderPixelTable["sigma_clipped_xy"] == True),
                             "sigma_clipped",
@@ -2666,6 +2673,7 @@ class create_dispersion_map:
                     f"\tITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map"
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 2668, __import__('sys').exc_info()[1])
                 pass
 
             mask = orderPixelTable["sigma_clipped"] == True
@@ -3160,6 +3168,7 @@ class create_dispersion_map:
                 wlMap.data[yy, xx] = np.where(np.isnan(wlMap.data[yy, xx]), wavelength, wlMap.data[yy, xx])
                 slitMap.data[yy, xx] = np.where(np.isnan(slitMap.data[yy, xx]), slit_position, slitMap.data[yy, xx])
             except IndexError:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 3162, __import__('sys').exc_info()[1])
                 # PIXELS OUTSIDE OF DETECTOR EDGES - IGNORE
                 pass
 
@@ -3173,6 +3182,7 @@ class create_dispersion_map:
                 f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted."
             )
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 3175, __import__('sys').exc_info()[1])
             pass
 
         if plots:
@@ -4025,6 +4035,7 @@ class create_dispersion_map:
         try:
             columnsNoStrings.remove("ion")
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 4027, __import__('sys').exc_info()[1])
             pass
 
         if self.firstGuessMap:
@@ -4808,6 +4819,7 @@ def _plot_slit_index_comparisons(df):
     try:
         order_num = df["order"].iloc[0] if "order" in df.columns else None
     except:
+        __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/create_dispersion_map.py', 4810, __import__('sys').exc_info()[1])
         return
     cmap = plt.get_cmap("tab10")
     colors = {idx: cmap(i % 10) for i, idx in enumerate(slit_indexes)}

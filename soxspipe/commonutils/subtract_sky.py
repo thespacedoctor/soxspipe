@@ -1004,6 +1004,7 @@ class subtract_sky:
         try:
             ninerow.set_ylim(mean - 10 * std, mean + 10 * std)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_sky.py', 1006, __import__('sys').exc_info()[1])
             pass
 
         ninerow.set_xlabel("wavelength (nm)", fontsize=10)
@@ -1308,6 +1309,7 @@ class subtract_sky:
             try:
                 qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_sky.py', 1310, __import__('sys').exc_info()[1])
                 qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
             defaultKnots = np.quantile(goodWl, qs)
         else:
@@ -1478,6 +1480,7 @@ class subtract_sky:
                     full_output=True,
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_sky.py', 1480, __import__('sys').exc_info()[1])
                 raise ValueError(
                     f"BSpline fit failed for order {order} on iteration {iterationCount}. Possibly too many knots ({len(allKnots)}) for the number of data points ({goodWl.values.shape[0]})."
                 )
@@ -1609,6 +1612,7 @@ class subtract_sky:
                     f"\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}"
                 )
             except:
+                __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_sky.py', 1611, __import__('sys').exc_info()[1])
                 pass
 
             if iterationCount >= 5 and lastExtraKnotCount == len(extraKnots):
@@ -1783,6 +1787,7 @@ class subtract_sky:
             std = np.nanstd(maskedDataValues)
             mean = np.nanmean(maskedDataValues)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_sky.py', 1785, __import__('sys').exc_info()[1])
             std = np.std(maskedDataValues)
             mean = np.mean(maskedDataValues)
         vmax = mean + 1 * std
@@ -1814,6 +1819,7 @@ class subtract_sky:
             std = np.nanstd(maskedDataValues)
             mean = np.nanmean(maskedDataValues)
         except:
+            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_sky.py', 1816, __import__('sys').exc_info()[1])
             std = np.std(maskedDataValues)
             mean = np.mean(maskedDataValues)
 
@@ -2575,6 +2581,7 @@ class subtract_sky:
                             legobj.set_sizes([30])
                             legobj.set_alpha(0.7)
                         except:
+                            __import__('soxspipe._exc_probe', fromlist=['record']).record('soxspipe/commonutils/subtract_sky.py', 2577, __import__('sys').exc_info()[1])
                             pass
             fig.canvas.draw()
             fig.canvas.flush_events()
