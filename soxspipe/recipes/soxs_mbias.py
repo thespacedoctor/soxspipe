@@ -241,8 +241,6 @@ class soxs_mbias(base_recipe):
         combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon = self._combine_bias_frames()
         ```
         """
-        self.log.debug("starting the ``_combine_bias_frames`` method")
-
         import numpy as np
 
         # LIST OF CCDDATA OBJECTS
@@ -289,7 +287,6 @@ class soxs_mbias(base_recipe):
         combined_bias_mean = combined_noise
         combined_bias_mean.mask = combined_noise.mask
 
-        self.log.debug("completed the ``_combine_bias_frames`` method")
         return combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon
 
     def qc_bias_structure(self, combined_bias_mean):
