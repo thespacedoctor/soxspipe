@@ -462,16 +462,13 @@ def parameterTuning(
         lineDetectionTable=lineDetectionTable,
         startNightDate=False,
     )
-    try:
-        (
-            productPath,
-            mapImagePath,
-            res_plots,
-            qcTable,
-            productsTable,
-            lineDetectionTable,
-        ) = this.get()
-    except Exception as e:
-        log.warning(f"parameterTuning: this tuning iteration failed and records nothing in the grid, continuing: {e}")
+    (
+        productPath,
+        mapImagePath,
+        res_plots,
+        qcTable,
+        productsTable,
+        lineDetectionTable,
+    ) = this.get()
 
     return
