@@ -235,7 +235,9 @@ def run_ruff_selected(codes: tuple[str, ...], paths: list[str], repoRoot: Path) 
     """*the ruff report for the given rules over the given paths, as JSON*
 
     Unlike `run_ruff`, this narrows the rule set and widens the paths: the hard rules are
-    judged over the whole repository, so a finding on an untouched line still fails.
+    judged over the whole repository, so a finding on an untouched line still fails. It also
+    runs ruff `--isolated` and `--ignore-noqa`, so neither a `# noqa` comment nor a
+    `per-file-ignores` entry can silence a hard rule.
 
     **Key Arguments:**
 
@@ -247,7 +249,11 @@ def run_ruff_selected(codes: tuple[str, ...], paths: list[str], repoRoot: Path) 
 
     - ``ruffJson`` -- the raw JSON report
     """
-    command = ["ruff", "check", "--select", ",".join(codes), "--output-format", "json", "--force-exclude"]
+    # --isolated DROPS THE PROJECT CONFIGURATION, SO A per-file-ignores ENTRY ADDED LATER
+    # CANNOT QUIETLY REOPEN THE HOLE, AND --ignore-noqa STOPS A # noqa COMMENT DOING THE SAME.
+    # A HARD RULE THAT CAN BE SWITCHED OFF IN THE FILE THAT BREAKS IT IS NOT A HARD RULE.
+    command = ["ruff", "check", "--isolated", "--ignore-noqa", "--select", ",".join(codes)]
+    command += ["--output-format", "json", "--force-exclude"]
     # THE -- STOPS A PATH THAT BEGINS WITH A DASH BEING READ AS AN OPTION
     command += ["--", *paths]
 
@@ -332,8 +338,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"lint ratchet: could not read the ruff report: {error}", file=sys.stderr)
         return EXIT_TOOL_ERROR
 
-    gated = findings_on_changed_lines(findings, changedLines)
-    _print_report(gated, findings, changedLines)
+    # A HARD-RULE FINDING ON A CHANGED LINE IS REPORTED ONCE, IN THE HARD-RULE SECTION,
+    # RATHER THAN IN BOTH: THE PROJECT'S OWN RULE SET SELECTS THESE CODES TOO
+    ratchetFindings = [finding for finding in findings if finding.code not in HARD_RULE_CODES]
+    gated = findings_on_changed_lines(ratchetFindings, changedLines)
+    _print_report(gated, ratchetFindings, changedLines)
     _print_hard_rule_report(hard)
 
     return EXIT_FINDINGS if gated or hard else EXIT_CLEAN

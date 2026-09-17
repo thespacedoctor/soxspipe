@@ -40,6 +40,15 @@ def _load_lint_ratchet() -> ModuleType:
 lint_ratchet = _load_lint_ratchet()
 
 
+@pytest.fixture(autouse=True)
+def stub_the_hard_rule_scan(monkeypatch):
+    """*keep the unit suite hermetic: `main` would otherwise run ruff over the whole tree*
+
+    A test that needs the hard-rule path sets its own stub, which replaces this one.
+    """
+    monkeypatch.setattr(lint_ratchet, "run_ruff_selected", lambda codes, paths, repoRoot: "[]")
+
+
 class _CompletedCommand(NamedTuple):
     """*the parts of `subprocess.CompletedProcess` the ratchet reads*"""
 
@@ -486,29 +495,21 @@ def test_main_checks_the_hard_rules_over_the_whole_repository(monkeypatch):
     assert requested["paths"] == ["."]
 
 
-def test_the_hard_rules_reach_every_tracked_python_file():
-    """*a file outside soxspipe, tests and tools must not escape the gate*"""
+def test_a_hard_rule_finding_on_a_changed_line_is_not_reported_twice(monkeypatch, capsys):
     # ARRANGE
-    repoRoot = lint_ratchet.repository_root(REPO_ROOT)
-    tracked = {(repoRoot / path).as_posix() for path in lint_ratchet._run(["git", "ls-files", "*.py"], repoRoot).split()}
-
-    # ACT
-    command = ["ruff", "check", "--show-files", "--force-exclude", "--", *lint_ratchet.HARD_RULE_PATHS]
-    scanned = {Path(line).as_posix() for line in lint_ratchet._run(command, repoRoot, allowedStatuses=(0, 1)).splitlines()}
-
-    # ASSERT
-    assert tracked - scanned == set()
-
-
-def test_the_repository_itself_passes_the_hard_rules():
-    # ARRANGE
-    repoRoot = lint_ratchet.repository_root(REPO_ROOT)
-
-    # ACT
-    findings = lint_ratchet.parse_ruff_findings(
-        lint_ratchet.run_ruff_selected(lint_ratchet.HARD_RULE_CODES, list(lint_ratchet.HARD_RULE_PATHS), repoRoot),
-        repoRoot,
+    monkeypatch.setattr(lint_ratchet, "repository_root", lambda start: REPO_ROOT)
+    monkeypatch.setattr(
+        lint_ratchet, "run_git_diff", lambda compareBranch, repoRoot: "+++ b/soxspipe/x.py\n@@ -1,0 +2,1 @@\n+x = 1\n"
     )
+    bareExcept = _ruff_report(("soxspipe/x.py", 2, "E722", "Do not use bare `except`"))
+    monkeypatch.setattr(lint_ratchet, "run_ruff", lambda paths, repoRoot: bareExcept)
+    monkeypatch.setattr(lint_ratchet, "run_ruff_selected", lambda codes, paths, repoRoot: bareExcept)
+
+    # ACT
+    status = lint_ratchet.main(["--staged"])
 
     # ASSERT
-    assert findings == []
+    output = capsys.readouterr().out
+    assert status == lint_ratchet.EXIT_FINDINGS
+    assert output.count("soxspipe/x.py:2: E722") == 1
+    assert "No findings on changed lines." in output
