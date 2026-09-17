@@ -48,7 +48,7 @@ class soxs_mbias(base_recipe):
     ```
     """
 
-    # Initialisation
+    # INITIALISATION
 
     def __init__(
         self,
@@ -320,7 +320,7 @@ class soxs_mbias(base_recipe):
         x_axis = np.linspace(0, len(collaps_ax1), len(collaps_ax1), dtype=int)
         y_axis = np.linspace(0, len(collaps_ax2), len(collaps_ax2), dtype=int)
 
-        # Fitting with a line and collect the slope
+        # FIT WITH A LINE AND COLLECT THE SLOPE
         coeff_ax1 = np.polyfit(x_axis, collaps_ax1, deg=1)
         coeff_ax2 = np.polyfit(y_axis, collaps_ax2, deg=1)
 
@@ -475,5 +475,5 @@ class soxs_mbias(base_recipe):
         self.log.debug("completed the ``qc_periodic_pattern_noise`` method")
         return ppnmax
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
