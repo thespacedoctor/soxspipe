@@ -391,3 +391,124 @@ def test_deletion_only_files_are_never_handed_to_ruff(monkeypatch):
 
     # ASSERT
     assert inspectedPaths == ["soxspipe/edited.py"]
+
+
+def test_hard_rule_findings_keeps_only_the_absolute_rules():
+    # ARRANGE
+    findings = [
+        lint_ratchet.Finding("soxspipe/a.py", 10, "E722", "Do not use bare `except`"),
+        lint_ratchet.Finding("soxspipe/b.py", 20, "E501", "Line too long"),
+        lint_ratchet.Finding("tools/c.py", 30, "S110", "`try`-`except`-`pass` detected"),
+    ]
+
+    # ACT
+    hard = lint_ratchet.hard_rule_findings(findings)
+
+    # ASSERT
+    assert [finding.code for finding in hard] == ["E722", "S110"]
+
+
+def test_hard_rule_findings_are_sorted_by_path_and_line():
+    # ARRANGE
+    findings = [
+        lint_ratchet.Finding("tools/c.py", 30, "S112", "`try`-`except`-`continue` detected"),
+        lint_ratchet.Finding("soxspipe/a.py", 40, "E722", "Do not use bare `except`"),
+        lint_ratchet.Finding("soxspipe/a.py", 10, "E722", "Do not use bare `except`"),
+    ]
+
+    # ACT
+    hard = lint_ratchet.hard_rule_findings(findings)
+
+    # ASSERT
+    assert [(finding.path, finding.line) for finding in hard] == [
+        ("soxspipe/a.py", 10),
+        ("soxspipe/a.py", 40),
+        ("tools/c.py", 30),
+    ]
+
+
+def test_main_fails_on_a_bare_except_the_change_never_touched(monkeypatch, capsys):
+    # ARRANGE
+    monkeypatch.setattr(lint_ratchet, "repository_root", lambda start: REPO_ROOT)
+    monkeypatch.setattr(
+        lint_ratchet, "run_git_diff", lambda compareBranch, repoRoot: "+++ b/soxspipe/x.py\n@@ -1,0 +2,1 @@\n+x = 1\n"
+    )
+    monkeypatch.setattr(lint_ratchet, "run_ruff", lambda paths, repoRoot: "[]")
+    untouched = _ruff_report(("soxspipe/elsewhere.py", 900, "E722", "Do not use bare `except`"))
+    monkeypatch.setattr(lint_ratchet, "run_ruff_selected", lambda codes, paths, repoRoot: untouched)
+
+    # ACT
+    status = lint_ratchet.main(["--staged"])
+
+    # ASSERT
+    assert status == lint_ratchet.EXIT_FINDINGS
+    assert "soxspipe/elsewhere.py:900: E722" in capsys.readouterr().out
+
+
+def test_main_names_the_hard_rules_when_one_fails(monkeypatch, capsys):
+    # ARRANGE
+    monkeypatch.setattr(lint_ratchet, "repository_root", lambda start: REPO_ROOT)
+    monkeypatch.setattr(lint_ratchet, "run_git_diff", lambda compareBranch, repoRoot: "")
+    monkeypatch.setattr(lint_ratchet, "run_ruff", lambda paths, repoRoot: "[]")
+    untouched = _ruff_report(("tools/thing.py", 12, "S110", "`try`-`except`-`pass` detected"))
+    monkeypatch.setattr(lint_ratchet, "run_ruff_selected", lambda codes, paths, repoRoot: untouched)
+
+    # ACT
+    lint_ratchet.main(["--staged"])
+
+    # ASSERT
+    output = capsys.readouterr().out
+    assert "tools/thing.py:12: S110" in output
+    assert "1 hard rule finding" in output
+
+
+def test_main_checks_the_hard_rules_over_the_whole_repository(monkeypatch):
+    # ARRANGE
+    requested = {}
+    monkeypatch.setattr(lint_ratchet, "repository_root", lambda start: REPO_ROOT)
+    monkeypatch.setattr(lint_ratchet, "run_git_diff", lambda compareBranch, repoRoot: "")
+    monkeypatch.setattr(lint_ratchet, "run_ruff", lambda paths, repoRoot: "[]")
+
+    def recording_selected(codes, paths, repoRoot):
+        requested["codes"] = codes
+        requested["paths"] = paths
+        return "[]"
+
+    monkeypatch.setattr(lint_ratchet, "run_ruff_selected", recording_selected)
+
+    # ACT
+    status = lint_ratchet.main(["--staged"])
+
+    # ASSERT
+    assert status == lint_ratchet.EXIT_CLEAN
+    assert set(requested["codes"]) == {"E722", "S110", "S112"}
+    # THE REPOSITORY ROOT, SO A PYTHON FILE OUTSIDE soxspipe, tests AND tools IS GATED TOO
+    assert requested["paths"] == ["."]
+
+
+def test_the_hard_rules_reach_every_tracked_python_file():
+    """*a file outside soxspipe, tests and tools must not escape the gate*"""
+    # ARRANGE
+    repoRoot = lint_ratchet.repository_root(REPO_ROOT)
+    tracked = {(repoRoot / path).as_posix() for path in lint_ratchet._run(["git", "ls-files", "*.py"], repoRoot).split()}
+
+    # ACT
+    command = ["ruff", "check", "--show-files", "--force-exclude", "--", *lint_ratchet.HARD_RULE_PATHS]
+    scanned = {Path(line).as_posix() for line in lint_ratchet._run(command, repoRoot, allowedStatuses=(0, 1)).splitlines()}
+
+    # ASSERT
+    assert tracked - scanned == set()
+
+
+def test_the_repository_itself_passes_the_hard_rules():
+    # ARRANGE
+    repoRoot = lint_ratchet.repository_root(REPO_ROOT)
+
+    # ACT
+    findings = lint_ratchet.parse_ruff_findings(
+        lint_ratchet.run_ruff_selected(lint_ratchet.HARD_RULE_CODES, list(lint_ratchet.HARD_RULE_PATHS), repoRoot),
+        repoRoot,
+    )
+
+    # ASSERT
+    assert findings == []
