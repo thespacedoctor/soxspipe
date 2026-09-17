@@ -860,7 +860,8 @@ class soxs_mflat(base_recipe):
         try:
             self.binx = inputFlats[0].header[kw("WIN_BINX")]
             self.biny = inputFlats[0].header[kw("WIN_BINY")]
-        except:
+        except KeyError as e:
+            self.log.debug(f"normalise_flats: `self.binx = inputFlats[0].header[kw('WIN_BI...` failed, continuing: {e}")
             if self.arm.lower() == "nir":
                 self.binx = 1
                 self.biny = 1
@@ -871,7 +872,8 @@ class soxs_mflat(base_recipe):
         try:
             dpBinx = header[kw("WIN_BINX")]
             dpBiny = header[kw("WIN_BINY")]
-        except:
+        except KeyError as e:
+            self.log.debug(f"normalise_flats: `dpBinx = header[kw('WIN_BINX')]` failed, continuing: {e}")
             dpBinx = 1
             dpBiny = 1
 

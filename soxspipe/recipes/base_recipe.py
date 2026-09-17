@@ -12,6 +12,7 @@ Date Created
 ################# GLOBAL IMPORTS ####################
 
 import os
+import sqlite3
 import sys
 
 from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, subtract_background
@@ -183,7 +184,8 @@ class base_recipe:
                     self.status = c.fetchone()["status"]
                     sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
                     c.execute(sqlQuery)
-                except:
+                except (sqlite3.Error, TypeError) as e:
+                    self.log.warning(f"__init__: `self.status = c.fetchone()['status']` failed, continuing: {e}")
                     self.status = None
 
                 c.close()
@@ -380,7 +382,8 @@ class base_recipe:
             # 2D ARRAY
             boolMask.shape
 
-        except:
+        except AttributeError as e:
+            self.log.debug(f"_prepare_single_frame: `boolMask.shape` failed, continuing: {e}")
             arr = np.frombuffer(boolMask, dtype=np.uint8)
             arr.shape = frame.data.shape
             boolMask = arr
@@ -448,8 +451,8 @@ class base_recipe:
         if not os.path.exists(outDir):
             try:
                 os.makedirs(outDir)
-            except:
-                pass
+            except OSError as e:
+                self.log.debug(f"_prepare_single_frame: `os.makedirs(outDir)` failed, continuing: {e}")
         # CONVERT CCDData TO FITS HDU (INCLUDING HEADER) AND SAVE WITH PRE TAG
         # PREPENDED TO FILENAME
         basename = os.path.basename(filepath)
@@ -564,8 +567,8 @@ class base_recipe:
         slitname = kw(f"SLIT_{self.arm}".upper())
         try:
             preframes.summary["SLIT"] = preframes.summary[slitname]
-        except:
-            pass
+        except KeyError as e:
+            self.log.debug(f"prepare_frames: `preframes.summary['SLIT'] = preframes.summar...` failed, continuing: {e}")
 
         preframes.summary["LAMP"] = "------------"
         columns = preframes.summary.colnames
@@ -592,16 +595,16 @@ class base_recipe:
 
         try:
             columns.remove(kw("SLIT_NIR"))
-        except:
-            pass
+        except ValueError as e:
+            self.log.debug(f"prepare_frames: `columns.remove(kw('SLIT_NIR'))` failed, continuing: {e}")
         try:
             columns.remove(kw("SLIT_VIS"))
-        except:
-            pass
+        except ValueError as e:
+            self.log.debug(f"prepare_frames: `columns.remove(kw('SLIT_VIS'))` failed, continuing: {e}")
         try:
             columns.remove(kw("SLIT_UVB"))
-        except:
-            pass
+        except ValueError as e:
+            self.log.debug(f"prepare_frames: `columns.remove(kw('SLIT_UVB'))` failed, continuing: {e}")
 
         if "filename" in columns:
             # columns.remove("file")
@@ -715,8 +718,8 @@ class base_recipe:
             try:
                 cdelt1.remove(None)
                 cdelt2.remove(None)
-            except:
-                pass
+            except (AttributeError, ValueError) as e:
+                self.log.debug(f"_verify_input_frames_basics: `cdelt1.remove(None)` failed, continuing: {e}")
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
             sys.stdout.flush()
@@ -853,12 +856,12 @@ class base_recipe:
             myList = list(set(myList))
             try:
                 myList.remove(None)
-            except:
-                pass
+            except ValueError as e:
+                self.log.debug(f"clean_list: `myList.remove(None)` failed, continuing: {e}")
             try:
                 myList.remove("REDUCED")
-            except:
-                pass
+            except ValueError as e:
+                self.log.debug(f"clean_list: `myList.remove('REDUCED')` failed, continuing: {e}")
 
             return myList
 
@@ -932,8 +935,8 @@ class base_recipe:
 
         try:
             shutil.rmtree(self.outDir)
-        except:
-            pass
+        except OSError as e:
+            self.log.debug(f"clean_up: `shutil.rmtree(self.outDir)` failed, continuing: {e}")
 
         if forceFail and isinstance(forceFail, str):
             self.log.error(f"\nRecipe marked as failed in the database. {forceFail}")
@@ -1074,8 +1077,8 @@ class base_recipe:
             if not os.path.exists(filedir):
                 try:
                     os.makedirs(filedir)
-                except:
-                    pass
+                except OSError as e:
+                    self.log.debug(f"_write: `os.makedirs(filedir)` failed, continuing: {e}")
 
         filepath = filedir + "/" + filename
 
@@ -1258,8 +1261,8 @@ class base_recipe:
         combined_frame.header = ccds[0].header
         try:
             combined_frame.wcs = ccds[0].wcs
-        except:
-            pass
+        except (AttributeError, IndexError) as e:
+            self.log.debug(f"clip_and_stack: `combined_frame.wcs = ccds[0].wcs` failed, continuing: {e}")
 
         if post_stack_clipping:
             maskedFrame = sigma_clip(
@@ -1494,8 +1497,8 @@ class base_recipe:
         try:
             columns.remove("qc_value_min")
             columns.remove("qc_value_max")
-        except:
-            pass
+        except ValueError as e:
+            self.log.debug(f"report_output: `columns.remove('qc_value_min')` failed, continuing: {e}")
         dbColumns = list(self.qc.columns)
         dbColumns.remove("to_header")
 
@@ -1510,7 +1513,8 @@ class base_recipe:
 
         try:
             soxspipe_recipe = self.qc["soxspipe_recipe"].values[0].upper()
-        except:
+        except (IndexError, KeyError, AttributeError) as e:
+            self.log.debug(f"report_output: `soxspipe_recipe = self.qc['soxspipe_recipe']....` failed, continuing: {e}")
             soxspipe_recipe = self.recipeName.upper()
 
         if rformat == "stdout":
@@ -2068,8 +2072,8 @@ class base_recipe:
             sqlQuery = f"delete from {table_name};"
             try:
                 c.execute(sqlQuery)
-            except:
-                pass
+            except sqlite3.OperationalError as e:
+                self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
             c.close()
 
         keepTrying = 0

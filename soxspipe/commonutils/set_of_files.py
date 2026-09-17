@@ -9,6 +9,7 @@ Date Created
 : January 22, 2020
 """
 
+import logging
 import os
 from os import path
 
@@ -42,7 +43,9 @@ class ImageFileCollection(ImageFileCollection):
 
         try:
             h = fits.getheader(file_name, self.ext)
-        except:
+        except (OSError, IndexError, KeyError) as e:
+            # THIS CLASS SUBCLASSES CCDPROC'S ImageFileCollection, WHICH CARRIES NO SOXSPIPE LOGGER
+            logging.getLogger(__name__).debug(f"_dict_from_fits_header: `h = fits.getheade...` failed, continuing: {e}")
             h = fits.getheader(file_name, 0)
 
         assert "file" not in h
@@ -110,8 +113,11 @@ class ImageFileCollection(ImageFileCollection):
             if k_lower != k:
                 try:
                     summary_table.rename_column(k_lower, k)
-                except KeyError:
-                    pass
+                except KeyError as e:
+                    # THIS CLASS SUBCLASSES CCDPROC'S ImageFileCollection, WHICH CARRIES NO SOXSPIPE LOGGER
+                    logging.getLogger(__name__).debug(
+                        f"_set_column_name_case_to_match_keywords: `rename_column(k_lower, k)` failed, continuing: {e}"
+                    )
 
 
 os.environ["TERM"] = "vt100"

@@ -10,6 +10,7 @@ Date Created
 """
 
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -385,12 +386,12 @@ class data_organiser:
                 )
                 try:
                     os.remove(self.rootDbPath + "-shm")
-                except:
-                    pass
+                except OSError as e:
+                    self.log.debug(f"prepare: `os.remove(self.rootDbPath + '-shm')` failed, continuing: {e}")
                 try:
                     os.remove(self.rootDbPath + "-wal")
-                except:
-                    pass
+                except OSError as e:
+                    self.log.debug(f"prepare: `os.remove(self.rootDbPath + '-wal')` failed, continuing: {e}")
             # DELETE ALL ERROR LOG AND SOF FILES
             if False:
                 for root, dirs, files in os.walk(os.path.abspath(self.rootDir)):
@@ -694,8 +695,8 @@ class data_organiser:
                         for file in matchedFiles["file"]:
                             try:
                                 os.remove(file)
-                            except:
-                                pass
+                            except OSError as e:
+                                self.log.debug(f"_sync_raw_frames: `os.remove(file)` failed, continuing: {e}")
                         # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
                         rawFrames = rawFrames[
                             ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
@@ -1426,8 +1427,8 @@ class data_organiser:
             dest = self.sessionPath + "/reduced"
             try:
                 os.symlink(self.vltReduced, dest)
-            except:
-                pass
+            except OSError as e:
+                self.log.debug(f"session_create: `os.symlink(self.vltReduced, dest)` failed, continuing: {e}")
 
         folders = ["sof", "qc", "reduced"]
         for f in folders:
@@ -1441,8 +1442,8 @@ class data_organiser:
         sqlQuery = f"ALTER TABLE product_frames ADD status_{sessionId} TEXT;"
         try:
             c.execute(sqlQuery)
-        except:
-            pass
+        except sqlite3.OperationalError as e:
+            self.log.debug(f"session_create: `c.execute(sqlQuery)` failed, continuing: {e}")
 
         # DUPLICATE TEH SOF_MAP TABLE
         sqlQuery = (
@@ -1453,8 +1454,8 @@ class data_organiser:
         sqlQuery = sqlQuery.replace("z_sof_map", f"sof_map_{sessionId}")
         try:
             c.execute(sqlQuery)
-        except:
-            pass
+        except sqlite3.OperationalError as e:
+            self.log.debug(f"session_create: `c.execute(sqlQuery)` failed, continuing: {e}")
 
         sqlQueries = [
             "DROP VIEW IF EXISTS sof_map;",
@@ -1484,7 +1485,7 @@ class data_organiser:
         message = f"A new data-reduction session has been created with sessionId '{sessionId}'"
         try:
             self.log.print(message)
-        except:
+        except (AttributeError, OSError, ValueError):
             print(message)
         self.log.debug("completed the ``session_create`` method")
 
@@ -1630,7 +1631,8 @@ class data_organiser:
             src = self.sessionPath + f"/{l}"
             try:
                 os.symlink(src, dest)
-            except:
+            except OSError as e:
+                self.log.debug(f"_symlink_session_assets_to_workspace_root: `os.symlink(sr...` failed, continuing: {e}")
                 os.unlink(dest)
                 os.symlink(src, dest)
 
@@ -1642,7 +1644,10 @@ class data_organiser:
                 src = filepath
                 try:
                     os.symlink(src, dest)
-                except:
+                except OSError as e:
+                    self.log.debug(
+                        f"_symlink_session_assets_to_workspace_root: `os.symlink(src, dest)` failed, continuing: {e}"
+                    )
                     os.unlink(dest)
                     os.symlink(src, dest)
 
@@ -1730,8 +1735,8 @@ class data_organiser:
 
         try:
             self.conn.close()
-        except:
-            pass
+        except (AttributeError, sqlite3.ProgrammingError) as e:
+            self.log.debug(f"close: `self.conn.close()` failed, continuing: {e}")
 
         self.log.debug("completed the ``session_refresh`` method")
         return
@@ -1799,7 +1804,8 @@ class data_organiser:
 
         try:
             os.symlink(vltRaw, self.rawDir)
-        except:
+        except OSError as e:
+            self.log.debug(f"use_vlt_environment_folders: `os.symlink(vltRaw, self.rawDir)` failed, continuing: {e}")
             os.unlink(self.rawDir)
             os.symlink(vltRaw, self.rawDir)
 
@@ -1857,8 +1863,8 @@ class data_organiser:
                 try:
                     if self.conn:
                         conn = self.conn
-                except:
-                    pass
+                except AttributeError as e:
+                    self.log.debug(f"_get_or_create_db_connection: `if self.conn: conn = s...` failed, continuing: {e}")
 
             if not conn:
                 try:
@@ -1895,8 +1901,8 @@ class data_organiser:
                 try:
                     del conn
                     del self.conn
-                except:
-                    pass
+                except (AttributeError, NameError, UnboundLocalError) as e:
+                    self.log.debug(f"_get_or_create_db_connection: `del conn` failed, continuing: {e}")
 
                 time.sleep(1)
 
@@ -1942,7 +1948,8 @@ class data_organiser:
                 c.execute(sqlQuery)
                 self.instrument = c.fetchall()[0][0]
                 c.close()
-            except:
+            except (AttributeError, IndexError, sqlite3.OperationalError) as e:
+                self.log.warning(f"_select_instrument: `c = self.conn.cursor()` failed, continuing: {e}")
                 return
 
         if "SOXS" not in self.instrument.upper():
@@ -2133,8 +2140,8 @@ class data_organiser:
             sofPath = self.sessionPath + "/sof/" + sof
             try:
                 os.remove(sofPath)
-            except:
-                pass
+            except OSError as e:
+                self.log.debug(f"build_sof_files: `os.remove(sofPath)` failed, continuing: {e}")
 
         # RESET ALL PRODUCTS TO INCOMPLETE
         c = self.conn.cursor()
@@ -2699,8 +2706,8 @@ class data_organiser:
             sqlQuery = f"delete from {table_name};"
             try:
                 c.execute(sqlQuery)
-            except:
-                pass
+            except sqlite3.OperationalError as e:
+                self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
             c.close()
 
         keepTrying = 0
@@ -2732,7 +2739,8 @@ def _harvest_fits_headers(
 
             try:
                 masterTable[fil].fill_value = "--"
-            except:
+            except (TypeError, ValueError) as e:
+                log.debug(f"_harvest_fits_headers: `masterTable[fil].fill_value = '--'` failed, continuing: {e}")
                 masterTable.replace_column(fil, masterTable[fil].astype(str))
                 masterTable[fil].fill_value = "--"
         # elif fil in ["exptime"]:
@@ -2740,7 +2748,8 @@ def _harvest_fits_headers(
         else:
             try:
                 masterTable[fil].fill_value = -99.99
-            except:
+            except (TypeError, ValueError) as e:
+                log.debug(f"_harvest_fits_headers: `masterTable[fil].fill_value = -99.99` failed, continuing: {e}")
                 masterTable[fil].fill_value = "--"
     masterTable = masterTable.filled()
 
@@ -2809,7 +2818,8 @@ def _harvest_fits_headers(
             masterTable["rospeed"] = np.copy(masterTable[kw("DET_READ_SPEED").lower()])
             try:
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
-            except:
+            except (TypeError, ValueError) as e:
+                log.debug(f"_harvest_fits_headers: `masterTable['rospeed'][masterTable['ro...` failed, continuing: {e}")
                 masterTable["rospeed"] = masterTable["rospeed"].astype(str)
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
             masterTable["rospeed"][masterTable["rospeed"] == "1pt/400k/lg"] = "fast"
@@ -2823,7 +2833,8 @@ def _harvest_fits_headers(
 
             try:
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
-            except:
+            except (TypeError, ValueError) as e:
+                log.debug(f"_harvest_fits_headers: `masterTable['rospeed'][masterTable['ro...` failed, continuing: {e}")
                 masterTable["rospeed"] = masterTable["rospeed"].astype(str)
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
 
@@ -2860,8 +2871,8 @@ def _harvest_fits_headers(
     for k in keywords:
         try:
             masterTable.add_index(k)
-        except:
-            pass
+        except (TypeError, ValueError, KeyError) as e:
+            log.debug(f"_harvest_fits_headers: `masterTable.add_index(k)` failed, continuing: {e}")
 
     # SORT IMAGE COLLECTION
     masterTable.sort(

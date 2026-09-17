@@ -111,7 +111,7 @@ class detect_order_edges(_base_detect):
         self.exptime = flatFrame.header[kw("EXPTIME")]
         try:
             self.slit = flatFrame.header[kw(f"SLIT_{self.arm}".upper())]
-        except:
+        except KeyError:
             self.log.warning(kw(f"SLIT_{self.arm}".upper()) + " keyword not found")
             self.slit = ""
 
@@ -744,7 +744,8 @@ class detect_order_edges(_base_detect):
                 axisAfitlow, axisBfitlow = zip(
                     *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10]
                 )
-            except:
+            except ValueError as e:
+                self.log.debug(f"plot_results: `axisAfitup, axisBfitup = zip( *[(a, b) for...` failed, continuing: {e}")
                 continue
 
             if len(axisBfitlow) < len(axisBfitup):
@@ -759,8 +760,8 @@ class detect_order_edges(_base_detect):
                     )
                     axisAfitlow = axisAfitlowExtra + axisAfitlow
                     axisBfitlow = axisBfitlowExtra + axisBfitlow
-                except:
-                    pass
+                except ValueError as e:
+                    self.log.debug(f"plot_results: `axisAfitlowExtra, axisBfitlowExtra = z...` failed, continuing: {e}")
                 try:
                     axisAfitlowExtra, axisBfitlowExtra = zip(
                         *[
@@ -771,8 +772,8 @@ class detect_order_edges(_base_detect):
                     )
                     axisAfitlow += axisAfitlowExtra
                     axisBfitlow += axisBfitlowExtra
-                except:
-                    pass
+                except ValueError as e:
+                    self.log.debug(f"plot_results: `axisAfitlowExtra, axisBfitlowExtra = z...` failed, continuing: {e}")
 
             if self.axisAbin > 1:
                 axisAfitup = np.array(axisAfitup) / self.axisAbin
@@ -802,8 +803,8 @@ class detect_order_edges(_base_detect):
                     fc=l[0].get_color(),
                     label=label2,
                 )
-            except:
-                pass
+            except (ValueError, IndexError) as e:
+                self.log.debug(f"plot_results: `midrow.fill_between( axisBfitlow, axisAfit...` failed, continuing: {e}")
             midrow.text(
                 axisBfitlow[10],
                 axisAfitlow[10] + 5,
@@ -862,8 +863,8 @@ class detect_order_edges(_base_detect):
                         c=c,
                         verticalalignment="bottom",
                     )
-                except:
-                    pass
+                except IndexError as e:
+                    self.log.debug(f"plot_results: `bottomleft.text( orderAxisACoords[10],...` failed, continuing: {e}")
                 bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
                 try:
                     bottomright.text(
@@ -874,8 +875,8 @@ class detect_order_edges(_base_detect):
                         c=c,
                         verticalalignment="bottom",
                     )
-                except:
-                    pass
+                except IndexError as e:
+                    self.log.debug(f"plot_results: `bottomright.text( orderAxisBCoords[10]...` failed, continuing: {e}")
 
             bottomleft.set_xlabel(f"{self.axisA} pixel position")
             bottomleft.set_ylabel(f"{self.axisA} residual")
@@ -1104,7 +1105,8 @@ class detect_order_edges(_base_detect):
                 axisAmaxguess = np.where(secondHalf < threshold)[0][0] + middle
                 axisAminguess = np.where(firstHalf < threshold)[0][-1]
                 hit = True
-            except:
+            except IndexError as e:
+                self.log.debug(f"determine_lower_upper_edge_pixel_positions: `axisAmaxgues...` failed, continuing: {e}")
                 threshold = threshold + thresholdRange * 0.1
 
         # IF WE STILL DIDN'T GET A HIT THEN REJECT

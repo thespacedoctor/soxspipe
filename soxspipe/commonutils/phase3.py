@@ -38,8 +38,8 @@ def basic_header_scrubbing(log, settings, header):
     for k in removeKw:
         try:
             header.pop(kw(k))
-        except:
-            pass
+        except KeyError as e:
+            log.debug(f"basic_header_scrubbing: `header.pop(kw(k))` failed, continuing: {e}")
 
     if "NAXIS" in header and header["NAXIS"] != 0 and "INHERIT" in header:
         del header["INHERIT"]
@@ -49,8 +49,8 @@ def basic_header_scrubbing(log, settings, header):
     for k in deleteKw:
         try:
             header.pop(k)
-        except:
-            pass
+        except KeyError as e:
+            log.debug(f"basic_header_scrubbing: `header.pop(k)` failed, continuing: {e}")
 
     # KEYWORDS TO RENAME
     renameKw = {

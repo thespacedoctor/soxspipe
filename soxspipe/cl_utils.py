@@ -157,8 +157,8 @@ def main(arguments=None):
         from astropy import log as astrolog
 
         astrolog.setLevel("WARNING")
-    except:
-        pass
+    except (ImportError, AttributeError) as e:
+        log.debug(f"main: `from astropy import log as astrolog` failed, continuing: {e}")
 
     # tab completion for raw_input
     readline.set_completer_delims(" \t\n;")
@@ -199,7 +199,8 @@ def main(arguments=None):
             with open(pathToPickleFile):
                 pass
             previousSettingsExist = True
-        except:
+        except OSError as e:
+            log.debug(f"main: `with open(pathToPickleFile): pass` failed, continuing: {e}")
             previousSettingsExist = False
         previousSettings = {}
         if previousSettingsExist:

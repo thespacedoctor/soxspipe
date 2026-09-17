@@ -9,6 +9,7 @@ Date Created
 : April 14, 2022
 """
 
+import contextlib
 import os
 import sys
 from datetime import datetime
@@ -1003,8 +1004,8 @@ class subtract_sky:
 
         try:
             ninerow.set_ylim(mean - 10 * std, mean + 10 * std)
-        except:
-            pass
+        except ValueError as e:
+            self.log.debug(f"plot_sky_sampling: `ninerow.set_ylim(mean - 10 * std, mean +...` failed, continuing: {e}")
 
         ninerow.set_xlabel("wavelength (nm)", fontsize=10)
         ninerow.set_ylabel("residual (weighted)", fontsize=10)
@@ -1307,7 +1308,8 @@ class subtract_sky:
             # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONG WAVELENGTH RANGE
             try:
                 qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
-            except:
+            except (ValueError, TypeError) as e:
+                self.log.warning(f"fit_bspline_curve_to_sky: `qs = np.linspace(0, 1, n_int...` failed, continuing: {e}")
                 qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
             defaultKnots = np.quantile(goodWl, qs)
         else:
@@ -1477,7 +1479,8 @@ class subtract_sky:
                     w=goodWeights,
                     full_output=True,
                 )
-            except:
+            except (ValueError, TypeError, RuntimeError) as e:
+                self.log.debug(f"fit_bspline_curve_to_sky: `tck, fp, ier, msg = ip.splrep(...` failed, continuing: {e}")
                 raise ValueError(
                     f"BSpline fit failed for order {order} on iteration {iterationCount}. Possibly too many knots ({len(allKnots)}) for the number of data points ({goodWl.values.shape[0]})."
                 )
@@ -1604,12 +1607,11 @@ class subtract_sky:
 
             sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
-            try:
+            # THE FAILING CALL WOULD BE THE PROGRESS LOGGER ITSELF, SO REPORTING THROUGH IT COULD RAISE AGAIN
+            with contextlib.suppress(ValueError, TypeError, OSError):
                 self.log.print(
                     f"\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}"
                 )
-            except:
-                pass
 
             if iterationCount >= 5 and lastExtraKnotCount == len(extraKnots):
                 self.log.info(f"\t\tNo new knots added on iteration {iterationCount}. Stopping iterations.\n")
@@ -1782,7 +1784,8 @@ class subtract_sky:
         try:
             std = np.nanstd(maskedDataValues)
             mean = np.nanmean(maskedDataValues)
-        except:
+        except (TypeError, ValueError) as e:
+            self.log.debug(f"plot_image_comparison: `std = np.nanstd(maskedDataValues)` failed, continuing: {e}")
             std = np.std(maskedDataValues)
             mean = np.mean(maskedDataValues)
         vmax = mean + 1 * std
@@ -1813,7 +1816,8 @@ class subtract_sky:
         try:
             std = np.nanstd(maskedDataValues)
             mean = np.nanmean(maskedDataValues)
-        except:
+        except (TypeError, ValueError) as e:
+            self.log.debug(f"plot_image_comparison: `std = np.nanstd(maskedDataValues)` failed, continuing: {e}")
             std = np.std(maskedDataValues)
             mean = np.mean(maskedDataValues)
 
@@ -2574,8 +2578,8 @@ class subtract_sky:
                         try:
                             legobj.set_sizes([30])
                             legobj.set_alpha(0.7)
-                        except:
-                            pass
+                        except AttributeError as e:
+                            self.log.debug(f"refresh_and_plot: `legobj.set_sizes([30])` failed, continuing: {e}")
             fig.canvas.draw()
             fig.canvas.flush_events()
             if pause:
