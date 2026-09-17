@@ -29,6 +29,8 @@ Module Structure
 """
 
 ################# GLOBAL IMPORTS ####################
+import contextlib
+import logging
 import os
 import sys
 from datetime import datetime
@@ -1187,22 +1189,22 @@ class create_dispersion_map:
             if col in df.columns:
                 try:
                     df[col] = df[col].astype(float)
-                except:
-                    pass
+                except (ValueError, TypeError) as e:
+                    self.log.debug(f"_clean_line_list: `df[col] = df[col].astype(float)` failed, continuing: {e}")
 
         for col in intCols:
             if col in df.columns:
                 try:
                     df[col] = df[col].astype(int)
-                except:
-                    pass
+                except (ValueError, TypeError) as e:
+                    self.log.debug(f"_clean_line_list: `df[col] = df[col].astype(int)` failed, continuing: {e}")
 
         for col in stringCols:
             if col in df.columns:
                 try:
                     df[col] = df[col].astype(str)
-                except:
-                    pass
+                except (ValueError, TypeError) as e:
+                    self.log.debug(f"_clean_line_list: `df[col] = df[col].astype(str)` failed, continuing: {e}")
 
         # REMOVE FLAGGED LINES
         if "delete" in df.columns:
@@ -2448,7 +2450,8 @@ class create_dispersion_map:
                     p0=xcoeff,
                     maxfev=30000,
                 )
-            except:
+            except (RuntimeError, ValueError) as e:
+                self.log.debug(f"fit_polynomials: `xcoeff, pcov_x = curve_fit( polyx, xdat...` failed, continuing: {e}")
                 return "xerror", None, None, None
 
             # NOW Y
@@ -2462,7 +2465,8 @@ class create_dispersion_map:
                     p0=ycoeff,
                     maxfev=30000,
                 )
-            except:
+            except (RuntimeError, ValueError) as e:
+                self.log.debug(f"fit_polynomials: `ycoeff, pcov_y = curve_fit( polyy, xdat...` failed, continuing: {e}")
                 return None, "yerror", None, None
 
             self.log.info("""calculate_residuals""" % locals())
@@ -2495,8 +2499,8 @@ class create_dispersion_map:
                 columnsNoStrings = list(orderPixelTable.columns)
                 try:
                     columnsNoStrings.remove("ion")
-                except:
-                    pass
+                except ValueError as e:
+                    self.log.debug(f"fit_polynomials: `columnsNoStrings.remove('ion')` failed, continuing: {e}")
 
                 # GROUP BY ARC LINES (MPH SETS)
                 lineGroups = orderPixelTable[columnsNoStrings].groupby(["wavelength", "order"]).mean()
@@ -2638,7 +2642,8 @@ class create_dispersion_map:
                             ),
                             "sigma_clipped",
                         ] = True
-                    except:
+                    except KeyError as e:
+                        self.log.debug(f"fit_polynomials: `orderPixelTable.loc[ ( (orderPi...` failed, continuing: {e}")
                         orderPixelTable.loc[
                             (orderPixelTable["sigma_clipped_xy"] == True),
                             "sigma_clipped",
@@ -2661,12 +2666,11 @@ class create_dispersion_map:
                 sys.stdout.flush()
                 sys.stdout.write("\x1b[1A\x1b[2K")
 
-            try:
+            # THE FAILING CALL WOULD BE THE PROGRESS LOGGER ITSELF, SO REPORTING THROUGH IT COULD RAISE AGAIN
+            with contextlib.suppress(ValueError, TypeError, OSError):
                 self.log.print(
                     f"\tITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map"
                 )
-            except:
-                pass
 
             mask = orderPixelTable["sigma_clipped"] == True
             orderPixelTable = orderPixelTable.loc[~mask]
@@ -3159,9 +3163,9 @@ class create_dispersion_map:
             try:
                 wlMap.data[yy, xx] = np.where(np.isnan(wlMap.data[yy, xx]), wavelength, wlMap.data[yy, xx])
                 slitMap.data[yy, xx] = np.where(np.isnan(slitMap.data[yy, xx]), slit_position, slitMap.data[yy, xx])
-            except IndexError:
+            except IndexError as e:
                 # PIXELS OUTSIDE OF DETECTOR EDGES - IGNORE
-                pass
+                self.log.debug(f"convert_and_fit: `wlMap.data[yy, xx] = np.where(np.isnan(...` failed, continuing: {e}")
 
         sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
@@ -3172,7 +3176,8 @@ class create_dispersion_map:
             self.log.print(
                 f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted."
             )
-        except:
+        except (OSError, ValueError):
+            # THE FAILING CALLS ARE STDOUT AND THE PROGRESS LOGGER, SO REPORTING THROUGH THEM COULD RAISE AGAIN
             pass
 
         if plots:
@@ -4024,8 +4029,8 @@ class create_dispersion_map:
         columnsNoStrings = list(orderPixelTable.columns)
         try:
             columnsNoStrings.remove("ion")
-        except:
-            pass
+        except ValueError as e:
+            self.log.debug(f"_clip_on_measured_line_metrics: `columnsNoStrings.remove('ion')` failed, continuing: {e}")
 
         if self.firstGuessMap:
 
@@ -4807,7 +4812,11 @@ def _plot_slit_index_comparisons(df):
     slit_indexes = np.sort(df["slit_index"].unique())
     try:
         order_num = df["order"].iloc[0] if "order" in df.columns else None
-    except:
+    except (IndexError, KeyError) as e:
+        # NO SOXSPIPE LOGGER IS IN SCOPE IN THIS MODULE-LEVEL PLOTTING HELPER
+        logging.getLogger(__name__).warning(
+            f"_plot_slit_index_comparisons: no order number in the dataframe, skipping the plot: {e}"
+        )
         return
     cmap = plt.get_cmap("tab10")
     colors = {idx: cmap(i % 10) for i, idx in enumerate(slit_indexes)}

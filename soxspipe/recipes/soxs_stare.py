@@ -428,13 +428,15 @@ class soxs_stare(base_recipe):
             filterDict = {kw("PRO_CATG"): f"RESP_TAB_{arm}"}
             responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
-        except:
+        except IndexError as e:
+            self.log.debug(f"produce_product: no response function frame for this arm, continuing: {e}")
             responseFunctionPath = False
 
         try:
             if not self.recipeSettings["use_flat"]:
                 master_flat = False
-        except:
+        except KeyError as e:
+            self.log.debug(f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}")
             master_flat = False
 
         combined_object = self.detrend(

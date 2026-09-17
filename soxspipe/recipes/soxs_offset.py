@@ -214,7 +214,8 @@ class soxs_offset(soxs_nod):
             filterDict = {kw("PRO_CATG"): f"RESP_TAB_{arm}"}
             responseFunctionPath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
-        except:
+        except IndexError as e:
+            self.log.debug(f"produce_product: no response function frame for this arm, continuing: {e}")
             responseFunctionPath = False
 
         quicklook_image(

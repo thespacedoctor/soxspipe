@@ -150,8 +150,8 @@ class subtract_background:
         try:
             binx = self.frame.header[self.kw("WIN_BINX")]
             biny = self.frame.header[self.kw("WIN_BINY")]
-        except:
-            pass
+        except KeyError as e:
+            self.log.debug(f"subtract: `binx = self.frame.header[self.kw('WIN_BINX')]` failed, continuing: {e}")
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
@@ -300,7 +300,8 @@ class subtract_background:
                         if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen
                     ]
                 )
-            except:
+            except ValueError as e:
+                self.log.debug(f"mask_order_locations: `axisAcoord_edgelow, axisAcoord_edg...` failed, continuing: {e}")
                 continue
             for b, u, l in zip(
                 axisBcoord,
@@ -433,7 +434,8 @@ class subtract_background:
             # rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).quantile(.1)
             try:
                 rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
-            except:
+            except (TypeError, ValueError) as e:
+                self.log.debug(f"create_background_image: `rowmaskedSmoothed = pd.Series(r...` failed, continuing: {e}")
                 rowmasked = rowmasked.astype(float)
                 # rowmasked = rowmasked.byteswap().newbyteorder() ## REMOVE IF ABOVE .astype(float) WORKS
                 rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()

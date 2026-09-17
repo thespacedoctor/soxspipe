@@ -85,8 +85,8 @@ class base_util:
         try:
             self.binx = int(associatedFrame.header[self.kw("WIN_BINX")])
             self.biny = int(associatedFrame.header[self.kw("WIN_BINY")])
-        except:
-            pass
+        except (KeyError, TypeError, ValueError) as e:
+            self.log.debug(f"__init__: `self.binx = int(associatedFrame.header[self.kw('WI...` failed, continuing: {e}")
 
         # GET SKYLINES DATAFRAME
         self.skylinesDF = get_skylines_dataframe(
@@ -132,7 +132,8 @@ class base_util:
             try:
                 dpBinx = self.twoDMap[0].header[self.kw("WIN_BINX")]
                 dpBiny = self.twoDMap[0].header[self.kw("WIN_BINY")]
-            except:
+            except KeyError as e:
+                self.log.debug(f"__init__: `dpBinx = self.twoDMap[0].header[self.kw('WIN_B...` failed, continuing: {e}")
                 dpBinx = 1
                 dpBiny = 1
 

@@ -129,7 +129,8 @@ class horne_extraction(base_util):
             self.noddingSequence = "_A" if int(skySubtractedFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
             if locationSetIndex:
                 self.noddingSequence += str(locationSetIndex)
-        except:
+        except (KeyError, TypeError) as e:
+            self.log.debug(f"__init__: `self.noddingSequence = '_A' if int(skySubtractedFr...` failed, continuing: {e}")
             self.noddingSequence = ""
 
         # COLLECT SETTINGS FROM SETTINGS FILE
@@ -1279,7 +1280,7 @@ class horne_extraction(base_util):
                             verticalalignment="bottom",
                         )
                     addedLegend = False
-            except:
+            except (ValueError, IndexError, KeyError, TypeError):
                 self.log.warning(f"Order skipped: {o}")
 
         if (

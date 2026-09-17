@@ -9,6 +9,7 @@ Date Created
 : September 18, 2020
 """
 
+import logging
 import os
 import sys
 from datetime import UTC, datetime
@@ -210,7 +211,8 @@ def quicklook_image(
     if inst is False:
         try:
             inst = CCDObject.header["INSTRUME"]
-        except:
+        except (KeyError, AttributeError) as e:
+            log.debug(f"quicklook_image: `inst = CCDObject.header['INSTRUME']` failed, continuing: {e}")
             inst = "XSHOOTER"
 
     if skylines:
@@ -232,12 +234,13 @@ def quicklook_image(
 
         try:
             mask = (frame.mask == 1) | (interOrderMask == 1)
-        except:
+        except (AttributeError, ValueError) as e:
+            log.debug(f"quicklook_image: `mask = (frame.mask == 1) | (interOrderMask == 1)` failed, continuing: {e}")
             mask = interOrderMask == 1
         try:
             frame.mask = mask
-        except:
-            pass
+        except AttributeError as e:
+            log.debug(f"quicklook_image: `frame.mask = mask` failed, continuing: {e}")
 
     if inst == "SOXS":
         rotatedImg = np.flipud(frame)
@@ -700,7 +703,8 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     try:
         binx = frame.header[kw("WIN_BINX")]
         biny = frame.header[kw("WIN_BINY")]
-    except:
+    except KeyError as e:
+        log.debug(f"spectroscopic_image_quality_checks: `binx = frame.header[kw('WIN_BINX')]` failed, continuing: {e}")
         if arm.lower() == "nir":
             binx = 1
             biny = 1
@@ -1135,8 +1139,9 @@ def predict_product_path(sofName, recipeName=False):
 
     try:
         sofName = os.path.basename(sofName)
-    except:
-        pass
+    except (TypeError, AttributeError) as e:
+        # NO LOGGER EXISTS YET AT THIS POINT IN THE FUNCTION, SO REPORT THE SAME WAY THE OBSDATE HANDLER BELOW DOES
+        print(f"predict_product_path: no sof filename in {sofName!r}, the product path will not resolve: {e}")
 
     if not recipeName:
         recipeName = sys.argv[1]
@@ -1157,7 +1162,7 @@ def predict_product_path(sofName, recipeName=False):
             night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
             startNightDate = obsDate - night_start_offset
             startNightDate = startNightDate.strftime("%Y-%m-%d")
-        except:
+        except (ValueError, TypeError):
             print("Could not determine OBSDATE from sof filename")
             pass
 
@@ -1220,16 +1225,16 @@ def add_recipe_logger(log, productPath):
     try:
         os.remove(loggingPath)
         os.remove(loggingErrorPath)
-    except:
-        pass
+    except OSError as e:
+        log.debug(f"add_recipe_logger: `os.remove(loggingPath)` failed, continuing: {e}")
 
     # PARENT DIRECTORY PATH NEEDS TO EXIST FOR LOGGER TO WRITE
     parentDirectory = os.path.dirname(loggingPath)
     if not os.path.exists(parentDirectory):
         try:
             os.makedirs(parentDirectory)
-        except:
-            pass
+        except OSError as e:
+            log.debug(f"add_recipe_logger: `os.makedirs(parentDirectory)` failed, continuing: {e}")
 
     recipeLog = logging.FileHandler(loggingPath, mode="a", encoding=None, delay=False)
     recipeLogFormatter = logging.Formatter("%(message)s")
@@ -1575,8 +1580,8 @@ def utility_setup(log, settings, recipeName, startNightDate):
     if not os.path.exists(qcDir):
         try:
             os.makedirs(qcDir)
-        except Exception:
-            pass
+        except OSError as e:
+            log.warning(f"utility_setup: `os.makedirs(qcDir)` failed, continuing: {e}")
 
     # PRODUCT DIR
     productDir = settings["workspace-root-dir"].replace("~", home) + f"/reduced/{startNightDate}/{recipeName}/"
@@ -1585,8 +1590,8 @@ def utility_setup(log, settings, recipeName, startNightDate):
     if not os.path.exists(productDir):
         try:
             os.makedirs(productDir)
-        except Exception:
-            pass
+        except OSError as e:
+            log.warning(f"utility_setup: `os.makedirs(productDir)` failed, continuing: {e}")
 
     log.debug("completed the ``utility_setup`` function")
     return qcDir, productDir
@@ -1723,8 +1728,8 @@ def plot_merged_spectrum_qc(
         for i in range(len(orderValue)):
             try:
                 orderValue[i] = int(orderValue[i])
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as e:
+                log.debug(f"plot_merged_spectrum_qc: `orderValue[i] = int(orderValue[i])` failed, continuing: {e}")
 
         orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
         snrValue = snrValue["qc_value"].values
@@ -1985,13 +1990,17 @@ def frame_to_32(frame):
     try:
         if frame.data.dtype != np.float32:
             frame.data = frame.data.astype(np.float32, copy=False)
-    except:
-        pass
+    except AttributeError as e:
+        # NO SOXSPIPE LOGGER IS IN SCOPE IN THIS MODULE-LEVEL HELPER
+        logging.getLogger(__name__).debug(f"frame_to_32: could not cast the frame data to float32, continuing: {e}")
 
     try:
         frame.uncertainty.array = frame.uncertainty.array.astype(np.float32, copy=False)
-    except:
-        pass
+    except AttributeError as e:
+        # NO SOXSPIPE LOGGER IS IN SCOPE IN THIS MODULE-LEVEL HELPER
+        logging.getLogger(__name__).debug(
+            f"frame_to_32: could not cast the frame uncertainty array to float32, continuing: {e}"
+        )
 
     return frame
 
@@ -2027,8 +2036,8 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     spectrumDF["ORDER"] = np.nan
     try:
         spectrumDF["WAVE"] = spectrumDF["WAVE"].values.value
-    except:
-        pass
+    except AttributeError as e:
+        log.debug(f"add_snr_efficiency_qcs: `spectrumDF['WAVE'] = spectrumDF['WAVE'].value...` failed, continuing: {e}")
 
     ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST
     orderJoins = dict(reversed(list(orderJoins.items())))

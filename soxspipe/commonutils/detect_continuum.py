@@ -595,7 +595,8 @@ class detect_continuum(_base_detect):
             self.noddingSequence = "_A" if int(traceFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
             if locationSetIndex:
                 self.noddingSequence += str(locationSetIndex)
-        except:
+        except (KeyError, TypeError) as e:
+            self.log.debug(f"__init__: `self.noddingSequence = '_A' if int(traceFrame.head...` failed, continuing: {e}")
             self.noddingSequence = ""
 
         self.recipeName = recipeName
@@ -781,7 +782,8 @@ class detect_continuum(_base_detect):
 
         try:
             nclip = len(clippedData.index)
-        except:
+        except (AttributeError, TypeError) as e:
+            self.log.debug(f"get: `nclip = len(clippedData.index)` failed, continuing: {e}")
             nclip = 0
         self.qc = pd.concat(
             [
@@ -966,7 +968,8 @@ class detect_continuum(_base_detect):
         try:
             dmBinx = header[self.kw("WIN_BINX")]
             dmBiny = header[self.kw("WIN_BINY")]
-        except:
+        except KeyError as e:
+            self.log.debug(f"create_pixel_arrays: `dmBinx = header[self.kw('WIN_BINX')]` failed, continuing: {e}")
             dmBinx = 1
             dmBiny = 1
 
@@ -1062,7 +1065,8 @@ class detect_continuum(_base_detect):
                     gauss_stddev[i] = g.stddev.value
                     gauss_mean[i] = g.mean.value
 
-            except:
+            except (ValueError, TypeError, RuntimeError, IndexError) as e:
+                self.log.debug(f"fit_1d_gaussian_to_slices: `mask = np.isfinite(slice_data)` failed, continuing: {e}")
                 continue
 
         # Assign results back to DataFrame using vectorized operations
@@ -1244,7 +1248,8 @@ class detect_continuum(_base_detect):
                         if x > 0 and x < (axisALength) - 10
                     ]
                 )
-            except:
+            except ValueError as e:
+                self.log.debug(f"plot_results: `xfit, yfit, stdfit, lower, upper = zip( *[...` failed, continuing: {e}")
                 continue
             if flipImage and not rotateImage:
                 xfit = aLen - np.array(xfit)
@@ -1277,8 +1282,8 @@ class detect_continuum(_base_detect):
                     c=c[0].get_color(),
                     verticalalignment="bottom",
                 )
-            except:
-                pass
+            except (IndexError, KeyError) as e:
+                self.log.debug(f"plot_results: `midrow.text( yfit[10], xfit[10] + 10, int(...` failed, continuing: {e}")
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         orderMetaTable = {
@@ -1328,8 +1333,8 @@ class detect_continuum(_base_detect):
                     c=c,
                     verticalalignment="bottom",
                 )
-            except:
-                pass
+            except (IndexError, KeyError) as e:
+                self.log.debug(f"plot_results: `bottomleft.text( orderPixelTable.loc[mask]...` failed, continuing: {e}")
 
         bottomleft.set_xlabel(f"{self.axisA} pixel position", fontsize=10)
         bottomleft.set_ylabel(f"{self.axisA} residual", fontsize=10)
@@ -1359,8 +1364,8 @@ class detect_continuum(_base_detect):
                     c=c,
                     verticalalignment="bottom",
                 )
-            except:
-                pass
+            except (IndexError, KeyError) as e:
+                self.log.debug(f"plot_results: `bottomright.text( orderPixelTable.loc[mask...` failed, continuing: {e}")
 
         bottomright.set_xlabel(f"{self.axisB} pixel position", fontsize=10)
         bottomright.tick_params(axis="both", which="major", labelsize=9)
@@ -1390,8 +1395,8 @@ class detect_continuum(_base_detect):
                     c=c,
                     verticalalignment="bottom",
                 )
-            except:
-                pass
+            except (IndexError, KeyError) as e:
+                self.log.debug(f"plot_results: `fwhmaxis.text( orderPixelTable.loc[mask]['...` failed, continuing: {e}")
         fwhmaxis.set_xlabel("wavelength (nm)", fontsize=10)
         fwhmaxis.set_ylabel("Cross-dispersion\nFWHM (pixels)", fontsize=10)
 
@@ -1459,8 +1464,8 @@ class detect_continuum(_base_detect):
             try:
                 item.cla()
                 del item
-            except:
-                pass
+            except AttributeError as e:
+                self.log.debug(f"plot_results: `item.cla()` failed, continuing: {e}")
 
         if self.settings["tune-pipeline"]:
             import codecs
@@ -1499,8 +1504,8 @@ class detect_continuum(_base_detect):
         try:
             binx = self.traceFrame.header[self.kw("WIN_BINX")] / dmBinx
             biny = self.traceFrame.header[self.kw("WIN_BINY")] / dmBiny
-        except:
-            pass
+        except KeyError as e:
+            self.log.debug(f"sample_trace: `binx = self.traceFrame.header[self.kw('WIN_BIN...` failed, continuing: {e}")
 
         # FIT_X AND FIT_Y FROM DISP-SOLUTION
         orderPixelTable["fit_x"] = orderPixelTable["fit_x"] / binx

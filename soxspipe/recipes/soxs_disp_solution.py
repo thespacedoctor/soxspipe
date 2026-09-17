@@ -83,8 +83,8 @@ class soxs_disp_solution(base_recipe):
         if self.polyOrders:
             try:
                 self.polyOrders = int(self.polyOrders)
-            except:
-                pass
+            except (ValueError, TypeError) as e:
+                self.log.debug(f"__init__: `self.polyOrders = int(self.polyOrders)` failed, continuing: {e}")
             if not isinstance(self.polyOrders, int):
                 raise TypeError("THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER")
 
@@ -321,8 +321,8 @@ class soxs_disp_solution(base_recipe):
             perm = product(digits, repeat=4)
             try:
                 os.remove("residuals.txt")
-            except:
-                pass
+            except OSError as e:
+                self.log.debug(f"produce_product: `os.remove('residuals.txt')` failed, continuing: {e}")
 
             # GET THE LINE DETECTION LIST BEFORE JUMPING TO PERMUTATIONS
             (
@@ -471,7 +471,7 @@ def parameterTuning(
             productsTable,
             lineDetectionTable,
         ) = this.get()
-    except:
-        pass
+    except Exception as e:
+        log.warning(f"parameterTuning: this tuning iteration failed and records nothing in the grid, continuing: {e}")
 
     return

@@ -85,8 +85,8 @@ class soxs_order_centres(base_recipe):
         if self.polyOrders:
             try:
                 self.polyOrders = int(self.polyOrders)
-            except:
-                pass
+            except (ValueError, TypeError) as e:
+                self.log.debug(f"__init__: `self.polyOrders = int(self.polyOrders)` failed, continuing: {e}")
             if not isinstance(self.polyOrders, int):
                 raise TypeError("THE poly VALUE NEEDS TO BE A 2 DIGIT INTEGER")
 
@@ -334,8 +334,8 @@ class soxs_order_centres(base_recipe):
             perm = product(digits, repeat=2)
             try:
                 os.remove("residuals.txt")
-            except:
-                pass
+            except OSError as e:
+                self.log.debug(f"produce_product: `os.remove('residuals.txt')` failed, continuing: {e}")
 
             # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
             # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
@@ -492,8 +492,8 @@ def parameterTuning(
             orderPixelTable,
             orderMetaTable,
         ) = detector.get()
-    except:
-        pass
+    except Exception as e:
+        log.warning(f"parameterTuning: this tuning iteration failed and records nothing in the grid, continuing: {e}")
 
     return
 
