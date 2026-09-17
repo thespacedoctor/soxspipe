@@ -1306,11 +1306,7 @@ class subtract_sky:
         if defaultPointsPerKnot:
             n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
             # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONG WAVELENGTH RANGE
-            try:
-                qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
-            except (ValueError, TypeError) as e:
-                self.log.warning(f"fit_bspline_curve_to_sky: `qs = np.linspace(0, 1, n_int...` failed, continuing: {e}")
-                qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
+            qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
             defaultKnots = np.quantile(goodWl, qs)
         else:
             defaultKnots = np.array([])

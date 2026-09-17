@@ -207,6 +207,31 @@ def test_utility_setup_creates_recipe_directories_under_workspace(
     assert Path(productDir).is_dir()
 
 
+@pytest.mark.parametrize("failingSegment", ["/qc/", "/reduced/"])
+def test_utility_setup_propagates_directory_creation_failures(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, failingSegment: str
+) -> None:
+    """Both directory-creation sites propagate; neither swallows."""
+    workspace = tmp_path / "workspace"
+    realMakedirs = toolkit.os.makedirs
+
+    def refuse(path, *args, **kwargs):
+        # REFUSE ONLY THE DIRECTORY UNDER TEST, SO EACH SITE IS PINNED SEPARATELY
+        if failingSegment in str(path):
+            raise PermissionError(13, "Permission denied", str(path))
+        return realMakedirs(path, *args, **kwargs)
+
+    monkeypatch.setattr(toolkit.os, "makedirs", refuse)
+
+    with pytest.raises(PermissionError):
+        toolkit.utility_setup(
+            log,
+            {"workspace-root-dir": str(workspace)},
+            "soxs-stare-obj",
+            "2024-01-01",
+        )
+
+
 def test_calculate_rolling_snr_places_finite_values_at_window_centers() -> None:
     source = pd.DataFrame({"flux": [10.0, 11.0, 9.0, 10.0, 10.0, 12.0, 8.0]})
 
