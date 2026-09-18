@@ -385,3 +385,23 @@ def test_filenamer_emits_only_its_own_start_and_end_debug_events(log: object) ->
         ("debug", "starting the ``filenamer`` function"),
         ("debug", "completed the ``filenamer`` function"),
     ]
+
+
+@pytest.mark.parametrize(
+    ("supplyDetector", "firstMissing"),
+    ((False, "ESO SEQ ARM"), (True, "ESO OBS ID")),
+)
+def test_filenamer_reads_the_arm_before_the_obs_id_only_when_it_looks_up_the_detector(
+    log: object, supplyDetector: bool, firstMissing: str
+) -> None:
+    frame = synthetic_ccd()
+    del frame.header["ESO OBS ID"]
+    del frame.header["ESO SEQ ARM"]
+    lookups = {}
+    if supplyDetector:
+        lookups["detectorLookup"] = detector_lookup(
+            log=log, settings=SOXS_SETTINGS
+        ).get("VIS")
+
+    with pytest.raises(KeyError, match=firstMissing):
+        _name(log, frame, settings=SOXS_SETTINGS, **lookups)
