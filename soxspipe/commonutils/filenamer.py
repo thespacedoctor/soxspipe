@@ -82,23 +82,14 @@ def _frame_type(frame, kw):
     ttype = None
 
     if frame.header[kw("DPR_TYPE")].upper() == "BIAS":
-        if "SXSPRE" in frame.header:
-            ttype = "mbias"
-        else:
-            ttype = "bias"
+        ttype = "mbias" if "SXSPRE" in frame.header else "bias"
     elif frame.header[kw("DPR_TYPE")].upper() == "DARK":
-        if "SXSPRE" in frame.header:
-            ttype = "mdark"
-        else:
-            ttype = "dark"
+        ttype = "mdark" if "SXSPRE" in frame.header else "dark"
     elif (
         "LAMP" in frame.header[kw("DPR_TYPE")].upper()
         and "FLAT" in frame.header[kw("DPR_TYPE")].upper()
     ):
-        if "SXSPRE" in frame.header:
-            ttype = "mflat"
-        else:
-            ttype = "flat"
+        ttype = "mflat" if "SXSPRE" in frame.header else "flat"
     elif (
         frame.header[kw("DPR_TYPE")].upper() == "LAMP,FMTCHK"
         or frame.header[kw("DPR_TYPE")].upper() == "LAMP,WAVE"
@@ -220,20 +211,19 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
 
     # GENERATE A FILENAME FOR THE FRAME BASED ON THE FILENAMING
     # CONVENTION
-    if keywordLookup:
-        kw = keywordLookup
-    else:
-        kw = keyword_lookup(log=log, settings=settings).get
+    kw = keywordLookup or keyword_lookup(log=log, settings=settings).get
 
     if detectorLookup:
         dp = detectorLookup
     else:
         arm = frame.header[kw("SEQ_ARM")]
-        # DETECTOR PARAMETERS LOOKUP OBJECT
-        dp = detector_lookup(log=log, settings=settings).get(arm)
+        # DETECTOR PARAMETERS LOOKUP OBJECT. THE RESULT IS UNUSED BUT THE CALL STAYS:
+        # IT RAISES LookupError FOR AN UNKNOWN ARM
+        dp = detector_lookup(log=log, settings=settings).get(arm)  # noqa: F841
 
     dateStamp = frame.header[kw("DATE_OBS")].replace("-", ".").replace(":", ".")
-    obid = frame.header[kw("OBS_ID")]
+    # THE OBSERVATION ID IS NOT IN THE NAME BUT THE READ STAYS: A MISSING KEYWORD RAISES KeyError
+    obid = frame.header[kw("OBS_ID")]  # noqa: F841
     arm = frame.header[kw("SEQ_ARM")].lower()
     binning = _binning_fragment(frame)
     romode = _readout_fragment(log, frame, kw)
@@ -241,7 +231,6 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
     filename = f"{dateStamp}_{arm}{binning}{romode}"
 
     ttype = None
-    obsmode = None
 
     # DETERMINE THE TYPE
     if kw("DPR_TYPE") not in frame.header and kw("PRO_TYPE") in frame.header:
@@ -268,18 +257,16 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
     maskSlit = _mask_slit(frame, kw, ttype)
 
     # EXTRA PARAMETERS NEEDED FOR SPECTRUM
-    if frame.header[kw("DPR_TECH")].upper() != "IMAGE":
+    if frame.header[kw("DPR_TECH")].upper() != "IMAGE" and maskSlit is None:
+        print(repr(frame.header))
+        print()
 
-        if maskSlit is None:
-            print(repr(frame.header))
-            print()
-
-            print(frame.header[kw("DPR_TYPE")].lower())
-            print(frame.header[kw("DPR_TECH")].lower())
-            print(frame.header[kw("DPR_CATG")].lower())
-            message = "Frame mask/slit can't be determined - exiting"
-            log.error(message)
-            raise TypeError(message)
+        print(frame.header[kw("DPR_TYPE")].lower())
+        print(frame.header[kw("DPR_TECH")].lower())
+        print(frame.header[kw("DPR_CATG")].lower())
+        message = "Frame mask/slit can't be determined - exiting"
+        log.error(message)
+        raise TypeError(message)
 
     if maskSlit:
         filename = f"{filename}_{maskSlit}"
