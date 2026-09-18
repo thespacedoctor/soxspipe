@@ -195,3 +195,32 @@ def test_fit_cache_reads_fits_coefficients_unless_reset(
     assert cachedY == [7.25, 0.75]
     assert_array_equal(resetX, np.ones(2))
     assert_array_equal(resetY, np.ones(2))
+
+
+def test_fit_cache_rejects_a_malformed_degree_column(
+    tmp_path: Path, log: object
+) -> None:
+    cachePath = tmp_path / ".cache"
+    cachePath.mkdir()
+    coefficientPath = cachePath / "soxs-disp-solution_VIS_100.fits"
+    coefficients = pd.DataFrame(
+        {
+            "axis": ["x", "y"],
+            "order_deg": ["bad", "bad"],
+            "wavelength_deg": [0, 0],
+            "slit_deg": [0, 0],
+            "c000": [3.5, 7.25],
+        }
+    )
+    dispersion_map_fits(coefficientPath, coefficients=coefficients)
+
+    with pytest.raises(ValueError):
+        get_cached_coeffs(
+            log,
+            "VIS",
+            {"workspace-root-dir": str(tmp_path)},
+            "soxs-disp-solution",
+            1,
+            0,
+            0,
+        )
