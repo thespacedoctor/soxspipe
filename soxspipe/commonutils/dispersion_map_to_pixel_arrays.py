@@ -68,17 +68,24 @@ def dispersion_map_to_pixel_arrays(
     removeOffDetectorLocation=True,
     trimColumns=False,
 ):
-    """*Use a dispersion solution to convert wavelength, slit-position and echelle order numbers to X,Y pixel positions.*
+    """*Use a dispersion solution to convert wavelength, slit-position and echelle order
+    numbers to X,Y pixel positions.*
 
     Return a line-list with x,y fits given a first guess dispersion map.*
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `dispersionMapPath` -- path to the dispersion map
-    - `orderPixelTable` -- a data-frame including 'order', 'wavelength' and 'slit_pos' columns
-    - `removeOffDetectorLocation` -- if data points are found to lie off the detector plane then remove them from the results. Default *True*
-    - `trimColumns` -- if True, only return the specified columns. Default *False*
+    - ``log`` -- logger
+    - ``dispersionMapPath`` -- path to the dispersion map
+    - ``orderPixelTable`` -- a data-frame including 'order', 'wavelength' and 'slit_pos' columns
+    - ``removeOffDetectorLocation`` -- if data points are found to lie off the detector plane then remove
+      them from the results. Default *True*
+    - ``trimColumns`` -- if True, only return the specified columns. Default *False*
+
+    **Return:**
+
+    - ``orderPixelTable`` -- the input data-frame with ``fit_x``/``fit_y`` pixel columns added, filtered
+      and/or trimmed per the arguments above
 
     **Usage:**
 
@@ -207,12 +214,17 @@ def get_cached_coeffs(
 
     - ``log`` -- logger
     - ``arm`` -- the spectrograph arm.
-    - ``settings`` pipeline settings dictionary
+    - ``settings`` -- pipeline settings dictionary
     - ``recipeName`` -- the name of the recipe.
     - ``orderDeg`` -- the order deg
     - ``wavelengthDeg`` -- wavelength degree
     - ``slitDeg`` -- slit degree
     - ``reset`` -- always reset the coeffs. Don't use cached. Default *False*
+
+    **Return:**
+
+    - ``xcoeff`` -- the x-axis coefficient array, cached if available, otherwise unit-valued
+    - ``ycoeff`` -- the y-axis coefficient array, cached if available, otherwise unit-valued
 
     **Usage:**
 
