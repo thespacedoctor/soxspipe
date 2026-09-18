@@ -68,7 +68,8 @@ def _run_batch(log, batch, uncompressedCount, count):
 
     cmd = ["uncompress", "-f", *batch]
     try:
-        p = Popen(cmd, stdout=PIPE, stderr=PIPE)
+        # THE COMMAND IS A FIXED ARGUMENT LIST, NEVER A SHELL STRING, SO S603 DOES NOT APPLY
+        p = Popen(cmd, stdout=PIPE, stderr=PIPE)  # noqa: S603
         stdout, stderr = p.communicate()
         log.debug(f"output: {stdout}")
         if not stderr and p.returncode == 0:
