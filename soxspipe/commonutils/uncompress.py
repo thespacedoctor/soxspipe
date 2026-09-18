@@ -31,7 +31,7 @@ def _build_batches(directory):
 
     **Return:**
 
-    - ``batches`` -- lists of at most 25 archive paths, in sorted filename order
+    - ``batches`` -- lists of at most ``BATCH_SIZE`` archive paths, in sorted filename order
     - ``count`` -- the total number of archives found
     """
     count = 0
