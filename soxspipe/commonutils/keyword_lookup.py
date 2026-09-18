@@ -22,12 +22,12 @@ class keyword_lookup:
     **Key Arguments:**
 
     - ``log`` -- logger
+    - ``instrument`` -- can directly add the instrument if settings file is not available. Default *False*
     - ``settings`` -- the settings dictionary. Default *False*
-    - ``instrument`` -- can directly add the instrument if settings file is not avalable. Default *False*
 
     **Usage**
 
-    To initalise the keyword lookup object in your code add the following:
+    To initialise the keyword lookup object in your code add the following:
 
     ```python
     from soxspipe.commonutils import keyword_lookup
@@ -38,7 +38,7 @@ class keyword_lookup:
     ).get
     ```
 
-    After this it's possible to either look up a single keyword using it's alias:
+    After this it's possible to either look up a single keyword using its alias:
 
     ```python
     kw("DET_NDITSKIP")
@@ -62,7 +62,7 @@ class keyword_lookup:
     If a tag is not in the list of FITS Header keyword aliases in the configuration file a `LookupError` will be raised.
     """
 
-    # Initialisation
+    # INITIALISATION
 
     def __init__(
         self,
@@ -94,12 +94,14 @@ class keyword_lookup:
 
         **Key Arguments:**
 
-        - ``tag`` -- the keyword tag as set in the yaml keyword dictionary (e.g. 'SDP_KEYWORD_TMID' returns 'TMID'). Can be string or list of sttings.
-        - ``index`` -- add an index to the keyword if not False (e.g. tag='PROV', index=3 returns 'PROV03') Default *False*
+        - ``tag`` -- the keyword tag as set in the yaml keyword dictionary (e.g. 'SDP_KEYWORD_TMID' returns
+          'TMID'). Can be string or list of strings.
+        - ``index`` -- add an index to the keyword if not False (e.g. tag='PROV', index=3 returns 'PROV03').
+          Default *False*
 
         **Return:**
 
-        - ``keywords`` -- the FITS Header keywords. Can be string or list of sttings depending on format of tag argument
+        - ``keywords`` -- the FITS Header keywords. Can be string or list of strings depending on format of tag argument
 
         **Usage**
 
@@ -113,11 +115,9 @@ class keyword_lookup:
             single = True
             tag = [tag]
 
-        # STRINGIFY INDEX
-        if index:
-            index = "%(index)0.2d" % locals()
-        else:
-            index = ""
+        # STRINGIFY INDEX. PERCENT FORMATTING IS KEPT ON PURPOSE: `%d` TRUNCATES FLOATS, KEEPS THE SIGN
+        # OUTSIDE THE ZERO PADDING AND REJECTS NON-NUMERIC TYPES, AND NO F-STRING REPRODUCES THAT EXACTLY
+        index = "%(index)0.2d" % locals() if index else ""  # noqa: UP031
 
         # LOOKUP KEYWORDS
         keywords = []
