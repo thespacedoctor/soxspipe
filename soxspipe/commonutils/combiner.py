@@ -19,7 +19,14 @@ os.environ["TERM"] = "vt100"
 class Combiner(OriginalCombiner):
 
     def average_combine(self):
-        """ """
+        """*average-combine the stack, ignoring NaN pixels*
+
+        **Return:**
+
+        - ``combined_image`` -- a ``CCDData`` holding the NaN-ignoring mean of the
+          stack. Pixels masked in every frame are masked in the result, and ``NCOMBINE``
+          holds the number of frames.
+        """
         import bottleneck as bn
         import numpy as np
         from astropy.nddata import CCDData
@@ -31,13 +38,13 @@ class Combiner(OriginalCombiner):
         mean = scale_func(data, axis=0)
         mask = masked_values == len(self.data_arr)
 
-        # create the combined image with a dtype that matches the combiner
+        # CREATE THE COMBINED IMAGE WITH A DTYPE THAT MATCHES THE COMBINER
         combined_image = CCDData(
             np.asarray(mean, dtype=self.dtype), mask=mask, unit=self.unit
         )
 
-        # update the meta data
+        # UPDATE THE META DATA
         combined_image.meta["NCOMBINE"] = len(data)
 
-        # return the combined image
+        # RETURN THE COMBINED IMAGE
         return combined_image
