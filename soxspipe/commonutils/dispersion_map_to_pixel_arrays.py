@@ -250,7 +250,7 @@ def get_cached_coeffs(
         cache, recipeName, arm, orderDeg, wavelengthDeg, slitDeg
     )
 
-    if os.path.exists(filePath) and reset == False:
+    if os.path.exists(filePath) and not reset:
         coeff = _load_cached_coefficients(filePath)
     else:
         coeff = _default_coefficients(orderDeg, wavelengthDeg, slitDeg)
@@ -321,7 +321,7 @@ def _load_cached_coefficients(filePath):
     tableData = dat.to_pandas()
 
     # READ IN THE X- AND Y- COEFF FROM DISPERSION MAP FILE
-    for index, row in tableData.iterrows():
+    for _index, row in tableData.iterrows():
         axis = row["axis"].decode("utf-8")
         coeff[axis] = [
             float(v)
