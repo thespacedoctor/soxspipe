@@ -65,6 +65,10 @@ class detector_lookup:
         **Key Arguments:**
 
         - ``arm`` -- the detector parameters to return
+
+        **Return:**
+
+        - ``armDict`` -- the python dictionary of detector characteristics and parameters for the selected arm
         """
         self.log.debug("starting the ``get`` method")
 
