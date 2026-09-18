@@ -243,6 +243,15 @@ def get_cached_coeffs(
     """
     log.debug("starting the ``get_cached_coeffs`` function")
 
+    # IMPORTED HERE, UNCONDITIONALLY, TO MATCH THE PRE-REFACTOR IMPORT TIMING:
+    # THE HELPERS BELOW RE-IMPORT THE SAME MODULES LOCALLY, SINCE THEY RUN IN
+    # THEIR OWN SCOPE, BUT THIS CALL SITE MUST NOT BECOME CONDITIONAL ON WHICH
+    # BRANCH RUNS
+    import math  # noqa: F401
+
+    import numpy as np  # noqa: F401
+    from astropy.table import Table  # noqa: F401
+
     # READ THE FILE
     home = expanduser("~")
     cache = settings["workspace-root-dir"].replace("~", home) + "/.cache"
@@ -323,6 +332,11 @@ def _load_cached_coefficients(filePath):
     # READ IN THE X- AND Y- COEFF FROM DISPERSION MAP FILE
     for _index, row in tableData.iterrows():
         axis = row["axis"].decode("utf-8")
+        # VALIDATE THE DEGREE COLUMNS PARSE AS INTEGERS; RAISES ON A
+        # MALFORMED CACHE FILE, AS THE PRE-REFACTOR CODE DID
+        int(row["order_deg"])
+        int(row["wavelength_deg"])
+        int(row["slit_deg"])
         coeff[axis] = [
             float(v)
             for k, v in row.items()
