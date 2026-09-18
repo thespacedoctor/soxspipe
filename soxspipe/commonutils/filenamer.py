@@ -16,61 +16,39 @@ from soxspipe.commonutils import detector_lookup, keyword_lookup
 os.environ["TERM"] = "vt100"
 
 
-def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=False):
-    """Given a FITS object, use the SOXS file-naming scheme to return a filename to be used to save the FITS object to disk
+def _binning_fragment(frame):
+    """build the binning fragment of a filename from the frame WCS
 
     **Key Arguments:**
 
-    - ``log`` -- logger
     - ``frame`` -- the CCDData object frame
-    - ``keywordLookup`` -- the keyword lookup dictionary (needed if `settings` not provided). Default *False*
-    - ``detectorLookup`` -- the detector parameters (needed if `settings` not provided). Default *False*
-    - ``settings`` -- the soxspipe settings dictionary (needed if `keywordLookup` and `detectorLookup` not provided). Default *False*
 
     **Return:**
 
-    - ``filename`` -- stanardised name to for the input frame
-
-    ```python
-    frame = CCDData.read(filepath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
-            du_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
-
-    from soxspipe.commonutils import filenamer
-    filename = filenamer(
-        log=log,
-        frame=frame,
-        settings=settings
-    )
-    ```
+    - ``binning`` -- ``_<x>x<y>`` from the truncated WCS pixel scales, or an empty string if the frame has no WCS
     """
-    log.debug("starting the ``filenamer`` function")
-
-    # GENERATE A FILENAME FOR THE FRAME BASED ON THE FILENAMING
-    # CONVENTION
-    if keywordLookup:
-        kw = keywordLookup
-    else:
-        kw = keyword_lookup(log=log, settings=settings).get
-
-    if detectorLookup:
-        dp = detectorLookup
-    else:
-        arm = frame.header[kw("SEQ_ARM")]
-        # DETECTOR PARAMETERS LOOKUP OBJECT
-        dp = detector_lookup(log=log, settings=settings).get(arm)
-
-    dateStamp = frame.header[kw("DATE_OBS")].replace("-", ".").replace(":", ".")
-    obid = frame.header[kw("OBS_ID")]
-    arm = frame.header[kw("SEQ_ARM")].lower()
-    # x = int(dp["binning"][1])
-    # y = int(dp["binning"][0])
     if frame.wcs:
         x = int(frame.wcs.to_header(relax=True)["CDELT1"])
         y = int(frame.wcs.to_header(relax=True)["CDELT2"])
         binning = f"_{x}x{y}"
     else:
         binning = ""
+    return binning
 
+
+def _readout_fragment(log, frame, kw):
+    """build the read-out mode fragment of a filename
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``frame`` -- the CCDData object frame
+    - ``kw`` -- the keyword lookup function
+
+    **Return:**
+
+    - ``romode`` -- the read-out fragment, or an empty string if the frame has no read-speed keyword
+    """
     romode = ""
 
     if kw("DET_READ_SPEED") in frame.header:
@@ -86,15 +64,22 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
             else:
                 log.print(frame.header[kw("DET_READ_SPEED")])
                 raise LookupError("Cound not parse readout mode")
+    return romode
 
-    filename = f"{dateStamp}_{arm}{binning}{romode}"
 
+def _frame_type(frame, kw):
+    """work out the frame type fragment of a filename from the DPR keywords
+
+    **Key Arguments:**
+
+    - ``frame`` -- the CCDData object frame
+    - ``kw`` -- the keyword lookup function
+
+    **Return:**
+
+    - ``ttype`` -- the frame type, or *None* if the header matches no known type
+    """
     ttype = None
-    obsmode = None
-
-    # DETERMINE THE TYPE
-    if kw("DPR_TYPE") not in frame.header and kw("PRO_TYPE") in frame.header:
-        return None
 
     if frame.header[kw("DPR_TYPE")].upper() == "BIAS":
         if "SXSPRE" in frame.header:
@@ -146,28 +131,43 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
             .replace("__", "_")
             .replace("__", "_")
         )
+    return ttype
 
+
+def _lamp_fragment(frame, kw):
+    """build the lamp fragment of a filename from the DPR type
+
+    **Key Arguments:**
+
+    - ``frame`` -- the CCDData object frame
+    - ``kw`` -- the keyword lookup function
+
+    **Return:**
+
+    - ``lamp`` -- ``_QLAMP``, ``_DLAMP`` or an empty string
+    """
     if ",Q" in frame.header[kw("DPR_TYPE")].upper():
         lamp = "_QLAMP"
     elif ",D" in frame.header[kw("DPR_TYPE")].upper():
         lamp = "_DLAMP"
     else:
         lamp = ""
+    return lamp
 
-    if ttype is None:
-        print(repr(frame.header))
-        print()
 
-        print(frame.header[kw("DPR_TYPE")].lower())
-        print(frame.header[kw("DPR_TECH")].lower())
-        print(frame.header[kw("DPR_CATG")].lower())
+def _mask_slit(frame, kw, ttype):
+    """work out the mask or slit fragment of a filename from the DPR technique
 
-        message = "Frame type can't be determined - exiting"
-        log.error(message)
-        raise TypeError(message)
+    **Key Arguments:**
 
-    filename = f"{filename}{lamp}_{ttype}"
+    - ``frame`` -- the CCDData object frame
+    - ``kw`` -- the keyword lookup function
+    - ``ttype`` -- the frame type from `_frame_type`
 
+    **Return:**
+
+    - ``maskSlit`` -- ``onepin``, ``multipin``, ``slit``, or *None* if the technique matches none
+    """
     maskSlit = None
     if frame.header[kw("DPR_TECH")].upper() == "ECHELLE,PINHOLE":
         maskSlit = "onepin"
@@ -184,6 +184,88 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
         "ECHELLE,SLIT,NODDING",
     ) and ("object" in ttype or "std_flux" in ttype):
         maskSlit = "slit"
+    return maskSlit
+
+
+def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=False):
+    """Given a FITS object, use the SOXS file-naming scheme to return a filename to be used to save the FITS object to disk
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``frame`` -- the CCDData object frame
+    - ``keywordLookup`` -- the keyword lookup dictionary (needed if `settings` not provided). Default *False*
+    - ``detectorLookup`` -- the detector parameters (needed if `settings` not provided). Default *False*
+    - ``settings`` -- the soxspipe settings dictionary (needed if `keywordLookup` and `detectorLookup` not provided). Default *False*
+
+    **Return:**
+
+    - ``filename`` -- stanardised name to for the input frame
+
+    ```python
+    frame = CCDData.read(filepath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
+            du_mask='QUAL', hdu_flags='FLAGS', key_uncertainty_type='UTYPE')
+
+    from soxspipe.commonutils import filenamer
+    filename = filenamer(
+        log=log,
+        frame=frame,
+        settings=settings
+    )
+    ```
+    """
+    log.debug("starting the ``filenamer`` function")
+
+    # GENERATE A FILENAME FOR THE FRAME BASED ON THE FILENAMING
+    # CONVENTION
+    if keywordLookup:
+        kw = keywordLookup
+    else:
+        kw = keyword_lookup(log=log, settings=settings).get
+
+    if detectorLookup:
+        dp = detectorLookup
+    else:
+        arm = frame.header[kw("SEQ_ARM")]
+        # DETECTOR PARAMETERS LOOKUP OBJECT
+        dp = detector_lookup(log=log, settings=settings).get(arm)
+
+    dateStamp = frame.header[kw("DATE_OBS")].replace("-", ".").replace(":", ".")
+    obid = frame.header[kw("OBS_ID")]
+    arm = frame.header[kw("SEQ_ARM")].lower()
+    # x = int(dp["binning"][1])
+    # y = int(dp["binning"][0])
+    binning = _binning_fragment(frame)
+    romode = _readout_fragment(log, frame, kw)
+
+    filename = f"{dateStamp}_{arm}{binning}{romode}"
+
+    ttype = None
+    obsmode = None
+
+    # DETERMINE THE TYPE
+    if kw("DPR_TYPE") not in frame.header and kw("PRO_TYPE") in frame.header:
+        return None
+
+    ttype = _frame_type(frame, kw)
+
+    lamp = _lamp_fragment(frame, kw)
+
+    if ttype is None:
+        print(repr(frame.header))
+        print()
+
+        print(frame.header[kw("DPR_TYPE")].lower())
+        print(frame.header[kw("DPR_TECH")].lower())
+        print(frame.header[kw("DPR_CATG")].lower())
+
+        message = "Frame type can't be determined - exiting"
+        log.error(message)
+        raise TypeError(message)
+
+    filename = f"{filename}{lamp}_{ttype}"
+
+    maskSlit = _mask_slit(frame, kw, ttype)
 
     # EXTRA PARAMETERS NEEDED FOR SPECTRUM
     if frame.header[kw("DPR_TECH")].upper() != "IMAGE":
