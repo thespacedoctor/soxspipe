@@ -11,8 +11,9 @@ def getpackagepath():
     *Get the root path for this python package*
 
     Used in unit testing code
-    """
-    moduleDirectory = os.path.dirname(__file__)
-    packagePath = os.path.dirname(__file__) + "/../"
 
-    return packagePath
+    **Return:**
+
+    - ``packagePath`` -- the path to the package root, ending in ``/../`` (relative to this module's directory)
+    """
+    return os.path.dirname(__file__) + "/../"
