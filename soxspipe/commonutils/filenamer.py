@@ -230,8 +230,6 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
 
     filename = f"{dateStamp}_{arm}{binning}{romode}"
 
-    ttype = None
-
     # DETERMINE THE TYPE
     if kw("DPR_TYPE") not in frame.header and kw("PRO_TYPE") in frame.header:
         return None
