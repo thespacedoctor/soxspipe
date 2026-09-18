@@ -188,7 +188,8 @@ def _mask_slit(frame, kw, ttype):
 
 
 def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=False):
-    """Given a FITS object, use the SOXS file-naming scheme to return a filename to be used to save the FITS object to disk
+    """Given a FITS object, use the SOXS file-naming scheme to return a filename
+    to be used to save the FITS object to disk
 
     **Key Arguments:**
 
@@ -196,11 +197,12 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
     - ``frame`` -- the CCDData object frame
     - ``keywordLookup`` -- the keyword lookup dictionary (needed if `settings` not provided). Default *False*
     - ``detectorLookup`` -- the detector parameters (needed if `settings` not provided). Default *False*
-    - ``settings`` -- the soxspipe settings dictionary (needed if `keywordLookup` and `detectorLookup` not provided). Default *False*
+    - ``settings`` -- the soxspipe settings dictionary (needed if `keywordLookup` and `detectorLookup` not provided).
+      Default *False*
 
     **Return:**
 
-    - ``filename`` -- stanardised name to for the input frame
+    - ``filename`` -- standardised name for the input frame
 
     ```python
     frame = CCDData.read(filepath, hdu=0, unit=u.electron, hdu_uncertainty='ERRS',
@@ -233,8 +235,6 @@ def filenamer(log, frame, keywordLookup=False, detectorLookup=False, settings=Fa
     dateStamp = frame.header[kw("DATE_OBS")].replace("-", ".").replace(":", ".")
     obid = frame.header[kw("OBS_ID")]
     arm = frame.header[kw("SEQ_ARM")].lower()
-    # x = int(dp["binning"][1])
-    # y = int(dp["binning"][0])
     binning = _binning_fragment(frame)
     romode = _readout_fragment(log, frame, kw)
 
