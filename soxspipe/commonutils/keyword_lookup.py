@@ -115,11 +115,9 @@ class keyword_lookup:
             single = True
             tag = [tag]
 
-        # STRINGIFY INDEX
-        if index:
-            index = "%(index)0.2d" % locals()
-        else:
-            index = ""
+        # STRINGIFY INDEX. PERCENT FORMATTING IS KEPT ON PURPOSE: `%d` TRUNCATES FLOATS, KEEPS THE SIGN
+        # OUTSIDE THE ZERO PADDING AND REJECTS NON-NUMERIC TYPES, AND NO F-STRING REPRODUCES THAT EXACTLY
+        index = "%(index)0.2d" % locals() if index else ""  # noqa: UP031
 
         # LOOKUP KEYWORDS
         keywords = []
