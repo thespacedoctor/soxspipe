@@ -41,12 +41,21 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     - ``median`` -- collapse the slice to a median value across its width
     - ``debug`` -- generate a plot of slice. Useful for debugging.
 
+    **Return:**
+
+    - ``slice`` -- the median-collapsed slice when ``median`` is True
+    - ``slice_length_offset`` -- the pixel offset of the slice start along its length
+    - ``slice_width_centre`` -- the pixel coordinate of the slice centre across its width
+
+    All three are *None* when the slice would fall outside the frame.
+
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import cut_image_slice
-    slice = cut_image_slice(log=self.log, frame=self.pinholeFlat.data,
-                                    width=1, length=sliceLength, x=x_fit, y=y_fit, plot=False)
+    slice, slice_length_offset, slice_width_centre = cut_image_slice(
+        log=self.log, frame=self.pinholeFlat.data, width=1, length=sliceLength, x=x_fit, y=y_fit, median=True
+    )
     if slice is None:
         return None
     ```
@@ -60,10 +69,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     halfSlice = length / 2
     # NEED AN EVEN PIXEL SIZE
-    if (width % 2) != 0:
-        halfwidth = (width - 1) / 2
-    else:
-        halfwidth = width / 2
+    halfwidth = (width - 1) / 2 if width % 2 != 0 else width / 2
 
     if sliceAxis == "x":
         axisA = x
@@ -103,19 +109,14 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     #     pass
 
     if median:
-        if sliceAxis == "y":
-            slice = ma.median(sliceFull, axis=1)
-        else:
-            slice = ma.median(sliceFull, axis=0)
+        slice = ma.median(sliceFull, axis=1) if sliceAxis == "y" else ma.median(sliceFull, axis=0)
 
-    if False and debug and random.randint(1, 101) < 5:
+    # DELIBERATELY DISABLED DEBUG PLOT: THE LEADING `False` SHORT-CIRCUITS, SO `random` NEVER RUNS
+    if False and debug and random.randint(1, 101) < 5:  # noqa: SIM223, S311
         import matplotlib.pyplot as plt
 
         # CHECK THE SLICE POINTS IF NEEDED
-        if sliceAxis == "y":
-            sliceImg = np.rot90(sliceFull, 1)
-        else:
-            sliceImg = sliceFull
+        sliceImg = np.rot90(sliceFull, 1) if sliceAxis == "y" else sliceFull
         plt.imshow(sliceImg)
         plt.show()
         xx = np.arange(0, len(slice))
@@ -156,12 +157,17 @@ def quicklook_image(
     - ``CCDObject`` -- the CCDObject to plot
     - ``show`` -- show the image. Set to False to skip
     - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data".
+    - ``stdWindow`` -- the width of the colour scale in standard deviations, centred on the median. Default *3*
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
     - ``dispMap`` -- path to dispersion map. Default *False*
     - ``dispMapImage`` -- the 2D dispersion map image
     - ``inst`` -- provide instrument name if no header exists
+    - ``settings`` -- the soxspipe settings dictionary, used to look up the arm and skylines. Default *False*
     - ``skylines`` -- mark skylines on image
+    - ``saveToPath`` -- path to save the plot to. Default *False*
+
+    **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
@@ -188,24 +194,23 @@ def quicklook_image(
         # FOLDER
         kw = keyword_lookup(log=log, settings=settings).get
         arm = CCDObject.header[kw("SEQ_ARM")]
-        dateObs = CCDObject.header[kw("DATE_OBS")]
+        # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+        dateObs = CCDObject.header[kw("DATE_OBS")]  # noqa: F841
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         detectorParams = detector_lookup(log=log, settings=settings).get(arm)
 
         # USE THIS ELSEWHERE IN THE OBJECT METHODS
         dp = detectorParams
-        science_pixels = dp["science-pixels"]
+        # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING PARAMETER; DELETING IT REMOVES THAT FAILURE
+        science_pixels = dp["science-pixels"]  # noqa: F841
 
     frame = _quicklook_frame_array(CCDObject, ext)
 
     if inst is False:
         inst = _quicklook_instrument(log, CCDObject)
 
-    if skylines:
-        skylinesDF = get_skylines_dataframe(log, settings, arm)
-    else:
-        skylinesDF = False
+    skylinesDF = get_skylines_dataframe(log, settings, arm) if skylines else False
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
     if not isinstance(dispMapImage, bool):
@@ -263,10 +268,7 @@ def quicklook_image(
         ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap=palette, alpha=1, aspect="auto")
 
-    if surfacePlot:
-        shrink = 0.5
-    else:
-        shrink = 1.0
+    shrink = 0.5 if surfacePlot else 1.0
 
     if mean > 10:
         fmt = "%1.0f"
@@ -287,7 +289,7 @@ def quicklook_image(
 
     if saveToPath:
         save_qc_plot(saveToPath)
-        plt.clf()  # clear figure
+        plt.clf()  # CLEAR FIGURE
     mpl.rcParams.update(originalRC)
     plt.close("all")
 
@@ -412,14 +414,14 @@ def _draw_surface_plot(rotatedImg, frame, inst, vmin, vmax):
     if inst == "XSHOOTER":
         plt.gca().invert_yaxis()
     ax.set_box_aspect(aspect=(2, 1, 1))
-    # Remove gray panes and axis grid
+    # REMOVE GRAY PANES AND AXIS GRID
     ax.xaxis.pane.fill = False
     ax.zaxis.pane.set_facecolor("#dc322f")
     ax.zaxis.pane.set_alpha(1.0)
     ax.yaxis.pane.fill = False
 
     ax.grid(False)
-    # Remove z-axis
+    # REMOVE Z-AXIS
     # ax.w_zaxis.line.set_lw(0.)
     # ax.set_zticks([])
 
@@ -505,10 +507,15 @@ def unpack_order_table(
     order=False,
     limitToDetectorFormat=False,
 ):
-    """*Unpack an order location table and return an `orderPolyTable` dataframe containing the polynomial coefficients for the order centres and edges, an `orderPixelTable` dataframe containing the pixel-coordinates for each order centre and edges, and finally, an `orderMetaTable` dataframe giving metadata about the frame binning and format.*
+    """*Unpack an order location table into polynomial, pixel and metadata dataframes.*
+
+    Return an ``orderPolyTable`` dataframe containing the polynomial coefficients for the order centres and edges, an
+    ``orderPixelTable`` dataframe containing the pixel-coordinates for each order centre and edges, and finally, an
+    ``orderMetaTable`` dataframe giving metadata about the frame binning and format.
 
     **Key Arguments:**
 
+    - ``log`` -- logger
     - ``orderTablePath`` -- path to the order table
     - ``extend`` -- fractional increase to the order area in the y-axis (needed for masking)
     - ``pixelDelta`` -- space between returned data points. Default *1* (sampled at every pixel)
@@ -516,14 +523,21 @@ def unpack_order_table(
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
     - ``prebinned`` -- was the order-table measured on a pre-binned frame (typically only for mflats). Default *False*
     - ``order`` -- unpack only a single order
-    - ``limitToDetectorFormat`` -- limit the pixels return to those limited by the detector format static calibration table
+    - ``limitToDetectorFormat`` -- limit the pixels return to those limited by the detector format static
+      calibration table
+
+    **Return:**
+
+    - ``orderPolyTable`` -- the polynomial coefficients for the order centres and edges
+    - ``orderPixelTable`` -- the pixel-coordinates for each order centre and edges
+    - ``orderMetaTable`` -- metadata about the frame binning and format
 
     **Usage:**
 
     ```python
     # UNPACK THE ORDER TABLE
     from soxspipe.commonutils.toolkit import unpack_order_table
-    orderPolyTable, orderPixelTable = unpack_order_table(
+    orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
         log=self.log, orderTablePath=orderTablePath, extend=0.)
     ```
     """
@@ -536,7 +550,7 @@ def unpack_order_table(
 
     # PIXEL DELTA NEEDS TO BE ODD .. ELSE MASKING ON BINNED DATA GETS MESSED UP
     if pixelDelta % 2 == 0:
-        pixelDelta += 1  # Return the nearest odd number above if it's even
+        pixelDelta += 1  # RETURN THE NEAREST ODD NUMBER ABOVE IF IT'S EVEN
 
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
@@ -565,10 +579,7 @@ def unpack_order_table(
         axisBbin = binx
 
     # ADD AXIS B COORD LIST
-    if prebinned:
-        ratio = axisBbin
-    else:
-        ratio = 1
+    ratio = axisBbin if prebinned else 1
 
     blower = orderMetaTable[f"{axisB}min"].values * ratio
     bupper = orderMetaTable[f"{axisB}max"].values * ratio
@@ -576,14 +587,14 @@ def unpack_order_table(
 
     axisBcoords = [
         np.arange(
-            (0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend))),
+            (0 if (math.floor(lower) - int(r * extend)) < 0 else (math.floor(lower) - int(r * extend))),
             (4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend))),
             pixelDelta,
         )
-        for l, u, r in zip(blower, bupper, brange)
+        for lower, u, r in zip(blower, bupper, brange, strict=False)
     ]
 
-    orders = [np.full_like(a, o) for a, o in zip(axisBcoords, orderMetaTable["order"].values)]
+    orders = [np.full_like(a, o) for a, o in zip(axisBcoords, orderMetaTable["order"].values, strict=False)]
 
     # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
     myDict = {
@@ -657,11 +668,15 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `frame` -- CCDData object
-    - `settings` -- soxspipe settings
-    - `recipeName` -- the name of the recipe
-    - `qcTable` -- the QC pandas data-frame to save the QC measurements
+    - ``log`` -- logger
+    - ``frame`` -- CCDData object
+    - ``settings`` -- soxspipe settings
+    - ``recipeName`` -- the name of the recipe
+    - ``qcTable`` -- the QC pandas data-frame to save the QC measurements
+
+    **Return:**
+
+    - ``qcTable`` -- the QC table with the new measurements appended
 
     **Usage:**
 
@@ -679,7 +694,8 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     # FOLDER
     kw = keyword_lookup(log=log, settings=settings).get
     kw = kw
-    arm = frame.header[kw("SEQ_ARM")]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+    arm = frame.header[kw("SEQ_ARM")]  # noqa: F841
     dateObs = frame.header[kw("DATE_OBS")]
 
     # nanCount = np.count_nonzero(np.isnan(frame.data))
@@ -759,19 +775,29 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `frame` -- CCDData object
+    - ``log`` -- logger
+    - ``frame`` -- CCDData object
     - ``orderTablePath`` -- path to the order table
-    - `settings` -- soxspipe settings
-    - `recipeName` -- the name of the recipe
-    - `qcTable` -- the QC pandas data-frame to save the QC measurements
+    - ``settings`` -- soxspipe settings
+    - ``recipeName`` -- the name of the recipe
+    - ``qcTable`` -- the QC pandas data-frame to save the QC measurements
+
+    **Return:**
+
+    - ``qcTable`` -- the QC table with the new measurements appended
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import spectroscopic_image_quality_checks
     qcTable = spectroscopic_image_quality_checks(
-            log=log, frame=myFrame, settings=settings, recipeName="this recipe", qcTable=qcTable, orderTablePath=orderTablePath)
+        log=log,
+        frame=myFrame,
+        orderTablePath=orderTablePath,
+        settings=settings,
+        recipeName="this recipe",
+        qcTable=qcTable,
+    )
     ```
     """
     log.debug("starting the ``functionName`` function")
@@ -798,7 +824,8 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
             binx = 1
             biny = 1
 
-    inst = frame.header[kw("INSTRUME")]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+    inst = frame.header[kw("INSTRUME")]  # noqa: F841
 
     # DETECTOR PARAMETERS LOOKUP OBJECT
     detectorParams = detector_lookup(log=log, settings=settings).get(arm)
@@ -824,19 +851,19 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     axisACoords_low = axisACoords_low.astype(int)
 
     if axisA == "x":
-        for u, l, y in zip(axisACoords_up, axisACoords_low, axisBCoords):
+        for u, lower, y in zip(axisACoords_up, axisACoords_low, axisBCoords, strict=False):
             y = int(y)
-            l = int(max(0, l))
+            lower = int(max(0, lower))
             u = int(min(mask.shape[1], u))
-            if 0 <= y < mask.shape[0] and l < u:
-                mask[y, l:u] = 0
+            if 0 <= y < mask.shape[0] and lower < u:
+                mask[y, lower:u] = 0
     else:
-        for u, l, x in zip(axisACoords_up, axisACoords_low, axisBCoords):
+        for u, lower, x in zip(axisACoords_up, axisACoords_low, axisBCoords, strict=False):
             x = int(x)
-            l = int(max(0, l))
+            lower = int(max(0, lower))
             u = int(min(mask.shape[0], u))
-            if 0 <= x < mask.shape[1] and l < u:
-                mask[l:u, x] = 0
+            if 0 <= x < mask.shape[1] and lower < u:
+                mask[lower:u, x] = 0
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
     mask = (mask == 1) | (frame.mask == 1)
@@ -850,8 +877,9 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     utcnow = utcnow_string()
 
-    mean = "%0.*f" % (3, mean)
-    flux = "%0.*f" % (3, flux)
+    # A FULLY MASKED FRAME GIVES np.ma.masked, WHICH `%0.*f` FORMATS AS "nan" BUT `:.3f` FORMATS AS "--"
+    mean = "%0.*f" % (3, mean)  # noqa: UP031
+    flux = "%0.*f" % (3, flux)  # noqa: UP031
 
     qcTable = pd.concat(
         [
@@ -900,19 +928,25 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `settings` -- soxspipe settings
-    - `arm` -- arm to retrieve format for
-    - `dispersionMap` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are computed
-    - `extended` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL (extended=True)
+    - ``log`` -- logger
+    - ``settings`` -- soxspipe settings
+    - ``arm`` -- arm to retrieve format for
+    - ``dispersionMap`` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are
+      computed
+    - ``extended`` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL
+      (extended=True)
     - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
 
     **Return:**
 
-    - ``orderNums`` -- a list of the order numbers
-    - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
-    - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
+    - ``orderNums`` -- an array of the order numbers
+    - ``waveLengthMin`` -- an array of the minimum wavelengths reached by each order
+    - ``waveLengthMax`` -- an array of the maximum wavelengths reached by each order
+    - ``amins`` -- the minimum dispersion-axis pixel limit of each order (only when ``dispersionMap`` is given)
+    - ``amaxs`` -- the maximum dispersion-axis pixel limit of each order (only when ``dispersionMap`` is given)
+
+    Three values are returned without a ``dispersionMap``, and five with one.
 
     **Usage:**
 
@@ -933,13 +967,13 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
-    kw = keyword_lookup(log=log, settings=settings).get
+    # UNUSED, BUT BUILDING THE LOOKUP READS AND VALIDATES THE KEYWORD MAP; DELETING IT REMOVES THAT FAILURE
+    kw = keyword_lookup(log=log, settings=settings).get  # noqa: F841
 
-    science_pixels = dp["science-pixels"]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING PARAMETER; DELETING IT REMOVES THAT FAILURE
+    science_pixels = dp["science-pixels"]  # noqa: F841
 
     # READ THE SPECTRAL FORMAT TABLE FILE
-    home = expanduser("~")
-
     calibrationRootPath = get_calibrations_path(log=log, settings=settings)
     spectralFormatFile = calibrationRootPath + "/" + dp["spectral format table"]
 
@@ -967,7 +1001,7 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
             "wavelength": np.asarray([]),
             "slit_position": np.asarray([]),
         }
-        for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
+        for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax, strict=False):
             wlArray = np.array([wmin, wmax])
             myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
             myDict["order"] = np.append(myDict["order"], np.ones(len(wlArray)) * o)
@@ -980,7 +1014,6 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
             removeOffDetectorLocation=False,
         )
 
-        orderPixelRanges = []
         if dp["dispersion-axis"] == "x":
             axis = "y"
             rowCol = "rows"
@@ -1014,8 +1047,12 @@ def get_calibrations_path(log, settings):
 
     **Key Arguments:**
 
-    - `log` -- logger
+    - ``log`` -- logger
     - ``settings`` -- the settings dictionary
+
+    **Return:**
+
+    - ``calibrationRootPath`` -- the root path to the instrument's static calibrations
 
     **Usage:**
 
@@ -1027,17 +1064,18 @@ def get_calibrations_path(log, settings):
     log.debug("starting the ``get_calibrations_path`` function")
 
     # GENERATE PATH TO STATIC CALIBRATION DATA
-    if "instrument" in settings:
-        instrument = settings["instrument"]
-    else:
-        instrument = "soxs"
+    # KEPT AS `in` PLUS INDEXING: FOR A NON-DICT `settings` (E.G. THE `False` DEFAULT ELSEWHERE IN THIS
+    # MODULE), `.get` WOULD RAISE AttributeError WHERE THIS RAISES TypeError
+    instrument = settings["instrument"] if "instrument" in settings else "soxs"  # noqa: SIM401
     calibrationRootPath = os.path.dirname(os.path.dirname(__file__)) + "/resources/static_calibrations/" + instrument
 
     log.debug("completed the ``get_calibrations_path`` function")
     return calibrationRootPath
 
 
-def twoD_disp_map_image_to_dataframe(
+# THE NAME IS PUBLIC AND IMPORTED ACROSS THE PACKAGE, SO RENAMING IT WOULD CHANGE THE PUBLIC SURFACE.
+# TOO-MANY-STATEMENTS IS A SPLITTING FINDING, DEFERRED TO DY-82; REMOVE PLR0915 HERE WHEN IT IS SPLIT
+def twoD_disp_map_image_to_dataframe(  # noqa: N802, PLR0915
     log,
     slit_length,
     twoDMapPath,
@@ -1050,18 +1088,28 @@ def twoD_disp_map_image_to_dataframe(
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `twoDMapPath` -- 2D dispersion map image path
-    - `kw` -- fits keyword lookup dictionary
-    - `associatedFrame` -- include a flux column in returned dataframe from a frame associated with the dispersion map. Default *False*
-    - `removeMaskedPixels` -- remove the masked pixels from the associated image? Default *False*
-    - `dispAxis` -- x or y. Needed for pixel scale calculation
+    - ``log`` -- logger
+    - ``slit_length`` -- length of the slit; pixels with a slit position beyond half this length either side of
+      the centre are removed
+    - ``twoDMapPath`` -- 2D dispersion map image path
+    - ``kw`` -- fits keyword lookup dictionary
+    - ``associatedFrame`` -- include a flux column in returned dataframe from a frame associated with the
+      dispersion map. Default *False*
+    - ``removeMaskedPixels`` -- remove the masked pixels from the associated image? Default *False*
+    - ``dispAxis`` -- x or y. Needed for pixel scale calculation
+
+    **Return:**
+
+    - ``mapDF`` -- the dispersion map as a dataframe, one row per pixel
+    - ``interOrderMask`` -- mask array flagging the inter-order pixels
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-    mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, kw=kw)
+    mapDF, interOrderMask = twoD_disp_map_image_to_dataframe(
+        log=log, slit_length=11, twoDMapPath=twoDMap, associatedFrame=objectFrame, kw=kw
+    )
     ```
     """
     log.debug("starting the ``twoD_disp_map_image_to_dataframe`` function")
@@ -1155,7 +1203,7 @@ def twoD_disp_map_image_to_dataframe(
 
     mapDF = pd.DataFrame.from_dict(thisDict)
     if removeMaskedPixels:
-        mask = mapDF["mask"] == False
+        mask = mapDF["mask"].eq(False)
         mapDF = mapDF.loc[mask]
 
     # REMOVE ZEROS
@@ -1202,9 +1250,13 @@ def predict_product_path(sofName, recipeName=False):
 
     **Key Arguments:**
 
-    - `log` -- logger,
-    - `sofName` -- name or full path to the sof file
+    - ``sofName`` -- name or full path to the sof file
     - ``recipeName`` -- name of the recipe being considered. Default *False*.
+
+    **Return:**
+
+    - ``productPath`` -- the predicted path of the recipe product
+    - ``startNightDate`` -- the start-of-night date of the observations
 
     **Usage:**
 
@@ -1281,12 +1333,16 @@ def predict_product_path(sofName, recipeName=False):
 
 
 def add_recipe_logger(log, productPath):
-    """*add a recipe-specific handler to the default logger that writes the recipe's logs adjacent to the recipe project*
+    """*add a recipe-specific handler to the default logger that writes the recipe's logs beside the product*
 
     **Key Arguments:**
 
-    - `log` -- original logger
-    - `productPath` -- path to the recipe product
+    - ``log`` -- original logger
+    - ``productPath`` -- path to the recipe product
+
+    **Return:**
+
+    - ``log`` -- the logger with the recipe-specific handlers attached
 
     **Usage:**
 
@@ -1353,6 +1409,7 @@ class MaxFilter:
     def filter(self, record):
         if record.levelno < self.max_level:
             return True
+        return None
 
 
 def create_dispersion_solution_grid_lines_for_plot(
@@ -1365,23 +1422,23 @@ def create_dispersion_solution_grid_lines_for_plot(
     slitPositions=False,
     slit_length=11,
 ):
-    """*given a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
+    """*generate the grid lines to add to QC plots from a dispersion solution and its 2D dispersion map image*
 
     **Key Arguments:**
 
-    - `log` -- logger
+    - ``log`` -- logger
     - ``dispMap`` -- path to dispersion map. Default *False*
     - ``dispMapImage`` -- the 2D dispersion map image
-    - `associatedFrame` -- a frame associated with the reduction (to read arm and binning info).
-    - `kw` -- fits header kw dictionary
-    - `skylines` -- a list of skylines to use as the grid. Default *False*
-    - `slitPositions` -- slit positions to plot (else plot min and max)
-    - `slit_length` -- length of the slit to use for the dispersion map dataframe (default 11)
+    - ``associatedFrame`` -- a frame associated with the reduction (to read arm and binning info).
+    - ``kw`` -- fits header kw dictionary
+    - ``skylines`` -- a list of skylines to use as the grid. Default *False*
+    - ``slitPositions`` -- slit positions to plot (else plot min and max)
+    - ``slit_length`` -- length of the slit to use for the dispersion map dataframe (default 11)
 
-    **Returns:**
+    **Return:**
 
-    - `orderPixelTable` -- DataFrame containing the pixel coordinates for grid lines to plot.
-    - `interOrderMask` -- Mask array indicating inter-order regions.
+    - ``orderPixelTable`` -- DataFrame containing the pixel coordinates for grid lines to plot.
+    - ``interOrderMask`` -- Mask array indicating inter-order regions.
 
     **Usage:**
 
@@ -1398,7 +1455,14 @@ def create_dispersion_solution_grid_lines_for_plot(
 
     for l in range(int(gridLinePixelTable['line'].max())):
         mask = (gridLinePixelTable['line'] == l)
-        ax.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
+        ax.plot(
+            gridLinePixelTable.loc[mask]["fit_y"],
+            gridLinePixelTable.loc[mask]["fit_x"],
+            "w-",
+            linewidth=0.5,
+            alpha=0.8,
+            color="black",
+        )
     ```
     """
     log.debug("starting the ``create_dispersion_solution_grid_lines_for_plot`` function")
@@ -1429,7 +1493,7 @@ def create_dispersion_solution_grid_lines_for_plot(
 
     lineNumber = 0
     orderPixelTable_list = []
-    for o, wlLim, spLim in zip(uniqueOrders, wlLims, sPos):
+    for o, wlLim, spLim in zip(uniqueOrders, wlLims, sPos, strict=False):
         wlRange = np.arange(wlLim[0], wlLim[1], 1)
         wlRange = np.append(wlRange, [wlLim[1]])
         for e in spLim:
@@ -1452,11 +1516,11 @@ def create_dispersion_solution_grid_lines_for_plot(
             wlRange = np.arange(wlLim[0], wlLim[1], step)
         wlRange = np.append(wlRange, [wlLim[1]])
 
-        for l in wlRange:
+        for wl in wlRange:
             myDict = {
                 "line": np.full_like(spRange, lineNumber),
                 "order": np.full_like(spRange, o),
-                "wavelength": np.full_like(spRange, l),
+                "wavelength": np.full_like(spRange, wl),
                 "slit_position": spRange,
             }
             orderPixelTable_list.append(pd.DataFrame(myDict))
@@ -1477,9 +1541,13 @@ def get_calibration_lamp(log, frame, kw):
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `frame` -- the frame to determine the calibration lamp for
-    - `kw` -- the FITS header keyword dictionary
+    - ``log`` -- logger
+    - ``frame`` -- the frame to determine the calibration lamp for
+    - ``kw`` -- the FITS header keyword dictionary
+
+    **Return:**
+
+    - ``lamp`` -- the calibration lamp names found in the header, or *None* if there are none
 
     **Usage:**
 
@@ -1490,10 +1558,11 @@ def get_calibration_lamp(log, frame, kw):
     """
     log.debug("starting the ``read_calibration_lamp`` function")
 
-    inst = frame.header["INSTRUME"]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+    inst = frame.header["INSTRUME"]  # noqa: F841
     lamp = None
 
-    for l in [
+    for lampKeyword in [
         kw("LAMP1"),
         kw("LAMP2"),
         kw("LAMP3"),
@@ -1502,8 +1571,8 @@ def get_calibration_lamp(log, frame, kw):
         kw("LAMP6"),
         kw("LAMP7"),
     ]:
-        if l in frame.header:
-            newLamp = frame.header[l]
+        if lampKeyword in frame.header:
+            newLamp = frame.header[lampKeyword]
             newLamp = (
                 newLamp.replace("UVB_High", "QTH")
                 .replace("UVB_Low_", "")
@@ -1531,11 +1600,11 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `qc` -- date frame of collected QCs
-    - `qcAx` -- the axis to add the QC table to
-    - `settings` -- settings to report in settings table
-    - `settingsAx` -- the axis to add the settings table to
+    - ``log`` -- logger
+    - ``qc`` -- date frame of collected QCs
+    - ``qcAx`` -- the axis to add the QC table to
+    - ``settings`` -- settings to report in settings table
+    - ``settingsAx`` -- the axis to add the settings table to
 
     **Usage:**
 
@@ -1611,7 +1680,7 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     #     "Parameters", fontsize=9, loc='left')
     settingsAx.margins(x=0, y=0)
 
-    for t, c in zip(tables, cols):
+    for t, c in zip(tables, cols, strict=False):
         t.scale(1, 1.5)
         t.auto_set_font_size(False)
         t.set_fontsize(4)
@@ -1622,7 +1691,7 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
 
     for a in [qcAx, settingsAx]:
 
-        # Hide axes
+        # HIDE AXES
         a.get_xaxis().set_visible(False)
         a.get_yaxis().set_visible(False)
         a.axis("off")
@@ -1636,15 +1705,15 @@ def utility_setup(log, settings, recipeName, startNightDate):
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `settings` -- the settings dictionary
-    - `recipeName` -- name of the recipe as it appears in the settings dictionary
-    - `startNightDate` -- YYYY-MM-DD date of the observation night. Default ""
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night
 
     **Return:**
 
-    - `qcDir` -- the QC directory (created if missing)
-    - `productDir` -- the product directory (created if missing)
+    - ``qcDir`` -- the QC directory (created if missing)
+    - ``productDir`` -- the product directory (created if missing)
 
     **Usage:**
 
@@ -1696,12 +1765,48 @@ def plot_merged_spectrum_qc(
     qcTable=False,
     settings=False,
 ):
-    """
-    Plot merged spectrum QC plot as a standalone function.
+    """*plot the order-merged spectrum QC plot, save it to the QC directory and record it in the products table*
 
-    Returns:
-        products (pd.DataFrame): Updated products table.
-        filePath (str): Path to the saved QC plot PDF.
+    **Key Arguments:**
+
+    - ``merged_orders`` -- the order-merged spectrum, with ``WAVE`` and ``FLUX_COUNTS`` columns
+    - ``products`` -- the products table. Nothing is plotted if this is *False*
+    - ``log`` -- logger
+    - ``qcDir`` -- the directory to save the QC plot in
+    - ``filenameTemplate`` -- the product filename the QC plot filename is built from
+    - ``noddingSequence`` -- suffix for the QC plot filename and product label. *False* for none
+    - ``dateObs`` -- the observation date recorded in the products table
+    - ``arm`` -- the spectrograph arm
+    - ``recipeName`` -- the name of the recipe
+    - ``orderJoins`` -- a dictionary of order-join wavelengths to mark on the plot. Default *False*
+    - ``debug`` -- show the plot before saving it. Default *False*
+    - ``fluxCalibrated`` -- is the spectrum flux calibrated? Default *False*
+    - ``qcTable`` -- the QC table holding the SNR values to plot. Default *False*
+    - ``settings`` -- the soxspipe settings dictionary, used to look up the skylines. Default *False*
+
+    **Return:**
+
+    - ``products`` -- the products table with the QC plot appended
+    - ``filePath`` -- the path to the saved QC plot PDF, or *None* if nothing was plotted
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
+    products, filePath = plot_merged_spectrum_qc(
+        merged_orders=mergedSpectrum,
+        products=products,
+        log=log,
+        qcDir=qcDir,
+        filenameTemplate=filenameTemplate,
+        noddingSequence=False,
+        dateObs=dateObs,
+        arm=arm,
+        recipeName=recipeName,
+        qcTable=qcTable,
+        settings=settings,
+    )
+    ```
     """
     log.debug("starting the ``plot_merged_spectrum_qc`` function")
 
@@ -1721,10 +1826,10 @@ def plot_merged_spectrum_qc(
     skylinesDF = get_skylines_dataframe(log, settings, arm)
 
     fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
-    # Adjusted height ratios
+    # ADJUSTED HEIGHT RATIOS
     gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 1, 0])
 
-    # Top panel with linear scale
+    # TOP PANEL WITH LINEAR SCALE
     top_panel = fig.add_subplot(gs[0, :])
     if fluxCalibrated:
         top_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\\AA^{-1}$)", fontsize=10)
@@ -1747,7 +1852,7 @@ def plot_merged_spectrum_qc(
 
     _set_wavelength_xlim(top_panel, merged_orders)
 
-    # Middle panel with log scale
+    # MIDDLE PANEL WITH LOG SCALE
     middle_panel = fig.add_subplot(gs[1, :])
     if not fluxCalibrated:
         middle_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
@@ -1790,7 +1895,7 @@ def plot_merged_spectrum_qc(
     middle_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
     _set_wavelength_xlim(middle_panel, merged_orders)
 
-    # Bottom panel with linear scale for SNR
+    # BOTTOM PANEL WITH LINEAR SCALE FOR SNR
     bottom_panel = fig.add_subplot(gs[2, :])
     bottom_panel.set_ylabel("SNR", fontsize=10)
     bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
@@ -2043,31 +2148,28 @@ def _mark_skylines(skylinesDF, panels, labelPanel):
 
 
 def calculate_rolling_snr(dataframe, flux_column, window_size):
-    """
-    Calculate the rolling Signal-to-Noise Ratio (SNR) for a given column in a pandas DataFrame.
+    """*calculate the rolling signal-to-noise ratio (SNR) for a given column in a pandas dataframe*
 
-    This function computes the rolling SNR for a specified column in the DataFrame using a custom
-    rolling window function. The SNR is calculated as the ratio of the median signal to the noise,
-    where the noise is estimated using a robust statistical method.
+    The SNR is calculated as the ratio of the median signal to the noise, where the noise is estimated using a robust
+    statistical method.
 
     **Key Arguments:**
 
-        - `dataframe`: The input pandas DataFrame containing the data.
-        - `flux_column`: The name of the column in the DataFrame for which the rolling SNR
-            will be calculated.
-        - `window_size`: The size of the rolling window to use for the calculation.
+    - ``dataframe`` -- the input pandas dataframe containing the data
+    - ``flux_column`` -- the name of the column in the dataframe for which the rolling SNR will be calculated
+    - ``window_size`` -- the size of the rolling window to use for the calculation
 
     **Return:**
 
-        - `dataframe`: The input DataFrame with an additional column 'SNR' containing the
-        calculated rolling SNR values.
+    - ``dataframe`` -- the input dataframe with an additional column 'SNR' containing the calculated rolling SNR
+      values
 
     **Usage:**
 
-        ```python
-        from soxspipe.commonutils.toolkit import calculate_rolling_snr
-        df_with_snr = calculate_rolling_snr(dataframe=df, flux_column='flux', window_size=5)
-        ```
+    ```python
+    from soxspipe.commonutils.toolkit import calculate_rolling_snr
+    df_with_snr = calculate_rolling_snr(dataframe=df, flux_column='flux', window_size=5)
+    ```
     """
     import numpy as np
     from numpy.lib.stride_tricks import sliding_window_view
@@ -2076,20 +2178,20 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
     n = values.size
     snr_full = np.full(n, np.nan, dtype=np.float64)
 
-    # Need at least 5 points for the noise estimator and enough data for one window
+    # NEED AT LEAST 5 POINTS FOR THE NOISE ESTIMATOR AND ENOUGH DATA FOR ONE WINDOW
     if window_size >= 5 and n >= window_size:
         windows = sliding_window_view(values, window_shape=window_size)
 
-        # Signal: rolling median
+        # SIGNAL: ROLLING MEDIAN
         signal = np.median(windows, axis=1)
 
-        # Noise: robust estimator based on 5-point second-difference pattern
+        # NOISE: ROBUST ESTIMATOR BASED ON 5-POINT SECOND-DIFFERENCE PATTERN
         diff = np.abs(2.0 * windows[:, 2:-2] - windows[:, :-4] - windows[:, 4:])
         noise = 0.6052697 * np.median(diff, axis=1)
 
         snr = np.divide(signal, noise, out=np.full_like(signal, np.nan), where=noise > 0)
 
-        # Match center=True placement
+        # MATCH `center=True` PLACEMENT
         left = (window_size - 1) // 2
         snr_full[left : left + snr.size] = snr
 
@@ -2099,6 +2201,25 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
 
 
 def extinction_correction_factor(wave, extinctionTablePath, airmass):
+    """*calculate the atmospheric extinction correction factor at each wavelength*
+
+    **Key Arguments:**
+
+    - ``wave`` -- the wavelengths to calculate the factor at, in nm
+    - ``extinctionTablePath`` -- path to the observatory extinction curve FITS table (wavelength in Angstrom)
+    - ``airmass`` -- the airmass of the observation
+
+    **Return:**
+
+    - ``extCorrectionFactor`` -- the multiplicative correction factor at each wavelength
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import extinction_correction_factor
+    extCorrectionFactor = extinction_correction_factor(wave=wave, extinctionTablePath=extinctionTablePath, airmass=1.2)
+    ```
+    """
     import numpy as np
     from astropy.table import Table
     from scipy.interpolate import interp1d
@@ -2119,9 +2240,7 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
         fill_value="extrapolate",
     )
 
-    extCorrectionFactor = 10 ** (0.4 * refitted_ext(wave) * airmass)
-
-    return extCorrectionFactor
+    return 10 ** (0.4 * refitted_ext(wave) * airmass)
 
 
 def frame_to_32(frame):
@@ -2129,11 +2248,11 @@ def frame_to_32(frame):
 
     **Key Arguments:**
 
-    - `frame` -- the input frame
+    - ``frame`` -- the input frame
 
-    **Returns:**
+    **Return:**
 
-    - `frame` -- the converted frame
+    - ``frame`` -- the converted frame
 
     **Usage:**
 
@@ -2168,7 +2287,8 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     **Key Arguments:**
 
     - ``log`` -- logger
-    - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY' to calculate the checks from.
+    - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY'
+      to calculate the checks from.
     - ``qcTable`` -- the qc table to which the SNR checks will be added
     - ``orderJoins`` -- a dictionary containing the wavelengths of order joins (if any) to be added as QCs.
     - ``recipeName`` -- name of the recipe to add to the QC entries
@@ -2181,7 +2301,8 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     **Usage:**
 
     ```python
-    qcTable = add_snr_qcs(log, spectrumDF, qcTable, orderJoins)
+    from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
+    qcTable = add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs)
     ```
     """
     import numpy as np
@@ -2565,7 +2686,27 @@ def save_qc_plot(filePath, dpi=120, bboxInches="tight"):
 
 
 def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightnessNIR=100):
-    """Load and filter strong skylines for QC plotting."""
+    """*load the static skyline table for an arm and keep only the strong skylines, for QC plotting*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``settings`` -- the soxspipe settings dictionary
+    - ``arm`` -- the spectrograph arm
+    - ``minBrightnessVIS`` -- in the VIS arm, keep only skylines with flux above this. Default *5*
+    - ``minBrightnessNIR`` -- in every other arm, keep only skylines with flux above this. Default *100*
+
+    **Return:**
+
+    - ``skylinesDF`` -- the strong skylines as a dataframe
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import get_skylines_dataframe
+    skylinesDF = get_skylines_dataframe(log, settings, arm)
+    ```
+    """
     from astropy.table import Table
 
     from soxspipe.commonutils import detector_lookup
@@ -2582,9 +2723,6 @@ def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightness
     if "ISOLATED" in skylinesDF.columns:
         skylinesDF["ISOLATED"] = skylinesDF["ISOLATED"].astype(bool)
 
-    if arm == "VIS":
-        mask = skylinesDF["FLUX"] > minBrightnessVIS
-    else:
-        mask = skylinesDF["FLUX"] > minBrightnessNIR
+    mask = skylinesDF["FLUX"] > minBrightnessVIS if arm == "VIS" else skylinesDF["FLUX"] > minBrightnessNIR
 
     return skylinesDF.loc[mask]
