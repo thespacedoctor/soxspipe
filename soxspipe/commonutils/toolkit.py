@@ -184,26 +184,11 @@ def quicklook_image(
 
     import matplotlib as mpl
 
-    from soxspipe.commonutils import detector_lookup, keyword_lookup
-
     originalRC = dict(mpl.rcParams)
     import matplotlib.pyplot as plt
 
     if settings:
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        kw = keyword_lookup(log=log, settings=settings).get
-        arm = CCDObject.header[kw("SEQ_ARM")]
-        # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
-        dateObs = CCDObject.header[kw("DATE_OBS")]  # noqa: F841
-
-        # DETECTOR PARAMETERS LOOKUP OBJECT
-        detectorParams = detector_lookup(log=log, settings=settings).get(arm)
-
-        # USE THIS ELSEWHERE IN THE OBJECT METHODS
-        dp = detectorParams
-        # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING PARAMETER; DELETING IT REMOVES THAT FAILURE
-        science_pixels = dp["science-pixels"]  # noqa: F841
+        kw, arm = _quicklook_header_lookups(log, CCDObject, settings)
 
     frame = _quicklook_frame_array(CCDObject, ext)
 
@@ -214,25 +199,15 @@ def quicklook_image(
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
     if not isinstance(dispMapImage, bool):
-
-        gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
+        gridLinePixelTable = _apply_inter_order_mask(
             log=log,
+            frame=frame,
+            CCDObject=CCDObject,
             dispMap=dispMap,
             dispMapImage=dispMapImage,
-            associatedFrame=CCDObject,
             kw=kw,
-            skylines=skylinesDF,
+            skylinesDF=skylinesDF,
         )
-
-        try:
-            mask = (frame.mask == 1) | (interOrderMask == 1)
-        except (AttributeError, ValueError) as e:
-            log.debug(f"quicklook_image: `mask = (frame.mask == 1) | (interOrderMask == 1)` failed, continuing: {e}")
-            mask = interOrderMask == 1
-        try:
-            frame.mask = mask
-        except AttributeError as e:
-            log.debug(f"quicklook_image: `frame.mask = mask` failed, continuing: {e}")
 
     rotatedImg = _rotate_for_display(frame, inst)
 
@@ -262,6 +237,126 @@ def quicklook_image(
     if not isinstance(dispMapImage, bool):
         _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst)
 
+    _draw_detector_image(
+        fig=fig,
+        ax2=ax2,
+        rotatedImg=rotatedImg,
+        vmin=vmin,
+        vmax=vmax,
+        palette=palette,
+        mean=mean,
+        surfacePlot=surfacePlot,
+        title=title,
+        inst=inst,
+    )
+
+    if show:
+        # plt.pause(0.1)
+        plt.show()
+
+    if saveToPath:
+        save_qc_plot(saveToPath)
+        plt.clf()  # CLEAR FIGURE
+    mpl.rcParams.update(originalRC)
+    plt.close("all")
+
+    log.debug("completed the ``quicklook_image`` function")
+    return
+
+
+def _quicklook_header_lookups(log, CCDObject, settings):
+    """*build the keyword lookup for a quicklook frame and read its arm, validating the lookups on the way*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``CCDObject`` -- the CCDObject to plot
+    - ``settings`` -- the soxspipe settings dictionary
+
+    **Return:**
+
+    - ``kw`` -- the fits keyword lookup function
+    - ``arm`` -- the spectrograph arm the frame was taken with
+    """
+    # RESOLVED PER CALL, AS `quicklook_image` DID: THE MODULE-LEVEL NAMES ARE BOUND AT IMPORT AND WOULD NOT
+    # SEE A LOOKUP PATCHED ON THE PACKAGE
+    from soxspipe.commonutils import detector_lookup, keyword_lookup
+
+    # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+    # FOLDER
+    kw = keyword_lookup(log=log, settings=settings).get
+    arm = CCDObject.header[kw("SEQ_ARM")]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+    dateObs = CCDObject.header[kw("DATE_OBS")]  # noqa: F841
+
+    # DETECTOR PARAMETERS LOOKUP OBJECT
+    detectorParams = detector_lookup(log=log, settings=settings).get(arm)
+
+    # USE THIS ELSEWHERE IN THE OBJECT METHODS
+    dp = detectorParams
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING PARAMETER; DELETING IT REMOVES THAT FAILURE
+    science_pixels = dp["science-pixels"]  # noqa: F841
+
+    return kw, arm
+
+
+def _apply_inter_order_mask(log, frame, CCDObject, dispMap, dispMapImage, kw, skylinesDF):
+    """*mask a quicklook frame's inter-order pixels and return the dispersion grid lines to draw*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``frame`` -- the array being plotted, masked in place where it supports a mask
+    - ``CCDObject`` -- the CCDObject the frame came from
+    - ``dispMap`` -- path to dispersion map
+    - ``dispMapImage`` -- the 2D dispersion map image
+    - ``kw`` -- the fits keyword lookup function
+    - ``skylinesDF`` -- the skylines dataframe, or *False* for none
+
+    **Return:**
+
+    - ``gridLinePixelTable`` -- the pixel coordinates of the dispersion solution grid lines
+    """
+    gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
+        log=log,
+        dispMap=dispMap,
+        dispMapImage=dispMapImage,
+        associatedFrame=CCDObject,
+        kw=kw,
+        skylines=skylinesDF,
+    )
+
+    try:
+        mask = (frame.mask == 1) | (interOrderMask == 1)
+    except (AttributeError, ValueError) as e:
+        log.debug(f"quicklook_image: `mask = (frame.mask == 1) | (interOrderMask == 1)` failed, continuing: {e}")
+        mask = interOrderMask == 1
+    try:
+        frame.mask = mask
+    except AttributeError as e:
+        log.debug(f"quicklook_image: `frame.mask = mask` failed, continuing: {e}")
+
+    return gridLinePixelTable
+
+
+def _draw_detector_image(fig, ax2, rotatedImg, vmin, vmax, palette, mean, surfacePlot, title, inst):
+    """*draw the detector image, its colour bar and its title onto the quicklook figure*
+
+    **Key Arguments:**
+
+    - ``fig`` -- the quicklook figure
+    - ``ax2`` -- the axes to draw the image on
+    - ``rotatedImg`` -- the image array, rotated for display
+    - ``vmin`` -- the lower limit of the colour scale
+    - ``vmax`` -- the upper limit of the colour scale
+    - ``palette`` -- the colour map
+    - ``mean`` -- the frame's sigma-clipped mean, which sets the colour-bar number format
+    - ``surfacePlot`` -- is the figure a 3D surface plot?
+    - ``title`` -- the figure title, or *False* for none
+    - ``inst`` -- the instrument name
+    """
+    import matplotlib.pyplot as plt
+
     if rotatedImg.shape[0] - rotatedImg.shape[1] > 1000:
         ax2.set_box_aspect(2.0)
     else:
@@ -282,19 +377,6 @@ def quicklook_image(
         ax2.invert_yaxis()
     # cbar.ticklabel_format(useOffset=False)
     _label_detector_axes(inst)
-
-    if show:
-        # plt.pause(0.1)
-        plt.show()
-
-    if saveToPath:
-        save_qc_plot(saveToPath)
-        plt.clf()  # CLEAR FIGURE
-    mpl.rcParams.update(originalRC)
-    plt.close("all")
-
-    log.debug("completed the ``quicklook_image`` function")
-    return
 
 
 def _quicklook_frame_array(CCDObject, ext):
@@ -542,10 +624,6 @@ def unpack_order_table(
     ```
     """
     log.debug("starting the ``functionName`` function")
-    import math
-
-    import numpy as np
-    import pandas as pd
     from astropy.table import Table
 
     # PIXEL DELTA NEEDS TO BE ODD .. ELSE MASKING ON BINNED DATA GETS MESSED UP
@@ -567,19 +645,101 @@ def unpack_order_table(
         mask = orderMetaTable["order"] == order
         orderMetaTable = orderMetaTable.loc[mask]
 
-    if "degy_cent" in orderPolyTable.columns:
-        axisA = "x"
-        axisB = "y"
-        axisAbin = binx
-        axisBbin = biny
-    else:
-        axisA = "y"
-        axisB = "x"
-        axisAbin = biny
-        axisBbin = binx
+    axisA, axisB, axisAbin, axisBbin = _order_table_axes(orderPolyTable, binx, biny)
 
-    # ADD AXIS B COORD LIST
-    ratio = axisBbin if prebinned else 1
+    orderPixelTable = _order_table_pixel_grid(
+        orderMetaTable=orderMetaTable,
+        axisB=axisB,
+        ratio=axisBbin if prebinned else 1,
+        extend=extend,
+        pixelDelta=pixelDelta,
+    )
+
+    orderPixelTable[f"{axisA}coord_centre"] = _evaluate_order_polynomial(
+        log=log,
+        orderPolyTable=orderPolyTable,
+        orderPixelTable=orderPixelTable,
+        axisB=axisB,
+        degreeSuffix="cent",
+        coefficients=_order_polynomial_coefficients(orderPolyTable, "cent_"),
+    )
+
+    std_coeff = _order_polynomial_coefficients(orderPolyTable, "std_")
+    if len(std_coeff):
+        # THE STANDARD-DEVIATION POLYNOMIAL DELIBERATELY REUSES THE CENTRE-TRACE DEGREES
+        orderPixelTable["std"] = _evaluate_order_polynomial(
+            log=log,
+            orderPolyTable=orderPolyTable,
+            orderPixelTable=orderPixelTable,
+            axisB=axisB,
+            degreeSuffix="cent",
+            coefficients=std_coeff,
+        )
+
+    for edge in ["edgeup", "edgelow"]:
+        if f"deg{axisB}_{edge}" in orderPolyTable.columns:
+            orderPixelTable[f"{axisA}coord_{edge}"] = _evaluate_order_polynomial(
+                log=log,
+                orderPolyTable=orderPolyTable,
+                orderPixelTable=orderPixelTable,
+                axisB=axisB,
+                degreeSuffix=edge,
+                coefficients=_order_polynomial_coefficients(orderPolyTable, f"{edge}_"),
+            )
+
+    orderPixelTable, orderMetaTable = _rescale_order_tables_for_binning(
+        orderPixelTable=orderPixelTable,
+        orderMetaTable=orderMetaTable,
+        axisA=axisA,
+        axisB=axisB,
+        axisAbin=axisAbin,
+        axisBbin=axisBbin,
+    )
+
+    log.debug("completed the ``functionName`` function")
+    return orderPolyTable, orderPixelTable, orderMetaTable
+
+
+def _order_table_axes(orderPolyTable, binx, biny):
+    """*name the order table's dispersion and cross-dispersion axes, with the binning that applies to each*
+
+    **Key Arguments:**
+
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``binx`` -- binning in the x-axis (from FITS header)
+    - ``biny`` -- binning in the y-axis (from FITS header)
+
+    **Return:**
+
+    - ``axisA`` -- the axis the order traces are solved for
+    - ``axisB`` -- the axis the order traces are sampled along
+    - ``axisAbin`` -- the binning of ``axisA``
+    - ``axisBbin`` -- the binning of ``axisB``
+    """
+    if "degy_cent" in orderPolyTable.columns:
+        return "x", "y", binx, biny
+    return "y", "x", biny, binx
+
+
+def _order_table_pixel_grid(orderMetaTable, axisB, ratio, extend, pixelDelta):
+    """*build the order-pixel dataframe holding one sampled axis-B coordinate per row*
+
+    **Key Arguments:**
+
+    - ``orderMetaTable`` -- the order table's metadata dataframe
+    - ``axisB`` -- the axis the order traces are sampled along
+    - ``ratio`` -- the factor the metadata limits are scaled by before sampling
+    - ``extend`` -- fractional increase to the order area along axis B
+    - ``pixelDelta`` -- space between sampled coordinates
+
+    **Return:**
+
+    - ``orderPixelTable`` -- a dataframe of axis-B coordinates and their order numbers
+    """
+    import math
+
+    import numpy as np
+    import pandas as pd
 
     blower = orderMetaTable[f"{axisB}min"].values * ratio
     bupper = orderMetaTable[f"{axisB}max"].values * ratio
@@ -601,51 +761,67 @@ def unpack_order_table(
         f"{axisB}coord": np.concatenate(axisBcoords),
         "order": np.concatenate(orders),
     }
-    orderPixelTable = pd.DataFrame(myDict)
+    return pd.DataFrame(myDict)
 
-    cent_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
+
+def _order_polynomial_coefficients(orderPolyTable, coefficientPrefix):
+    """*collect one order-table polynomial's coefficients, in column order*
+
+    **Key Arguments:**
+
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``coefficientPrefix`` -- the column-name prefix of the wanted coefficients, such as ``cent_``
+
+    **Return:**
+
+    - ``coefficients`` -- the matching coefficients as floats, empty when the table carries none
+    """
+    return [float(v) for k, v in orderPolyTable.iloc[0].items() if coefficientPrefix in k]
+
+
+def _evaluate_order_polynomial(log, orderPolyTable, orderPixelTable, axisB, degreeSuffix, coefficients):
+    """*evaluate one of the order table's Chebyshev polynomials over the order-pixel grid*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``orderPixelTable`` -- the order-pixel dataframe to evaluate the polynomial over
+    - ``axisB`` -- the axis the order traces are sampled along
+    - ``degreeSuffix`` -- the column-name suffix giving the polynomial degrees, such as ``cent``
+    - ``coefficients`` -- the polynomial coefficients
+
+    **Return:**
+
+    - ``values`` -- the evaluated axis-A coordinate for each row of ``orderPixelTable``
+    """
     poly = chebyshev_order_xy_polynomials(
         log=log,
         axisBCol=f"{axisB}coord",
         orderCol="order",
-        orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]),
-        axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"]),
+        orderDeg=int(orderPolyTable.iloc[0][f"degorder_{degreeSuffix}"]),
+        axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_{degreeSuffix}"]),
     ).poly
-    orderPixelTable[f"{axisA}coord_centre"] = poly(orderPixelTable, *cent_coeff)
+    return poly(orderPixelTable, *coefficients)
 
-    std_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "std_" in k]
-    if len(std_coeff):
-        poly = chebyshev_order_xy_polynomials(
-            log=log,
-            axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_cent"]),
-            orderDeg=int(orderPolyTable.iloc[0]["degorder_cent"]),
-            orderCol="order",
-            axisBCol=f"{axisB}coord",
-        ).poly
-        orderPixelTable["std"] = poly(orderPixelTable, *std_coeff)
 
-    if f"deg{axisB}_edgeup" in orderPolyTable.columns:
-        upper_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgeup_" in k]
-        poly = chebyshev_order_xy_polynomials(
-            log=log,
-            axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgeup"]),
-            orderDeg=int(orderPolyTable.iloc[0]["degorder_edgeup"]),
-            orderCol="order",
-            axisBCol=f"{axisB}coord",
-        ).poly
-        orderPixelTable[f"{axisA}coord_edgeup"] = poly(orderPixelTable, *upper_coeff)
+def _rescale_order_tables_for_binning(orderPixelTable, orderMetaTable, axisA, axisB, axisAbin, axisBbin):
+    """*scale the unpacked order tables from unbinned pixels to the frame's binning*
 
-    if f"deg{axisB}_edgelow" in orderPolyTable.columns:
-        lower_coeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "edgelow_" in k]
-        poly = chebyshev_order_xy_polynomials(
-            log=log,
-            axisBDeg=int(orderPolyTable.iloc[0][f"deg{axisB}_edgelow"]),
-            orderDeg=int(orderPolyTable.iloc[0]["degorder_edgelow"]),
-            orderCol="order",
-            axisBCol=f"{axisB}coord",
-        ).poly
-        orderPixelTable[f"{axisA}coord_edgelow"] = poly(orderPixelTable, *lower_coeff)
+    **Key Arguments:**
 
+    - ``orderPixelTable`` -- the order-pixel dataframe
+    - ``orderMetaTable`` -- the order table's metadata dataframe
+    - ``axisA`` -- the axis the order traces are solved for
+    - ``axisB`` -- the axis the order traces are sampled along
+    - ``axisAbin`` -- the binning of ``axisA``
+    - ``axisBbin`` -- the binning of ``axisB``
+
+    **Return:**
+
+    - ``orderPixelTable`` -- the order-pixel dataframe in binned pixels
+    - ``orderMetaTable`` -- the metadata dataframe in binned pixels
+    """
     if axisAbin != 1:
         for c in ["coord_centre", "coord_edgeup", "coord_edgelow"]:
             if f"{axisA}{c}" in orderPixelTable.columns:
@@ -659,8 +835,7 @@ def unpack_order_table(
         orderPixelTable = orderPixelTable.loc[~mask]
         orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].round().astype("int")
 
-    log.debug("completed the ``functionName`` function")
-    return orderPolyTable, orderPixelTable, orderMetaTable
+    return orderPixelTable, orderMetaTable
 
 
 def generic_quality_checks(log, frame, settings, recipeName, qcTable):
@@ -842,28 +1017,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
         log=log, orderTablePath=orderTablePath, binx=binx, biny=biny, prebinned=True
     )
 
-    mask = np.ones_like(frame.data)
-
-    axisACoords_up = orderTablePixels[f"{axisA}coord_edgeup"].values
-    axisACoords_low = orderTablePixels[f"{axisA}coord_edgelow"].values
-    axisBCoords = orderTablePixels[f"{axisB}coord"].values
-    axisACoords_up = axisACoords_up.astype(int)
-    axisACoords_low = axisACoords_low.astype(int)
-
-    if axisA == "x":
-        for u, lower, y in zip(axisACoords_up, axisACoords_low, axisBCoords, strict=False):
-            y = int(y)
-            lower = int(max(0, lower))
-            u = int(min(mask.shape[1], u))
-            if 0 <= y < mask.shape[0] and lower < u:
-                mask[y, lower:u] = 0
-    else:
-        for u, lower, x in zip(axisACoords_up, axisACoords_low, axisBCoords, strict=False):
-            x = int(x)
-            lower = int(max(0, lower))
-            u = int(min(mask.shape[0], u))
-            if 0 <= x < mask.shape[1] and lower < u:
-                mask[lower:u, x] = 0
+    mask = _inner_order_mask(frame, orderTablePixels, axisA, axisB)
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
     mask = (mask == 1) | (frame.mask == 1)
@@ -923,6 +1077,48 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     return qcTable
 
 
+def _inner_order_mask(frame, orderTablePixels, axisA, axisB):
+    """*build a mask that keeps only the pixels lying between the order edges*
+
+    **Key Arguments:**
+
+    - ``frame`` -- CCDData object
+    - ``orderTablePixels`` -- the unpacked order-pixel dataframe carrying the order edge coordinates
+    - ``axisA`` -- the axis the order edges are given on
+    - ``axisB`` -- the axis the order edges are sampled along
+
+    **Return:**
+
+    - ``mask`` -- an array of ones, zeroed at every inner-order pixel
+    """
+    import numpy as np
+
+    mask = np.ones_like(frame.data)
+
+    axisACoords_up = orderTablePixels[f"{axisA}coord_edgeup"].values
+    axisACoords_low = orderTablePixels[f"{axisA}coord_edgelow"].values
+    axisBCoords = orderTablePixels[f"{axisB}coord"].values
+    axisACoords_up = axisACoords_up.astype(int)
+    axisACoords_low = axisACoords_low.astype(int)
+
+    if axisA == "x":
+        for u, lower, y in zip(axisACoords_up, axisACoords_low, axisBCoords, strict=False):
+            y = int(y)
+            lower = int(max(0, lower))
+            u = int(min(mask.shape[1], u))
+            if 0 <= y < mask.shape[0] and lower < u:
+                mask[y, lower:u] = 0
+    else:
+        for u, lower, x in zip(axisACoords_up, axisACoords_low, axisBCoords, strict=False):
+            x = int(x)
+            lower = int(max(0, lower))
+            u = int(min(mask.shape[0], u))
+            if 0 <= x < mask.shape[1] and lower < u:
+                mask[lower:u, x] = 0
+
+    return mask
+
+
 def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True, binx=1, biny=1):
     """*read the spectral format table to get some key parameters*
 
@@ -959,9 +1155,6 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
     """
     log.debug("starting the ``read_spectral_format`` function")
 
-    import numpy as np
-    import pandas as pd
-
     # DETECTOR PARAMETERS LOOKUP OBJECT
     dp = detector_lookup(log=log, settings=settings).get(arm)
 
@@ -996,50 +1189,86 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
     # USE DISPERSION MAP TO FIND X-Y LIMITS OF THE SPECTRAL FORMAT FOR EACH ORDER
     # WE WANT TO LIMIT THE EXTRACTION TO THESE REGIONS
     if not isinstance(dispersionMap, bool):
-        myDict = {
-            "order": np.asarray([]),
-            "wavelength": np.asarray([]),
-            "slit_position": np.asarray([]),
-        }
-        for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax, strict=False):
-            wlArray = np.array([wmin, wmax])
-            myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
-            myDict["order"] = np.append(myDict["order"], np.ones(len(wlArray)) * o)
-            myDict["slit_position"] = np.append(myDict["slit_position"], np.zeros(len(wlArray)))
-        orderPixelTable = pd.DataFrame(myDict)
-        orderPixelTable = dispersion_map_to_pixel_arrays(
+        amins, amaxs = _dispersion_axis_pixel_limits(
             log=log,
-            dispersionMapPath=dispersionMap,
-            orderPixelTable=orderPixelTable,
-            removeOffDetectorLocation=False,
+            dp=dp,
+            dispersionMap=dispersionMap,
+            orderNums=orderNums,
+            waveLengthMin=waveLengthMin,
+            waveLengthMax=waveLengthMax,
+            binx=binx,
+            biny=biny,
         )
-
-        if dp["dispersion-axis"] == "x":
-            axis = "y"
-            rowCol = "rows"
-            abinFactor = biny
-        else:
-            axis = "x"
-            rowCol = "columns"
-            abinFactor = binx
-
-        amins = []
-        amaxs = []
-        for o in orderNums:
-            amin = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].min()
-            amax = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].max()
-            if amin < 0:
-                amin = 0
-            if amax > dp["science-pixels"][rowCol]["end"]:
-                amax = dp["science-pixels"][rowCol]["end"]
-            amins.append(amin / abinFactor)
-            amaxs.append(amax / abinFactor)
 
         log.debug("completed the ``read_spectral_format`` function")
         return orderNums, waveLengthMin, waveLengthMax, amins, amaxs
 
     log.debug("completed the ``read_spectral_format`` function")
     return orderNums, waveLengthMin, waveLengthMax
+
+
+def _dispersion_axis_pixel_limits(log, dp, dispersionMap, orderNums, waveLengthMin, waveLengthMax, binx, biny):
+    """*find each order's dispersion-axis pixel limits, clipped to the detector and scaled to the binning*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``dp`` -- the detector parameters dictionary
+    - ``dispersionMap`` -- path to the dispersion map
+    - ``orderNums`` -- an array of the order numbers
+    - ``waveLengthMin`` -- an array of the minimum wavelengths reached by each order
+    - ``waveLengthMax`` -- an array of the maximum wavelengths reached by each order
+    - ``binx`` -- binning in the x-axis (from FITS header)
+    - ``biny`` -- binning in the y-axis (from FITS header)
+
+    **Return:**
+
+    - ``amins`` -- the minimum dispersion-axis pixel limit of each order
+    - ``amaxs`` -- the maximum dispersion-axis pixel limit of each order
+    """
+    import numpy as np
+    import pandas as pd
+
+    myDict = {
+        "order": np.asarray([]),
+        "wavelength": np.asarray([]),
+        "slit_position": np.asarray([]),
+    }
+    for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax, strict=False):
+        wlArray = np.array([wmin, wmax])
+        myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
+        myDict["order"] = np.append(myDict["order"], np.ones(len(wlArray)) * o)
+        myDict["slit_position"] = np.append(myDict["slit_position"], np.zeros(len(wlArray)))
+    orderPixelTable = pd.DataFrame(myDict)
+    orderPixelTable = dispersion_map_to_pixel_arrays(
+        log=log,
+        dispersionMapPath=dispersionMap,
+        orderPixelTable=orderPixelTable,
+        removeOffDetectorLocation=False,
+    )
+
+    if dp["dispersion-axis"] == "x":
+        axis = "y"
+        rowCol = "rows"
+        abinFactor = biny
+    else:
+        axis = "x"
+        rowCol = "columns"
+        abinFactor = binx
+
+    amins = []
+    amaxs = []
+    for o in orderNums:
+        amin = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].min()
+        amax = orderPixelTable.loc[orderPixelTable["order"] == o, f"fit_{axis}"].max()
+        if amin < 0:
+            amin = 0
+        if amax > dp["science-pixels"][rowCol]["end"]:
+            amax = dp["science-pixels"][rowCol]["end"]
+        amins.append(amin / abinFactor)
+        amaxs.append(amax / abinFactor)
+
+    return amins, amaxs
 
 
 def get_calibrations_path(log, settings):
@@ -1074,8 +1303,7 @@ def get_calibrations_path(log, settings):
 
 
 # THE NAME IS PUBLIC AND IMPORTED ACROSS THE PACKAGE, SO RENAMING IT WOULD CHANGE THE PUBLIC SURFACE.
-# TOO-MANY-STATEMENTS IS A SPLITTING FINDING, DEFERRED TO DY-82; REMOVE PLR0915 HERE WHEN IT IS SPLIT
-def twoD_disp_map_image_to_dataframe(  # noqa: N802, PLR0915
+def twoD_disp_map_image_to_dataframe(  # noqa: N802
     log,
     slit_length,
     twoDMapPath,
@@ -1119,21 +1347,85 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802, PLR0915
 
     import numpy as np
     import pandas as pd
-    from astropy.io import fits
 
     home = expanduser("~")
     if twoDMapPath[0] == "~":
         twoDMapPath = twoDMapPath.replace("~", home)
 
-    binx = 1
-    biny = 1
+    binx, biny = _associated_frame_binning(associatedFrame, kw)
 
+    hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny)
+
+    mapDF = pd.DataFrame.from_dict(
+        _disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame)
+    )
+    if removeMaskedPixels:
+        mask = mapDF["mask"].eq(False)
+        mapDF = mapDF.loc[mask]
+
+    # REMOVE ZEROS
+    mask = mapDF["wavelength"] == 0
+    mapDF = mapDF.loc[~mask]
+
+    interOrderMask = hdul["ORDER"].data.copy()
+    interOrderMask = np.where(interOrderMask > 0, 0, interOrderMask)
+    interOrderMask = np.where(np.isnan(interOrderMask), 1, interOrderMask)
+
+    mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+
+    # REMOVE FILTERED ROWS FROM DATA FRAME
+    mask = (mapDF["slit_position"] < -slit_length / 2) | (mapDF["slit_position"] > slit_length / 2)
+    mapDF = mapDF.loc[~mask]
+    mask = mapDF["min"] == 0
+    mapDF = mapDF.loc[~mask]
+
+    # SORT BY COLUMN NAME
+    if not mapDF.empty:
+        _add_pixel_scale_column(mapDF, dispAxis)
+
+    log.debug("completed the ``twoD_disp_map_image_to_dataframe`` function")
+    return mapDF, interOrderMask
+
+
+def _associated_frame_binning(associatedFrame, kw):
+    """*read the x and y binning of the frame associated with a 2D dispersion map*
+
+    **Key Arguments:**
+
+    - ``associatedFrame`` -- the frame associated with the dispersion map, or *False* for none
+    - ``kw`` -- fits keyword lookup dictionary
+
+    **Return:**
+
+    - ``binx`` -- binning in the x-axis, *1* when the frame does not report one
+    - ``biny`` -- binning in the y-axis, *1* when the frame does not report one
+    """
     # FIND THE APPROPRIATE PREDICTED LINE-LIST
     if associatedFrame:
         arm = associatedFrame.header[kw("SEQ_ARM")]
         if arm != "NIR" and kw("WIN_BINX") in associatedFrame.header:
-            binx = int(associatedFrame.header[kw("WIN_BINX")])
-            biny = int(associatedFrame.header[kw("WIN_BINY")])
+            return int(associatedFrame.header[kw("WIN_BINX")]), int(associatedFrame.header[kw("WIN_BINY")])
+    return 1, 1
+
+
+def _open_disp_map_hdus(twoDMapPath, binx, biny):
+    """*open a 2D dispersion map and block-reduce its extensions to the frame's binning*
+
+    **Key Arguments:**
+
+    - ``twoDMapPath`` -- 2D dispersion map image path
+    - ``binx`` -- binning in the x-axis
+    - ``biny`` -- binning in the y-axis
+
+    **Return:**
+
+    - ``hdul`` -- the open dispersion-map HDU list, block-reduced when the frame is binned
+    - ``minimumBinnedPixelValue`` -- the minimum unbinned wavelength within each binned pixel, or *None* when
+      the frame is unbinned
+    - ``binned`` -- was the map block-reduced?
+    """
+    import numpy as np
+    from astropy.io import fits
 
     hdul = fits.open(twoDMapPath)
 
@@ -1142,6 +1434,7 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802, PLR0915
     hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
 
     binned = False
+    minimumBinnedPixelValue = None
     if binx > 1 or biny > 1:
         binned = True
         from astropy.nddata import block_reduce
@@ -1152,6 +1445,25 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802, PLR0915
         hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
         minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
         minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
+
+    return hdul, minimumBinnedPixelValue, binned
+
+
+def _disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame):
+    """*build the one-row-per-pixel columns of the dispersion-map dataframe*
+
+    **Key Arguments:**
+
+    - ``hdul`` -- the open dispersion-map HDU list
+    - ``minimumBinnedPixelValue`` -- the minimum unbinned wavelength within each binned pixel
+    - ``binned`` -- was the map block-reduced?
+    - ``associatedFrame`` -- the frame associated with the dispersion map, or *False* for none
+
+    **Return:**
+
+    - ``thisDict`` -- a dictionary of equal-length pixel columns
+    """
+    import numpy as np
 
     # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
     xdim = hdul[0].data.shape[1]
@@ -1201,48 +1513,37 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802, PLR0915
     #         thisDict["mask"] = associatedFrame.mask.flatten().byteswap().newbyteorder()
     #         thisDict["error"] = associatedFrame.uncertainty.array.flatten().byteswap().newbyteorder()
 
-    mapDF = pd.DataFrame.from_dict(thisDict)
-    if removeMaskedPixels:
-        mask = mapDF["mask"].eq(False)
-        mapDF = mapDF.loc[mask]
+    return thisDict
 
-    # REMOVE ZEROS
-    mask = mapDF["wavelength"] == 0
-    mapDF = mapDF.loc[~mask]
 
-    interOrderMask = hdul["ORDER"].data.copy()
-    interOrderMask = np.where(interOrderMask > 0, 0, interOrderMask)
-    interOrderMask = np.where(np.isnan(interOrderMask), 1, interOrderMask)
+def _add_pixel_scale_column(mapDF, dispAxis):
+    """*add the per-pixel wavelength step to the dispersion-map dataframe, in place*
 
-    mapDF.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+    The dataframe is left sorted by wavelength.
 
-    # REMOVE FILTERED ROWS FROM DATA FRAME
-    mask = (mapDF["slit_position"] < -slit_length / 2) | (mapDF["slit_position"] > slit_length / 2)
-    mapDF = mapDF.loc[~mask]
-    mask = mapDF["min"] == 0
-    mapDF = mapDF.loc[~mask]
+    **Key Arguments:**
+
+    - ``mapDF`` -- the dispersion-map dataframe, modified in place
+    - ``dispAxis`` -- x or y. Sets the order the pixels are stepped through in
+    """
+    import numpy as np
+
+    mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
+
+    # CALCULATE PIXEL SCALE
+    if dispAxis == "y":
+        mapDF.sort_values(["x", "y"], inplace=True, kind="stable")
+    else:
+        mapDF.sort_values(["y", "x"], inplace=True, kind="stable")
+    shiftedWlArray = list(mapDF["wavelength"].values)[1:]
+    shiftedWlArray.append(np.nan)
+    mapDF["pixelScale"] = mapDF["wavelength"] - shiftedWlArray
+    mask = (mapDF["pixelScale"] > 2) | (mapDF["pixelScale"] < -2)
+    mapDF.loc[mask, "pixelScale"] = 0.0
+    mapDF["pixelScale"] = mapDF["pixelScale"].abs()
 
     # SORT BY COLUMN NAME
-    if not mapDF.empty:
-        mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
-
-        # CALCULATE PIXEL SCALE
-        if dispAxis == "y":
-            mapDF.sort_values(["x", "y"], inplace=True, kind="stable")
-        else:
-            mapDF.sort_values(["y", "x"], inplace=True, kind="stable")
-        shiftedWlArray = list(mapDF["wavelength"].values)[1:]
-        shiftedWlArray.append(np.nan)
-        mapDF["pixelScale"] = mapDF["wavelength"] - shiftedWlArray
-        mask = (mapDF["pixelScale"] > 2) | (mapDF["pixelScale"] < -2)
-        mapDF.loc[mask, "pixelScale"] = 0.0
-        mapDF["pixelScale"] = mapDF["pixelScale"].abs()
-
-        # SORT BY COLUMN NAME
-        mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
-
-    log.debug("completed the ``twoD_disp_map_image_to_dataframe`` function")
-    return mapDF, interOrderMask
+    mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
 
 
 def predict_product_path(sofName, recipeName=False):
@@ -1818,7 +2119,6 @@ def plot_merged_spectrum_qc(
 
     import matplotlib.pyplot as plt
     import pandas as pd
-    from astropy.stats import sigma_clipped_stats
 
     if not noddingSequence:
         noddingSequence = ""
@@ -1829,96 +2129,22 @@ def plot_merged_spectrum_qc(
     # ADJUSTED HEIGHT RATIOS
     gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 1, 0])
 
-    # TOP PANEL WITH LINEAR SCALE
-    top_panel = fig.add_subplot(gs[0, :])
-    if fluxCalibrated:
-        top_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\\AA^{-1}$)", fontsize=10)
-    else:
-        top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
-
-    top_panel.set_title(
-        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace('.fits', '')}",
-        fontsize=11,
-        linespacing=2.0,
+    top_panel, middle_panel = _draw_merged_flux_panels(
+        fig=fig,
+        gs=gs,
+        merged_orders=merged_orders,
+        arm=arm,
+        filenameTemplate=filenameTemplate,
+        fluxCalibrated=fluxCalibrated,
     )
 
-    top_panel.plot(
-        merged_orders["WAVE"],
-        merged_orders["FLUX_COUNTS"],
-        linewidth=0.3,
-        color="#dc322f" if not fluxCalibrated else "#2aa198",
-        zorder=1,
+    bottom_panel = _draw_merged_snr_panel(
+        log=log,
+        fig=fig,
+        gs=gs,
+        merged_orders=merged_orders,
+        qcTable=qcTable,
     )
-
-    _set_wavelength_xlim(top_panel, merged_orders)
-
-    # MIDDLE PANEL WITH LOG SCALE
-    middle_panel = fig.add_subplot(gs[1, :])
-    if not fluxCalibrated:
-        middle_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
-    else:
-        middle_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\\AA^{-1}$)", fontsize=10)
-    middle_panel.set_xlabel("wavelength (nm)", fontsize=10)
-    middle_panel.set_yscale("log")
-
-    middle_panel.plot(
-        merged_orders["WAVE"],
-        merged_orders["FLUX_COUNTS"],
-        linewidth=0.3,
-        color="#dc322f" if not fluxCalibrated else "#2aa198",
-        zorder=1,
-    )
-
-    from astropy.stats import sigma_clip
-
-    # SIGMA-CLIP THE DATA
-    arrayMask = sigma_clip(
-        merged_orders["FLUX_COUNTS"],
-        sigma_lower=3,
-        sigma_upper=15.0,
-        maxiters=1,
-        cenfunc="mean",
-        stdfunc="std",
-    )
-    mean, median, std = sigma_clipped_stats(
-        merged_orders["FLUX_COUNTS"],
-        sigma=5.0,
-        stdfunc="std",
-        cenfunc="mean",
-        maxiters=3,
-    )
-    maxFlux = arrayMask.max() + 3 * std
-    minFlux = arrayMask.min() - 3 * std
-
-    top_panel.set_ylim(minFlux, maxFlux)
-
-    middle_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
-    _set_wavelength_xlim(middle_panel, merged_orders)
-
-    # BOTTOM PANEL WITH LINEAR SCALE FOR SNR
-    bottom_panel = fig.add_subplot(gs[2, :])
-    bottom_panel.set_ylabel("SNR", fontsize=10)
-    bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
-
-    if not isinstance(qcTable, bool):
-        orderValue, snrValue = _snr_orders_and_values(log, qcTable)
-
-    bottom_panel.plot(
-        merged_orders["WAVE"],
-        merged_orders["SNR"],
-        linewidth=0.4,
-        color="black",
-        zorder=1,
-    )
-    _set_wavelength_xlim(bottom_panel, merged_orders)
-
-    mean, median, std = sigma_clipped_stats(merged_orders["SNR"], sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3)
-
-    bottom_panel.set_ylim(0, mean + 4 * std)
-
-    # ADD SNR VALUES TO BOTTOM PANEL
-    if not isinstance(qcTable, bool) and len(orderValue):
-        _annotate_snr_values(bottom_panel, orderValue, snrValue)
 
     # SKY PANEL WITH SKY FLUX
     sky_panel = _draw_sky_panel(fig, gs, merged_orders, fluxCalibrated)
@@ -1966,6 +2192,137 @@ def plot_merged_spectrum_qc(
 
     log.debug("completed the ``plot_merged_spectrum_qc`` function")
     return products, filePath
+
+
+def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, fluxCalibrated):
+    """*draw the linear-scale and log-scale flux panels of the merged-spectrum QC plot*
+
+    **Key Arguments:**
+
+    - ``fig`` -- the QC figure
+    - ``gs`` -- the figure's gridspec
+    - ``merged_orders`` -- the order-merged spectrum
+    - ``arm`` -- the spectrograph arm
+    - ``filenameTemplate`` -- the product filename the plot title is built from
+    - ``fluxCalibrated`` -- is the spectrum flux calibrated?
+
+    **Return:**
+
+    - ``top_panel`` -- the linear-scale flux panel
+    - ``middle_panel`` -- the log-scale flux panel
+    """
+    from astropy.stats import sigma_clip, sigma_clipped_stats
+
+    # TOP PANEL WITH LINEAR SCALE
+    top_panel = fig.add_subplot(gs[0, :])
+    if fluxCalibrated:
+        top_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\\AA^{-1}$)", fontsize=10)
+    else:
+        top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
+
+    top_panel.set_title(
+        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace('.fits', '')}",
+        fontsize=11,
+        linespacing=2.0,
+    )
+
+    top_panel.plot(
+        merged_orders["WAVE"],
+        merged_orders["FLUX_COUNTS"],
+        linewidth=0.3,
+        color="#dc322f" if not fluxCalibrated else "#2aa198",
+        zorder=1,
+    )
+
+    _set_wavelength_xlim(top_panel, merged_orders)
+
+    # MIDDLE PANEL WITH LOG SCALE
+    middle_panel = fig.add_subplot(gs[1, :])
+    if not fluxCalibrated:
+        middle_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
+    else:
+        middle_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\\AA^{-1}$)", fontsize=10)
+    middle_panel.set_xlabel("wavelength (nm)", fontsize=10)
+    middle_panel.set_yscale("log")
+
+    middle_panel.plot(
+        merged_orders["WAVE"],
+        merged_orders["FLUX_COUNTS"],
+        linewidth=0.3,
+        color="#dc322f" if not fluxCalibrated else "#2aa198",
+        zorder=1,
+    )
+
+    # SIGMA-CLIP THE DATA
+    arrayMask = sigma_clip(
+        merged_orders["FLUX_COUNTS"],
+        sigma_lower=3,
+        sigma_upper=15.0,
+        maxiters=1,
+        cenfunc="mean",
+        stdfunc="std",
+    )
+    mean, median, std = sigma_clipped_stats(
+        merged_orders["FLUX_COUNTS"],
+        sigma=5.0,
+        stdfunc="std",
+        cenfunc="mean",
+        maxiters=3,
+    )
+    maxFlux = arrayMask.max() + 3 * std
+    minFlux = arrayMask.min() - 3 * std
+
+    top_panel.set_ylim(minFlux, maxFlux)
+
+    middle_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
+    _set_wavelength_xlim(middle_panel, merged_orders)
+
+    return top_panel, middle_panel
+
+
+def _draw_merged_snr_panel(log, fig, gs, merged_orders, qcTable):
+    """*draw the SNR panel of the merged-spectrum QC plot, annotated with the per-order SNR values*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``fig`` -- the QC figure
+    - ``gs`` -- the figure's gridspec
+    - ``merged_orders`` -- the order-merged spectrum
+    - ``qcTable`` -- the QC table holding the SNR values to annotate, or *False* for none
+
+    **Return:**
+
+    - ``bottom_panel`` -- the SNR panel
+    """
+    from astropy.stats import sigma_clipped_stats
+
+    # BOTTOM PANEL WITH LINEAR SCALE FOR SNR
+    bottom_panel = fig.add_subplot(gs[2, :])
+    bottom_panel.set_ylabel("SNR", fontsize=10)
+    bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
+
+    if not isinstance(qcTable, bool):
+        orderValue, snrValue = _snr_orders_and_values(log, qcTable)
+
+    bottom_panel.plot(
+        merged_orders["WAVE"],
+        merged_orders["SNR"],
+        linewidth=0.4,
+        color="black",
+        zorder=1,
+    )
+    _set_wavelength_xlim(bottom_panel, merged_orders)
+
+    mean, median, std = sigma_clipped_stats(merged_orders["SNR"], sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3)
+
+    bottom_panel.set_ylim(0, mean + 4 * std)
+
+    # ADD SNR VALUES TO BOTTOM PANEL
+    if not isinstance(qcTable, bool) and len(orderValue):
+        _annotate_snr_values(bottom_panel, orderValue, snrValue)
+
+    return bottom_panel
 
 
 def _set_wavelength_xlim(panel, merged_orders):
