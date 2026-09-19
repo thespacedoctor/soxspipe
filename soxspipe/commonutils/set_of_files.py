@@ -22,7 +22,18 @@ class ImageFileCollection(ImageFileCollection):
     def _dict_from_fits_header(
         self, file_name, input_summary=None, missing_marker=None
     ):
-        """ """
+        """*summarise one file's header, keeping keyword case (overrides the ccdproc method)*
+
+        **Key Arguments:**
+
+        - ``file_name`` -- the path of the FITS file
+        - ``input_summary`` -- the summary built so far. Default *None*
+        - ``missing_marker`` -- the value recorded for a keyword the file lacks. Default *None*
+
+        **Return:**
+
+        - ``summary`` -- the summary, with this file's row appended
+        """
         from collections import OrderedDict
 
         from astropy.io import fits
@@ -51,14 +62,14 @@ class ImageFileCollection(ImageFileCollection):
         assert "file" not in h
 
         if self.location:
-            # We have a location and can reconstruct the path using it
+            # WE HAVE A LOCATION AND CAN RECONSTRUCT THE PATH USING IT
             name_for_file_column = path.basename(file_name)
         else:
-            # No location, so use whatever path the user passed in
+            # NO LOCATION, SO USE WHATEVER PATH THE USER PASSED IN
             name_for_file_column = file_name
 
-        # Try opening header before this so that file name is only added if
-        # file is valid FITS
+        # TRY OPENING HEADER BEFORE THIS SO THAT FILE NAME IS ONLY ADDED IF
+        # FILE IS VALID FITS
         try:
             summary["file"].append(name_for_file_column)
         except KeyError:
@@ -75,14 +86,14 @@ class ImageFileCollection(ImageFileCollection):
 
             if k in ["comment", "history"]:
                 multi_entry_keys[k].append(str(v))
-                # Accumulate these in a separate dictionary until the
-                # end to avoid adding multiple entries to summary.
+                # ACCUMULATE THESE IN A SEPARATE DICTIONARY UNTIL THE
+                # END TO AVOID ADDING MULTIPLE ENTRIES TO SUMMARY.
                 continue
             if k in alreadyencountered:
-                # The "normal" multi-entries HISTORY, COMMENT and BLANK are
-                # already processed so any further duplication is probably
-                # a mistake. It would lead to problems in ImageFileCollection
-                # to add it as well, so simply ignore those.
+                # THE "NORMAL" MULTI-ENTRIES HISTORY, COMMENT AND BLANK ARE
+                # ALREADY PROCESSED SO ANY FURTHER DUPLICATION IS PROBABLY
+                # A MISTAKE. IT WOULD LEAD TO PROBLEMS IN IMAGEFILECOLLECTION
+                # TO ADD IT AS WELL, SO SIMPLY IGNORE THOSE.
                 import warnings
 
                 warnings.warn(
@@ -91,8 +102,8 @@ class ImageFileCollection(ImageFileCollection):
                     UserWarning,
                 )
                 continue
-            # Add the key to the already encountered keys so we don't add
-            # it more than once.
+            # ADD THE KEY TO THE ALREADY ENCOUNTERED KEYS SO WE DON'T ADD
+            # IT MORE THAN ONCE.
             alreadyencountered.add(k)
 
             _add_val_to_dict(k, v, summary, n_previous, missing_marker)
@@ -124,7 +135,18 @@ os.environ["TERM"] = "vt100"
 
 
 def _supplementary_path_from_sof_line(line, home):
-    """Return the path column from a supplementary SOF row."""
+    """*return the path column from a supplementary SOF row*
+
+    **Key Arguments:**
+
+    - ``line`` -- one line of the SOF file
+    - ``home`` -- the user's home directory, substituted for a leading ``~/``
+
+    **Return:**
+
+    - ``path`` -- the supplementary file path, with a trailing arm tag removed when the line is not itself an
+      existing path
+    """
     expandedLine = line.replace("~/", home + "/")
     if os.path.exists(expandedLine):
         return expandedLine
@@ -140,7 +162,17 @@ def _supplementary_path_from_sof_line(line, home):
 
 
 def _join_fits_summaries_in_input_order(primarySummary, extensionSummary):
-    """Join primary and extension headers without reordering input frames."""
+    """*join primary and extension headers without reordering input frames*
+
+    **Key Arguments:**
+
+    - ``primarySummary`` -- the summary table of primary-header keywords
+    - ``extensionSummary`` -- the summary table of data-extension keywords, in input order
+
+    **Return:**
+
+    - ``joinedSummary`` -- the joined summary table, in the row order of ``extensionSummary``
+    """
     from astropy.table import join
 
     inputOrderColumn = "_soxspipe_input_order"
@@ -153,7 +185,16 @@ def _join_fits_summaries_in_input_order(primarySummary, extensionSummary):
 
 
 def _supplementary_files_in_directory(directory):
-    """Return the non-FITS, non-hidden files in a directory of frames."""
+    """*return the non-FITS, non-hidden files in a directory of frames*
+
+    **Key Arguments:**
+
+    - ``directory`` -- the directory of frames
+
+    **Return:**
+
+    - ``supplementaryFilepaths`` -- the supplementary file paths, in directory-listing order
+    """
     supplementaryFilepaths = []
     for d in os.listdir(directory):
         filepath = os.path.join(directory, d)
@@ -167,7 +208,17 @@ def _supplementary_files_in_directory(directory):
 
 
 def _common_location(fitsFiles):
-    """Return the frames' shared directory and their base names, or None and the paths unchanged."""
+    """*find the directory shared by all the frames*
+
+    **Key Arguments:**
+
+    - ``fitsFiles`` -- the frame paths
+
+    **Return:**
+
+    - ``location`` -- the shared directory, or None when the frames span several directories
+    - ``fitsFiles`` -- the frame base names when a shared directory is found, otherwise the paths unchanged
+    """
     locations = [os.path.dirname(f) for f in fitsFiles]
     if len(set(locations)) == 1:
         return locations[0], [os.path.basename(f) for f in fitsFiles]
@@ -176,7 +227,8 @@ def _common_location(fitsFiles):
 
 class set_of_files:
     """
-    *The worker class for the sof module used to homogenize various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
+    *The worker class for the sof module used to homogenize various frame input formats (sof file, directory of fits
+      fits, list of fits file paths) into a CCDProc ImageFileCollection*
 
     **Key Arguments:**
 
@@ -186,6 +238,7 @@ class set_of_files:
     - ``verbose`` -- verbose. True or False. Default *True*
     - ``recipeName`` -- the name of the recipe. Default *False*
     - ``ext`` -- the data extension for the frame. Default 0.
+    - ``session`` -- unused; the workspace session is read from the data organiser. Default *None*
 
     **Usage**
 
@@ -207,7 +260,7 @@ class set_of_files:
     `inputFrames` can be a directory, a list of fits filepaths or a set-of-files (SOF) file
     """
 
-    # Initialization
+    # INITIALIZATION
 
     def __init__(
         self,
@@ -243,7 +296,7 @@ class set_of_files:
         self.keys = []
         self.keys[:] = [k for k in keys]
         self.keys.append("file")
-        # Initial Actions
+        # INITIAL ACTIONS
         # FIX RELATIVE HOME PATHS
         from os.path import expanduser
 
@@ -312,8 +365,6 @@ class set_of_files:
                 with fits.open(fitsPath) as hdul:
                     # READ HEADER INTO MEMORY
                     hdr = hdul[0].header
-                    # PRINT FULL FITS HEADER TO STDOUT
-                    # print(repr(hdr).strip())
                     dpr_type = hdr[kw("DPR_TYPE")].strip()
                     # CHECK ARM
                     arm = hdr[kw("SEQ_ARM")]
@@ -348,7 +399,8 @@ class set_of_files:
 
         **Usage**
 
-        To generate a ImageFileCollection from a directory, a list of fits filepaths or a set-of-files (SOF) file try the following:
+        To generate a ImageFileCollection from a directory, a list of fits filepaths or a set-of-files (SOF) file try
+        the following:
 
         ```python
         # inputFrames = "/path/to/a/directory"
@@ -564,5 +616,5 @@ class set_of_files:
         self.log.debug("completed the ``create_supplementary_file_dictionary`` method")
         return supplementary_sof
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
