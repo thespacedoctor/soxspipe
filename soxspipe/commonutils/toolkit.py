@@ -177,7 +177,6 @@ def quicklook_image(
     from copy import copy
 
     import matplotlib as mpl
-    import numpy as np
 
     from soxspipe.commonutils import detector_lookup, keyword_lookup
 
@@ -198,22 +197,10 @@ def quicklook_image(
         dp = detectorParams
         science_pixels = dp["science-pixels"]
 
-    if ext == "data":
-        frame = CCDObject.data
-    elif ext == "mask":
-        frame = CCDObject.mask
-    elif ext == "uncertainty":
-        frame = CCDObject.uncertainty.array
-    else:
-        # ASSUME ONLY NDARRAY
-        frame = CCDObject
+    frame = _quicklook_frame_array(CCDObject, ext)
 
     if inst is False:
-        try:
-            inst = CCDObject.header["INSTRUME"]
-        except (KeyError, AttributeError) as e:
-            log.debug(f"quicklook_image: `inst = CCDObject.header['INSTRUME']` failed, continuing: {e}")
-            inst = "XSHOOTER"
+        inst = _quicklook_instrument(log, CCDObject)
 
     if skylines:
         skylinesDF = get_skylines_dataframe(log, settings, arm)
@@ -242,13 +229,7 @@ def quicklook_image(
         except AttributeError as e:
             log.debug(f"quicklook_image: `frame.mask = mask` failed, continuing: {e}")
 
-    if inst == "SOXS":
-        rotatedImg = np.flipud(frame)
-    elif inst == "XSHOOTER":
-        rotatedImg = np.rot90(frame, 1)
-    else:
-        rotatedImg = frame
-    rotatedImg = np.flipud(rotatedImg)
+    rotatedImg = _rotate_for_display(frame, inst)
 
     from astropy.stats import sigma_clipped_stats
 
@@ -263,73 +244,7 @@ def quicklook_image(
     vmin = median - stdWindow * 0.5 * std
 
     if surfacePlot:
-
-        from matplotlib import rc
-
-        axisColour = "#002b36"
-        rc("axes", edgecolor=axisColour, labelcolor=axisColour, linewidth=0.6)
-        rc("xtick", color=axisColour)
-        rc("ytick", color=axisColour)
-        rc("grid", color=axisColour)
-        rc("text", color=axisColour)
-
-        fig = plt.figure(figsize=(20, 8))
-        ax = fig.add_subplot(121, projection="3d")
-        if inst == "XSHOOTER":
-            plt.gca().invert_yaxis()
-        ax.set_box_aspect(aspect=(2, 1, 1))
-        # Remove gray panes and axis grid
-        ax.xaxis.pane.fill = False
-        ax.zaxis.pane.set_facecolor("#dc322f")
-        ax.zaxis.pane.set_alpha(1.0)
-        ax.yaxis.pane.fill = False
-
-        ax.grid(False)
-        # Remove z-axis
-        # ax.w_zaxis.line.set_lw(0.)
-        # ax.set_zticks([])
-
-        X, Y = np.meshgrid(
-            np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]),
-            np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]),
-        )
-        surface = ax.plot_surface(
-            X=X,
-            Y=Y,
-            Z=rotatedImg,
-            cmap="viridis",
-            antialiased=True,
-            vmin=vmin,
-            vmax=vmax,
-        )
-
-        if inst == "SOXS":
-            ax.azim = 70
-        else:
-            ax.azim = -120
-        ax.elev = 30
-
-        ax.set_xlim(0, rotatedImg.shape[1])
-        ax.set_ylim(0, rotatedImg.shape[0])
-        ax.set_zlim(vmin, min(np.nanmax(frame), vmax * 1.2))
-
-        if inst == "SOXS":
-            ax.invert_yaxis()
-        backgroundColour = "white"
-        fig.set_facecolor(backgroundColour)
-        ax.set_facecolor(backgroundColour)
-        ax.xaxis.pane.set_edgecolor(backgroundColour)
-        ax.yaxis.pane.set_edgecolor(backgroundColour)
-        ax.zaxis.pane.set_edgecolor(backgroundColour)
-
-        if inst == "SOXS":
-            plt.xlabel("x-axis", fontsize=16)
-            plt.ylabel("y-axis", fontsize=16)
-        else:
-            plt.xlabel("y-axis", fontsize=16)
-            plt.ylabel("x-axis", fontsize=16)
-
-        ax2 = fig.add_subplot(122)
+        fig, ax2 = _draw_surface_plot(rotatedImg, frame, inst, vmin, vmax)
     else:
         if rotatedImg.shape[0] - rotatedImg.shape[1] > 1000:
             fig = plt.figure(figsize=(5, 12))
@@ -340,27 +255,7 @@ def quicklook_image(
         ax2 = fig.add_subplot(111)
 
     if not isinstance(dispMapImage, bool):
-
-        for l in range(int(gridLinePixelTable["line"].max())):
-            mask = gridLinePixelTable["line"] == l
-            if inst == "SOXS":
-                ax2.plot(
-                    gridLinePixelTable.loc[mask]["fit_x"],
-                    gridLinePixelTable.loc[mask]["fit_y"],
-                    "w-",
-                    linewidth=0.5,
-                    alpha=0.8,
-                    color="black",
-                )
-            else:
-                ax2.plot(
-                    gridLinePixelTable.loc[mask]["fit_y"],
-                    gridLinePixelTable.loc[mask]["fit_x"],
-                    "w-",
-                    linewidth=0.5,
-                    alpha=0.8,
-                    color="black",
-                )
+        _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst)
 
     if rotatedImg.shape[0] - rotatedImg.shape[1] > 1000:
         ax2.set_box_aspect(2.0)
@@ -384,12 +279,7 @@ def quicklook_image(
     if inst == "XSHOOTER":
         ax2.invert_yaxis()
     # cbar.ticklabel_format(useOffset=False)
-    if inst == "SOXS":
-        plt.xlabel("x-axis", fontsize=16)
-        plt.ylabel("y-axis", fontsize=16)
-    else:
-        plt.xlabel("y-axis", fontsize=16)
-        plt.ylabel("x-axis", fontsize=16)
+    _label_detector_axes(inst)
 
     if show:
         # plt.pause(0.1)
@@ -403,6 +293,205 @@ def quicklook_image(
 
     log.debug("completed the ``quicklook_image`` function")
     return
+
+
+def _quicklook_frame_array(CCDObject, ext):
+    """*return the array ``quicklook_image`` plots for the requested extension*
+
+    **Key Arguments:**
+
+    - ``CCDObject`` -- the CCDObject (or plain array) to plot
+    - ``ext`` -- the extension name: "data", "mask" or "uncertainty". Anything else treats
+      ``CCDObject`` as a plain array
+
+    **Return:**
+
+    - ``frame`` -- the array to plot
+    """
+    if ext == "data":
+        frame = CCDObject.data
+    elif ext == "mask":
+        frame = CCDObject.mask
+    elif ext == "uncertainty":
+        frame = CCDObject.uncertainty.array
+    else:
+        # ASSUME ONLY NDARRAY
+        frame = CCDObject
+    return frame
+
+
+def _quicklook_instrument(log, CCDObject):
+    """*read the instrument name from the frame header, falling back to XSHOOTER*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``CCDObject`` -- the CCDObject (or plain array) being plotted
+
+    **Return:**
+
+    - ``inst`` -- the instrument name
+    """
+    try:
+        inst = CCDObject.header["INSTRUME"]
+    except (KeyError, AttributeError) as e:
+        log.debug(f"quicklook_image: `inst = CCDObject.header['INSTRUME']` failed, continuing: {e}")
+        inst = "XSHOOTER"
+    return inst
+
+
+def _rotate_for_display(frame, inst):
+    """*orient a detector frame so it displays with the instrument's axis convention*
+
+    **Key Arguments:**
+
+    - ``frame`` -- the array to orient
+    - ``inst`` -- the instrument name
+
+    **Return:**
+
+    - ``rotatedImg`` -- the oriented array
+    """
+    import numpy as np
+
+    if inst == "SOXS":
+        rotatedImg = np.flipud(frame)
+    elif inst == "XSHOOTER":
+        rotatedImg = np.rot90(frame, 1)
+    else:
+        rotatedImg = frame
+    return np.flipud(rotatedImg)
+
+
+def _label_detector_axes(inst):
+    """*label the current axes with the detector axis names for the instrument*
+
+    **Key Arguments:**
+
+    - ``inst`` -- the instrument name
+    """
+    import matplotlib.pyplot as plt
+
+    if inst == "SOXS":
+        plt.xlabel("x-axis", fontsize=16)
+        plt.ylabel("y-axis", fontsize=16)
+    else:
+        plt.xlabel("y-axis", fontsize=16)
+        plt.ylabel("x-axis", fontsize=16)
+
+
+def _draw_surface_plot(rotatedImg, frame, inst, vmin, vmax):
+    """*draw the 3D surface panel of a ``quicklook_image`` surface plot*
+
+    **Key Arguments:**
+
+    - ``rotatedImg`` -- the oriented array to draw
+    - ``frame`` -- the unrotated array, used for the z-axis limit
+    - ``inst`` -- the instrument name
+    - ``vmin`` -- the lower colour and z-axis limit
+    - ``vmax`` -- the upper colour limit
+
+    **Return:**
+
+    - ``fig`` -- the new figure
+    - ``ax2`` -- the empty 2D axes beside the surface, for the detector image
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from matplotlib import rc
+
+    axisColour = "#002b36"
+    rc("axes", edgecolor=axisColour, labelcolor=axisColour, linewidth=0.6)
+    rc("xtick", color=axisColour)
+    rc("ytick", color=axisColour)
+    rc("grid", color=axisColour)
+    rc("text", color=axisColour)
+
+    fig = plt.figure(figsize=(20, 8))
+    ax = fig.add_subplot(121, projection="3d")
+    if inst == "XSHOOTER":
+        plt.gca().invert_yaxis()
+    ax.set_box_aspect(aspect=(2, 1, 1))
+    # Remove gray panes and axis grid
+    ax.xaxis.pane.fill = False
+    ax.zaxis.pane.set_facecolor("#dc322f")
+    ax.zaxis.pane.set_alpha(1.0)
+    ax.yaxis.pane.fill = False
+
+    ax.grid(False)
+    # Remove z-axis
+    # ax.w_zaxis.line.set_lw(0.)
+    # ax.set_zticks([])
+
+    X, Y = np.meshgrid(
+        np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]),
+        np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]),
+    )
+    surface = ax.plot_surface(
+        X=X,
+        Y=Y,
+        Z=rotatedImg,
+        cmap="viridis",
+        antialiased=True,
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+    if inst == "SOXS":
+        ax.azim = 70
+    else:
+        ax.azim = -120
+    ax.elev = 30
+
+    ax.set_xlim(0, rotatedImg.shape[1])
+    ax.set_ylim(0, rotatedImg.shape[0])
+    ax.set_zlim(vmin, min(np.nanmax(frame), vmax * 1.2))
+
+    if inst == "SOXS":
+        ax.invert_yaxis()
+    backgroundColour = "white"
+    fig.set_facecolor(backgroundColour)
+    ax.set_facecolor(backgroundColour)
+    ax.xaxis.pane.set_edgecolor(backgroundColour)
+    ax.yaxis.pane.set_edgecolor(backgroundColour)
+    ax.zaxis.pane.set_edgecolor(backgroundColour)
+
+    _label_detector_axes(inst)
+
+    ax2 = fig.add_subplot(122)
+    return fig, ax2
+
+
+def _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst):
+    """*draw the dispersion-solution grid lines over a ``quicklook_image`` detector image*
+
+    **Key Arguments:**
+
+    - ``ax2`` -- the axes holding the detector image
+    - ``gridLinePixelTable`` -- the grid-line pixel table from
+      ``create_dispersion_solution_grid_lines_for_plot``
+    - ``inst`` -- the instrument name
+    """
+    for l in range(int(gridLinePixelTable["line"].max())):
+        mask = gridLinePixelTable["line"] == l
+        if inst == "SOXS":
+            ax2.plot(
+                gridLinePixelTable.loc[mask]["fit_x"],
+                gridLinePixelTable.loc[mask]["fit_y"],
+                "w-",
+                linewidth=0.5,
+                alpha=0.8,
+                color="black",
+            )
+        else:
+            ax2.plot(
+                gridLinePixelTable.loc[mask]["fit_y"],
+                gridLinePixelTable.loc[mask]["fit_x"],
+                "w-",
+                linewidth=0.5,
+                alpha=0.8,
+                color="black",
+            )
 
 
 def unpack_order_table(
@@ -1623,7 +1712,6 @@ def plot_merged_spectrum_qc(
         return products, None
 
     import matplotlib.pyplot as plt
-    import numpy as np
     import pandas as pd
     from astropy.stats import sigma_clipped_stats
 
@@ -1657,10 +1745,7 @@ def plot_merged_spectrum_qc(
         zorder=1,
     )
 
-    try:
-        top_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
-    except Exception:
-        top_panel.set_xlim(merged_orders["WAVE"].min(), merged_orders["WAVE"].max())
+    _set_wavelength_xlim(top_panel, merged_orders)
 
     # Middle panel with log scale
     middle_panel = fig.add_subplot(gs[1, :])
@@ -1703,10 +1788,7 @@ def plot_merged_spectrum_qc(
     top_panel.set_ylim(minFlux, maxFlux)
 
     middle_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
-    try:
-        middle_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
-    except Exception:
-        middle_panel.set_xlim(merged_orders["WAVE"].min(), merged_orders["WAVE"].max())
+    _set_wavelength_xlim(middle_panel, merged_orders)
 
     # Bottom panel with linear scale for SNR
     bottom_panel = fig.add_subplot(gs[2, :])
@@ -1714,17 +1796,7 @@ def plot_merged_spectrum_qc(
     bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
 
     if not isinstance(qcTable, bool):
-        qcTable = qcTable.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
-        snrValue = qcTable.loc[qcTable["qc_name"] == "SNR MEDIAN"]
-        orderValue = snrValue["qc_order"].values
-        for i in range(len(orderValue)):
-            try:
-                orderValue[i] = int(orderValue[i])
-            except (ValueError, TypeError) as e:
-                log.debug(f"plot_merged_spectrum_qc: `orderValue[i] = int(orderValue[i])` failed, continuing: {e}")
-
-        orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
-        snrValue = snrValue["qc_value"].values
+        orderValue, snrValue = _snr_orders_and_values(log, qcTable)
 
     bottom_panel.plot(
         merged_orders["WAVE"],
@@ -1733,10 +1805,7 @@ def plot_merged_spectrum_qc(
         color="black",
         zorder=1,
     )
-    try:
-        bottom_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
-    except Exception:
-        bottom_panel.set_xlim(merged_orders["WAVE"].min(), merged_orders["WAVE"].max())
+    _set_wavelength_xlim(bottom_panel, merged_orders)
 
     mean, median, std = sigma_clipped_stats(merged_orders["SNR"], sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3)
 
@@ -1744,99 +1813,16 @@ def plot_merged_spectrum_qc(
 
     # ADD SNR VALUES TO BOTTOM PANEL
     if not isinstance(qcTable, bool) and len(orderValue):
-
-        _vis_rank = {"GLOBAL": 0, "u": 1, "g": 2, "r": 3, "i": 4}
-
-        def _order_key(pair):
-            o = pair[0]
-            if o in _vis_rank:
-                return (0, _vis_rank[o])
-            try:
-                return (1, float(o))
-            except (ValueError, TypeError):
-                return (2, str(o))
-
-        pairs = sorted(zip(orderValue, snrValue), key=_order_key)
-        snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in pairs)
-        bottom_panel.text(
-            0.99,
-            0.98,
-            snr_text,
-            transform=bottom_panel.transAxes,
-            ha="right",
-            va="top",
-            fontsize=5,
-            family="monospace",
-            color="black",
-            zorder=1,
-        )
+        _annotate_snr_values(bottom_panel, orderValue, snrValue)
 
     # SKY PANEL WITH SKY FLUX
-    sky_panel = fig.add_subplot(gs[3, :])
-    sky_panel.set_xlabel("wavelength (nm)", fontsize=10)
-
-    sky_panel.set_ylabel("sky flux ($e^{-}$)", fontsize=10)
-
-    sky_panel.set_yscale("log")
-
-    if "SKY_COUNTS" in merged_orders.columns and merged_orders["SKY_COUNTS"].max()  > 0:
-        sky_panel.plot(
-            merged_orders["WAVE"],
-            merged_orders["SKY_COUNTS"],
-            linewidth=0.3,
-            color="#859900" if not fluxCalibrated else "#2aa198",
-            zorder=1,
-        )
-
-        sky_panel.set_ylim(10, merged_orders["SKY_COUNTS"].max() * 1.1)
-
-    try:
-        sky_panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
-    except Exception:
-        sky_panel.set_xlim(merged_orders["WAVE"].min(), merged_orders["WAVE"].max())
+    sky_panel = _draw_sky_panel(fig, gs, merged_orders, fluxCalibrated)
 
     if orderJoins:
-        for k, v in orderJoins.items():
-            for panel in [top_panel, middle_panel, bottom_panel]:
-                panel.axvline(v, color="black", linestyle="--", linewidth=0.5, alpha=0.5)
-                panel.text(
-                    v + 5,
-                    0.9 * panel.get_ylim()[1],
-                    "ORDER JOIN",
-                    rotation=90,
-                    verticalalignment="top",
-                    fontsize=6,
-                    color="black",
-                    alpha=0.5,
-                )
+        _mark_order_joins(orderJoins, [top_panel, middle_panel, bottom_panel])
 
     # PLOT SKY LINES AS VERTICAL LINES ON SKY PANEL
-    mask = skylinesDF["ISOLATED"] == True
-    calibrationSkylines = pd.to_numeric(skylinesDF.loc[mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
-    otherSkylines = pd.to_numeric(skylinesDF.loc[~mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
-
-    for ww in calibrationSkylines:
-        for panel in [top_panel, middle_panel, bottom_panel, sky_panel]:
-            panel.axvline(
-                ww,
-                color="blue",
-                linestyle="-",
-                linewidth=0.2,
-                alpha=0.08,
-                zorder=0,
-                label="calibration skyline" if panel == top_panel else "",
-            )
-    for ww in otherSkylines:
-        for panel in [top_panel, middle_panel, bottom_panel, sky_panel]:
-            panel.axvline(
-                ww,
-                color="grey",
-                linestyle="-",
-                linewidth=0.2,
-                alpha=0.08,
-                zorder=0,
-                label="skyline" if panel == top_panel else "",
-            )
+    _mark_skylines(skylinesDF, [top_panel, middle_panel, bottom_panel, sky_panel], top_panel)
 
     if fluxCalibrated:
         filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT{noddingSequence}.pdf")
@@ -1875,6 +1861,184 @@ def plot_merged_spectrum_qc(
 
     log.debug("completed the ``plot_merged_spectrum_qc`` function")
     return products, filePath
+
+
+def _set_wavelength_xlim(panel, merged_orders):
+    """*set a merged-spectrum QC panel's x-axis limits to the spectrum's wavelength range*
+
+    **Key Arguments:**
+
+    - ``panel`` -- the axes to set the limits on
+    - ``merged_orders`` -- the merged spectrum, with a ``WAVE`` column
+    """
+    try:
+        panel.set_xlim(merged_orders["WAVE"].min().value, merged_orders["WAVE"].max().value)
+    except Exception:
+        panel.set_xlim(merged_orders["WAVE"].min(), merged_orders["WAVE"].max())
+
+
+def _snr_orders_and_values(log, qcTable):
+    """*pull the per-order median SNR values out of a QC table for the merged-spectrum QC plot*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``qcTable`` -- the QC table holding the ``SNR MEDIAN`` rows
+
+    **Return:**
+
+    - ``orderValue`` -- the order of each SNR value, with ``GLOBAL`` for the whole-spectrum value
+    - ``snrValue`` -- the SNR values
+    """
+    import numpy as np
+    import pandas as pd
+
+    qcTable = qcTable.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
+    snrValue = qcTable.loc[qcTable["qc_name"] == "SNR MEDIAN"]
+    orderValue = snrValue["qc_order"].values
+    for i in range(len(orderValue)):
+        try:
+            orderValue[i] = int(orderValue[i])
+        except (ValueError, TypeError) as e:
+            log.debug(f"plot_merged_spectrum_qc: `orderValue[i] = int(orderValue[i])` failed, continuing: {e}")
+
+    orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
+    snrValue = snrValue["qc_value"].values
+    return orderValue, snrValue
+
+
+def _annotate_snr_values(bottom_panel, orderValue, snrValue):
+    """*write the per-order median SNR values in the corner of the merged-spectrum SNR panel*
+
+    **Key Arguments:**
+
+    - ``bottom_panel`` -- the SNR panel
+    - ``orderValue`` -- the order of each SNR value
+    - ``snrValue`` -- the SNR values
+    """
+    _vis_rank = {"GLOBAL": 0, "u": 1, "g": 2, "r": 3, "i": 4}
+
+    def _order_key(pair):
+        o = pair[0]
+        if o in _vis_rank:
+            return (0, _vis_rank[o])
+        try:
+            return (1, float(o))
+        except (ValueError, TypeError):
+            return (2, str(o))
+
+    pairs = sorted(zip(orderValue, snrValue), key=_order_key)
+    snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in pairs)
+    bottom_panel.text(
+        0.99,
+        0.98,
+        snr_text,
+        transform=bottom_panel.transAxes,
+        ha="right",
+        va="top",
+        fontsize=5,
+        family="monospace",
+        color="black",
+        zorder=1,
+    )
+
+
+def _draw_sky_panel(fig, gs, merged_orders, fluxCalibrated):
+    """*add the sky-flux panel to the merged-spectrum QC plot*
+
+    **Key Arguments:**
+
+    - ``fig`` -- the QC figure
+    - ``gs`` -- the figure's grid spec
+    - ``merged_orders`` -- the merged spectrum
+    - ``fluxCalibrated`` -- whether the spectrum is flux calibrated
+
+    **Return:**
+
+    - ``sky_panel`` -- the new sky panel
+    """
+    sky_panel = fig.add_subplot(gs[3, :])
+    sky_panel.set_xlabel("wavelength (nm)", fontsize=10)
+
+    sky_panel.set_ylabel("sky flux ($e^{-}$)", fontsize=10)
+
+    sky_panel.set_yscale("log")
+
+    if "SKY_COUNTS" in merged_orders.columns and merged_orders["SKY_COUNTS"].max()  > 0:
+        sky_panel.plot(
+            merged_orders["WAVE"],
+            merged_orders["SKY_COUNTS"],
+            linewidth=0.3,
+            color="#859900" if not fluxCalibrated else "#2aa198",
+            zorder=1,
+        )
+
+        sky_panel.set_ylim(10, merged_orders["SKY_COUNTS"].max() * 1.1)
+
+    _set_wavelength_xlim(sky_panel, merged_orders)
+    return sky_panel
+
+
+def _mark_order_joins(orderJoins, panels):
+    """*mark each order join on the merged-spectrum QC panels*
+
+    **Key Arguments:**
+
+    - ``orderJoins`` -- a dictionary of order-join wavelengths
+    - ``panels`` -- the panels to mark
+    """
+    for k, v in orderJoins.items():
+        for panel in panels:
+            panel.axvline(v, color="black", linestyle="--", linewidth=0.5, alpha=0.5)
+            panel.text(
+                v + 5,
+                0.9 * panel.get_ylim()[1],
+                "ORDER JOIN",
+                rotation=90,
+                verticalalignment="top",
+                fontsize=6,
+                color="black",
+                alpha=0.5,
+            )
+
+
+def _mark_skylines(skylinesDF, panels, labelPanel):
+    """*mark the sky lines as faint vertical lines on the merged-spectrum QC panels*
+
+    **Key Arguments:**
+
+    - ``skylinesDF`` -- the sky-line table, with ``WAVELENGTH`` and ``ISOLATED`` columns
+    - ``panels`` -- the panels to mark
+    - ``labelPanel`` -- the one panel whose lines carry a legend label
+    """
+    import pandas as pd
+
+    mask = skylinesDF["ISOLATED"] == True
+    calibrationSkylines = pd.to_numeric(skylinesDF.loc[mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
+    otherSkylines = pd.to_numeric(skylinesDF.loc[~mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
+
+    for ww in calibrationSkylines:
+        for panel in panels:
+            panel.axvline(
+                ww,
+                color="blue",
+                linestyle="-",
+                linewidth=0.2,
+                alpha=0.08,
+                zorder=0,
+                label="calibration skyline" if panel == labelPanel else "",
+            )
+    for ww in otherSkylines:
+        for panel in panels:
+            panel.axvline(
+                ww,
+                color="grey",
+                linestyle="-",
+                linewidth=0.2,
+                alpha=0.08,
+                zorder=0,
+                label="skyline" if panel == labelPanel else "",
+            )
 
 
 def calculate_rolling_snr(dataframe, flux_column, window_size):
