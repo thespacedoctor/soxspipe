@@ -59,14 +59,12 @@ class ImageFileCollection(ImageFileCollection):
             logging.getLogger(__name__).debug(f"_dict_from_fits_header: `h = fits.getheade...` failed, continuing: {e}")
             h = fits.getheader(file_name, 0)
 
-        assert "file" not in h
+        # KEEP THE BARE ASSERT: AN EXPLICIT RAISE WOULD ALSO FIRE UNDER `python -O`, WHERE THIS CHECK IS SKIPPED TODAY.
+        # IT MIRRORS THE UPSTREAM CCDPROC METHOD THIS OVERRIDES
+        assert "file" not in h  # noqa: S101
 
-        if self.location:
-            # WE HAVE A LOCATION AND CAN RECONSTRUCT THE PATH USING IT
-            name_for_file_column = path.basename(file_name)
-        else:
-            # NO LOCATION, SO USE WHATEVER PATH THE USER PASSED IN
-            name_for_file_column = file_name
+        # WITH A LOCATION WE CAN RECONSTRUCT THE PATH USING IT; WITHOUT ONE, USE WHATEVER PATH THE USER PASSED IN
+        name_for_file_column = path.basename(file_name) if self.location else file_name
 
         # TRY OPENING HEADER BEFORE THIS SO THAT FILE NAME IS ONLY ADDED IF
         # FILE IS VALID FITS
@@ -100,6 +98,7 @@ class ImageFileCollection(ImageFileCollection):
                     f'Header from file "{file_name}" contains multiple entries for '
                     f'"{k}", the pair "{k}={v}" will be ignored.',
                     UserWarning,
+                    stacklevel=1,
                 )
                 continue
             # ADD THE KEY TO THE ALREADY ENCOUNTERED KEYS SO WE DON'T ADD
@@ -266,7 +265,9 @@ class set_of_files:
         self,
         log,
         settings=False,
-        inputFrames=[],
+        # THE DEFAULT LIST IS NEVER MUTATED. A None SENTINEL WOULD TURN AN EXPLICIT `inputFrames=None` FROM A
+        # TypeError IN get() INTO AN EMPTY COLLECTION
+        inputFrames=[],  # noqa: B006
         verbose=True,
         recipeName=False,
         ext=0,
@@ -284,17 +285,14 @@ class set_of_files:
         # FOLDER
         kw = keyword_lookup(log=self.log, settings=self.settings).get
 
-        if self.verbose:
-            keys = self.settings["summary-keys"]["verbose"]
-        else:
-            keys = self.settings["summary-keys"]["default"]
+        keys = self.settings["summary-keys"]["verbose"] if self.verbose else self.settings["summary-keys"]["default"]
 
         if recipeName and recipeName == "soxs-nod":
             keys += self.settings["summary-keys"]["nodding_extras"]
 
         keys = kw(keys)
         self.keys = []
-        self.keys[:] = [k for k in keys]
+        self.keys[:] = list(keys)
         self.keys.append("file")
         # INITIAL ACTIONS
         # FIX RELATIVE HOME PATHS
@@ -376,7 +374,7 @@ class set_of_files:
                     if kw("CDELT1") in hdr:
                         catagory += "_" + xbin.strip() + "x" + ybin.strip()
 
-                    content += "%(fitsPath)s %(catagory)s\n" % locals()
+                    content += f"{fitsPath} {catagory}\n"
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         moduleDirectory = os.path.dirname(sofPath)
@@ -479,25 +477,25 @@ class set_of_files:
         """
         import codecs
 
-        readFile = codecs.open(self.inputFrames, encoding="utf-8", mode="r")
-        thisData = readFile.read()
-        readFile.close()
+        # KEEP codecs.open: UNLIKE open() IT DOES NOT TRANSLATE CRLF LINE ENDINGS
+        with codecs.open(self.inputFrames, encoding="utf-8", mode="r") as readFile:
+            thisData = readFile.read()
         lines = thisData.split("\n")
 
         # REMOVE COMMENTED LINES
-        lines = [l for l in lines if len(l) and l[0] != "#"]
+        lines = [sofLine for sofLine in lines if len(sofLine) and sofLine[0] != "#"]
 
         fitsFiles = []
         fitsFiles[:] = [
-            l.split(".fits")[0].replace("~/", home + "/") + ".fits"
-            for l in lines
-            if ".fits" in l
+            sofLine.split(".fits")[0].replace("~/", home + "/") + ".fits"
+            for sofLine in lines
+            if ".fits" in sofLine
         ]
 
         supplementaryFilepaths = [
-            _supplementary_path_from_sof_line(l, home)
-            for l in lines
-            if ".fits" not in l.lower() and len(l) > 3
+            _supplementary_path_from_sof_line(sofLine, home)
+            for sofLine in lines
+            if ".fits" not in sofLine.lower() and len(sofLine) > 3
         ]
 
         # PREPEND SESSION PATHS
@@ -512,7 +510,7 @@ class set_of_files:
             ]
 
         # MAKE SURE FILES EXIST
-        allFiles = fitsFiles.extend(supplementaryFilepaths)
+        fitsFiles.extend(supplementaryFilepaths)
         for f in fitsFiles + supplementaryFilepaths:
             exists = os.path.exists(f)
             if not exists:
