@@ -68,10 +68,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     halfSlice = length / 2
     # NEED AN EVEN PIXEL SIZE
-    if (width % 2) != 0:
-        halfwidth = (width - 1) / 2
-    else:
-        halfwidth = width / 2
+    halfwidth = (width - 1) / 2 if width % 2 != 0 else width / 2
 
     if sliceAxis == "x":
         axisA = x
@@ -111,19 +108,15 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     #     pass
 
     if median:
-        if sliceAxis == "y":
-            slice = ma.median(sliceFull, axis=1)
-        else:
-            slice = ma.median(sliceFull, axis=0)
+        slice = ma.median(sliceFull, axis=1) if sliceAxis == "y" else ma.median(sliceFull, axis=0)
 
-    if False and debug and random.randint(1, 101) < 5:
+    # THE DEBUG PLOT IS SWITCHED OFF ON PURPOSE BY THE LEADING `False`, AND `random` ONLY THINS OUT
+    # WHICH SLICES ARE PLOTTED, SO IT NEEDS NO CRYPTOGRAPHIC STRENGTH
+    if False and debug and random.randint(1, 101) < 5:  # noqa: SIM223, S311
         import matplotlib.pyplot as plt
 
         # CHECK THE SLICE POINTS IF NEEDED
-        if sliceAxis == "y":
-            sliceImg = np.rot90(sliceFull, 1)
-        else:
-            sliceImg = sliceFull
+        sliceImg = np.rot90(sliceFull, 1) if sliceAxis == "y" else sliceFull
         plt.imshow(sliceImg)
         plt.show()
         xx = np.arange(0, len(slice))
@@ -201,24 +194,23 @@ def quicklook_image(
         # FOLDER
         kw = keyword_lookup(log=log, settings=settings).get
         arm = CCDObject.header[kw("SEQ_ARM")]
-        dateObs = CCDObject.header[kw("DATE_OBS")]
+        # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+        dateObs = CCDObject.header[kw("DATE_OBS")]  # noqa: F841
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         detectorParams = detector_lookup(log=log, settings=settings).get(arm)
 
         # USE THIS ELSEWHERE IN THE OBJECT METHODS
         dp = detectorParams
-        science_pixels = dp["science-pixels"]
+        # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING PARAMETER; DELETING IT REMOVES THAT FAILURE
+        science_pixels = dp["science-pixels"]  # noqa: F841
 
     frame = _quicklook_frame_array(CCDObject, ext)
 
     if inst is False:
         inst = _quicklook_instrument(log, CCDObject)
 
-    if skylines:
-        skylinesDF = get_skylines_dataframe(log, settings, arm)
-    else:
-        skylinesDF = False
+    skylinesDF = get_skylines_dataframe(log, settings, arm) if skylines else False
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
     if not isinstance(dispMapImage, bool):
@@ -276,10 +268,7 @@ def quicklook_image(
         ax2.set_box_aspect(0.5)
     detectorPlot = plt.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap=palette, alpha=1, aspect="auto")
 
-    if surfacePlot:
-        shrink = 0.5
-    else:
-        shrink = 1.0
+    shrink = 0.5 if surfacePlot else 1.0
 
     if mean > 10:
         fmt = "%1.0f"
@@ -590,10 +579,7 @@ def unpack_order_table(
         axisBbin = binx
 
     # ADD AXIS B COORD LIST
-    if prebinned:
-        ratio = axisBbin
-    else:
-        ratio = 1
+    ratio = axisBbin if prebinned else 1
 
     blower = orderMetaTable[f"{axisB}min"].values * ratio
     bupper = orderMetaTable[f"{axisB}max"].values * ratio
@@ -601,14 +587,14 @@ def unpack_order_table(
 
     axisBcoords = [
         np.arange(
-            (0 if (math.floor(l) - int(r * extend)) < 0 else (math.floor(l) - int(r * extend))),
+            (0 if (math.floor(lower) - int(r * extend)) < 0 else (math.floor(lower) - int(r * extend))),
             (4200 if (math.ceil(u) + int(r * extend)) > 4200 else (math.ceil(u) + int(r * extend))),
             pixelDelta,
         )
-        for l, u, r in zip(blower, bupper, brange)
+        for lower, u, r in zip(blower, bupper, brange, strict=False)
     ]
 
-    orders = [np.full_like(a, o) for a, o in zip(axisBcoords, orderMetaTable["order"].values)]
+    orders = [np.full_like(a, o) for a, o in zip(axisBcoords, orderMetaTable["order"].values, strict=False)]
 
     # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
     myDict = {
@@ -708,7 +694,8 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     # FOLDER
     kw = keyword_lookup(log=log, settings=settings).get
     kw = kw
-    arm = frame.header[kw("SEQ_ARM")]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+    arm = frame.header[kw("SEQ_ARM")]  # noqa: F841
     dateObs = frame.header[kw("DATE_OBS")]
 
     # nanCount = np.count_nonzero(np.isnan(frame.data))
@@ -837,7 +824,8 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
             binx = 1
             biny = 1
 
-    inst = frame.header[kw("INSTRUME")]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+    inst = frame.header[kw("INSTRUME")]  # noqa: F841
 
     # DETECTOR PARAMETERS LOOKUP OBJECT
     detectorParams = detector_lookup(log=log, settings=settings).get(arm)
@@ -863,19 +851,19 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     axisACoords_low = axisACoords_low.astype(int)
 
     if axisA == "x":
-        for u, l, y in zip(axisACoords_up, axisACoords_low, axisBCoords):
+        for u, lower, y in zip(axisACoords_up, axisACoords_low, axisBCoords, strict=False):
             y = int(y)
-            l = int(max(0, l))
+            lower = int(max(0, lower))
             u = int(min(mask.shape[1], u))
-            if 0 <= y < mask.shape[0] and l < u:
-                mask[y, l:u] = 0
+            if 0 <= y < mask.shape[0] and lower < u:
+                mask[y, lower:u] = 0
     else:
-        for u, l, x in zip(axisACoords_up, axisACoords_low, axisBCoords):
+        for u, lower, x in zip(axisACoords_up, axisACoords_low, axisBCoords, strict=False):
             x = int(x)
-            l = int(max(0, l))
+            lower = int(max(0, lower))
             u = int(min(mask.shape[0], u))
-            if 0 <= x < mask.shape[1] and l < u:
-                mask[l:u, x] = 0
+            if 0 <= x < mask.shape[1] and lower < u:
+                mask[lower:u, x] = 0
 
     # COMBINE MASK WITH THE BAD PIXEL MASK
     mask = (mask == 1) | (frame.mask == 1)
@@ -889,8 +877,9 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     utcnow = utcnow_string()
 
-    mean = "%0.*f" % (3, mean)
-    flux = "%0.*f" % (3, flux)
+    # A FULLY MASKED FRAME GIVES np.ma.masked, WHICH `%` FORMATS AS "nan" BUT AN F-STRING FORMATS AS "--"
+    mean = "%0.*f" % (3, mean)  # noqa: UP031
+    flux = "%0.*f" % (3, flux)  # noqa: UP031
 
     qcTable = pd.concat(
         [
@@ -976,13 +965,13 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
-    kw = keyword_lookup(log=log, settings=settings).get
+    # UNUSED, BUT BUILDING THE LOOKUP READS AND VALIDATES THE KEYWORD MAP; DELETING IT REMOVES THAT FAILURE
+    kw = keyword_lookup(log=log, settings=settings).get  # noqa: F841
 
-    science_pixels = dp["science-pixels"]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING PARAMETER; DELETING IT REMOVES THAT FAILURE
+    science_pixels = dp["science-pixels"]  # noqa: F841
 
     # READ THE SPECTRAL FORMAT TABLE FILE
-    home = expanduser("~")
-
     calibrationRootPath = get_calibrations_path(log=log, settings=settings)
     spectralFormatFile = calibrationRootPath + "/" + dp["spectral format table"]
 
@@ -1010,7 +999,7 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
             "wavelength": np.asarray([]),
             "slit_position": np.asarray([]),
         }
-        for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
+        for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax, strict=False):
             wlArray = np.array([wmin, wmax])
             myDict["wavelength"] = np.append(myDict["wavelength"], wlArray)
             myDict["order"] = np.append(myDict["order"], np.ones(len(wlArray)) * o)
@@ -1023,7 +1012,6 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
             removeOffDetectorLocation=False,
         )
 
-        orderPixelRanges = []
         if dp["dispersion-axis"] == "x":
             axis = "y"
             rowCol = "rows"
@@ -1074,17 +1062,17 @@ def get_calibrations_path(log, settings):
     log.debug("starting the ``get_calibrations_path`` function")
 
     # GENERATE PATH TO STATIC CALIBRATION DATA
-    if "instrument" in settings:
-        instrument = settings["instrument"]
-    else:
-        instrument = "soxs"
+    # `settings.get` WOULD RAISE AttributeError, NOT TypeError, WHEN settings IS NOT A MAPPING
+    instrument = settings["instrument"] if "instrument" in settings else "soxs"  # noqa: SIM401
     calibrationRootPath = os.path.dirname(os.path.dirname(__file__)) + "/resources/static_calibrations/" + instrument
 
     log.debug("completed the ``get_calibrations_path`` function")
     return calibrationRootPath
 
 
-def twoD_disp_map_image_to_dataframe(
+# THE NAME IS PUBLIC AND IMPORTED ACROSS THE PACKAGE, SO RENAMING IT WOULD CHANGE THE PUBLIC SURFACE.
+# TOO-MANY-STATEMENTS IS A SPLITTING FINDING, DEFERRED TO DY-82; REMOVE PLR0915 HERE WHEN IT IS SPLIT
+def twoD_disp_map_image_to_dataframe(  # noqa: N802, PLR0915
     log,
     slit_length,
     twoDMapPath,
@@ -1210,7 +1198,7 @@ def twoD_disp_map_image_to_dataframe(
 
     mapDF = pd.DataFrame.from_dict(thisDict)
     if removeMaskedPixels:
-        mask = mapDF["mask"] == False
+        mask = mapDF["mask"].eq(False)
         mapDF = mapDF.loc[mask]
 
     # REMOVE ZEROS
@@ -1416,6 +1404,7 @@ class MaxFilter:
     def filter(self, record):
         if record.levelno < self.max_level:
             return True
+        return None
 
 
 def create_dispersion_solution_grid_lines_for_plot(
@@ -1499,7 +1488,7 @@ def create_dispersion_solution_grid_lines_for_plot(
 
     lineNumber = 0
     orderPixelTable_list = []
-    for o, wlLim, spLim in zip(uniqueOrders, wlLims, sPos):
+    for o, wlLim, spLim in zip(uniqueOrders, wlLims, sPos, strict=False):
         wlRange = np.arange(wlLim[0], wlLim[1], 1)
         wlRange = np.append(wlRange, [wlLim[1]])
         for e in spLim:
@@ -1522,11 +1511,11 @@ def create_dispersion_solution_grid_lines_for_plot(
             wlRange = np.arange(wlLim[0], wlLim[1], step)
         wlRange = np.append(wlRange, [wlLim[1]])
 
-        for l in wlRange:
+        for wl in wlRange:
             myDict = {
                 "line": np.full_like(spRange, lineNumber),
                 "order": np.full_like(spRange, o),
-                "wavelength": np.full_like(spRange, l),
+                "wavelength": np.full_like(spRange, wl),
                 "slit_position": spRange,
             }
             orderPixelTable_list.append(pd.DataFrame(myDict))
@@ -1564,10 +1553,11 @@ def get_calibration_lamp(log, frame, kw):
     """
     log.debug("starting the ``read_calibration_lamp`` function")
 
-    inst = frame.header["INSTRUME"]
+    # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
+    inst = frame.header["INSTRUME"]  # noqa: F841
     lamp = None
 
-    for l in [
+    for lampKeyword in [
         kw("LAMP1"),
         kw("LAMP2"),
         kw("LAMP3"),
@@ -1576,8 +1566,8 @@ def get_calibration_lamp(log, frame, kw):
         kw("LAMP6"),
         kw("LAMP7"),
     ]:
-        if l in frame.header:
-            newLamp = frame.header[l]
+        if lampKeyword in frame.header:
+            newLamp = frame.header[lampKeyword]
             newLamp = (
                 newLamp.replace("UVB_High", "QTH")
                 .replace("UVB_Low_", "")
@@ -1685,7 +1675,7 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     #     "Parameters", fontsize=9, loc='left')
     settingsAx.margins(x=0, y=0)
 
-    for t, c in zip(tables, cols):
+    for t, c in zip(tables, cols, strict=False):
         t.scale(1, 1.5)
         t.auto_set_font_size(False)
         t.set_fontsize(4)
@@ -2245,9 +2235,7 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
         fill_value="extrapolate",
     )
 
-    extCorrectionFactor = 10 ** (0.4 * refitted_ext(wave) * airmass)
-
-    return extCorrectionFactor
+    return 10 ** (0.4 * refitted_ext(wave) * airmass)
 
 
 def frame_to_32(frame):
@@ -2729,9 +2717,6 @@ def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightness
     if "ISOLATED" in skylinesDF.columns:
         skylinesDF["ISOLATED"] = skylinesDF["ISOLATED"].astype(bool)
 
-    if arm == "VIS":
-        mask = skylinesDF["FLUX"] > minBrightnessVIS
-    else:
-        mask = skylinesDF["FLUX"] > minBrightnessNIR
+    mask = skylinesDF["FLUX"] > minBrightnessVIS if arm == "VIS" else skylinesDF["FLUX"] > minBrightnessNIR
 
     return skylinesDF.loc[mask]
