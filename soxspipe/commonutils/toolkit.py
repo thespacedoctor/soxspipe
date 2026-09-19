@@ -53,8 +53,9 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     ```python
     from soxspipe.commonutils.toolkit import cut_image_slice
-    slice = cut_image_slice(log=self.log, frame=self.pinholeFlat.data,
-                                    width=1, length=sliceLength, x=x_fit, y=y_fit, plot=False)
+    slice, slice_length_offset, slice_width_centre = cut_image_slice(
+        log=self.log, frame=self.pinholeFlat.data, width=1, length=sliceLength, x=x_fit, y=y_fit, median=True
+    )
     if slice is None:
         return None
     ```
@@ -110,8 +111,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     if median:
         slice = ma.median(sliceFull, axis=1) if sliceAxis == "y" else ma.median(sliceFull, axis=0)
 
-    # THE DEBUG PLOT IS SWITCHED OFF ON PURPOSE BY THE LEADING `False`, AND `random` ONLY THINS OUT
-    # WHICH SLICES ARE PLOTTED, SO IT NEEDS NO CRYPTOGRAPHIC STRENGTH
+    # DELIBERATELY DISABLED DEBUG PLOT: THE LEADING `False` SHORT-CIRCUITS, SO `random` NEVER RUNS
     if False and debug and random.randint(1, 101) < 5:  # noqa: SIM223, S311
         import matplotlib.pyplot as plt
 
@@ -509,9 +509,9 @@ def unpack_order_table(
 ):
     """*Unpack an order location table into polynomial, pixel and metadata dataframes.*
 
-    Return an `orderPolyTable` dataframe containing the polynomial coefficients for the order centres and edges, an
-    `orderPixelTable` dataframe containing the pixel-coordinates for each order centre and edges, and finally, an
-    `orderMetaTable` dataframe giving metadata about the frame binning and format.
+    Return an ``orderPolyTable`` dataframe containing the polynomial coefficients for the order centres and edges, an
+    ``orderPixelTable`` dataframe containing the pixel-coordinates for each order centre and edges, and finally, an
+    ``orderMetaTable`` dataframe giving metadata about the frame binning and format.
 
     **Key Arguments:**
 
@@ -537,7 +537,7 @@ def unpack_order_table(
     ```python
     # UNPACK THE ORDER TABLE
     from soxspipe.commonutils.toolkit import unpack_order_table
-    orderPolyTable, orderPixelTable = unpack_order_table(
+    orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
         log=self.log, orderTablePath=orderTablePath, extend=0.)
     ```
     """
@@ -877,7 +877,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     utcnow = utcnow_string()
 
-    # A FULLY MASKED FRAME GIVES np.ma.masked, WHICH `%` FORMATS AS "nan" BUT AN F-STRING FORMATS AS "--"
+    # A FULLY MASKED FRAME GIVES np.ma.masked, WHICH `%0.*f` FORMATS AS "nan" BUT `:.3f` FORMATS AS "--"
     mean = "%0.*f" % (3, mean)  # noqa: UP031
     flux = "%0.*f" % (3, flux)  # noqa: UP031
 
@@ -940,11 +940,13 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
 
     **Return:**
 
-    - ``orderNums`` -- a list of the order numbers
-    - ``waveLengthMin`` -- a list of the minimum wavelengths reached by each order
-    - ``waveLengthMax`` -- a list of the maximum wavelengths reached by each order
+    - ``orderNums`` -- an array of the order numbers
+    - ``waveLengthMin`` -- an array of the minimum wavelengths reached by each order
+    - ``waveLengthMax`` -- an array of the maximum wavelengths reached by each order
     - ``amins`` -- the minimum dispersion-axis pixel limit of each order (only when ``dispersionMap`` is given)
     - ``amaxs`` -- the maximum dispersion-axis pixel limit of each order (only when ``dispersionMap`` is given)
+
+    Three values are returned without a ``dispersionMap``, and five with one.
 
     **Usage:**
 
@@ -1062,7 +1064,8 @@ def get_calibrations_path(log, settings):
     log.debug("starting the ``get_calibrations_path`` function")
 
     # GENERATE PATH TO STATIC CALIBRATION DATA
-    # `settings.get` WOULD RAISE AttributeError, NOT TypeError, WHEN settings IS NOT A MAPPING
+    # KEPT AS `in` PLUS INDEXING: FOR A NON-DICT `settings` (E.G. THE `False` DEFAULT ELSEWHERE IN THIS
+    # MODULE), `.get` WOULD RAISE AttributeError WHERE THIS RAISES TypeError
     instrument = settings["instrument"] if "instrument" in settings else "soxs"  # noqa: SIM401
     calibrationRootPath = os.path.dirname(os.path.dirname(__file__)) + "/resources/static_calibrations/" + instrument
 
@@ -1104,7 +1107,9 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802, PLR0915
 
     ```python
     from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-    mapDF = twoD_disp_map_image_to_dataframe(log=log, twoDMapPath=twoDMap, associatedFrame=objectFrame, kw=kw)
+    mapDF, interOrderMask = twoD_disp_map_image_to_dataframe(
+        log=log, slit_length=11, twoDMapPath=twoDMap, associatedFrame=objectFrame, kw=kw
+    )
     ```
     """
     log.debug("starting the ``twoD_disp_map_image_to_dataframe`` function")
@@ -1430,7 +1435,7 @@ def create_dispersion_solution_grid_lines_for_plot(
     - ``slitPositions`` -- slit positions to plot (else plot min and max)
     - ``slit_length`` -- length of the slit to use for the dispersion map dataframe (default 11)
 
-    **Returns:**
+    **Return:**
 
     - ``orderPixelTable`` -- DataFrame containing the pixel coordinates for grid lines to plot.
     - ``interOrderMask`` -- Mask array indicating inter-order regions.
@@ -1703,7 +1708,7 @@ def utility_setup(log, settings, recipeName, startNightDate):
     - ``log`` -- logger
     - ``settings`` -- the settings dictionary
     - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
-    - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night
 
     **Return:**
 
@@ -2245,7 +2250,7 @@ def frame_to_32(frame):
 
     - ``frame`` -- the input frame
 
-    **Returns:**
+    **Return:**
 
     - ``frame`` -- the converted frame
 
@@ -2296,7 +2301,8 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     **Usage:**
 
     ```python
-    qcTable = add_snr_qcs(log, spectrumDF, qcTable, orderJoins)
+    from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
+    qcTable = add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs)
     ```
     """
     import numpy as np

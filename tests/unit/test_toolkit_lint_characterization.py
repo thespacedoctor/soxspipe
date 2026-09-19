@@ -32,8 +32,8 @@ pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers (local to this file -- see test_toolkit_characterization.py
-# for the near-identical helpers used to pin the surrounding QC-row contract)
+# SHARED HELPERS (LOCAL TO THIS FILE -- SEE `test_toolkit_characterization.py`
+# FOR THE NEAR-IDENTICAL HELPERS USED TO PIN THE SURROUNDING QC-ROW CONTRACT)
 # ---------------------------------------------------------------------------
 
 
@@ -74,7 +74,7 @@ def _spectroscopic_frame(*, shape: tuple[int, int] = (4, 4)) -> SimpleNamespace:
 
 
 # ---------------------------------------------------------------------------
-# 1. UP031 -- `"%0.*f" % (3, value)` in `spectroscopic_image_quality_checks`
+# 1. UP031 -- `"%0.*f" % (3, value)` IN `spectroscopic_image_quality_checks`
 # ---------------------------------------------------------------------------
 
 
@@ -197,17 +197,17 @@ def test_spectroscopic_image_quality_checks_reports_nan_string_for_fully_masked_
 
 
 # ---------------------------------------------------------------------------
-# 2. E712 -- `mapDF["mask"] == False` in `twoD_disp_map_image_to_dataframe`
+# 2. E712 -- `mapDF["mask"] == False` IN `twoD_disp_map_image_to_dataframe`
 # ---------------------------------------------------------------------------
 
-# NOTE: the production behaviour of `removeMaskedPixels=True` (masked pixels
-# removed, unmasked pixels kept) is already pinned end-to-end against a real
-# FITS-backed frame by
+# NOTE: THE PRODUCTION BEHAVIOUR OF `removeMaskedPixels=True` (MASKED PIXELS
+# REMOVED, UNMASKED PIXELS KEPT) IS ALREADY PINNED END-TO-END AGAINST A REAL
+# FITS-BACKED FRAME BY
 # `tests/integration/test_toolkit_fits.py::test_two_d_map_dataframe_preserves_associated_frame_arrays`
-# -- not duplicated here. What is pinned below is the general equivalence
-# question the later UP031-style rewrite needs answered: does `Series ==
-# False` agree with `Series.eq(False)` across the dtypes `mapDF["mask"]` can
-# plausibly carry.
+# -- NOT DUPLICATED HERE. WHAT IS PINNED BELOW IS THE GENERAL EQUIVALENCE
+# QUESTION THE LATER E712 REWRITE NEEDS ANSWERED: DOES `Series == False`
+# AGREE WITH `Series.eq(False)` ACROSS THE DTYPES `mapDF["mask"]` CAN
+# PLAUSIBLY CARRY?
 
 
 @pytest.mark.parametrize(
@@ -231,20 +231,20 @@ def test_series_equals_false_agrees_with_series_eq_false(label: str, series: pd.
 
 
 # ---------------------------------------------------------------------------
-# 3a. SIM108 -- `halfwidth` in `cut_image_slice`
+# 3A. SIM108 -- `halfwidth` IN `cut_image_slice`
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     ("width", "expectedMedians", "expectedOffset", "expectedCentre"),
     [
-        # ODD WIDTH: halfwidth = (width - 1) / 2 = 1
+        # ODD WIDTH: HALFWIDTH = (WIDTH - 1) / 2 = 1
         (3, [22.0, 23.0, 24.0, 25.0], 1, 3.5),
-        # EVEN WIDTH: halfwidth = width / 2 = 2.0 -- SAME RESULT HERE BECAUSE
+        # EVEN WIDTH: HALFWIDTH = WIDTH / 2 = 2.0 -- SAME RESULT HERE BECAUSE
         # THE SYNTHETIC FRAME IS A LINEAR RAMP, SYMMETRIC AROUND THE CENTRE
         (4, [22.0, 23.0, 24.0, 25.0], 1, 3.5),
-        # FLOAT WIDTH (ODD BRANCH, SINCE 3.5 % 2 != 0): halfwidth = 1.25 --
-        # THE int() TRUNCATION IN `slice_width_centre` THEN SHIFTS THE
+        # FLOAT WIDTH (ODD BRANCH, SINCE 3.5 % 2 != 0): HALFWIDTH = 1.25 --
+        # THE INT() TRUNCATION IN `slice_width_centre` THEN SHIFTS THE
         # REPORTED CENTRE TO 3.0 INSTEAD OF 3.5
         (3.5, [18.5, 19.5, 20.5, 21.5], 1, 3.0),
     ],
@@ -265,7 +265,7 @@ def test_cut_image_slice_halfwidth_across_odd_even_and_float_widths(
 
 
 # ---------------------------------------------------------------------------
-# 3b. SIM108 -- `shrink` in `quicklook_image`
+# 3B. SIM108 -- `shrink` IN `quicklook_image`
 # ---------------------------------------------------------------------------
 
 
@@ -297,7 +297,7 @@ def test_quicklook_image_colorbar_shrink_is_smaller_for_surface_plots(
 
 
 # ---------------------------------------------------------------------------
-# 3c / 4a. SIM108 `ratio` + B905 axis-coordinate zip/clamps in
+# 3C / 4A. SIM108 `ratio` + B905 AXIS-COORDINATE ZIP/CLAMPS IN
 # `unpack_order_table`
 # ---------------------------------------------------------------------------
 
@@ -355,18 +355,18 @@ def test_unpack_order_table_clamps_axis_coordinates_to_0_and_4200(tmp_path, log:
 
     order10 = pixelTable.loc[pixelTable["order"] == 10, "ycoord"]
     order11 = pixelTable.loc[pixelTable["order"] == 11, "ycoord"]
-    # ORDER 10: UNCLAMPED LOWER BOUND WOULD BE floor(1) - int(2*100) = -199 --
+    # ORDER 10: UNCLAMPED LOWER BOUND WOULD BE FLOOR(1) - INT(2*100) = -199 --
     # CLAMPED TO 0
     assert order10.min() == 0
     assert order10.max() == 202
-    # ORDER 11: UNCLAMPED UPPER BOUND WOULD BE ceil(4199) + int(9*100) = 5099
+    # ORDER 11: UNCLAMPED UPPER BOUND WOULD BE CEIL(4199) + INT(9*100) = 5099
     # -- CLAMPED TO 4200 (EXCLUSIVE), SO THE LAST POINT IS 4199
     assert order11.min() == 3290
     assert order11.max() == 4199
 
 
 # ---------------------------------------------------------------------------
-# 4b. B905/E741 -- mask loop in `spectroscopic_image_quality_checks`
+# 4B. B905/E741 -- MASK LOOP IN `spectroscopic_image_quality_checks`
 # ---------------------------------------------------------------------------
 
 
@@ -383,9 +383,9 @@ def test_spectroscopic_image_quality_checks_clamps_and_skips_out_of_range_rows_a
     monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub(**{"dispersion-axis": "x"}))
     pixelsFrame = pd.DataFrame(
         {
-            # ROW 0: CLAMPS l FROM -5 TO 0 AND u FROM 10 TO 4, y=1 VALID
-            # ROW 1: y=8 IS OUT OF BOUNDS (mask.shape[0] == 4) -- SKIPPED
-            # ROW 2: l=3 >= u=1 AFTER NO CLAMPING NEEDED -- SKIPPED
+            # ROW 0: CLAMPS L FROM -5 TO 0 AND U FROM 10 TO 4, Y=1 VALID
+            # ROW 1: Y=8 IS OUT OF BOUNDS (MASK.SHAPE[0] == 4) -- SKIPPED
+            # ROW 2: L=3 >= U=1 AFTER NO CLAMPING NEEDED -- SKIPPED
             "xcoord_edgeup": [10, 3, 1],
             "xcoord_edgelow": [-5, 1, 3],
             "ycoord": [1, 8, 2],
@@ -398,7 +398,7 @@ def test_spectroscopic_image_quality_checks_clamps_and_skips_out_of_range_rows_a
         log, frame, "unused-order-table.fits", {}, "soxs-stare", pd.DataFrame()
     )
 
-    # ONLY ROW 1 OF THE 4x4 arange(16) FRAME ([4, 5, 6, 7]) IS UNMASKED
+    # ONLY ROW 1 OF THE 4X4 ARANGE(16) FRAME ([4, 5, 6, 7]) IS UNMASKED
     assert result["qc_value"].tolist() == ["5.500", "22.000"]
 
 
@@ -423,12 +423,12 @@ def test_spectroscopic_image_quality_checks_clamps_and_skips_out_of_range_rows_a
         log, frame, "unused-order-table.fits", {}, "soxs-stare", pd.DataFrame()
     )
 
-    # ONLY COLUMN 1 OF THE 4x4 arange(16) FRAME ([1, 5, 9, 13]) IS UNMASKED
+    # ONLY COLUMN 1 OF THE 4X4 ARANGE(16) FRAME ([1, 5, 9, 13]) IS UNMASKED
     assert result["qc_value"].tolist() == ["7.000", "28.000"]
 
 
 # ---------------------------------------------------------------------------
-# 4c. B905 -- `read_spectral_format` with a `dispersionMap`
+# 4C. B905 -- `read_spectral_format` WITH A `dispersionMap`
 # ---------------------------------------------------------------------------
 
 
@@ -466,8 +466,8 @@ def test_read_spectral_format_with_dispersion_map_clamps_to_science_pixels(
     assert list(orderNums) == [10, 11]
     assert list(waveMin) == [500.0, 600.0]
     assert list(waveMax) == [502.0, 602.0]
-    # BOTH ORDERS' fit_y RANGE EXCEEDS THE 31-PIXEL "rows" SCIENCE-PIXEL
-    # LIMIT, SO amax CLAMPS TO 31.0 FOR BOTH -- amin IS THE UNCLAMPED
+    # BOTH ORDERS' FIT_Y RANGE EXCEEDS THE 31-PIXEL "ROWS" SCIENCE-PIXEL
+    # LIMIT, SO AMAX CLAMPS TO 31.0 FOR BOTH -- AMIN IS THE UNCLAMPED
     # POLYNOMIAL EVALUATION AT EACH ORDER'S MINIMUM WAVELENGTH
     assert amins == pytest.approx([112.2, 135.42], rel=1e-6)
     assert amaxs == [31.0, 31.0]
@@ -494,13 +494,13 @@ def test_max_filter_returns_none_not_false_for_records_above_the_limit() -> None
 # 6. RET504 -- `extinction_correction_factor`
 # ---------------------------------------------------------------------------
 #
-# Already pinned end-to-end against a real FITS extinction table by
+# ALREADY PINNED END-TO-END AGAINST A REAL FITS EXTINCTION TABLE BY
 # `tests/integration/test_toolkit_fits.py::test_extinction_correction_reads_fits_table_and_uses_next_sample`
-# -- not duplicated here.
+# -- NOT DUPLICATED HERE.
 
 
 # ---------------------------------------------------------------------------
-# 7. F841 -- dead-store assignments whose right-hand side can raise
+# 7. F841 -- DEAD-STORE ASSIGNMENTS WHOSE RIGHT-HAND SIDE CAN RAISE
 # ---------------------------------------------------------------------------
 
 
@@ -595,7 +595,7 @@ def test_get_calibration_lamp_raises_key_error_for_missing_instrume_header() -> 
 
 
 # ---------------------------------------------------------------------------
-# General B905 note -- `strict=False` truncation semantics
+# GENERAL B905 NOTE -- `strict=False` TRUNCATION SEMANTICS
 # ---------------------------------------------------------------------------
 
 
