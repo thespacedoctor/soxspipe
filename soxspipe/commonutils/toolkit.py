@@ -396,7 +396,7 @@ def quicklook_image(
         plt.show()
 
     if saveToPath:
-        plt.savefig(saveToPath, dpi=120, format="pdf", bbox_inches="tight")
+        save_qc_plot(saveToPath)
         plt.clf()  # clear figure
     mpl.rcParams.update(originalRC)
     plt.close("all")
@@ -595,7 +595,7 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
 
     # nanCount = np.count_nonzero(np.isnan(frame.data))
 
-    utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    utcnow = utcnow_string()
 
     # COUNT BAD-PIXELS
     badCount = frame.mask.sum()
@@ -759,7 +759,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     mean = np.ma.mean(maskedFrame)
     flux = np.ma.sum(maskedFrame)
 
-    utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    utcnow = utcnow_string()
 
     mean = "%0.*f" % (3, mean)
     flux = "%0.*f" % (3, flux)
@@ -1622,8 +1622,6 @@ def plot_merged_spectrum_qc(
     if isinstance(products, bool) and not products:
         return products, None
 
-    from datetime import datetime
-
     import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
@@ -1847,10 +1845,10 @@ def plot_merged_spectrum_qc(
     filePath = f"{qcDir}/{filename}"
     if debug:
         plt.show()
-    plt.savefig(filePath, dpi=120, bbox_inches="tight", format="pdf")
+    save_qc_plot(filePath)
     plt.close("all")
 
-    utcnow = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
+    utcnow = utcnow_string()
     products = pd.concat(
         [
             products,
@@ -2021,8 +2019,6 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     qcTable = add_snr_qcs(log, spectrumDF, qcTable, orderJoins)
     ```
     """
-    from datetime import datetime
-
     import numpy as np
     import pandas as pd
 
@@ -2055,7 +2051,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
             "ORDER",
         ] = order
 
-    utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+    utcnow = utcnow_string()
 
     # CALCULATE THE MEDIAN EFFICIENCY ACROSS ALL ORDERS
     if "EFFICIENCY" in spectrumDF.columns:
