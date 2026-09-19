@@ -22,7 +22,18 @@ class ImageFileCollection(ImageFileCollection):
     def _dict_from_fits_header(
         self, file_name, input_summary=None, missing_marker=None
     ):
-        """ """
+        """*summarise one file's header, keeping keyword case (overrides the ccdproc method)*
+
+        **Key Arguments:**
+
+        - ``file_name`` -- the path of the FITS file
+        - ``input_summary`` -- the summary built so far. Default *None*
+        - ``missing_marker`` -- the value recorded for a keyword the file lacks. Default *None*
+
+        **Return:**
+
+        - ``summary`` -- the summary, with this file's row appended
+        """
         from collections import OrderedDict
 
         from astropy.io import fits
@@ -48,17 +59,15 @@ class ImageFileCollection(ImageFileCollection):
             logging.getLogger(__name__).debug(f"_dict_from_fits_header: `h = fits.getheade...` failed, continuing: {e}")
             h = fits.getheader(file_name, 0)
 
-        assert "file" not in h
+        # KEEP THE BARE ASSERT: AN EXPLICIT RAISE WOULD ALSO FIRE UNDER `python -O`, WHERE THIS CHECK IS SKIPPED TODAY.
+        # IT MIRRORS THE UPSTREAM CCDPROC METHOD THIS OVERRIDES
+        assert "file" not in h  # noqa: S101
 
-        if self.location:
-            # We have a location and can reconstruct the path using it
-            name_for_file_column = path.basename(file_name)
-        else:
-            # No location, so use whatever path the user passed in
-            name_for_file_column = file_name
+        # WITH A LOCATION WE CAN RECONSTRUCT THE PATH USING IT; WITHOUT ONE, USE WHATEVER PATH THE USER PASSED IN
+        name_for_file_column = path.basename(file_name) if self.location else file_name
 
-        # Try opening header before this so that file name is only added if
-        # file is valid FITS
+        # TRY OPENING HEADER BEFORE THIS SO THAT FILE NAME IS ONLY ADDED IF
+        # FILE IS VALID FITS
         try:
             summary["file"].append(name_for_file_column)
         except KeyError:
@@ -75,24 +84,25 @@ class ImageFileCollection(ImageFileCollection):
 
             if k in ["comment", "history"]:
                 multi_entry_keys[k].append(str(v))
-                # Accumulate these in a separate dictionary until the
-                # end to avoid adding multiple entries to summary.
+                # ACCUMULATE THESE IN A SEPARATE DICTIONARY UNTIL THE
+                # END TO AVOID ADDING MULTIPLE ENTRIES TO SUMMARY.
                 continue
             if k in alreadyencountered:
-                # The "normal" multi-entries HISTORY, COMMENT and BLANK are
-                # already processed so any further duplication is probably
-                # a mistake. It would lead to problems in ImageFileCollection
-                # to add it as well, so simply ignore those.
+                # THE "NORMAL" MULTI-ENTRIES HISTORY, COMMENT AND BLANK ARE
+                # ALREADY PROCESSED SO ANY FURTHER DUPLICATION IS PROBABLY
+                # A MISTAKE. IT WOULD LEAD TO PROBLEMS IN IMAGEFILECOLLECTION
+                # TO ADD IT AS WELL, SO SIMPLY IGNORE THOSE.
                 import warnings
 
                 warnings.warn(
                     f'Header from file "{file_name}" contains multiple entries for '
                     f'"{k}", the pair "{k}={v}" will be ignored.',
                     UserWarning,
+                    stacklevel=1,
                 )
                 continue
-            # Add the key to the already encountered keys so we don't add
-            # it more than once.
+            # ADD THE KEY TO THE ALREADY ENCOUNTERED KEYS SO WE DON'T ADD
+            # IT MORE THAN ONCE.
             alreadyencountered.add(k)
 
             _add_val_to_dict(k, v, summary, n_previous, missing_marker)
@@ -124,7 +134,18 @@ os.environ["TERM"] = "vt100"
 
 
 def _supplementary_path_from_sof_line(line, home):
-    """Return the path column from a supplementary SOF row."""
+    """*return the path column from a supplementary SOF row*
+
+    **Key Arguments:**
+
+    - ``line`` -- one line of the SOF file
+    - ``home`` -- the user's home directory, substituted for a leading ``~/``
+
+    **Return:**
+
+    - ``path`` -- the supplementary file path, with a trailing arm tag removed when the line is not itself an
+      existing path
+    """
     expandedLine = line.replace("~/", home + "/")
     if os.path.exists(expandedLine):
         return expandedLine
@@ -140,7 +161,17 @@ def _supplementary_path_from_sof_line(line, home):
 
 
 def _join_fits_summaries_in_input_order(primarySummary, extensionSummary):
-    """Join primary and extension headers without reordering input frames."""
+    """*join primary and extension headers without reordering input frames*
+
+    **Key Arguments:**
+
+    - ``primarySummary`` -- the summary table of primary-header keywords
+    - ``extensionSummary`` -- the summary table of data-extension keywords, in input order
+
+    **Return:**
+
+    - ``joinedSummary`` -- the joined summary table, in the row order of ``extensionSummary``
+    """
     from astropy.table import join
 
     inputOrderColumn = "_soxspipe_input_order"
@@ -152,9 +183,51 @@ def _join_fits_summaries_in_input_order(primarySummary, extensionSummary):
     return joinedSummary
 
 
+def _supplementary_files_in_directory(directory):
+    """*return the non-FITS, non-hidden files in a directory of frames*
+
+    **Key Arguments:**
+
+    - ``directory`` -- the directory of frames
+
+    **Return:**
+
+    - ``supplementaryFilepaths`` -- the supplementary file paths, in directory-listing order
+    """
+    supplementaryFilepaths = []
+    for d in os.listdir(directory):
+        filepath = os.path.join(directory, d)
+        if (
+            os.path.isfile(filepath)
+            and ".fits" not in d.lower()
+            and d[0] != "."
+        ):
+            supplementaryFilepaths.append(filepath)
+    return supplementaryFilepaths
+
+
+def _common_location(fitsFiles):
+    """*find the directory shared by all the frames*
+
+    **Key Arguments:**
+
+    - ``fitsFiles`` -- the frame paths
+
+    **Return:**
+
+    - ``location`` -- the shared directory, or None when the frames span several directories
+    - ``fitsFiles`` -- the frame base names when a shared directory is found, otherwise the paths unchanged
+    """
+    locations = [os.path.dirname(f) for f in fitsFiles]
+    if len(set(locations)) == 1:
+        return locations[0], [os.path.basename(f) for f in fitsFiles]
+    return None, fitsFiles
+
+
 class set_of_files:
     """
-    *The worker class for the sof module used to homogenize various frame input formats (sof file, directory of fits fits, list of fits file paths) into a CCDProc ImageFileCollection*
+    *The worker class for the sof module used to homogenize various frame input formats (sof file, directory of fits
+      fits, list of fits file paths) into a CCDProc ImageFileCollection*
 
     **Key Arguments:**
 
@@ -164,6 +237,7 @@ class set_of_files:
     - ``verbose`` -- verbose. True or False. Default *True*
     - ``recipeName`` -- the name of the recipe. Default *False*
     - ``ext`` -- the data extension for the frame. Default 0.
+    - ``session`` -- unused; the workspace session is read from the data organiser. Default *None*
 
     **Usage**
 
@@ -185,13 +259,15 @@ class set_of_files:
     `inputFrames` can be a directory, a list of fits filepaths or a set-of-files (SOF) file
     """
 
-    # Initialization
+    # INITIALIZATION
 
     def __init__(
         self,
         log,
         settings=False,
-        inputFrames=[],
+        # THE DEFAULT LIST IS NEVER MUTATED. A None SENTINEL WOULD TURN AN EXPLICIT `inputFrames=None` FROM A
+        # TypeError IN get() INTO AN EMPTY COLLECTION
+        inputFrames=[],  # noqa: B006
         verbose=True,
         recipeName=False,
         ext=0,
@@ -209,19 +285,16 @@ class set_of_files:
         # FOLDER
         kw = keyword_lookup(log=self.log, settings=self.settings).get
 
-        if self.verbose:
-            keys = self.settings["summary-keys"]["verbose"]
-        else:
-            keys = self.settings["summary-keys"]["default"]
+        keys = self.settings["summary-keys"]["verbose"] if self.verbose else self.settings["summary-keys"]["default"]
 
         if recipeName and recipeName == "soxs-nod":
             keys += self.settings["summary-keys"]["nodding_extras"]
 
         keys = kw(keys)
         self.keys = []
-        self.keys[:] = [k for k in keys]
+        self.keys[:] = list(keys)
         self.keys.append("file")
-        # Initial Actions
+        # INITIAL ACTIONS
         # FIX RELATIVE HOME PATHS
         from os.path import expanduser
 
@@ -290,8 +363,6 @@ class set_of_files:
                 with fits.open(fitsPath) as hdul:
                     # READ HEADER INTO MEMORY
                     hdr = hdul[0].header
-                    # PRINT FULL FITS HEADER TO STDOUT
-                    # print(repr(hdr).strip())
                     dpr_type = hdr[kw("DPR_TYPE")].strip()
                     # CHECK ARM
                     arm = hdr[kw("SEQ_ARM")]
@@ -303,7 +374,7 @@ class set_of_files:
                     if kw("CDELT1") in hdr:
                         catagory += "_" + xbin.strip() + "x" + ybin.strip()
 
-                    content += "%(fitsPath)s %(catagory)s\n" % locals()
+                    content += f"{fitsPath} {catagory}\n"
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         moduleDirectory = os.path.dirname(sofPath)
@@ -326,7 +397,8 @@ class set_of_files:
 
         **Usage**
 
-        To generate a ImageFileCollection from a directory, a list of fits filepaths or a set-of-files (SOF) file try the following:
+        To generate a ImageFileCollection from a directory, a list of fits filepaths or a set-of-files (SOF) file try
+        the following:
 
         ```python
         # inputFrames = "/path/to/a/directory"
@@ -346,7 +418,6 @@ class set_of_files:
         """
         self.log.debug("starting the ``get`` method")
 
-        import codecs
         from os.path import expanduser
 
         home = expanduser("~")
@@ -356,203 +427,23 @@ class set_of_files:
 
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
-            if self.ext > 0:
-                sofSeed = ImageFileCollection(location=self.inputFrames, ext=self.ext)
-                foundKeys = [
-                    k
-                    for k in self.keys
-                    if (
-                        k.lower() in sofSeed.summary.colnames
-                        or k in sofSeed.summary.colnames
-                    )
-                ]
-                sof = ImageFileCollection(
-                    keywords=foundKeys, location=self.inputFrames, ext=self.ext
-                )
-                missingKeys = [
-                    k
-                    for k in self.keys
-                    if (
-                        k.lower() not in sofSeed.summary.colnames
-                        and k not in sofSeed.summary.colnames
-                    )
-                ]
-                if len(missingKeys):
-                    primExt = ImageFileCollection(
-                        keywords=missingKeys, location=self.inputFrames, ext=0
-                    )
-                    sof._summary = _join_fits_summaries_in_input_order(
-                        primExt._summary,
-                        sof._summary,
-                    )
-            else:
-                sof = ImageFileCollection(
-                    location=self.inputFrames, keywords=self.keys, ext=self.ext
-                )
-
-            supplementaryFilepaths = []
-            for d in os.listdir(self.inputFrames):
-                filepath = os.path.join(self.inputFrames, d)
-                if (
-                    os.path.isfile(filepath)
-                    and ".fits" not in d.lower()
-                    and d[0] != "."
-                ):
-                    supplementaryFilepaths.append(filepath)
+            sof = self._collection_from_frames(location=self.inputFrames)
+            supplementaryFilepaths = _supplementary_files_in_directory(self.inputFrames)
 
         elif (
             isinstance(self.inputFrames, str)
             and os.path.isfile(self.inputFrames)
             and ".sof" in self.inputFrames
         ):
-
-            readFile = codecs.open(self.inputFrames, encoding="utf-8", mode="r")
-            thisData = readFile.read()
-            readFile.close()
-            lines = thisData.split("\n")
-
-            # REMOVE COMMENTED LINES
-            lines = [l for l in lines if len(l) and l[0] != "#"]
-
-            fitsFiles = []
-            fitsFiles[:] = [
-                l.split(".fits")[0].replace("~/", home + "/") + ".fits"
-                for l in lines
-                if ".fits" in l
-            ]
-
-            supplementaryFilepaths = [
-                _supplementary_path_from_sof_line(l, home)
-                for l in lines
-                if ".fits" not in l.lower() and len(l) > 3
-            ]
-
-            # PREPEND SESSION PATHS
-            if self.currentSession:
-                fitsFiles[:] = [
-                    f.replace("./reduced", f"./sessions/{self.currentSession}/reduced")
-                    for f in fitsFiles
-                ]
-                supplementaryFilepaths[:] = [
-                    f.replace("./reduced", f"./sessions/{self.currentSession}/reduced")
-                    for f in supplementaryFilepaths
-                ]
-
-            # MAKE SURE FILES EXIST
-            allFiles = fitsFiles.extend(supplementaryFilepaths)
-            for f in fitsFiles + supplementaryFilepaths:
-                exists = os.path.exists(f)
-                if not exists:
-                    raise FileNotFoundError(
-                        f"the input file `{f}` does not appear to exist"
-                    )
-
-            locations = [os.path.dirname(f) for f in fitsFiles]
-            if len(set(locations)) == 1:
-                location = locations[0]
-                fitsFiles = [os.path.basename(f) for f in fitsFiles]
-            else:
-                location = None
-
-            if self.ext > 0:
-                sofSeed = ImageFileCollection(
-                    filenames=fitsFiles, location=location, ext=self.ext
-                )
-                foundKeys = [
-                    k
-                    for k in self.keys
-                    if (
-                        k.lower() in sofSeed.summary.colnames
-                        or k in sofSeed.summary.colnames
-                    )
-                ]
-                sof = ImageFileCollection(
-                    filenames=fitsFiles,
-                    keywords=foundKeys,
-                    location=location,
-                    ext=self.ext,
-                )
-                missingKeys = [
-                    k
-                    for k in self.keys
-                    if (
-                        k.lower() not in sofSeed.summary.colnames
-                        and k not in sofSeed.summary.colnames
-                    )
-                ]
-                if len(missingKeys):
-                    primExt = ImageFileCollection(
-                        filenames=fitsFiles,
-                        keywords=missingKeys,
-                        location=location,
-                        ext=0,
-                    )
-                    sof._summary = _join_fits_summaries_in_input_order(
-                        primExt._summary,
-                        sof._summary,
-                    )
-            else:
-                sof = ImageFileCollection(
-                    filenames=fitsFiles,
-                    keywords=self.keys,
-                    location=location,
-                    ext=self.ext,
-                )
+            fitsFiles, supplementaryFilepaths = self._frames_from_sof_file(home)
+            location, fitsFiles = _common_location(fitsFiles)
+            sof = self._collection_from_frames(location=location, filenames=fitsFiles)
 
         elif isinstance(self.inputFrames, list):
             fitsFiles = [f for f in self.inputFrames if ".fits" in f.lower()]
             # FIND UNIQUE FILE LOCATIONS
-            locations = [os.path.dirname(f) for f in fitsFiles]
-            if len(set(locations)) == 1:
-                location = locations[0]
-                fitsFiles = [os.path.basename(f) for f in fitsFiles]
-            else:
-                location = None
-
-            if self.ext > 0:
-                sofSeed = ImageFileCollection(
-                    filenames=fitsFiles, location=location, ext=self.ext
-                )
-                foundKeys = [
-                    k
-                    for k in self.keys
-                    if (
-                        k.lower() in sofSeed.summary.colnames
-                        or k in sofSeed.summary.colnames
-                    )
-                ]
-                sof = ImageFileCollection(
-                    filenames=fitsFiles,
-                    keywords=foundKeys,
-                    location=location,
-                    ext=self.ext,
-                )
-                missingKeys = [
-                    k
-                    for k in self.keys
-                    if (
-                        k.lower() not in sofSeed.summary.colnames
-                        and k not in sofSeed.summary.colnames
-                    )
-                ]
-                if len(missingKeys):
-                    primExt = ImageFileCollection(
-                        filenames=fitsFiles,
-                        keywords=missingKeys,
-                        location=location,
-                        ext=0,
-                    )
-                    sof._summary = _join_fits_summaries_in_input_order(
-                        primExt._summary,
-                        sof._summary,
-                    )
-            else:
-                sof = ImageFileCollection(
-                    filenames=fitsFiles,
-                    keywords=self.keys,
-                    location=location,
-                    ext=self.ext,
-                )
+            location, fitsFiles = _common_location(fitsFiles)
+            sof = self._collection_from_frames(location=location, filenames=fitsFiles)
             fitsFiles = [os.path.basename(f) for f in fitsFiles]
             sof._summary["filename"] = fitsFiles
             self.keys = ["filename"] + self.keys
@@ -571,6 +462,121 @@ class set_of_files:
 
         self.log.debug("completed the ``get`` method")
         return sof, supplementary_sof
+
+    def _frames_from_sof_file(self, home):
+        """*read the FITS and supplementary file paths listed in the SOF file*
+
+        **Key Arguments:**
+
+        - ``home`` -- the user's home directory, substituted for a leading ``~/``
+
+        **Return:**
+
+        - ``fitsFiles`` -- the FITS frame paths, followed by the supplementary file paths
+        - ``supplementaryFilepaths`` -- the supplementary (non-FITS) file paths
+        """
+        import codecs
+
+        # KEEP codecs.open: UNLIKE open() IT DOES NOT TRANSLATE CRLF LINE ENDINGS
+        with codecs.open(self.inputFrames, encoding="utf-8", mode="r") as readFile:
+            thisData = readFile.read()
+        lines = thisData.split("\n")
+
+        # REMOVE COMMENTED LINES
+        lines = [sofLine for sofLine in lines if len(sofLine) and sofLine[0] != "#"]
+
+        fitsFiles = []
+        fitsFiles[:] = [
+            sofLine.split(".fits")[0].replace("~/", home + "/") + ".fits"
+            for sofLine in lines
+            if ".fits" in sofLine
+        ]
+
+        supplementaryFilepaths = [
+            _supplementary_path_from_sof_line(sofLine, home)
+            for sofLine in lines
+            if ".fits" not in sofLine.lower() and len(sofLine) > 3
+        ]
+
+        # PREPEND SESSION PATHS
+        if self.currentSession:
+            fitsFiles[:] = [
+                f.replace("./reduced", f"./sessions/{self.currentSession}/reduced")
+                for f in fitsFiles
+            ]
+            supplementaryFilepaths[:] = [
+                f.replace("./reduced", f"./sessions/{self.currentSession}/reduced")
+                for f in supplementaryFilepaths
+            ]
+
+        # MAKE SURE FILES EXIST
+        fitsFiles.extend(supplementaryFilepaths)
+        for f in fitsFiles + supplementaryFilepaths:
+            exists = os.path.exists(f)
+            if not exists:
+                raise FileNotFoundError(
+                    f"the input file `{f}` does not appear to exist"
+                )
+
+        return fitsFiles, supplementaryFilepaths
+
+    def _collection_from_frames(self, location, filenames=None):
+        """*build the ImageFileCollection, filling keys missing from a data extension from the primary header*
+
+        **Key Arguments:**
+
+        - ``location`` -- the directory holding the frames, or None when the frames span several directories
+        - ``filenames`` -- the frame file names. Default *None*, which collects every FITS file in ``location``
+
+        **Return:**
+
+        - ``sof`` -- a ccdproc ImageFileCollection of the frames
+        """
+        if self.ext > 0:
+            sofSeed = ImageFileCollection(
+                filenames=filenames, location=location, ext=self.ext
+            )
+            foundKeys = [
+                k
+                for k in self.keys
+                if (
+                    k.lower() in sofSeed.summary.colnames
+                    or k in sofSeed.summary.colnames
+                )
+            ]
+            sof = ImageFileCollection(
+                filenames=filenames,
+                keywords=foundKeys,
+                location=location,
+                ext=self.ext,
+            )
+            missingKeys = [
+                k
+                for k in self.keys
+                if (
+                    k.lower() not in sofSeed.summary.colnames
+                    and k not in sofSeed.summary.colnames
+                )
+            ]
+            if len(missingKeys):
+                primExt = ImageFileCollection(
+                    filenames=filenames,
+                    keywords=missingKeys,
+                    location=location,
+                    ext=0,
+                )
+                sof._summary = _join_fits_summaries_in_input_order(
+                    primExt._summary,
+                    sof._summary,
+                )
+        else:
+            sof = ImageFileCollection(
+                filenames=filenames,
+                keywords=self.keys,
+                location=location,
+                ext=self.ext,
+            )
+        return sof
 
     def create_supplementary_file_dictionary(self, supplementaryFilepaths):
         """*create supplementary file dictionary*
@@ -608,5 +614,5 @@ class set_of_files:
         self.log.debug("completed the ``create_supplementary_file_dictionary`` method")
         return supplementary_sof
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
