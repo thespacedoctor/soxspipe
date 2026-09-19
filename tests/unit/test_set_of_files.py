@@ -48,6 +48,27 @@ def _settings(
 # ---------------------------------------------------------------------------
 
 
+def test_init_defaults_when_only_log_and_settings_are_given(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    settings = _settings(tmp_path, default=["DPR_TYPE"], verbose=["SEQ_ARM"])
+
+    sof = set_of_files(log=log, settings=settings)
+
+    assert sof.inputFrames == []
+    assert sof.verbose is True
+    assert sof.recipeName is False
+    assert sof.ext == 0
+    # VERBOSE DEFAULTS TO TRUE, SO THE VERBOSE KEYS ARE SELECTED
+    assert sof.keys == ["ESO SEQ ARM", "file"]
+
+
+def test_init_default_settings_of_false_raises_type_error(log: object) -> None:
+    with pytest.raises(TypeError, match="'bool' object is not subscriptable"):
+        set_of_files(log=log)
+
+
 def test_init_verbose_true_selects_the_verbose_summary_keys(
     tmp_path: Path, log: object
 ) -> None:
