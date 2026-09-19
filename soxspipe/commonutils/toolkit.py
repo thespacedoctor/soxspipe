@@ -41,6 +41,14 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     - ``median`` -- collapse the slice to a median value across its width
     - ``debug`` -- generate a plot of slice. Useful for debugging.
 
+    **Return:**
+
+    - ``slice`` -- the median-collapsed slice when ``median`` is True
+    - ``slice_length_offset`` -- the pixel offset of the slice start along its length
+    - ``slice_width_centre`` -- the pixel coordinate of the slice centre across its width
+
+    All three are *None* when the slice would fall outside the frame.
+
     **Usage:**
 
     ```python
@@ -156,12 +164,17 @@ def quicklook_image(
     - ``CCDObject`` -- the CCDObject to plot
     - ``show`` -- show the image. Set to False to skip
     - ``ext`` -- the name of the the extension to show. Can be "data", "mask" or "err". Default "data".
+    - ``stdWindow`` -- the width of the colour scale in standard deviations, centred on the median. Default *3*
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
     - ``dispMap`` -- path to dispersion map. Default *False*
     - ``dispMapImage`` -- the 2D dispersion map image
     - ``inst`` -- provide instrument name if no header exists
+    - ``settings`` -- the soxspipe settings dictionary, used to look up the arm and skylines. Default *False*
     - ``skylines`` -- mark skylines on image
+    - ``saveToPath`` -- path to save the plot to. Default *False*
+
+    **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import quicklook_image
@@ -287,7 +300,7 @@ def quicklook_image(
 
     if saveToPath:
         save_qc_plot(saveToPath)
-        plt.clf()  # clear figure
+        plt.clf()  # CLEAR FIGURE
     mpl.rcParams.update(originalRC)
     plt.close("all")
 
@@ -412,14 +425,14 @@ def _draw_surface_plot(rotatedImg, frame, inst, vmin, vmax):
     if inst == "XSHOOTER":
         plt.gca().invert_yaxis()
     ax.set_box_aspect(aspect=(2, 1, 1))
-    # Remove gray panes and axis grid
+    # REMOVE GRAY PANES AND AXIS GRID
     ax.xaxis.pane.fill = False
     ax.zaxis.pane.set_facecolor("#dc322f")
     ax.zaxis.pane.set_alpha(1.0)
     ax.yaxis.pane.fill = False
 
     ax.grid(False)
-    # Remove z-axis
+    # REMOVE Z-AXIS
     # ax.w_zaxis.line.set_lw(0.)
     # ax.set_zticks([])
 
@@ -505,10 +518,15 @@ def unpack_order_table(
     order=False,
     limitToDetectorFormat=False,
 ):
-    """*Unpack an order location table and return an `orderPolyTable` dataframe containing the polynomial coefficients for the order centres and edges, an `orderPixelTable` dataframe containing the pixel-coordinates for each order centre and edges, and finally, an `orderMetaTable` dataframe giving metadata about the frame binning and format.*
+    """*Unpack an order location table into polynomial, pixel and metadata dataframes.*
+
+    Return an `orderPolyTable` dataframe containing the polynomial coefficients for the order centres and edges, an
+    `orderPixelTable` dataframe containing the pixel-coordinates for each order centre and edges, and finally, an
+    `orderMetaTable` dataframe giving metadata about the frame binning and format.
 
     **Key Arguments:**
 
+    - ``log`` -- logger
     - ``orderTablePath`` -- path to the order table
     - ``extend`` -- fractional increase to the order area in the y-axis (needed for masking)
     - ``pixelDelta`` -- space between returned data points. Default *1* (sampled at every pixel)
@@ -516,7 +534,14 @@ def unpack_order_table(
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
     - ``prebinned`` -- was the order-table measured on a pre-binned frame (typically only for mflats). Default *False*
     - ``order`` -- unpack only a single order
-    - ``limitToDetectorFormat`` -- limit the pixels return to those limited by the detector format static calibration table
+    - ``limitToDetectorFormat`` -- limit the pixels return to those limited by the detector format static
+      calibration table
+
+    **Return:**
+
+    - ``orderPolyTable`` -- the polynomial coefficients for the order centres and edges
+    - ``orderPixelTable`` -- the pixel-coordinates for each order centre and edges
+    - ``orderMetaTable`` -- metadata about the frame binning and format
 
     **Usage:**
 
@@ -536,7 +561,7 @@ def unpack_order_table(
 
     # PIXEL DELTA NEEDS TO BE ODD .. ELSE MASKING ON BINNED DATA GETS MESSED UP
     if pixelDelta % 2 == 0:
-        pixelDelta += 1  # Return the nearest odd number above if it's even
+        pixelDelta += 1  # RETURN THE NEAREST ODD NUMBER ABOVE IF IT'S EVEN
 
     # MAKE RELATIVE HOME PATH ABSOLUTE
 
@@ -657,11 +682,15 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `frame` -- CCDData object
-    - `settings` -- soxspipe settings
-    - `recipeName` -- the name of the recipe
-    - `qcTable` -- the QC pandas data-frame to save the QC measurements
+    - ``log`` -- logger
+    - ``frame`` -- CCDData object
+    - ``settings`` -- soxspipe settings
+    - ``recipeName`` -- the name of the recipe
+    - ``qcTable`` -- the QC pandas data-frame to save the QC measurements
+
+    **Return:**
+
+    - ``qcTable`` -- the QC table with the new measurements appended
 
     **Usage:**
 
@@ -759,19 +788,29 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `frame` -- CCDData object
+    - ``log`` -- logger
+    - ``frame`` -- CCDData object
     - ``orderTablePath`` -- path to the order table
-    - `settings` -- soxspipe settings
-    - `recipeName` -- the name of the recipe
-    - `qcTable` -- the QC pandas data-frame to save the QC measurements
+    - ``settings`` -- soxspipe settings
+    - ``recipeName`` -- the name of the recipe
+    - ``qcTable`` -- the QC pandas data-frame to save the QC measurements
+
+    **Return:**
+
+    - ``qcTable`` -- the QC table with the new measurements appended
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import spectroscopic_image_quality_checks
     qcTable = spectroscopic_image_quality_checks(
-            log=log, frame=myFrame, settings=settings, recipeName="this recipe", qcTable=qcTable, orderTablePath=orderTablePath)
+        log=log,
+        frame=myFrame,
+        orderTablePath=orderTablePath,
+        settings=settings,
+        recipeName="this recipe",
+        qcTable=qcTable,
+    )
     ```
     """
     log.debug("starting the ``functionName`` function")
@@ -900,19 +939,23 @@ def read_spectral_format(log, settings, arm, dispersionMap=False, extended=True,
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `settings` -- soxspipe settings
-    - `arm` -- arm to retrieve format for
-    - `dispersionMap` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are computed
-    - `extended` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL (extended=True)
+    - ``log`` -- logger
+    - ``settings`` -- soxspipe settings
+    - ``arm`` -- arm to retrieve format for
+    - ``dispersionMap`` -- if a dispersion map is given, the minimum and maximum dispersion axis pixel limits are
+      computed
+    - ``extended`` -- the spectral format table can provide WLMIN/WLMAX (extended=False) or WLMINFUL/WLMAXFUL
+      (extended=True)
     - ``binx`` -- binning in the x-axis (from FITS header). Default *1*
     - ``biny`` -- binning in the y-axis (from FITS header). Default *1*
 
     **Return:**
 
     - ``orderNums`` -- a list of the order numbers
-    - ``waveLengthMin`` -- a list of the maximum wavelengths reached by each order
-    - ``waveLengthMax`` -- a list of the minimum wavelengths reached by each order
+    - ``waveLengthMin`` -- a list of the minimum wavelengths reached by each order
+    - ``waveLengthMax`` -- a list of the maximum wavelengths reached by each order
+    - ``amins`` -- the minimum dispersion-axis pixel limit of each order (only when ``dispersionMap`` is given)
+    - ``amaxs`` -- the maximum dispersion-axis pixel limit of each order (only when ``dispersionMap`` is given)
 
     **Usage:**
 
@@ -1014,8 +1057,12 @@ def get_calibrations_path(log, settings):
 
     **Key Arguments:**
 
-    - `log` -- logger
+    - ``log`` -- logger
     - ``settings`` -- the settings dictionary
+
+    **Return:**
+
+    - ``calibrationRootPath`` -- the root path to the instrument's static calibrations
 
     **Usage:**
 
@@ -1050,12 +1097,20 @@ def twoD_disp_map_image_to_dataframe(
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `twoDMapPath` -- 2D dispersion map image path
-    - `kw` -- fits keyword lookup dictionary
-    - `associatedFrame` -- include a flux column in returned dataframe from a frame associated with the dispersion map. Default *False*
-    - `removeMaskedPixels` -- remove the masked pixels from the associated image? Default *False*
-    - `dispAxis` -- x or y. Needed for pixel scale calculation
+    - ``log`` -- logger
+    - ``slit_length`` -- length of the slit; pixels with a slit position beyond half this length either side of
+      the centre are removed
+    - ``twoDMapPath`` -- 2D dispersion map image path
+    - ``kw`` -- fits keyword lookup dictionary
+    - ``associatedFrame`` -- include a flux column in returned dataframe from a frame associated with the
+      dispersion map. Default *False*
+    - ``removeMaskedPixels`` -- remove the masked pixels from the associated image? Default *False*
+    - ``dispAxis`` -- x or y. Needed for pixel scale calculation
+
+    **Return:**
+
+    - ``mapDF`` -- the dispersion map as a dataframe, one row per pixel
+    - ``interOrderMask`` -- mask array flagging the inter-order pixels
 
     **Usage:**
 
@@ -1202,9 +1257,13 @@ def predict_product_path(sofName, recipeName=False):
 
     **Key Arguments:**
 
-    - `log` -- logger,
-    - `sofName` -- name or full path to the sof file
+    - ``sofName`` -- name or full path to the sof file
     - ``recipeName`` -- name of the recipe being considered. Default *False*.
+
+    **Return:**
+
+    - ``productPath`` -- the predicted path of the recipe product
+    - ``startNightDate`` -- the start-of-night date of the observations
 
     **Usage:**
 
@@ -1281,12 +1340,16 @@ def predict_product_path(sofName, recipeName=False):
 
 
 def add_recipe_logger(log, productPath):
-    """*add a recipe-specific handler to the default logger that writes the recipe's logs adjacent to the recipe project*
+    """*add a recipe-specific handler to the default logger that writes the recipe's logs beside the product*
 
     **Key Arguments:**
 
-    - `log` -- original logger
-    - `productPath` -- path to the recipe product
+    - ``log`` -- original logger
+    - ``productPath`` -- path to the recipe product
+
+    **Return:**
+
+    - ``log`` -- the logger with the recipe-specific handlers attached
 
     **Usage:**
 
@@ -1365,23 +1428,23 @@ def create_dispersion_solution_grid_lines_for_plot(
     slitPositions=False,
     slit_length=11,
 ):
-    """*given a dispersion solution and accompanying 2D dispersion map image, generate the grid lines to add to QC plots*
+    """*generate the grid lines to add to QC plots from a dispersion solution and its 2D dispersion map image*
 
     **Key Arguments:**
 
-    - `log` -- logger
+    - ``log`` -- logger
     - ``dispMap`` -- path to dispersion map. Default *False*
     - ``dispMapImage`` -- the 2D dispersion map image
-    - `associatedFrame` -- a frame associated with the reduction (to read arm and binning info).
-    - `kw` -- fits header kw dictionary
-    - `skylines` -- a list of skylines to use as the grid. Default *False*
-    - `slitPositions` -- slit positions to plot (else plot min and max)
-    - `slit_length` -- length of the slit to use for the dispersion map dataframe (default 11)
+    - ``associatedFrame`` -- a frame associated with the reduction (to read arm and binning info).
+    - ``kw`` -- fits header kw dictionary
+    - ``skylines`` -- a list of skylines to use as the grid. Default *False*
+    - ``slitPositions`` -- slit positions to plot (else plot min and max)
+    - ``slit_length`` -- length of the slit to use for the dispersion map dataframe (default 11)
 
     **Returns:**
 
-    - `orderPixelTable` -- DataFrame containing the pixel coordinates for grid lines to plot.
-    - `interOrderMask` -- Mask array indicating inter-order regions.
+    - ``orderPixelTable`` -- DataFrame containing the pixel coordinates for grid lines to plot.
+    - ``interOrderMask`` -- Mask array indicating inter-order regions.
 
     **Usage:**
 
@@ -1398,7 +1461,14 @@ def create_dispersion_solution_grid_lines_for_plot(
 
     for l in range(int(gridLinePixelTable['line'].max())):
         mask = (gridLinePixelTable['line'] == l)
-        ax.plot(gridLinePixelTable.loc[mask]["fit_y"], gridLinePixelTable.loc[mask]["fit_x"], "w-", linewidth=0.5, alpha=0.8, color="black")
+        ax.plot(
+            gridLinePixelTable.loc[mask]["fit_y"],
+            gridLinePixelTable.loc[mask]["fit_x"],
+            "w-",
+            linewidth=0.5,
+            alpha=0.8,
+            color="black",
+        )
     ```
     """
     log.debug("starting the ``create_dispersion_solution_grid_lines_for_plot`` function")
@@ -1477,9 +1547,13 @@ def get_calibration_lamp(log, frame, kw):
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `frame` -- the frame to determine the calibration lamp for
-    - `kw` -- the FITS header keyword dictionary
+    - ``log`` -- logger
+    - ``frame`` -- the frame to determine the calibration lamp for
+    - ``kw`` -- the FITS header keyword dictionary
+
+    **Return:**
+
+    - ``lamp`` -- the calibration lamp names found in the header, or *None* if there are none
 
     **Usage:**
 
@@ -1531,11 +1605,11 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `qc` -- date frame of collected QCs
-    - `qcAx` -- the axis to add the QC table to
-    - `settings` -- settings to report in settings table
-    - `settingsAx` -- the axis to add the settings table to
+    - ``log`` -- logger
+    - ``qc`` -- date frame of collected QCs
+    - ``qcAx`` -- the axis to add the QC table to
+    - ``settings`` -- settings to report in settings table
+    - ``settingsAx`` -- the axis to add the settings table to
 
     **Usage:**
 
@@ -1622,7 +1696,7 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
 
     for a in [qcAx, settingsAx]:
 
-        # Hide axes
+        # HIDE AXES
         a.get_xaxis().set_visible(False)
         a.get_yaxis().set_visible(False)
         a.axis("off")
@@ -1636,15 +1710,15 @@ def utility_setup(log, settings, recipeName, startNightDate):
 
     **Key Arguments:**
 
-    - `log` -- logger
-    - `settings` -- the settings dictionary
-    - `recipeName` -- name of the recipe as it appears in the settings dictionary
-    - `startNightDate` -- YYYY-MM-DD date of the observation night. Default ""
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``recipeName`` -- name of the recipe as it appears in the settings dictionary
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
 
     **Return:**
 
-    - `qcDir` -- the QC directory (created if missing)
-    - `productDir` -- the product directory (created if missing)
+    - ``qcDir`` -- the QC directory (created if missing)
+    - ``productDir`` -- the product directory (created if missing)
 
     **Usage:**
 
@@ -1696,12 +1770,48 @@ def plot_merged_spectrum_qc(
     qcTable=False,
     settings=False,
 ):
-    """
-    Plot merged spectrum QC plot as a standalone function.
+    """*plot the order-merged spectrum QC plot, save it to the QC directory and record it in the products table*
 
-    Returns:
-        products (pd.DataFrame): Updated products table.
-        filePath (str): Path to the saved QC plot PDF.
+    **Key Arguments:**
+
+    - ``merged_orders`` -- the order-merged spectrum, with ``WAVE`` and ``FLUX_COUNTS`` columns
+    - ``products`` -- the products table. Nothing is plotted if this is *False*
+    - ``log`` -- logger
+    - ``qcDir`` -- the directory to save the QC plot in
+    - ``filenameTemplate`` -- the product filename the QC plot filename is built from
+    - ``noddingSequence`` -- suffix for the QC plot filename and product label. *False* for none
+    - ``dateObs`` -- the observation date recorded in the products table
+    - ``arm`` -- the spectrograph arm
+    - ``recipeName`` -- the name of the recipe
+    - ``orderJoins`` -- a dictionary of order-join wavelengths to mark on the plot. Default *False*
+    - ``debug`` -- show the plot before saving it. Default *False*
+    - ``fluxCalibrated`` -- is the spectrum flux calibrated? Default *False*
+    - ``qcTable`` -- the QC table holding the SNR values to plot. Default *False*
+    - ``settings`` -- the soxspipe settings dictionary, used to look up the skylines. Default *False*
+
+    **Return:**
+
+    - ``products`` -- the products table with the QC plot appended
+    - ``filePath`` -- the path to the saved QC plot PDF, or *None* if nothing was plotted
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
+    products, filePath = plot_merged_spectrum_qc(
+        merged_orders=mergedSpectrum,
+        products=products,
+        log=log,
+        qcDir=qcDir,
+        filenameTemplate=filenameTemplate,
+        noddingSequence=False,
+        dateObs=dateObs,
+        arm=arm,
+        recipeName=recipeName,
+        qcTable=qcTable,
+        settings=settings,
+    )
+    ```
     """
     log.debug("starting the ``plot_merged_spectrum_qc`` function")
 
@@ -1721,10 +1831,10 @@ def plot_merged_spectrum_qc(
     skylinesDF = get_skylines_dataframe(log, settings, arm)
 
     fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
-    # Adjusted height ratios
+    # ADJUSTED HEIGHT RATIOS
     gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 1, 0])
 
-    # Top panel with linear scale
+    # TOP PANEL WITH LINEAR SCALE
     top_panel = fig.add_subplot(gs[0, :])
     if fluxCalibrated:
         top_panel.set_ylabel("flux (erg s$^{-1}$ cm$^{-2}$ $\\AA^{-1}$)", fontsize=10)
@@ -1747,7 +1857,7 @@ def plot_merged_spectrum_qc(
 
     _set_wavelength_xlim(top_panel, merged_orders)
 
-    # Middle panel with log scale
+    # MIDDLE PANEL WITH LOG SCALE
     middle_panel = fig.add_subplot(gs[1, :])
     if not fluxCalibrated:
         middle_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
@@ -1790,7 +1900,7 @@ def plot_merged_spectrum_qc(
     middle_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
     _set_wavelength_xlim(middle_panel, merged_orders)
 
-    # Bottom panel with linear scale for SNR
+    # BOTTOM PANEL WITH LINEAR SCALE FOR SNR
     bottom_panel = fig.add_subplot(gs[2, :])
     bottom_panel.set_ylabel("SNR", fontsize=10)
     bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
@@ -2043,31 +2153,28 @@ def _mark_skylines(skylinesDF, panels, labelPanel):
 
 
 def calculate_rolling_snr(dataframe, flux_column, window_size):
-    """
-    Calculate the rolling Signal-to-Noise Ratio (SNR) for a given column in a pandas DataFrame.
+    """*calculate the rolling signal-to-noise ratio (SNR) for a given column in a pandas dataframe*
 
-    This function computes the rolling SNR for a specified column in the DataFrame using a custom
-    rolling window function. The SNR is calculated as the ratio of the median signal to the noise,
-    where the noise is estimated using a robust statistical method.
+    The SNR is calculated as the ratio of the median signal to the noise, where the noise is estimated using a robust
+    statistical method.
 
     **Key Arguments:**
 
-        - `dataframe`: The input pandas DataFrame containing the data.
-        - `flux_column`: The name of the column in the DataFrame for which the rolling SNR
-            will be calculated.
-        - `window_size`: The size of the rolling window to use for the calculation.
+    - ``dataframe`` -- the input pandas dataframe containing the data
+    - ``flux_column`` -- the name of the column in the dataframe for which the rolling SNR will be calculated
+    - ``window_size`` -- the size of the rolling window to use for the calculation
 
     **Return:**
 
-        - `dataframe`: The input DataFrame with an additional column 'SNR' containing the
-        calculated rolling SNR values.
+    - ``dataframe`` -- the input dataframe with an additional column 'SNR' containing the calculated rolling SNR
+      values
 
     **Usage:**
 
-        ```python
-        from soxspipe.commonutils.toolkit import calculate_rolling_snr
-        df_with_snr = calculate_rolling_snr(dataframe=df, flux_column='flux', window_size=5)
-        ```
+    ```python
+    from soxspipe.commonutils.toolkit import calculate_rolling_snr
+    df_with_snr = calculate_rolling_snr(dataframe=df, flux_column='flux', window_size=5)
+    ```
     """
     import numpy as np
     from numpy.lib.stride_tricks import sliding_window_view
@@ -2076,20 +2183,20 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
     n = values.size
     snr_full = np.full(n, np.nan, dtype=np.float64)
 
-    # Need at least 5 points for the noise estimator and enough data for one window
+    # NEED AT LEAST 5 POINTS FOR THE NOISE ESTIMATOR AND ENOUGH DATA FOR ONE WINDOW
     if window_size >= 5 and n >= window_size:
         windows = sliding_window_view(values, window_shape=window_size)
 
-        # Signal: rolling median
+        # SIGNAL: ROLLING MEDIAN
         signal = np.median(windows, axis=1)
 
-        # Noise: robust estimator based on 5-point second-difference pattern
+        # NOISE: ROBUST ESTIMATOR BASED ON 5-POINT SECOND-DIFFERENCE PATTERN
         diff = np.abs(2.0 * windows[:, 2:-2] - windows[:, :-4] - windows[:, 4:])
         noise = 0.6052697 * np.median(diff, axis=1)
 
         snr = np.divide(signal, noise, out=np.full_like(signal, np.nan), where=noise > 0)
 
-        # Match center=True placement
+        # MATCH `center=True` PLACEMENT
         left = (window_size - 1) // 2
         snr_full[left : left + snr.size] = snr
 
@@ -2099,6 +2206,25 @@ def calculate_rolling_snr(dataframe, flux_column, window_size):
 
 
 def extinction_correction_factor(wave, extinctionTablePath, airmass):
+    """*calculate the atmospheric extinction correction factor at each wavelength*
+
+    **Key Arguments:**
+
+    - ``wave`` -- the wavelengths to calculate the factor at, in nm
+    - ``extinctionTablePath`` -- path to the observatory extinction curve FITS table (wavelength in Angstrom)
+    - ``airmass`` -- the airmass of the observation
+
+    **Return:**
+
+    - ``extCorrectionFactor`` -- the multiplicative correction factor at each wavelength
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import extinction_correction_factor
+    extCorrectionFactor = extinction_correction_factor(wave=wave, extinctionTablePath=extinctionTablePath, airmass=1.2)
+    ```
+    """
     import numpy as np
     from astropy.table import Table
     from scipy.interpolate import interp1d
@@ -2129,11 +2255,11 @@ def frame_to_32(frame):
 
     **Key Arguments:**
 
-    - `frame` -- the input frame
+    - ``frame`` -- the input frame
 
     **Returns:**
 
-    - `frame` -- the converted frame
+    - ``frame`` -- the converted frame
 
     **Usage:**
 
@@ -2168,7 +2294,8 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     **Key Arguments:**
 
     - ``log`` -- logger
-    - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY' to calculate the checks from.
+    - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY'
+      to calculate the checks from.
     - ``qcTable`` -- the qc table to which the SNR checks will be added
     - ``orderJoins`` -- a dictionary containing the wavelengths of order joins (if any) to be added as QCs.
     - ``recipeName`` -- name of the recipe to add to the QC entries
@@ -2565,7 +2692,27 @@ def save_qc_plot(filePath, dpi=120, bboxInches="tight"):
 
 
 def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightnessNIR=100):
-    """Load and filter strong skylines for QC plotting."""
+    """*load the static skyline table for an arm and keep only the strong skylines, for QC plotting*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``settings`` -- the soxspipe settings dictionary
+    - ``arm`` -- the spectrograph arm
+    - ``minBrightnessVIS`` -- in the VIS arm, keep only skylines with flux above this. Default *5*
+    - ``minBrightnessNIR`` -- in every other arm, keep only skylines with flux above this. Default *100*
+
+    **Return:**
+
+    - ``skylinesDF`` -- the strong skylines as a dataframe
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import get_skylines_dataframe
+    skylinesDF = get_skylines_dataframe(log, settings, arm)
+    ```
+    """
     from astropy.table import Table
 
     from soxspipe.commonutils import detector_lookup
