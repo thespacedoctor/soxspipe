@@ -82,7 +82,8 @@ class chebyshev_order_wavelength_polynomials:
 
         # BUILD EACH VARIABLE'S POWER MATRIX ONCE (SHAPE (N, DEG+1)) INSTEAD
         # OF RECOMPUTING/RE-FETCHING POWERS PER POLYNOMIAL TERM
-        if self.exponentsIncluded == False:
+        # `== False` SENDS NONE TO THE PRECOMPUTED-POWERS BRANCH; `not` WOULD SEND IT HERE
+        if self.exponentsIncluded == False:  # noqa: E712
             orderVals = orderPixelTable["order"].to_numpy(dtype=float)
             wlVals = orderPixelTable["wavelength"].to_numpy(dtype=float)
             spVals = orderPixelTable["slit_position"].to_numpy(dtype=float)
@@ -263,7 +264,8 @@ class chebyshev_order_xy_polynomials:
         # FOR LOOPS ARE THE RIGHT TOOL TO PERFORM COMPUTATIONS OR RUN FUNCTIONS. LIST COMPREHENSION IS SLOW IN THESE
         # CASES
 
-        if self.exponentsIncluded == False:
+        # `== False` SENDS NONE TO THE PRECOMPUTED-POWERS BRANCH; `not` WOULD SEND IT HERE
+        if self.exponentsIncluded == False:  # noqa: E712
             orderVals = orderPixelTable[self.orderCol].values.astype("float")
             bVals = orderPixelTable[self.axisBCol].values.astype("float")
 
