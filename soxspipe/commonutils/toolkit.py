@@ -427,7 +427,7 @@ def _draw_surface_plot(rotatedImg, frame, inst, vmin, vmax):
         np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]),
         np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]),
     )
-    surface = ax.plot_surface(
+    ax.plot_surface(
         X=X,
         Y=Y,
         Z=rotatedImg,
@@ -472,8 +472,8 @@ def _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst):
       ``create_dispersion_solution_grid_lines_for_plot``
     - ``inst`` -- the instrument name
     """
-    for l in range(int(gridLinePixelTable["line"].max())):
-        mask = gridLinePixelTable["line"] == l
+    for lineIndex in range(int(gridLinePixelTable["line"].max())):
+        mask = gridLinePixelTable["line"] == lineIndex
         if inst == "SOXS":
             ax2.plot(
                 gridLinePixelTable.loc[mask]["fit_x"],
@@ -1927,7 +1927,7 @@ def _annotate_snr_values(bottom_panel, orderValue, snrValue):
         except (ValueError, TypeError):
             return (2, str(o))
 
-    pairs = sorted(zip(orderValue, snrValue), key=_order_key)
+    pairs = sorted(zip(orderValue, snrValue, strict=False), key=_order_key)
     snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in pairs)
     bottom_panel.text(
         0.99,
@@ -1987,7 +1987,7 @@ def _mark_order_joins(orderJoins, panels):
     - ``orderJoins`` -- a dictionary of order-join wavelengths
     - ``panels`` -- the panels to mark
     """
-    for k, v in orderJoins.items():
+    for v in orderJoins.values():
         for panel in panels:
             panel.axvline(v, color="black", linestyle="--", linewidth=0.5, alpha=0.5)
             panel.text(
@@ -2013,7 +2013,8 @@ def _mark_skylines(skylinesDF, panels, labelPanel):
     """
     import pandas as pd
 
-    mask = skylinesDF["ISOLATED"] == True
+    # `== True` IS KEPT: A BARE TRUTH MASK WOULD TREAT A NON-BOOLEAN ISOLATED COLUMN DIFFERENTLY
+    mask = skylinesDF["ISOLATED"] == True  # noqa: E712
     calibrationSkylines = pd.to_numeric(skylinesDF.loc[mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
     otherSkylines = pd.to_numeric(skylinesDF.loc[~mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
 
