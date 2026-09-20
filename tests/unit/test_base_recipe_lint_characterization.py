@@ -10,6 +10,7 @@ commit 5 can be checked against them before touching the expressions.
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -234,3 +235,32 @@ def test_bad_pixel_mask_raises_oserror_naming_the_missing_bitmap_path(
     # THE METHOD WRITES THE DUMMY MAP BEFORE RAISING, SO A LATER RUN WOULD
     # FIND IT ALREADY IN PLACE.
     assert (calibrationRootPath / "absent.fits").exists()
+
+
+# ---------------------------------------------------------------------------
+# 4. `_dataframe_to_sqlite` -- THE OTHER SUPPRESSED SQL SITE. ITS `replace`
+# BRANCH INTERPOLATES THE TABLE NAME, WHICH NO BOUND PARAMETER CAN CARRY.
+# ---------------------------------------------------------------------------
+
+
+def test_dataframe_to_sqlite_with_replace_clears_the_table_before_inserting(
+    log: Any,
+) -> None:
+    """`replace=True` deletes the table's existing rows, then writes the new ones."""
+    # ARRANGE
+    recipe = base_recipe.__new__(base_recipe)
+    recipe.log = log
+    recipe.conn = sqlite3.connect(":memory:")
+    recipe.conn.execute("create table quality_control (qc_name text, qc_value text)")
+    recipe.conn.execute("insert into quality_control values ('OLD', '1')")
+    recipe.conn.commit()
+    dataframe = pd.DataFrame({"qc_name": ["RON"], "qc_value": ["--"]})
+
+    # ACT
+    recipe._dataframe_to_sqlite(dataframe, "quality_control", replace=True)
+
+    # ASSERT
+    rows = recipe.conn.execute("select qc_name, qc_value from quality_control").fetchall()
+    # THE OLD ROW IS GONE, AND THE "--" PLACEHOLDER IS WRITTEN AS NULL.
+    assert rows == [("RON", None)]
+    recipe.conn.close()
