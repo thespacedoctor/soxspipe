@@ -38,7 +38,7 @@ class base_util:
             self,
             log,
             settings,
-            associatedFrame=False,
+            associatedFrame,
             dispersionMap=False,
             twoDMapPath=False
             # other arguments needed for the new_util class
