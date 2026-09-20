@@ -21,12 +21,37 @@ os.environ["TERM"] = "vt100"
 
 class soxs_straighten(base_recipe):
     """
-    *The soxs_straighten recipe*
+    *The `soxs_straighten` recipe transforms a spectral image from detector pixel space into wavelength and
+      slit-position space.*
+
+    **Key Arguments**
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be
+      turned off and the recipe will run in serial. This is useful for debugging.
 
 
+    **Usage**
+
+    ```python
+    from soxspipe.recipes import soxs_straighten
+    straightenFrame, qcTable = soxs_straighten(
+        log=log,
+        settings=settings,
+        inputFrames=fileList,
+        verbose=False,
+        overwrite=False
+    ).produce_product()
+    ```
     """
 
-    # Initialisation
+    # INITIALISATION
 
     def __init__(
         self,
@@ -116,10 +141,6 @@ class soxs_straighten(base_recipe):
     def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_straighten recipe*
 
-        **Return:**
-
-        - ``None``
-
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug("starting the ``verify_input_frames`` method")
@@ -182,6 +203,7 @@ class soxs_straighten(base_recipe):
         **Return:**
 
         - ``productPath`` -- the path to the final product
+        - ``qcTable`` -- the recipe's quality control frame
 
         **Usage**
 
@@ -192,7 +214,7 @@ class soxs_straighten(base_recipe):
             settings=settings,
             inputFrames=fileList
         )
-        straightenFrame = recipe.produce_product()
+        straightenFrame, qcTable = recipe.produce_product()
         ```
         """
         self.log.debug("starting the ``produce_product`` method")
@@ -215,8 +237,8 @@ class soxs_straighten(base_recipe):
         self.log.debug("completed the ``produce_product`` method")
         return productPath, qcTable
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
 
-    # Override Method Attributes
+    # OVERRIDE METHOD ATTRIBUTES
     # method-override-tmpx
