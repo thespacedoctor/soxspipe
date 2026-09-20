@@ -21,7 +21,7 @@ class base_util:
     **Key Arguments:**
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary (default: False)
-        - ``associatedFrame`` -- the associated frame the utility is working with (default: False)
+        - ``associatedFrame`` -- the associated frame the utility is working with
         - ``dispersionMap`` -- if passed then `read_spectral_format` will be called to give info on the detector
           format (default: False)
         - ``twoDMapPath`` -- path to the 2D dispersion map. If passed, the map with be opened as a CCDData
@@ -38,7 +38,7 @@ class base_util:
             self,
             log,
             settings,
-            associatedFrame=False,
+            associatedFrame,
             dispersionMap=False,
             twoDMapPath=False
             # other arguments needed for the new_util class
@@ -58,7 +58,7 @@ class base_util:
             self,
             log,
             settings,
-            associatedFrame=False,
+            associatedFrame,
             dispersionMap=False,
             twoDMapPath=False
     ):
@@ -80,9 +80,8 @@ class base_util:
         )
 
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
-        if associatedFrame is not False:
-            self.arm = associatedFrame.header[self.kw("SEQ_ARM")]
-            self.dateObs = associatedFrame.header[self.kw("DATE_OBS")]
+        self.arm = associatedFrame.header[self.kw("SEQ_ARM")]
+        self.dateObs = associatedFrame.header[self.kw("DATE_OBS")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
