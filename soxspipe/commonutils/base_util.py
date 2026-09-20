@@ -22,8 +22,10 @@ class base_util:
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary (default: False)
         - ``associatedFrame`` -- the associated frame the utility is working with (default: False)
-        - ``dispersionMap`` -- if passed then `read_spectral_format` will be called to give info on the detector format (default: False)
-        - ``twoDMapPath`` -- path to the 2D dispersion map. If passed, the map with be opened as a CCDData object (default: False)
+        - ``dispersionMap`` -- if passed then `read_spectral_format` will be called to give info on the detector
+          format (default: False)
+        - ``twoDMapPath`` -- path to the 2D dispersion map. If passed, the map with be opened as a CCDData
+          object (default: False)
 
     **Usage:**
 
@@ -41,9 +43,15 @@ class base_util:
             twoDMapPath=False
             # other arguments needed for the new_util class
         ):
-        super(new_util, self).__init__(log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath)
+            super(new_util, self).__init__(
+                log,
+                settings,
+                associatedFrame=associatedFrame,
+                dispersionMap=dispersionMap,
+                twoDMapPath=twoDMapPath
+            )
 
-        ...
+            ...
     ```
     """
     def __init__(
@@ -80,13 +88,7 @@ class base_util:
         self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
 
         # MAKE X, Y ARRAYS TO THEN ASSOCIATE WITH WL, SLIT AND ORDER
-        self.binx = 1
-        self.biny = 1
-        try:
-            self.binx = int(associatedFrame.header[self.kw("WIN_BINX")])
-            self.biny = int(associatedFrame.header[self.kw("WIN_BINY")])
-        except (KeyError, TypeError, ValueError) as e:
-            self.log.debug(f"__init__: `self.binx = int(associatedFrame.header[self.kw('WI...` failed, continuing: {e}")
+        self.binx, self.biny = self._read_frame_binning(associatedFrame)
 
         # GET SKYLINES DATAFRAME
         self.skylinesDF = get_skylines_dataframe(
@@ -95,47 +97,29 @@ class base_util:
 
         # SET IMAGE ORIENTATION
         self.dispersionAxis = self.detectorParams["dispersion-axis"]
-        if self.dispersionAxis == "x":
-            self.axisA = "x"
-            self.axisB = "y"
-        else:
-            self.axisA = "y"
-            self.axisB = "x"
+        self.axisA, self.axisB = self._image_orientation_axes(self.dispersionAxis)
 
         if dispersionMap:
             # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
-            self.orderNums, self.waveLengthMin, self.waveLengthMax, self.amins, self.amaxs = read_spectral_format(
-                log=self.log,
-                settings=self.settings,
-                arm=self.arm,
-                dispersionMap=dispersionMap,
-                extended=False,
-                binx=self.binx,
-                biny=self.biny,
-            )
+            (
+                self.orderNums,
+                self.waveLengthMin,
+                self.waveLengthMax,
+                self.amins,
+                self.amaxs,
+            ) = self._read_spectral_format_limits(dispersionMap, read_spectral_format)
 
         if self.twoDMapPath:
-            self.mapDF, self.interOrderMaskNDArray = twoD_disp_map_image_to_dataframe(
-                log=self.log,
-                slit_length=self.detectorParams["slit_length"],
-                twoDMapPath=twoDMapPath,
-                associatedFrame=associatedFrame,
-                kw=self.kw,
-                dispAxis=self.detectorParams["dispersion-axis"],
+            self.mapDF, self.interOrderMaskNDArray = self._read_two_d_map_dataframe(
+                twoDMapPath, associatedFrame, twoD_disp_map_image_to_dataframe
             )
-            associatedFrame.data[self.interOrderMaskNDArray == 1] = np.nan
+            self._mask_inter_order_pixels(associatedFrame, self.interOrderMaskNDArray, np)
 
         # OPEN AND UNPACK THE 2D IMAGE MAP
         if twoDMapPath:
             self.twoDMap = fits.open(twoDMapPath)
 
-            try:
-                dpBinx = self.twoDMap[0].header[self.kw("WIN_BINX")]
-                dpBiny = self.twoDMap[0].header[self.kw("WIN_BINY")]
-            except KeyError as e:
-                self.log.debug(f"__init__: `dpBinx = self.twoDMap[0].header[self.kw('WIN_B...` failed, continuing: {e}")
-                dpBinx = 1
-                dpBiny = 1
+            dpBinx, dpBiny = self._read_map_binning()
 
             binxRatio = self.binx / dpBinx
             binyRatio = self.biny / dpBiny
@@ -145,28 +129,188 @@ class base_util:
             xarray = np.tile(np.arange(0, xdim), ydim)
             yarray = np.repeat(np.arange(0, ydim), xdim)
 
-            if binxRatio > 1 or binyRatio > 1:
-                from astropy.nddata import block_reduce
-
-                self.twoDMap["WAVELENGTH"].data = block_reduce(
-                    self.twoDMap["WAVELENGTH"].data, (binyRatio, binxRatio), func=np.mean
-                )
-                self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (binyRatio, binxRatio), func=np.mean)
-                self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (binyRatio, binxRatio), func=np.mean)
-
-            self.imageMap = pd.DataFrame.from_dict(
-                {
-                    "x": xarray,
-                    "y": yarray,
-                    "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(np.float32),
-                    "slit_position": self.twoDMap["SLIT"].data.flatten().astype(np.float32),
-                    "order": self.twoDMap["ORDER"].data.flatten().astype(np.float32),
-                    "flux": associatedFrame.data.flatten().astype(np.float32),
-                }
-            )
-            self.imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
-
+            self._rebin_two_d_map(binxRatio, binyRatio, np)
+            self.imageMap = self._build_image_map(associatedFrame, xarray, yarray, np, pd)
 
         return
 
-    
+    def _read_frame_binning(
+            self,
+            associatedFrame):
+        """*read the window binning from the associated frame's header, defaulting to 1x1*
+
+        **Key Arguments:**
+            - ``associatedFrame`` -- the associated frame the utility is working with, or False
+
+        **Return:**
+            - ``binx`` -- the binning along the x-axis
+            - ``biny`` -- the binning along the y-axis
+        """
+        binx = 1
+        biny = 1
+        try:
+            binx = int(associatedFrame.header[self.kw("WIN_BINX")])
+            biny = int(associatedFrame.header[self.kw("WIN_BINY")])
+        except (KeyError, TypeError, ValueError) as e:
+            self.log.debug(f"__init__: `self.binx = int(associatedFrame.header[self.kw('WI...` failed, continuing: {e}")
+
+        return binx, biny
+
+    @staticmethod
+    def _image_orientation_axes(
+            dispersionAxis):
+        """*name the dispersion and cross-dispersion axes for this detector*
+
+        **Key Arguments:**
+            - ``dispersionAxis`` -- the detector's dispersion axis, "x" or "y"
+
+        **Return:**
+            - ``axisA`` -- the axis running along the dispersion direction
+            - ``axisB`` -- the axis running across the dispersion direction
+        """
+        if dispersionAxis == "x":
+            return "x", "y"
+
+        return "y", "x"
+
+    def _read_spectral_format_limits(
+            self,
+            dispersionMap,
+            read_spectral_format):
+        """*read the spectral format table to determine the limits of the order traces*
+
+        **Key Arguments:**
+            - ``dispersionMap`` -- path to the dispersion map solution
+            - ``read_spectral_format`` -- the toolkit function, imported by the caller
+
+        **Return:**
+            - ``orderNums`` -- the order numbers
+            - ``waveLengthMin`` -- the minimum wavelength of each order
+            - ``waveLengthMax`` -- the maximum wavelength of each order
+            - ``amins`` -- the minimum pixel position of each order along the dispersion axis
+            - ``amaxs`` -- the maximum pixel position of each order along the dispersion axis
+        """
+        return read_spectral_format(
+            log=self.log,
+            settings=self.settings,
+            arm=self.arm,
+            dispersionMap=dispersionMap,
+            extended=False,
+            binx=self.binx,
+            biny=self.biny,
+        )
+
+    def _read_two_d_map_dataframe(
+            self,
+            twoDMapPath,
+            associatedFrame,
+            twoD_disp_map_image_to_dataframe):
+        """*unpack the 2D dispersion map image into a dataframe and an inter-order mask*
+
+        **Key Arguments:**
+            - ``twoDMapPath`` -- path to the 2D dispersion map
+            - ``associatedFrame`` -- the associated frame the utility is working with
+            - ``twoD_disp_map_image_to_dataframe`` -- the toolkit function, imported by the caller
+
+        **Return:**
+            - ``mapDF`` -- the 2D dispersion map as a dataframe
+            - ``interOrderMaskNDArray`` -- the mask of the pixels lying between the orders
+        """
+        return twoD_disp_map_image_to_dataframe(
+            log=self.log,
+            slit_length=self.detectorParams["slit_length"],
+            twoDMapPath=twoDMapPath,
+            associatedFrame=associatedFrame,
+            kw=self.kw,
+            dispAxis=self.detectorParams["dispersion-axis"],
+        )
+
+    @staticmethod
+    def _mask_inter_order_pixels(
+            associatedFrame,
+            interOrderMaskNDArray,
+            np):
+        """*set the frame's inter-order pixels to NaN, in place*
+
+        **Key Arguments:**
+            - ``associatedFrame`` -- the associated frame the utility is working with
+            - ``interOrderMaskNDArray`` -- the mask of the pixels lying between the orders
+            - ``np`` -- the numpy module, imported by the caller
+        """
+        associatedFrame.data[interOrderMaskNDArray == 1] = np.nan
+
+        return
+
+    def _read_map_binning(
+            self):
+        """*read the window binning from the 2D map's primary header, defaulting to 1x1*
+
+        **Return:**
+            - ``dpBinx`` -- the 2D map's binning along the x-axis
+            - ``dpBiny`` -- the 2D map's binning along the y-axis
+        """
+        try:
+            dpBinx = self.twoDMap[0].header[self.kw("WIN_BINX")]
+            dpBiny = self.twoDMap[0].header[self.kw("WIN_BINY")]
+        except KeyError as e:
+            self.log.debug(f"__init__: `dpBinx = self.twoDMap[0].header[self.kw('WIN_B...` failed, continuing: {e}")
+            dpBinx = 1
+            dpBiny = 1
+
+        return dpBinx, dpBiny
+
+    def _rebin_two_d_map(
+            self,
+            binxRatio,
+            binyRatio,
+            np):
+        """*block-reduce the 2D map's planes onto the associated frame's binning*
+
+        **Key Arguments:**
+            - ``binxRatio`` -- the frame's x-binning divided by the map's x-binning
+            - ``binyRatio`` -- the frame's y-binning divided by the map's y-binning
+            - ``np`` -- the numpy module, imported by the caller
+        """
+        if binxRatio > 1 or binyRatio > 1:
+            from astropy.nddata import block_reduce
+
+            self.twoDMap["WAVELENGTH"].data = block_reduce(
+                self.twoDMap["WAVELENGTH"].data, (binyRatio, binxRatio), func=np.mean
+            )
+            self.twoDMap["SLIT"].data = block_reduce(self.twoDMap["SLIT"].data, (binyRatio, binxRatio), func=np.mean)
+            self.twoDMap["ORDER"].data = block_reduce(self.twoDMap["ORDER"].data, (binyRatio, binxRatio), func=np.mean)
+
+        return
+
+    def _build_image_map(
+            self,
+            associatedFrame,
+            xarray,
+            yarray,
+            np,
+            pd):
+        """*associate each frame pixel with its wavelength, slit position and order*
+
+        **Key Arguments:**
+            - ``associatedFrame`` -- the associated frame the utility is working with
+            - ``xarray`` -- the x pixel coordinate of every map pixel, built by the caller
+            - ``yarray`` -- the y pixel coordinate of every map pixel, built by the caller
+            - ``np`` -- the numpy module, imported by the caller
+            - ``pd`` -- the pandas module, imported by the caller
+
+        **Return:**
+            - ``imageMap`` -- the image map dataframe, with the inter-order rows removed
+        """
+        imageMap = pd.DataFrame.from_dict(
+            {
+                "x": xarray,
+                "y": yarray,
+                "wavelength": self.twoDMap["WAVELENGTH"].data.flatten().astype(np.float32),
+                "slit_position": self.twoDMap["SLIT"].data.flatten().astype(np.float32),
+                "order": self.twoDMap["ORDER"].data.flatten().astype(np.float32),
+                "flux": associatedFrame.data.flatten().astype(np.float32),
+            }
+        )
+        imageMap.dropna(how="all", subset=["wavelength", "slit_position", "order"], inplace=True)
+
+        return imageMap
