@@ -17,6 +17,11 @@ import sys
 
 from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, subtract_background
 
+# VALIDATES A COLUMN OR TABLE NAME AT THE SQL TRUST BOUNDARY BEFORE IT IS
+# INTERPOLATED. A LEAF MODULE WITH NO IMPORTS OF ITS OWN, SO IT CANNOT
+# DISTURB THE PACKAGE'S LOAD-BEARING IMPORT ORDER.
+from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+
 # THE "CALLER DID NOT PASS THIS KEYWORD" SENTINEL USED BY THE add_qc AND
 # add_product DELEGATORS BELOW. IMPORTED FROM `toolkit` RATHER THAN REDEFINED
 # HERE SO THE DELEGATORS FORWARD THE SAME OBJECT `append_qc` AND
@@ -260,15 +265,20 @@ class base_recipe:
         # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
         if self.conn:
             c = self.conn.cursor()
-            # THE SESSION NAME IS A COLUMN NAME, WHICH SQLITE CANNOT
-            # PARAMETERISE, AND IT COMES FROM THE WORKSPACE DATABASE RATHER
-            # THAN FROM USER INPUT. THE MODULE'S SQL FINDINGS ARE DY-88'S.
-            sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"  # noqa: E501, S608
-            c.execute(sqlQuery)
+            # THE SESSION STATUS COLUMN NAME IS A COLUMN NAME, WHICH SQLITE
+            # CANNOT PARAMETERISE, AND IT COMES FROM THE WORKSPACE DATABASE
+            # RATHER THAN FROM USER INPUT. THE SESSION NAME IS NEVER USED AS A
+            # BARE IDENTIFIER -- IT IS VALIDATED ONLY AFTER BEING COMPOSED WITH
+            # THE LITERAL `status_` PREFIX, SO A DIGIT-LEADING SESSION NAME
+            # (THE DEFAULT `%Y%m%dt%H%M%S` SHAPE) STILL PASSES. THE SOF NAME IS
+            # BOUND RATHER THAN INTERPOLATED.
+            statusColumn = validate_sql_identifier(f"status_{self.currentSession}", "session status column")
+            sqlQuery = f"select {statusColumn} as status from product_frames where sof = ?"  # noqa: S608
+            c.execute(sqlQuery, (f"{self.sofName}.sof",))
             try:
                 self.status = c.fetchone()["status"]
-                sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"  # noqa: E501, S608
-                c.execute(sqlQuery)
+                sqlQuery = f"update product_frames set {statusColumn} = 'fail' where sof = ?"  # noqa: S608
+                c.execute(sqlQuery, (f"{self.sofName}.sof",))
             except (sqlite3.Error, TypeError) as e:
                 self.log.warning(f"__init__: `self.status = c.fetchone()['status']` failed, continuing: {e}")
                 self.status = None
@@ -1185,15 +1195,14 @@ class base_recipe:
 
             if not passToFail and not forceFail:
                 c = self.conn.cursor()
-                # THE SESSION NAME IS A COLUMN NAME, WHICH SQLITE CANNOT TAKE AS A
-                # BOUND PARAMETER. MOVING THE SOF NAME ONTO A PARAMETER WOULD CHANGE
-                # THE STATEMENT THIS PULL REQUEST'S TESTS PIN, SO THE HARDENING IS
-                # FILED SEPARATELY AS DY-93 RATHER THAN DONE IN A REFACTOR COMMIT.
-                sqlQuery = (
-                    f"update product_frames set status_{self.currentSession} = 'pass' "  # noqa: S608
-                    f"where sof = '{self.sofName}.sof'"
-                )
-                c.execute(sqlQuery)
+                # THE SESSION STATUS COLUMN NAME CANNOT BE A BOUND PARAMETER. THE
+                # SESSION NAME IS NEVER VALIDATED BARE -- IT IS COMPOSED WITH THE
+                # LITERAL `status_` PREFIX FIRST, SO A DIGIT-LEADING SESSION NAME
+                # (THE DEFAULT `%Y%m%dt%H%M%S` SHAPE) STILL PASSES THE GRAMMAR.
+                # THE SOF NAME IS BOUND.
+                statusColumn = validate_sql_identifier(f"status_{self.currentSession}", "session status column")
+                sqlQuery = f"update product_frames set {statusColumn} = 'pass' where sof = ?"  # noqa: S608
+                c.execute(sqlQuery, (f"{self.sofName}.sof",))
                 c.close()
 
             # PREVIOUSLY FAILED RECIPE THAT HAS NOW PASSED
@@ -1210,14 +1219,10 @@ class base_recipe:
 
             if forceFail and isinstance(forceFail, str):
                 c = self.conn.cursor()
-                # SAME AS ABOVE: THE FAILURE MESSAGE AND THE SOF NAME BELONG ON
-                # BOUND PARAMETERS, WHICH CHANGES THE STATEMENT AND THEREFORE WAITS
-                # FOR DY-93.
-                sqlQuery = (
-                    f"update product_frames set error_message = '{forceFail}' "  # noqa: S608
-                    f"where sof = '{self.sofName}.sof'"
-                )
-                c.execute(sqlQuery)
+                # BOTH THE FAILURE MESSAGE AND THE SOF NAME ARE BOUND PARAMETERS
+                # RATHER THAN INTERPOLATED INTO THE SQL TEXT.
+                sqlQuery = "update product_frames set error_message = ? where sof = ?"
+                c.execute(sqlQuery, (forceFail, f"{self.sofName}.sof"))
                 c.close()
 
             self.conn.close()
@@ -2570,14 +2575,17 @@ class base_recipe:
         **Raises:**
 
         - Exception if the insert fails after seven attempts.
+        - ``UnsafeSqlIdentifierError`` if ``table_name`` fails the safe-identifier grammar.
         """
         import time
 
+        # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
+        # THE SAFE-IDENTIFIER GRAMMAR ONCE HERE, BEFORE EITHER SQL SITE BELOW
+        # INTERPOLATES IT.
+        table_name = validate_sql_identifier(table_name, "table name")
+
         if replace:
             c = self.conn.cursor()
-            # A TABLE NAME CANNOT BE A BOUND PARAMETER. EVERY CALLER IN THE PACKAGE
-            # PASSES A LITERAL TABLE NAME, NEVER A VALUE READ FROM DATA OR FROM A
-            # USER. DY-93 COVERS VALIDATING THE NAME AT THIS BOUNDARY.
             sqlQuery = f"delete from {table_name};"  # noqa: S608
             try:
                 c.execute(sqlQuery)

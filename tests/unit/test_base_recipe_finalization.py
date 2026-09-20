@@ -20,11 +20,13 @@ class RecordingCursor:
     """Database cursor boundary that records recipe status statements."""
 
     statements: list[str]
+    params: list[tuple[Any, ...] | None]
     wasClosed: bool = False
 
-    def execute(self, statement: str) -> None:
-        """Record an executed database statement."""
+    def execute(self, statement: str, params: tuple[Any, ...] | None = None) -> None:
+        """Record an executed database statement and its bound parameters."""
         self.statements.append(statement)
+        self.params.append(params)
 
     def close(self) -> None:
         """Mark the cursor closed."""
@@ -36,12 +38,13 @@ class RecordingConnection:
     """Database connection boundary that creates recording cursors."""
 
     statements: list[str] = field(default_factory=list)
+    params: list[tuple[Any, ...] | None] = field(default_factory=list)
     cursors: list[RecordingCursor] = field(default_factory=list)
     wasClosed: bool = False
 
     def cursor(self) -> RecordingCursor:
         """Return a cursor that records status updates."""
-        cursor = RecordingCursor(self.statements)
+        cursor = RecordingCursor(self.statements, self.params)
         self.cursors.append(cursor)
         return cursor
 
@@ -81,8 +84,9 @@ def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
 
     assert result is None
     assert connection.statements == [
-        "update product_frames set status_20240102 = 'pass' where sof = 'synthetic.sof'"
+        "update product_frames set status_20240102 = 'pass' where sof = ?"
     ]
+    assert connection.params == [("synthetic.sof",)]
     assert connection.cursors[0].wasClosed
     assert connection.wasClosed
     assert not Path(recipe.outDir).exists()
@@ -144,8 +148,9 @@ def test_clean_up_records_an_explicit_failure_reason(log: Any, tmp_path: Path) -
     recipe.clean_up(forceFail="synthetic calibration mismatch")
 
     assert connection.statements == [
-        "update product_frames set error_message = 'synthetic calibration mismatch' where sof = 'synthetic.sof'"
+        "update product_frames set error_message = ? where sof = ?"
     ]
+    assert connection.params == [("synthetic calibration mismatch", "synthetic.sof")]
     assert connection.wasClosed
     assert not Path(recipe.outDir).exists()
     assert (
