@@ -189,9 +189,7 @@ class soxs_mdark(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
 
         combined_dark_mean, masterMedianFluxLevel, rawRon, masterRon = self._combine_dark_frames()
 
@@ -290,7 +288,7 @@ class soxs_mdark(base_recipe):
             qcTable=self.qc,
         )
 
-        medianFlux = self.qc_median_flux_level(
+        self.qc_median_flux_level(
             frame=frame,
             frameType="MDARK",
             frameName="master dark",
