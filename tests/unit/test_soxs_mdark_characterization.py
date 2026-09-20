@@ -19,7 +19,6 @@ non-`DARK` image type, and differing exposure times.
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 from typing import Any
 
@@ -32,8 +31,6 @@ from soxspipe.recipes.base_recipe import base_recipe
 from soxspipe.recipes.soxs_mdark import soxs_mdark
 
 pytestmark = pytest.mark.unit
-
-RECIPE_MODULE = importlib.import_module("soxspipe.recipes.soxs_mdark")
 
 # THE EXPOSURE TIME EVERY SYNTHETIC DARK FRAME CARRIES. THE RECIPE REJECTS A
 # SET OF FRAMES THAT DOES NOT AGREE ON IT.
@@ -48,7 +45,9 @@ class FrameInventory:
         *,
         imageTypes: list[str] | None = None,
         exptimes: list[float] | None = None,
+        calls: list[str] | None = None,
     ) -> None:
+        self.calls = calls
         self.imageTypes = ["DARK"] if imageTypes is None else imageTypes
         self.exptimes = [UNIFORM_EXPTIME] if exptimes is None else exptimes
         self.sortedBy: list[str] | None = None
@@ -61,6 +60,8 @@ class FrameInventory:
 
     def sort(self, keywords: list[str]) -> None:
         self.sortedBy = list(keywords)
+        if self.calls is not None:
+            self.calls.append("sort")
 
 
 def _recipe_with_inventory(log: Any, inventory: FrameInventory) -> soxs_mdark:
@@ -75,13 +76,16 @@ def _recipe_with_inventory(log: Any, inventory: FrameInventory) -> soxs_mdark:
 def _stub_basics(
     monkeypatch: pytest.MonkeyPatch,
     inventory: FrameInventory,
+    calls: list[str] | None = None,
 ) -> None:
     """Replace the inherited basic verification with the classifications it returns."""
-    monkeypatch.setattr(
-        base_recipe,
-        "_verify_input_frames_basics",
-        lambda self: (list(inventory.imageTypes), ["IMAGE"], ["CALIB"]),
-    )
+
+    def fake_basics(self: object) -> tuple[list[str], list[str], list[str]]:
+        if calls is not None:
+            calls.append("verify")
+        return list(inventory.imageTypes), ["IMAGE"], ["CALIB"]
+
+    monkeypatch.setattr(base_recipe, "_verify_input_frames_basics", fake_basics)
 
 
 def _isolate(
@@ -149,7 +153,8 @@ def _construct(
       received.
     """
     _isolate(monkeypatch, tmpPath, productPath=tmpPath / "reduced" / "mdark.fits")
-    _stub_basics(monkeypatch, inventory)
+    _stub_basics(monkeypatch, inventory, calls)
+    inventory.calls = calls
 
     sofArguments: dict[str, Any] = {}
     preparedFrames = object()
@@ -224,7 +229,7 @@ def test_the_constructor_verifies_then_sorts_then_prepares(
     _construct(log, monkeypatch, tmp_path, inventory=inventory, calls=calls)
 
     # ASSERT
-    assert calls == ["set_of_files", "prepare_frames(save=False)"]
+    assert calls == ["set_of_files", "verify", "sort", "prepare_frames(save=False)"]
     assert inventory.sortedBy == ["MJD-OBS"]
 
 
@@ -277,7 +282,7 @@ def test_saving_intermediate_products_reaches_the_frame_preparation(
     )
 
     # ASSERT
-    assert calls == ["set_of_files", "prepare_frames(save=True)"]
+    assert calls == ["set_of_files", "verify", "sort", "prepare_frames(save=True)"]
 
 
 def test_a_verbose_construction_prints_the_raw_frame_summary(
