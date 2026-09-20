@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
@@ -445,6 +446,16 @@ def test_master_dark_produce_product_preserves_qc_and_records_product(
     )
     monkeypatch.setattr(recipe, "clean_up", lambda: calls.append("clean_up"))
 
+    # THE RECIPE READS THE CLOCK THROUGH THE NAME IT IMPORTED, SO PATCHING
+    # THAT NAME RECORDS EVERY READ AND WOULD CATCH A SECOND ONE.
+    clockReads: list[str] = []
+
+    def fake_utcnow_string() -> str:
+        clockReads.append("2024-01-02T03:04:05")
+        return "2024-01-02T03:04:05"
+
+    monkeypatch.setattr(darkModule, "utcnow_string", fake_utcnow_string)
+
     returnedPath, returnedQc = recipe.produce_product()
 
     assert returnedPath == str(productPath)
@@ -461,6 +472,15 @@ def test_master_dark_produce_product_preserves_qc_and_records_product(
         productPath=productPath,
         description="VIS Master dark frame",
     )
+    # THE RENDERED FORMAT HOLDS WHATEVER MINTS THE TIMESTAMP, AND THE CLOCK
+    # STUB BELOW PINS THAT THE RECIPE READS IT EXACTLY ONCE, WHICH IS WHAT A
+    # FORMAT ASSERTION ALONE CANNOT CATCH.
+    assert re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}",
+        recipe.products.iloc[-1]["reduction_date_utc"],
+    )
+    assert clockReads == ["2024-01-02T03:04:05"]
+    assert recipe.products.iloc[-1]["reduction_date_utc"] == "2024-01-02T03:04:05"
     assert calls == [
         "stack",
         "generic_qc",
