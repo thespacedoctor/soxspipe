@@ -26,6 +26,30 @@ from soxspipe.commonutils.toolkit import OMITTED
 os.environ["TERM"] = "vt100"
 
 
+# THE FORMER `imstats` CLOSURE INSIDE `qc_ron`. A MODULE-LEVEL FUNCTION RATHER
+# THAN A METHOD, SO THAT THE READ-OUT-NOISE CALCULATION STAYS AS UNOVERRIDEABLE
+# AS THE CLOSURE IT REPLACES.
+def _image_stats(dat):
+    """*report the minimum, maximum, mean and standard deviation of an image*
+
+    **Key Arguments:**
+
+    - ``dat`` -- the image data to report on. Masked array or numpy array.
+
+    **Return:**
+
+    - ``stats`` -- the minimum, maximum, mean and standard deviation of ``dat``
+
+    **Usage:**
+
+    ```python
+    dmin, dmax, dmean, dstd = _image_stats(maskedFrameData)
+    ```
+    """
+    return (dat.min(), dat.max(), dat.mean(), dat.std())
+
+
+
 class base_recipe:
     """
     The base recipe class which all other recipes inherit
@@ -1618,7 +1642,7 @@ class base_recipe:
             totalPixels = np.size(combinedMask)
             percent = (float(newBadCount) / float(totalPixels)) * 100.0
             self.log.print(
-                f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)"
+                f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)"  # noqa: E501
             )
 
         from soxspipe.commonutils.toolkit import quicklook_image
@@ -1797,9 +1821,11 @@ class base_recipe:
 
         from soxspipe.commonutils import toolkit
 
-        arm = self.arm
+        # `arm` AND `dp` ARE UNUSED, TWO OF THE MODULE'S `F841` FINDINGS. DELETING
+        # THEM IS DY-88'S.
+        arm = self.arm  # noqa: F841
         kw = self.kw
-        dp = self.detectorParams
+        dp = self.detectorParams  # noqa: F841
 
         if master_bias == None:
             master_bias = False
@@ -1807,7 +1833,9 @@ class base_recipe:
             dark = False
 
         # VERIFY DATA IS IN ORDER
-        if master_bias == False and dark == False and master_flat == False:
+        # EACH OF THESE IS EITHER `False` OR A CCDData FRAME, WHOSE TRUTH VALUE IS
+        # AMBIGUOUS, SO NONE OF THE COMPARISONS CAN BECOME A TRUTH CHECK.
+        if master_bias == False and dark == False and master_flat == False:  # noqa: E712
             raise TypeError("detrend method needs at least a master-bias frame, a dark frame or a master flat frame")
         if master_bias == False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             if not self.darkDetrendWarningIssued1:
@@ -1816,7 +1844,7 @@ class base_recipe:
 
         processedFrame = inputFrame
 
-        if master_bias != False:
+        if master_bias != False:  # noqa: E712
             processedFrame = ccdproc.subtract_bias(processedFrame, master_bias, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
@@ -1830,12 +1858,15 @@ class base_recipe:
         if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
             doSubtraction = False
 
-        if order_table != False and doSubtraction:
+        # `order_table` IS EITHER `False` OR A TABLE PATH.
+        if order_table != False and doSubtraction:  # noqa: E712
             processedFrame = self._subtract_scattered_light(processedFrame, order_table)
 
-            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+            # ASSIGNED AND NEVER READ. IT IS THE MODULE'S LAST DUPLICATION HIT AND
+            # ONE OF ITS `F841` FINDINGS, BOTH OF WHICH ARE DY-88'S.
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")  # noqa: F841
 
-        if master_flat != False:
+        if master_flat != False:  # noqa: E712
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat, norm_value=1.0, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
@@ -2047,26 +2078,6 @@ class base_recipe:
         self.log.debug("completed the ``flag_poor_data`` method")
         return
 
-    @staticmethod
-    def _image_stats(dat):
-        """*report the minimum, maximum, mean and standard deviation of an image*
-
-        **Key Arguments:**
-
-        - ``dat`` -- the image data to report on. Masked array or numpy array.
-
-        **Return:**
-
-        - ``stats`` -- the minimum, maximum, mean and standard deviation of ``dat``
-
-        **Usage:**
-
-        ```python
-        dmin, dmax, dmean, dstd = self._image_stats(maskedFrameData)
-        ```
-        """
-        return (dat.min(), dat.max(), dat.mean(), dat.std())
-
     def _measure_raw_frame_ron(self):
         """*measure the read-out noise in a single raw frame, from the first two input frames*
 
@@ -2127,7 +2138,7 @@ class base_recipe:
         # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
         raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
 
-        dmin, dmax, dmean, dstd = self._image_stats(raw_diff)
+        dmin, dmax, dmean, dstd = _image_stats(raw_diff)
 
         if dstd == 0:
             message = "The raw input frames appear to be corrupted. Cannot calculate the read-out noise. Please check the raw frames."  # noqa: E501
@@ -2202,7 +2213,7 @@ class base_recipe:
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             tmp = np.ma.array(masterFrame.data, mask=combinedMask)
 
-            dmin, dmax, dmean, dstd = self._image_stats(tmp)
+            dmin, dmax, dmean, dstd = _image_stats(tmp)
             masterRon = float(dstd)
 
         elif masterRon:
