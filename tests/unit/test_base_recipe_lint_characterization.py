@@ -92,23 +92,38 @@ def test_qc_median_flux_level_returns_the_unmasked_median_when_exptime_is_presen
 # ---------------------------------------------------------------------------
 
 
-class _RecordingConnection:
-    """A stub DB connection that records every `execute()` call verbatim.
+class _RecordingCursor:
+    """A stub cursor that records every `execute()` call verbatim."""
 
-    Stands in for `sqlite3.Connection`. `cursor()` returns the connection
-    itself so `execute()` calls land on the same recorder regardless of how
-    many cursors the method under test opens.
+    def __init__(self, executedQueries: list[tuple[str, tuple[Any, ...] | None]]) -> None:
+        self.executedQueries = executedQueries
+        self.closed = False
+
+    def execute(self, sqlQuery: str, params: tuple[Any, ...] | None = None) -> None:
+        self.executedQueries.append((sqlQuery, params))
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _RecordingConnection:
+    """A stub DB connection that hands out recording cursors.
+
+    Stands in for `sqlite3.Connection`, which returns a distinct `Cursor`
+    from each `cursor()` call. Keeping them distinct means closing a cursor
+    does not close the connection, so the close order the method under test
+    uses stays visible.
     """
 
     def __init__(self) -> None:
         self.executedQueries: list[tuple[str, tuple[Any, ...] | None]] = []
+        self.cursors: list[_RecordingCursor] = []
         self.closed = False
 
-    def cursor(self) -> _RecordingConnection:
-        return self
-
-    def execute(self, sqlQuery: str, params: tuple[Any, ...] | None = None) -> None:
-        self.executedQueries.append((sqlQuery, params))
+    def cursor(self) -> _RecordingCursor:
+        cursor = _RecordingCursor(self.executedQueries)
+        self.cursors.append(cursor)
+        return cursor
 
     def close(self) -> None:
         self.closed = True
@@ -157,10 +172,10 @@ def test_clean_up_sets_products_to_pass_with_todays_interpolated_sql(
     )
     # NO BOUND PARAMETERS TODAY -- EVERY VALUE IS ALREADY INSIDE `sqlQuery`.
     assert params is None
-    # THE STATEMENT'S SEMANTICS: WHICH TABLE, COLUMN, AND VALUE IT TOUCHES.
-    assert "update product_frames set" in sqlQuery
-    assert "status_base = 'pass'" in sqlQuery
-    assert "sof = '20240102T030405_VIS_1X1_FAST_MBIAS_SOXS.sof'" in sqlQuery
+    # THE CONNECTION OUTLIVES THE CURSOR: `clean_up` CLOSES THE CURSOR IT OPENED,
+    # THEN THE CONNECTION.
+    assert conn.cursors[0].closed
+    assert conn.closed
 
 
 def test_clean_up_records_the_force_fail_message_with_todays_interpolated_sql(
@@ -182,9 +197,8 @@ def test_clean_up_records_the_force_fail_message_with_todays_interpolated_sql(
         "where sof = '20240102T030405_VIS_1X1_FAST_MBIAS_SOXS.sof'"
     )
     assert params is None
-    assert "update product_frames set" in sqlQuery
-    assert "error_message = 'boom: something went wrong'" in sqlQuery
-    assert "sof = '20240102T030405_VIS_1X1_FAST_MBIAS_SOXS.sof'" in sqlQuery
+    assert conn.cursors[0].closed
+    assert conn.closed
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +207,7 @@ def test_clean_up_records_the_force_fail_message_with_todays_interpolated_sql(
 # ---------------------------------------------------------------------------
 
 
-def test_bad_pixel_mask_raises_oserror_with_the_percent_formatted_message(
+def test_bad_pixel_mask_raises_oserror_naming_the_missing_bitmap_path(
     log: Any,
     tmp_path: Path,
 ) -> None:
