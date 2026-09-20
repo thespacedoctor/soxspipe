@@ -53,19 +53,28 @@ def _recipe(log: Any) -> base_recipe:
     return recipe
 
 
-def _noise_frames() -> list[CCDData]:
-    """Return two frames whose difference has a known standard deviation."""
+def _noise_frames(*, maskFirstPixel: bool = False, extraFrame: bool = False) -> list[CCDData]:
+    """Return frames whose difference has a known standard deviation."""
     rng = np.random.default_rng(11)
     first = rng.normal(loc=100.0, scale=3.0, size=(16, 16))
     second = rng.normal(loc=100.0, scale=3.0, size=(16, 16))
-    return [_frame(first), _frame(second)]
+    mask = np.zeros((16, 16), dtype=bool)
+    if maskFirstPixel:
+        mask[0, 0] = True
+    frames = [_frame(first, mask), _frame(second, mask)]
+    if extraFrame:
+        # A THIRD FRAME WIDE ENOUGH TO MOVE THE RESULT IF IT WERE MEASURED
+        frames.append(_frame(rng.normal(loc=100.0, scale=90.0, size=(16, 16))))
+    return frames
 
 
 def test_qc_ron_measures_raw_noise_from_the_first_two_input_frames(log: Any) -> None:
     """Raw read-out noise is half the clipped spread of the first frame pair."""
     # ARRANGE
     recipe = _recipe(log)
-    recipe.inputFrames = StubInputFrames(_noise_frames())
+    # THE THIRD FRAME IS NINETY TIMES NOISIER, SO A MEASUREMENT THAT READ IT
+    # COULD NOT RETURN THE SAME VALUE AS THE TWO-FRAME CASE BELOW
+    recipe.inputFrames = StubInputFrames(_noise_frames(extraFrame=True))
 
     # ACT
     rawRon, masterRon = recipe.qc_ron(frameType="MBIAS", frameName="master bias")
@@ -91,9 +100,12 @@ def test_qc_ron_measures_master_noise_against_the_raw_pair_mask(log: Any) -> Non
     """Master read-out noise is the spread of the master frame under the raw mask."""
     # ARRANGE
     recipe = _recipe(log)
-    recipe.inputFrames = StubInputFrames(_noise_frames())
+    recipe.inputFrames = StubInputFrames(_noise_frames(maskFirstPixel=True))
     masterFrame = _frame(np.full((16, 16), 5.0))
-    masterFrame.data[0, 0] = 9.0
+    # THIS PIXEL IS MASKED IN BOTH RAW FRAMES, SO THE MASK THE RAW MEASUREMENT
+    # RETURNS MUST EXCLUDE IT. AN UNMASKED MEASUREMENT WOULD RETURN ABOUT 62.
+    masterFrame.data[0, 0] = 1000.0
+    masterFrame.data[1, 1] = 9.0
 
     # ACT
     rawRon, masterRon = recipe.qc_ron(
@@ -103,8 +115,8 @@ def test_qc_ron_measures_master_noise_against_the_raw_pair_mask(log: Any) -> Non
     )
 
     # ASSERT
-    assert rawRon == pytest.approx(2.979132461386683, rel=1e-12)
-    assert masterRon == pytest.approx(0.24951124097923924, rel=1e-12)
+    assert rawRon == pytest.approx(2.9832380152474314, rel=1e-12)
+    assert masterRon == pytest.approx(0.24999807765504675, rel=1e-12)
     # THE MASTER BRANCH RECORDS NO QC ROW OF ITS OWN, ONLY THE RAW ROW
     assert recipe.qc["qc_name"].tolist() == ["RAW RON"]
 
@@ -319,3 +331,6 @@ def test_write_can_save_a_named_non_product_frame_with_masked_pixels_set(
     # THE METHOD WRITES 1, NOT 0, INTO MASKED PIXELS DESPITE ITS ARGUMENT NAME
     assert written.data[1, 1] == pytest.approx(1.0)
     assert written.data[0, 0] == pytest.approx(7.0)
+    # THE MASK ITSELF SURVIVES THE ROUND TRIP, IN ITS OWN QUAL EXTENSION
+    assert bool(written.mask[1, 1]) is True
+    assert bool(written.mask[0, 0]) is False
