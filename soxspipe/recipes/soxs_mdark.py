@@ -13,9 +13,8 @@ Date Created
 
 import os
 import sys
-from datetime import datetime
 
-from soxspipe.commonutils.toolkit import generic_quality_checks
+from soxspipe.commonutils.toolkit import append_product, generic_quality_checks, utcnow_string
 
 from .base_recipe import base_recipe
 
@@ -169,7 +168,6 @@ class soxs_mdark(base_recipe):
         self.log.debug("starting the ``produce_product`` method")
 
         import numpy as np
-        import pandas as pd
 
         from soxspipe.commonutils import toolkit
 
@@ -253,28 +251,21 @@ class soxs_mdark(base_recipe):
         )
         filename = os.path.basename(productPath)
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = utcnow_string()
 
         self.dateObs = combined_dark_mean.header[kw("DATE_OBS")]
 
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "MDARK",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": f"{self.arm} Master dark frame",
-                        "file_path": productPath,
-                        "label": "PROD",
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.products = append_product(
+            self.products,
+            recipeName=self.recipeName,
+            productLabel="MDARK",
+            fileName=filename,
+            filePath=productPath,
+            productDesc=f"{self.arm} Master dark frame",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow,
+            fileType="FITS",
+            label="PROD",
         )
 
         qcTable = self.report_output()
