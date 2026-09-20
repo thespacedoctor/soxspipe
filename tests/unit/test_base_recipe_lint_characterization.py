@@ -1,11 +1,16 @@
 """Characterization tests pinning three lint-flagged expressions in `base_recipe`.
 
 DY-88 commit 5 fixes three Ruff findings in this module: an "unused" local
-(F841), two f-string-built SQL statements slated to move to bound parameters,
-and a percent-format string (UP031). Each finding looks like a mechanical
-rewrite, but the first two are not dead code -- deleting or reshaping them
-would change what the recipe does. These tests pin today's behaviour so
-commit 5 can be checked against them before touching the expressions.
+(F841), two f-string-built SQL statements, and a percent-format string
+(UP031). Each finding looks like a mechanical rewrite, but the first two are
+not dead code -- deleting or reshaping them would change what the recipe
+does. These tests pin today's behaviour so commit 5 can be checked against
+them before touching the expressions.
+
+DY-93 moved the sof name and the failure message in the two `clean_up` SQL
+statements onto bound `?` parameters, leaving only the session column name
+interpolated (validated first, since SQLite cannot bind an identifier). The
+two tests below pin that bound-parameter behaviour.
 """
 
 from __future__ import annotations
@@ -88,8 +93,9 @@ def test_qc_median_flux_level_returns_the_unmasked_median_when_exptime_is_presen
 
 
 # ---------------------------------------------------------------------------
-# 2. `clean_up` -- THE EMBEDDED SQL STRINGS BEFORE THEY MOVE TO BOUND `?`
-# PARAMETERS. PINS THE EXACT RENDERED QUERY TEXT FOR BOTH BRANCHES.
+# 2. `clean_up` -- THE SOF NAME AND FAILURE MESSAGE ARE NOW BOUND `?`
+# PARAMETERS. PINS THE RENDERED QUERY TEXT AND THE BOUND VALUES FOR BOTH
+# BRANCHES.
 # ---------------------------------------------------------------------------
 
 
@@ -154,11 +160,11 @@ def _clean_up_recipe(
     return recipe, conn
 
 
-def test_clean_up_sets_products_to_pass_with_todays_interpolated_sql(
+def test_clean_up_sets_products_to_pass_with_the_sof_name_bound(
     log: Any,
     tmp_path: Path,
 ) -> None:
-    """A clean pass renders `status_<session> = 'pass'` with the sof name inlined into the SQL text."""
+    """A clean pass renders `status_<session> = 'pass'` with the sof name bound as a `?` parameter."""
     # ARRANGE
     recipe, conn = _clean_up_recipe(log, tmp_path, status="pass")
 
@@ -168,22 +174,21 @@ def test_clean_up_sets_products_to_pass_with_todays_interpolated_sql(
     # ASSERT
     assert len(conn.executedQueries) == 1
     sqlQuery, params = conn.executedQueries[0]
-    assert sqlQuery == (
-        "update product_frames set status_base = 'pass' where sof = '20240102T030405_VIS_1X1_FAST_MBIAS_SOXS.sof'"
-    )
-    # NO BOUND PARAMETERS TODAY -- EVERY VALUE IS ALREADY INSIDE `sqlQuery`.
-    assert params is None
+    # THE SESSION NAME IS STILL A COLUMN NAME, WHICH SQLITE CANNOT BIND, SO IT
+    # STAYS INTERPOLATED (VALIDATED FIRST). THE SOF NAME IS BOUND.
+    assert sqlQuery == "update product_frames set status_base = 'pass' where sof = ?"
+    assert params == ("20240102T030405_VIS_1X1_FAST_MBIAS_SOXS.sof",)
     # THE CONNECTION OUTLIVES THE CURSOR: `clean_up` CLOSES THE CURSOR IT OPENED,
     # THEN THE CONNECTION.
     assert conn.cursors[0].closed
     assert conn.closed
 
 
-def test_clean_up_records_the_force_fail_message_with_todays_interpolated_sql(
+def test_clean_up_records_the_force_fail_message_with_both_values_bound(
     log: Any,
     tmp_path: Path,
 ) -> None:
-    """A string `forceFail` renders `error_message = '<message>'` with the message inlined into the SQL text."""
+    """A string `forceFail` renders `error_message = ?` with the message and sof name both bound."""
     # ARRANGE
     recipe, conn = _clean_up_recipe(log, tmp_path, status="fail")
 
@@ -193,11 +198,11 @@ def test_clean_up_records_the_force_fail_message_with_todays_interpolated_sql(
     # ASSERT
     assert len(conn.executedQueries) == 1
     sqlQuery, params = conn.executedQueries[0]
-    assert sqlQuery == (
-        "update product_frames set error_message = 'boom: something went wrong' "
-        "where sof = '20240102T030405_VIS_1X1_FAST_MBIAS_SOXS.sof'"
+    assert sqlQuery == "update product_frames set error_message = ? where sof = ?"
+    assert params == (
+        "boom: something went wrong",
+        "20240102T030405_VIS_1X1_FAST_MBIAS_SOXS.sof",
     )
-    assert params is None
     assert conn.cursors[0].closed
     assert conn.closed
 

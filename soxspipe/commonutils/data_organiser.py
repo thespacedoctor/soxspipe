@@ -16,6 +16,8 @@ from pathlib import Path
 
 from fundamentals import tools
 
+from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+
 os.environ["TERM"] = "vt100"
 
 
@@ -2698,8 +2700,13 @@ class data_organiser:
 
         **Raises:**
         - Exception if the insertion fails after 7 attempts.
+        - `UnsafeSqlIdentifierError` if `table_name` fails the safe-identifier grammar.
         """
         import time
+
+        # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
+        # THE SAFE-IDENTIFIER GRAMMAR BEFORE IT IS INTERPOLATED BELOW.
+        table_name = validate_sql_identifier(table_name, "table name")
 
         if replace:
             c = self.conn.cursor()
