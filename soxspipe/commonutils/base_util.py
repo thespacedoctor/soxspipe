@@ -22,8 +22,10 @@ class base_util:
         - ``log`` -- logger
         - ``settings`` -- the settings dictionary (default: False)
         - ``associatedFrame`` -- the associated frame the utility is working with (default: False)
-        - ``dispersionMap`` -- if passed then `read_spectral_format` will be called to give info on the detector format (default: False)
-        - ``twoDMapPath`` -- path to the 2D dispersion map. If passed, the map with be opened as a CCDData object (default: False)
+        - ``dispersionMap`` -- if passed then `read_spectral_format` will be called to give info on the detector
+          format (default: False)
+        - ``twoDMapPath`` -- path to the 2D dispersion map. If passed, the map with be opened as a CCDData
+          object (default: False)
 
     **Usage:**
 
@@ -41,9 +43,15 @@ class base_util:
             twoDMapPath=False
             # other arguments needed for the new_util class
         ):
-        super(new_util, self).__init__(log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath)
+            super(new_util, self).__init__(
+                log,
+                settings,
+                associatedFrame=associatedFrame,
+                dispersionMap=dispersionMap,
+                twoDMapPath=twoDMapPath
+            )
 
-        ...
+            ...
     ```
     """
     def __init__(
@@ -216,9 +224,6 @@ class base_util:
         **Key Arguments:**
             - ``associatedFrame`` -- the associated frame the utility is working with
             - ``interOrderMaskNDArray`` -- the mask of the pixels lying between the orders
-
-        **Return:**
-            - None
         """
         import numpy as np
 
@@ -253,9 +258,6 @@ class base_util:
         **Key Arguments:**
             - ``binxRatio`` -- the frame's x-binning divided by the map's x-binning
             - ``binyRatio`` -- the frame's y-binning divided by the map's y-binning
-
-        **Return:**
-            - None
         """
         import numpy as np
 
