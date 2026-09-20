@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
@@ -460,6 +461,14 @@ def test_master_dark_produce_product_preserves_qc_and_records_product(
         fileType="FITS",
         productPath=productPath,
         description="VIS Master dark frame",
+    )
+    # THE REDUCTION TIMESTAMP IS PINNED BY ITS RENDERED FORMAT, NOT BY THE
+    # CLOCK: THE RECIPE MAY MINT IT INLINE OR THROUGH
+    # `toolkit.utcnow_string`, AND A TEST THAT PATCHES ONE SOURCE PASSES
+    # AGAINST ONE REVISION ONLY.
+    assert re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}",
+        recipe.products.iloc[-1]["reduction_date_utc"],
     )
     assert calls == [
         "stack",
