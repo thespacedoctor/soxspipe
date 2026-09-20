@@ -26,6 +26,30 @@ from soxspipe.commonutils.toolkit import OMITTED
 os.environ["TERM"] = "vt100"
 
 
+# THE FORMER `imstats` CLOSURE INSIDE `qc_ron`. A MODULE-LEVEL FUNCTION RATHER
+# THAN A METHOD, SO THAT THE READ-OUT-NOISE CALCULATION STAYS AS UNOVERRIDEABLE
+# AS THE CLOSURE IT REPLACES.
+def _image_stats(dat):
+    """*report the minimum, maximum, mean and standard deviation of an image*
+
+    **Key Arguments:**
+
+    - ``dat`` -- the image data to report on. Masked array or numpy array.
+
+    **Return:**
+
+    - ``stats`` -- the minimum, maximum, mean and standard deviation of ``dat``
+
+    **Usage:**
+
+    ```python
+    dmin, dmax, dmean, dstd = _image_stats(maskedFrameData)
+    ```
+    """
+    return (dat.min(), dat.max(), dat.mean(), dat.std())
+
+
+
 class base_recipe:
     """
     The base recipe class which all other recipes inherit
@@ -1357,6 +1381,145 @@ class base_recipe:
         self.log.debug("completed the ``write`` method")
         return filepath
 
+    def _ccds_for_stacking(self, frames):
+        """*convert the frames to stack into a list of 32-bit CCDData objects*
+
+        **Key Arguments:**
+
+        - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
+
+        **Return:**
+
+        - ``ccds`` -- the frames as a list of CCDData objects
+
+        **Usage:**
+
+        ```python
+        ccds = self._ccds_for_stacking(frames)
+        ```
+        """
+        from astropy import units as u
+
+        from soxspipe.commonutils import toolkit
+
+        # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
+        if not isinstance(frames, list):
+            return [
+                toolkit.frame_to_32(c)
+                # c
+                for c in frames.ccds(
+                    ccd_kwargs={
+                        "hdu_uncertainty": "ERRS",
+                        "hdu_mask": "QUAL",
+                        "hdu_flags": "FLAGS",
+                        "key_uncertainty_type": "UTYPE",
+                        "unit": u.electron,
+                    }
+                )
+            ]
+        return [toolkit.frame_to_32(c) for c in frames]
+
+    def _clip_individual_frames(
+        self,
+        combiner,
+        stacked_clipping_sigma,
+        stacked_clipping_iterations,
+        totalPixels,
+    ):
+        """*sigma-clip the individual input frames, replacing the combiner's masks*
+
+        **Key Arguments:**
+
+        - ``combiner`` -- the Combiner object holding the frames to clip. Its mask is replaced in place.
+        - ``stacked_clipping_sigma`` -- the sigma level to clip the individual frames at
+        - ``stacked_clipping_iterations`` -- the number of clipping iterations to run
+        - ``totalPixels`` -- the pixel count of one frame, used to report the clipped fraction
+
+        **Usage:**
+
+        ```python
+        self._clip_individual_frames(
+            combiner,
+            stacked_clipping_sigma=3.0,
+            stacked_clipping_iterations=2,
+            totalPixels=np.size(combinedMask),
+        )
+        ```
+        """
+        import numpy as np
+        from astropy.stats import sigma_clip
+
+        # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INPUT FRAMES - USING
+        # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
+        # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
+        old_n_masked = combiner.data_arr.mask.sum()
+
+        ## Reduce memory by avoiding an extra full-array copy during clipping
+        combiner.data_arr.mask = sigma_clip(
+            np.asarray(combiner.data_arr.data, dtype=np.float32),
+            sigma_lower=stacked_clipping_sigma,
+            sigma_upper=stacked_clipping_sigma,
+            axis=0,
+            copy=False,
+            maxiters=stacked_clipping_iterations,
+            cenfunc="median",
+            stdfunc="mad_std",
+            masked=True,
+        ).mask
+
+        # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
+        new_n_masked = combiner.data_arr.mask.sum()
+        diff = new_n_masked - old_n_masked
+        if self.verbose:
+            percent = 100 * combiner.data_arr.mask[0].sum() / totalPixels
+            self.log.print(
+                f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)"
+            )
+        return
+
+    def _mean_combine_frames(self, combiner, ccds, combinedMask):
+        """*mean combine the clipped frames, and combine their error maps the same way*
+
+        **Key Arguments:**
+
+        - ``combiner`` -- the Combiner object holding the clipped frames. Its data is overwritten with the error maps.
+        - ``ccds`` -- the input frames as a list of CCDData objects
+        - ``combinedMask`` -- the bad-pixel mask shared by every input frame
+
+        **Return:**
+
+        - ``combined_frame`` -- the combined frame, with its uncertainty map attached
+
+        **Usage:**
+
+        ```python
+        combined_frame = self._mean_combine_frames(combiner, ccds, combinedMask)
+        ```
+        """
+        import numpy as np
+
+        from soxspipe.commonutils import toolkit
+
+        # GENERATE THE COMBINED MEAN
+        # self.log.print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
+        combined_frame = combiner.average_combine()
+
+        # RECOMBINE THE COMBINED MASK FROM ABOVE
+        combined_frame.mask = combined_frame.mask | combinedMask
+
+        # INDIVIDUAL UPDATED MASKS (POST CLIPPING)
+        new_individual_masks = combiner.data_arr.mask
+        masked_values = new_individual_masks.sum(axis=0)
+
+        # A HACK TO THE COMBINER OBJECT TO COMBINE ERROR MAPS EXACTLY AS DATA WAS COMBINED
+        for i, ccd in enumerate(ccds):
+            combiner.data_arr.data[i] = ccd.uncertainty.array
+        combined_uncertainty = combiner.average_combine()
+        combined_frame.uncertainty = combined_uncertainty.data / (np.sqrt(len(new_individual_masks) - masked_values))
+        toolkit.frame_to_32(combined_frame)
+
+        return combined_frame
+
     def clip_and_stack(self, frames, recipe, ignore_input_masks=False, post_stack_clipping=True):
         """*mean combine input frames after sigma-clipping outlying pixels using a median value with median absolute deviation (mad) as the deviation function*
 
@@ -1383,10 +1546,8 @@ class base_recipe:
         self.log.debug("starting the ``clip_and_stack`` method")
 
         import numpy as np
-        from astropy import units as u
         from astropy.stats import sigma_clip
 
-        from soxspipe.commonutils import toolkit
         from soxspipe.commonutils.combiner import Combiner
 
         if len(frames) == 1:
@@ -1416,23 +1577,7 @@ class base_recipe:
             frame_clipping_sigma = None
             frame_clipping_iterations = None
 
-        # LIST OF CCDDATA OBJECTS NEEDED BY COMBINER OBJECT
-        if not isinstance(frames, list):
-            ccds = [
-                toolkit.frame_to_32(c)
-                # c
-                for c in frames.ccds(
-                    ccd_kwargs={
-                        "hdu_uncertainty": "ERRS",
-                        "hdu_mask": "QUAL",
-                        "hdu_flags": "FLAGS",
-                        "key_uncertainty_type": "UTYPE",
-                        "unit": u.electron,
-                    }
-                )
-            ]
-        else:
-            ccds = [toolkit.frame_to_32(c) for c in frames]
+        ccds = self._ccds_for_stacking(frames)
 
         imageType = ccds[0].header[kw("DPR_TYPE")].replace(",", "-")
         imageTech = ccds[0].header[kw("DPR_TECH")].replace(",", "-")
@@ -1462,56 +1607,14 @@ class base_recipe:
                 f"\tThe basic bad-pixel mask for the {arm} detector {imageType} frames contains {badCount} pixels ({percent:0.2}% of all pixels)"
             )
 
-        # GENERATE A MASK FOR EACH OF THE INDIVIDUAL INPUT FRAMES - USING
-        # MEDIAN WITH MEDIAN ABSOLUTE DEVIATION (MAD) AS THE DEVIATION FUNCTION
-        old_n_masked = -1
-        # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
-        new_n_masked = combiner.data_arr.mask.sum()
+        self._clip_individual_frames(
+            combiner,
+            stacked_clipping_sigma=stacked_clipping_sigma,
+            stacked_clipping_iterations=stacked_clipping_iterations,
+            totalPixels=np.size(combinedMask),
+        )
 
-        # SIGMA CLIPPING OVERWRITES ORIGINAL MASKS - COPY HERE TO READD
-        # preclipped_masks = np.copy(combiner.data_arr.mask)
-        totalPixels = np.size(combinedMask)
-
-        ## Reduce memory by avoiding an extra full-array copy during clipping
-        combiner.data_arr.mask = sigma_clip(
-            np.asarray(combiner.data_arr.data, dtype=np.float32),
-            sigma_lower=stacked_clipping_sigma,
-            sigma_upper=stacked_clipping_sigma,
-            axis=0,
-            copy=False,
-            maxiters=stacked_clipping_iterations,
-            cenfunc="median",
-            stdfunc="mad_std",
-            masked=True,
-        ).mask
-
-        old_n_masked = new_n_masked
-        # RECOUNT BAD-PIXELS NOW CLIPPING HAS RUN
-        new_n_masked = combiner.data_arr.mask.sum()
-        diff = new_n_masked - old_n_masked
-        if self.verbose:
-            percent = 100 * combiner.data_arr.mask[0].sum() / totalPixels
-            self.log.print(
-                f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)"
-            )
-
-        # GENERATE THE COMBINED MEAN
-        # self.log.print("\n# MEAN COMBINING FRAMES - WITH UPDATED BAD-PIXEL MASKS")
-        combined_frame = combiner.average_combine()
-
-        # RECOMBINE THE COMBINED MASK FROM ABOVE
-        combined_frame.mask = combined_frame.mask | combinedMask
-
-        # INDIVIDUAL UPDATED MASKS (POST CLIPPING)
-        new_individual_masks = combiner.data_arr.mask
-        masked_values = new_individual_masks.sum(axis=0)
-
-        # A HACK TO THE COMBINER OBJECT TO COMBINE ERROR MAPS EXACTLY AS DATA WAS COMBINED
-        for i, ccd in enumerate(ccds):
-            combiner.data_arr.data[i] = ccd.uncertainty.array
-        combined_uncertainty = combiner.average_combine()
-        combined_frame.uncertainty = combined_uncertainty.data / (np.sqrt(len(new_individual_masks) - masked_values))
-        toolkit.frame_to_32(combined_frame)
+        combined_frame = self._mean_combine_frames(combiner, ccds, combinedMask)
 
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
         # IMAGES
@@ -1539,7 +1642,7 @@ class base_recipe:
             totalPixels = np.size(combinedMask)
             percent = (float(newBadCount) / float(totalPixels)) * 100.0
             self.log.print(
-                f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)"
+                f"\t{diff} new pixels made it into the combined bad-pixel map (bad pixels now account for {percent:0.2f}% of all pixels)"  # noqa: E501
             )
 
         from soxspipe.commonutils.toolkit import quicklook_image
@@ -1555,6 +1658,129 @@ class base_recipe:
         )
         self.log.debug("completed the ``clip_and_stack`` method")
         return combined_frame
+
+    def _subtract_dark_frame(self, processedFrame, dark, inputFrame):
+        """*subtract a dark frame, scaling it first when its exposure time does not match*
+
+        **Key Arguments:**
+
+        - ``processedFrame`` -- the frame to have the dark subtracted. CCDData object.
+        - ``dark`` -- the dark frame to be subtracted. CCDData object.
+        - ``inputFrame`` -- the frame as it was handed to `detrend`, reported on when the dark is
+          scaled. CCDData object.
+
+        **Return:**
+
+        - ``processedFrame`` -- the frame with the dark subtracted. CCDData object.
+
+        **Usage:**
+
+        ```python
+        processedFrame = self._subtract_dark_frame(processedFrame, dark, inputFrame)
+        ```
+        """
+        import ccdproc
+        from astropy import units as u
+
+        kw = self.kw
+
+        # DARK WITH MATCHING EXPOSURE TIME
+        tolerence = 0.5
+        if (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (
+            int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence
+        ):
+            return ccdproc.subtract_dark(
+                processedFrame,
+                dark,
+                exposure_time=kw("EXPTIME"),
+                exposure_unit=u.second,
+                add_keyword=None,
+            )
+
+        # THE `and False` DISABLES THIS BRANCH DELIBERATELY. REMOVING IT IS A
+        # BEHAVIOUR CHANGE, NOT A LINT FIX, SO IT IS DY-88'S TO DECIDE.
+        if self.inst == "SOXS" and False:  # noqa: SIM223
+            if not self.darkDetrendWarningIssued2:
+                self.log.warning(
+                    "Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."  # noqa: E501
+                )
+                self.darkDetrendWarningIssued2 = True
+            return processedFrame
+
+        if not self.darkDetrendWarningIssued2:
+            self.log.warning(
+                "Dark and science/calibration frame have differing exposure-times. Scaling dark to match science/calibration frame."  # noqa: E501
+            )
+            self.darkDetrendWarningIssued2 = True
+            self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
+        processedFrame = ccdproc.subtract_dark(
+            processedFrame,
+            dark,
+            exposure_time=kw("EXPTIME"),
+            exposure_unit=u.second,
+            scale=True,
+            add_keyword=None,
+        )
+        from soxspipe.commonutils.toolkit import quicklook_image
+
+        quicklook_image(log=self.log, CCDObject=dark, show=True, ext="mask", stdWindow=3, title=False, surfacePlot=True)
+        quicklook_image(
+            log=self.log,
+            CCDObject=processedFrame,
+            show=True,
+            ext="mask",
+            stdWindow=3,
+            title=False,
+            surfacePlot=True,
+        )
+        return processedFrame
+
+    def _subtract_scattered_light(self, processedFrame, order_table):
+        """*subtract the scattered-light background from a frame, using the order edges*
+
+        Sets `self.products` to the product table the background subtraction returns.
+
+        **Key Arguments:**
+
+        - ``processedFrame`` -- the frame to have the background subtracted. CCDData object.
+        - ``order_table`` -- order table with order edges defined.
+
+        **Return:**
+
+        - ``processedFrame`` -- the background-subtracted frame. CCDData object.
+
+        **Usage:**
+
+        ```python
+        processedFrame = self._subtract_scattered_light(processedFrame, order_table)
+        ```
+        """
+        background = subtract_background(
+            log=self.log,
+            frame=processedFrame,
+            sofName=self.sofName,
+            recipeName=self.recipeName,
+            orderTable=order_table,
+            settings=self.settings,
+            productsTable=self.products,
+            qcTable=self.qc,
+            startNightDate=self.startNightDate,
+        )
+        backgroundFrame, processedFrame, self.products = background.subtract()
+
+        from soxspipe.commonutils.toolkit import quicklook_image
+
+        quicklook_image(
+            log=self.log,
+            CCDObject=backgroundFrame,
+            show=False,
+            ext="data",
+            stdWindow=3,
+            title="Background Light",
+            surfacePlot=True,
+        )
+
+        return processedFrame
 
     def detrend(
         self,
@@ -1592,13 +1818,14 @@ class base_recipe:
         from datetime import datetime
 
         import ccdproc
-        from astropy import units as u
 
         from soxspipe.commonutils import toolkit
 
-        arm = self.arm
+        # `arm` AND `dp` ARE UNUSED, TWO OF THE MODULE'S `F841` FINDINGS. DELETING
+        # THEM IS DY-88'S.
+        arm = self.arm  # noqa: F841
         kw = self.kw
-        dp = self.detectorParams
+        dp = self.detectorParams  # noqa: F841
 
         if master_bias == None:
             master_bias = False
@@ -1606,7 +1833,9 @@ class base_recipe:
             dark = False
 
         # VERIFY DATA IS IN ORDER
-        if master_bias == False and dark == False and master_flat == False:
+        # EACH OF THESE IS EITHER `False` OR A CCDData FRAME, WHOSE TRUTH VALUE IS
+        # AMBIGUOUS, SO NONE OF THE COMPARISONS CAN BECOME A TRUTH CHECK.
+        if master_bias == False and dark == False and master_flat == False:  # noqa: E712
             raise TypeError("detrend method needs at least a master-bias frame, a dark frame or a master flat frame")
         if master_bias == False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             if not self.darkDetrendWarningIssued1:
@@ -1615,102 +1844,96 @@ class base_recipe:
 
         processedFrame = inputFrame
 
-        if master_bias != False:
+        if master_bias != False:  # noqa: E712
             processedFrame = ccdproc.subtract_bias(processedFrame, master_bias, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
-        # DARK WITH MATCHING EXPOSURE TIME
-        tolerence = 0.5
-        if (
-            dark != False
-            and (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence)
-            and (int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence)
-        ):
-            processedFrame = ccdproc.subtract_dark(
-                processedFrame,
-                dark,
-                exposure_time=kw("EXPTIME"),
-                exposure_unit=u.second,
-                add_keyword=None,
-            )
-
-        elif dark != False:
-            if self.inst == "SOXS" and False:
-                if not self.darkDetrendWarningIssued2:
-                    self.log.warning(
-                        "Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."
-                    )
-                    self.darkDetrendWarningIssued2 = True
-            else:
-                if not self.darkDetrendWarningIssued2:
-                    self.log.warning(
-                        "Dark and science/calibration frame have differing exposure-times. Scaling dark to match science/calibration frame."
-                    )
-                    self.darkDetrendWarningIssued2 = True
-                    self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
-                processedFrame = ccdproc.subtract_dark(
-                    processedFrame,
-                    dark,
-                    exposure_time=kw("EXPTIME"),
-                    exposure_unit=u.second,
-                    scale=True,
-                    add_keyword=None,
-                )
-                from soxspipe.commonutils.toolkit import quicklook_image
-
-                quicklook_image(
-                    log=self.log, CCDObject=dark, show=True, ext="mask", stdWindow=3, title=False, surfacePlot=True
-                )
-                quicklook_image(
-                    log=self.log,
-                    CCDObject=processedFrame,
-                    show=True,
-                    ext="mask",
-                    stdWindow=3,
-                    title=False,
-                    surfacePlot=True,
-                )
+        # `dark` IS EITHER `False` OR A CCDData FRAME, WHOSE TRUTH VALUE IS
+        # AMBIGUOUS, SO THE COMPARISON TO `False` CANNOT BECOME A TRUTH CHECK.
+        if dark != False:  # noqa: E712
+            processedFrame = self._subtract_dark_frame(processedFrame, dark, inputFrame)
         toolkit.frame_to_32(processedFrame)
 
         doSubtraction = True
         if "subtract_background" in self.recipeSettings and not self.recipeSettings["subtract_background"]:
             doSubtraction = False
 
-        if order_table != False and doSubtraction:
+        # `order_table` IS EITHER `False` OR A TABLE PATH.
+        if order_table != False and doSubtraction:  # noqa: E712
+            processedFrame = self._subtract_scattered_light(processedFrame, order_table)
 
-            background = subtract_background(
-                log=self.log,
-                frame=processedFrame,
-                sofName=self.sofName,
-                recipeName=self.recipeName,
-                orderTable=order_table,
-                settings=self.settings,
-                productsTable=self.products,
-                qcTable=self.qc,
-                startNightDate=self.startNightDate,
-            )
-            backgroundFrame, processedFrame, self.products = background.subtract()
+            # ASSIGNED AND NEVER READ. IT IS THE MODULE'S LAST DUPLICATION HIT AND
+            # ONE OF ITS `F841` FINDINGS, BOTH OF WHICH ARE DY-88'S.
+            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")  # noqa: F841
 
-            from soxspipe.commonutils.toolkit import quicklook_image
-
-            quicklook_image(
-                log=self.log,
-                CCDObject=backgroundFrame,
-                show=False,
-                ext="data",
-                stdWindow=3,
-                title="Background Light",
-                surfacePlot=True,
-            )
-
-            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-
-        if master_flat != False:
+        if master_flat != False:  # noqa: E712
             processedFrame = ccdproc.flat_correct(processedFrame, master_flat, norm_value=1.0, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
         self.log.debug("completed the ``detrend`` method")
         return processedFrame
+
+    def _qc_report_columns(self):
+        """*select the QC columns to report to the terminal and to the database*
+
+        **Return:**
+
+        - ``columns`` -- the QC columns to print to the terminal
+        - ``dbColumns`` -- the QC columns to send to the database
+
+        **Usage:**
+
+        ```python
+        columns, dbColumns = self._qc_report_columns()
+        ```
+        """
+        columns = list(self.qc.columns)
+        columns.remove("to_header")
+        columns.remove("obs_date_utc")
+        columns.remove("qc_order")
+        columns.remove("reduction_date_utc")
+        columns.remove("soxspipe_recipe")
+        columns.remove("sof_name")
+        try:
+            columns.remove("qc_value_min")
+            columns.remove("qc_value_max")
+        except ValueError as e:
+            self.log.debug(f"report_output: `columns.remove('qc_value_min')` failed, continuing: {e}")
+        dbColumns = list(self.qc.columns)
+        dbColumns.remove("to_header")
+
+        return columns, dbColumns
+
+    @staticmethod
+    def _format_qc_for_display(qcRows):
+        """*render the numeric values of a QC table to four decimal places*
+
+        **Key Arguments:**
+
+        - ``qcRows`` -- the QC rows to render. Pandas DataFrame.
+
+        **Return:**
+
+        - ``qc_display`` -- a copy of ``qcRows`` with its numeric values rendered as strings
+
+        **Usage:**
+
+        ```python
+        qc_display = self._format_qc_for_display(self.qc.loc[mask][columns])
+        ```
+        """
+        # Format float values to 3 decimal places
+        qc_display = qcRows.copy()
+        for col in qc_display.columns:
+            qc_display[col] = qc_display[col].apply(
+                lambda x: (
+                    f"{float(x):.4f}"
+                    if isinstance(x, (int, float))
+                    or (isinstance(x, str) and x.replace(".", "", 1).replace("-", "", 1).isdigit())
+                    else x
+                )
+            )
+        return qc_display
 
     def report_output(self, rformat="stdout"):
         """*a method to report QC values alongside intermediate and final products*
@@ -1744,20 +1967,7 @@ class base_recipe:
 
         # SORT BY COLUMN NAME
         self.qc.sort_values(["qc_name"], inplace=True, kind="stable")
-        columns = list(self.qc.columns)
-        columns.remove("to_header")
-        columns.remove("obs_date_utc")
-        columns.remove("qc_order")
-        columns.remove("reduction_date_utc")
-        columns.remove("soxspipe_recipe")
-        columns.remove("sof_name")
-        try:
-            columns.remove("qc_value_min")
-            columns.remove("qc_value_max")
-        except ValueError as e:
-            self.log.debug(f"report_output: `columns.remove('qc_value_min')` failed, continuing: {e}")
-        dbColumns = list(self.qc.columns)
-        dbColumns.remove("to_header")
+        columns, dbColumns = self._qc_report_columns()
 
         # SORT BY COLUMN NAME
         self.products.sort_values(["label"], ascending=[True], inplace=True, kind="stable")
@@ -1779,17 +1989,7 @@ class base_recipe:
 
             mask = self.qc["qc_order"] == "-1"
 
-            # Format float values to 3 decimal places
-            qc_display = self.qc.loc[mask][columns].copy()
-            for col in qc_display.columns:
-                qc_display[col] = qc_display[col].apply(
-                    lambda x: (
-                        f"{float(x):.4f}"
-                        if isinstance(x, (int, float))
-                        or (isinstance(x, str) and x.replace(".", "", 1).replace("-", "", 1).isdigit())
-                        else x
-                    )
-                )
+            qc_display = self._format_qc_for_display(self.qc.loc[mask][columns])
             self.log.print(
                 tabulate(
                     qc_display,
@@ -1878,6 +2078,75 @@ class base_recipe:
         self.log.debug("completed the ``flag_poor_data`` method")
         return
 
+    def _measure_raw_frame_ron(self):
+        """*measure the read-out noise in a single raw frame, from the first two input frames*
+
+        The noise is measured on the difference of the first two input frames,
+        so the mask returned alongside it is the mask of that difference and is
+        needed by the caller to measure the master frame against the same pixels.
+
+        **Return:**
+
+        - ``rawRon`` -- raw read-out-noise in electrons
+        - ``combinedMask`` -- the bad-pixel mask of the sigma-clipped frame difference
+
+        **Usage:**
+
+        ```python
+        rawRon, combinedMask = self._measure_raw_frame_ron()
+        ```
+        """
+        import math
+
+        import numpy as np
+        from astropy.stats import sigma_clip
+
+        from soxspipe.commonutils import toolkit
+
+        # LIST OF RAW CCDDATA OBJECTS
+        # THE COMPREHENSION IS THE BASE REVISION'S. COLLAPSING IT TO `list()` IS
+        # DY-88'S LINT SWEEP, NOT THIS COMMIT'S.
+        ccds = [  # noqa: C416
+            c
+            for c in self.inputFrames.ccds(
+                ccd_kwargs={
+                    "hdu_uncertainty": "ERRS",
+                    "hdu_mask": "QUAL",
+                    "hdu_flags": "FLAGS",
+                    "key_uncertainty_type": "UTYPE",
+                }
+            )
+        ]
+
+        # SINGLE FRAME RON
+        raw_one = ccds[0]
+        raw_two = ccds[1]
+        raw_diff = raw_one.subtract(raw_two)
+        toolkit.frame_to_32(raw_diff)
+
+        # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
+        masked_diff = sigma_clip(
+            raw_diff.data.astype(np.float32),
+            sigma_lower=10,
+            sigma_upper=10,
+            maxiters=2,
+            cenfunc="median",
+            stdfunc="mad_std",
+        )
+        combinedMask = raw_diff.mask | masked_diff.mask
+
+        # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
+        raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
+
+        dmin, dmax, dmean, dstd = _image_stats(raw_diff)
+
+        if dstd == 0:
+            message = "The raw input frames appear to be corrupted. Cannot calculate the read-out noise. Please check the raw frames."  # noqa: E501
+            raise ValueError(message)
+
+        # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
+        return dstd / math.sqrt(2), combinedMask
+
     def qc_ron(
         self,
         frameType=False,
@@ -1913,10 +2182,7 @@ class base_recipe:
         """
         self.log.debug("starting the ``qc_bias_ron`` method")
 
-        import math
-
         import numpy as np
-        from astropy.stats import sigma_clip
 
         from soxspipe.commonutils import toolkit
 
@@ -1924,50 +2190,7 @@ class base_recipe:
         utcnow = toolkit.utcnow_string()
 
         if not rawRon and len(self.inputFrames.files) > 1:
-            # LIST OF RAW CCDDATA OBJECTS
-            ccds = [
-                c
-                for c in self.inputFrames.ccds(
-                    ccd_kwargs={
-                        "hdu_uncertainty": "ERRS",
-                        "hdu_mask": "QUAL",
-                        "hdu_flags": "FLAGS",
-                        "key_uncertainty_type": "UTYPE",
-                    }
-                )
-            ]
-
-            # SINGLE FRAME RON
-            raw_one = ccds[0]
-            raw_two = ccds[1]
-            raw_diff = raw_one.subtract(raw_two)
-            toolkit.frame_to_32(raw_diff)
-
-            # SIGMA-CLIP THE DATA (AT HIGH LEVEL)
-            masked_diff = sigma_clip(
-                raw_diff.data.astype(np.float32),
-                sigma_lower=10,
-                sigma_upper=10,
-                maxiters=2,
-                cenfunc="median",
-                stdfunc="mad_std",
-            )
-            combinedMask = raw_diff.mask | masked_diff.mask
-
-            # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
-            raw_diff = np.ma.array(raw_diff.data, mask=combinedMask)
-
-            def imstats(dat):
-                return (dat.min(), dat.max(), dat.mean(), dat.std())
-
-            dmin, dmax, dmean, dstd = imstats(raw_diff)
-
-            if dstd == 0:
-                message = "The raw input frames appear to be corrupted. Cannot calculate the read-out noise. Please check the raw frames."
-                raise ValueError(message)
-
-            # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
-            rawRon = dstd / math.sqrt(2)
+            rawRon, combinedMask = self._measure_raw_frame_ron()
 
         if rawRon:
             singleFrameType = frameType
@@ -1984,18 +2207,16 @@ class base_recipe:
             )
 
         if masterFrame and not masterRon:
-
             # PREDICTED MASTER NOISE
             # predictedMasterRon = rawRon / math.sqrt(len(ccds))
 
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             tmp = np.ma.array(masterFrame.data, mask=combinedMask)
 
-            dmin, dmax, dmean, dstd = imstats(tmp)
+            dmin, dmax, dmean, dstd = _image_stats(tmp)
             masterRon = float(dstd)
 
         elif masterRon:
-
             self.add_qc(
                 qcName="MASTER RON",
                 qcValue=float(masterRon),
@@ -2113,6 +2334,121 @@ class base_recipe:
         self.log.debug("completed the ``subtract_mean_flux_level`` method")
         return (meanFluxLevel, fluxStd, rawFrame)
 
+    def _stamp_raw_frame_records(self, frame, tableData, rawFrames=False):
+        """*record the raw frames used by this recipe in the product header*
+
+        A raw frame is a row of ``tableData`` with no PRO TYPE value.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame whose header is updated
+        - ``tableData`` -- the recipe's raw-frame summary, as a pandas DataFrame
+        - ``rawFrames`` -- limit the raw frames listed in the header to only these frames (list)
+
+        **Usage:**
+
+        ```python
+        self._stamp_raw_frame_records(frame, tableData, rawFrames)
+        ```
+        """
+        import math
+
+        kw = self.kw
+
+        iterator = 1
+        for f, t, z in zip(
+            tableData["filename"].values,
+            tableData["tag"].values,
+            tableData[kw("PRO_TYPE")].values,
+        ):
+            if rawFrames and f not in rawFrames:
+                continue
+            if isinstance(z, float) and math.isnan(z):
+                valueLen = 80 - len(f"ESO PRO REC1 RAW{iterator} NAME" + "HIERARCH  = '")
+                if len(f) > valueLen:
+                    self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
+                frame.header[f"ESO PRO REC1 RAW{iterator} NAME"] = f[:valueLen]
+                frame.header[f"ESO PRO REC1 RAW{iterator} CATG"] = t
+                iterator += 1
+        return
+
+    def _stamp_calibration_frame_records(self, frame, tableData):
+        """*record the calibration frames used by this recipe in the product header*
+
+        A calibration frame is a row of ``tableData`` that carries a PRO TYPE value.
+        Each record carries the MD5 hash of the calibration file on disk.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame whose header is updated
+        - ``tableData`` -- the recipe's raw-frame summary, as a pandas DataFrame
+
+        **Usage:**
+
+        ```python
+        self._stamp_calibration_frame_records(frame, tableData)
+        ```
+        """
+        import math
+
+        from astropy.utils.data import compute_hash
+
+        kw = self.kw
+
+        iterator = 1
+
+        for f, c, z, p in zip(
+            tableData["filename"].values,
+            tableData[kw("PRO_CATG")].values,
+            tableData[kw("PRO_TYPE")].values,
+            tableData["file"].values,
+        ):
+            if not isinstance(z, float) or not math.isnan(z):
+                valueLen = 80 - len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = '")
+                # if len(f) > valueLen:
+                #     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
+                frame.header[f"ESO PRO REC1 CAL{iterator} NAME"] = f[:valueLen]
+                frame.header[f"ESO PRO REC1 CAL{iterator} CATG"] = c
+                frame.header[f"ESO PRO REC1 CAL{iterator} DATAMD5"] = compute_hash(p)
+                iterator += 1
+        return
+
+    def _stamp_recipe_parameter_records(self, frame):
+        """*record the recipe's own settings in the product header*
+
+        Arm-specific settings and the QC ranges are skipped; a nested settings
+        block is flattened into one record per inner key.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame whose header is updated
+
+        **Usage:**
+
+        ```python
+        self._stamp_recipe_parameter_records(frame)
+        ```
+        """
+        iterator = 1
+        recipeSettings = self.get_recipe_settings()
+        for k, v in recipeSettings.items():
+            if k.lower() in ["uvb", "vis", "nir", "qc-acceptable-ranges"]:
+                continue
+
+            if not isinstance(v, dict):
+                if isinstance(v, list):
+                    v = ", ".join(map(str, v)).strip()
+
+                frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k[:40]
+                frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v
+                iterator += 1
+            else:
+                for k2, v2 in v.items():
+                    frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k2[:40]
+                    frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v2
+                    iterator += 1
+        return
+
     def update_fits_keywords(self, frame, rawFrames=False):
         """*update fits keywords to comply with ESO Phase 3 standards*
 
@@ -2136,15 +2472,12 @@ class base_recipe:
         """
         self.log.debug("starting the ``update_fits_keywords`` method")
 
-        import math
-
-        from astropy.utils.data import compute_hash
-
         import soxspipe.__version__ as version
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
+        # UNUSED, AND ONE OF THE MODULE'S ELEVEN `F841` FINDINGS. DELETING IT IS DY-88'S.
+        dp = self.detectorParams  # noqa: F841
         imageType = self.imageType
         if "FLAT" in imageType:
             imageType = "FLAT"
@@ -2163,57 +2496,9 @@ class base_recipe:
         tableData["filename"] = tableData["filename"].str.replace("_pre", "")
         tableData["tag"] = tableData["TYPE"] + "_" + tableData["ARM"]
 
-        iterator = 1
-        for f, t, z in zip(
-            tableData["filename"].values,
-            tableData["tag"].values,
-            tableData[kw("PRO_TYPE")].values,
-        ):
-            if rawFrames and f not in rawFrames:
-                continue
-            if isinstance(z, float) and math.isnan(z):
-                valueLen = 80 - len(f"ESO PRO REC1 RAW{iterator} NAME" + "HIERARCH  = '")
-                if len(f) > valueLen:
-                    self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
-                frame.header[f"ESO PRO REC1 RAW{iterator} NAME"] = f[:valueLen]
-                frame.header[f"ESO PRO REC1 RAW{iterator} CATG"] = t
-                iterator += 1
-
-        iterator = 1
-
-        for f, c, z, p in zip(
-            tableData["filename"].values,
-            tableData[kw("PRO_CATG")].values,
-            tableData[kw("PRO_TYPE")].values,
-            tableData["file"].values,
-        ):
-            if not isinstance(z, float) or not math.isnan(z):
-                valueLen = 80 - len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = '")
-                # if len(f) > valueLen:
-                #     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
-                frame.header[f"ESO PRO REC1 CAL{iterator} NAME"] = f[:valueLen]
-                frame.header[f"ESO PRO REC1 CAL{iterator} CATG"] = c
-                frame.header[f"ESO PRO REC1 CAL{iterator} DATAMD5"] = compute_hash(p)
-                iterator += 1
-
-        iterator = 1
-        recipeSettings = self.get_recipe_settings()
-        for k, v in recipeSettings.items():
-            if k.lower() in ["uvb", "vis", "nir", "qc-acceptable-ranges"]:
-                continue
-
-            if not isinstance(v, dict):
-                if isinstance(v, list):
-                    v = ", ".join(map(str, v)).strip()
-
-                frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k[:40]
-                frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v
-                iterator += 1
-            else:
-                for k2, v2 in v.items():
-                    frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k2[:40]
-                    frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v2
-                    iterator += 1
+        self._stamp_raw_frame_records(frame, tableData, rawFrames)
+        self._stamp_calibration_frame_records(frame, tableData)
+        self._stamp_recipe_parameter_records(frame)
 
         # SOXSPIPE VERSION
         frame.header["ESO PRO REC1 PIPE ID"] = f"soxspipe/v{version}"
@@ -2280,7 +2565,6 @@ class base_recipe:
         keepTryingMax = 7
         while keepTrying < keepTryingMax:
             try:
-
                 dataframe.replace(["--"], None).to_sql(
                     table_name,
                     con=self.conn,
