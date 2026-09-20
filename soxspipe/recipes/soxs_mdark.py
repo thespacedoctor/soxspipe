@@ -349,5 +349,5 @@ class soxs_mdark(base_recipe):
 
         return productPath
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
