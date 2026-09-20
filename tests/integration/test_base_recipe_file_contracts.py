@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -230,6 +231,9 @@ def test_prepare_single_frame_uses_shape_matched_bad_pixel_map(
     assert prepared.unit == u.electron
     assert prepared.mask[1, 2]
     assert "SXSPRE" in prepared.header
+    # THE PRE TAG TIMESTAMP CARRIES A FRACTIONAL-SECOND COMPONENT, UNLIKE
+    # EVERY QC ROW TIMESTAMP IN THIS MODULE, AND NO UTC OFFSET MARKER.
+    assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}$", prepared.header["SXSPRE"])
     assert np.issubdtype(prepared.uncertainty.array.dtype, np.floating)
     assert prepared.uncertainty.array.dtype.itemsize == np.dtype(np.float32).itemsize
     np.testing.assert_allclose(prepared.uncertainty.array, 3.0)
