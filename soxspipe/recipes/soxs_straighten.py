@@ -12,7 +12,6 @@ Date Created
 ################# GLOBAL IMPORTS ####################
 import os
 import sys
-from datetime import datetime
 
 from .base_recipe import base_recipe
 
@@ -145,8 +144,6 @@ class soxs_straighten(base_recipe):
         """
         self.log.debug("starting the ``verify_input_frames`` method")
 
-        kw = self.kw
-
         error = False
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
@@ -181,9 +178,7 @@ class soxs_straighten(base_recipe):
         # LOOK FOR ****
         arm = self.arm
         if arm not in self.supplementaryInput or "2D_MAP" not in self.supplementaryInput[arm]:
-            raise TypeError(
-                "Need a full dispersion/spatial solution for %(arm)s - none found with the input files" % locals()
-            )
+            raise TypeError(f"Need a full dispersion/spatial solution for {arm!s} - none found with the input files")
 
         if error:
             sys.stdout.flush()
@@ -219,15 +214,9 @@ class soxs_straighten(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        arm = self.arm
-        kw = self.kw
-        dp = self.detectorParams
-
         productPath = None
 
         # filename = os.path.basename(productPath)
-
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # xsoxs-append-to-product-report-table
 
