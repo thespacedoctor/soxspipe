@@ -113,7 +113,26 @@ def test_base_util_reads_format_and_rebins_two_d_map(
     assert np.isnan(frame.data[0, 1])
     assert result.imageMap.shape == (4, 6)
     assert result.imageMap["order"].unique().tolist() == [10.0]
+    assert result.twoDMap["WAVELENGTH"].data.shape == (2, 2)
+    assert result.twoDMap["WAVELENGTH"].data.tolist() == [[500.0, 500.0], [500.0, 500.0]]
+    assert result.imageMap["wavelength"].tolist() == [500.0] * 4
+    assert result.imageMap["slit_position"].tolist() == [0.5] * 4
     result.twoDMap.close()
+
+
+def test_base_util_imports_the_toolkit_helpers_before_it_branches(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    _patch_lookups(monkeypatch, "x")
+    monkeypatch.delattr(toolkit, "read_spectral_format")
+    frame = CCDData(
+        np.ones((2, 2)),
+        unit="adu",
+        meta={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-02"},
+    )
+
+    with pytest.raises(ImportError):
+        base_util(log, {}, associatedFrame=frame)
 
 
 def _write_two_d_map(

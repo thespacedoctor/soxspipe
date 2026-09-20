@@ -68,10 +68,16 @@ class base_util:
         self.dispersionMap = dispersionMap
         self.twoDMapPath = twoDMapPath
 
+        import numpy as np
+        import pandas as pd
         from astropy.io import fits
 
         from soxspipe.commonutils import detector_lookup, keyword_lookup
-        from soxspipe.commonutils.toolkit import get_skylines_dataframe
+        from soxspipe.commonutils.toolkit import (
+            get_skylines_dataframe,
+            read_spectral_format,
+            twoD_disp_map_image_to_dataframe,
+        )
 
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
         if associatedFrame is not False:
@@ -101,11 +107,13 @@ class base_util:
                 self.waveLengthMax,
                 self.amins,
                 self.amaxs,
-            ) = self._read_spectral_format_limits(dispersionMap)
+            ) = self._read_spectral_format_limits(dispersionMap, read_spectral_format)
 
         if self.twoDMapPath:
-            self.mapDF, self.interOrderMaskNDArray = self._read_two_d_map_dataframe(twoDMapPath, associatedFrame)
-            self._mask_inter_order_pixels(associatedFrame, self.interOrderMaskNDArray)
+            self.mapDF, self.interOrderMaskNDArray = self._read_two_d_map_dataframe(
+                twoDMapPath, associatedFrame, twoD_disp_map_image_to_dataframe
+            )
+            self._mask_inter_order_pixels(associatedFrame, self.interOrderMaskNDArray, np)
 
         # OPEN AND UNPACK THE 2D IMAGE MAP
         if twoDMapPath:
@@ -118,9 +126,11 @@ class base_util:
 
             xdim = int(self.twoDMap[0].data.shape[1] / binxRatio)
             ydim = int(self.twoDMap[0].data.shape[0] / binyRatio)
+            xarray = np.tile(np.arange(0, xdim), ydim)
+            yarray = np.repeat(np.arange(0, ydim), xdim)
 
-            self._rebin_two_d_map(binxRatio, binyRatio)
-            self.imageMap = self._build_image_map(associatedFrame, xdim, ydim)
+            self._rebin_two_d_map(binxRatio, binyRatio, np)
+            self.imageMap = self._build_image_map(associatedFrame, xarray, yarray, np, pd)
 
         return
 
@@ -165,11 +175,13 @@ class base_util:
 
     def _read_spectral_format_limits(
             self,
-            dispersionMap):
+            dispersionMap,
+            read_spectral_format):
         """*read the spectral format table to determine the limits of the order traces*
 
         **Key Arguments:**
             - ``dispersionMap`` -- path to the dispersion map solution
+            - ``read_spectral_format`` -- the toolkit function, imported by the caller
 
         **Return:**
             - ``orderNums`` -- the order numbers
@@ -178,8 +190,6 @@ class base_util:
             - ``amins`` -- the minimum pixel position of each order along the dispersion axis
             - ``amaxs`` -- the maximum pixel position of each order along the dispersion axis
         """
-        from soxspipe.commonutils.toolkit import read_spectral_format
-
         return read_spectral_format(
             log=self.log,
             settings=self.settings,
@@ -193,19 +203,19 @@ class base_util:
     def _read_two_d_map_dataframe(
             self,
             twoDMapPath,
-            associatedFrame):
+            associatedFrame,
+            twoD_disp_map_image_to_dataframe):
         """*unpack the 2D dispersion map image into a dataframe and an inter-order mask*
 
         **Key Arguments:**
             - ``twoDMapPath`` -- path to the 2D dispersion map
             - ``associatedFrame`` -- the associated frame the utility is working with
+            - ``twoD_disp_map_image_to_dataframe`` -- the toolkit function, imported by the caller
 
         **Return:**
             - ``mapDF`` -- the 2D dispersion map as a dataframe
             - ``interOrderMaskNDArray`` -- the mask of the pixels lying between the orders
         """
-        from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
-
         return twoD_disp_map_image_to_dataframe(
             log=self.log,
             slit_length=self.detectorParams["slit_length"],
@@ -218,15 +228,15 @@ class base_util:
     @staticmethod
     def _mask_inter_order_pixels(
             associatedFrame,
-            interOrderMaskNDArray):
+            interOrderMaskNDArray,
+            np):
         """*set the frame's inter-order pixels to NaN, in place*
 
         **Key Arguments:**
             - ``associatedFrame`` -- the associated frame the utility is working with
             - ``interOrderMaskNDArray`` -- the mask of the pixels lying between the orders
+            - ``np`` -- the numpy module, imported by the caller
         """
-        import numpy as np
-
         associatedFrame.data[interOrderMaskNDArray == 1] = np.nan
 
         return
@@ -252,15 +262,15 @@ class base_util:
     def _rebin_two_d_map(
             self,
             binxRatio,
-            binyRatio):
+            binyRatio,
+            np):
         """*block-reduce the 2D map's planes onto the associated frame's binning*
 
         **Key Arguments:**
             - ``binxRatio`` -- the frame's x-binning divided by the map's x-binning
             - ``binyRatio`` -- the frame's y-binning divided by the map's y-binning
+            - ``np`` -- the numpy module, imported by the caller
         """
-        import numpy as np
-
         if binxRatio > 1 or binyRatio > 1:
             from astropy.nddata import block_reduce
 
@@ -275,24 +285,22 @@ class base_util:
     def _build_image_map(
             self,
             associatedFrame,
-            xdim,
-            ydim):
+            xarray,
+            yarray,
+            np,
+            pd):
         """*associate each frame pixel with its wavelength, slit position and order*
 
         **Key Arguments:**
             - ``associatedFrame`` -- the associated frame the utility is working with
-            - ``xdim`` -- the map's x-dimension, rebinned onto the frame's binning
-            - ``ydim`` -- the map's y-dimension, rebinned onto the frame's binning
+            - ``xarray`` -- the x pixel coordinate of every map pixel, built by the caller
+            - ``yarray`` -- the y pixel coordinate of every map pixel, built by the caller
+            - ``np`` -- the numpy module, imported by the caller
+            - ``pd`` -- the pandas module, imported by the caller
 
         **Return:**
             - ``imageMap`` -- the image map dataframe, with the inter-order rows removed
         """
-        import numpy as np
-        import pandas as pd
-
-        xarray = np.tile(np.arange(0, xdim), ydim)
-        yarray = np.repeat(np.arange(0, ydim), xdim)
-
         imageMap = pd.DataFrame.from_dict(
             {
                 "x": xarray,
