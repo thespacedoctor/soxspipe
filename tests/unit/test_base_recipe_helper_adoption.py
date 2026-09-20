@@ -83,11 +83,13 @@ def test_init_builds_the_qc_table_in_the_expected_column_order() -> None:
         and isinstance(node.targets[0], ast.Attribute)
         and node.targets[0].attr == "qc"
     ]
-    columns = [key.value for key in qcAssignments[0].value.args[0].keys]
 
     # ASSERT
+    # ASSERT THE COUNT BEFORE INDEXING, SO A LATER `__init__` THAT BUILDS ITS
+    # QC TABLE SOME OTHER WAY FAILS HERE WITH A READABLE MESSAGE INSTEAD OF AN
+    # `IndexError` FROM THE LINE BELOW.
     assert len(qcAssignments) == 1
-    assert columns == QC_COLUMNS
+    assert [key.value for key in qcAssignments[0].value.args[0].keys] == QC_COLUMNS
 
 
 def test_flag_poor_data_shares_one_timestamp_across_both_temperature_rows(
@@ -110,6 +112,68 @@ def test_flag_poor_data_shares_one_timestamp_across_both_temperature_rows(
     commonPath = rows.loc["CPATH TEMP"]
     assert detector["reduction_date_utc"] == commonPath["reduction_date_utc"]
     assert QC_TIMESTAMP_PATTERN.match(detector["reduction_date_utc"])
+
+
+def _counting_clock(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Replace the shared clock with one that returns a new value every call.
+
+    Comparing two rendered second-resolution timestamps cannot tell "one
+    timestamp shared by both rows" from "two timestamps minted a few
+    microseconds apart", because both render the same string. This stub makes
+    the two cases distinguishable: every call returns a different value, so
+    rows built from one call still match and rows built from two no longer do.
+
+    Returns the list of values handed out, so a test can assert how many times
+    the clock was read.
+    """
+    from soxspipe.commonutils import toolkit
+
+    issued: list[str] = []
+
+    def _clock(microseconds: bool = False) -> str:
+        issued.append(f"2024-01-02T03:04:{len(issued):02d}")
+        return issued[-1]
+
+    monkeypatch.setattr(toolkit, "utcnow_string", _clock)
+    return issued
+
+
+def test_flag_poor_data_reads_the_clock_once_for_both_temperature_rows(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both temperature rows come from a single clock read, not one each."""
+    # ARRANGE
+    recipe = _recipe(log)
+    recipe.inst = "SOXS"
+    recipe.detectorTemp = 82.5
+    recipe.cptemp = 11.2
+    recipe.recipeSettings = {}
+    issued = _counting_clock(monkeypatch)
+
+    # ACT
+    recipe.flag_poor_data()
+
+    # ASSERT
+    assert len(issued) == 1
+    assert list(recipe.qc["reduction_date_utc"]) == [issued[0], issued[0]]
+
+
+def test_qc_ron_reads_the_clock_once_for_both_noise_rows(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both RON rows come from a single clock read, not one each."""
+    # ARRANGE
+    recipe = _recipe(log)
+    issued = _counting_clock(monkeypatch)
+
+    # ACT
+    recipe.qc_ron(frameType="MBIAS", rawRon=2.5, masterRon=0.8)
+
+    # ASSERT
+    assert len(issued) == 1
+    assert list(recipe.qc["reduction_date_utc"]) == [issued[0], issued[0]]
 
 
 def test_flag_poor_data_temperature_rows_keep_their_values_and_columns(
