@@ -88,7 +88,7 @@ def _stub_basics(
     """
     resolvedTypes = ["LAMP,FMTCHK"] if imageTypes is None else imageTypes
 
-    def fake_basics(self: object) -> tuple[list[str], list[str], list[str]]:
+    def fake_basics(self: soxs_straighten) -> tuple[list[str], list[str], list[str]]:
         if calls is not None:
             calls.append("verify")
         self.arm = arm
