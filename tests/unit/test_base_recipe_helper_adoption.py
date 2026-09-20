@@ -59,34 +59,38 @@ def _recipe(log: Any) -> base_recipe:
 
 
 def test_init_builds_the_qc_table_in_the_expected_column_order() -> None:
-    """`__init__` fixes the column order every QC row in this module appends into.
+    """The constructor fixes the column order every QC row in this module appends into.
 
-    Read from the source rather than from a constructed recipe: `__init__`
-    needs a workspace and a settings file, and the only thing under test here
-    is the order of the keys in its `self.qc` literal. That order is why the
-    inline rows can adopt `append_qc` even though the helper builds its own
-    keys in a different order -- `pd.concat` aligns to the columns the table
-    already has.
+    Read from the source rather than from a constructed recipe: the
+    constructor needs a workspace and a settings file, and the only thing
+    under test here is the order of the keys in the `qc` literal. That order
+    is why the inline rows can adopt `append_qc` even though the helper builds
+    its own keys in a different order -- `pd.concat` aligns to the columns the
+    table already has.
+
+    The literal lives in `_empty_qc_and_product_tables`, which `__init__`
+    calls for it.
     """
     # ARRANGE
     import ast
     import inspect
+    import textwrap
 
-    source = inspect.getsource(base_recipe.__init__)
-    tree = ast.parse(inspect.cleandoc(source))
+    source = inspect.getsource(base_recipe._empty_qc_and_product_tables)
+    tree = ast.parse(textwrap.dedent(source))
 
     # ACT
     qcAssignments = [
         node
         for node in ast.walk(tree)
         if isinstance(node, ast.Assign)
-        and isinstance(node.targets[0], ast.Attribute)
-        and node.targets[0].attr == "qc"
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "qc"
     ]
 
     # ASSERT
-    # ASSERT THE COUNT BEFORE INDEXING, SO A LATER `__init__` THAT BUILDS ITS
-    # QC TABLE SOME OTHER WAY FAILS HERE WITH A READABLE MESSAGE INSTEAD OF AN
+    # ASSERT THE COUNT BEFORE INDEXING, SO A LATER REVISION THAT BUILDS ITS QC
+    # TABLE SOME OTHER WAY FAILS HERE WITH A READABLE MESSAGE INSTEAD OF AN
     # `IndexError` FROM THE LINE BELOW.
     assert len(qcAssignments) == 1
     assert [key.value for key in qcAssignments[0].value.args[0].keys] == QC_COLUMNS

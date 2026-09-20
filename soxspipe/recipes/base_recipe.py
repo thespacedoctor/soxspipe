@@ -61,13 +61,9 @@ class base_recipe:
         turnOffMP=False,
     ):
         import random
-        import sqlite3 as sql
 
         import matplotlib
         import pandas as pd
-        import yaml
-
-        from soxspipe.commonutils import toolkit
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
@@ -89,6 +85,86 @@ class base_recipe:
             self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")
             self.recipeName = self.recipeName.replace("soxs-stare", "soxs-stare-std")
             self.recipeName = self.recipeName.replace("soxs-offset", "soxs-offset-std")
+
+        self._resolve_product_path(log, inputFrames, verbose, overwrite)
+
+        if command:
+            self.log.print(f"\nRecipe Command: {command}")
+
+        from soxspipe.commonutils.toolkit import get_calibrations_path
+
+        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+
+        self.verbose = verbose
+        # SET LATER WHEN VERIFYING FRAMES
+        self.arm = None
+        self.detectorParams = None
+        self.dateObs = None
+
+        # `/tmp/` HERE IS A SUBDIRECTORY OF THE USER'S OWN WORKSPACE, NOT THE
+        # SYSTEM TEMPORARY DIRECTORY, AND THE RANDOM NAME ONLY HAS TO DIFFER
+        # BETWEEN CONCURRENT RECIPES, NOT RESIST AN ATTACKER. THE UNSEEDED
+        # DRAW ITSELF IS DY-49.
+        self.outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))  # noqa: S108, S311
+
+        # FIND THE CURRENT SESSION
+        from os.path import expanduser
+
+        home = expanduser("~")
+        from soxspipe.commonutils import data_organiser
+
+        do = data_organiser(
+            log=self.log,
+            rootDir=self.settings["workspace-root-dir"].replace("~", home),
+            dbConnect=False,
+        )
+        self.currentSession, allSessions = do.session_list(silent=True)
+        do.close()
+
+        # INITIATE A DB CONNECTION
+        self.conn = None
+        self.status = None
+        if not self.turnOffMP:
+            self._open_session_database(home)
+
+        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
+        self.settings = {**self._advanced_settings(), **self.settings}
+
+        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
+        self.qc, self.products = self._empty_qc_and_product_tables(pd)
+
+        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
+        # FOLDER
+        self.kw = keyword_lookup(log=self.log, settings=self.settings).get
+
+        from soxspipe.commonutils.toolkit import utility_setup
+
+        self.qcDir, self.productDir = utility_setup(
+            log=self.log,
+            settings=settings,
+            recipeName=self.recipeName,
+            startNightDate=self.startNightDate,
+        )
+
+        self.generateReponseCurve = False
+
+        return
+
+    def _resolve_product_path(self, log, inputFrames, verbose, overwrite):
+        """*predict where this recipe's product will be written, and refuse to run over one that is already there*
+
+        **Key Arguments:**
+
+        - ``log`` -- the logger the recipe was handed
+        - ``inputFrames`` -- the input frames the recipe was handed
+        - ``verbose`` -- also print the refusal to the terminal
+        - ``overwrite`` -- run again over an existing product or error log
+
+        Sets ``self.sofName``, ``self.productPath`` and ``self.log``. A product
+        or an error log already in place raises ``FileExistsError`` unless
+        ``overwrite`` is set.
+        """
+        from soxspipe.commonutils import toolkit
 
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
@@ -121,74 +197,70 @@ class base_recipe:
             self.productPath = False
             self.log = log
 
-        if command:
-            self.log.print(f"\nRecipe Command: {command}")
+        return
 
-        from soxspipe.commonutils.toolkit import get_calibrations_path
+    def _open_session_database(self, home):
+        """*open the workspace database and mark this recipe as failed until it completes*
 
-        self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
+        **Key Arguments:**
 
-        self.verbose = verbose
-        # SET LATER WHEN VERIFYING FRAMES
-        self.arm = None
-        self.detectorParams = None
-        self.dateObs = None
+        - ``home`` -- the user's home directory, used to expand the workspace path
 
-        self.outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))
+        Sets ``self.conn`` and ``self.status``. The stored status is set to
+        'fail' up front, so a recipe that crashes leaves a failure behind
+        rather than its previous result.
+        """
+        import sqlite3 as sql
 
-        # FIND THE CURRENT SESSION
-        from os.path import expanduser
+        if self.currentSession and self.sofName:
+            self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
 
-        home = expanduser("~")
-        from soxspipe.commonutils import data_organiser
+            def dict_factory(cursor, row):
+                d = {}
+                for idx, col in enumerate(cursor.description):
+                    d[col[0]] = row[idx]
+                return d
 
-        do = data_organiser(
-            log=self.log,
-            rootDir=self.settings["workspace-root-dir"].replace("~", home),
-            dbConnect=False,
-        )
-        self.currentSession, allSessions = do.session_list(silent=True)
-        do.close()
+            self.conn = sql.connect(
+                self.sessionDb,
+                check_same_thread=False,
+                timeout=300,
+                autocommit=True,
+            )
+            c = self.conn.cursor()
+            c.execute("PRAGMA busy_timeout = 100000")
+            c.execute("PRAGMA synchronous = OFF")
 
-        # INITIATE A DB CONNECTION
-        self.conn = None
-        self.status = None
-        if not self.turnOffMP:
-            if self.currentSession and self.sofName:
-                self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
+            self.conn.row_factory = dict_factory
 
-                def dict_factory(cursor, row):
-                    d = {}
-                    for idx, col in enumerate(cursor.description):
-                        d[col[0]] = row[idx]
-                    return d
-
-                self.conn = sql.connect(
-                    self.sessionDb,
-                    check_same_thread=False,
-                    timeout=300,
-                    autocommit=True,
-                )
-                c = self.conn.cursor()
-                c.execute("PRAGMA busy_timeout = 100000")
-                c.execute("PRAGMA synchronous = OFF")
-
-                self.conn.row_factory = dict_factory
-
-            # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
-            if self.conn:
-                c = self.conn.cursor()
-                sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"
+        # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
+        if self.conn:
+            c = self.conn.cursor()
+            # THE SESSION NAME IS A COLUMN NAME, WHICH SQLITE CANNOT
+            # PARAMETERISE, AND IT COMES FROM THE WORKSPACE DATABASE RATHER
+            # THAN FROM USER INPUT. THE MODULE'S SQL FINDINGS ARE DY-88'S.
+            sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"  # noqa: E501, S608
+            c.execute(sqlQuery)
+            try:
+                self.status = c.fetchone()["status"]
+                sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"  # noqa: E501, S608
                 c.execute(sqlQuery)
-                try:
-                    self.status = c.fetchone()["status"]
-                    sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
-                    c.execute(sqlQuery)
-                except (sqlite3.Error, TypeError) as e:
-                    self.log.warning(f"__init__: `self.status = c.fetchone()['status']` failed, continuing: {e}")
-                    self.status = None
+            except (sqlite3.Error, TypeError) as e:
+                self.log.warning(f"__init__: `self.status = c.fetchone()['status']` failed, continuing: {e}")
+                self.status = None
 
-                c.close()
+            c.close()
+
+        return
+
+    def _advanced_settings(self):
+        """*read the advanced settings shipped with the package*
+
+        **Return:**
+
+        - ``advs`` -- the advanced settings, or an empty dictionary if the file cannot be found
+        """
+        import yaml
 
         # COLLECT ADVANCED SETTINGS IF AVAILABLE
         parentDirectory = os.path.dirname(__file__)
@@ -207,11 +279,24 @@ class base_recipe:
         else:
             with open(advs) as stream:
                 advs = yaml.safe_load(stream)
-        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
-        self.settings = {**advs, **self.settings}
 
-        # DATAFRAMES TO COLLECT QCs AND PRODUCTS
-        self.qc = pd.DataFrame(
+        return advs
+
+    def _empty_qc_and_product_tables(self, pd):
+        """*build the empty tables this recipe collects its QCs and products in*
+
+        **Key Arguments:**
+
+        - ``pd`` -- the pandas module, imported by the caller so that the import happens where it always did
+
+        **Return:**
+
+        - ``qc`` -- the empty quality-control table
+        - ``products`` -- the empty product table
+
+        The column order set here is the order every row appended later takes.
+        """
+        qc = pd.DataFrame(
             {
                 "soxspipe_recipe": [],
                 "qc_name": [],
@@ -224,7 +309,7 @@ class base_recipe:
                 "to_header": [],
             }
         )
-        self.products = pd.DataFrame(
+        products = pd.DataFrame(
             {
                 "soxspipe_recipe": [],
                 "product_label": [],
@@ -237,22 +322,7 @@ class base_recipe:
             }
         )
 
-        # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-        # FOLDER
-        self.kw = keyword_lookup(log=self.log, settings=self.settings).get
-
-        from soxspipe.commonutils.toolkit import utility_setup
-
-        self.qcDir, self.productDir = utility_setup(
-            log=self.log,
-            settings=settings,
-            recipeName=self.recipeName,
-            startNightDate=self.startNightDate,
-        )
-
-        self.generateReponseCurve = False
-
-        return
+        return qc, products
 
     def _prepare_single_frame(self, frame, save=False):
         """*prepare a single raw frame by converting pixel data from ADU to electrons and adding mask and uncertainty extensions*
@@ -275,7 +345,6 @@ class base_recipe:
         import warnings
 
         import ccdproc
-        import numpy as np
         from astropy import units as u
         from astropy.nddata import CCDData
 
@@ -327,6 +396,58 @@ class base_recipe:
         frame = ccdproc.gain_correct(frame, dp["gain"], add_keyword=None)
         toolkit.frame_to_32(frame)
 
+        frame = self._add_uncertainty_map(frame)
+
+        frame.mask = self._bad_pixel_mask(frame)
+
+        # THE NESTED `if` IS KEPT SO THE TWO CONDITIONS STAY SEPARATELY
+        # COMMENTED, AND BECAUSE COLLAPSING IT IS COSMETIC WORK BELONGING TO
+        # DY-88.
+        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:  # noqa: SIM102
+            # OBJECT/STANDARD FRAMES
+            if frame.meta[kw("DPR_TYPE")] == "STD,FLUX" or "STD_stare" in frame.meta[kw("OBS_NAME")]:
+                # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
+                self.generateReponseCurve = True
+
+        frame = self._clean_cosmic_rays(frame)
+
+        filePath = self._write_prepared_frame(frame, filepath, save)
+
+        ## KEYWORDS FOR LATER QCs
+        if self.inst == "SOXS":
+            self.cptemp = frame.header[kw("CP_TEMP_C")]
+            if self.arm == "NIR":
+                self.detectorTemp = frame.header[kw("NIR_TEMP_K")]
+            elif self.arm == "VIS":
+                self.detectorTemp = frame.header[kw("VIS_TEMP_C")]
+            else:
+                self.detectorTemp = None
+
+        self.log.debug("completed the ``_prepare_single_frame`` method")
+        return filePath
+
+    def _add_uncertainty_map(self, frame):
+        """*add the uncertainty extension to a gain-corrected frame*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the gain-corrected frame (CCDData object)
+
+        **Return:**
+
+        - ``frame`` -- the frame with its uncertainty extension populated
+
+        A bias frame's uncertainty is the readnoise alone. Every other frame
+        also carries the photon noise of its own counts.
+        """
+        import ccdproc
+        import numpy as np
+
+        from soxspipe.commonutils import toolkit
+
+        kw = self.kw
+        dp = self.detectorParams
+
         # GENERATE UNCERTAINTY MAP AS EXTENSION
         if frame.header[kw("DPR_TYPE")] == "BIAS":
             # ERROR IS ONLY FROM READNOISE FOR BIAS FRAMES
@@ -337,6 +458,30 @@ class base_recipe:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
             frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True, add_keyword=None)
         toolkit.frame_to_32(frame)
+
+        return frame
+
+    def _bad_pixel_mask(self, frame):
+        """*read the bad-pixel bitmap matching the frame's binning and flatten it to a boolean mask*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame the mask is built for (CCDData object)
+
+        **Return:**
+
+        - ``boolMask`` -- False where the pixel is good, True where it is bad
+
+        A missing bitmap is written out as an all-good map before the frame is failed.
+        """
+        import numpy as np
+        from astropy import units as u
+        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils import toolkit
+
+        kw = self.kw
+        dp = self.detectorParams
 
         # FIND THE APPROPRIATE BAD-PIXEL BITMAP AND APPEND AS 'FLAG' EXTENSION
         # NOTE FLAGS NOT YET SUPPORTED BY CCDPROC THIS THIS WON'T GET SAVED OUT
@@ -379,7 +524,7 @@ class base_recipe:
         try:
             # FAILS IN PYTHON 2.7 AS BOOLMASK IS A BUFFER - NEED TO CONVERT TO
             # 2D ARRAY
-            boolMask.shape
+            boolMask.shape  # noqa: B018
 
         except AttributeError as e:
             self.log.debug(f"_prepare_single_frame: `boolMask.shape` failed, continuing: {e}")
@@ -387,13 +532,20 @@ class base_recipe:
             arr.shape = frame.data.shape
             boolMask = arr
 
-        frame.mask = boolMask
+        return boolMask
 
-        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:
-            # OBJECT/STANDARD FRAMES
-            if frame.meta[kw("DPR_TYPE")] == "STD,FLUX" or "STD_stare" in frame.meta[kw("OBS_NAME")]:
-                # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
-                self.generateReponseCurve = True
+    def _clean_cosmic_rays(self, frame):
+        """*flag cosmic rays in the frame, if the recipe settings ask for it*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame to clean (CCDData object)
+
+        **Return:**
+
+        - ``frame`` -- the cleaned frame, or the frame unchanged when cleaning is switched off
+        """
+        from soxspipe.commonutils import toolkit
 
         if (
             "use_lacosmic" in self.recipeSettings
@@ -434,6 +586,23 @@ class base_recipe:
                 skylines=False,
             )
 
+        return frame
+
+    def _write_prepared_frame(self, frame, filepath, save):
+        """*stamp the prepared frame with its preparation time and write it to disk*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the prepared frame (CCDData object)
+        - ``filepath`` -- the path of the raw frame the prepared frame came from
+        - ``save`` -- write to the workspace root instead of the recipe's scratch directory
+
+        **Return:**
+
+        - ``filePath`` -- the path the prepared frame was written to
+        """
+        from soxspipe.commonutils import toolkit
+
         if save:
             outDir = self.workspaceRootPath
         else:
@@ -467,17 +636,6 @@ class base_recipe:
             product=False,
         )
 
-        ## KEYWORDS FOR LATER QCs
-        if self.inst == "SOXS":
-            self.cptemp = frame.header[kw("CP_TEMP_C")]
-            if self.arm == "NIR":
-                self.detectorTemp = frame.header[kw("NIR_TEMP_K")]
-            elif self.arm == "VIS":
-                self.detectorTemp = frame.header[kw("VIS_TEMP_C")]
-            else:
-                self.detectorTemp = None
-
-        self.log.debug("completed the ``_prepare_single_frame`` method")
         return filePath
 
     def _absolute_path(self, path):
@@ -648,18 +806,11 @@ class base_recipe:
         """
         self.log.debug("starting the ``_verify_input_frames_basics`` method")
 
-        from contextlib import suppress
-
-        import numpy as np
-        from astropy import units as u
-
         kw = self.kw
 
         # CHECK WE ACTUALLY HAVE IMAGES
         if not len(self.inputFrames.files_filtered(include_path=True)):
-            sys.stdout.flush()
-            sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+            self._report_verification_error()
             raise FileNotFoundError("No image frames where passed to the recipe")
 
         arm = self.inputFrames.values(keyword=kw("SEQ_ARM"), unique=True)
@@ -667,22 +818,7 @@ class base_recipe:
         # SORT RECIPE AND ARM SETTINGS
         self.recipeSettings = self.get_recipe_settings()
 
-        inst = self.inputFrames.values(kw("INSTRUME"), unique=True)
-        with suppress(ValueError):
-            inst.remove(None)
-        self.inst = inst[0]
-
-        # MIXED INPUT ARMS ARE BAD
-        if None in arm:
-            arm.remove(None)
-        if len(arm) > 1:
-            arms = " and ".join(arm)
-            sys.stdout.flush()
-            sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            self.log.print(self.inputFrames.summary)
-            raise TypeError("Input frames are a mix of %(imageTypes)s" % locals())
-        self.arm = arm[0]
+        self._verify_single_instrument_and_arm(arm)
 
         # CREATE DETECTOR LOOKUP DICTIONARY - SOME VALUES CAN BE OVERWRITTEN
         # WITH WHAT IS FOUND HERE IN FITS HEADERS
@@ -705,6 +841,81 @@ class base_recipe:
         )
         binningMatch = self.inputFrames.summary[matches]
 
+        self._verify_single_binning(binningMatch)
+        self._verify_single_read_speed(binningMatch)
+        self._verify_single_gain()
+        self._verify_single_slit_width()
+        self._verify_single_readnoise()
+
+        imageTypes, imageTech, imageCat = self._collect_frame_classifications()
+
+        self.log.debug("completed the ``_verify_input_frames_basics`` method")
+        return imageTypes, imageTech, imageCat
+
+    def _report_verification_error(self, showSummary=False, trailingNewlines=False):
+        """*print the frame-verification error banner, and optionally the frame summary*
+
+        **Key Arguments:**
+
+        - ``showSummary`` -- also print the input-frame summary table. Default *False*
+        - ``trailingNewlines`` -- print two blank lines after the summary. Default *False*
+
+        """
+        sys.stdout.flush()
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
+        if showSummary:
+            self.log.print(self.inputFrames.summary)
+        if trailingNewlines:
+            self.log.print("\n\n")
+
+        return
+
+    def _verify_single_instrument_and_arm(self, arm):
+        """*record the instrument and the arm the input frames were taken with*
+
+        **Key Arguments:**
+
+        - ``arm`` -- the unique arm values read from the input frames
+
+        A mix of arms raises an exception; otherwise ``self.inst`` and ``self.arm`` are set.
+        """
+        from contextlib import suppress
+
+        kw = self.kw
+
+        inst = self.inputFrames.values(kw("INSTRUME"), unique=True)
+        with suppress(ValueError):
+            inst.remove(None)
+        self.inst = inst[0]
+
+        # MIXED INPUT ARMS ARE BAD
+        if None in arm:
+            arm.remove(None)
+        if len(arm) > 1:
+            arms = " and ".join(arm)
+            self._report_verification_error(showSummary=True)
+            # THIS INTERPOLATION IS A DEFECT, NOT A STYLE CHOICE: `imageTypes`
+            # DOES NOT EXIST YET, SO IT RAISES `KeyError`. REWRITING IT IS
+            # DY-89, AND THE CHARACTERIZATION TEST PINS TODAY'S BEHAVIOUR.
+            raise TypeError("Input frames are a mix of %(imageTypes)s" % locals())  # noqa: UP031
+        self.arm = arm[0]
+
+        return
+
+    def _verify_single_binning(self, binningMatch):
+        """*record the detector binning the input frames were read out with*
+
+        **Key Arguments:**
+
+        - ``binningMatch`` -- the input-frame summary with the table products filtered out
+
+        A mix of binnings raises an exception; otherwise ``self.detectorParams["binning"]`` is set.
+        """
+        import numpy as np
+
+        kw = self.kw
+
         # MIXED BINNING IS BAD
         if self.arm == "NIR":
             # NIR ARRAY NEVER BINNED
@@ -720,24 +931,47 @@ class base_recipe:
                 self.log.debug(f"_verify_input_frames_basics: `cdelt1.remove(None)` failed, continuing: {e}")
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
-            sys.stdout.flush()
-            sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            raise TypeError("Input frames are a mix of binnings" % locals())
+            self._report_verification_error()
+            raise TypeError("Input frames are a mix of binnings" % locals())  # noqa: F507, UP031
 
         if cdelt1[0] and cdelt2[0]:
             self.detectorParams["binning"] = [int(cdelt2[0]), int(cdelt1[0])]
+
+        return
+
+    def _verify_single_read_speed(self, binningMatch):
+        """*check the input frames were all read out at the same speed*
+
+        **Key Arguments:**
+
+        - ``binningMatch`` -- the input-frame summary with the table products filtered out
+
+        A mix of readout speeds raises an exception.
+        """
+        import numpy as np
+
+        kw = self.kw
 
         # MIXED READOUT SPEEDS IS BAD
         readSpeed = np.unique(binningMatch[kw("DET_READ_SPEED")].data)
 
         if len(readSpeed) > 1:
-            sys.stdout.flush()
-            sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            self.log.print(self.inputFrames.summary)
-            self.log.print("\n\n")
+            self._report_verification_error(showSummary=True, trailingNewlines=True)
             raise TypeError(f"Input frames are a mix of readout speeds. {readSpeed}" % locals())
+
+        return
+
+    def _verify_single_gain(self):
+        """*record the detector gain the input frames were read out with*
+
+        A mix of gains raises an exception; otherwise ``self.detectorParams["gain"]`` is set.
+        """
+        from contextlib import suppress
+
+        import numpy as np
+        from astropy import units as u
+
+        kw = self.kw
 
         # MIXED GAIN SPEEDS IS BAD
         # HIERARCH ESO DET OUT1 CONAD - Electrons/ADU
@@ -760,10 +994,7 @@ class base_recipe:
             gain.remove(None)
 
         if len(gain) > 1:
-            sys.stdout.flush()
-            sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            self.log.print(self.inputFrames.summary)
+            self._report_verification_error(showSummary=True)
             # gain = np.unique(gain)
             raise TypeError(f"Input frames are a mix of gain {gain}" % locals())
         if len(gain) and gain[0]:
@@ -773,6 +1004,19 @@ class base_recipe:
             # NIR
             self.log.print("\n\tGain is being read from the detector parameter file (not the FITS header)\n")
             self.detectorParams["gain"] = self.detectorParams["gain"] * u.electron / u.adu
+
+        return
+
+    def _verify_single_slit_width(self):
+        """*check the input science and flat frames all used the same slit*
+
+        A mix of slit widths raises an exception, except for the SOXS NIR
+        nodding, staring and offset recipes, which are allowed the 5.0 and 1.5
+        arcsecond pair.
+        """
+        from contextlib import suppress
+
+        kw = self.kw
 
         # CONVERT TO DATAFRAME AND FILTER TO CHECK SLIT WIDTHS
         filteredDf = self.inputFrames.summary.to_pandas()
@@ -815,11 +1059,21 @@ class base_recipe:
             ):
                 pass
             else:
-                sys.stdout.flush()
-                sys.stdout.write("\x1b[1A\x1b[2K")
-                self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-                self.log.print(self.inputFrames.summary)
+                self._report_verification_error(showSummary=True)
                 raise TypeError(f"Input frames are a mix of slit-width ({slitWidth})" % locals())
+
+        return
+
+    def _verify_single_readnoise(self):
+        """*record the detector readnoise the input frames were read out with*
+
+        A mix of readnoise values raises an exception; otherwise ``self.detectorParams["ron"]`` is set.
+        """
+        from contextlib import suppress
+
+        from astropy import units as u
+
+        kw = self.kw
 
         # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
         ron = self.inputFrames.values(keyword=kw("RON"), unique=True)
@@ -828,10 +1082,7 @@ class base_recipe:
 
         # MIXED NOISE
         if len(ron) > 1:
-            sys.stdout.flush()
-            sys.stdout.write("\x1b[1A\x1b[2K")
-            self.log.print("# VERIFYING INPUT FRAMES - **ERROR**\n")
-            self.log.print(self.inputFrames.summary)
+            self._report_verification_error(showSummary=True)
             raise TypeError(f"Input frames are a mix of readnoise. {ron}" % locals())
         if len(ron) and ron[0]:
             # UVB & VIS
@@ -839,6 +1090,19 @@ class base_recipe:
         else:
             # NIR
             self.detectorParams["ron"] = self.detectorParams["ron"] * u.electron
+
+        return
+
+    def _collect_frame_classifications(self):
+        """*collect the type, technology and category of the input frames*
+
+        **Return:**
+
+        - ``imageTypes`` -- the unique frame types, raw and reduced
+        - ``imageTech`` -- the unique frame technologies, raw and reduced
+        - ``imageCat`` -- the unique frame categories, raw and reduced
+        """
+        kw = self.kw
 
         imageTypes = self.inputFrames.values(keyword=kw("DPR_TYPE"), unique=True) + self.inputFrames.values(
             keyword=kw("PRO_TYPE"), unique=True
@@ -863,12 +1127,7 @@ class base_recipe:
 
             return myList
 
-        imageTypes = clean_list(imageTypes)
-        imageTech = clean_list(imageTech)
-        imageCat = clean_list(imageCat)
-
-        self.log.debug("completed the ``_verify_input_frames_basics`` method")
-        return imageTypes, imageTech, imageCat
+        return clean_list(imageTypes), clean_list(imageTech), clean_list(imageCat)
 
     def clean_up(self, forceFail=False):
         """*update product status in DB and remove intermediate files once recipe is complete*
@@ -1861,10 +2120,6 @@ class base_recipe:
 
         - ``frame`` -- the frame to update
         - ``rawFrames`` -- limit the raw frames to be listed in the fits header to only these frames (list)
-
-        **Return:**
-
-        - None
 
         **Usage:**
 
