@@ -1673,17 +1673,19 @@ class base_recipe:
                 add_keyword=None,
             )
 
-        if self.inst == "SOXS" and False:
+        # THE `and False` DISABLES THIS BRANCH DELIBERATELY. REMOVING IT IS A
+        # BEHAVIOUR CHANGE, NOT A LINT FIX, SO IT IS DY-88'S TO DECIDE.
+        if self.inst == "SOXS" and False:  # noqa: SIM223
             if not self.darkDetrendWarningIssued2:
                 self.log.warning(
-                    "Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."
+                    "Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."  # noqa: E501
                 )
                 self.darkDetrendWarningIssued2 = True
             return processedFrame
 
         if not self.darkDetrendWarningIssued2:
             self.log.warning(
-                "Dark and science/calibration frame have differing exposure-times. Scaling dark to match science/calibration frame."
+                "Dark and science/calibration frame have differing exposure-times. Scaling dark to match science/calibration frame."  # noqa: E501
             )
             self.darkDetrendWarningIssued2 = True
             self.log.print(f"Scaling the dark to the exposure time of {inputFrame.header[kw('EXPTIME')]}s")
@@ -1818,7 +1820,9 @@ class base_recipe:
             processedFrame = ccdproc.subtract_bias(processedFrame, master_bias, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
-        if dark != False:
+        # `dark` IS EITHER `False` OR A CCDData FRAME, WHOSE TRUTH VALUE IS
+        # AMBIGUOUS, SO THE COMPARISON TO `False` CANNOT BECOME A TRUTH CHECK.
+        if dark != False:  # noqa: E712
             processedFrame = self._subtract_dark_frame(processedFrame, dark, inputFrame)
         toolkit.frame_to_32(processedFrame)
 
@@ -2089,7 +2093,9 @@ class base_recipe:
         from soxspipe.commonutils import toolkit
 
         # LIST OF RAW CCDDATA OBJECTS
-        ccds = [
+        # THE COMPREHENSION IS THE BASE REVISION'S. COLLAPSING IT TO `list()` IS
+        # DY-88'S LINT SWEEP, NOT THIS COMMIT'S.
+        ccds = [  # noqa: C416
             c
             for c in self.inputFrames.ccds(
                 ccd_kwargs={
@@ -2124,7 +2130,7 @@ class base_recipe:
         dmin, dmax, dmean, dstd = self._image_stats(raw_diff)
 
         if dstd == 0:
-            message = "The raw input frames appear to be corrupted. Cannot calculate the read-out noise. Please check the raw frames."
+            message = "The raw input frames appear to be corrupted. Cannot calculate the read-out noise. Please check the raw frames."  # noqa: E501
             raise ValueError(message)
 
         # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
@@ -2459,7 +2465,8 @@ class base_recipe:
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
+        # UNUSED, AND ONE OF THE MODULE'S ELEVEN `F841` FINDINGS. DELETING IT IS DY-88'S.
+        dp = self.detectorParams  # noqa: F841
         imageType = self.imageType
         if "FLAT" in imageType:
             imageType = "FLAT"
