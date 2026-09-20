@@ -354,6 +354,7 @@ class base_recipe:
         **Key Arguments:**
 
         - ``frame`` -- the path to the frame to prepare, of a CCDData object
+        - ``save`` -- save the prepared frame to disk. Default: False
 
         **Return:**
 
@@ -521,7 +522,7 @@ class base_recipe:
         bitMapPath = self.calibrationRootPath + "/" + dp["bad-pixel map"][f"{binx}x{biny}"]
 
         if not os.path.exists(bitMapPath):
-            message = "the path to the bitMapPath %s does not exist on this machine" % (bitMapPath,)
+            message = f"the path to the bitMapPath {bitMapPath} does not exist on this machine"
 
             if True:
                 # CREATE A DUMMY BAD-PIXEL MAP
@@ -1184,8 +1185,13 @@ class base_recipe:
 
             if not passToFail and not forceFail:
                 c = self.conn.cursor()
+                # THE SESSION NAME IS A COLUMN NAME, WHICH SQLITE CANNOT TAKE AS A
+                # BOUND PARAMETER. MOVING THE SOF NAME ONTO A PARAMETER WOULD CHANGE
+                # THE STATEMENT THIS PULL REQUEST'S TESTS PIN, SO THE HARDENING IS
+                # FILED SEPARATELY AS DY-93 RATHER THAN DONE IN A REFACTOR COMMIT.
                 sqlQuery = (
-                    f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
+                    f"update product_frames set status_{self.currentSession} = 'pass' "  # noqa: S608
+                    f"where sof = '{self.sofName}.sof'"
                 )
                 c.execute(sqlQuery)
                 c.close()
@@ -1204,8 +1210,12 @@ class base_recipe:
 
             if forceFail and isinstance(forceFail, str):
                 c = self.conn.cursor()
+                # SAME AS ABOVE: THE FAILURE MESSAGE AND THE SOF NAME BELONG ON
+                # BOUND PARAMETERS, WHICH CHANGES THE STATEMENT AND THEREFORE WAITS
+                # FOR DY-93.
                 sqlQuery = (
-                    f"update product_frames set error_message = '{forceFail}' where sof = '{self.sofName}.sof'"
+                    f"update product_frames set error_message = '{forceFail}' "  # noqa: S608
+                    f"where sof = '{self.sofName}.sof'"
                 )
                 c.execute(sqlQuery)
                 c.close()
@@ -1251,7 +1261,6 @@ class base_recipe:
         self.log.debug("starting the ``xsh2soxs`` method")
         import numpy as np
 
-        kw = self.kw
         dp = self.detectorParams
 
         # NP ROTATION OF ARRAYS IS IN COUNTER-CLOCKWISE DIRECTION
@@ -1269,13 +1278,15 @@ class base_recipe:
         **Key Arguments:**
 
         - ``frame`` -- the CCDData frame to be trimmed
+
+        **Return:**
+
+        - ``trimmed_frame`` -- the frame with its pre-scan and overscan regions removed (CCDData object)
         """
         self.log.debug("starting the ``_trim_frame`` method")
 
         import ccdproc
 
-        kw = self.kw
-        arm = self.arm
         dp = self.detectorParams
 
         rs, re, cs, ce = (
@@ -1318,6 +1329,10 @@ class base_recipe:
         - ``product`` -- is this a recipe product?
         - ``maskToZero`` -- set masked pixels to zero before writing to file?
 
+        **Return:**
+
+        - ``filepath`` -- the absolute path of the file written to disk
+
         **Usage:**
 
         Use within a recipe like so:
@@ -1329,8 +1344,6 @@ class base_recipe:
         self.log.debug("starting the ``write`` method")
 
         from soxspipe.commonutils.phase3 import basic_header_scrubbing, sort_keywords
-
-        kw = self.kw
 
         # WRITE QCs TO HEADERS
         for n, v, c, h in zip(
@@ -1561,7 +1574,6 @@ class base_recipe:
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
         imageType = self.imageType
 
         # ALLOW FOR UNDERSCORE AND HYPHENS
@@ -1942,6 +1954,10 @@ class base_recipe:
 
         - ``rformat`` -- the format to outout reports as. Default *stdout*. [stdout|....]
 
+        **Return:**
+
+        - ``qc`` -- the QC dataframe, with the columns that are written to the database
+
         **Usage:**
 
         ```python
@@ -2011,7 +2027,9 @@ class base_recipe:
             )
             if self.conn:
                 sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
-                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"
+                # A FALSE POSITIVE: THE F-STRING INTERPOLATES ONLY `?` PLACEHOLDERS,
+                # AND EVERY SOF NAME IS PASSED TO `execute` AS A BOUND PARAMETER.
+                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"  # noqa: S608
                 c = self.conn.cursor()
                 c.execute(sqlQuery, sofNames)
                 c.close()
@@ -2265,7 +2283,10 @@ class base_recipe:
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
             medianFlux = np.ma.median(maskedDataArray)
 
-        fluxRange = (np.nanpercentile(frame.data, 95) - np.nanpercentile(frame.data, 5)) / frame.header[
+        # THE VALUE IS UNREAD, BUT THE EXPTIME LOOKUP RAISES KeyError FOR A FRAME
+        # WITHOUT THAT KEYWORD. DELETING THE ASSIGNMENT WOULD REMOVE THAT FAILURE,
+        # WHICH IS PINNED BY test_base_recipe_lint_characterization.py.
+        fluxRange = (np.nanpercentile(frame.data, 95) - np.nanpercentile(frame.data, 5)) / frame.header[  # noqa: F841
             self.kw("EXPTIME")
         ]
 
@@ -2311,7 +2332,6 @@ class base_recipe:
 
         # UNPACK SETTINGS
         clipping_lower_sigma = self.recipeSettings["frame-clipping-sigma"]
-        clipping_upper_sigma = clipping_lower_sigma
         clipping_iteration_count = self.recipeSettings["frame-clipping-iterations"]
 
         maskedFrame = sigma_clip(
@@ -2539,22 +2559,26 @@ class base_recipe:
         return recipeSettings
 
     def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
-        """
-        Retry inserting into the database with a maximum of keepTryingMax attempts.
+        """*write a dataframe to a database table, retrying the insert up to seven times*
 
         **Key Arguments:**
-        - `dataframe` -- DataFrame containing rows to insert.
-        - `table_name` -- Name of the database table to insert into.
-        - `replace` -- If True, replace existing entries; otherwise, append.
+
+        - ``dataframe`` -- the dataframe containing the rows to insert
+        - ``table_name`` -- the name of the database table to insert into
+        - ``replace`` -- if True, delete the table's existing rows first; otherwise append. Default: False
 
         **Raises:**
-        - Exception if the insertion fails after 7 attempts.
+
+        - Exception if the insert fails after seven attempts.
         """
         import time
 
         if replace:
             c = self.conn.cursor()
-            sqlQuery = f"delete from {table_name};"
+            # A TABLE NAME CANNOT BE A BOUND PARAMETER. EVERY CALLER IN THE PACKAGE
+            # PASSES A LITERAL TABLE NAME, NEVER A VALUE READ FROM DATA OR FROM A
+            # USER. DY-93 COVERS VALIDATING THE NAME AT THIS BOUNDARY.
+            sqlQuery = f"delete from {table_name};"  # noqa: S608
             try:
                 c.execute(sqlQuery)
             except sqlite3.OperationalError as e:
