@@ -522,7 +522,7 @@ class base_recipe:
         bitMapPath = self.calibrationRootPath + "/" + dp["bad-pixel map"][f"{binx}x{biny}"]
 
         if not os.path.exists(bitMapPath):
-            message = "the path to the bitMapPath %s does not exist on this machine" % (bitMapPath,)
+            message = f"the path to the bitMapPath {bitMapPath} does not exist on this machine"
 
             if True:
                 # CREATE A DUMMY BAD-PIXEL MAP
@@ -1185,8 +1185,13 @@ class base_recipe:
 
             if not passToFail and not forceFail:
                 c = self.conn.cursor()
+                # THE SESSION NAME IS A COLUMN NAME, WHICH SQLITE CANNOT TAKE AS A
+                # BOUND PARAMETER. MOVING THE SOF NAME ONTO A PARAMETER WOULD CHANGE
+                # THE STATEMENT THIS PULL REQUEST'S TESTS PIN, SO THE HARDENING IS
+                # FILED SEPARATELY AS DY-93 RATHER THAN DONE IN A REFACTOR COMMIT.
                 sqlQuery = (
-                    f"update product_frames set status_{self.currentSession} = 'pass' where sof = '{self.sofName}.sof'"
+                    f"update product_frames set status_{self.currentSession} = 'pass' "  # noqa: S608
+                    f"where sof = '{self.sofName}.sof'"
                 )
                 c.execute(sqlQuery)
                 c.close()
@@ -1205,8 +1210,12 @@ class base_recipe:
 
             if forceFail and isinstance(forceFail, str):
                 c = self.conn.cursor()
+                # SAME AS ABOVE: THE FAILURE MESSAGE AND THE SOF NAME BELONG ON
+                # BOUND PARAMETERS, WHICH CHANGES THE STATEMENT AND THEREFORE WAITS
+                # FOR DY-93.
                 sqlQuery = (
-                    f"update product_frames set error_message = '{forceFail}' where sof = '{self.sofName}.sof'"
+                    f"update product_frames set error_message = '{forceFail}' "  # noqa: S608
+                    f"where sof = '{self.sofName}.sof'"
                 )
                 c.execute(sqlQuery)
                 c.close()
@@ -1252,7 +1261,6 @@ class base_recipe:
         self.log.debug("starting the ``xsh2soxs`` method")
         import numpy as np
 
-        kw = self.kw
         dp = self.detectorParams
 
         # NP ROTATION OF ARRAYS IS IN COUNTER-CLOCKWISE DIRECTION
@@ -1279,8 +1287,6 @@ class base_recipe:
 
         import ccdproc
 
-        kw = self.kw
-        arm = self.arm
         dp = self.detectorParams
 
         rs, re, cs, ce = (
@@ -1338,8 +1344,6 @@ class base_recipe:
         self.log.debug("starting the ``write`` method")
 
         from soxspipe.commonutils.phase3 import basic_header_scrubbing, sort_keywords
-
-        kw = self.kw
 
         # WRITE QCs TO HEADERS
         for n, v, c, h in zip(
@@ -1570,7 +1574,6 @@ class base_recipe:
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
         imageType = self.imageType
 
         # ALLOW FOR UNDERSCORE AND HYPHENS
@@ -2024,7 +2027,9 @@ class base_recipe:
             )
             if self.conn:
                 sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
-                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"
+                # A FALSE POSITIVE: THE F-STRING INTERPOLATES ONLY `?` PLACEHOLDERS,
+                # AND EVERY SOF NAME IS PASSED TO `execute` AS A BOUND PARAMETER.
+                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"  # noqa: S608
                 c = self.conn.cursor()
                 c.execute(sqlQuery, sofNames)
                 c.close()
@@ -2278,7 +2283,10 @@ class base_recipe:
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
             medianFlux = np.ma.median(maskedDataArray)
 
-        fluxRange = (np.nanpercentile(frame.data, 95) - np.nanpercentile(frame.data, 5)) / frame.header[
+        # THE VALUE IS UNREAD, BUT THE EXPTIME LOOKUP RAISES KeyError FOR A FRAME
+        # WITHOUT THAT KEYWORD. DELETING THE ASSIGNMENT WOULD REMOVE THAT FAILURE,
+        # WHICH IS PINNED BY test_base_recipe_lint_characterization.py.
+        fluxRange = (np.nanpercentile(frame.data, 95) - np.nanpercentile(frame.data, 5)) / frame.header[  # noqa: F841
             self.kw("EXPTIME")
         ]
 
@@ -2324,7 +2332,6 @@ class base_recipe:
 
         # UNPACK SETTINGS
         clipping_lower_sigma = self.recipeSettings["frame-clipping-sigma"]
-        clipping_upper_sigma = clipping_lower_sigma
         clipping_iteration_count = self.recipeSettings["frame-clipping-iterations"]
 
         maskedFrame = sigma_clip(
@@ -2568,7 +2575,10 @@ class base_recipe:
 
         if replace:
             c = self.conn.cursor()
-            sqlQuery = f"delete from {table_name};"
+            # A TABLE NAME CANNOT BE A BOUND PARAMETER. EVERY CALLER IN THE PACKAGE
+            # PASSES A LITERAL TABLE NAME, NEVER A VALUE READ FROM DATA OR FROM A
+            # USER. DY-93 COVERS VALIDATING THE NAME AT THIS BOUNDARY.
+            sqlQuery = f"delete from {table_name};"  # noqa: S608
             try:
                 c.execute(sqlQuery)
             except sqlite3.OperationalError as e:
