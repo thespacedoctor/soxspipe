@@ -354,6 +354,7 @@ class base_recipe:
         **Key Arguments:**
 
         - ``frame`` -- the path to the frame to prepare, of a CCDData object
+        - ``save`` -- save the prepared frame to disk. Default: False
 
         **Return:**
 
@@ -1269,6 +1270,10 @@ class base_recipe:
         **Key Arguments:**
 
         - ``frame`` -- the CCDData frame to be trimmed
+
+        **Return:**
+
+        - ``trimmed_frame`` -- the frame with its pre-scan and overscan regions removed (CCDData object)
         """
         self.log.debug("starting the ``_trim_frame`` method")
 
@@ -1317,6 +1322,10 @@ class base_recipe:
         - ``overwrite`` -- if a file exists at the filepath then choose to overwrite the file. Default: True
         - ``product`` -- is this a recipe product?
         - ``maskToZero`` -- set masked pixels to zero before writing to file?
+
+        **Return:**
+
+        - ``filepath`` -- the absolute path of the file written to disk
 
         **Usage:**
 
@@ -1942,6 +1951,10 @@ class base_recipe:
 
         - ``rformat`` -- the format to outout reports as. Default *stdout*. [stdout|....]
 
+        **Return:**
+
+        - ``qc`` -- the QC dataframe, with the columns that are written to the database
+
         **Usage:**
 
         ```python
@@ -2539,16 +2552,17 @@ class base_recipe:
         return recipeSettings
 
     def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
-        """
-        Retry inserting into the database with a maximum of keepTryingMax attempts.
+        """*write a dataframe to a database table, retrying the insert up to seven times*
 
         **Key Arguments:**
-        - `dataframe` -- DataFrame containing rows to insert.
-        - `table_name` -- Name of the database table to insert into.
-        - `replace` -- If True, replace existing entries; otherwise, append.
+
+        - ``dataframe`` -- the dataframe containing the rows to insert
+        - ``table_name`` -- the name of the database table to insert into
+        - ``replace`` -- if True, delete the table's existing rows first; otherwise append. Default: False
 
         **Raises:**
-        - Exception if the insertion fails after 7 attempts.
+
+        - Exception if the insert fails after seven attempts.
         """
         import time
 
