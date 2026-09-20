@@ -58,6 +58,21 @@ class soxs_straighten(base_recipe):
         self.verbose = verbose  # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
+        self._collect_input_frames()
+        self._verify_and_announce_input_frames()
+        self._sort_and_report_input_frames()
+
+        # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
+        # EXTENSIONS
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+
+        return
+
+    def _collect_input_frames(self):
+        """*convert the input files to a ccdproc image collection*
+
+        Sets ``self.inputFrames`` and ``self.supplementaryInput``.
+        """
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         from soxspipe.commonutils.set_of_files import set_of_files
@@ -70,6 +85,13 @@ class soxs_straighten(base_recipe):
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
+        return
+
+    def _verify_and_announce_input_frames(self):
+        """*verify the collected frames and report the result to the user*
+
+        Sets ``self.imageType``, through ``verify_input_frames``.
+        """
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_straighten - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
@@ -78,16 +100,16 @@ class soxs_straighten(base_recipe):
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
+        return
+
+    def _sort_and_report_input_frames(self):
+        """*sort the image collection by observation date and, when verbose, print it*"""
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(["MJD-OBS"])
         if self.verbose:
             self.log.print("# RAW INPUT FRAMES - SUMMARY")
             self.log.print(self.inputFrames.summary)
             self.log.print("\n")
-
-        # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
-        # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return
 
