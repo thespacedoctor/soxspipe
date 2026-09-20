@@ -285,12 +285,12 @@ def test_base_util_drops_image_map_rows_masked_out_of_every_map_plane(
     result.twoDMap.close()
 
 
-def test_base_util_raises_when_no_associated_frame_supplies_the_arm(
+def test_base_util_raises_type_error_when_associated_frame_is_omitted(
     monkeypatch: pytest.MonkeyPatch, log: object
 ) -> None:
     _patch_lookups(monkeypatch, "x")
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         base_util(log, {})
 
 
