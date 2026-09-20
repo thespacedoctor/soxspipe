@@ -273,7 +273,6 @@ class base_recipe:
 
         import logging
         import warnings
-        from datetime import datetime
 
         import ccdproc
         import numpy as np
@@ -441,9 +440,8 @@ class base_recipe:
             outDir = self.outDir
 
         # INJECT THE PRE KEYWORD
-        utcnow = datetime.utcnow()
         frame.header["SXSPRE"] = (
-            utcnow.strftime("%Y-%m-%dT%H:%M:%S.%f"),
+            toolkit.utcnow_string(microseconds=True),
             "UTC timestamp",
         )
 
@@ -1574,48 +1572,27 @@ class base_recipe:
         """
         self.log.debug("starting the ``flag_poor_data`` method")
 
-        from datetime import datetime
+        from soxspipe.commonutils import toolkit
 
-        import pandas as pd
-
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        # ONE TIMESTAMP COVERS BOTH TEMPERATURE ROWS, AS IT DID INLINE.
+        utcnow = toolkit.utcnow_string()
 
         if self.inst.upper() == "SOXS":
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "DETECTOR TEMP",
-                            "qc_value": self.detectorTemp,
-                            "qc_comment": "[K] temp of detector",
-                            "qc_unit": "kelvin",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": False,
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.add_qc(
+                qcName="DETECTOR TEMP",
+                qcValue=self.detectorTemp,
+                qcComment="[K] temp of detector",
+                qcUnit="kelvin",
+                reductionDateUtc=utcnow,
+                toHeader=False,
             )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "CPATH TEMP",
-                            "qc_value": self.cptemp,
-                            "qc_comment": "[C] temp of common path",
-                            "qc_unit": "celsius",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": False,
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.add_qc(
+                qcName="CPATH TEMP",
+                qcValue=self.cptemp,
+                qcComment="[C] temp of common path",
+                qcUnit="celsius",
+                reductionDateUtc=utcnow,
+                toHeader=False,
             )
 
         # FILTER DATA FRAME
@@ -1678,15 +1655,14 @@ class base_recipe:
         self.log.debug("starting the ``qc_bias_ron`` method")
 
         import math
-        from datetime import datetime
 
         import numpy as np
-        import pandas as pd
         from astropy.stats import sigma_clip
 
         from soxspipe.commonutils import toolkit
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        # ONE TIMESTAMP COVERS BOTH THE RAW AND MASTER RON ROWS, AS IT DID INLINE.
+        utcnow = toolkit.utcnow_string()
 
         if not rawRon and len(self.inputFrames.files) > 1:
             # LIST OF RAW CCDDATA OBJECTS
@@ -1739,23 +1715,13 @@ class base_recipe:
             if frameType[0] == "M":
                 singleFrameType = frameType[1:]
 
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "RAW RON",
-                            "qc_value": rawRon,
-                            "qc_comment": f"[e-] RON in single {singleFrameType}",
-                            "qc_unit": "electrons",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.add_qc(
+                qcName="RAW RON",
+                qcValue=rawRon,
+                qcComment=f"[e-] RON in single {singleFrameType}",
+                qcUnit="electrons",
+                reductionDateUtc=utcnow,
+                toHeader=True,
             )
 
         if masterFrame and not masterRon:
@@ -1771,23 +1737,13 @@ class base_recipe:
 
         elif masterRon:
 
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "MASTER RON",
-                            "qc_value": float(masterRon),
-                            "qc_comment": f"[e-] Combined RON in {frameType}",
-                            "qc_unit": "electrons",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.add_qc(
+                qcName="MASTER RON",
+                qcValue=float(masterRon),
+                qcComment=f"[e-] Combined RON in {frameType}",
+                qcUnit="electrons",
+                reductionDateUtc=utcnow,
+                toHeader=True,
             )
         else:
             masterRon = None
@@ -1820,10 +1776,9 @@ class base_recipe:
         """
         self.log.debug("starting the ``qc_median_flux_level`` method")
 
-        from datetime import datetime
-
         import numpy as np
-        import pandas as pd
+
+        from soxspipe.commonutils import toolkit
 
         if not medianFlux:
             # DETERMINE MEDIAN BIAS LEVEL
@@ -1834,25 +1789,15 @@ class base_recipe:
             self.kw("EXPTIME")
         ]
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = toolkit.utcnow_string()
 
-        self.qc = pd.concat(
-            [
-                self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": f"{frameType} MEDIAN".upper(),
-                        "qc_value": medianFlux,
-                        "qc_comment": f"[e-] Median flux level of {frameName}",
-                        "qc_unit": "electrons",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.add_qc(
+            qcName=f"{frameType} MEDIAN".upper(),
+            qcValue=medianFlux,
+            qcComment=f"[e-] Median flux level of {frameName}",
+            qcUnit="electrons",
+            reductionDateUtc=utcnow,
+            toHeader=True,
         )
 
         self.log.debug("completed the ``qc_median_flux_level`` method")
