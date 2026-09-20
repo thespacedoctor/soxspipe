@@ -101,7 +101,11 @@ class base_recipe:
         self.detectorParams = None
         self.dateObs = None
 
-        self.outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))
+        # `/tmp/` HERE IS A SUBDIRECTORY OF THE USER'S OWN WORKSPACE, NOT THE
+        # SYSTEM TEMPORARY DIRECTORY, AND THE RANDOM NAME ONLY HAS TO DIFFER
+        # BETWEEN CONCURRENT RECIPES, NOT RESIST AN ATTACKER. THE UNSEEDED
+        # DRAW ITSELF IS DY-49.
+        self.outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))  # noqa: S108, S311
 
         # FIND THE CURRENT SESSION
         from os.path import expanduser
@@ -232,11 +236,14 @@ class base_recipe:
         # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
         if self.conn:
             c = self.conn.cursor()
-            sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"
+            # THE SESSION NAME IS A COLUMN NAME, WHICH SQLITE CANNOT
+            # PARAMETERISE, AND IT COMES FROM THE WORKSPACE DATABASE RATHER
+            # THAN FROM USER INPUT. THE MODULE'S SQL FINDINGS ARE DY-88'S.
+            sqlQuery = f"select status_{self.currentSession} as status from product_frames where sof = '{self.sofName}.sof'"  # noqa: E501, S608
             c.execute(sqlQuery)
             try:
                 self.status = c.fetchone()["status"]
-                sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"
+                sqlQuery = f"update product_frames set status_{self.currentSession} = 'fail' where sof = '{self.sofName}.sof'"  # noqa: E501, S608
                 c.execute(sqlQuery)
             except (sqlite3.Error, TypeError) as e:
                 self.log.warning(f"__init__: `self.status = c.fetchone()['status']` failed, continuing: {e}")
@@ -393,7 +400,10 @@ class base_recipe:
 
         frame.mask = self._bad_pixel_mask(frame)
 
-        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:
+        # THE NESTED `if` IS KEPT SO THE TWO CONDITIONS STAY SEPARATELY
+        # COMMENTED, AND BECAUSE COLLAPSING IT IS COSMETIC WORK BELONGING TO
+        # DY-88.
+        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:  # noqa: SIM102
             # OBJECT/STANDARD FRAMES
             if frame.meta[kw("DPR_TYPE")] == "STD,FLUX" or "STD_stare" in frame.meta[kw("OBS_NAME")]:
                 # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
@@ -514,7 +524,7 @@ class base_recipe:
         try:
             # FAILS IN PYTHON 2.7 AS BOOLMASK IS A BUFFER - NEED TO CONVERT TO
             # 2D ARRAY
-            boolMask.shape
+            boolMask.shape  # noqa: B018
 
         except AttributeError as e:
             self.log.debug(f"_prepare_single_frame: `boolMask.shape` failed, continuing: {e}")
@@ -885,7 +895,10 @@ class base_recipe:
         if len(arm) > 1:
             arms = " and ".join(arm)
             self._report_verification_error(showSummary=True)
-            raise TypeError("Input frames are a mix of %(imageTypes)s" % locals())
+            # THIS INTERPOLATION IS A DEFECT, NOT A STYLE CHOICE: `imageTypes`
+            # DOES NOT EXIST YET, SO IT RAISES `KeyError`. REWRITING IT IS
+            # DY-89, AND THE CHARACTERIZATION TEST PINS TODAY'S BEHAVIOUR.
+            raise TypeError("Input frames are a mix of %(imageTypes)s" % locals())  # noqa: UP031
         self.arm = arm[0]
 
         return
@@ -919,7 +932,7 @@ class base_recipe:
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
             self._report_verification_error()
-            raise TypeError("Input frames are a mix of binnings" % locals())
+            raise TypeError("Input frames are a mix of binnings" % locals())  # noqa: F507, UP031
 
         if cdelt1[0] and cdelt2[0]:
             self.detectorParams["binning"] = [int(cdelt2[0]), int(cdelt1[0])]
