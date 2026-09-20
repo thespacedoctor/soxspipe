@@ -82,6 +82,21 @@ class soxs_mdark(base_recipe):
         # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
+        self._collect_input_frames()
+        self._verify_and_announce_input_frames()
+        self._sort_and_report_input_frames()
+
+        # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
+        # EXTENSIONS
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+
+        return
+
+    def _collect_input_frames(self):
+        """*convert the input files to a ccdproc image collection*
+
+        Sets ``self.inputFrames`` and ``self.supplementaryInput``.
+        """
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         from soxspipe.commonutils.set_of_files import set_of_files
@@ -94,6 +109,13 @@ class soxs_mdark(base_recipe):
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
+        return
+
+    def _verify_and_announce_input_frames(self):
+        """*verify the collected frames and report the result to the user*
+
+        Sets ``self.imageType``, through ``verify_input_frames``.
+        """
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MDARK - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
@@ -102,16 +124,16 @@ class soxs_mdark(base_recipe):
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
+        return
+
+    def _sort_and_report_input_frames(self):
+        """*sort the image collection by observation date and, when verbose, print it*"""
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(["MJD-OBS"])
         if self.verbose:
             self.log.print("# RAW INPUT FRAMES - SUMMARY")
             self.log.print(self.inputFrames.summary)
             self.log.print("\n")
-
-        # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
-        # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
 
         return
 
@@ -167,13 +189,42 @@ class soxs_mdark(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        import numpy as np
-
-        from soxspipe.commonutils import toolkit
-
         arm = self.arm
         kw = self.kw
         dp = self.detectorParams
+
+        combined_dark_mean, masterMedianFluxLevel, rawRon, masterRon = self._combine_dark_frames()
+
+        self._record_dark_quality_checks(
+            frame=combined_dark_mean,
+            masterMedianFluxLevel=masterMedianFluxLevel,
+            rawRon=rawRon,
+            masterRon=masterRon,
+        )
+
+        self.update_fits_keywords(frame=combined_dark_mean)
+
+        productPath = self._write_and_record_product(frame=combined_dark_mean, kw=kw)
+
+        qcTable = self.report_output()
+        self.clean_up()
+
+        self.log.debug("completed the ``produce_product`` method")
+        return productPath, qcTable
+
+    def _combine_dark_frames(self):
+        """*stack the raw dark frames into a single mean dark frame*
+
+        **Return:**
+
+        - ``combined_dark_mean`` -- the stacked master dark frame
+        - ``masterMedianFluxLevel`` -- the median of the raw frames' mean flux levels
+        - ``rawRon`` -- the mean read noise of the raw frames
+        - ``masterRon`` -- the read noise measured on the stacked frame
+        """
+        import numpy as np
+
+        from soxspipe.commonutils import toolkit
 
         # LIST OF CCDDATA OBJECTS
         ccds = [
@@ -216,17 +267,31 @@ class soxs_mdark(base_recipe):
         combined_dark_mean = combined_noise
         combined_dark_mean.mask = combined_noise.mask
 
+        return combined_dark_mean, masterMedianFluxLevel, rawRon, masterRon
+
+    def _record_dark_quality_checks(self, frame, masterMedianFluxLevel, rawRon, masterRon):
+        """*measure the master dark's quality checks and add them to the QC table*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the stacked master dark frame
+        - ``masterMedianFluxLevel`` -- the median of the raw frames' mean flux levels
+        - ``rawRon`` -- the mean read noise of the raw frames
+        - ``masterRon`` -- the read noise measured on the stacked frame
+
+        Sets ``self.qc``.
+        """
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
             log=self.log,
-            frame=combined_dark_mean,
+            frame=frame,
             settings=self.settings,
             recipeName=self.recipeName,
             qcTable=self.qc,
         )
 
         medianFlux = self.qc_median_flux_level(
-            frame=combined_dark_mean,
+            frame=frame,
             frameType="MDARK",
             frameName="master dark",
             medianFlux=masterMedianFluxLevel,
@@ -235,16 +300,30 @@ class soxs_mdark(base_recipe):
         rawRon, masterRon = self.qc_ron(
             frameType="MDARK",
             frameName="master dark",
-            masterFrame=combined_dark_mean,
+            masterFrame=frame,
             rawRon=rawRon,
             masterRon=masterRon,
         )
 
-        self.update_fits_keywords(frame=combined_dark_mean)
+        return
 
+    def _write_and_record_product(self, frame, kw):
+        """*write the master dark to disk and record it in the products table*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the stacked master dark frame
+        - ``kw`` -- the FITS keyword lookup, read before this method is called
+
+        **Return:**
+
+        - ``productPath`` -- the path the master dark frame was written to
+
+        Sets ``self.dateObs`` and ``self.products``.
+        """
         # WRITE TO DISK
         productPath = self._write(
-            frame=combined_dark_mean,
+            frame=frame,
             filedir=self.workspaceRootPath,
             filename=False,
             overwrite=True,
@@ -253,7 +332,7 @@ class soxs_mdark(base_recipe):
 
         utcnow = utcnow_string()
 
-        self.dateObs = combined_dark_mean.header[kw("DATE_OBS")]
+        self.dateObs = frame.header[kw("DATE_OBS")]
 
         self.products = append_product(
             self.products,
@@ -268,11 +347,7 @@ class soxs_mdark(base_recipe):
             label="PROD",
         )
 
-        qcTable = self.report_output()
-        self.clean_up()
-
-        self.log.debug("completed the ``produce_product`` method")
-        return productPath, qcTable
+        return productPath
 
     # use the tab-trigger below for new method
     # xt-class-method
