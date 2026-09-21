@@ -18,6 +18,7 @@ from soxspipe.commonutils.toolkit import (
     generic_quality_checks,
     get_calibrations_path,
     spectroscopic_image_quality_checks,
+    utcnow_string,
 )
 
 from .base_recipe import base_recipe
@@ -218,8 +219,6 @@ class soxs_stare(base_recipe):
         ```
         """
         self.log.debug("starting the ``produce_product`` method")
-
-        from datetime import datetime
 
         import pandas as pd
         from astropy import units as u
@@ -508,25 +507,16 @@ class soxs_stare(base_recipe):
                     maskToZero=True,
                 )
                 filename = os.path.basename(productPath)
-                utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-                self.products = pd.concat(
-                    [
-                        self.products,
-                        pd.DataFrame([
-                            {
-                                "soxspipe_recipe": "soxs-stare",
-                                "product_label": "SKY_SUBTRACTED_OBJECT",
-                                "file_name": filename,
-                                "file_type": "FITS",
-                                "obs_date_utc": self.dateObs,
-                                "reduction_date_utc": utcnow,
-                                "product_desc": "The sky-subtracted object",
-                                "file_path": productPath,
-                                "label": "PROD",
-                            }
-                        ]),
-                    ],
-                    ignore_index=True,
+                utcnow = utcnow_string()
+                self.add_product(
+                    recipeName="soxs-stare",
+                    productLabel="SKY_SUBTRACTED_OBJECT",
+                    fileName=filename,
+                    filePath=productPath,
+                    productDesc="The sky-subtracted object",
+                    reductionDateUtc=utcnow,
+                    fileType="FITS",
+                    label="PROD",
                 )
 
                 # WRITE SKY-MODEL TO DISK
@@ -538,24 +528,15 @@ class soxs_stare(base_recipe):
                     overwrite=True,
                 )
                 filename = os.path.basename(productPath)
-                self.products = pd.concat(
-                    [
-                        self.products,
-                        pd.DataFrame([
-                            {
-                                "soxspipe_recipe": "soxs-stare",
-                                "product_label": "SKY_MODEL",
-                                "file_name": filename,
-                                "file_type": "FITS",
-                                "obs_date_utc": self.dateObs,
-                                "reduction_date_utc": utcnow,
-                                "product_desc": "The sky background model",
-                                "file_path": productPath,
-                                "label": "PROD",
-                            }
-                        ]),
-                    ],
-                    ignore_index=True,
+                self.add_product(
+                    recipeName="soxs-stare",
+                    productLabel="SKY_MODEL",
+                    fileName=filename,
+                    filePath=productPath,
+                    productDesc="The sky background model",
+                    reductionDateUtc=utcnow,
+                    fileType="FITS",
+                    label="PROD",
                 )
 
                 if True:
@@ -568,24 +549,15 @@ class soxs_stare(base_recipe):
                         overwrite=True,
                     )
                     filename = os.path.basename(productPath)
-                    self.products = pd.concat(
-                        [
-                            self.products,
-                            pd.DataFrame([
-                                {
-                                    "soxspipe_recipe": "soxs-stare",
-                                    "product_label": "SKY_SUB_RESIDUALS",
-                                    "file_name": filename,
-                                    "file_type": "FITS",
-                                    "obs_date_utc": self.dateObs,
-                                    "reduction_date_utc": utcnow,
-                                    "product_desc": "The sky subtraction residuals",
-                                    "file_path": productPath,
-                                    "label": "PROD",
-                                }
-                            ]),
-                        ],
-                        ignore_index=True,
+                    self.add_product(
+                        recipeName="soxs-stare",
+                        productLabel="SKY_SUB_RESIDUALS",
+                        fileName=filename,
+                        filePath=productPath,
+                        productDesc="The sky subtraction residuals",
+                        reductionDateUtc=utcnow,
+                        fileType="FITS",
+                        label="PROD",
                     )
 
                 # ADD QUALITY CHECKS
