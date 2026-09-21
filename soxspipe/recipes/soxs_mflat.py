@@ -376,11 +376,16 @@ class soxs_mflat(base_recipe):
                 filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
 
             orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
-            if len(orderTablePaths) > 0:
-                orderTablePath = orderTablePaths[0]
-                thisPath = orderTablePath
-            else:
-                self.orderTableSet.append(None)
+            if len(orderTablePaths) == 0:
+                # A LAMP MUST BE NORMALISED AGAINST ITS OWN ORDER TABLE, NEVER THE PREVIOUS LAMP'S
+                lampLabel = tag.replace("_", "") if tag else "lamp"
+                raise FileNotFoundError(
+                    f"The mflat recipe needs an order-locations table to reduce the {lampLabel} flat frames, "
+                    f"none found matching {filterDict}"
+                )
+
+            orderTablePath = orderTablePaths[0]
+            thisPath = orderTablePath
 
             combined_normalised_flat = self._normalise_and_stack_lamp_flats(cf, orderTablePath, tag)
 

@@ -164,19 +164,12 @@ def test_x_shooter_order_table_filter_carries_object_key_only_for_a_tagged_lamp(
     assert filterCalls[1] == {"PRO_CATG": "ORDER_TAB_VIS", "OBJECT": "LAMP,DORDERDEF"}
 
 
-def test_missing_order_table_on_the_first_lamp_raises_unbound_local_error(
+def test_a_missing_order_table_for_the_first_lamp_raises_file_not_found(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the first lamp's order table is not found, `orderTablePath` is never bound.
-
-    The `else` branch that handles "no order table found" only appends
-    `None` to `self.orderTableSet`; it never assigns the local
-    `orderTablePath` the next line reads. On the very first lamp this name
-    has never been bound at all, so the call raises `UnboundLocalError`
-    rather than a domain-meaningful error. Pinned as found, not as intended.
-    """
+    """A lamp with flats but no order table reports the missing input and records no order table."""
     # ARRANGE
     orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=910)
     flatFrame = synthetic_ccd(seed=911, prepared=True)
@@ -196,28 +189,24 @@ def test_missing_order_table_on_the_first_lamp_raises_unbound_local_error(
     _stub_shared_collaborators(recipe, monkeypatch, orderPath)
 
     # ACT / ASSERT
-    with pytest.raises(UnboundLocalError):
+    with pytest.raises(FileNotFoundError, match="needs an order-locations table"):
         recipe.produce_product()
-    assert recipe.orderTableSet == [None]
+    assert recipe.orderTableSet == []
 
 
-def test_a_missing_dlamp_order_table_reuses_the_plain_lamps_final_order_loc_path(
+def test_a_missing_dlamp_order_table_raises_instead_of_reusing_the_plain_lamps_table(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A missing D-lamp order table leaves `orderTablePath` stale from the plain lamp.
+    """A lamp is never normalised against another lamp's order table, and `orderTableSet` never shifts.
 
     `orderTablePath` is reassigned twice per successful lamp: once from the
     order-table lookup at the top of the loop, and again near the bottom from
-    the just-detected `ORDER_LOC<tag>` row in `self.products`. When a lamp's
-    lookup finds nothing, only `None` is appended to `self.orderTableSet`;
-    the `orderTablePath` local itself is left untouched, so the *next* use of
-    it -- the D-lamp's own call to `normalise_flats` -- silently reads the
-    plain lamp's final detected order-location product path instead of its
-    own. `self.orderTableSet` ends up with an extra `None` in it as a result,
-    which shifts every later entry out of alignment with its lamp. Pinned as
-    found, not as intended.
+    the just-detected `ORDER_LOC<tag>` row in `self.products`. A lamp whose
+    own lookup finds nothing must not inherit the previous lamp's path, and
+    must not leave a spare entry in `self.orderTableSet` that shifts every
+    later lamp's entry out of alignment.
     """
     # ARRANGE
     orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=920)
@@ -280,22 +269,14 @@ def test_a_missing_dlamp_order_table_reuses_the_plain_lamps_final_order_loc_path
     monkeypatch.setattr(soxs_mflat_module, "spectroscopic_image_quality_checks", lambda **k: k["qcTable"])
     monkeypatch.setattr(soxs_mflat_module, "detect_order_edges", _make_tagged_fake_edges(recipe, pathsByTag))
 
-    # ACT
-    recipe.produce_product()
+    # ACT / ASSERT
+    with pytest.raises(FileNotFoundError, match="DLAMP"):
+        recipe.produce_product()
 
-    # ASSERT
     assert receivedOrderTablePaths[""] == str(untaggedSource)
-    # THE D-LAMP RECEIVES THE PLAIN LAMP'S *FINAL* DETECTED ORDER_LOC PATH,
-    # NOT THE ORIGINAL SOURCE ORDER TABLE PATH -- THE STALE REUSE.
-    assert receivedOrderTablePaths["_DLAMP"] == str(pathsByTag[""])
-    assert receivedOrderTablePaths["_QLAMP"] == str(qlampSource)
-    assert recipe.orderTableSet == [
-        str(pathsByTag[""]),
-        None,
-        str(pathsByTag["_DLAMP"]),
-        str(pathsByTag["_QLAMP"]),
-        None,
-    ]
+    # THE D-LAMP IS NEVER NORMALISED AGAINST THE PLAIN LAMP'S ORDER TABLE.
+    assert "_DLAMP" not in receivedOrderTablePaths
+    assert recipe.orderTableSet == [str(pathsByTag[""])]
 
 
 # ---------------------------------------------------------------------------
