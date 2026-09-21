@@ -624,6 +624,36 @@ def test_stack_extractions_stamps_both_product_rows_with_one_whole_second_timest
     assert recipe.utcnow == reductionDates[0]
 
 
+def test_stack_extractions_reads_the_clock_exactly_once(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both product rows share one reading of `utcnow_string`, not one reading each.
+
+    A format assertion cannot catch a second mint, so this stubs the clock at the name the module imported
+    and counts the reads. It holds only after the conversion, which is why it is separate from the contract
+    test written against the old source.
+    """
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    nodModule = import_module("soxspipe.recipes.soxs_nod")
+    monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
+    reads: list[str] = []
+
+    def counting_clock(**kwargs: object) -> str:
+        reads.append("read")
+        return f"2024-01-02T03:04:0{len(reads)}"
+
+    monkeypatch.setattr(nodModule, "utcnow_string", counting_clock)
+    recipe = _stack_recipe(log, tmp_path)
+    first, second = _spectrum_frames()
+
+    recipe.stack_extractions([first, second], orderJoins={10: 1})
+
+    assert reads == ["read"]
+    assert recipe.products["reduction_date_utc"].tolist() == ["2024-01-02T03:04:01"] * 2
+
+
 @pytest.mark.parametrize("recipeName", ["soxs-nod-std", "soxs-offset"])
 def test_stack_extractions_stamps_product_rows_with_the_current_recipe_name(
     log: Any,
