@@ -12,7 +12,6 @@ Date Created
 ################# GLOBAL IMPORTS ####################
 import os
 import sys
-from os.path import expanduser
 
 from soxspipe.commonutils.toolkit import (
     get_calibrations_path,
@@ -168,11 +167,8 @@ class soxs_offset(soxs_nod):
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
 
         productPath = None
-        master_bias = False
-        dark = False
 
         allObjectFrames, allFilenames = self._read_offset_object_frames(kw)
         master_flat, orderTablePath, responseFunctionPath = self._read_calibration_inputs(kw, arm)
@@ -459,7 +455,6 @@ class soxs_offset(soxs_nod):
         forceFailure = False
 
         allSpectrumA = []
-        allSpectrumB = []
         sequenceCount = 1
         # SORT FRAMEON AND FRAMEOFF LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
         # FRAMES IN TIME
@@ -467,7 +462,7 @@ class soxs_offset(soxs_nod):
         allFrameOFF.sort(key=lambda x: x.header["MJD-OBS"])
 
         for frameON, frameOFF, frameONName, frameOFFName in zip(
-            allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames
+            allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames, strict=False
         ):
 
             self.log.print(f"Processing ON-OFF Offset Sequence {sequenceCount}")
@@ -493,7 +488,6 @@ class soxs_offset(soxs_nod):
                     saveToPath=False,
                 )
                 # SAVE FRAMEON AND FRAMEOFF TO DISK IN TEMPORARY FILE
-                home = expanduser("~")
                 filenameON = self.sofName + f"_A_{sequenceCount}.fits"
                 filenameOFF = self.sofName + f"_B_{sequenceCount}.fits"
                 filePathON = f"{self.productDir}/{filenameON}"
@@ -529,10 +523,7 @@ class soxs_offset(soxs_nod):
                 orderTablePath=orderTablePath,
                 masterFlat=masterFlat,
             )
-            if sequenceCount == 1:
-                allSpectrumA = mergedSpectrumDF_A
-            else:
-                allSpectrumA = pd.concat([allSpectrumA, mergedSpectrumDF_A])
+            allSpectrumA = mergedSpectrumDF_A if sequenceCount == 1 else pd.concat([allSpectrumA, mergedSpectrumDF_A])
 
             sequenceCount += 1
         stackedSpectrum, extractionPath = self.stack_extractions(
@@ -586,10 +577,7 @@ class soxs_offset(soxs_nod):
         self.update_fits_keywords(frame=aFrame)
         self.update_fits_keywords(frame=bFrame)
 
-        if self.recipeSettings["use_flat"] and master_flat:
-            masterFlat = master_flat
-        else:
-            masterFlat = False
+        masterFlat = master_flat if self.recipeSettings["use_flat"] and master_flat else False
 
         mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
             aFrame=aFrame,
