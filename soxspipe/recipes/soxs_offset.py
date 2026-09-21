@@ -22,7 +22,8 @@ from .soxs_nod import soxs_nod
 
 os.environ["TERM"] = "vt100"
 
-# TODO: When combining spectra at the end, we use a simple sum. If we use sigma-clipping followed by a mean combine, we can remove CRHs for data sets with more than 1 AB cycle.
+# TODO: WHEN COMBINING SPECTRA AT THE END, WE USE A SIMPLE SUM. IF WE USE SIGMA-CLIPPING FOLLOWED BY A MEAN
+# COMBINE, WE CAN REMOVE CRHS FOR DATA SETS WITH MORE THAN 1 AB CYCLE.
 
 
 class soxs_offset(soxs_nod):
@@ -44,7 +45,7 @@ class soxs_offset(soxs_nod):
 
     ```python
     from soxspipe.recipes import soxs_offset
-    recipe = soxs_offset(
+    productPath, qcTable = soxs_offset(
         log=log,
         settings=settings,
         inputFrames=fileList
@@ -63,7 +64,7 @@ class soxs_offset(soxs_nod):
         debug=False,
         turnOffMP=False,
     ):
-        # INHERIT INITIALISATION FROM  base_recipe
+        # INHERIT INITIALISATION FROM  BASE_RECIPE
         super().__init__(
             log=log,
             settings=settings,
@@ -98,8 +99,8 @@ class soxs_offset(soxs_nod):
 
         Sets ``self.inputFrames`` and ``self.supplementaryInput``.
         """
-        # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
-        # imagefilecollection)
+        # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (INPUTFRAMES >
+        # IMAGEFILECOLLECTION)
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(
@@ -146,6 +147,7 @@ class soxs_offset(soxs_nod):
         **Return:**
 
         - ``productPath`` -- the path to the final product
+        - ``qcTable`` -- the quality control table the recipe reports
 
         **Usage**
 
@@ -156,7 +158,7 @@ class soxs_offset(soxs_nod):
             settings=settings,
             inputFrames=fileList
         )
-        offsetFrame = recipe.produce_product()
+        productPath, qcTable = recipe.produce_product()
         ```
         """
         self.log.debug("starting the ``produce_product`` method")
@@ -365,7 +367,7 @@ class soxs_offset(soxs_nod):
             [],
         )
 
-        # SPLIT FRAMES INTO ON (negative net offset: offsetRA + offsetDec < 0) AND OFF (zero or positive net offset)
+        # SPLIT FRAMES INTO ON (NEGATIVE NET OFFSET: OFFSETRA + OFFSETDEC < 0) AND OFF (ZERO OR POSITIVE NET OFFSET)
         for frame, filename in zip(allObjectFrames, allFilenames):
 
             offsetRA = frame.header[kw("OFFSET_RA")]
@@ -459,7 +461,8 @@ class soxs_offset(soxs_nod):
         allSpectrumA = []
         allSpectrumB = []
         sequenceCount = 1
-        # SORT frameON and frameOFF looping at their MJDOBS keyword in the header in order to the closest A and B frames in time
+        # SORT FRAMEON AND FRAMEOFF LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
+        # FRAMES IN TIME
         allFrameON.sort(key=lambda x: x.header["MJD-OBS"])
         allFrameOFF.sort(key=lambda x: x.header["MJD-OBS"])
 
@@ -489,7 +492,7 @@ class soxs_offset(soxs_nod):
                     surfacePlot=False,
                     saveToPath=False,
                 )
-                # Save frameON and frameOFF to disk in temporary file
+                # SAVE FRAMEON AND FRAMEOFF TO DISK IN TEMPORARY FILE
                 home = expanduser("~")
                 filenameON = self.sofName + f"_A_{sequenceCount}.fits"
                 filenameOFF = self.sofName + f"_B_{sequenceCount}.fits"
@@ -715,7 +718,7 @@ class soxs_offset(soxs_nod):
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
             fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
-            # ADD THE SNR COLUMN AND COPY VALUES FROM stackedSpectrum
+            # ADD THE SNR COLUMN AND COPY VALUES FROM STACKEDSPECTRUM
             fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
 
             self.products, filePath = plot_merged_spectrum_qc(
