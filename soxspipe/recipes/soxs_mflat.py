@@ -12,16 +12,18 @@ Date Created
 #
 import os
 import sys
-from datetime import datetime
 from os.path import expanduser
 
 from soxspipe.commonutils import detect_order_edges, subtract_background
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.toolkit import (
+    append_product,
+    append_qc,
     generic_quality_checks,
     quicklook_image,
     spectroscopic_image_quality_checks,
     unpack_order_table,
+    utcnow_string,
 )
 
 from .base_recipe import base_recipe
@@ -471,30 +473,23 @@ class soxs_mflat(base_recipe):
                     surfacePlot=True,
                 )
 
-                utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+                utcnow = utcnow_string()
 
                 backgroundFrame.header = copy.deepcopy(combined_normalised_flat.header)
                 backgroundQCImage = self.sofName + "_BKGROUND.fits"
                 filepath = self._write(backgroundFrame, outDir, filename=backgroundQCImage, overwrite=True)
                 # filepath = os.path.abspath(filepath)
-                self.products = pd.concat(
-                    [
-                        self.products,
-                        pd.DataFrame([
-                            {
-                                "soxspipe_recipe": self.recipeName,
-                                "product_label": "BKGROUND",
-                                "file_name": backgroundQCImage,
-                                "file_type": "FITS",
-                                "obs_date_utc": self.dateObs,
-                                "reduction_date_utc": utcnow,
-                                "product_desc": "modelled scatter background light image (removed from master flat)",
-                                "file_path": filepath,
-                                "label": "QC",
-                            }
-                        ]),
-                    ],
-                    ignore_index=True,
+                self.products = append_product(
+                    self.products,
+                    recipeName=self.recipeName,
+                    productLabel="BKGROUND",
+                    fileName=backgroundQCImage,
+                    filePath=filepath,
+                    productDesc="modelled scatter background light image (removed from master flat)",
+                    obsDateUtc=self.dateObs,
+                    reductionDateUtc=utcnow,
+                    fileType="FITS",
+                    label="QC",
                 )
 
             mflat, medianOrderFluxDF = self.mask_low_sens_pixels(
@@ -509,7 +504,7 @@ class soxs_mflat(base_recipe):
             # WRITE MFLAT TO FILE
             productPath = self._write(mflat.copy(), outDir, filename=self.sofName + ".fits", overwrite=True)
 
-            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = utcnow_string()
             basename = os.path.basename(productPath)
 
             if len(tag):
@@ -517,24 +512,17 @@ class soxs_mflat(base_recipe):
             else:
                 product_desc = f"{self.arm} master spectroscopic flat frame"
 
-            self.products = pd.concat(
-                [
-                    self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": f"MFLAT{tag}",
-                            "file_name": basename,
-                            "file_type": "FITS",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": product_desc,
-                            "file_path": productPath,
-                            "label": "PROD",
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.products = append_product(
+                self.products,
+                recipeName=self.recipeName,
+                productLabel=f"MFLAT{tag}",
+                fileName=basename,
+                filePath=productPath,
+                productDesc=product_desc,
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                fileType="FITS",
+                label="PROD",
             )
 
             if tag:
@@ -566,26 +554,19 @@ class soxs_mflat(base_recipe):
         # WRITE MFLAT TO FILE
         productPath = self._write(mflat, outDir, overwrite=True)
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = utcnow_string()
         basename = os.path.basename(productPath)
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "MFLAT",
-                        "file_name": basename,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": f"{self.arm} master spectroscopic flat frame",
-                        "file_path": productPath,
-                        "label": "PROD",
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.products = append_product(
+            self.products,
+            recipeName=self.recipeName,
+            productLabel="MFLAT",
+            fileName=basename,
+            filePath=productPath,
+            productDesc=f"{self.arm} master spectroscopic flat frame",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow,
+            fileType="FITS",
+            label="PROD",
         )
 
         if 1 == 0:
@@ -851,7 +832,6 @@ class soxs_mflat(base_recipe):
         self.log.debug("starting the ``normalise_flats`` method")
 
         import numpy as np
-        import pandas as pd
         from astropy.stats import sigma_clipped_stats
 
         kw = self.kw
@@ -978,61 +958,40 @@ class soxs_mflat(base_recipe):
             # if ORDEXP50 < 100:
             #     raise ValueError("FLUX IN THE INPUT FLAT FRAMES IS TOO LOW TO PROCEED. PLEASE CHECK THE RAW FRAMES")
 
-            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = utcnow_string()
 
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "ORDEXP10",
-                            "qc_value": f"{ORDEXP10:0.23f}",
-                            "qc_comment": "[e-] 10th percentile inter-order flux",
-                            "qc_unit": "electrons",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName="ORDEXP10",
+                qcValue=f"{ORDEXP10:0.23f}",
+                qcComment="[e-] 10th percentile inter-order flux",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                qcUnit="electrons",
+                toHeader=True,
             )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "ORDEXP50",
-                            "qc_value": f"{ORDEXP50:0.3f}",
-                            "qc_comment": "[e-] 50th percentile inter-order flux",
-                            "qc_unit": "electrons",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName="ORDEXP50",
+                qcValue=f"{ORDEXP50:0.3f}",
+                qcComment="[e-] 50th percentile inter-order flux",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                qcUnit="electrons",
+                toHeader=True,
             )
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "ORDEXP90",
-                            "qc_value": f"{ORDEXP90:0.3f}",
-                            "qc_comment": "[e-] 90th percentile inter-order flux",
-                            "qc_unit": "electrons",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName="ORDEXP90",
+                qcValue=f"{ORDEXP90:0.3f}",
+                qcComment="[e-] 90th percentile inter-order flux",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                qcUnit="electrons",
+                toHeader=True,
             )
 
         else:
@@ -1199,23 +1158,16 @@ class soxs_mflat(base_recipe):
         lowSensPixelCount = lowSensitivityPixelMask.sum()
 
         if writeQC:
-            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-            self.qc = pd.concat(
-                [
-                    self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "N LOW SENS",
-                            "qc_value": float(lowSensPixelCount),
-                            "qc_comment": "Number of low-sensitivity pixels found in master flat",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            utcnow = utcnow_string()
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName="N LOW SENS",
+                qcValue=float(lowSensPixelCount),
+                qcComment="Number of low-sensitivity pixels found in master flat",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                qcUnit="pixels",
             )
             self.log.print(f"        {lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
 

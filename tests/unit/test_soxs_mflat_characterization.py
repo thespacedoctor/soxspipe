@@ -62,6 +62,24 @@ TIMESTAMP_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 UNIFORM_EXPTIME = 30.0
 
 
+def _count_clock_reads(monkeypatch: pytest.MonkeyPatch, module: Any) -> list[str]:
+    """Wrap the real `utcnow_string` at the name the module imported and record each read.
+
+    The real function still runs, so the rendered format is still checked. A
+    second mint within the same second passes a shared-value assertion but not
+    a read count.
+    """
+    realClock = module.utcnow_string
+    reads: list[str] = []
+
+    def counting_clock(*args: object, **kwargs: object) -> str:
+        reads.append("read")
+        return realClock(*args, **kwargs)
+
+    monkeypatch.setattr(module, "utcnow_string", counting_clock)
+    return reads
+
+
 def _empty_products() -> pd.DataFrame:
     """Return the products table exactly as `base_recipe` declares it, empty."""
     return base_recipe._empty_qc_and_product_tables(None, pd)[1]
@@ -623,6 +641,7 @@ def test_single_lamp_background_subtraction_records_bkground_and_mflat_rows(
         [str(backgroundProductPath), str(tagProductPath), str(finalProductPath)]
     )
     monkeypatch.setattr(recipe, "_write", fake_write)
+    clockReads = _count_clock_reads(monkeypatch, soxs_mflat_module)
 
     # ACT
     returnedPath, returnedQc = recipe.produce_product()
@@ -652,6 +671,8 @@ def test_single_lamp_background_subtraction_records_bkground_and_mflat_rows(
     assert receivedKwargs["sofName"] == "MASTER_FLAT_VIS"
     assert receivedKwargs["recipeName"] == "soxs-mflat"
     assert receivedKwargs["lamp"] == ""
+    # EACH OF THE THREE ROWS READS THE CLOCK ONCE: BKGROUND, MFLAT, FINAL MFLAT
+    assert clockReads == ["read"] * 3
 
 
 def _assert_multi_lamp_products(recipe: soxs_mflat) -> None:
@@ -725,6 +746,7 @@ def test_multi_lamp_master_flat_records_tagged_dlamp_and_qlamp_product_rows(
     monkeypatch.setattr(recipe, "_write", lambda *a, **k: str(productPath))
     monkeypatch.setattr(recipe, "stitch_uv_mflats", lambda *a, **k: stitched)
     _stub_shared_collaborators(recipe, monkeypatch, orderPath)
+    clockReads = _count_clock_reads(monkeypatch, soxs_mflat_module)
 
     # ACT
     returnedPath, returnedQc = recipe.produce_product()
@@ -733,3 +755,5 @@ def test_multi_lamp_master_flat_records_tagged_dlamp_and_qlamp_product_rows(
     assert returnedPath == str(productPath)
     assert returnedQc is recipe.qc
     _assert_multi_lamp_products(recipe)
+    # ONE CLOCK READ PER LAMP ROW, THEN ONE FOR THE FINAL MFLAT ROW
+    assert clockReads == ["read"] * 4

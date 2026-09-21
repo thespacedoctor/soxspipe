@@ -43,6 +43,24 @@ mflatModule = import_module("soxspipe.recipes.soxs_mflat")
 TIMESTAMP_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
 
+def _count_clock_reads(monkeypatch: pytest.MonkeyPatch, module: Any) -> list[str]:
+    """Wrap the real `utcnow_string` at the name the module imported and record each read.
+
+    The real function still runs, so the rendered format is still checked. A
+    second mint within the same second passes a shared-value assertion but not
+    a read count.
+    """
+    realClock = module.utcnow_string
+    reads: list[str] = []
+
+    def counting_clock(*args: object, **kwargs: object) -> str:
+        reads.append("read")
+        return realClock(*args, **kwargs)
+
+    monkeypatch.setattr(module, "utcnow_string", counting_clock)
+    return reads
+
+
 def _frame(data: np.ndarray, *, binx: int = 1, biny: int = 1, withHeaderBinning: bool = True) -> CCDData:
     """Return a mutable CCD frame with deterministic mask and uncertainty."""
     frame = CCDData(data, unit="electron")
@@ -178,6 +196,7 @@ def test_first_pass_appends_ordexp_rows_onto_the_declared_qc_table(
     _stub_unpack_order_table(monkeypatch, _centre_pixels(12))
     monkeypatch.setattr(mflatModule, "quicklook_image", lambda **kwargs: None)
     frame = _frame(np.random.default_rng(201).normal(loc=1000.0, scale=25.0, size=(12, 12)))
+    clockReads = _count_clock_reads(monkeypatch, mflatModule)
 
     # ACT
     recipe.normalise_flats([frame], str(orderTable))
@@ -212,6 +231,8 @@ def test_first_pass_appends_ordexp_rows_onto_the_declared_qc_table(
         assert TIMESTAMP_PATTERN.fullmatch(value)
     # THE THREE ORDEXP ROWS ARE STAMPED WITH ONE REDUCTION TIME
     assert len(set(recipe.qc["reduction_date_utc"])) == 1
+    # ONE CLOCK READ FEEDS ALL THREE ROWS
+    assert clockReads == ["read"]
     toHeaderValues = recipe.qc["to_header"].tolist()
     assert toHeaderValues[0] == 1.0
     assert isinstance(toHeaderValues[0], float)
@@ -409,6 +430,7 @@ def test_low_sensitivity_pixels_are_masked_and_recorded_with_write_qc(
     data = np.random.default_rng(501).normal(loc=100.0, scale=2.0, size=(5, 10))
     data[2, 4] = 0.0
     frame = _frame(data)
+    clockReads = _count_clock_reads(monkeypatch, mflatModule)
 
     # ACT
     maskedFrame, medianFluxDF = recipe.mask_low_sens_pixels(
@@ -440,6 +462,7 @@ def test_low_sensitivity_pixels_are_masked_and_recorded_with_write_qc(
     assert row["obs_date_utc"] == recipe.dateObs
     assert TIMESTAMP_PATTERN.fullmatch(row["reduction_date_utc"])
     assert pd.isna(row["to_header"])
+    assert clockReads == ["read"]
 
     assert medianFluxDF.to_dict("records") == pytest.approx([{"order": 10, "medianFlux": 99.36284306903022}])
 
