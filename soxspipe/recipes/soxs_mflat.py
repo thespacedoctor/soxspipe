@@ -1489,7 +1489,7 @@ class soxs_mflat(base_recipe):
                     stitchedFlat.mask[y, :x] = dmflatScaled.mask[y, :x]
                     stitchedFlat.uncertainty.array[y, :x] = dmflatScaled.uncertainty.array[y, :x]
         else:
-            for y, x in zip(axisAStitchCoords, axisBStitchCoords):
+            for y, x in zip(axisAStitchCoords, axisBStitchCoords, strict=False):
                 stitchedFlat.data[y, x:] = dmflatScaled.data[y, x:]
                 stitchedFlat.mask[y, x:] = dmflatScaled.mask[y, x:]
                 stitchedFlat.uncertainty.array[y, x:] = dmflatScaled.uncertainty.array[y, x:]
