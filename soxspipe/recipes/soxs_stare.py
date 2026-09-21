@@ -46,7 +46,7 @@ class soxs_stare(base_recipe):
     See `produce_product` method for usage.
     """
 
-    # Initialisation
+    # INITIALISATION
 
     def __init__(
         self,
@@ -59,7 +59,7 @@ class soxs_stare(base_recipe):
         debug=False,
         turnOffMP=False,
     ):
-        # INHERIT INITIALISATION FROM  base_recipe
+        # INHERIT INITIALISATION FROM  BASE_RECIPE
         super().__init__(
             log=log,
             settings=settings,
@@ -103,8 +103,8 @@ class soxs_stare(base_recipe):
 
         Sets ``self.inputFrames`` and ``self.supplementaryInput``.
         """
-        # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
-        # imagefilecollection)
+        # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (INPUTFRAMES >
+        # IMAGEFILECOLLECTION)
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(log=self.log, settings=self.settings, inputFrames=self.inputFrames)
@@ -117,7 +117,7 @@ class soxs_stare(base_recipe):
 
         Sets ``self.imageType``, through ``verify_input_frames``.
         """
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_stare - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_STARE - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
@@ -139,10 +139,6 @@ class soxs_stare(base_recipe):
 
     def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_stare recipe*
-
-        **Return:**
-
-        - ``None``
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
@@ -262,6 +258,7 @@ class soxs_stare(base_recipe):
         **Return:**
 
         - ``productPath`` -- the path to the final product
+        - ``qcTable`` -- the quality control table the recipe reports
 
         **Usage**
 
@@ -272,7 +269,7 @@ class soxs_stare(base_recipe):
             settings=settings,
             inputFrames=fileList
         )
-        stareFrame = recipe.produce_product()
+        productPath, qcTable = recipe.produce_product()
         ```
         """
         self.log.debug("starting the ``produce_product`` method")
@@ -995,8 +992,8 @@ class soxs_stare(base_recipe):
 
         return
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
 
-    # Override Method Attributes
+    # OVERRIDE METHOD ATTRIBUTES
     # method-override-tmpx
