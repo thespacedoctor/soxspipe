@@ -44,7 +44,8 @@ class soxs_mflat(base_recipe):
     - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- generate debug plots. Default *False*
-    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be
+      turned off and the recipe will run in serial. This is useful for debugging.
 
 
     **Usage**
@@ -56,7 +57,7 @@ class soxs_mflat(base_recipe):
         settings=settings,
         inputFrames=fileList
     )
-    mflatFrame = recipe.produce_product()
+    productPath, qcTable = recipe.produce_product()
     ```
     """
 
@@ -71,7 +72,7 @@ class soxs_mflat(base_recipe):
         debug=False,
         turnOffMP=False,
     ):
-        # INHERIT INITIALISATION FROM  base_recipe
+        # INHERIT INITIALISATION FROM  BASE_RECIPE
         super().__init__(
             log=log,
             settings=settings,
@@ -104,8 +105,8 @@ class soxs_mflat(base_recipe):
 
         Sets ``self.inputFrames`` and ``self.supplementaryInput``.
         """
-        # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
-        # imagefilecollection)
+        # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (INPUTFRAMES >
+        # IMAGEFILECOLLECTION)
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(
@@ -123,7 +124,7 @@ class soxs_mflat(base_recipe):
 
         Sets ``self.imageType``, through ``verify_input_frames``.
         """
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY soxs_mflat - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_MFLAT - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
@@ -147,7 +148,8 @@ class soxs_mflat(base_recipe):
     def verify_input_frames(self):
         """*verify the input frames match those required by the soxs_mflat recipe*
 
-        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception will be raised.
+        If the fits files conform to required input for the recipe everything will pass silently, otherwise an exception
+        will be raised.
         """
         self.log.debug("starting the ``verify_input_frames`` method")
 
@@ -319,6 +321,7 @@ class soxs_mflat(base_recipe):
         **Return:**
 
         - ``productPath`` -- the path to the master flat frame
+        - ``qcTable`` -- the QC table reported for the recipe
         """
         self.log.debug("starting the ``produce_product`` method")
 
@@ -633,7 +636,7 @@ class soxs_mflat(base_recipe):
         self.products, qcTable, orderDetectionCounts = edges.get()
 
         if tag:
-            # NEED TO TRY AND RENAME BOTH ORDER AND COUNT COLUMNS FOR PANDAS 1.X and 2.X
+            # NEED TO TRY AND RENAME BOTH ORDER AND COUNT COLUMNS FOR PANDAS 1.X AND 2.X
             orderDetectionCounts.rename(columns={"order": tag}, inplace=True)
             orderDetectionCounts.rename(columns={"count": tag}, inplace=True)
             orderDetectionCounts.index.names = ["order"]
@@ -757,7 +760,10 @@ class soxs_mflat(base_recipe):
 
         **Return:**
 
-        - ``calibratedFlats`` -- the calibrated frames
+        - ``calibratedFlats`` -- the calibrated flat frames
+        - ``dcalibratedFlats`` -- the calibrated D-lamp flat frames
+        - ``qcalibratedFlats`` -- the calibrated QTH-lamp flat frames
+        - ``domecalibratedFlats`` -- the calibrated dome flat frames
         """
         self.log.debug("starting the ``calibrate_frame_set`` method")
 
@@ -1014,7 +1020,7 @@ class soxs_mflat(base_recipe):
         - ``inputFlats`` -- the input flat field frames
         - ``orderTablePath`` -- path to the order table
         - ``firstPassMasterFlat`` -- the first pass of the master flat. Default *False*
-        - `lamp` -- a lamp tag for QL plots
+        - ``lamp`` -- a lamp tag for QL plots. Default *""*
 
         **Return:**
 
@@ -1167,7 +1173,7 @@ class soxs_mflat(base_recipe):
 
         for i, frame in enumerate(inputFlats):
             nrows = frame.data.shape[0]
-            chunk_size = 256  # tune to balance memory vs overhead
+            chunk_size = 256  # TUNE TO BALANCE MEMORY VS OVERHEAD
             sample_chunks = []
             rng = np.random.default_rng(seed=42)
 
@@ -1179,7 +1185,7 @@ class soxs_mflat(base_recipe):
                 valid = chunk_data.ravel()
                 valid = valid[~np.isnan(valid)]
                 if valid.size:
-                    # # subsample to cap memory: keep at most 1000 values per chunk
+                    # # SUBSAMPLE TO CAP MEMORY: KEEP AT MOST 1000 VALUES PER CHUNK
                     if valid.size > 10000:
                         valid = rng.choice(valid, size=10000, replace=False)
                     sample_chunks.append(valid)
@@ -1202,7 +1208,7 @@ class soxs_mflat(base_recipe):
             norm_level = mean
             del all_valid
 
-            # Divide in-place to avoid allocating a full CCDData copy
+            # DIVIDE IN-PLACE TO AVOID ALLOCATING A FULL CCDDATA COPY
             nframe = frame.copy()
             nframe.data /= norm_level
             if nframe.uncertainty is not None:
@@ -1271,15 +1277,15 @@ class soxs_mflat(base_recipe):
 
         self.log.print("\n# NORMALISING FLAT FRAMES TO THEIR MEAN EXPOSURE LEVEL - SECOND PASS")
 
-        # Process frames one-by-one to reduce peak memory usage
+        # PROCESS FRAMES ONE-BY-ONE TO REDUCE PEAK MEMORY USAGE
         normalisedFrames = []
-        chunk_size = 256  # rows per chunk - tune to balance memory vs overhead
+        chunk_size = 256  # ROWS PER CHUNK - TUNE TO BALANCE MEMORY VS OVERHEAD
 
         for frame in inputFlats:
 
             nrows = frame.data.shape[0]
-            # Compute median of (frame / firstPassMasterFlat) in chunks
-            # to avoid allocating a full-size intermediate array
+            # COMPUTE MEDIAN OF (FRAME / FIRSTPASSMASTERFLAT) IN CHUNKS
+            # TO AVOID ALLOCATING A FULL-SIZE INTERMEDIATE ARRAY
             rng = np.random.default_rng(seed=56)
             chunk_vals = []
             for row_start in range(0, nrows, chunk_size):
@@ -1307,7 +1313,7 @@ class soxs_mflat(base_recipe):
                 all_valid /= norm_level
                 del all_valid, chunk_vals
 
-            # Divide in-place to avoid allocating a full CCDData copy
+            # DIVIDE IN-PLACE TO AVOID ALLOCATING A FULL CCDDATA COPY
             nframe = frame.copy()
             nframe.data /= norm_level
             if nframe.uncertainty is not None:
@@ -1476,7 +1482,7 @@ class soxs_mflat(base_recipe):
         **Usage:**
 
         ```python
-        mflat = self.stitch_uv_mflats(medianOrderFluxDF)
+        mflat = self.stitch_uv_mflats(medianOrderFluxDF, orderTablePath=orderTablePath)
         ```
         """
         self.log.debug("starting the ``stitch_uv_mflats`` method")
@@ -1591,21 +1597,24 @@ class soxs_mflat(base_recipe):
         return stitchedFlat
 
     def find_uvb_overlap_order_and_scale(self, dcalibratedFlats, qcalibratedFlats):
-        """*find uvb order where both lamps produce a similar flux. This is the order at which the 2 lamp flats will be scaled and stitched together*
+        """*find uvb order where both lamps produce a similar flux. This is the order at which the 2 lamp flats will be
+        scaled and stitched together*
 
         **Key Arguments:**
 
-        - ``qcalibratedFlats`` -- the QTH lamp calibration flats.
         - ``dcalibratedFlats`` -- D2 lamp calibration flats
+        - ``qcalibratedFlats`` -- the QTH lamp calibration flats.
 
         **Return:**
 
-        - ``order`` -- the order number where the lamp fluxes are similar
+        - ``orderFlip`` -- the order number where the lamp fluxes are similar
 
         **Usage:**
 
         ```python
-        overlapOrder = self.find_uvb_overlap_order_and_scale(dcalibratedFlats=dcalibratedFlats, qcalibratedFlats=qcalibratedFlats)
+        overlapOrder = self.find_uvb_overlap_order_and_scale(
+            dcalibratedFlats=dcalibratedFlats, qcalibratedFlats=qcalibratedFlats
+        )
         ```
         """
         self.log.debug("starting the ``find_uvb_overlap_order_and_scale`` method")
@@ -1657,11 +1666,29 @@ class soxs_mflat(base_recipe):
         self.log.debug("completed the ``find_uvb_overlap_order_and_scale`` method")
         return orderFlip
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
 
 
 def nearest_neighbour(singleValue, listOfValues):
+    """*find the value in a list closest to a given value*
+
+    **Key Arguments:**
+
+    - ``singleValue`` -- the value to match
+    - ``listOfValues`` -- the values to search
+
+    **Return:**
+
+    - ``matchValue`` -- the closest value in ``listOfValues``
+    - ``minIndex`` -- the index of that value in ``listOfValues``
+
+    **Usage:**
+
+    ```python
+    matchValue, matchIndex = nearest_neighbour(18.0, [10.0, 20.0])
+    ```
+    """
     import numpy as np
 
     arrayOfValues = np.asarray(listOfValues)
@@ -1673,6 +1700,19 @@ def nearest_neighbour(singleValue, listOfValues):
 
 
 def print_memory_usage(pprint=False, message=""):
+    """*print the resident memory of the current process*
+
+    **Key Arguments:**
+
+    - ``pprint`` -- print the memory usage. Default *False*
+    - ``message`` -- a message printed after the memory usage. Default *""*
+
+    **Usage:**
+
+    ```python
+    print_memory_usage(pprint=True, message="after normalising the flats")
+    ```
+    """
     if pprint:
         import humanize
         import psutil
