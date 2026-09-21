@@ -362,7 +362,14 @@ class soxs_stare(base_recipe):
 
         from soxspipe.commonutils.toolkit import quicklook_image
         quicklook_image(
-            log=self.log, CCDObject=combined_object_notflattened, show=True, ext='data', stdWindow=3, title=False, surfacePlot=True)
+            log=self.log,
+            CCDObject=combined_object_notflattened,
+            show=True,
+            ext='data',
+            stdWindow=3,
+            title=False,
+            surfacePlot=True,
+        )
 
 
         from soxspipe.commonutils import horne_extraction
