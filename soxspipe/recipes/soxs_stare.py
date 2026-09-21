@@ -92,7 +92,10 @@ class soxs_stare(base_recipe):
         if self.sofName:
             self.filenameTemplate = self.sofName + ".fits"
         else:
-            self.filenameTemplate = filenamer(log=self.log, frame=self.objectFrame, settings=self.settings)
+            # FILENAMER IS NEVER IMPORTED, SO THIS BRANCH RAISES NAMEERROR. THE FIX IS DY-111, NOT A REFACTOR
+            self.filenameTemplate = filenamer(  # noqa: F821
+                log=self.log, frame=self.objectFrame, settings=self.settings
+            )
 
         self.generateReponseCurve = False
 
@@ -143,8 +146,6 @@ class soxs_stare(base_recipe):
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug("starting the ``verify_input_frames`` method")
-
-        kw = self.kw
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
@@ -199,7 +200,12 @@ class soxs_stare(base_recipe):
                 okList.append("FLAT,LAMP")
             for i in imageTypes:
                 if i not in okList:
-                    error = f"Found a {i} file. Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR."
+                    error = (
+                        f"Found a {i} file. Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), "
+                        f"a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an "
+                        f"order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark "
+                        f"(MASTER_DARK_{arm}) or off-frame for NIR."
+                    )
 
         if not error:
             for i in imageTech:
@@ -213,7 +219,12 @@ class soxs_stare(base_recipe):
                 if "PAE" in self.settings and self.settings["PAE"]:
                     okList.append("ECHELLE,PINHOLE")
                 if i not in okList:
-                    error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or off-frame for NIR. The sof file is missing a {i} frame."
+                    error = (
+                        f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map "
+                        f"image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table "
+                        f"(ORDER_TAB_{arm}), a master-flat (MASTER_FLAT_{arm}) and master dark (MASTER_DARK_{arm}) or "
+                        f"off-frame for NIR. The sof file is missing a {i} frame."
+                    )
 
         return error
 
@@ -243,12 +254,24 @@ class soxs_stare(base_recipe):
                     "STD,TELLURIC",
                     "OBJECT,ASYNC",
                 ]:
-                    error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
+                    error = (
+                        f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map "
+                        f"image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table "
+                        f"(ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and "
+                        f"optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} "
+                        f"frame."
+                    )
 
         if not error:
             for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
                 if i not in imageCat:
-                    error = f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} frame."
+                    error = (
+                        f"Input frames for soxspipe stare need to be an object frame (OBJECT_{arm}), a dispersion map "
+                        f"image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table "
+                        f"(ORDER_TAB_{arm}), a master-bias (MASTER_BIAS_{arm}), a master-flat (MASTER_FLAT_{arm}) and "
+                        f"optionally a master dark (MASTER_DARK_{arm}) for UVB/VIS. The sof file is missing a {i} "
+                        f"frame."
+                    )
 
         return error
 
@@ -276,7 +299,6 @@ class soxs_stare(base_recipe):
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
 
         self.subtractSky = self.recipeSettings["sky-subtraction"]["subtract_sky"]
 
@@ -297,7 +319,9 @@ class soxs_stare(base_recipe):
             if not self.recipeSettings["use_flat"]:
                 master_flat = False
         except KeyError as e:
-            self.log.debug(f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}")
+            self.log.debug(
+                f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}"
+            )
             master_flat = False
 
         combined_object = self.detrend(
@@ -816,7 +840,6 @@ class soxs_stare(base_recipe):
                 unflattenedSkySubtractedCCDData = skySubtractedCCDData
         else:
             unflattenedSkySubtractedCCDData = combined_object_notflattened
-            unflattenedSkymodelCCDData = False
 
         return unflattenedSkySubtractedCCDData
 
