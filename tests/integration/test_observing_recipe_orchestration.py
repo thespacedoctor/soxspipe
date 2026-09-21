@@ -812,6 +812,14 @@ def test_stare_success_returns_last_sky_path_and_records_products(
             )
 
     monkeypatch.setattr(stareModule, "subtract_sky", FakeSkySubtractor)
+    realClock = stareModule.utcnow_string
+    clockReads: list[str] = []
+
+    def counting_clock(*args: object, **kwargs: object) -> str:
+        clockReads.append("read")
+        return realClock(*args, **kwargs)
+
+    monkeypatch.setattr(stareModule, "utcnow_string", counting_clock)
 
     def fake_generic_qc(**kwargs: object) -> pd.DataFrame:
         calls.append("generic_qc")
@@ -913,6 +921,9 @@ def test_stare_success_returns_last_sky_path_and_records_products(
     # WHOLE SECONDS
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", reductionDates[0])
     assert len(set(reductionDates)) == 1
+    # ONE CLOCK READ FEEDS ALL THREE ROWS. A SECOND MINT WITHIN THE SAME
+    # SECOND WOULD PASS THE SHARED-VALUE ASSERTION ABOVE, BUT NOT THIS ONE
+    assert clockReads == ["read"]
     _assert_merged_product(recipe.products, plotPath)
     assert calls == [
         "stack",
