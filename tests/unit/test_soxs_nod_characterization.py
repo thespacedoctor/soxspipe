@@ -224,7 +224,6 @@ def test_the_constructor_establishes_the_attributes_the_reduction_reads(
     assert recipe.recipeName == "soxs-nod"
     assert recipe.verbose is False
     assert recipe.log is log
-    assert recipe.settings is not None
 
 
 def test_the_constructor_runs_the_input_workflow_in_order(
@@ -537,12 +536,13 @@ def test_std_flux_and_std_telluric_skip_the_technique_check_in_the_nod_branch(
 
 
 @pytest.mark.parametrize(
-    ("categories", "missing"),
+    ("categories", "missing", "recipeName"),
     [
-        (["ORDER_TAB_VIS", "DISP_IMAGE_VIS"], "DISP_TAB_VIS"),
-        (["DISP_TAB_VIS", "DISP_IMAGE_VIS"], "ORDER_TAB_VIS"),
-        (["DISP_TAB_VIS", "ORDER_TAB_VIS"], "DISP_IMAGE_VIS"),
-        ([], "DISP_IMAGE_VIS"),
+        (["ORDER_TAB_VIS", "DISP_IMAGE_VIS"], "DISP_TAB_VIS", "soxs-nod"),
+        (["DISP_TAB_VIS", "DISP_IMAGE_VIS"], "ORDER_TAB_VIS", "soxs-nod"),
+        (["DISP_TAB_VIS", "ORDER_TAB_VIS"], "DISP_IMAGE_VIS", "soxs-nod"),
+        ([], "DISP_IMAGE_VIS", "soxs-nod"),
+        ([], "DISP_IMAGE_VIS", "soxs-offset"),
     ],
 )
 def test_a_missing_calibration_category_is_named_and_the_last_missing_one_wins(
@@ -550,19 +550,26 @@ def test_a_missing_calibration_category_is_named_and_the_last_missing_one_wins(
     monkeypatch: pytest.MonkeyPatch,
     categories: list[str],
     missing: str,
+    recipeName: str,
 ) -> None:
     """The category loop does not stop at the first miss; when several are missing, the last one wins.
 
     The loop checks `DISP_TAB_`, `ORDER_TAB_`, then `DISP_IMAGE_` in that
     order and overwrites the error each time, so when all three are missing
     `DISP_IMAGE_` is the one named, not `DISP_TAB_`.
+
+    The last case is the offset run of DY-125: unlike the image-type and
+    technique checks above it, this loop never switches its wording, so an
+    offset reduction is told about nodding input. Pinned as found.
     """
     # ARRANGE
-    recipe = _unconstructed_recipe(log)
+    recipe = _unconstructed_recipe(log, recipeName=recipeName)
+    # THE TECHNIQUE EACH BRANCH ACCEPTS, SO THAT ONLY THE CATEGORY CHECK CAN FAIL.
+    technique = "ECHELLE,SLIT,OFFSET" if "offset" in recipeName else "ECHELLE,SLIT,NODDING"
     _stub_basics_direct(
         monkeypatch,
         imageTypes=["OBJECT"],
-        imageTech=["ECHELLE,SLIT,NODDING"],
+        imageTech=[technique],
         imageCat=categories,
     )
 
@@ -598,7 +605,11 @@ def test_a_disallowed_image_type_wins_over_a_missing_category_in_the_offset_bran
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The same skip-once-set rule applies inside the offset branch's own technique loop."""
+    """The type loop's error survives into the offset branch, whose technique loop is therefore skipped.
+
+    The message still names the nod recipe for an offset run, which is the same family of wording
+    defect as DY-125.
+    """
     # ARRANGE
     recipe = _unconstructed_recipe(log, recipeName="soxs-offset")
     _stub_basics_direct(

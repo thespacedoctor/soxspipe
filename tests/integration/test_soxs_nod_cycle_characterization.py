@@ -91,18 +91,30 @@ def _patch_extraction_collaborators(
             join = joinSequence[min(index, len(joinSequence) - 1)]
             return recipe.qc, recipe.products, spectrum, join, f"extraction_{index}.fits"
 
+    def record_generic_checks(**kwargs: object) -> Any:
+        qcCalls.append(("generic", kwargs))
+        return kwargs["qcTable"]
+
+    def record_spectroscopic_checks(**kwargs: object) -> Any:
+        qcCalls.append(("spectroscopic", kwargs))
+        return kwargs["qcTable"]
+
     monkeypatch.setattr(commonutils, "horne_extraction", RecordingExtractor)
-    monkeypatch.setattr(
-        nodModule,
-        "generic_quality_checks",
-        lambda **kwargs: qcCalls.append(("generic", kwargs)) or kwargs["qcTable"],
-    )
-    monkeypatch.setattr(
-        nodModule,
-        "spectroscopic_image_quality_checks",
-        lambda **kwargs: qcCalls.append(("spectroscopic", kwargs)) or kwargs["qcTable"],
-    )
+    monkeypatch.setattr(nodModule, "generic_quality_checks", record_generic_checks)
+    monkeypatch.setattr(nodModule, "spectroscopic_image_quality_checks", record_spectroscopic_checks)
     return extractCalls, qcCalls
+
+
+def _patch_detrend(monkeypatch: pytest.MonkeyPatch, recipe: soxs_nod) -> list[dict[str, object]]:
+    """Replace `detrend` with a recorder that returns a copy of the frame it was given."""
+    detrendCalls: list[dict[str, object]] = []
+
+    def record_detrend(**kwargs: object) -> Any:
+        detrendCalls.append(kwargs)
+        return kwargs["inputFrame"].copy()
+
+    monkeypatch.setattr(recipe, "detrend", record_detrend)
+    return detrendCalls
 
 
 def test_nod_cycle_writes_ab_and_ba_difference_frames_with_expected_data_and_headers(
@@ -219,12 +231,7 @@ def test_nod_cycle_detrends_four_frames_in_order_when_flattening_with_a_master_f
 ) -> None:
     """A real master flat with flattening requested detrends A-B, B-A, bFrame, then aFrame, in that order."""
     recipe = _cycle_recipe(log, tmp_path)
-    detrendCalls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        recipe,
-        "detrend",
-        lambda **kwargs: (detrendCalls.append(kwargs), kwargs["inputFrame"].copy())[-1],
-    )
+    detrendCalls = _patch_detrend(monkeypatch, recipe)
     extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe, joins=[{10: 1}, {20: 2}])
     aFrame, bFrame = _ab_frames()
     masterFlat = synthetic_ccd(shape=(3, 3), seed=99, prepared=True)
@@ -300,12 +307,7 @@ def test_offset_named_cycle_detrends_three_frames_without_a_ba_pass(
 ) -> None:
     """The offset branch detrends A-B, bFrame and aFrame; it has no B-A pass to detrend."""
     recipe = _cycle_recipe(log, tmp_path, recipeName="soxs-offset")
-    detrendCalls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        recipe,
-        "detrend",
-        lambda **kwargs: (detrendCalls.append(kwargs), kwargs["inputFrame"].copy())[-1],
-    )
+    detrendCalls = _patch_detrend(monkeypatch, recipe)
     _patch_extraction_collaborators(monkeypatch, recipe)
     aFrame, bFrame = _ab_frames()
     masterFlat = synthetic_ccd(shape=(3, 3), seed=99, prepared=True)
@@ -389,12 +391,7 @@ def test_not_flattened_e712_comparison_controls_whether_detrend_runs(
 ) -> None:
     """`notFlattened == False`, not `not notFlattened`, gates detrending: `0` runs it, `None` does not."""
     recipe = _cycle_recipe(log, tmp_path)
-    detrendCalls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        recipe,
-        "detrend",
-        lambda **kwargs: (detrendCalls.append(kwargs), kwargs["inputFrame"].copy())[-1],
-    )
+    detrendCalls = _patch_detrend(monkeypatch, recipe)
     _patch_extraction_collaborators(monkeypatch, recipe)
     aFrame, bFrame = _ab_frames()
     masterFlat = synthetic_ccd(shape=(3, 3), seed=99, prepared=True)
@@ -428,10 +425,18 @@ def test_process_cycle_returns_order_joins_from_the_last_extraction(
     assert orderJoins == {20: 2}
 
 
+@pytest.fixture
+def passthrough_snr_qcs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace `add_snr_efficiency_qcs` with a pass-through, which most stack tests do not exercise."""
+
+    def pass_through(**kwargs: object) -> Any:
+        return kwargs["qcTable"]
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils.toolkit"), "add_snr_efficiency_qcs", pass_through)
+
+
 def _stack_recipe(log: Any, tmp_path: Path, *, recipeName: str = "soxs-nod") -> soxs_nod:
     """Return an unconstructed recipe configured for `stack_extractions`, with declared-empty tables."""
-    import pandas as pd
-
     recipe = soxs_nod.__new__(soxs_nod)
     recipe.log = log
     recipe.arm = "VIS"
@@ -472,7 +477,7 @@ def _spectrum_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
 def test_stack_extractions_computes_column_specific_rounded_medians(
     log: Any,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    passthrough_snr_qcs: None,
 ) -> None:
     """4-dp WAVE rounding decides merge-vs-split, then each column keeps its own decimal precision.
 
@@ -482,8 +487,6 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
     own decimals rather than any other column's: the raw FLUX_COUNTS median 12.34565 would round to 12.35 at
     SNR's 2 dp, not the pinned 12.346.
     """
-    toolkit = import_module("soxspipe.commonutils.toolkit")
-    monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
@@ -499,11 +502,9 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
 def test_stack_extractions_writes_notflat_suffixed_files_when_requested(
     log: Any,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    passthrough_snr_qcs: None,
 ) -> None:
     """`notFlattened=True` names both product files with the `_NOTFLAT` suffix."""
-    toolkit = import_module("soxspipe.commonutils.toolkit")
-    monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
@@ -518,10 +519,9 @@ def test_stack_extractions_sets_the_reduced_header_keywords_and_date_obs(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    passthrough_snr_qcs: None,
 ) -> None:
     """The written header carries PRO_TYPE REDUCED and PRO_CATG SCI_SLIT_FLUX_<ARM>, and dateObs comes from it."""
-    toolkit = import_module("soxspipe.commonutils.toolkit")
-    monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
     recipe = _stack_recipe(log, tmp_path)
     keywordCalls: list[dict[str, object]] = []
     monkeypatch.setattr(
@@ -541,11 +541,9 @@ def test_stack_extractions_sets_the_reduced_header_keywords_and_date_obs(
 def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting(
     log: Any,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    passthrough_snr_qcs: None,
 ) -> None:
     """The ASCII companion converts WAVE to Angstrom (x10) and formats it to 2 decimal places."""
-    toolkit = import_module("soxspipe.commonutils.toolkit")
-    monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
@@ -560,7 +558,7 @@ def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting(
 def test_stack_extractions_appends_product_rows_that_push_desc_to_the_last_column(
     log: Any,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    passthrough_snr_qcs: None,
 ) -> None:
     """Concatenating onto the declared empty table moves `product_desc` after `label`, not before `file_path`.
 
@@ -570,8 +568,6 @@ def test_stack_extractions_appends_product_rows_that_push_desc_to_the_last_colum
     `file_path` — is not the column order a real recipe ends up with. This looks like a defect worth a
     human's attention before the split.
     """
-    toolkit = import_module("soxspipe.commonutils.toolkit")
-    monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
@@ -594,6 +590,8 @@ def test_stack_extractions_appends_product_rows_that_push_desc_to_the_last_colum
     assert tableRow["product_desc"] == "Table of the extracted source in each order. All nodding cycles combined."
     assert tableRow["file_path"] == fitsPath
     assert tableRow["label"] == "PROD"
+    assert tableRow["obs_date_utc"] == recipe.dateObs
+    assert asciiRow["obs_date_utc"] == recipe.dateObs
     assert asciiRow["product_label"] == "EXTRACTED_MERGED_ASCII"
     assert asciiRow["file_type"] == "TXT"
     assert asciiRow["product_desc"] == "Ascii version of extracted source spectrum"
@@ -603,7 +601,7 @@ def test_stack_extractions_appends_product_rows_that_push_desc_to_the_last_colum
 def test_stack_extractions_stamps_both_product_rows_with_one_whole_second_timestamp(
     log: Any,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
+    passthrough_snr_qcs: None,
 ) -> None:
     """By contract, not by patching the clock: one whole-second UTC string feeds both rows and `self.utcnow`.
 
@@ -611,8 +609,6 @@ def test_stack_extractions_stamps_both_product_rows_with_one_whole_second_timest
     `toolkit.utcnow_string()`; a test that patches `datetime` would only pass against one revision. Asserting
     the shape and the shared value, without touching the clock, survives that change.
     """
-    toolkit = import_module("soxspipe.commonutils.toolkit")
-    monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
@@ -658,12 +654,10 @@ def test_stack_extractions_reads_the_clock_exactly_once(
 def test_stack_extractions_stamps_product_rows_with_the_current_recipe_name(
     log: Any,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     recipeName: str,
+    passthrough_snr_qcs: None,
 ) -> None:
     """`stack_extractions` is inherited by `soxs_offset`; both recipe names flow into its product rows."""
-    toolkit = import_module("soxspipe.commonutils.toolkit")
-    monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
     recipe = _stack_recipe(log, tmp_path, recipeName=recipeName)
     first, second = _spectrum_frames()
 

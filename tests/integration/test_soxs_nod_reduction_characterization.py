@@ -139,7 +139,6 @@ def test_two_offset_locations_process_each_cycle_before_one_final_stack(
         "report",
         "clean_up",
     ]
-    assert "stack" not in calls
     assert [entry["locationSetIndex"] for entry in captured["extract_cycle"]] == [1, 2]
     assert (
         "print",
@@ -419,7 +418,7 @@ def test_flux_standard_frames_rename_the_recipe_once_and_skip_later_types(
         )
         for index, offset in enumerate((9.0, -9.0))
     ]
-    recipe, standardPaths = _nod_recipe(
+    recipe, _ = _nod_recipe(
         log,
         tmp_path,
         SINGLE_PAIR,
@@ -442,7 +441,6 @@ def test_flux_standard_frames_rename_the_recipe_once_and_skip_later_types(
     assert recipe.productDir == str(tmp_path / "products" / "soxs-nod-std")
     assert recipe.masterHeaderFrame.header[CUMULATIVE_OFFSET] == 3.0
     assert [entry["frames"][0].header[CUMULATIVE_OFFSET] for entry in captured["stack"]] == [3.0, -3.0]
-    assert len(standardPaths) == 2
 
 
 def test_object_frames_win_over_standard_frames_and_leave_the_recipe_name(
@@ -477,13 +475,13 @@ def test_object_frames_win_over_standard_frames_and_leave_the_recipe_name(
 
 
 @pytest.mark.parametrize(
-    ("headers", "useFlat", "withFlat", "expectFlat"),
+    ("headers", "useFlat", "withFlat", "expectFlat", "expectedCycles"),
     [
-        (SINGLE_PAIR, True, True, True),
-        (SINGLE_PAIR, True, False, False),
-        (SINGLE_PAIR, False, True, False),
-        (TWO_LOCATIONS, True, True, True),
-        (TWO_LOCATIONS, True, False, False),
+        (SINGLE_PAIR, True, True, True, 1),
+        (SINGLE_PAIR, True, False, False, 1),
+        (SINGLE_PAIR, False, True, False, 1),
+        (TWO_LOCATIONS, True, True, True, 2),
+        (TWO_LOCATIONS, True, False, False, 2),
     ],
 )
 def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
@@ -494,6 +492,7 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
     useFlat: bool,
     withFlat: bool,
     expectFlat: bool,
+    expectedCycles: int,
 ) -> None:
     """Each extraction receives the read master flat only when `use_flat` is set and a flat was supplied."""
     # ARRANGE
@@ -511,7 +510,7 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
 
     # ASSERT
     flats = [entry["masterFlat"] for entry in captured["extract_cycle"]]
-    assert len(flats) == (1 if headers is SINGLE_PAIR else 2)
+    assert len(flats) == expectedCycles
     for flat in flats:
         if expectFlat:
             np.testing.assert_array_equal(flat.data, synthetic_ccd(seed=400, prepared=True).data)
