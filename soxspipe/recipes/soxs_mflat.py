@@ -1104,6 +1104,28 @@ class soxs_mflat(base_recipe):
         # COMBINE MASK WITH THE BAD PIXEL MASK
         return np.logical_or(mask, inputFlats[0].mask)
 
+    def _no_usable_centre_pixels_message(self, frameIndex, frameCount, passName):
+        """*build the error message for a flat frame that has no usable order-centre pixel left*
+
+        **Key Arguments:**
+
+        - ``frameIndex`` -- the 1-based position of the frame in the input set
+        - ``frameCount`` -- the number of frames in the input set
+        - ``passName`` -- the normalisation pass the frame failed in ("first pass" or "second pass")
+
+        **Return:**
+
+        - ``message`` -- the error message
+        """
+        return (
+            f"soxs_mflat normalise_flats: no usable order-centre pixels in flat frame {frameIndex} of "
+            f"{frameCount} ({passName}). Every order-centre pixel of this frame is either excluded by the "
+            "order-centre mask or holds an invalid (NaN) value, so its normalisation level cannot be measured. "
+            "Check that the order table is not empty, that it matches the arm and binning of these flat frames, "
+            "that the order traces are not fully covered by the bad-pixel mask, and that the frame's own data is "
+            "not all invalid."
+        )
+
     def _normalise_flats_first_pass(self, inputFlats, mask):
         """*normalise each flat frame to the sigma-clipped mean of its unmasked pixels, and record the ORDEXP QCs*
 
@@ -1127,7 +1149,9 @@ class soxs_mflat(base_recipe):
         ORDEXP50list = []
         ORDEXP90list = []
 
-        for frame in inputFlats:
+        frameCount = len(inputFlats)
+
+        for frameIndex, frame in enumerate(inputFlats, start=1):
             nrows = frame.data.shape[0]
             chunk_size = 256  # TUNE TO BALANCE MEMORY VS OVERHEAD
             sample_chunks = []
@@ -1146,6 +1170,9 @@ class soxs_mflat(base_recipe):
                         valid = rng.choice(valid, size=10000, replace=False)
                     sample_chunks.append(valid)
                 del chunk_data, chunk_mask, valid
+
+            if not sample_chunks:
+                raise ValueError(self._no_usable_centre_pixels_message(frameIndex, frameCount, "first pass"))
 
             all_valid = np.concatenate(sample_chunks)
             del sample_chunks
@@ -1237,7 +1264,9 @@ class soxs_mflat(base_recipe):
         normalisedFrames = []
         chunk_size = 256  # ROWS PER CHUNK - TUNE TO BALANCE MEMORY VS OVERHEAD
 
-        for frame in inputFlats:
+        frameCount = len(inputFlats)
+
+        for frameIndex, frame in enumerate(inputFlats, start=1):
 
             nrows = frame.data.shape[0]
             # COMPUTE MEDIAN OF (FRAME / FIRSTPASSMASTERFLAT) IN CHUNKS
@@ -1256,18 +1285,19 @@ class soxs_mflat(base_recipe):
                     chunk_vals.append(valid)
                 del chunk_data, chunk_nan_mask, chunk_combined_mask, valid
 
-            if chunk_vals:
-                all_valid = np.concatenate(chunk_vals)
-                mean, median, std = sigma_clipped_stats(
-                    all_valid,
-                    sigma=25.0,
-                    stdfunc="mad_std",
-                    cenfunc="median",
-                    maxiters=3,
-                )
-                norm_level = mean
-                all_valid /= norm_level
-                del all_valid, chunk_vals
+            if not chunk_vals:
+                raise ValueError(self._no_usable_centre_pixels_message(frameIndex, frameCount, "second pass"))
+
+            all_valid = np.concatenate(chunk_vals)
+            mean, median, std = sigma_clipped_stats(
+                all_valid,
+                sigma=25.0,
+                stdfunc="mad_std",
+                cenfunc="median",
+                maxiters=3,
+            )
+            norm_level = mean
+            del all_valid, chunk_vals
 
             # DIVIDE IN-PLACE TO AVOID ALLOCATING A FULL CCDDATA COPY
             nframe = frame.copy()

@@ -1,9 +1,11 @@
 """Characterization of `soxs_mflat.normalise_flats` and `find_uvb_overlap_order_and_scale`.
 
 These tests pin what `normalise_flats` does today at its centre-trace mask
-guards, its debug-mode plotting, its two "every pixel excluded" edge cases,
-and its handling of frames with no uncertainty array, before a later commit
-splits `soxs_mflat.py`'s functions into smaller methods. They also pin that
+guards, its debug-mode plotting, its two "every pixel excluded" edge cases
+(DY-122: both passes now raise a frame-naming `ValueError` instead of a
+NumPy or unbound-name error), and its handling of frames with no uncertainty
+array, before a later commit splits `soxs_mflat.py`'s functions into smaller
+methods. They also pin that
 `find_uvb_overlap_order_and_scale` cannot run against the real
 `normalise_flats` it calls -- evidence that the method is dead code, not
 merely untested. Every defect below is pinned with a docstring noting it is
@@ -147,18 +149,12 @@ def _empty_pixels() -> pd.DataFrame:
     return pd.DataFrame({"xcoord_centre": pd.array([], dtype="int64"), "ycoord": pd.array([], dtype="int64")})
 
 
-def test_first_pass_with_no_centre_trace_pixels_raises_value_error_on_concatenate(
+def test_first_pass_raises_a_named_frame_error_when_no_order_centre_pixel_is_usable(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """With no centre-trace pixels, the mask stays fully `True` and every pixel is excluded.
-
-    `sample_chunks` never receives an array, so `np.concatenate(sample_chunks)`
-    is called on an empty list. Pinned as found, not as intended: a
-    genuinely empty order table crashes with a NumPy-internal message rather
-    than a domain-meaningful error.
-    """
+    """An empty order table leaves the first pass no usable pixel, and it says so, naming the frame."""
     # ARRANGE
     recipe = _worker_recipe(log)
     orderTable = _order_table(tmp_path, name="orders_empty_first.fits")
@@ -167,21 +163,16 @@ def test_first_pass_with_no_centre_trace_pixels_raises_value_error_on_concatenat
     frame = _frame(np.random.default_rng(801).normal(loc=1000.0, scale=25.0, size=(12, 12)))
 
     # ACT / ASSERT
-    with pytest.raises(ValueError, match="need at least one array to concatenate"):
+    with pytest.raises(ValueError, match=r"no usable order-centre pixels in flat frame 1 of 1 \(first pass\)"):
         recipe.normalise_flats([frame], str(orderTable))
 
 
-def test_second_pass_with_no_centre_trace_pixels_raises_unbound_local_error_on_norm_level(
+def test_second_pass_raises_a_named_frame_error_when_no_order_centre_pixel_is_usable(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """With no centre-trace pixels, the second pass never assigns `norm_level` before reading it.
-
-    `chunk_vals` stays empty, so the `if chunk_vals:` block that assigns
-    `norm_level` never runs; the very next line divides by it anyway. Pinned
-    as found, not as intended.
-    """
+    """An empty order table leaves the second pass no usable pixel, and it says so, naming the frame."""
     # ARRANGE
     recipe = _worker_recipe(log)
     orderTable = _order_table(tmp_path, name="orders_empty_second.fits")
@@ -191,8 +182,34 @@ def test_second_pass_with_no_centre_trace_pixels_raises_unbound_local_error_on_n
     masterFlat = _frame(1.0 + np.random.default_rng(999).normal(loc=0.0, scale=0.01, size=(12, 12)))
 
     # ACT / ASSERT
-    with pytest.raises(UnboundLocalError, match="norm_level"):
+    with pytest.raises(ValueError, match=r"no usable order-centre pixels in flat frame 1 of 1 \(second pass\)"):
         recipe.normalise_flats([frame], str(orderTable), firstPassMasterFlat=masterFlat)
+
+
+def test_second_pass_error_names_the_later_frame_that_has_no_usable_pixel(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When only the second frame is all-NaN, the second pass names that frame and blames invalid data too."""
+    # ARRANGE
+    recipe = _worker_recipe(log)
+    orderTable = _order_table(tmp_path, name="orders_late_frame_second.fits")
+    pixels = pd.DataFrame({"xcoord_centre": [6] * 12, "ycoord": list(range(12))})
+    _stub_unpack_order_table(monkeypatch, pixels)
+    monkeypatch.setattr(soxs_mflat_module, "quicklook_image", lambda **kwargs: None)
+    goodFrame = _frame(np.random.default_rng(801).normal(loc=1000.0, scale=25.0, size=(12, 12)))
+    nanFrame = _frame(np.full((12, 12), np.nan))
+    masterFlat = _frame(1.0 + np.random.default_rng(999).normal(loc=0.0, scale=0.01, size=(12, 12)))
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"no usable order-centre pixels in flat frame 2 of 2 \(second pass\)") as raised:
+        recipe.normalise_flats([goodFrame, nanFrame], str(orderTable), firstPassMasterFlat=masterFlat)
+
+    # THE ORDER-CENTRE MASK IS FINE HERE, SO THE MESSAGE MUST OFFER THE INVALID-DATA CAUSE AS WELL
+    message = str(raised.value)
+    assert "invalid (NaN) value" in message
+    assert "the frame's own data is not all invalid" in message
 
 
 def _frame_no_uncertainty(data: np.ndarray, *, binx: int = 1, biny: int = 1) -> CCDData:
