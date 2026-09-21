@@ -15,7 +15,6 @@ import sys
 from os.path import expanduser
 
 from soxspipe.commonutils import detect_order_edges, subtract_background
-from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.toolkit import (
     append_product,
     append_qc,
@@ -226,36 +225,32 @@ class soxs_mflat(base_recipe):
 
         # WANT ON AND OFF PINHOLE FRAMES
         # MIXED INPUT IMAGE TYPES ARE BAD
-        if not error:
-            if len(imageTypes) > 1:
-                # FIX ME
-                if len(imageTypes) == 2 and ("DARK" in imageTypes):
-                    pass
-                else:
-                    pass
-                    # imageTypes = " and ".join(imageTypes)
-                    # error = "Input frames are a mix of %(imageTypes)s" % locals()
+        if not error and len(imageTypes) > 1:
+            # FIX ME
+            if len(imageTypes) == 2 and ("DARK" in imageTypes):
+                pass
+            else:
+                pass
+                # imageTypes = " and ".join(imageTypes)
+                # error = "Input frames are a mix of %(imageTypes)s" % locals()
 
-        if not error:
-            if "LAMP,FLAT" not in imageTypes and "FLAT,LAMP" not in imageTypes:
-                error = (
-                    "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR" % locals()
-                )
+        if not error and "LAMP,FLAT" not in imageTypes and "FLAT,LAMP" not in imageTypes:
+            error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR"
 
         if not error:
             for i in imageTech:
                 if i not in ["ECHELLE,SLIT", "IMAGE"]:
                     error = (
-                        f"Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. You have provided {i}"
-                        % locals()
+                        "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. "
+                        f"You have provided {i}" % locals()
                     )
 
         if not error:
             for i in ["ECHELLE,SLIT", "IMAGE"]:
                 if i not in imageTech:
                     error = (
-                        f"Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. You have are missing TECH={i}"
-                        % locals()
+                        "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. "
+                        f"You have are missing TECH={i}" % locals()
                     )
 
         return error
@@ -284,16 +279,16 @@ class soxs_mflat(base_recipe):
                     "DOME,FLAT",
                 ]:
                     error = (
-                        "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS"
-                        % locals()
+                        "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, "
+                        "an order-locations tables and possibly a master dark for UVB/VIS"
                     )
 
         if not error:
             for i in [f"MASTER_BIAS_{self.arm}", f"ORDER_TAB_{self.arm}"]:
                 if i not in imageCat:
                     error = (
-                        "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS"
-                        % locals()
+                        "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, "
+                        "an order-locations tables and possibly a master dark for UVB/VIS"
                     )
 
         if not error:
@@ -309,13 +304,14 @@ class soxs_mflat(base_recipe):
                     found = True
             if not found:
                 error = (
-                    "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS"
-                    % locals()
+                    "Input frames for soxspipe mflat need to be flat-lamp frames,a master-bias frame, "
+                    "an order-locations tables and possibly a master dark for UVB/VIS"
                 )
 
         return error
 
-    def produce_product(self):
+    # THE LAMP LOOP LEFT IN PLACE CARRIES STATE ACROSS ITERATIONS (ORDER TABLE PATH, MEDIAN FLUXES), SO IT STAYS WHOLE
+    def produce_product(self):  # noqa: PLR0915
         """*generate the master flat frames updated order location table (with egde detection)*
 
         **Return:**
@@ -336,8 +332,6 @@ class soxs_mflat(base_recipe):
 
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats, dcalibratedFlats, qcalibratedFlats, domecalibratedFlats = self.calibrate_frame_set()
-
-        allCalibratedFlats = calibratedFlats + dcalibratedFlats + qcalibratedFlats + domecalibratedFlats
 
         calibratedFlatSet = [
             calibratedFlats,
@@ -365,7 +359,6 @@ class soxs_mflat(base_recipe):
         self.detectionCountSet = []
         medianOrderFluxDFExists = False
 
-        productTable = self.products
         qcTable = self.qc
 
         for cf, fk, tag, files in zip(calibratedFlatSet, flatKeywords, lampTag, filelists):
@@ -468,31 +461,6 @@ class soxs_mflat(base_recipe):
             fileType="FITS",
             label="PROD",
         )
-
-        if 1 == 0:
-            filename = filenamer(log=self.log, frame=mflat, settings=self.settings)
-            filename = filename.replace(".fits", "_background.fits")
-            filepath = self._write(backgroundFrame, outDir, filename=filename, overwrite=True)
-            filepath = os.path.abspath(filepath)
-            self.products = pd.concat(
-                [
-                    self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": "",
-                            "file_name": filename,
-                            "file_type": "FITS",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": "modelled scatter background light image (removed from master flat)",
-                            "file_path": backgroundFrame,
-                            "label": "PROD",
-                        }
-                    ]),
-                ],
-                ignore_index=True,
-            )
 
         # ADD QUALITY CHECKS
         self.qc = generic_quality_checks(
@@ -767,9 +735,7 @@ class soxs_mflat(base_recipe):
         """
         self.log.debug("starting the ``calibrate_frame_set`` method")
 
-        arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
 
         bias = self._find_master_bias(kw)
 
@@ -855,9 +821,8 @@ class soxs_mflat(base_recipe):
                 }
             )
         ]
-        domeflats = [
-            c
-            for c in domeflatCollection.ccds(
+        domeflats = list(
+            domeflatCollection.ccds(
                 ccd_kwargs={
                     "hdu_uncertainty": "ERRS",
                     "hdu_mask": "QUAL",
@@ -865,22 +830,11 @@ class soxs_mflat(base_recipe):
                     "key_uncertainty_type": "UTYPE",
                 }
             )
-        ]
+        )
 
         calibratedFlats, dcalibratedFlats, qcalibratedFlats, domecalibratedFlats = self._detrend_flat_sets(
             flats, dflats, qflats, domeflats, bias, darkCollection, kw
         )
-
-        if 1 == 0:
-            from os.path import expanduser
-
-            home = expanduser("~")
-            outDir = self.settings["workspace-root-dir"].replace("~", home)
-            index = 1
-            for frame in calibratedFlats:
-                filePath = f"{outDir}/{index:02}_flat_{arm}_calibrated.fits"
-                index += 1
-                self._write(frame, filePath, overwrite=True)
 
         self.log.debug("completed the ``calibrate_frame_set`` method")
         return calibratedFlats, dcalibratedFlats, qcalibratedFlats, domecalibratedFlats
@@ -900,9 +854,8 @@ class soxs_mflat(base_recipe):
         filterDict = {kw("PRO_CATG"): f"MASTER_BIAS_{self.arm.upper()}"}
         biasCollection = self.inputFrames.filter(**filterDict)
         # LIST OF CCDDATA OBJECTS
-        biases = [
-            c
-            for c in biasCollection.ccds(
+        biases = list(
+            biasCollection.ccds(
                 ccd_kwargs={
                     "hdu_uncertainty": "ERRS",
                     "hdu_mask": "QUAL",
@@ -910,7 +863,7 @@ class soxs_mflat(base_recipe):
                     "key_uncertainty_type": "UTYPE",
                 }
             )
-        ]
+        )
 
         if len(biasCollection.files) == 0:
             bias = None
@@ -991,9 +944,8 @@ class soxs_mflat(base_recipe):
         # AND/OR DARK
         if darkCollection:
             darkMjds = [h[kw("MJDOBS")] for h in darkCollection.headers()]
-            darks = [
-                c
-                for c in darkCollection.ccds(
+            darks = list(
+                darkCollection.ccds(
                     ccd_kwargs={
                         "hdu_uncertainty": "ERRS",
                         "hdu_mask": "QUAL",
@@ -1001,11 +953,10 @@ class soxs_mflat(base_recipe):
                         "key_uncertainty_type": "UTYPE",
                     }
                 )
-            ]
+            )
             self.log.print("\n# SUBTRACTING MASTER DARK/OFF-LAMP FROM FRAMES")
             for flat in flats:
 
-                mjd = flat.header[kw("MJDOBS")]
                 matchValue, matchIndex = nearest_neighbour(flat.header[kw("MJDOBS")], darkMjds)
                 dark = darks[matchIndex]
                 calibratedFlats.append(self.detrend(inputFrame=flat, master_bias=bias, dark=dark))
@@ -1144,9 +1095,7 @@ class soxs_mflat(base_recipe):
                 if 0 <= x < mask.shape[1] and y_start < y_end:
                     mask[y_start:y_end, x] = 0
         # COMBINE MASK WITH THE BAD PIXEL MASK
-        mask = np.logical_or(mask, inputFlats[0].mask)
-
-        return mask
+        return np.logical_or(mask, inputFlats[0].mask)
 
     def _normalise_flats_first_pass(self, inputFlats, mask):
         """*normalise each flat frame to the sigma-clipped mean of its unmasked pixels, and record the ORDEXP QCs*
@@ -1171,7 +1120,7 @@ class soxs_mflat(base_recipe):
         ORDEXP50list = []
         ORDEXP90list = []
 
-        for i, frame in enumerate(inputFlats):
+        for frame in inputFlats:
             nrows = frame.data.shape[0]
             chunk_size = 256  # TUNE TO BALANCE MEMORY VS OVERHEAD
             sample_chunks = []
@@ -1323,7 +1272,8 @@ class soxs_mflat(base_recipe):
 
         return normalisedFrames
 
-    def mask_low_sens_pixels(self, frame, orderTablePath, returnMedianOrderFlux=False, writeQC=True):
+    # NOT SPLIT IN DY-119: ITS MEDIAN-FLUX LOCALS ARE BOUND ONLY WHEN returnMedianOrderFlux IS TRUE
+    def mask_low_sens_pixels(self, frame, orderTablePath, returnMedianOrderFlux=False, writeQC=True):  # noqa: PLR0915
         """*add low-sensitivity pixels to bad-pixel mask*
 
         **Key Arguments:**
@@ -1533,7 +1483,7 @@ class soxs_mflat(base_recipe):
 
         # STITCH FLAT FRAMES AND COMBINED NORMALISED FRAMES (NEEDED FOR BEST ORDER EDGE DETECTION) TOGETHER
         if self.axisA == "x":
-            for x, y in zip(axisAStitchCoords, axisBStitchCoords):
+            for x, y in zip(axisAStitchCoords, axisBStitchCoords, strict=False):
                 if y < stitchedFlat.data.shape[0] and x < stitchedFlat.data.shape[1]:
                     stitchedFlat.data[y, :x] = dmflatScaled.data[y, :x]
                     stitchedFlat.mask[y, :x] = dmflatScaled.mask[y, :x]
@@ -1629,7 +1579,6 @@ class soxs_mflat(base_recipe):
         orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
         if len(orderTablePaths) == 1:
             orderTablePath = orderTablePaths[0]
-            thisPath = orderTablePath
         normalisedFlats, DorderMeanFluxes = self.normalise_flats(dcalibratedFlats, orderTablePath=orderTablePath)
         DorderMeanFluxes.rename(columns={"90_perc": "D2"}, inplace=True)
 
@@ -1640,7 +1589,6 @@ class soxs_mflat(base_recipe):
         orderTablePaths = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)
         if len(orderTablePaths) == 1:
             orderTablePath = orderTablePaths[0]
-            thisPath = orderTablePath
         normalisedFlats, QorderMeanFluxes = self.normalise_flats(qcalibratedFlats, orderTablePath=orderTablePath)
         QorderMeanFluxes.rename(columns={"90_perc": "QTH"}, inplace=True)
 
