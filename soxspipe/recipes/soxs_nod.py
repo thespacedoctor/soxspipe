@@ -19,6 +19,7 @@ from soxspipe.commonutils.toolkit import (
     generic_quality_checks,
     get_calibrations_path,
     spectroscopic_image_quality_checks,
+    utcnow_string,
 )
 
 from .base_recipe import base_recipe
@@ -826,8 +827,6 @@ class soxs_nod(base_recipe):
         """
         self.log.debug("starting the ``stack_extractions`` method")
 
-        from datetime import datetime
-
         import numpy as np
         import pandas as pd
         from astropy import units as u
@@ -889,7 +888,7 @@ class soxs_nod(base_recipe):
             groupedDataframe[col] = groupedDataframe[col].apply(lambda x: round(float(x), decimals))
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)
 
-        self.utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        self.utcnow = utcnow_string()
         self.dateObs = header[kw("DATE_OBS")]
 
         self.qc = add_snr_efficiency_qcs(
@@ -923,44 +922,24 @@ class soxs_nod(base_recipe):
         stackedSpectrum2["WAVE"].format = "{:.2f}"  # CONVERTING TO ANGSTROMS
         stackedSpectrum2.write(asciiFilePath, format="ascii", overwrite=True)
 
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "EXTRACTED_MERGED_TABLE",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": self.utcnow,
-                        "product_desc": "Table of the extracted source in each order. All nodding cycles combined.",
-                        "file_path": filePath,
-                        "label": "PROD",
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.add_product(
+            productLabel="EXTRACTED_MERGED_TABLE",
+            fileName=filename,
+            filePath=filePath,
+            productDesc="Table of the extracted source in each order. All nodding cycles combined.",
+            reductionDateUtc=self.utcnow,
+            fileType="FITS",
+            label="PROD",
         )
 
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "EXTRACTED_MERGED_ASCII",
-                        "file_name": asciiFilename,
-                        "file_type": "TXT",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": self.utcnow,
-                        "product_desc": "Ascii version of extracted source spectrum",
-                        "file_path": asciiFilePath,
-                        "label": "PROD",
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.add_product(
+            productLabel="EXTRACTED_MERGED_ASCII",
+            fileName=asciiFilename,
+            filePath=asciiFilePath,
+            productDesc="Ascii version of extracted source spectrum",
+            reductionDateUtc=self.utcnow,
+            fileType="TXT",
+            label="PROD",
         )
 
         self.log.debug("completed the ``stack_extractions`` method")
