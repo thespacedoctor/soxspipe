@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
@@ -891,13 +892,27 @@ def test_stare_success_returns_last_sky_path_and_records_products(
             "label": "PROD",
         },
     ]
+    assert list(recipe.products.columns) == [
+        "soxspipe_recipe",
+        "product_label",
+        "file_name",
+        "file_type",
+        "obs_date_utc",
+        "reduction_date_utc",
+        "product_desc",
+        "file_path",
+        "label",
+    ]
+    reductionDates = []
     for row, expected in zip(
         recipe.products.iloc[:3].to_dict("records"), expectedSkyProducts
     ):
-        reductionDate = row.pop("reduction_date_utc")
+        reductionDates.append(row.pop("reduction_date_utc"))
         assert row == expected
-        assert len(reductionDate) == 19
-        assert reductionDate[4] == "-" and reductionDate[10] == "T"
+    # THE THREE SKY PRODUCTS ARE STAMPED WITH ONE REDUCTION TIME, RENDERED TO
+    # WHOLE SECONDS
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", reductionDates[0])
+    assert len(set(reductionDates)) == 1
     _assert_merged_product(recipe.products, plotPath)
     assert calls == [
         "stack",
