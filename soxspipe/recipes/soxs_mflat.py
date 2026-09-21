@@ -760,13 +760,15 @@ class soxs_mflat(base_recipe):
             dflatCollection = self.inputFrames.filter(**filterDict)
             filterDict = {kw("LAMP1"): "Qth_Lamp", kw("DPR_TECH"): "ECHELLE,SLIT"}
             qflatCollection = self.inputFrames.filter(**filterDict)
-            filterDict = {kw("DPR_TYPE"): "DOME,FLAT", kw("DPR_TECH"): "ECHELLE,SLIT"}
-            domeflatCollection = self.inputFrames.filter(**filterDict)
         else:
             filterDict = {kw("DPR_TYPE"): "LAMP,DFLAT", kw("DPR_TECH"): "ECHELLE,SLIT"}
             dflatCollection = self.inputFrames.filter(**filterDict)
             filterDict = {kw("DPR_TYPE"): "LAMP,QFLAT", kw("DPR_TECH"): "ECHELLE,SLIT"}
             qflatCollection = self.inputFrames.filter(**filterDict)
+
+        # DOME FLATS ARE A SOXS FRAME TYPE; THE SAME LOOKUP SIMPLY FINDS NOTHING FOR X-SHOOTER
+        filterDict = {kw("DPR_TYPE"): "DOME,FLAT", kw("DPR_TECH"): "ECHELLE,SLIT"}
+        domeflatCollection = self.inputFrames.filter(**filterDict)
 
         if (
             len(flatCollection.files) == 0

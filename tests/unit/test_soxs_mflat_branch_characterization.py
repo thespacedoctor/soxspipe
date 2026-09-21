@@ -357,25 +357,19 @@ def _filters(**filters: str) -> tuple[tuple[str, str], ...]:
     return tuple(sorted(filters.items()))
 
 
-def test_x_shooter_calibrate_frame_set_raises_unbound_local_error_for_dome_flats(
+def test_x_shooter_calibrate_frame_set_calibrates_lamp_flats_and_reports_no_dome_flats(
     log: Any,
 ) -> None:
-    """`domeflatCollection` is only ever bound on the SOXS branch of `calibrate_frame_set`.
-
-    An X-Shooter call with flat frames present skips the early
-    `FileNotFoundError` guard (its `and`-chain short-circuits on the first
-    populated collection), so execution reaches the unconditional
-    `self.domeFlatFiles[:] = [... for l in domeflatCollection.files]` line,
-    where `domeflatCollection` was never assigned for a non-SOXS instrument.
-    Pinned as found, not as intended.
-    """
+    """X-Shooter has no dome flats, so the dome collection is empty and the lamp flats calibrate."""
     # ARRANGE
     recipe = _calib_recipe(log, arm="VIS", inst="XSH")
+    bias = _calib_frame(np.full((3, 3), 1.0))
+    bias.header["MJDOBS"] = 0.0
     flat = _calib_frame(np.full((3, 3), 5.0))
     flat.header["MJDOBS"] = 1.0
     inputFrames = _Collections(
         {
-            _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection([], []),
+            _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection(["bias_pre.fits"], [bias]),
             _filters(PRO_CATG="MASTER_DARK_VIS"): _Collection([], []),
             _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="IMAGE"): _Collection([], []),
             _filters(DPR_TYPE="DARK", DPR_TECH="IMAGE"): _Collection([], []),
@@ -387,13 +381,39 @@ def test_x_shooter_calibrate_frame_set_raises_unbound_local_error_for_dome_flats
     recipe.inputFrames = inputFrames
     recipe.detrend = lambda **k: k["inputFrame"].copy()
 
-    # ACT / ASSERT
-    with pytest.raises(UnboundLocalError):
-        recipe.calibrate_frame_set()
+    # ACT
+    calibrated, dcalibrated, qcalibrated, domecalibrated = recipe.calibrate_frame_set()
 
-    # THE NO-MASTER-DARK, NON-SOXS FALLBACK FILTERS ON `LAMP,FLAT`/`IMAGE`,
-    # RECORDED HERE BEFORE THE CRASH.
+    # ASSERT
+    assert len(calibrated) == 1
+    assert dcalibrated == qcalibrated == domecalibrated == []
+    assert recipe.calibratedFlatFiles == ["flat.fits"]
+    assert recipe.domeFlatFiles == []
+
+    # THE NO-MASTER-DARK, NON-SOXS FALLBACK FILTERS ON `LAMP,FLAT`/`IMAGE`.
     assert _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="IMAGE") in [_filters(**call) for call in inputFrames.calls]
+
+
+def test_x_shooter_calibrate_frame_set_raises_file_not_found_when_no_flats_are_given(
+    log: Any,
+) -> None:
+    """With no flat frames of any lamp, an X-Shooter call reports the missing input, not a name error."""
+    # ARRANGE
+    recipe = _calib_recipe(log, arm="VIS", inst="XSH")
+    recipe.inputFrames = _Collections(
+        {
+            _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection([], []),
+            _filters(PRO_CATG="MASTER_DARK_VIS"): _Collection([], []),
+            _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+            _filters(DPR_TYPE="LAMP,DFLAT", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+            _filters(DPR_TYPE="LAMP,QFLAT", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+        }
+    )
+    recipe.detrend = lambda **k: k["inputFrame"].copy()
+
+    # ACT / ASSERT
+    with pytest.raises(FileNotFoundError, match="needs flat-frames as input"):
+        recipe.calibrate_frame_set()
 
 
 def test_soxs_falls_back_to_the_nearest_raw_dark_when_no_master_or_off_lamp_dark_exists(
