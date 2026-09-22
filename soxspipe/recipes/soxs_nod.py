@@ -12,7 +12,6 @@ Date Created
 ################# GLOBAL IMPORTS ####################
 import os
 import sys
-from os.path import expanduser
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.toolkit import (
@@ -152,8 +151,6 @@ class soxs_nod(base_recipe):
         """
         self.log.debug("starting the ``verify_input_frames`` method")
 
-        kw = self.kw
-
         error = False
 
         # BASIC VERIFICATION COMMON TO ALL RECIPES
@@ -206,7 +203,7 @@ class soxs_nod(base_recipe):
         - ``error`` -- the rejection message of the last offending frame, or False when every frame passes
         """
         error = False
-        for i, ii in zip(imageTech, imageTypes):
+        for i, ii in zip(imageTech, imageTypes, strict=False):
             if ii in ["STD,FLUX", "STD,TELLURIC"]:
                 pass
             elif i not in [
@@ -216,7 +213,12 @@ class soxs_nod(base_recipe):
                 "ECHELLE,SLIT,OFFSET",
                 "ECHELLE,SLIT,NODDING",
             ]:
-                error = f"Found a {i} file. Input frames for soxspipe offset need to be an object/std offset frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
+                error = (
+                    f"Found a {i} file. Input frames for soxspipe offset need to be an object/std offset "
+                    f"frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table "
+                    f"(DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat "
+                    f"(MASTER_FLAT_{arm})."
+                )
 
         return error
 
@@ -234,7 +236,7 @@ class soxs_nod(base_recipe):
         - ``error`` -- the rejection message of the last offending frame, or False when every frame passes
         """
         error = False
-        for i, ii in zip(imageTech, imageTypes):
+        for i, ii in zip(imageTech, imageTypes, strict=False):
             if ii in ["STD,FLUX", "STD,TELLURIC"]:
                 pass
             elif i not in [
@@ -243,7 +245,12 @@ class soxs_nod(base_recipe):
                 "ECHELLE,MULTI-PINHOLE",
                 "ECHELLE,SLIT,NODDING",
             ]:
-                error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
+                error = (
+                    f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding "
+                    f"frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table "
+                    f"(DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat "
+                    f"(MASTER_FLAT_{arm})."
+                )
 
         return error
 
@@ -273,7 +280,6 @@ class soxs_nod(base_recipe):
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
 
         productPath = None
 
@@ -470,7 +476,7 @@ class soxs_nod(base_recipe):
         )
 
         # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
-        for frame, filename in zip(allObjectFrames, allFilenames):
+        for frame, filename in zip(allObjectFrames, allFilenames, strict=False):
             # offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSET{self.axisA.upper()}")]
             offset = frame.header[kw("NOD_CUMULATIVE_OFFSETY")]
             if offset == 0:
@@ -521,12 +527,10 @@ class soxs_nod(base_recipe):
             )
             raise Exception(error)
 
-        if len(uniqueOffsets) > 1:
-            s = "S"
-        else:
-            s = ""
+        s = "S" if len(uniqueOffsets) > 1 else ""
         self.log.print(
-            f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS"
+            f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE "
+            f"PAIR{s} OF OFFSET LOCATIONS"
         )
 
         return uniqueOffsets
@@ -564,7 +568,9 @@ class soxs_nod(base_recipe):
         allFrameA.sort(key=lambda x: x.header["MJD-OBS"])
         allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
 
-        for frameA, frameB, frameAName, frameBName in zip(allFrameA, allFrameB, allFrameANames, allFrameBNames):
+        for frameA, frameB, frameAName, frameBName in zip(
+            allFrameA, allFrameB, allFrameANames, allFrameBNames, strict=False
+        ):
 
             self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
             if False:
@@ -592,7 +598,6 @@ class soxs_nod(base_recipe):
                     saveToPath=False,
                 )
                 # SAVE FRAMEA AND FRAMEB TO DISK IN TEMPORARY FILE
-                home = expanduser("~")
                 filenameA = self.sofName + f"_A_{sequenceCount}.fits"
                 filenameB = self.sofName + f"_B_{sequenceCount}.fits"
                 filePathA = f"{self.productDir}/{filenameA}"
@@ -615,10 +620,7 @@ class soxs_nod(base_recipe):
             self.update_fits_keywords(frame=frameA, rawFrames=rawFrames)
             self.update_fits_keywords(frame=frameB, rawFrames=rawFrames)
 
-            if self.recipeSettings["use_flat"] and master_flat:
-                masterFlat = master_flat
-            else:
-                masterFlat = False
+            masterFlat = master_flat if self.recipeSettings["use_flat"] and master_flat else False
 
             # PROCESSING SINGLE SEQUENCE
             mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
@@ -677,10 +679,7 @@ class soxs_nod(base_recipe):
         self.update_fits_keywords(frame=aFrame)
         self.update_fits_keywords(frame=bFrame)
 
-        if self.recipeSettings["use_flat"] and master_flat:
-            masterFlat = master_flat
-        else:
-            masterFlat = False
+        masterFlat = master_flat if self.recipeSettings["use_flat"] and master_flat else False
 
         mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
             aFrame=aFrame,
@@ -870,7 +869,12 @@ class soxs_nod(base_recipe):
 
         self._run_cycle_quality_checks(A_minus_B_notflattened, orderTablePath)
 
-        if self.recipeSettings["save_single_frame_extractions"] == False:
+        # THE `== False` COMPARISON IS DELIBERATE. A NON-BOOLEAN SETTING VALUE TAKES THE `self.products` BRANCH
+        # HERE AND THE `False` BRANCH AT THE SAVE BELOW, AND
+        # test_save_single_frame_extractions_e712_comparison_controls_the_products_table PINS THAT ASYMMETRY
+        # OVER SIX SETTING VALUES. SIM108 IS SUPPRESSED WITH IT: THE TERNARY FORM PLUS THE SUPPRESSION GOES
+        # PAST 120 CHARACTERS.
+        if self.recipeSettings["save_single_frame_extractions"] == False:  # noqa: E712, SIM108
             theseProducts = False
         else:
             theseProducts = self.products
@@ -897,7 +901,8 @@ class soxs_nod(base_recipe):
             notFlattened=notFlattened,
         )
 
-        if self.recipeSettings["save_single_frame_extractions"] == True:
+        # THE `== True` COMPARISON IS THE OTHER HALF OF THE ASYMMETRY PINNED ABOVE, SO IT IS NOT `if ...:`.
+        if self.recipeSettings["save_single_frame_extractions"] == True:  # noqa: E712
             self.products = theseProducts
 
         self.log.debug("completed the ``process_single_ab_nodding_cycle`` method")
@@ -947,15 +952,11 @@ class soxs_nod(base_recipe):
         - ``notFlattened`` -- if True, the cycle is the unflattened pass used to calculate efficiency
         """
         # WRITE IN A FITS FILE THE A-B AND B-A FRAMES
-        if notFlattened:
-            extraText = " (not flattened this time - needed to calculate efficiency)"
-        else:
-            extraText = ""
+        extraText = " (not flattened this time - needed to calculate efficiency)" if notFlattened else ""
         if "nod" in self.recipeName:
             self.log.print(f"\n# PROCESSING AB NODDING CYCLE {locationSetIndex} {extraText}")
         else:
             self.log.print(f"\n# PROCESSING ON-OFF OFFSET CYCLE {locationSetIndex} {extraText}")
-        home = expanduser("~")
         if "nod" in self.recipeName:
             filename = self.sofName + f"_AB_{locationSetIndex}.fits"
             filePath = f"{self.productDir}/{filename}"
@@ -1057,7 +1058,10 @@ class soxs_nod(base_recipe):
         """
         B_minus_A = False
 
-        if not isinstance(masterFlat, bool) and notFlattened == False:
+        # THE `== False` COMPARISON IS DELIBERATE, AND
+        # test_not_flattened_e712_comparison_controls_whether_detrend_runs PINS THAT A NON-BOOLEAN
+        # `notFlattened` STILL DETRENDS, WHICH `not notFlattened` WOULD NOT.
+        if not isinstance(masterFlat, bool) and notFlattened == False:  # noqa: E712
             A_minus_B = self.detrend(
                 inputFrame=A_minus_B_notflattened,
                 master_bias=False,
@@ -1223,10 +1227,7 @@ class soxs_nod(base_recipe):
             add_snr_efficiency_qcs,
         )
 
-        if notFlattened:
-            postfix = "_NOTFLAT"
-        else:
-            postfix = ""
+        postfix = "_NOTFLAT" if notFlattened else ""
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGEDSPECTRUMDF_B INTO A SINGLE DATAFRAME, THEN
         # GROUP BY WAVE AND SUM THE FLUXES
@@ -1249,7 +1250,9 @@ class soxs_nod(base_recipe):
         header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
 
         flux_orig = groupedDataframe["FLUX_COUNTS"].values * u.electron
-        spectrum_orig = Spectrum1D(
+        # THE RESULT IS UNUSED, BUT BUILDING IT VALIDATES THE GROUPED FLUX AND WAVELENGTH ARRAYS AGAINST EACH
+        # OTHER AND RAISES WHEN THEY DISAGREE. DELETING IT WOULD REMOVE THAT CHECK.
+        spectrum_orig = Spectrum1D(  # noqa: F841
             flux=flux_orig,
             spectral_axis=groupedDataframe["WAVE"].values * u.nm,
             bin_specification="center",
@@ -1271,7 +1274,9 @@ class soxs_nod(base_recipe):
             ("SNR", 2),
             ("FLUX_DENSITY_COUNTS", 3),
         ]:
-            groupedDataframe[col] = groupedDataframe[col].apply(lambda x: round(float(x), decimals))
+            # `decimals` IS BOUND IN A DEFAULT ARGUMENT SO THE LAMBDA CANNOT SEE A LATER LOOP VALUE. `.apply`
+            # CALLS IT WITHIN THE SAME ITERATION, SO THIS CHANGES NOTHING; IT ONLY MAKES THAT EXPLICIT.
+            groupedDataframe[col] = groupedDataframe[col].apply(lambda x, decimals=decimals: round(float(x), decimals))
         stackedSpectrum = Table.from_pandas(groupedDataframe, index=False)
 
         self.utcnow = utcnow_string()
@@ -1287,7 +1292,6 @@ class soxs_nod(base_recipe):
         )
 
         # WRITE PRODUCT TO DISK
-        home = expanduser("~")
         filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
 
