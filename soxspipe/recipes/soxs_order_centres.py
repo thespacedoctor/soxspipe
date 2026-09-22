@@ -42,7 +42,7 @@ class soxs_order_centres(base_recipe):
 
     ```python
     from soxspipe.recipes import soxs_order_centres
-    order_table = soxs_order_centres(
+    productPath, qcTable = soxs_order_centres(
         log=log,
         settings=settings,
         inputFrames=a["inputFrames"]
@@ -50,7 +50,7 @@ class soxs_order_centres(base_recipe):
     ```
     """
 
-    # Initialisation
+    # INITIALISATION
 
     def __init__(
         self,
@@ -153,10 +153,6 @@ class soxs_order_centres(base_recipe):
 
     def verify_input_frames(self):
         """*verify input frames match those required by the soxs_order_centres recipe*
-
-        **Return:**
-
-        - ``None``
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
@@ -279,6 +275,16 @@ class soxs_order_centres(base_recipe):
         **Return:**
 
         - ``productPath`` -- the path to the order-table
+        - ``qcTable`` -- the reported quality-control table
+
+        When the pipeline is tuning rather than reducing, the method returns a single
+        ``None`` instead of the pair.
+
+        **Usage:**
+
+        ```python
+        productPath, qcTable = recipe.produce_product()
+        ```
         """
         self.log.debug("starting the ``produce_product`` method")
 
@@ -525,7 +531,8 @@ class soxs_order_centres(base_recipe):
         # DEFINE AN INPUT ARRAY
         from fundamentals import fmultiprocess
 
-        # NOTE TO SELF: if having issue with multiprocessing stalling, try and import required modules into the mthod/function running this fmultiprocess function instead of at the module level
+        # NOTE TO SELF: IF HAVING ISSUE WITH MULTIPROCESSING STALLING, TRY AND IMPORT REQUIRED MODULES INTO THE
+        # METHOD/FUNCTION RUNNING THIS fmultiprocess FUNCTION INSTEAD OF AT THE MODULE LEVEL
         results = fmultiprocess(
             log=self.log,
             function=parameterTuning,
@@ -613,6 +620,7 @@ class soxs_order_centres(base_recipe):
 
         return productPath
 
+
 def parameterTuning(
     p,
     log,
@@ -627,7 +635,44 @@ def parameterTuning(
     binx,
     biny,
 ):
-    """*tuning the spatial solution*"""
+    """*tuning the spatial solution*
+
+    **Key Arguments:**
+
+    - ``p`` -- one permutation of the order and dispersion-axis polynomial degrees
+    - ``log`` -- logger
+    - ``recipeSettings`` -- the recipe settings dictionary, rewritten in place with ``p``
+    - ``settings`` -- the settings dictionary
+    - ``orderFrame`` -- the calibrated order-definition frame to trace
+    - ``disp_map_table`` -- the path to the first-guess dispersion table
+    - ``orderPixelTable`` -- the sampled trace to reuse across permutations
+    - ``qc`` -- the quality-control table to pass to the continuum detector
+    - ``products`` -- the products table to pass to the continuum detector
+    - ``sofName`` -- the name of the set-of-files this reduction came from
+    - ``binx`` -- the x binning of the calibrated frame
+    - ``biny`` -- the y binning of the calibrated frame
+
+    The fit's own outputs are discarded.
+
+    **Usage:**
+
+    ```python
+    parameterTuning(
+        (3, 5),
+        log=log,
+        recipeSettings=recipeSettings,
+        settings=settings,
+        orderFrame=orderFrame,
+        disp_map_table=disp_map_table,
+        orderPixelTable=orderPixelTable,
+        qc=qc,
+        products=products,
+        sofName=sofName,
+        binx=binx,
+        biny=biny,
+    )
+    ```
+    """
 
     recipeSettings["detect-continuum"]["order-deg"] = p[0]
     recipeSettings["detect-continuum"]["disp-axis-deg"] = p[1]
@@ -661,8 +706,8 @@ def parameterTuning(
 
     return
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
 
-    # Override Method Attributes
+    # OVERRIDE METHOD ATTRIBUTES
     # method-override-tmpx
