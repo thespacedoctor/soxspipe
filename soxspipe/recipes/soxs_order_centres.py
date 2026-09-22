@@ -14,6 +14,7 @@ import os
 import sys
 
 from soxspipe.commonutils import detect_continuum
+from soxspipe.commonutils.toolkit import append_product, utcnow_string
 
 from .base_recipe import base_recipe
 
@@ -219,8 +220,6 @@ class soxs_order_centres(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        from datetime import datetime
-
         import pandas as pd
         from astropy import units as u
         from astropy.nddata import CCDData
@@ -419,27 +418,20 @@ class soxs_order_centres(base_recipe):
 
         filename = os.path.basename(productPath)
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = utcnow_string()
         self.dateObs = self.orderFrame.header[kw("DATE_OBS")]
 
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "ORDER_CENTRES",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": f"{self.arm} order centre traces",
-                        "file_path": productPath,
-                        "label": "PROD",
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.products = append_product(
+            self.products,
+            recipeName=self.recipeName,
+            productLabel="ORDER_CENTRES",
+            fileName=filename,
+            filePath=productPath,
+            productDesc=f"{self.arm} order centre traces",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow,
+            fileType="FITS",
+            label="PROD",
         )
 
         qcTable = self.report_output()

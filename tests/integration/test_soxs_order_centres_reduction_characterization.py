@@ -611,3 +611,36 @@ def test_the_reduction_timestamp_renders_to_whole_seconds(
 
     # ASSERT
     assert re.fullmatch(TIMESTAMP_PATTERN, recipe.products.iloc[-1]["reduction_date_utc"])
+
+
+def test_the_reduction_reads_the_clock_exactly_once(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One product row means one clock read, which a format assertion cannot catch.
+
+    This test holds only after the helper adoption, because it stubs the clock
+    at the name the module imported. It wraps the real `utcnow_string` rather
+    than replacing it, so the rendered format is still the production one.
+    """
+    # ARRANGE
+    recipe = _vis_recipe(log, tmp_path)
+    _patch_reduction(recipe, monkeypatch, productPath=tmp_path / "ORDER_TAB_VIS.fits", fittedQc=_fitted_qc())
+    realUtcnowString = ORDER_MODULE.utcnow_string
+    clockReads: list[str] = []
+
+    def counting_utcnow_string(**kwargs: object) -> str:
+        rendered = realUtcnowString(**kwargs)
+        clockReads.append(rendered)
+        return rendered
+
+    monkeypatch.setattr(ORDER_MODULE, "utcnow_string", counting_utcnow_string)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert len(clockReads) == 1
+    assert recipe.products.iloc[-1]["reduction_date_utc"] == clockReads[0]
+    assert re.fullmatch(TIMESTAMP_PATTERN, clockReads[0])
