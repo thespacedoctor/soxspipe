@@ -156,8 +156,6 @@ class soxs_spatial_solution(base_recipe):
         """
         self.log.debug("starting the ``verify_input_frames`` method")
 
-        kw = self.kw
-
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
@@ -198,7 +196,10 @@ class soxs_spatial_solution(base_recipe):
         if not error:
             for i in imageTypes:
                 if i not in ["LAMP,WAVE", "LAMP,FLAT", "FLAT,LAMP", "WAVE,LAMP"]:
-                    error = f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can optionally supply a master-flat for NIR."
+                    error = (
+                        f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE. Can "
+                        "optionally supply a master-flat for NIR."
+                    )
 
         if not error:
             for i in imageTech:
@@ -208,20 +209,34 @@ class soxs_spatial_solution(base_recipe):
                     "ECHELLE,SLIT",
                     "ECHELLE,PINHOLE",
                 ]:
-                    error = f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
+                    error = (
+                        f"Found a {i} file. Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on "
+                        "and lamp off frames, a first-guess dispersion solution table and an order location table for "
+                        "NIR. Can optionally supply a master-flat for NIR."
+                    )
 
-        if not error:
-            if "LAMP,WAVE" not in imageTypes and "WAVE,LAMP" not in imageTypes:
-                error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
+        if not error and "LAMP,WAVE" not in imageTypes and "WAVE,LAMP" not in imageTypes:
+            error = (
+                "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a "
+                "first-guess dispersion solution table and an order location table for NIR. Can optionally supply a "
+                "master-flat for NIR."
+            )
 
-        if not error:
-            if "ECHELLE,MULTI-PINHOLE" not in imageTech:
-                error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
+        if not error and "ECHELLE,MULTI-PINHOLE" not in imageTech:
+            error = (
+                "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a "
+                "first-guess dispersion solution table and an order location table for NIR. Can optionally supply a "
+                "master-flat for NIR."
+            )
 
         if not error:
             for i in [f"ORDER_TAB_{arm}", f"DISP_TAB_{arm}"]:
                 if i not in imageCat:
-                    error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, a first-guess dispersion solution table and an order location table for NIR. Can optionally supply a master-flat for NIR."
+                    error = (
+                        "Input frames for soxspipe spatial_solution need to be LAMP,WAVE lamp on and lamp off frames, "
+                        "a first-guess dispersion solution table and an order location table for NIR. Can optionally "
+                        "supply a master-flat for NIR."
+                    )
 
         return error
 
@@ -243,7 +258,11 @@ class soxs_spatial_solution(base_recipe):
         if not error:
             for i in imageTypes:
                 if i not in ["LAMP,WAVE", "LAMP,FLAT", "WAVE,LAMP"]:
-                    error = f"Found a {i} frame. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
+                    error = (
+                        f"Found a {i} frame. Input frames for soxspipe spatial_solution need to be LAMP,WAVE and a "
+                        "master-bias, a first-guess dispersion solution table and an order location table. Can "
+                        "optionally supply a master-flat and/or master-dark for UVB/VIS."
+                    )
 
         if not error:
             for i in [
@@ -252,7 +271,11 @@ class soxs_spatial_solution(base_recipe):
                 f"DISP_TAB_{arm}",
             ]:
                 if i not in imageCat:
-                    error = "Input frames for soxspipe spatial_solution need to be LAMP,WAVE, a master-bias, a first-guess dispersion solution table and an order location table. Can optionally supply a master-flat and/or master-dark for UVB/VIS."
+                    error = (
+                        "Input frames for soxspipe spatial_solution need to be LAMP,WAVE, a master-bias, a "
+                        "first-guess dispersion solution table and an order location table. Can optionally supply a "
+                        "master-flat and/or master-dark for UVB/VIS."
+                    )
 
         return error
 
@@ -283,12 +306,12 @@ class soxs_spatial_solution(base_recipe):
 
         # TEMPORARY WARNING
         # if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
-        #    self.log.warning("The SOXS UVVIS Multi-Pinhole line-list is not yet ready. It will be included in a future code release")
+        #    self.log.warning("The SOXS UVVIS Multi-Pinhole line-list is not yet ready. "
+        #                     "It will be included in a future code release")
         #    return None, None, None
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
 
         productPath = None
 
@@ -315,7 +338,8 @@ class soxs_spatial_solution(base_recipe):
             order = [2, 3, 4, 5]
             wavelength = [2, 3, 4, 5]
             slit = [1, 2, 3]
-            # perm = product([self.recipeSettings["order-deg"][0]], [self.recipeSettings["order-deg"][1]], [self.recipeSettings["wavelength-deg"][0]], [self.recipeSettings["wavelength-deg"][1]], slit, slit)
+            # perm = product([self.recipeSettings["order-deg"][0]], [self.recipeSettings["order-deg"][1]],
+            #     [self.recipeSettings["wavelength-deg"][0]], [self.recipeSettings["wavelength-deg"][1]], slit, slit)
             perm = product(order, order, wavelength, wavelength, slit, slit)
             try:
                 os.remove("residuals.txt")
@@ -618,7 +642,7 @@ class soxs_spatial_solution(base_recipe):
         from fundamentals import fmultiprocess
 
         # DEFINE AN INPUT ARRAY
-        results = fmultiprocess(
+        fmultiprocess(
             log=self.log,
             function=parameterTuning,
             inputArray=list(perm),
@@ -736,7 +760,9 @@ class soxs_spatial_solution(base_recipe):
         return mapImagePath
 
 
-def parameterTuning(
+# THE NAME IS PUBLIC: EACH RECIPE PASSES IT TO fmultiprocess AND tests/unit/test_parameter_tuning.py
+# CALLS IT BY NAME, AS IN soxs_disp_solution AND soxs_order_centres
+def parameterTuning(  # noqa: N802
     p,
     log,
     recipeSettings,
