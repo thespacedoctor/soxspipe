@@ -8,8 +8,8 @@ array, before a later commit splits `soxs_mflat.py`'s functions into smaller
 methods. They also pin that
 `find_uvb_overlap_order_and_scale` cannot run against the real
 `normalise_flats` it calls -- evidence that the method is dead code, not
-merely untested. Every defect below is pinned with a docstring noting it is
-pinned as found, not as intended.
+merely untested. The two DY-122 cases are pinned as intended, now that they
+are fixed. Anything still pinned as found says so in its own docstring.
 """
 
 from __future__ import annotations
