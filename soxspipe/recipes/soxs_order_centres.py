@@ -158,8 +158,6 @@ class soxs_order_centres(base_recipe):
         """
         self.log.debug("starting the ``verify_input_frames`` method")
 
-        kw = self.kw
-
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
@@ -198,36 +196,34 @@ class soxs_order_centres(base_recipe):
 
         # WANT ON AND OFF PINHOLE FRAMES
         # MIXED INPUT IMAGE TYPES ARE BAD
-        if not error:
-            if len(imageTypes) > 1:
-                imageTypes = " and ".join(imageTypes)
-                erorr = "Input frames are a mix of %(imageTypes)s" % locals()
+        if not error and len(imageTypes) > 1:
+            imageTypes = " and ".join(imageTypes)
+            # THE MISSPELT NAME IS DY-134: THIS MESSAGE IS NEVER RAISED, AND FIXING IT
+            # CHANGES WHICH MESSAGE A MIXED SET GETS
+            erorr = f"Input frames are a mix of {imageTypes}"  # noqa: F841
 
         if not error:
-            if self.inst == "SOXS":
-                good = "FLAT"
-            else:
-                good = "LAMP,ORDERDEF"
+            good = "FLAT" if self.inst == "SOXS" else "LAMP,ORDERDEF"
             if good not in imageTypes[0]:
                 error = (
-                    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames and a first-guess dispersion solution table for NIR"
-                    % locals()
+                    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off "
+                    "frames and a first-guess dispersion solution table for NIR"
                 )
 
         if not error:
             for i in imageTech:
                 if i not in ["ECHELLE,PINHOLE", "IMAGE"]:
                     error = (
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR"
-                        % locals()
+                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off "
+                        "frames a first-guess dispersion solution table for NIR"
                     )
 
         if not error:
             for i in [f"DISP_TAB_{arm}"]:
                 if i not in imageCat:
                     error = (
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR"
-                        % locals()
+                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off "
+                        "frames a first-guess dispersion solution table for NIR"
                     )
 
         return error
@@ -255,16 +251,17 @@ class soxs_order_centres(base_recipe):
             for i in imageTypes:
                 if i not in goodList:
                     error = (
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found {i}"
-                        % locals()
+                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias "
+                        "frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. "
+                        "Found {i}"
                     )
 
         if not error:
             for i in [f"MASTER_BIAS_{arm}", f"DISP_TAB_{arm}"]:
                 if i not in imageCat:
                     error = (
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS."
-                        % locals()
+                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias "
+                        "frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS."
                     )
 
         return error
@@ -290,7 +287,6 @@ class soxs_order_centres(base_recipe):
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
 
         productPath = None
 
@@ -428,7 +424,8 @@ class soxs_order_centres(base_recipe):
                 {kw("DPR_TYPE"): "FLAT,LAMP", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
                 {kw("DPR_TYPE"): "LAMP,FLAT", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
                 {kw("DPR_TYPE"): "LAMP,DFLAT", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
-                # KEYWORD SCREW-UP DURING PAE MEANT WE HAD TO ADD BELOW WITH ECHELLE,SLIT ... SHOULD REMOVE THIS EVENTUALLY
+                # KEYWORD SCREW-UP DURING PAE MEANT WE HAD TO ADD BELOW WITH ECHELLE,SLIT ...
+                # SHOULD REMOVE THIS EVENTUALLY
                 {kw("DPR_TYPE"): "FLAT,LAMP", kw("DPR_TECH"): "ECHELLE,SLIT"},
                 {kw("DPR_TYPE"): "LAMP,FLAT", kw("DPR_TECH"): "ECHELLE,SLIT"},
                 {kw("DPR_TYPE"): "LAMP,DFLAT", kw("DPR_TECH"): "ECHELLE,SLIT"},
@@ -533,7 +530,7 @@ class soxs_order_centres(base_recipe):
 
         # NOTE TO SELF: IF HAVING ISSUE WITH MULTIPROCESSING STALLING, TRY AND IMPORT REQUIRED MODULES INTO THE
         # METHOD/FUNCTION RUNNING THIS fmultiprocess FUNCTION INSTEAD OF AT THE MODULE LEVEL
-        results = fmultiprocess(
+        fmultiprocess(
             log=self.log,
             function=parameterTuning,
             inputArray=list(perm),
@@ -621,7 +618,9 @@ class soxs_order_centres(base_recipe):
         return productPath
 
 
-def parameterTuning(
+# THE NAME IS PUBLIC: EACH RECIPE PASSES IT TO fmultiprocess AND tests/unit/test_parameter_tuning.py
+# CALLS IT BY NAME, AS IN soxs_disp_solution AND soxs_spatial_solution
+def parameterTuning(  # noqa: N802
     p,
     log,
     recipeSettings,
