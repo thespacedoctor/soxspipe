@@ -869,11 +869,12 @@ class soxs_nod(base_recipe):
 
         self._run_cycle_quality_checks(A_minus_B_notflattened, orderTablePath)
 
-        # THE `== False` COMPARISON IS DELIBERATE. A NON-BOOLEAN SETTING VALUE TAKES THE `self.products` BRANCH
-        # HERE AND THE `False` BRANCH AT THE SAVE BELOW, AND
-        # test_save_single_frame_extractions_e712_comparison_controls_the_products_table PINS THAT ASYMMETRY
-        # OVER SIX SETTING VALUES. SIM108 IS SUPPRESSED WITH IT: THE TERNARY FORM PLUS THE SUPPRESSION GOES
-        # PAST 120 CHARACTERS.
+        # THIS `== False` AND THE `== True` AT THE SAVE BELOW ARE NOT COMPLEMENTARY, AND THAT IS PINNED
+        # BEHAVIOUR. test_save_single_frame_extractions_e712_comparison_controls_the_products_table WALKS SIX
+        # SETTING VALUES AND SHOWS THAT A VALUE CAN SEND `False` TO THE EXTRACTOR HERE AND STILL HAVE ITS
+        # RESULT DROPPED BELOW, OR THE REVERSE. REWRITING EITHER AS `not ...` OR `if ...:` COLLAPSES ONE HALF
+        # OF THAT. SIM108 IS SUPPRESSED WITH IT: THE TERNARY FORM PLUS THIS SUPPRESSION GOES PAST 120
+        # CHARACTERS.
         if self.recipeSettings["save_single_frame_extractions"] == False:  # noqa: E712, SIM108
             theseProducts = False
         else:
@@ -1058,9 +1059,9 @@ class soxs_nod(base_recipe):
         """
         B_minus_A = False
 
-        # THE `== False` COMPARISON IS DELIBERATE, AND
-        # test_not_flattened_e712_comparison_controls_whether_detrend_runs PINS THAT A NON-BOOLEAN
-        # `notFlattened` STILL DETRENDS, WHICH `not notFlattened` WOULD NOT.
+        # THE `== False` COMPARISON IS DELIBERATE.
+        # test_not_flattened_e712_comparison_controls_whether_detrend_runs PINS THAT `notFlattened=None`
+        # SKIPS DETRENDING, WHICH `not notFlattened` WOULD REVERSE.
         if not isinstance(masterFlat, bool) and notFlattened == False:  # noqa: E712
             A_minus_B = self.detrend(
                 inputFrame=A_minus_B_notflattened,
