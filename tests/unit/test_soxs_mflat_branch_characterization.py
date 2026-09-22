@@ -1,12 +1,12 @@
 """Characterization of `soxs_mflat.produce_product` and `calibrate_frame_set` branches.
 
-These tests pin what `produce_product` and `calibrate_frame_set` do today,
-before a later commit splits `soxs_mflat.py`'s functions into smaller methods, including
-three defects: an unbound local reused across loop iterations, a stale
-order-table path leaking from one lamp into the next, and an instrument
-branch that only ever binds `domeflatCollection` for SOXS. Each defect is
-pinned with a docstring noting it is pinned as found, not as intended -- the
-split must preserve this behaviour, not quietly fix it.
+These tests pin what `produce_product` and `calibrate_frame_set` do today.
+
+Two of the three defects they were written for are now fixed and pinned as
+intended: the instrument branch that only ever bound `domeflatCollection` for
+SOXS (DY-120), and the stale order-table path that leaked from one lamp into
+the next (DY-121). Anything still pinned as found, rather than as intended,
+says so in its own docstring.
 """
 
 from __future__ import annotations
@@ -270,7 +270,7 @@ def test_a_missing_dlamp_order_table_raises_instead_of_reusing_the_plain_lamps_t
     monkeypatch.setattr(soxs_mflat_module, "detect_order_edges", _make_tagged_fake_edges(recipe, pathsByTag))
 
     # ACT / ASSERT
-    with pytest.raises(FileNotFoundError, match="DLAMP"):
+    with pytest.raises(FileNotFoundError, match=r"reduce the DLAMP flat frames"):
         recipe.produce_product()
 
     assert receivedOrderTablePaths[""] == str(untaggedSource)
@@ -373,6 +373,43 @@ def test_x_shooter_calibrate_frame_set_calibrates_lamp_flats_and_reports_no_dome
 
     # THE NO-MASTER-DARK, NON-SOXS FALLBACK FILTERS ON `LAMP,FLAT`/`IMAGE`.
     assert _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="IMAGE") in [_filters(**call) for call in inputFrames.calls]
+
+    # THE DOME LOOKUP MUST BE ISSUED ON THE X-SHOOTER PATH TOO. AN EMPTY `domeFlatFiles` ALONE WOULD
+    # ALSO HOLD IF THE LOOKUP WERE DELETED OR MOVED BACK INSIDE THE SOXS BRANCH.
+    assert _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT") in [_filters(**call) for call in inputFrames.calls]
+
+
+def test_soxs_calibrate_frame_set_calibrates_the_dome_flats_it_finds(
+    log: Any,
+) -> None:
+    """A SOXS set carrying dome flats calibrates them and records their names, so the lookup keeps its purpose."""
+    # ARRANGE
+    recipe = _calib_recipe(log, arm="VIS", inst="SOXS")
+    bias = _calib_frame(np.full((3, 3), 1.0))
+    bias.header["MJDOBS"] = 0.0
+    domeFlat = _calib_frame(np.full((3, 3), 7.0))
+    domeFlat.header["MJDOBS"] = 1.0
+    inputFrames = _Collections(
+        {
+            _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection(["bias_pre.fits"], [bias]),
+            _filters(PRO_CATG="MASTER_DARK_VIS"): _Collection([], []),
+            _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="IMAGE"): _Collection([], []),
+            _filters(DPR_TYPE="DARK", DPR_TECH="IMAGE"): _Collection([], []),
+            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(["dome_pre.fits"], [domeFlat]),
+        }
+    )
+    recipe.inputFrames = inputFrames
+    recipe.detrend = lambda **k: k["inputFrame"].copy()
+
+    # ACT
+    calibrated, dcalibrated, qcalibrated, domecalibrated = recipe.calibrate_frame_set()
+
+    # ASSERT
+    assert len(domecalibrated) == 1
+    assert calibrated == dcalibrated == qcalibrated == []
+    assert recipe.domeFlatFiles == ["dome.fits"]
 
 
 def test_x_shooter_calibrate_frame_set_raises_file_not_found_when_no_flats_are_given(
