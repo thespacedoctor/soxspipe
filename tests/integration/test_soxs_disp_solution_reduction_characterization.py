@@ -100,7 +100,7 @@ def _patch_reduction(
     calls: list[str] = []
     captured: dict[str, Any] = {}
 
-    def fake_detrend(**kwargs: object) -> object:
+    def fake_detrend(**kwargs: Any) -> Any:
         captured["detrend"] = kwargs
         calls.append("detrend")
         return kwargs["inputFrame"].copy()
