@@ -668,3 +668,45 @@ def test_the_passing_path_sets_the_image_type_and_prints_nothing(
     # ASSERT
     assert recipe.imageType == "OBJECT"
     assert [message for level, message in log.messages if level == "print"] == []
+
+
+# THE CONSTRUCTOR-RULE METHODS BOTH RECIPES OF THE NOD/OFFSET CHAIN NOW DEFINE.
+SHARED_CONSTRUCTOR_STEPS = (
+    "_collect_input_frames",
+    "_verify_and_announce_input_frames",
+    "_sort_and_report_input_frames",
+)
+
+
+@pytest.mark.parametrize("methodName", SHARED_CONSTRUCTOR_STEPS)
+def test_the_offset_override_of_each_constructor_step_still_matches_the_nod_one(methodName: str) -> None:
+    """`soxs_offset` overrides all three steps, so a nod construction of an offset recipe runs the copies.
+
+    `soxs_nod.__init__` calls these three methods by name. On a `soxs_offset` instance each call
+    dispatches to the offset override instead, so the two bodies must stay the same until DY-113
+    deletes the copies. The comparison strips docstrings, so only the code has to match.
+    """
+    # ARRANGE
+    from soxspipe.recipes.soxs_offset import soxs_offset
+
+    # ACT
+    nodBody = _method_body_ast(soxs_nod, methodName)
+    offsetBody = _method_body_ast(soxs_offset, methodName)
+
+    # ASSERT
+    assert methodName in vars(soxs_nod)
+    assert methodName in vars(soxs_offset)
+    assert nodBody == offsetBody
+
+
+def _method_body_ast(recipeClass: type, methodName: str) -> str:
+    """Return the dumped AST of a method's body, with its docstring removed."""
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(vars(recipeClass)[methodName])))
+    body = tree.body[0].body
+    if isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        body = body[1:]
+    return "\n".join(ast.dump(statement) for statement in body)
