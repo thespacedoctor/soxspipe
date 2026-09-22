@@ -14,6 +14,7 @@ import os
 import sys
 
 from soxspipe.commonutils import create_dispersion_map
+from soxspipe.commonutils.toolkit import append_product, utcnow_string
 
 from .base_recipe import base_recipe
 
@@ -217,8 +218,6 @@ class soxs_disp_solution(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        from datetime import datetime
-
         import pandas as pd
         from astropy import units as u
         from astropy.nddata import CCDData
@@ -398,31 +397,24 @@ class soxs_disp_solution(base_recipe):
 
             filename = os.path.basename(productPath)
 
-            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+            utcnow = utcnow_string()
 
             self.products = pd.concat([self.products, productsTable])
             self.qc = pd.concat([self.qc, qcTable])
 
             self.dateObs = self.pinholeFrame.header[kw("DATE_OBS")]
 
-            self.products = pd.concat(
-                [
-                    self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": "DISP_MAP",
-                            "file_name": filename,
-                            "file_type": "FITS Table",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": f"{self.arm} first pass dispersion solution",
-                            "file_path": productPath,
-                            "label": "PROD",
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.products = append_product(
+                self.products,
+                recipeName=self.recipeName,
+                productLabel="DISP_MAP",
+                fileName=filename,
+                filePath=productPath,
+                productDesc=f"{self.arm} first pass dispersion solution",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                fileType="FITS Table",
+                label="PROD",
             )
 
             qcTable = self.report_output()
