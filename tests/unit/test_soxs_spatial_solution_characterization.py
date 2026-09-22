@@ -279,9 +279,18 @@ def test_the_constructor_keeps_the_map_and_debug_switches(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """`create2DMap` and `debug` are stored as given, for the reduction to read."""
+    """`create2DMap` and `debug` are stored as given, for the reduction to read.
+
+    A debug construction makes `base_recipe` select the interactive `TkAgg`
+    backend, which fails on a headless runner and would leak into every later
+    test in the process, so the backend switch is recorded instead of made.
+    """
     # ARRANGE
+    import matplotlib
+
     calls: list[str] = []
+    backends: list[str] = []
+    monkeypatch.setattr(matplotlib, "use", lambda backend, *args, **kwargs: backends.append(backend))
 
     # ACT
     recipe, _, _ = _construct(log, monkeypatch, tmp_path, calls=calls, create2DMap=False, debug=True)
@@ -289,6 +298,7 @@ def test_the_constructor_keeps_the_map_and_debug_switches(
     # ASSERT
     assert recipe.create2DMap is False
     assert recipe.debug is True
+    assert backends == ["TkAgg"]
 
 
 def test_the_constructor_verifies_then_sorts_then_prepares(
