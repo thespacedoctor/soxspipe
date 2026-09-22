@@ -26,7 +26,8 @@ from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
-# TODO: When combining spectra at the end, we use a simple sum. If we use sigma-clipping followed by a mean combine, we can remove CRHs for data sets with more than 1 AB cycle.
+# TODO: WHEN COMBINING SPECTRA AT THE END, WE USE A SIMPLE SUM. IF WE USE SIGMA-CLIPPING FOLLOWED BY A MEAN
+# COMBINE, WE CAN REMOVE CRHS FOR DATA SETS WITH MORE THAN 1 AB CYCLE.
 
 
 class soxs_nod(base_recipe):
@@ -49,7 +50,7 @@ class soxs_nod(base_recipe):
 
     ```python
     from soxspipe.recipes import soxs_nod
-    recipe = soxs_nod(
+    productPath, qcTable = soxs_nod(
         log=log,
         settings=settings,
         inputFrames=fileList
@@ -103,8 +104,8 @@ class soxs_nod(base_recipe):
 
         Sets ``self.inputFrames`` and ``self.supplementaryInput``.
         """
-        # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
-        # imagefilecollection)
+        # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (INPUTFRAMES >
+        # IMAGEFILECOLLECTION)
         from soxspipe.commonutils.set_of_files import set_of_files
 
         sof = set_of_files(
@@ -123,7 +124,7 @@ class soxs_nod(base_recipe):
 
         Sets ``self.imageType``, through ``verify_input_frames``.
         """
-        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_nod - NO MORE, NO LESS.
+        # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_NOD - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
         self.verify_input_frames()
@@ -251,7 +252,8 @@ class soxs_nod(base_recipe):
 
         **Return:**
 
-        - ``productPath`` -- the path to the final product
+        - ``productPath`` -- the path to the final product. Always None for this recipe.
+        - ``qcTable`` -- the quality control table the recipe reports
 
         **Usage**
 
@@ -262,7 +264,7 @@ class soxs_nod(base_recipe):
             settings=settings,
             inputFrames=fileList
         )
-        nodFrame = recipe.produce_product()
+        productPath, qcTable = recipe.produce_product()
         ```
         """
         self.log.debug("starting the ``produce_product`` method")
@@ -557,7 +559,8 @@ class soxs_nod(base_recipe):
         allSpectrumA = []
         allSpectrumB = []
         sequenceCount = 1
-        # SORT frameA and frameB looping at their MJDOBS keyword in the header in order to the closest A and B frames in time
+        # SORT FRAMEA AND FRAMEB LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
+        # FRAMES IN TIME
         allFrameA.sort(key=lambda x: x.header["MJD-OBS"])
         allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
 
@@ -588,7 +591,7 @@ class soxs_nod(base_recipe):
                     surfacePlot=False,
                     saveToPath=False,
                 )
-                # Save frameA and frameB to disk in temporary file
+                # SAVE FRAMEA AND FRAMEB TO DISK IN TEMPORARY FILE
                 home = expanduser("~")
                 filenameA = self.sofName + f"_A_{sequenceCount}.fits"
                 filenameB = self.sofName + f"_B_{sequenceCount}.fits"
@@ -800,7 +803,7 @@ class soxs_nod(base_recipe):
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
             fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
-            # ADD THE SNR COLUMN AND COPY VALUES FROM stackedSpectrum
+            # ADD THE SNR COLUMN AND COPY VALUES FROM STACKEDSPECTRUM
             fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
 
             self.products, filePath = plot_merged_spectrum_qc(
@@ -846,12 +849,14 @@ class soxs_nod(base_recipe):
         **Return:**
 
         - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe)
-        - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B (dataframe)
+        - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B (dataframe), or False
+          outside nodding mode
+        - ``orderJoins`` -- the order joins of the last extraction
 
         **Usage:**
 
         ```python
-        mergedSpectrumDF_A, mergedSpectrumDF_B = soxs_nod.process_single_ab_nodding_cycle(
+        mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = soxs_nod.process_single_ab_nodding_cycle(
             aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath=orderTablePath, masterFlat=masterFlat)
         ```
         """
@@ -1189,16 +1194,20 @@ class soxs_nod(base_recipe):
         **Key Arguments:**
 
         - ``dataFrameList`` -- a list of order-merged spectrum dataframes
+        - ``notFlattened`` -- if True, the extraction was performed on non-flattened data and the products
+          are written with a ``_NOTFLAT`` suffix. Default *False*
+        - ``orderJoins`` -- the order joins the extraction reported. Default *None*
 
         **Return:**
 
-        - ``stackedSpectrum`` -- the combined spectrum in a dataframe
+        - ``stackedSpectrum`` -- the combined spectrum, as an astropy table
+        - ``filePath`` -- the path the combined spectrum was written to
 
         **Usage:**
 
         ```python
-        stackedSpectrum = soxs_nod.stack_extractions(
-            [mergedSpectrumDF_A, mergedSpectrumDF_B])
+        stackedSpectrum, filePath = soxs_nod.stack_extractions(
+            [mergedSpectrumDF_A, mergedSpectrumDF_B], orderJoins=orderJoins)
         ```
         """
         self.log.debug("starting the ``stack_extractions`` method")
@@ -1219,7 +1228,8 @@ class soxs_nod(base_recipe):
         else:
             postfix = ""
 
-        # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND mergedSpectrumDF_B INTO A SINGLE DATAFRAME, THEN GROUP BY WAVE AND SUM THE FLUXES
+        # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGEDSPECTRUMDF_B INTO A SINGLE DATAFRAME, THEN
+        # GROUP BY WAVE AND SUM THE FLUXES
 
         merged_dataframe = pd.concat(dataFrameList)
         # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGTH TO THE 4 DIGITS
@@ -1231,7 +1241,7 @@ class soxs_nod(base_recipe):
         # PREPARING THE HEADER
         kw = keyword_lookup(log=self.log, settings=self.settings).get
 
-        # SELECTING HEADER A_minus_B (is this the same?)
+        # SELECTING HEADER A_MINUS_B (IS THIS THE SAME?)
         self.update_fits_keywords(frame=self.masterHeaderFrame)
         header = self.masterHeaderFrame.header
 
@@ -1290,7 +1300,7 @@ class soxs_nod(base_recipe):
             qc=self.qc,
         )
 
-        # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
+        # SAVE THE TABLE STACKEDSPECTRUM TO DISK IN ASCII FORMAT
         asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")
         asciiFilePath = f"{self.productDir}/{asciiFilename}"
         stackedSpectrum2 = stackedSpectrum.copy()
