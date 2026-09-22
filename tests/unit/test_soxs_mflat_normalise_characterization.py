@@ -203,7 +203,8 @@ def test_second_pass_error_names_the_later_frame_that_has_no_usable_pixel(
     masterFlat = _frame(1.0 + np.random.default_rng(999).normal(loc=0.0, scale=0.01, size=(12, 12)))
 
     # ACT / ASSERT
-    with pytest.raises(ValueError, match=r"no usable order-centre pixels in flat frame 2 of 2 \(second pass\)") as raised:
+    expected = r"no usable order-centre pixels in flat frame 2 of 2 \(second pass\)"
+    with pytest.raises(ValueError, match=expected) as raised:
         recipe.normalise_flats([goodFrame, nanFrame], str(orderTable), firstPassMasterFlat=masterFlat)
 
     # THE ORDER-CENTRE MASK IS FINE HERE, SO THE MESSAGE MUST OFFER THE INVALID-DATA CAUSE AS WELL
