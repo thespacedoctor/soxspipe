@@ -15,7 +15,11 @@ and its own `verify_input_frames`.
 `verify_input_frames` is tested by direct call. Each rejection branch's exact
 rendered message is pinned here, and those pins are the evidence that the
 `F507`/`UP031` rewrite of the `% locals()` sites renders a byte-identical
-string. Two of the pinned messages are wrong today, and are pinned as they are.
+string. DY-134 fixed the two rejection messages that previously misfired --
+a mixed NIR set was rejected with the lamp-type message instead of the mix
+message, and the first UVB/VIS message left a literal, uninterpolated `{i}`
+instead of naming the offending image type -- and the pins below match the
+corrected wording.
 """
 
 from __future__ import annotations
@@ -34,9 +38,11 @@ from soxspipe.recipes.soxs_order_centres import soxs_order_centres
 
 pytestmark = pytest.mark.unit
 
-# THE FOUR RENDERED REJECTION MESSAGES. THE TWO NIR MESSAGES DIFFER BY ONE WORD,
-# "and", AND THE FIRST UVB/VIS MESSAGE ENDS WITH A LITERAL, UNINTERPOLATED
-# `{i}`, BECAUSE A `% locals()` SUFFIX DOES NOT FILL A BRACE PLACEHOLDER.
+# THE RENDERED REJECTION MESSAGES. THE TWO NIR "TYPE"/"TECH" MESSAGES DIFFER
+# BY ONE WORD, "and". THE NIR MIX MESSAGE AND THE UVB/VIS TYPE MESSAGE EACH
+# NAME THE OFFENDING IMAGE TYPE(S), SO ONE LITERAL IS PINNED PER CASE THE
+# TESTS FEED. THEY ARE WRITTEN OUT IN FULL, NOT REBUILT BY A HELPER THAT
+# WOULD MIRROR THE RECIPE'S OWN FORMATTING AND PASS A MATCHING REGRESSION.
 NIR_TYPE_ERROR = (
     "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off "
     "frames and a first-guess dispersion solution table for NIR"
@@ -45,13 +51,27 @@ NIR_ERROR = (
     "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off "
     "frames a first-guess dispersion solution table for NIR"
 )
-UVB_VIS_TYPE_ERROR = (
-    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, "
-    "a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found {i}"
-)
 UVB_VIS_ERROR = (
     "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, "
     "a first-guess dispersion solution table and possibly a master dark for UVB/VIS."
+)
+
+
+NIR_MIX_ERROR = "Input frames are a mix of FLAT,LAMP and LAMP,FLAT"
+
+# THE UVB/VIS TYPE MESSAGE NAMES THE LAST IMAGE TYPE THE LOOP REJECTED, SO
+# THERE IS ONE PINNED LITERAL PER CASE THE TESTS FEED.
+UVB_VIS_TYPE_ERROR = (
+    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, "
+    "a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found BIAS"
+)
+UVB_VIS_TYPE_ERROR_ORDERDEF = (
+    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, "
+    "a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found LAMP,ORDERDEF"
+)
+UVB_VIS_TYPE_ERROR_FLAT = (
+    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, "
+    "a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found LAMP,FLAT"
 )
 
 # THE TECHNIQUES A VALID NIR SET CARRIES: THE PINHOLE FRAME AND THE LAMP-OFF FRAME.
@@ -413,15 +433,11 @@ def test_a_poly_orders_int_cannot_take_is_rejected_with_a_type_error(
 # ---------------------------------------------------------------------------
 
 
-def test_nir_mixed_image_types_raise_the_image_type_message_not_the_mix_message(
+def test_nir_mixed_image_types_raise_the_mix_message_naming_both_types(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The mix message is bound to a misspelt name, so the next check rejects instead.
-
-    The joined string's first character is then tested for the lamp type,
-    which cannot match, so the set is still rejected -- with the wrong message.
-    """
+    """A mixed NIR set is rejected with the mix message naming both types."""
     # ARRANGE
     recipe = _recipe_with_inventory(log)
     _stub_basics(
@@ -436,8 +452,7 @@ def test_nir_mixed_image_types_raise_the_image_type_message_not_the_mix_message(
     message = _raised_message(recipe)
 
     # ASSERT
-    assert message == NIR_TYPE_ERROR
-    assert "mix" not in message
+    assert message == NIR_MIX_ERROR
 
 
 @pytest.mark.parametrize(
@@ -544,11 +559,11 @@ def test_nir_accepts_a_lamp_set_with_its_dispersion_table_and_records_it(
 
 
 @pytest.mark.parametrize(
-    ("inst", "imageTypes"),
+    ("inst", "imageTypes", "expectedMessage"),
     [
-        ("SOXS", ["BIAS"]),
-        ("SOXS", ["LAMP,FLAT", "LAMP,ORDERDEF"]),
-        ("XSH", ["LAMP,FLAT"]),
+        ("SOXS", ["BIAS"], UVB_VIS_TYPE_ERROR),
+        ("SOXS", ["LAMP,FLAT", "LAMP,ORDERDEF"], UVB_VIS_TYPE_ERROR_ORDERDEF),
+        ("XSH", ["LAMP,FLAT"], UVB_VIS_TYPE_ERROR_FLAT),
     ],
 )
 def test_uvb_vis_rejects_any_image_type_outside_the_instrument_list(
@@ -556,8 +571,9 @@ def test_uvb_vis_rejects_any_image_type_outside_the_instrument_list(
     monkeypatch: pytest.MonkeyPatch,
     inst: str,
     imageTypes: list[str],
+    expectedMessage: str,
 ) -> None:
-    """Every type is checked, and the message renders `{i}` literally."""
+    """Every type is checked, and the message names the last rejected type."""
     # ARRANGE
     recipe = _recipe_with_inventory(log)
     _stub_basics(
@@ -573,8 +589,7 @@ def test_uvb_vis_rejects_any_image_type_outside_the_instrument_list(
     message = _raised_message(recipe)
 
     # ASSERT
-    assert message == UVB_VIS_TYPE_ERROR
-    assert message.endswith("Found {i}")
+    assert message == expectedMessage
 
 
 @pytest.mark.parametrize(

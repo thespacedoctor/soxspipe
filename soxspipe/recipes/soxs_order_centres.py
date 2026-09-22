@@ -197,10 +197,8 @@ class soxs_order_centres(base_recipe):
         # WANT ON AND OFF PINHOLE FRAMES
         # MIXED INPUT IMAGE TYPES ARE BAD
         if not error and len(imageTypes) > 1:
-            imageTypes = " and ".join(imageTypes)
-            # THE MISSPELT NAME IS DY-134: THIS MESSAGE IS NEVER RAISED, AND FIXING IT
-            # CHANGES WHICH MESSAGE A MIXED SET GETS
-            erorr = f"Input frames are a mix of {imageTypes}"  # noqa: F841
+            joinedImageTypes = " and ".join(imageTypes)
+            error = f"Input frames are a mix of {joinedImageTypes}"
 
         if not error:
             good = "FLAT" if self.inst == "SOXS" else "LAMP,ORDERDEF"
@@ -253,7 +251,7 @@ class soxs_order_centres(base_recipe):
                     error = (
                         "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias "
                         "frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. "
-                        "Found {i}"
+                        f"Found {i}"
                     )
 
         if not error:
