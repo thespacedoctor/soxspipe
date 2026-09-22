@@ -58,10 +58,11 @@ def _offset_type_message(arm: str, found: str) -> str:
     )
 
 
-def _missing_category_message(arm: str, missing: str) -> str:
-    """Return the rejection message the calibration-category loop renders."""
+def _missing_category_message(arm: str, missing: str, recipeName: str = "soxs-nod") -> str:
+    """Return the rejection message the calibration-category loop renders for this recipe."""
+    recipe, frames = ("offset", "offset") if "offset" in recipeName else ("nod", "nodding")
     return (
-        f"Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image "
+        f"Input frames for soxspipe {recipe} need to be an object/std {frames} frames, a dispersion map image "
         f"(DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a "
         f"master-flat (MASTER_FLAT_{arm}). The sof file is missing a {missing} frame."
     )
@@ -542,6 +543,9 @@ def test_std_flux_and_std_telluric_skip_the_technique_check_in_the_nod_branch(
         (["DISP_TAB_VIS", "DISP_IMAGE_VIS"], "ORDER_TAB_VIS", "soxs-nod"),
         (["DISP_TAB_VIS", "ORDER_TAB_VIS"], "DISP_IMAGE_VIS", "soxs-nod"),
         ([], "DISP_IMAGE_VIS", "soxs-nod"),
+        (["ORDER_TAB_VIS", "DISP_IMAGE_VIS"], "DISP_TAB_VIS", "soxs-offset"),
+        (["DISP_TAB_VIS", "DISP_IMAGE_VIS"], "ORDER_TAB_VIS", "soxs-offset"),
+        (["DISP_TAB_VIS", "ORDER_TAB_VIS"], "DISP_IMAGE_VIS", "soxs-offset"),
         ([], "DISP_IMAGE_VIS", "soxs-offset"),
     ],
 )
@@ -558,9 +562,8 @@ def test_a_missing_calibration_category_is_named_and_the_last_missing_one_wins(
     order and overwrites the error each time, so when all three are missing
     `DISP_IMAGE_` is the one named, not `DISP_TAB_`.
 
-    The last case is the offset run of DY-125: unlike the image-type and
-    technique checks above it, this loop never switches its wording, so an
-    offset reduction is told about nodding input. Pinned as found.
+    The offset cases are DY-125: an offset run is told about offset input,
+    as the technique check above it already does.
     """
     # ARRANGE
     recipe = _unconstructed_recipe(log, recipeName=recipeName)
@@ -577,7 +580,7 @@ def test_a_missing_calibration_category_is_named_and_the_last_missing_one_wins(
     with pytest.raises(TypeError) as raised:
         recipe.verify_input_frames()
 
-    assert str(raised.value) == _missing_category_message("VIS", missing)
+    assert str(raised.value) == _missing_category_message("VIS", missing, recipeName)
 
 
 def test_a_disallowed_image_type_wins_over_a_missing_category(
