@@ -42,7 +42,7 @@ class soxs_spatial_solution(base_recipe):
 
     """
 
-    # Initialisation
+    # INITIALISATION
 
     def __init__(
         self,
@@ -261,7 +261,11 @@ class soxs_spatial_solution(base_recipe):
 
         **Return:**
 
-        - ``productPath`` -- the path to the 2D dispersion map
+        - ``mapImagePath`` -- the path to the 2D detector map image, or None when no image was made
+        - ``qcTable`` -- the reported quality-control table
+
+        When the pipeline is tuning rather than reducing, the method returns
+        ``(None, None, None)`` instead of the pair.
 
         **Usage**
 
@@ -272,7 +276,7 @@ class soxs_spatial_solution(base_recipe):
             settings=settings,
             inputFrames=fileList
         )
-        disp_map = recipe.produce_product()
+        mapImagePath, qcTable = recipe.produce_product()
         ```
         """
         self.log.debug("starting the ``produce_product`` method")
@@ -745,7 +749,42 @@ def parameterTuning(
     sofName,
     lineDetectionTable,
 ):
-    """*tuning the spatial solution*"""
+    """*tuning the spatial solution*
+
+    **Key Arguments:**
+
+    - ``p`` -- one permutation of the six polynomial degrees: order, wavelength and slit pairs
+    - ``log`` -- logger
+    - ``recipeSettings`` -- the recipe settings dictionary, rewritten in place with ``p``
+    - ``settings`` -- the settings dictionary
+    - ``multiPinholeFrame`` -- the calibrated multi-pinhole frame to fit
+    - ``disp_map_table`` -- the path to the first-guess dispersion table
+    - ``order_table`` -- the path to the order table
+    - ``qc`` -- the quality-control table to pass to the dispersion map
+    - ``products`` -- the products table to pass to the dispersion map
+    - ``sofName`` -- the name of the set-of-files this reduction came from
+    - ``lineDetectionTable`` -- the line detections to reuse across permutations
+
+    The fit's own outputs are discarded.
+
+    **Usage:**
+
+    ```python
+    parameterTuning(
+        (3, 4, 5, 4, 3, 5),
+        log=log,
+        recipeSettings=recipeSettings,
+        settings=settings,
+        multiPinholeFrame=multiPinholeFrame,
+        disp_map_table=disp_map_table,
+        order_table=order_table,
+        qc=qc,
+        products=products,
+        sofName=sofName,
+        lineDetectionTable=lineDetectionTable,
+    )
+    ```
+    """
 
     recipeSettings["order-deg"] = list(p[:2])
     recipeSettings["wavelength-deg"] = list(p[2:4])
