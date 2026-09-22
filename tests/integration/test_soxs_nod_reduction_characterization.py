@@ -667,3 +667,40 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     assert calibrated["WAVE"].unit == u.nm
     assert list(calibrated["FLUX_COUNTS"]) == [2.5]
     assert list(calibrated["SNR"]) == [20.0]
+
+
+def test_the_merged_spectrum_plot_reads_the_template_and_date_stack_extractions_set(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`stack_extractions` writes `filenameTemplate` and `dateObs`, and the plot that follows reads them.
+
+    The collaborator stub every other test in this module uses does not write either attribute, so those
+    tests would pass even if the flow between the two blocks broke. This one makes the stub behave like
+    the real method and pins that the plot receives what the stack wrote, in that order.
+    """
+    # ARRANGE
+    recipe, _ = _nod_recipe(log, tmp_path, SINGLE_PAIR)
+    calls, captured = _patch(recipe, monkeypatch, tmp_path)
+    recipe.filenameTemplate = "STALE.fits"
+    recipe.dateObs = "1999-01-01T00:00:00.000"
+    stacked = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]})
+
+    def stacking_that_stamps_the_recipe(*args: object, **kwargs: object) -> tuple[pd.DataFrame, str]:
+        calls.append("stack_extractions")
+        captured["stack_extractions"].append({"args": args, **kwargs})
+        recipe.filenameTemplate = "2024-01-02_nod.fits"
+        recipe.dateObs = "2024-01-02T03:04:05.678"
+        return stacked.copy(), str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
+
+    monkeypatch.setattr(recipe, "stack_extractions", stacking_that_stamps_the_recipe)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls.index("stack_extractions") < calls.index("plot")
+    plotArguments = captured["plot"][0]
+    assert plotArguments["filenameTemplate"] == "2024-01-02_nod.fits"
+    assert plotArguments["dateObs"] == "2024-01-02T03:04:05.678"
