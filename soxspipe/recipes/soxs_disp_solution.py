@@ -274,7 +274,15 @@ class soxs_disp_solution(base_recipe):
 
         **Return:**
 
-        - ``productPath`` -- the path to the first guess dispersion map
+        - ``productPath`` -- the path to the first guess dispersion map, or None when
+          the pipeline is tuning rather than reducing
+        - ``qcTable`` -- the reported quality-control table
+
+        **Usage:**
+
+        ```python
+        productPath, qcTable = recipe.produce_product()
+        ```
         """
         self.log.debug("starting the ``produce_product`` method")
 
@@ -609,7 +617,39 @@ def parameterTuning(
     sofName,
     lineDetectionTable,
 ):
-    """*tuning the spatial solution*"""
+    """*tuning the spatial solution*
+
+    **Key Arguments:**
+
+    - ``p`` -- one permutation of four polynomial degrees
+    - ``log`` -- logger
+    - ``recipeSettings`` -- the recipe settings dictionary, rewritten in place with ``p``
+    - ``settings`` -- the settings dictionary
+    - ``pinholeFrame`` -- the calibrated single-pinhole frame to fit
+    - ``qc`` -- the quality-control table to pass to the dispersion map
+    - ``products`` -- the products table to pass to the dispersion map
+    - ``sofName`` -- the name of the set-of-files this reduction came from
+    - ``lineDetectionTable`` -- the line detections to reuse across permutations
+
+    The fit's own outputs are discarded. The residuals the dispersion map writes
+    are the product of a tuning run.
+
+    **Usage:**
+
+    ```python
+    parameterTuning(
+        (3, 4, 5, 6),
+        log=log,
+        recipeSettings=recipeSettings,
+        settings=settings,
+        pinholeFrame=pinholeFrame,
+        qc=qc,
+        products=products,
+        sofName=sofName,
+        lineDetectionTable=lineDetectionTable,
+    )
+    ```
+    """
 
     recipeSettings["order-deg"] = list(p[:2])
     recipeSettings["wavelength-deg"] = list(p[2:4])
