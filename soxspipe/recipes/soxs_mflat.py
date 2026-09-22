@@ -1377,7 +1377,8 @@ class soxs_mflat(base_recipe):
             else:
                 interOrderMask[l:u, b] = 0
                 if returnMedianOrderFlux and b > bAxisMiddles[o] - 3 and b < bAxisMiddles[o] + 3:
-                    orderFluxes[o] = np.append(orderFluxes[o], frame.data[b, l:u])
+                    # SAMPLE THE SAME VERTICAL BAND THAT WAS JUST UNMASKED: l:u ARE ROWS, b IS A COLUMN
+                    orderFluxes[o] = np.append(orderFluxes[o], frame.data[l:u, b])
 
         # GET UNIQUE VALUES IN COLUMN
         if returnMedianOrderFlux:

@@ -527,12 +527,10 @@ def test_the_axis_a_y_branch_masks_a_vertical_inter_order_band(
 ) -> None:
     """When `axisA == "y"`, the inter-order mask and the median-flux sample use the transposed axes.
 
-    The median-flux sample itself is read with `frame.data[b, l:u]` in both
-    the `axisA == "x"` and the `axisA == "y"` branches of the source -- for
-    the `y` branch this indexes the frame with the coordinates swapped
-    relative to `interOrderMask[l:u, b] = 0` a few lines above it, so the
-    sampled flux is not the same region that gets unmasked. This looks like
-    a defect; it is pinned here, along with the resulting mask, as found.
+    `axisA == "y"` means the order runs down the frame, so `l` and `u` are
+    row coordinates and `b` is a column: the band unmasked by
+    `interOrderMask[l:u, b] = 0` is vertical, and the median flux must be
+    sampled from that same band with `frame.data[l:u, b]`.
     """
     # ARRANGE
     recipe = _recipe(log, axisA="y", axisB="x")
@@ -559,7 +557,39 @@ def test_the_axis_a_y_branch_masks_a_vertical_inter_order_band(
     expectedMask = np.zeros((10, 5), dtype=bool)
     expectedMask[4, 2] = True
     np.testing.assert_array_equal(maskedFrame.mask, expectedMask)
-    assert medianFluxDF.to_dict("records") == pytest.approx([{"order": 10, "medianFlux": 99.90835692418564}])
+    # ROWS 2:8 OF EVERY COLUMN 0..4 -- THE UNION OF THE FIVE VERTICAL BANDS UNMASKED ABOVE
+    expectedMedian = float(np.median(data[2:8, 0:5]))
+    assert medianFluxDF.to_dict("records") == pytest.approx([{"order": 10, "medianFlux": expectedMedian}])
+    assert expectedMedian == pytest.approx(99.60449322662481)
+
+
+def test_the_axis_a_y_branch_samples_flux_from_a_wider_than_tall_frame_without_raising(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On a non-square frame, `axisA == "y"` column coordinates beyond the row count stay in range."""
+    # ARRANGE
+    recipe = _recipe(log, axisA="y", axisB="x")
+    pixels = pd.DataFrame(
+        {
+            "order": [10] * 12,
+            "ycoord_edgeup": [5] * 12,
+            "ycoord_edgelow": [1] * 12,
+            "xcoord": list(range(12)),
+        }
+    )
+    _stub_unpack_order_table(monkeypatch, pixels)
+    monkeypatch.setattr(mflatModule, "quicklook_image", lambda **kwargs: None)
+    data = np.random.default_rng(602).normal(loc=100.0, scale=2.0, size=(6, 12))
+    frame = _frame(data)
+
+    # ACT
+    _, medianFluxDF = recipe.mask_low_sens_pixels(frame, "orders.fits", returnMedianOrderFlux=True, writeQC=False)
+
+    # ASSERT
+    # COLUMNS 3..7 ARE THE ONES WITHIN 3 OF THE COLUMN MIDDLE int(mean(0..11)) == 5
+    expectedMedian = float(np.median(data[1:5, 3:8]))
+    assert medianFluxDF.to_dict("records") == pytest.approx([{"order": 10, "medianFlux": expectedMedian}])
 
 
 def test_return_median_order_flux_false_returns_the_frame_alone(
