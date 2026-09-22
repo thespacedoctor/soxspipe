@@ -169,13 +169,23 @@ class soxs_nod(base_recipe):
                 error = self._nod_input_frame_tech_error(imageTech, imageTypes, arm)
 
         if not error:
+            # AN OFFSET REDUCTION INHERITS THIS METHOD, SO NAME THE RECIPE ACTUALLY RUNNING
+            if "offset" in self.recipeName:
+                recipe, frames = "offset", "offset"
+            else:
+                recipe, frames = "nod", "nodding"
             for i in [
                 f"DISP_TAB_{self.arm}",
                 f"ORDER_TAB_{self.arm}",
                 f"DISP_IMAGE_{self.arm}",
             ]:
                 if i not in imageCat:
-                    error = f"Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm}). The sof file is missing a {i} frame."
+                    error = (
+                        f"Input frames for soxspipe {recipe} need to be an object/std {frames} frames, a dispersion "
+                        f"map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location "
+                        f"table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm}). The sof file is missing a "
+                        f"{i} frame."
+                    )
 
         if error:
             sys.stdout.flush()
