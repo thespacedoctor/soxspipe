@@ -1,12 +1,12 @@
 """Characterization of `soxs_mflat.produce_product` and `calibrate_frame_set` branches.
 
-These tests pin what `produce_product` and `calibrate_frame_set` do today,
-before a later commit splits `soxs_mflat.py`'s functions into smaller methods, including
-three defects: an unbound local reused across loop iterations, a stale
-order-table path leaking from one lamp into the next, and an instrument
-branch that only ever binds `domeflatCollection` for SOXS. Each defect is
-pinned with a docstring noting it is pinned as found, not as intended -- the
-split must preserve this behaviour, not quietly fix it.
+These tests pin what `produce_product` and `calibrate_frame_set` do today.
+
+Two of the three defects they were written for are now fixed and pinned as
+intended: the instrument branch that only ever bound `domeflatCollection` for
+SOXS (DY-120), and the stale order-table path that leaked from one lamp into
+the next (DY-121). Anything still pinned as found, rather than as intended,
+says so in its own docstring.
 """
 
 from __future__ import annotations
@@ -164,19 +164,12 @@ def test_x_shooter_order_table_filter_carries_object_key_only_for_a_tagged_lamp(
     assert filterCalls[1] == {"PRO_CATG": "ORDER_TAB_VIS", "OBJECT": "LAMP,DORDERDEF"}
 
 
-def test_missing_order_table_on_the_first_lamp_raises_unbound_local_error(
+def test_a_missing_order_table_for_the_first_lamp_raises_file_not_found(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the first lamp's order table is not found, `orderTablePath` is never bound.
-
-    The `else` branch that handles "no order table found" only appends
-    `None` to `self.orderTableSet`; it never assigns the local
-    `orderTablePath` the next line reads. On the very first lamp this name
-    has never been bound at all, so the call raises `UnboundLocalError`
-    rather than a domain-meaningful error. Pinned as found, not as intended.
-    """
+    """A lamp with flats but no order table reports the missing input and records no order table."""
     # ARRANGE
     orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=910)
     flatFrame = synthetic_ccd(seed=911, prepared=True)
@@ -196,28 +189,24 @@ def test_missing_order_table_on_the_first_lamp_raises_unbound_local_error(
     _stub_shared_collaborators(recipe, monkeypatch, orderPath)
 
     # ACT / ASSERT
-    with pytest.raises(UnboundLocalError):
+    with pytest.raises(FileNotFoundError, match="needs an order-locations table"):
         recipe.produce_product()
-    assert recipe.orderTableSet == [None]
+    assert recipe.orderTableSet == []
 
 
-def test_a_missing_dlamp_order_table_reuses_the_plain_lamps_final_order_loc_path(
+def test_a_missing_dlamp_order_table_raises_instead_of_reusing_the_plain_lamps_table(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A missing D-lamp order table leaves `orderTablePath` stale from the plain lamp.
+    """A lamp is never normalised against another lamp's order table, and `orderTableSet` never shifts.
 
     `orderTablePath` is reassigned twice per successful lamp: once from the
     order-table lookup at the top of the loop, and again near the bottom from
-    the just-detected `ORDER_LOC<tag>` row in `self.products`. When a lamp's
-    lookup finds nothing, only `None` is appended to `self.orderTableSet`;
-    the `orderTablePath` local itself is left untouched, so the *next* use of
-    it -- the D-lamp's own call to `normalise_flats` -- silently reads the
-    plain lamp's final detected order-location product path instead of its
-    own. `self.orderTableSet` ends up with an extra `None` in it as a result,
-    which shifts every later entry out of alignment with its lamp. Pinned as
-    found, not as intended.
+    the just-detected `ORDER_LOC<tag>` row in `self.products`. A lamp whose
+    own lookup finds nothing must not inherit the previous lamp's path, and
+    must not leave a spare entry in `self.orderTableSet` that shifts every
+    later lamp's entry out of alignment.
     """
     # ARRANGE
     orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=920)
@@ -280,22 +269,14 @@ def test_a_missing_dlamp_order_table_reuses_the_plain_lamps_final_order_loc_path
     monkeypatch.setattr(soxs_mflat_module, "spectroscopic_image_quality_checks", lambda **k: k["qcTable"])
     monkeypatch.setattr(soxs_mflat_module, "detect_order_edges", _make_tagged_fake_edges(recipe, pathsByTag))
 
-    # ACT
-    recipe.produce_product()
+    # ACT / ASSERT
+    with pytest.raises(FileNotFoundError, match=r"reduce the DLAMP flat frames"):
+        recipe.produce_product()
 
-    # ASSERT
     assert receivedOrderTablePaths[""] == str(untaggedSource)
-    # THE D-LAMP RECEIVES THE PLAIN LAMP'S *FINAL* DETECTED ORDER_LOC PATH,
-    # NOT THE ORIGINAL SOURCE ORDER TABLE PATH -- THE STALE REUSE.
-    assert receivedOrderTablePaths["_DLAMP"] == str(pathsByTag[""])
-    assert receivedOrderTablePaths["_QLAMP"] == str(qlampSource)
-    assert recipe.orderTableSet == [
-        str(pathsByTag[""]),
-        None,
-        str(pathsByTag["_DLAMP"]),
-        str(pathsByTag["_QLAMP"]),
-        None,
-    ]
+    # THE D-LAMP IS NEVER NORMALISED AGAINST THE PLAIN LAMP'S ORDER TABLE.
+    assert "_DLAMP" not in receivedOrderTablePaths
+    assert recipe.orderTableSet == [str(pathsByTag[""])]
 
 
 # ---------------------------------------------------------------------------
@@ -357,25 +338,19 @@ def _filters(**filters: str) -> tuple[tuple[str, str], ...]:
     return tuple(sorted(filters.items()))
 
 
-def test_x_shooter_calibrate_frame_set_raises_unbound_local_error_for_dome_flats(
+def test_x_shooter_calibrate_frame_set_calibrates_lamp_flats_and_reports_no_dome_flats(
     log: Any,
 ) -> None:
-    """`domeflatCollection` is only ever bound on the SOXS branch of `calibrate_frame_set`.
-
-    An X-Shooter call with flat frames present skips the early
-    `FileNotFoundError` guard (its `and`-chain short-circuits on the first
-    populated collection), so execution reaches the unconditional
-    `self.domeFlatFiles[:] = [... for l in domeflatCollection.files]` line,
-    where `domeflatCollection` was never assigned for a non-SOXS instrument.
-    Pinned as found, not as intended.
-    """
+    """X-Shooter has no dome flats, so the dome collection is empty and the lamp flats calibrate."""
     # ARRANGE
     recipe = _calib_recipe(log, arm="VIS", inst="XSH")
+    bias = _calib_frame(np.full((3, 3), 1.0))
+    bias.header["MJDOBS"] = 0.0
     flat = _calib_frame(np.full((3, 3), 5.0))
     flat.header["MJDOBS"] = 1.0
     inputFrames = _Collections(
         {
-            _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection([], []),
+            _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection(["bias_pre.fits"], [bias]),
             _filters(PRO_CATG="MASTER_DARK_VIS"): _Collection([], []),
             _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="IMAGE"): _Collection([], []),
             _filters(DPR_TYPE="DARK", DPR_TECH="IMAGE"): _Collection([], []),
@@ -387,13 +362,76 @@ def test_x_shooter_calibrate_frame_set_raises_unbound_local_error_for_dome_flats
     recipe.inputFrames = inputFrames
     recipe.detrend = lambda **k: k["inputFrame"].copy()
 
-    # ACT / ASSERT
-    with pytest.raises(UnboundLocalError):
-        recipe.calibrate_frame_set()
+    # ACT
+    calibrated, dcalibrated, qcalibrated, domecalibrated = recipe.calibrate_frame_set()
 
-    # THE NO-MASTER-DARK, NON-SOXS FALLBACK FILTERS ON `LAMP,FLAT`/`IMAGE`,
-    # RECORDED HERE BEFORE THE CRASH.
+    # ASSERT
+    assert len(calibrated) == 1
+    assert dcalibrated == qcalibrated == domecalibrated == []
+    assert recipe.calibratedFlatFiles == ["flat.fits"]
+    assert recipe.domeFlatFiles == []
+
+    # THE NO-MASTER-DARK, NON-SOXS FALLBACK FILTERS ON `LAMP,FLAT`/`IMAGE`.
     assert _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="IMAGE") in [_filters(**call) for call in inputFrames.calls]
+
+    # THE DOME LOOKUP MUST BE ISSUED ON THE X-SHOOTER PATH TOO. AN EMPTY `domeFlatFiles` ALONE WOULD
+    # ALSO HOLD IF THE LOOKUP WERE DELETED OR MOVED BACK INSIDE THE SOXS BRANCH.
+    assert _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT") in [_filters(**call) for call in inputFrames.calls]
+
+
+def test_soxs_calibrate_frame_set_calibrates_the_dome_flats_it_finds(
+    log: Any,
+) -> None:
+    """A SOXS set carrying dome flats calibrates them and records their names, so the lookup keeps its purpose."""
+    # ARRANGE
+    recipe = _calib_recipe(log, arm="VIS", inst="SOXS")
+    bias = _calib_frame(np.full((3, 3), 1.0))
+    bias.header["MJDOBS"] = 0.0
+    domeFlat = _calib_frame(np.full((3, 3), 7.0))
+    domeFlat.header["MJDOBS"] = 1.0
+    inputFrames = _Collections(
+        {
+            _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection(["bias_pre.fits"], [bias]),
+            _filters(PRO_CATG="MASTER_DARK_VIS"): _Collection([], []),
+            _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="IMAGE"): _Collection([], []),
+            _filters(DPR_TYPE="DARK", DPR_TECH="IMAGE"): _Collection([], []),
+            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(["dome_pre.fits"], [domeFlat]),
+        }
+    )
+    recipe.inputFrames = inputFrames
+    recipe.detrend = lambda **k: k["inputFrame"].copy()
+
+    # ACT
+    calibrated, dcalibrated, qcalibrated, domecalibrated = recipe.calibrate_frame_set()
+
+    # ASSERT
+    assert len(domecalibrated) == 1
+    assert calibrated == dcalibrated == qcalibrated == []
+    assert recipe.domeFlatFiles == ["dome.fits"]
+
+
+def test_x_shooter_calibrate_frame_set_raises_file_not_found_when_no_flats_are_given(
+    log: Any,
+) -> None:
+    """With no flat frames of any lamp, an X-Shooter call reports the missing input, not a name error."""
+    # ARRANGE
+    recipe = _calib_recipe(log, arm="VIS", inst="XSH")
+    recipe.inputFrames = _Collections(
+        {
+            _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection([], []),
+            _filters(PRO_CATG="MASTER_DARK_VIS"): _Collection([], []),
+            _filters(DPR_TYPE="LAMP,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+            _filters(DPR_TYPE="LAMP,DFLAT", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+            _filters(DPR_TYPE="LAMP,QFLAT", DPR_TECH="ECHELLE,SLIT"): _Collection([], []),
+        }
+    )
+    recipe.detrend = lambda **k: k["inputFrame"].copy()
+
+    # ACT / ASSERT
+    with pytest.raises(FileNotFoundError, match="needs flat-frames as input"):
+        recipe.calibrate_frame_set()
 
 
 def test_soxs_falls_back_to_the_nearest_raw_dark_when_no_master_or_off_lamp_dark_exists(
