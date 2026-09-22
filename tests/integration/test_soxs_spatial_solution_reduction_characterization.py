@@ -735,3 +735,37 @@ def test_a_full_reduction_logs_only_its_own_entry_and_exit(
         "starting the ``produce_product`` method",
         "completed the ``produce_product`` method",
     ]
+
+
+def test_the_reduction_reads_the_clock_exactly_once_for_both_rows(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two product rows, one clock read: the helper must receive the value, not mint its own.
+
+    This test holds only after the helper adoption, because it stubs the clock
+    at the name the module imported. It wraps the real `utcnow_string` rather
+    than replacing it, so the rendered format is still the production one.
+    """
+    # ARRANGE
+    spatialModule = import_module("soxspipe.recipes.soxs_spatial_solution")
+    recipe = _vis_recipe(log, tmp_path)
+    _patch_reduction(recipe, monkeypatch, mapPath=tmp_path / "MAP.fits", mapImagePath=tmp_path / "IMAGE.fits")
+    realUtcnowString = spatialModule.utcnow_string
+    clockReads: list[str] = []
+
+    def counting_utcnow_string(**kwargs: object) -> str:
+        rendered = realUtcnowString(**kwargs)
+        clockReads.append(rendered)
+        return rendered
+
+    monkeypatch.setattr(spatialModule, "utcnow_string", counting_utcnow_string)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert len(clockReads) == 1
+    assert list(recipe.products.iloc[-2:]["reduction_date_utc"]) == [clockReads[0], clockReads[0]]
+    assert re.fullmatch(TIMESTAMP_PATTERN, clockReads[0])

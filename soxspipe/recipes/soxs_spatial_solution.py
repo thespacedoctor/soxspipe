@@ -13,6 +13,8 @@ Date Created
 import os
 import sys
 
+from soxspipe.commonutils.toolkit import append_product, utcnow_string
+
 from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
@@ -495,55 +497,39 @@ class soxs_spatial_solution(base_recipe):
             turnOffMP=self.turnOffMP,
         ).get()
 
-        from datetime import datetime
-
         filename = os.path.basename(mapPath)
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+        utcnow = utcnow_string()
 
         self.products = pd.concat([self.products, productsTable])
         self.qc = pd.concat([self.qc, qcTable])
 
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "SPAT_SOL",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": f"{self.arm} full dispersion-spatial solution",
-                        "file_path": productPath,
-                        "label": "PROD",
-                    }
-                ]),
-            ],
-            ignore_index=True,
+        self.products = append_product(
+            self.products,
+            recipeName=self.recipeName,
+            productLabel="SPAT_SOL",
+            fileName=filename,
+            filePath=productPath,
+            productDesc=f"{self.arm} full dispersion-spatial solution",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow,
+            fileType="FITS",
+            label="PROD",
         )
 
         if mapImagePath:
             filename = os.path.basename(mapImagePath)
-            self.products = pd.concat(
-                [
-                    self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": "2D_MAP",
-                            "file_name": filename,
-                            "file_type": "FITS",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": f"{self.arm} 2D detector map of wavelength, slit position and order",
-                            "file_path": productPath,
-                            "label": "PROD",
-                        }
-                    ]),
-                ],
-                ignore_index=True,
+            self.products = append_product(
+                self.products,
+                recipeName=self.recipeName,
+                productLabel="2D_MAP",
+                fileName=filename,
+                filePath=productPath,
+                productDesc=f"{self.arm} 2D detector map of wavelength, slit position and order",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                fileType="FITS",
+                label="PROD",
             )
 
         # INSPECT THE MAP AGAINST THE MULTIPINHOLE FRAME
