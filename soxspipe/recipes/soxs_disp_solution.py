@@ -197,37 +197,35 @@ class soxs_disp_solution(base_recipe):
 
         # WANT ON AND OFF PINHOLE FRAMES
         # MIXED INPUT IMAGE TYPES ARE BAD
-        if not error:
-            if len(imageTypes) > 1:
-                imageTypes = " and ".join(imageTypes)
-                imageTypes = " and ".join(imageTypes)
-                error = (
-                    "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR"
-                    % locals()
-                )
+        if not error and len(imageTypes) > 1:
+            imageTypes = " and ".join(imageTypes)
+            imageTypes = " and ".join(imageTypes)
+            error = (
+                "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
+                "and lamp off frames for NIR"
+            )
 
-        if not error:
-            # FIX ME!
-            if imageTypes[0] not in ["LAMP,FMTCHK", "LAMP,WAVE", "WAVE,LAMP"]:
-                error = (
-                    "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR"
-                    % locals()
-                )
+        # FIX ME!
+        if not error and imageTypes[0] not in ["LAMP,FMTCHK", "LAMP,WAVE", "WAVE,LAMP"]:
+            error = (
+                "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
+                "and lamp off frames for NIR"
+            )
 
         if not error:
             for i in imageTech:
                 if i not in ["ECHELLE,PINHOLE", "IMAGE"]:
                     error = (
-                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR"
-                        % locals()
+                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
+                        "and lamp off frames for NIR"
                     )
 
         if not error:
             for i in ["ECHELLE,PINHOLE", "IMAGE"]:
                 if i not in imageTech:
                     error = (
-                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR"
-                        % locals()
+                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
+                        "and lamp off frames for NIR"
                     )
 
         return error
@@ -253,19 +251,25 @@ class soxs_disp_solution(base_recipe):
                 # FIX ME!
                 if i not in ["LAMP,FMTCHK", "LAMP,WAVE", "WAVE,LAMP"]:
                     error = (
-                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS"
-                        % locals()
+                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
+                        "and a master-bias and possibly a master dark for UVB/VIS"
                     )
 
         if not error:
             for i in ["ECHELLE,PINHOLE"]:
                 if i not in imageTech:
-                    error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS"
+                    error = (
+                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
+                        "and a master-bias and possibly a master dark for UVB/VIS"
+                    )
 
         if not error:
             for i in [f"MASTER_BIAS_{arm}"]:
                 if i not in imageCat:
-                    error = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and a master-bias and possibly a master dark for UVB/VIS"
+                    error = (
+                        "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
+                        "and a master-bias and possibly a master dark for UVB/VIS"
+                    )
 
         return error
 
@@ -288,7 +292,6 @@ class soxs_disp_solution(base_recipe):
 
         arm = self.arm
         kw = self.kw
-        dp = self.detectorParams
 
         # self.inputFrames.summary.pprint_all()
 
@@ -510,7 +513,7 @@ class soxs_disp_solution(base_recipe):
 
         print("TUNING SOXSPIPE\n")
 
-        results = fmultiprocess(
+        fmultiprocess(
             log=self.log,
             function=parameterTuning,
             inputArray=permList,
