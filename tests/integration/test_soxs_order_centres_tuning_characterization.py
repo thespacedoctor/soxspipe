@@ -228,21 +228,30 @@ def test_a_missing_dispersion_table_fails_after_tuning_clears_the_residuals(
     assert not (tuningDirectory / "residuals.txt").exists()
 
 
-def test_a_failed_continuum_detection_raises_on_the_missing_product_path(
+def test_a_failed_continuum_detection_raises_a_named_recipe_failure(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A detector that returns no product path fails at the file name, after the tables merge."""
+    """A detector that returns no product path fails the recipe with its own message.
+
+    The detector's quality-control rows are merged before the failure, so the
+    evidence of the failed attempt survives in `recipe.qc`.
+    """
     # ARRANGE
     recipe = _vis_recipe(log, tmp_path)
     originalQc = recipe.qc.copy(deep=True)
     calls, _ = _patch_reduction(recipe, monkeypatch, productPath=None, fittedQc=_fitted_qc())
 
     # ACT / ASSERT
-    with pytest.raises(TypeError):
+    with pytest.raises(ArithmeticError) as raised:
         recipe.produce_product()
 
+    assert str(raised.value) == (
+        "Could not converge on a good fit to the VIS order-centre continuum. "
+        "Please check the quality of your data or adjust your fitting parameters. "
+        "No order table was produced."
+    )
     assert calls == ["detrend", "keywords", "detect_continuum", "detector_get"]
     pd.testing.assert_frame_equal(recipe.qc, pd.concat([originalQc, _fitted_qc()]))
     assert "ORDER_CENTRES" not in list(recipe.products["product_label"])

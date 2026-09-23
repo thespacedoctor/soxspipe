@@ -592,12 +592,12 @@ def test_the_slit_pair_takes_every_digit_after_the_fourth(
 # ---------------------------------------------------------------------------
 
 
-def test_both_product_rows_land_in_the_declared_tables_with_no_file_path(
+def test_both_product_rows_land_in_the_declared_tables_with_their_own_file_path(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The map's own rows land first, then SPAT_SOL and 2D_MAP; both record `file_path` as None."""
+    """The map's own rows land first, then SPAT_SOL and 2D_MAP, each recording the file it wrote."""
     # ARRANGE
     recipe = _vis_recipe(log, tmp_path)
     declaredQc, declaredProducts = _declared_tables()
@@ -620,12 +620,12 @@ def test_both_product_rows_land_in_the_declared_tables_with_no_file_path(
     assert (spatial["file_name"], image["file_name"]) == (mapPath.name, mapImagePath.name)
     assert spatial["product_desc"] == "VIS full dispersion-spatial solution"
     assert image["product_desc"] == "VIS 2D detector map of wavelength, slit position and order"
+    assert (spatial["file_path"], image["file_path"]) == (str(mapPath), str(mapImagePath))
     for row in (spatial, image):
         assert row["soxspipe_recipe"] == "soxs-spat-solution"
         assert row["file_type"] == "FITS"
         assert row["label"] == "PROD"
         assert row["obs_date_utc"] == FACTORY_DATE_OBS
-        assert pd.isna(row["file_path"])
 
 
 def test_both_product_rows_share_one_reduction_timestamp(

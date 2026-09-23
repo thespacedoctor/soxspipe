@@ -444,7 +444,7 @@ def test_spatial_solution_produce_product_preserves_qc_and_records_maps(
         fileName=mapPath.name,
         fileType="FITS",
         description="VIS full dispersion-spatial solution",
-        filePath=None,
+        filePath=str(mapPath),
     )
     _assert_product_row(
         outputProducts.iloc[1],
@@ -453,7 +453,7 @@ def test_spatial_solution_produce_product_preserves_qc_and_records_maps(
         fileName=mapImagePath.name,
         fileType="FITS",
         description="VIS 2D detector map of wavelength, slit position and order",
-        filePath=None,
+        filePath=str(mapImagePath),
     )
     assert calls == [
         "detrend",
