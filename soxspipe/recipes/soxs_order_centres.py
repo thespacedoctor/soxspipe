@@ -564,6 +564,10 @@ class soxs_order_centres(base_recipe):
         - ``productPath`` -- the path to the order table
 
         Sets ``self.products``, ``self.qc`` and ``self.dateObs``.
+
+        A continuum fit that does not converge raises an ``ArithmeticError``, and no
+        order table is recorded. The detector's quality-control rows are merged before
+        the failure, so they survive it.
         """
         import pandas as pd
 
@@ -594,6 +598,15 @@ class soxs_order_centres(base_recipe):
 
         self.products = pd.concat([self.products, productsTable])
         self.qc = pd.concat([self.qc, qcTable])
+
+        # THE DETECTOR REPORTS A FAILED FIT AS A MISSING PRODUCT PATH. THE QUALITY-CONTROL
+        # ROWS MERGE FIRST, SO THE EVIDENCE OF THE FAILED ATTEMPT SURVIVES THE FAILURE.
+        if productPath is None:
+            raise ArithmeticError(
+                f"Could not converge on a good fit to the {self.arm} order-centre continuum. "
+                "Please check the quality of your data or adjust your fitting parameters. "
+                "No order table was produced."
+            )
 
         filename = os.path.basename(productPath)
 
