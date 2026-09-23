@@ -313,8 +313,6 @@ class soxs_spatial_solution(base_recipe):
         arm = self.arm
         kw = self.kw
 
-        productPath = None
-
         master_bias, dark, master_flat = self._read_calibration_frames(kw, arm)
         multi_pinhole_image = self._read_multi_pinhole_frame(kw)
 
@@ -359,7 +357,7 @@ class soxs_spatial_solution(base_recipe):
             self.create2DMap = False
             self.slit_arc = False
 
-        mapImagePath = self._fit_spatial_solution(disp_map_table, order_table, productPath)
+        mapImagePath = self._fit_spatial_solution(disp_map_table, order_table)
 
         qcTable = self.report_output()
         self.clean_up()
@@ -662,14 +660,13 @@ class soxs_spatial_solution(base_recipe):
             progressBar=True,
         )
 
-    def _fit_spatial_solution(self, disp_map_table, order_table, productPath):
+    def _fit_spatial_solution(self, disp_map_table, order_table):
         """*fit the full dispersion-spatial solution, record its products and show the quick-look*
 
         **Key Arguments:**
 
         - ``disp_map_table`` -- the path to the first-guess dispersion table
         - ``order_table`` -- the path to the order table
-        - ``productPath`` -- the value both product rows record as their file path
 
         **Return:**
 
@@ -719,7 +716,7 @@ class soxs_spatial_solution(base_recipe):
             recipeName=self.recipeName,
             productLabel="SPAT_SOL",
             fileName=filename,
-            filePath=productPath,
+            filePath=mapPath,
             productDesc=f"{self.arm} full dispersion-spatial solution",
             obsDateUtc=self.dateObs,
             reductionDateUtc=utcnow,
@@ -734,7 +731,7 @@ class soxs_spatial_solution(base_recipe):
                 recipeName=self.recipeName,
                 productLabel="2D_MAP",
                 fileName=filename,
-                filePath=productPath,
+                filePath=mapImagePath,
                 productDesc=f"{self.arm} 2D detector map of wavelength, slit position and order",
                 obsDateUtc=self.dateObs,
                 reductionDateUtc=utcnow,
