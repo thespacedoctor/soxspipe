@@ -290,7 +290,7 @@ INVALID_INPUTS = (
     (*VALID_INPUTS[5], "Found a UNEXPECTED frame"),
     (*VALID_INPUTS[6], "soxspipe stare need to be an object frame"),
     (*VALID_INPUTS[7], "Found a UNEXPECTED file"),
-    (*VALID_INPUTS[8], "soxspipe nod need to be an object/std nodding frames"),
+    (*VALID_INPUTS[8], "soxspipe offset need to be an object/std offset frames"),
     (*VALID_INPUTS[9], "Need a full dispersion/spatial solution for VIS"),
 )
 

@@ -157,23 +157,27 @@ class soxs_nod(base_recipe):
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
         arm = self.arm
 
+        # AN OFFSET REDUCTION INHERITS THIS METHOD, SO NAME THE RECIPE ACTUALLY RUNNING
+        isOffset = "offset" in self.recipeName
+        recipe, frames = ("offset", "offset") if isOffset else ("nod", "nodding")
+
         if not error:
             for i in imageTypes:
                 if i not in ["OBJECT", "LAMP,FLAT", "STD,FLUX", "STD,TELLURIC"]:
-                    error = f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
+                    error = (
+                        f"Found a {i} file. Input frames for soxspipe {recipe} need to be an object/std {frames} "
+                        f"frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table "
+                        f"(DISP_TAB_{arm}), an order-location table (ORDER_TAB_{arm}) and a master-flat "
+                        f"(MASTER_FLAT_{arm})."
+                    )
 
         if not error:
-            if "offset" in self.recipeName:
+            if isOffset:
                 error = self._offset_input_frame_tech_error(imageTech, imageTypes, arm)
             else:
                 error = self._nod_input_frame_tech_error(imageTech, imageTypes, arm)
 
         if not error:
-            # AN OFFSET REDUCTION INHERITS THIS METHOD, SO NAME THE RECIPE ACTUALLY RUNNING
-            if "offset" in self.recipeName:
-                recipe, frames = "offset", "offset"
-            else:
-                recipe, frames = "nod", "nodding"
             for i in [
                 f"DISP_TAB_{self.arm}",
                 f"ORDER_TAB_{self.arm}",
