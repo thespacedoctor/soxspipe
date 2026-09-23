@@ -78,3 +78,13 @@ An older inline tree mirroring the source layout (`soxspipe/recipes/tests/`, `so
 ## Code style
 
 - Write all inline code comments in UPPERCASE (matches the existing codebase convention, e.g. `# GLOBAL IMPORTS`, `# SETUP AND TEARDOWN FIXTURE FUNCTIONS`).
+
+## Agent skills
+
+### Issue tracker
+
+Issues tracked in Linear, team thespacedoctor, project soxspipe. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context layout (CONTEXT.md + docs/adr/ at repo root, created lazily). See `docs/agents/domain.md`.
