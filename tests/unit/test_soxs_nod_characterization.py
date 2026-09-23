@@ -40,19 +40,11 @@ pytestmark = pytest.mark.unit
 NOD_CATEGORIES = ["DISP_TAB_VIS", "ORDER_TAB_VIS", "DISP_IMAGE_VIS"]
 
 
-def _nod_type_message(arm: str, found: str) -> str:
-    """Return the rejection message the type loop and the nod technique loop render."""
+def _type_message(arm: str, found: str, recipeName: str = "soxs-nod") -> str:
+    """Return the rejection message the image-type and technique loops render for this recipe."""
+    recipe, frames = ("offset", "offset") if "offset" in recipeName else ("nod", "nodding")
     return (
-        f"Found a {found} file. Input frames for soxspipe nod need to be an object/std nodding frames, "
-        f"a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table "
-        f"(ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
-    )
-
-
-def _offset_type_message(arm: str, found: str) -> str:
-    """Return the rejection message the offset technique loop renders."""
-    return (
-        f"Found a {found} file. Input frames for soxspipe offset need to be an object/std offset frames, "
+        f"Found a {found} file. Input frames for soxspipe {recipe} need to be an object/std {frames} frames, "
         f"a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table (DISP_TAB_{arm}), an order-location table "
         f"(ORDER_TAB_{arm}) and a master-flat (MASTER_FLAT_{arm})."
     )
@@ -428,7 +420,28 @@ def test_a_disallowed_image_type_is_rejected_by_name(
     with pytest.raises(TypeError) as raised:
         recipe.verify_input_frames()
 
-    assert str(raised.value) == _nod_type_message("VIS", "BIAS")
+    assert str(raised.value) == _type_message("VIS", "BIAS")
+
+
+def test_a_disallowed_image_type_names_the_offset_recipe_in_the_offset_branch(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An offset run's image-type message names the offset recipe, not the nod recipe."""
+    # ARRANGE
+    recipe = _unconstructed_recipe(log, recipeName="soxs-offset")
+    _stub_basics_direct(
+        monkeypatch,
+        imageTypes=["BIAS"],
+        imageTech=["ECHELLE,SLIT,OFFSET"],
+        imageCat=list(NOD_CATEGORIES),
+    )
+
+    # ACT / ASSERT
+    with pytest.raises(TypeError) as raised:
+        recipe.verify_input_frames()
+
+    assert str(raised.value) == _type_message("VIS", "BIAS", "soxs-offset")
 
 
 def test_a_disallowed_technique_is_rejected_in_the_nod_branch(
@@ -449,7 +462,7 @@ def test_a_disallowed_technique_is_rejected_in_the_nod_branch(
     with pytest.raises(TypeError) as raised:
         recipe.verify_input_frames()
 
-    assert str(raised.value) == _nod_type_message("VIS", "ECHELLE,SLIT,OFFSET")
+    assert str(raised.value) == _type_message("VIS", "ECHELLE,SLIT,OFFSET")
 
 
 def test_a_disallowed_technique_is_rejected_in_the_offset_branch(
@@ -470,7 +483,7 @@ def test_a_disallowed_technique_is_rejected_in_the_offset_branch(
     with pytest.raises(TypeError) as raised:
         recipe.verify_input_frames()
 
-    assert str(raised.value) == _offset_type_message("VIS", "ECHELLE,PINHOLE")
+    assert str(raised.value) == _type_message("VIS", "ECHELLE,PINHOLE", "soxs-offset")
 
 
 def test_the_offset_technique_passes_only_in_the_offset_branch(
@@ -601,7 +614,7 @@ def test_a_disallowed_image_type_wins_over_a_missing_category(
     with pytest.raises(TypeError) as raised:
         recipe.verify_input_frames()
 
-    assert str(raised.value) == _nod_type_message("VIS", "BIAS")
+    assert str(raised.value) == _type_message("VIS", "BIAS")
 
 
 def test_a_disallowed_image_type_wins_over_a_missing_category_in_the_offset_branch(
@@ -610,8 +623,8 @@ def test_a_disallowed_image_type_wins_over_a_missing_category_in_the_offset_bran
 ) -> None:
     """The type loop's error survives into the offset branch, whose technique loop is therefore skipped.
 
-    The message still names the nod recipe for an offset run, which is the same family of wording
-    defect as DY-125.
+    The message names the offset recipe, the wording DY-125 introduced and DY-214 extended to
+    this loop.
     """
     # ARRANGE
     recipe = _unconstructed_recipe(log, recipeName="soxs-offset")
@@ -626,7 +639,7 @@ def test_a_disallowed_image_type_wins_over_a_missing_category_in_the_offset_bran
     with pytest.raises(TypeError) as raised:
         recipe.verify_input_frames()
 
-    assert str(raised.value) == _nod_type_message("VIS", "BIAS")
+    assert str(raised.value) == _type_message("VIS", "BIAS", "soxs-offset")
 
 
 def test_a_rejection_prints_the_error_banner_and_the_frame_summary(
