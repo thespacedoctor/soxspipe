@@ -1,7 +1,7 @@
 """Characterization tests pinning the current behaviour of `set_of_files.py`.
 
 These tests describe what the module does today, including behaviour that
-looks like a defect (DY-73, DY-74, DY-75, and others noted inline). They must
+looks like a defect (DY-74, DY-75, and others noted inline). They must
 all pass unchanged against the current implementation -- they are not
 RED/GREEN tests, they exist to freeze behaviour ahead of a refactor.
 """
