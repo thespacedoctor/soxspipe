@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *The SOXSPIPE Data Organiser*
 
@@ -10,18 +9,51 @@ Date Created
 : March  9, 2023
 """
 
-from line_profiler import profile
-from fundamentals import tools
-from builtins import object
-import sys
 import os
-from soxspipe.commonutils import uncompress
-from soxspipe.commonutils.toolkit import get_calibrations_path
+import sqlite3
+import sys
+from pathlib import Path
+
+from fundamentals import tools
+
+from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
 os.environ["TERM"] = "vt100"
 
 
-class data_organiser(object):
+class _UnsafePathError(ValueError):
+    """Report an unsafe path or workspace identifier at a trust boundary."""
+
+
+def _validate_owned_path(path, owner, label):
+    """Return a path only when its resolved target remains below its owner."""
+    candidatePath = Path(path)
+    ownerPath = Path(owner)
+    try:
+        resolvedOwnerPath = ownerPath.resolve()
+        resolvedCandidatePath = candidatePath.resolve()
+        resolvedCandidatePath.relative_to(resolvedOwnerPath)
+    except (OSError, RuntimeError, ValueError) as error:
+        raise _UnsafePathError(
+            f"Unsafe {label}: path resolves outside {ownerPath}"
+        ) from error
+    return resolvedCandidatePath
+
+
+def _validate_session_id(sessionId):
+    """Enforce the documented grammar for workspace session identifiers."""
+    import re
+
+    if not isinstance(sessionId, str) or re.fullmatch(
+        r"[0-9A-Za-z_-]{1,16}", sessionId
+    ) is None:
+        raise _UnsafePathError(
+            "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-"
+        )
+    return sessionId
+
+
+class data_organiser:
     """
     *The `soxspipe` Data Organiser*
 
@@ -48,12 +80,11 @@ class data_organiser(object):
     """
 
     def __init__(self, log, rootDir, vlt=False, dbConnect=True):
-        from os.path import expanduser
         import codecs
-        from fundamentals.logs import emptyLogger
         import warnings
+        from os.path import expanduser
+
         from astropy.utils.exceptions import AstropyWarning
-        import sqlite3 as sql
 
         warnings.simplefilter("ignore", AstropyWarning)
 
@@ -68,26 +99,48 @@ class data_organiser(object):
             directory = directory.replace("~", home)
 
         self.rootDir = rootDir
-        self.rawDir = rootDir + "/raw"
-        self.miscDir = rootDir + "/misc"
-        self.sessionsDir = rootDir + "/sessions"
+        self.rawDir = str(
+            _validate_owned_path(Path(rootDir) / "raw", rootDir, "raw directory")
+        )
+        self.miscDir = str(
+            _validate_owned_path(Path(rootDir) / "misc", rootDir, "misc directory")
+        )
+        self.sessionsDir = str(
+            _validate_owned_path(
+                Path(rootDir) / "sessions", rootDir, "sessions directory"
+            )
+        )
 
         if self.vlt:
             self.vltReduced = self.use_vlt_environment_folders()
 
         # SESSION ID PLACEHOLDER FILE
-        self.sessionIdFile = self.sessionsDir + "/.sessionid"
+        self.sessionIdFile = str(
+            _validate_owned_path(
+                Path(self.sessionsDir) / ".sessionid",
+                self.sessionsDir,
+                "session ID path",
+            )
+        )
         exists = os.path.exists(self.sessionIdFile)
         if exists:
             with codecs.open(
                 self.sessionIdFile, encoding="utf-8", mode="r"
             ) as readFile:
-                sessionId = readFile.read()
-                self.sessionPath = self.sessionsDir + "/" + sessionId
+                sessionId = _validate_session_id(readFile.read())
+                self.sessionPath = str(
+                    _validate_owned_path(
+                        Path(self.sessionsDir) / sessionId,
+                        self.sessionsDir,
+                        "session path",
+                    )
+                )
                 self.sessionId = sessionId
 
         # DATABASE FILE
-        self.rootDbPath = rootDir + "/soxspipe.db"
+        self.rootDbPath = str(
+            _validate_owned_path(Path(rootDir) / "soxspipe.db", rootDir, "database path")
+        )
 
         # RETURN HERE: add these to yaml file
         # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE LIFTED FROM ALL FITS FILES
@@ -313,7 +366,7 @@ class data_organiser(object):
         else:
             self.conn = None
 
-        return None
+        return
 
     def prepare(self, refresh=False, report=True):
         """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*
@@ -323,7 +376,6 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``prepare`` method")
         import codecs
-        import glob
 
         if refresh:
             # DELETE THE SQLITE DATABASE IF IT EXISTS
@@ -336,12 +388,12 @@ class data_organiser(object):
                 )
                 try:
                     os.remove(self.rootDbPath + "-shm")
-                except:
-                    pass
+                except OSError as e:
+                    self.log.debug(f"prepare: `os.remove(self.rootDbPath + '-shm')` failed, continuing: {e}")
                 try:
                     os.remove(self.rootDbPath + "-wal")
-                except:
-                    pass
+                except OSError as e:
+                    self.log.debug(f"prepare: `os.remove(self.rootDbPath + '-wal')` failed, continuing: {e}")
             # DELETE ALL ERROR LOG AND SOF FILES
             if False:
                 for root, dirs, files in os.walk(os.path.abspath(self.rootDir)):
@@ -359,7 +411,7 @@ class data_organiser(object):
                 "There are no FITS files in this directory. Please add your data before running `soxspipe prep`"
             )
             sys.exit()
-            return None
+            return
 
         # MK RAW FRAME DIRECTORY
         if not os.path.exists(self.rawDir):
@@ -388,8 +440,14 @@ class data_organiser(object):
             with codecs.open(
                 self.sessionIdFile, encoding="utf-8", mode="r"
             ) as readFile:
-                sessionId = readFile.read()
-                self.sessionPath = self.sessionsDir + "/" + sessionId
+                sessionId = _validate_session_id(readFile.read())
+                self.sessionPath = str(
+                    _validate_owned_path(
+                        Path(self.sessionsDir) / sessionId,
+                        self.sessionsDir,
+                        "session path",
+                    )
+                )
 
         # GET SETTINGS
         settingsPath = self.sessionPath + "/soxspipe.yaml"
@@ -410,7 +468,7 @@ class data_organiser(object):
             c = self.conn.cursor()
             sqlQueries = [
                 f'update product_frames set status_{self.sessionId} = "pass" where status_{self.sessionId} = "fail" and sof in (select sof_name from quality_control);',
-                f"update quality_control set qc_value_min = null, qc_value_max = null, qc_flag = 'pass';",
+                "update quality_control set qc_value_min = null, qc_value_max = null, qc_flag = 'pass';",
             ]
 
             for k, v in self.settings.items():
@@ -457,23 +515,23 @@ class data_organiser(object):
             print(
                 f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n"
             )
-            print(f"In this workspace you will find:\n")
-            print(f"   - `misc/`: a lost-and-found archive of non-fits files")
+            print("In this workspace you will find:\n")
+            print("   - `misc/`: a lost-and-found archive of non-fits files")
             print(
-                f"   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables."
+                "   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables."
             )
             print(
                 f"   - `{rawDirStr}/`: nested folders, ordered by date, containing raw-frames."
             )
-            print(f"   - `sessions/`: directory of data-reduction sessions")
+            print("   - `sessions/`: directory of data-reduction sessions")
             print(
-                f"   - `sof/`: the set-of-files (sof) files required for each reduction step"
+                "   - `sof/`: the set-of-files (sof) files required for each reduction step"
             )
             print(
-                f"   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete"
+                "   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete"
             )
             print(
-                f"   - `reduced/`: nested folders, ordered by date, containing reduced data.\n"
+                "   - `reduced/`: nested folders, ordered by date, containing reduced data.\n"
             )
 
             incompleteSets = self.get_incomplete_raw_frames_set()
@@ -495,7 +553,7 @@ class data_organiser(object):
             self.conn.close()
 
         self.log.debug("completed the ``prepare`` method")
-        return None
+        return
 
     def list_obs(self):
         """*list all observation names and IDs in the current workspace*"""
@@ -586,9 +644,10 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``_sync_raw_frames`` method")
 
-        import shutil
-        import pandas as pd
         import re
+        import shutil
+
+        import pandas as pd
 
         remainingFiles = 1
         firstPass = True
@@ -638,8 +697,8 @@ class data_organiser(object):
                         for file in matchedFiles["file"]:
                             try:
                                 os.remove(file)
-                            except:
-                                pass
+                            except OSError as e:
+                                self.log.debug(f"_sync_raw_frames: `os.remove(file)` failed, continuing: {e}")
                         # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
                         rawFrames = rawFrames[
                             ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
@@ -693,7 +752,7 @@ class data_organiser(object):
             )
 
         self.log.debug("completed the ``_sync_raw_frames`` method")
-        return None
+        return
 
     def _create_directory_table(self, pathToDirectory, filterKeys, limit=10000):
         """*create an astropy table based on the contents of a directory*
@@ -725,10 +784,9 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``_create_directory_table`` function")
 
-        from ccdproc import ImageFileCollection
-        from astropy.time import Time
-        import numpy as np
         import pandas as pd
+        from ccdproc import ImageFileCollection
+
         from soxspipe.commonutils import keyword_lookup
 
         # GENERATE A LIST OF FITS FILE PATHS
@@ -786,11 +844,10 @@ class data_organiser(object):
 
         if len(instrument) > 1:
             self.log.error(
-                f"The directory contains data from a mix of instruments. Please only provide data from either SOXS or XSH"
+                "The directory contains data from a mix of instruments. Please only provide data from either SOXS or XSH"
             )
             raise AssertionError
-        else:
-            self.instrument = instrument[0]
+        self.instrument = instrument[0]
 
         self._select_instrument(inst=self.instrument)
 
@@ -804,7 +861,7 @@ class data_organiser(object):
         for k in self.keyword_lookups:
             try:
                 self.keywords.append(self.kw(k).lower())
-            except Exception as e:
+            except Exception:
                 self.log.warning(f"Keyword '{k}' not found in lookup table.")
 
         # TOP-LEVEL COLLECTION
@@ -893,8 +950,10 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``_sync_sql_table_to_directory`` method")
 
-        import sqlite3 as sql
         import shutil
+
+        if tableName != "raw_frames":
+            raise ValueError("Only the raw_frames table can be synchronized")
 
         # GENERATE A LIST OF FITS FILE PATHS IN RAW DIR
         from fundamentals.files import recursive_directory_listing
@@ -910,24 +969,37 @@ class data_organiser(object):
         sqlQuery = f"select filepath from {tableName};"
         c.execute(sqlQuery)
 
-        # MAKE PATHS ABSOLUTE
+        # NORMALIZE DATABASE PATHS BEFORE COMPARING THEM WITH THE ABSOLUTE LISTING.
         dbFiles = [r[0].replace("//", "/") for r in c.fetchall()]
+        normalizedDbFiles = {
+            filePath: str(
+                _validate_owned_path(
+                    Path(filePath)
+                    if os.path.isabs(filePath)
+                    else Path(self.rootDir) / filePath,
+                    self.rootDir,
+                    "database filepath",
+                )
+            )
+            for filePath in dbFiles
+        }
+        absoluteDbFiles = set(normalizedDbFiles.values())
 
         # DELETED FILES
-        filesNotInDB = list(set(fitsPaths) - set(dbFiles))
-        filesNotInFS = list(set(dbFiles) - set(fitsPaths))
-        # MAKE PATHS RELATIVE TO rawDir
+        filesNotInDB = list(set(fitsPaths) - absoluteDbFiles)
         filesNotInFS = [
-            f.replace(self.rawDir + "/", "./raw/").replace("//", "/")
-            for f in filesNotInFS
+            filePath
+            for filePath, normalizedPath in normalizedDbFiles.items()
+            if normalizedPath not in fitsPaths
         ]
-
         if len(filesNotInFS):
-            filesNotInFS = ("','").join(filesNotInFS)
-            sqlQuery = f"delete from {tableName} where filepath in ('{filesNotInFS}');"
-            c.execute(sqlQuery)
-            sqlQuery = f"delete from sof_map_{self.sessionId} where sof in (select sof from sof_map_{self.sessionId} where filepath in ('{filesNotInFS}'));"
-            c.execute(sqlQuery)
+            placeholders = ", ".join("?" for _ in filesNotInFS)
+            sqlQuery = f"delete from {tableName} where filepath in ({placeholders});"
+            c.execute(sqlQuery, filesNotInFS)
+            sessionId = _validate_session_id(self.sessionId)
+            sofTableName = f"sof_map_{sessionId}"
+            sqlQuery = f"delete from {sofTableName} where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"
+            c.execute(sqlQuery, filesNotInFS)
 
         if len(filesNotInDB):
 
@@ -953,7 +1025,7 @@ class data_organiser(object):
         c.close()
 
         self.log.debug("completed the ``_sync_sql_table_to_directory`` method")
-        return None
+        return
 
     def _populate_raw_frames_extra_columns(self, filteredFrames, verbose=False):
         """*populate extra columns for raw frames to later filter on*
@@ -975,9 +1047,7 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``catagorise_frames`` method")
 
-        from astropy.table import Table, unique
         import numpy as np
-        import pandas as pd
         from tabulate import tabulate
 
         # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
@@ -1116,9 +1186,9 @@ class data_organiser(object):
 
             else:
                 filteredFrames.loc[
-                    ((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)), "lamp"
+                    (filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"
                 ] = filteredFrames.loc[
-                    ((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)),
+                    (filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99),
                     self.kw(f"LAMP{i}").lower(),
                 ]
         mask = []
@@ -1205,7 +1275,7 @@ class data_organiser(object):
                 shutil.move(filepath, self.miscDir + "/" + d)
 
         self.log.debug("completed the ``_move_misc_files`` method")
-        return None
+        return
 
     def _write_sof_files(self):
         """*Write out all possible SOF files from the sof_map database table*
@@ -1227,6 +1297,12 @@ class data_organiser(object):
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         self.sofDir = self.sessionPath + "/sof"
+        self.sessionPath = str(
+            _validate_owned_path(self.sessionPath, self.sessionsDir, "session path")
+        )
+        self.sofDir = str(
+            _validate_owned_path(self.sofDir, self.sessionPath, "SOF directory")
+        )
         if not os.path.exists(self.sofDir):
             os.makedirs(self.sofDir)
 
@@ -1236,7 +1312,17 @@ class data_organiser(object):
 
         # GROUP RESULTS
         for name, group in df.groupby("sof"):
-            sofPath = self.sofDir + "/" + name
+            if not isinstance(name, str) or Path(name).name != name:
+                raise _UnsafePathError(
+                    "SOF filename must be a filename without directory components"
+                )
+            sofPath = str(
+                _validate_owned_path(
+                    Path(self.sofDir) / name,
+                    self.sofDir,
+                    "SOF path",
+                )
+            )
             if os.path.exists(sofPath):
                 continue
             myFile = open(sofPath, "w")
@@ -1248,7 +1334,7 @@ class data_organiser(object):
             myFile.close()
 
         self.log.debug("completed the ``_write_sof_files`` method")
-        return None
+        return
 
     def session_create(self, sessionId=False):
         """*create a data-reduction session with accompanying settings file and required directories*
@@ -1273,9 +1359,9 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``session_create`` method")
 
-        import re
-        import shutil
-        import sqlite3 as sql
+
+        if sessionId:
+            sessionId = _validate_session_id(sessionId)
 
         rootDbExists = os.path.exists(self.rootDbPath)
         if rootDbExists:
@@ -1295,27 +1381,24 @@ class data_organiser(object):
             )
             sys.exit(0)
 
-        if sessionId:
-            if len(sessionId) > 16:
-                print(
-                    "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-"
-                )
-            matchObjectList = re.findall(r"[^0-9a-zA-Z\-\_]+", sessionId)
-            if matchObjectList:
-                print(
-                    "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-"
-                )
-        else:
+        if not sessionId:
             # CREATE SESSION ID FROM TIME STAMP
-            from datetime import datetime, date, time
+            from datetime import datetime
 
             now = datetime.now()
             sessionId = now.strftime("%Y%m%dt%H%M%S")
+            sessionId = _validate_session_id(sessionId)
 
         self.sessionId = sessionId
 
         # MAKE THE SESSION DIRECTORY
-        self.sessionPath = self.sessionsDir + "/" + sessionId
+        self.sessionPath = str(
+            _validate_owned_path(
+                Path(self.sessionsDir) / sessionId,
+                self.sessionsDir,
+                "session path",
+            )
+        )
         if not os.path.exists(self.sessionPath):
             os.makedirs(self.sessionPath)
 
@@ -1346,8 +1429,8 @@ class data_organiser(object):
             dest = self.sessionPath + "/reduced"
             try:
                 os.symlink(self.vltReduced, dest)
-            except:
-                pass
+            except OSError as e:
+                self.log.debug(f"session_create: `os.symlink(self.vltReduced, dest)` failed, continuing: {e}")
 
         folders = ["sof", "qc", "reduced"]
         for f in folders:
@@ -1355,15 +1438,14 @@ class data_organiser(object):
                 os.makedirs(self.sessionPath + f"/{f}")
 
         # ADD A NEW STATUS COLUMN IN product_frames FOR THIS SESSION
-        import sqlite3 as sql
 
         conn, reset = self._get_or_create_db_connection()
         c = conn.cursor()
         sqlQuery = f"ALTER TABLE product_frames ADD status_{sessionId} TEXT;"
         try:
             c.execute(sqlQuery)
-        except:
-            pass
+        except sqlite3.OperationalError as e:
+            self.log.debug(f"session_create: `c.execute(sqlQuery)` failed, continuing: {e}")
 
         # DUPLICATE TEH SOF_MAP TABLE
         sqlQuery = (
@@ -1374,11 +1456,11 @@ class data_organiser(object):
         sqlQuery = sqlQuery.replace("z_sof_map", f"sof_map_{sessionId}")
         try:
             c.execute(sqlQuery)
-        except:
-            pass
+        except sqlite3.OperationalError as e:
+            self.log.debug(f"session_create: `c.execute(sqlQuery)` failed, continuing: {e}")
 
         sqlQueries = [
-            f"DROP VIEW IF EXISTS sof_map;",
+            "DROP VIEW IF EXISTS sof_map;",
             f"CREATE VIEW sof_map as select * from sof_map_{sessionId};",
         ]
         for sqlQuery in sqlQueries:
@@ -1396,13 +1478,16 @@ class data_organiser(object):
         # WRITE THE SESSION ID FILE
         import codecs
 
-        with codecs.open(self.sessionIdFile, encoding="utf-8", mode="w") as writeFile:
+        sessionIdFile = _validate_owned_path(
+            self.sessionIdFile, self.sessionsDir, "session ID path"
+        )
+        with codecs.open(sessionIdFile, encoding="utf-8", mode="w") as writeFile:
             writeFile.write(sessionId)
 
         message = f"A new data-reduction session has been created with sessionId '{sessionId}'"
         try:
             self.log.print(message)
-        except:
+        except (AttributeError, OSError, ValueError):
             print(message)
         self.log.debug("completed the ``session_create`` method")
 
@@ -1436,17 +1521,22 @@ class data_organiser(object):
         import codecs
 
         # IF SESSION ID FILE DOES NOT EXIST, REPORT
-        self.sessionIdFile = self.sessionsDir + "/.sessionid"
+        self.sessionIdFile = str(
+            _validate_owned_path(
+                Path(self.sessionsDir) / ".sessionid",
+                self.sessionsDir,
+                "session ID path",
+            )
+        )
         exists = os.path.exists(self.sessionIdFile)
         if not exists:
             if not silent:
                 print("No reduction sessions exist in this workspace yet.")
             return None, None
-        else:
-            with codecs.open(
-                self.sessionIdFile, encoding="utf-8", mode="r"
-            ) as readFile:
-                currentSession = readFile.read()
+        with codecs.open(
+            self.sessionIdFile, encoding="utf-8", mode="r"
+        ) as readFile:
+            currentSession = _validate_session_id(readFile.read())
 
         # LIST ALL SESSIONS
         allSessions = [
@@ -1487,29 +1577,37 @@ class data_organiser(object):
         self.log.debug("starting the ``session_switch`` method")
         import codecs
 
+        sessionId = _validate_session_id(sessionId)
+
         currentSession, allSessions = self.session_list(silent=True)
 
         if sessionId == currentSession:
             print(f"Session '{sessionId}' is already in use.")
-            return None
-        elif sessionId in allSessions:
+            return
+        if sessionId in allSessions:
+            sessionPath = _validate_owned_path(
+                Path(self.sessionsDir) / sessionId,
+                self.sessionsDir,
+                "session path",
+            )
             # WRITE THE SESSION ID FILE
-            with codecs.open(
-                self.sessionIdFile, encoding="utf-8", mode="w"
-            ) as writeFile:
+            sessionIdFile = _validate_owned_path(
+                self.sessionIdFile, self.sessionsDir, "session ID path"
+            )
+            with codecs.open(sessionIdFile, encoding="utf-8", mode="w") as writeFile:
                 writeFile.write(sessionId)
         else:
             print(
                 f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`."
             )
-            return None
+            return
 
-        self.sessionPath = self.sessionsDir + "/" + sessionId
+        self.sessionPath = str(sessionPath)
         self._symlink_session_assets_to_workspace_root()
         print(f"Session successfully switched to '{sessionId}'.")
 
         self.log.debug("completed the ``session_switch`` method")
-        return None
+        return
 
     def _symlink_session_assets_to_workspace_root(self):
         """*symlink session QC, product, SOF directories, database and scripts to workspace root*
@@ -1526,7 +1624,6 @@ class data_organiser(object):
             "starting the ``_symlink_session_assets_to_workspace_root`` method"
         )
 
-        import shutil
         import os
 
         # SYMLINK FILES AND FOLDERS
@@ -1536,7 +1633,8 @@ class data_organiser(object):
             src = self.sessionPath + f"/{l}"
             try:
                 os.symlink(src, dest)
-            except:
+            except OSError as e:
+                self.log.debug(f"_symlink_session_assets_to_workspace_root: `os.symlink(sr...` failed, continuing: {e}")
                 os.unlink(dest)
                 os.symlink(src, dest)
 
@@ -1548,14 +1646,17 @@ class data_organiser(object):
                 src = filepath
                 try:
                     os.symlink(src, dest)
-                except:
+                except OSError as e:
+                    self.log.debug(
+                        f"_symlink_session_assets_to_workspace_root: `os.symlink(src, dest)` failed, continuing: {e}"
+                    )
                     os.unlink(dest)
                     os.symlink(src, dest)
 
         self.log.debug(
             "completed the ``_symlink_session_assets_to_workspace_root`` method"
         )
-        return None
+        return
 
     def session_refresh(self, silent=False, failure=True):
         """*refresh a session's SOF files (needed if a recipe fails)*
@@ -1573,9 +1674,9 @@ class data_organiser(object):
         """
         self.log.debug("starting the ``session_refresh`` method")
 
-        import sys
         import os
-        import pandas as pd
+        import sys
+
 
         if failure is True:
             self.log.print("\nRefeshing SOF files due to recipe failure\n")
@@ -1586,18 +1687,27 @@ class data_organiser(object):
         import codecs
 
         # IF SESSION ID FILE DOES NOT EXIST, REPORT
+        self.sessionIdFile = str(
+            _validate_owned_path(
+                self.sessionIdFile, self.sessionsDir, "session ID path"
+            )
+        )
         exists = os.path.exists(self.sessionIdFile)
         if not exists:
             if not silent:
                 print("No reduction sessions exist in this workspace yet.")
             return None, None
-        else:
-            with codecs.open(
-                self.sessionIdFile, encoding="utf-8", mode="r"
-            ) as readFile:
-                sessionId = readFile.read()
-        self.sessionPath = self.sessionsDir + "/" + sessionId
-        self.sessionPath = self.sessionsDir + "/" + sessionId
+        with codecs.open(
+            self.sessionIdFile, encoding="utf-8", mode="r"
+        ) as readFile:
+            sessionId = _validate_session_id(readFile.read())
+        self.sessionPath = str(
+            _validate_owned_path(
+                Path(self.sessionsDir) / sessionId,
+                self.sessionsDir,
+                "session path",
+            )
+        )
         self.sessionId = sessionId
 
         self.conn, reset = self._get_or_create_db_connection()
@@ -1627,8 +1737,8 @@ class data_organiser(object):
 
         try:
             self.conn.close()
-        except:
-            pass
+        except (AttributeError, sqlite3.ProgrammingError) as e:
+            self.log.debug(f"close: `self.conn.close()` failed, continuing: {e}")
 
         self.log.debug("completed the ``session_refresh`` method")
         return
@@ -1681,7 +1791,7 @@ class data_organiser(object):
         if not exists:
             advs = {}
         else:
-            with open(advs, "r") as stream:
+            with open(advs) as stream:
                 advs = yaml.safe_load(stream)
 
         vltRaw = advs["vlt-data-raw"]
@@ -1696,7 +1806,8 @@ class data_organiser(object):
 
         try:
             os.symlink(vltRaw, self.rawDir)
-        except:
+        except OSError as e:
+            self.log.debug(f"use_vlt_environment_folders: `os.symlink(vltRaw, self.rawDir)` failed, continuing: {e}")
             os.unlink(self.rawDir)
             os.symlink(vltRaw, self.rawDir)
 
@@ -1740,6 +1851,10 @@ class data_organiser(object):
 
         reset = False
 
+        self.rootDbPath = str(
+            _validate_owned_path(self.rootDbPath, self.rootDir, "database path")
+        )
+
         conn = None
         i = 0
 
@@ -1750,15 +1865,15 @@ class data_organiser(object):
                 try:
                     if self.conn:
                         conn = self.conn
-                except:
-                    pass
+                except AttributeError as e:
+                    self.log.debug(f"_get_or_create_db_connection: `if self.conn: conn = s...` failed, continuing: {e}")
 
             if not conn:
                 try:
                     with open(self.rootDbPath):
                         pass
                     self.freshRun = False
-                except IOError:
+                except OSError:
                     self.freshRun = True
                     emptyDb = (
                         os.path.dirname(os.path.dirname(__file__))
@@ -1775,12 +1890,16 @@ class data_organiser(object):
 
             try:
                 c.execute("PRAGMA integrity_check;")
+                integrityCheckRows = c.fetchall()
+                if integrityCheckRows != [("ok",)]:
+                    raise sql.DatabaseError(
+                        f"database integrity check failed: {integrityCheckRows}"
+                    )
                 c.execute("PRAGMA busy_timeout = 100000")
                 c.execute("PRAGMA synchronous = OFF")
 
-                this = c.fetchall()
                 i = tries + 1
-            except Exception as e:
+            except Exception:
                 # DATABASE IS BROKEN, REPLACE WITH EMPTY ONE
                 i += 1
                 c.close()
@@ -1788,8 +1907,8 @@ class data_organiser(object):
                 try:
                     del conn
                     del self.conn
-                except:
-                    pass
+                except (AttributeError, NameError, UnboundLocalError) as e:
+                    self.log.debug(f"_get_or_create_db_connection: `del conn` failed, continuing: {e}")
 
                 time.sleep(1)
 
@@ -1820,8 +1939,9 @@ class data_organiser(object):
 
     def _select_instrument(self, inst=False):
         """Select the instrument and set related attributes."""
-        from soxspipe.commonutils import keyword_lookup
         import yaml
+
+        from soxspipe.commonutils import keyword_lookup
 
         if inst:
             self.instrument = inst
@@ -1834,7 +1954,8 @@ class data_organiser(object):
                 c.execute(sqlQuery)
                 self.instrument = c.fetchall()[0][0]
                 c.close()
-            except:
+            except (AttributeError, IndexError, sqlite3.OperationalError) as e:
+                self.log.warning(f"_select_instrument: `c = self.conn.cursor()` failed, continuing: {e}")
                 return
 
         if "SOXS" not in self.instrument.upper():
@@ -1852,12 +1973,11 @@ class data_organiser(object):
         )
 
         # YAML CONTENT TO DICTIONARY
-        with open(yamlFilePath, "r") as stream:
+        with open(yamlFilePath) as stream:
             self.sofMapLookup = yaml.safe_load(stream)
 
     def _flag_files_to_ignore(self):
         """*Flag files to ignore based on settings and reduction order*"""
-        import sqlite3 as sql
 
         # FLAG FILES TO IGNORE BASED ON REDUCTION ORDER
         c = self.conn.cursor()
@@ -1866,8 +1986,39 @@ class data_organiser(object):
         c.execute(sqlQuery)
         self.conn.commit()
 
+        # FLAG STANDARDS NOT IN STATIC LIBRARY TO IGNORE
+        sqlQuery = """UPDATE raw_frames
+        SET IGNORE = 1
+        WHERE rowid IN (
+            SELECT rowid
+            FROM (
+                SELECT
+                    rowid,
+                    replace(replace(replace(IFNULL("eso obs name","") || IFNULL("eso obs targ name",""), "_", ""), " ", ""), "-", "") AS matchStr,
+                    "eso dpr type" AS dprType
+                FROM raw_frames
+            )
+            WHERE
+                dprType LIKE "%STD,FLUX%"
+                AND NOT (
+                    matchStr LIKE "%GD71%" OR
+                    matchStr LIKE "%LTT3218%" OR
+                    matchStr LIKE "%GD153%" OR
+                    matchStr LIKE "%EG274%" OR
+                    matchStr LIKE "%LTT7987%" OR
+                    matchStr LIKE "%FEIGE110%" OR
+                    matchStr LIKE "%EG21%" OR
+                    matchStr LIKE "%CD3017706%" OR
+                    matchStr LIKE "%CD3810980%" OR
+                    matchStr LIKE "%CD325613%" OR
+                    matchStr LIKE "%CPD69177%"
+            )
+        );"""
+        c.execute(sqlQuery)
+        self.conn.commit()
+
         # FLAG SIMULATION FILES TO IGNORE
-        sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not like '%OBJECT%' and `eso dpr type` not like '%STD%' and simulation = 1"
+        sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` not like '%OBJECT%' and `eso dpr type` not like '%STD%' and simulation = 1"
         c.execute(sqlQuery)
         self.conn.commit()
 
@@ -1913,7 +2064,7 @@ class data_organiser(object):
         c = self.conn.cursor()
         sqlQuery = f"update product_frames set status = status_{self.sessionId};"
         c.execute(sqlQuery)
-        sqlQuery = f"update raw_frames set processed = 0 where processed < 0;"
+        sqlQuery = "update raw_frames set processed = 0 where processed < 0;"
         c.execute(sqlQuery)
 
         # CLEAN UP FAILED FILES
@@ -1923,18 +2074,18 @@ class data_organiser(object):
         while count != oldCount:
             oldCount = count
             c = self.conn.cursor()
-            sqlQuery = f"select distinct sof from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1));"
+            sqlQuery = "select distinct sof from sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1));"
             compromisedSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
             count = len(compromisedSofs)
 
-            sqlQuery = f"update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));"
+            sqlQuery = "update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));"
             c.execute(sqlQuery)
 
         sqlQueries = [
-            f"update raw_frames set processed = 0 where file in (select file from sof_map where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1))));",
-            f"update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));",
+            "update raw_frames set processed = 0 where file in (select file from sof_map where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1))));",
+            "update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));",
             f"delete from sof_map_{self.sessionId} where sof in (  select s.sof from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1));",
-            f"update raw_frames set processed = -1 where file in (select distinct s.file from sof_map s, product_frames p where p.sof=s.sof and p.status = 'fail');",
+            "update raw_frames set processed = -1 where file in (select distinct s.file from sof_map s, product_frames p where p.sof=s.sof and p.status = 'fail');",
             "update raw_frames set lamp = null, slit = null, slitmask = null where `eso dpr type` in ('BIAS','DARK');",
             "update raw_frames set rospeed = null where rospeed = -1;",
             """WITH s AS (
@@ -1995,8 +2146,8 @@ class data_organiser(object):
             sofPath = self.sessionPath + "/sof/" + sof
             try:
                 os.remove(sofPath)
-            except:
-                pass
+            except OSError as e:
+                self.log.debug(f"build_sof_files: `os.remove(sofPath)` failed, continuing: {e}")
 
         # RESET ALL PRODUCTS TO INCOMPLETE
         c = self.conn.cursor()
@@ -2098,7 +2249,7 @@ class data_organiser(object):
                                     )
 
             sqlQuery = (
-                f"""update product_frames set complete = 1 where complete = -1;"""
+                """update product_frames set complete = 1 where complete = -1;"""
             )
             c.execute(sqlQuery)
 
@@ -2165,7 +2316,6 @@ class data_organiser(object):
         ```
         """
         import pandas as pd
-        import numpy as np
 
         # IF NONE, SET TO EMPTY STRING
         ttype, arm, tech = ttype or "", arm or "", tech or ""
@@ -2436,7 +2586,6 @@ class data_organiser(object):
         **Return:**
         - `incompleteProducts` -- Number of incomplete products.
         """
-        import pandas as pd
 
         if not len(rawGroups.index):
             sqlQuery = f"select count(*) from product_frames where recipe = '{recipe}' and complete< 1;"
@@ -2474,7 +2623,7 @@ class data_organiser(object):
             )
             if product in ["fits image", "fits table"]:
                 productFrames["file"] = productFrames["sof"].str.replace(
-                    ".sof", f".fits"
+                    ".sof", ".fits"
                 )
                 if "replace" in proKeys:
                     for item in proKeys["replace"]:
@@ -2555,16 +2704,21 @@ class data_organiser(object):
 
         **Raises:**
         - Exception if the insertion fails after 7 attempts.
+        - `UnsafeSqlIdentifierError` if `table_name` fails the safe-identifier grammar.
         """
         import time
+
+        # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
+        # THE SAFE-IDENTIFIER GRAMMAR BEFORE IT IS INTERPOLATED BELOW.
+        table_name = validate_sql_identifier(table_name, "table name")
 
         if replace:
             c = self.conn.cursor()
             sqlQuery = f"delete from {table_name};"
             try:
                 c.execute(sqlQuery)
-            except:
-                pass
+            except sqlite3.OperationalError as e:
+                self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
             c.close()
 
         keepTrying = 0
@@ -2584,9 +2738,9 @@ class data_organiser(object):
 def _harvest_fits_headers(
     batch, log, pathToDirectory, keywords, filterKeys, instrument, kw
 ):
-    from ccdproc import ImageFileCollection
     import numpy as np
     from astropy.time import Time, TimeDelta
+    from ccdproc import ImageFileCollection
 
     masterTable = ImageFileCollection(filenames=batch, keywords=keywords)
     masterTable = masterTable.summary
@@ -2596,7 +2750,8 @@ def _harvest_fits_headers(
 
             try:
                 masterTable[fil].fill_value = "--"
-            except:
+            except (TypeError, ValueError) as e:
+                log.debug(f"_harvest_fits_headers: `masterTable[fil].fill_value = '--'` failed, continuing: {e}")
                 masterTable.replace_column(fil, masterTable[fil].astype(str))
                 masterTable[fil].fill_value = "--"
         # elif fil in ["exptime"]:
@@ -2604,7 +2759,8 @@ def _harvest_fits_headers(
         else:
             try:
                 masterTable[fil].fill_value = -99.99
-            except:
+            except (TypeError, ValueError) as e:
+                log.debug(f"_harvest_fits_headers: `masterTable[fil].fill_value = -99.99` failed, continuing: {e}")
                 masterTable[fil].fill_value = "--"
     masterTable = masterTable.filled()
 
@@ -2673,7 +2829,8 @@ def _harvest_fits_headers(
             masterTable["rospeed"] = np.copy(masterTable[kw("DET_READ_SPEED").lower()])
             try:
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
-            except:
+            except (TypeError, ValueError) as e:
+                log.debug(f"_harvest_fits_headers: `masterTable['rospeed'][masterTable['ro...` failed, continuing: {e}")
                 masterTable["rospeed"] = masterTable["rospeed"].astype(str)
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = "--"
             masterTable["rospeed"][masterTable["rospeed"] == "1pt/400k/lg"] = "fast"
@@ -2687,7 +2844,8 @@ def _harvest_fits_headers(
 
             try:
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
-            except:
+            except (TypeError, ValueError) as e:
+                log.debug(f"_harvest_fits_headers: `masterTable['rospeed'][masterTable['ro...` failed, continuing: {e}")
                 masterTable["rospeed"] = masterTable["rospeed"].astype(str)
                 masterTable["rospeed"][masterTable["rospeed"] == -99.99] = -1
 
@@ -2724,8 +2882,8 @@ def _harvest_fits_headers(
     for k in keywords:
         try:
             masterTable.add_index(k)
-        except:
-            pass
+        except (TypeError, ValueError, KeyError) as e:
+            log.debug(f"_harvest_fits_headers: `masterTable.add_index(k)` failed, continuing: {e}")
 
     # SORT IMAGE COLLECTION
     masterTable.sort(

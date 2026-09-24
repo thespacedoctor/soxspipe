@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *return a dictionary of detector characteristics and parameters*
 
@@ -11,15 +10,12 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from fundamentals import tools
-from builtins import object
-import sys
 import os
 
 os.environ["TERM"] = "vt100"
 
 
-class detector_lookup(object):
+class detector_lookup:
     """
     *return a dictionary of detector characteristics and parameters*
 
@@ -60,7 +56,7 @@ class detector_lookup(object):
             self.instrument = "soxs"
         self.dectDict = self._select_dictionary()
 
-        return None
+        return
 
     def get(self, arm):
         """
@@ -69,6 +65,10 @@ class detector_lookup(object):
         **Key Arguments:**
 
         - ``arm`` -- the detector parameters to return
+
+        **Return:**
+
+        - ``armDict`` -- the python dictionary of detector characteristics and parameters for the selected arm
         """
         self.log.debug("starting the ``get`` method")
 
@@ -113,7 +113,7 @@ class detector_lookup(object):
         # YAML CONTENT TO DICTIONARY
         import yaml
 
-        with open(yamlFilePath, "r") as stream:
+        with open(yamlFilePath) as stream:
             dectDict = yaml.safe_load(stream)
 
         self.log.debug("completed the ``_select_dictionary`` method")

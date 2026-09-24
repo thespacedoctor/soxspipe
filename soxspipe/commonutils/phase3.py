@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *functions used to make soxs products ESO Phase 3 compliant*
 
@@ -39,8 +38,8 @@ def basic_header_scrubbing(log, settings, header):
     for k in removeKw:
         try:
             header.pop(kw(k))
-        except:
-            pass
+        except KeyError as e:
+            log.debug(f"basic_header_scrubbing: `header.pop(kw(k))` failed, continuing: {e}")
 
     if "NAXIS" in header and header["NAXIS"] != 0 and "INHERIT" in header:
         del header["INHERIT"]
@@ -50,8 +49,8 @@ def basic_header_scrubbing(log, settings, header):
     for k in deleteKw:
         try:
             header.pop(k)
-        except:
-            pass
+        except KeyError as e:
+            log.debug(f"basic_header_scrubbing: `header.pop(k)` failed, continuing: {e}")
 
     # KEYWORDS TO RENAME
     renameKw = {
@@ -122,9 +121,9 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
     ```
     """
     log.debug("starting the ``write_fits_table_to_disk`` method")
+    import numpy as np
     from astropy.io import fits
     from astropy.table import Table
-    import numpy as np
 
     if qc is not None:
         # ADD QC METRICS TO HEADER
@@ -134,7 +133,8 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
             qc["qc_comment"].values,
             qc["to_header"].values,
         ):
-            if h and v is not np.nan:
+            isMissing = isinstance(v, (float, np.floating)) and np.isnan(v)
+            if h and not isMissing:
                 header[f"ESO QC {n}".upper()] = (v, c)
 
     # CONVERT TO FITS BINARY TABLE HDU

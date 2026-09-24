@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *transform spectral image from detector pixel space to wavelength and slit-position space*
 
@@ -11,25 +10,47 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from datetime import datetime
-from soxspipe.commonutils import keyword_lookup
-from .base_recipe import base_recipe
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+import sys
+
+from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
 
 class soxs_straighten(base_recipe):
     """
-    *The soxs_straighten recipe*
+    *The `soxs_straighten` recipe transforms a spectral image from detector pixel space into wavelength and
+      slit-position space.*
+
+    **Key Arguments**
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- input fits frames. Can be a directory, a set-of-files (SOF) file or a list of fits frame paths.
+    - ``verbose`` -- verbose. True or False. Default *False*
+    - ``overwrite`` -- overwrite the product file if it already exists. Default *False*
+    - ``command`` -- the command called to run the recipe
+    - ``debug`` -- debug mode. True or False. Default *False*
+    - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be
+      turned off and the recipe will run in serial. This is useful for debugging.
 
 
+    **Usage**
+
+    ```python
+    from soxspipe.recipes import soxs_straighten
+    straightenFrame, qcTable = soxs_straighten(
+        log=log,
+        settings=settings,
+        inputFrames=fileList,
+        verbose=False,
+        overwrite=False
+    ).produce_product()
+    ```
     """
 
-    # Initialisation
+    # INITIALISATION
 
     def __init__(
         self,
@@ -43,7 +64,7 @@ class soxs_straighten(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super(soxs_straighten, self).__init__(
+        super().__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -61,6 +82,21 @@ class soxs_straighten(base_recipe):
         self.verbose = verbose  # xt-self-arg-tmpx
 
         # INITIAL ACTIONS
+        self._collect_input_frames()
+        self._verify_and_announce_input_frames()
+        self._sort_and_report_input_frames()
+
+        # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
+        # EXTENSIONS
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+
+        return
+
+    def _collect_input_frames(self):
+        """*convert the input files to a ccdproc image collection*
+
+        Sets ``self.inputFrames`` and ``self.supplementaryInput``.
+        """
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
         from soxspipe.commonutils.set_of_files import set_of_files
@@ -73,6 +109,13 @@ class soxs_straighten(base_recipe):
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
+        return
+
+    def _verify_and_announce_input_frames(self):
+        """*verify the collected frames and report the result to the user*
+
+        Sets ``self.imageType``, through ``verify_input_frames``.
+        """
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_straighten - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
@@ -81,6 +124,10 @@ class soxs_straighten(base_recipe):
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
+        return
+
+    def _sort_and_report_input_frames(self):
+        """*sort the image collection by observation date and, when verbose, print it*"""
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(["MJD-OBS"])
         if self.verbose:
@@ -88,24 +135,14 @@ class soxs_straighten(base_recipe):
             self.log.print(self.inputFrames.summary)
             self.log.print("\n")
 
-        # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
-        # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
-
-        return None
+        return
 
     def verify_input_frames(self):
         """*verify the input frame match those required by the soxs_straighten recipe*
 
-        **Return:**
-
-        - ``None``
-
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug("starting the ``verify_input_frames`` method")
-
-        kw = self.kw
 
         error = False
 
@@ -141,9 +178,7 @@ class soxs_straighten(base_recipe):
         # LOOK FOR ****
         arm = self.arm
         if arm not in self.supplementaryInput or "2D_MAP" not in self.supplementaryInput[arm]:
-            raise TypeError(
-                "Need a full dispersion/spatial solution for %(arm)s - none found with the input files" % locals()
-            )
+            raise TypeError(f"Need a full dispersion/spatial solution for {arm!s} - none found with the input files")
 
         if error:
             sys.stdout.flush()
@@ -155,7 +190,7 @@ class soxs_straighten(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return None
+        return
 
     def produce_product(self):
         """*The code to generate the product of the soxs_straighten recipe*
@@ -163,6 +198,7 @@ class soxs_straighten(base_recipe):
         **Return:**
 
         - ``productPath`` -- the path to the final product
+        - ``qcTable`` -- the recipe's quality control frame
 
         **Usage**
 
@@ -173,20 +209,14 @@ class soxs_straighten(base_recipe):
             settings=settings,
             inputFrames=fileList
         )
-        straightenFrame = recipe.produce_product()
+        straightenFrame, qcTable = recipe.produce_product()
         ```
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        arm = self.arm
-        kw = self.kw
-        dp = self.detectorParams
-
         productPath = None
 
         # filename = os.path.basename(productPath)
-
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         # xsoxs-append-to-product-report-table
 
@@ -196,8 +226,8 @@ class soxs_straighten(base_recipe):
         self.log.debug("completed the ``produce_product`` method")
         return productPath, qcTable
 
-    # use the tab-trigger below for new method
+    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
     # xt-class-method
 
-    # Override Method Attributes
+    # OVERRIDE METHOD ATTRIBUTES
     # method-override-tmpx
