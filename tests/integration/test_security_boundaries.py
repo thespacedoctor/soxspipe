@@ -18,7 +18,9 @@ from tests.factories import workspace_organiser
 pytestmark = pytest.mark.integration
 
 
-@pytest.mark.parametrize("sessionId", ["../escape", "nested/session", "x" * 17])
+@pytest.mark.parametrize(
+    "sessionId", ["../escape", "nested/session", "x" * 17, "my-session"]
+)
 def test_session_create_rejects_invalid_identifier_before_writing(
     tmp_path: Path,
     log: object,
@@ -33,15 +35,17 @@ def test_session_create_rejects_invalid_identifier_before_writing(
     assert list(Path(organiser.sessionsDir).iterdir()) == []
 
 
+@pytest.mark.parametrize("sessionId", ["../escape", "my-session"])
 def test_constructor_rejects_traversal_in_active_session_file(
     tmp_path: Path,
     log: object,
+    sessionId: str,
 ) -> None:
     """Do not construct a session path from an untrusted active-session file."""
     workspacePath = tmp_path / "workspace"
     sessionsPath = workspacePath / "sessions"
     sessionsPath.mkdir(parents=True)
-    (sessionsPath / ".sessionid").write_text("../escape", encoding="utf-8")
+    (sessionsPath / ".sessionid").write_text(sessionId, encoding="utf-8")
 
     with pytest.raises(ValueError, match="Session ID"):
         data_organiser(log=log, rootDir=str(workspacePath), dbConnect=False)

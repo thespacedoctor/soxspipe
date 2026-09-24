@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from soxspipe.commonutils import data_organiser as data_organiser_module
+from soxspipe.commonutils.data_organiser import _validate_session_id
 from soxspipe.commonutils.sql_identifiers import (
     UnsafeSqlIdentifierError,
     validate_sql_identifier,
@@ -117,6 +118,56 @@ def test_validate_sql_identifier_error_names_the_label_and_the_rejected_value() 
         validate_sql_identifier("bad name", "table name")
 
     assert "bad name" in str(excInfo.value)
+
+
+# ---------------------------------------------------------------------------
+# `_validate_session_id` -- THE SESSION-ID GRAMMAR, NARROWER THAN THE GENERAL
+# SQL-IDENTIFIER GRAMMAR ABOVE, AND A CHARACTERIZATION OF HOW IT COMPOSES WITH
+# `validate_sql_identifier` ONCE PREFIXED WITH ``status_``.
+# ---------------------------------------------------------------------------
+
+
+def test_validate_session_id_rejects_a_hyphen() -> None:
+    """A hyphenated session id is outside the documented grammar."""
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="Session ID") as excinfo:
+        _validate_session_id("my-session")
+
+    assert "_-" not in str(excinfo.value)
+
+
+@pytest.mark.parametrize("sessionId", ["x" * 17, ""])
+def test_validate_session_id_rejects_length_boundary_violations(
+    sessionId: str,
+) -> None:
+    """A session id past the 16-character limit, or empty, is rejected directly by the grammar."""
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="Session ID"):
+        _validate_session_id(sessionId)
+
+
+@pytest.mark.parametrize(
+    "sessionId",
+    [
+        "base",
+        "my_supernova",
+        "20260920t143000",
+        "_",
+        "9",
+        "A" * 16,
+        "z9_" * 5 + "x",
+    ],
+)
+def test_every_accepted_session_id_composes_a_valid_status_column(
+    sessionId: str,
+) -> None:
+    """Every session id the grammar accepts also composes a valid `status_<id>` column name."""
+    # ACT / ASSERT
+    assert _validate_session_id(sessionId) == sessionId
+    assert (
+        validate_sql_identifier(f"status_{sessionId}", "status column")
+        == f"status_{sessionId}"
+    )
 
 
 # ---------------------------------------------------------------------------

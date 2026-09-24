@@ -121,7 +121,7 @@ def test_predict_product_path_uses_observation_night_and_cli_recipe(
             pass
 
         def session_list(self, silent: bool) -> tuple[str, list[str]]:
-            return "session-01", ["session-01"]
+            return "session_01", ["session_01"]
 
         def close(self) -> None:
             pass
@@ -133,7 +133,7 @@ def test_predict_product_path_uses_observation_night_and_cli_recipe(
 
     assert night == "2024-01-01"
     assert productPath == (
-        f"./sessions/session-01/reduced/2024-01-01/{expectedRecipe}/"
+        f"./sessions/session_01/reduced/2024-01-01/{expectedRecipe}/"
         "20240102T030405_STARE_STD_RESP.fits"
     )
 
@@ -155,7 +155,7 @@ def test_predict_product_path_appends_resp_for_std_stare_and_nod(
             pass
 
         def session_list(self, silent: bool) -> tuple[str, list[str]]:
-            return "session-01", ["session-01"]
+            return "session_01", ["session_01"]
 
         def close(self) -> None:
             pass
@@ -167,7 +167,7 @@ def test_predict_product_path_appends_resp_for_std_stare_and_nod(
 
     assert night == "2024-01-01"
     assert productPath == (
-        f"./sessions/session-01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
+        f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
     )
 
 
@@ -188,7 +188,7 @@ def test_predict_product_path_appends_extracted_merged_for_non_std_stare_and_nod
             pass
 
         def session_list(self, silent: bool) -> tuple[str, list[str]]:
-            return "session-01", ["session-01"]
+            return "session_01", ["session_01"]
 
         def close(self) -> None:
             pass
@@ -200,7 +200,7 @@ def test_predict_product_path_appends_extracted_merged_for_non_std_stare_and_nod
 
     assert night == "2024-01-01"
     assert productPath == (
-        f"./sessions/session-01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
+        f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
     )
 
 
