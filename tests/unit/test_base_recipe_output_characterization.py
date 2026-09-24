@@ -328,8 +328,7 @@ def test_write_can_save_a_named_non_product_frame_with_masked_pixels_set(
     # ASSERT
     assert Path(filepath) == tmp_path / "intermediate.fits"
     written = CCDData.read(filepath, hdu_uncertainty="ERRS", hdu_mask="QUAL")
-    # THE METHOD WRITES 1, NOT 0, INTO MASKED PIXELS DESPITE ITS ARGUMENT NAME
-    assert written.data[1, 1] == pytest.approx(1.0)
+    assert written.data[1, 1] == pytest.approx(0.0)
     assert written.data[0, 0] == pytest.approx(7.0)
     # THE MASK ITSELF SURVIVES THE ROUND TRIP, IN ITS OWN QUAL EXTENSION
     assert bool(written.mask[1, 1]) is True
