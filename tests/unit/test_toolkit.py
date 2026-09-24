@@ -35,6 +35,24 @@ def test_cut_image_slice_returns_centered_medians_and_coordinates(log: object) -
     assert (yOffset, xCentre) == (1, 3.5)
 
 
+def test_cut_image_slice_returns_raw_data_when_median_false(log: object) -> None:
+    frame = np.arange(49, dtype=float).reshape(7, 7)
+
+    result, offset, centre = toolkit.cut_image_slice(
+        log, frame, width=3, length=4, x=3, y=3, median=False
+    )
+
+    assert_array_equal(
+        result,
+        [
+            [15.0, 16.0, 17.0, 18.0],
+            [22.0, 23.0, 24.0, 25.0],
+            [29.0, 30.0, 31.0, 32.0],
+        ],
+    )
+    assert (offset, centre) == (1, 3.5)
+
+
 def test_cut_image_slice_rejects_invalid_axis_and_out_of_bounds(log: object) -> None:
     frame = np.zeros((7, 7))
 
