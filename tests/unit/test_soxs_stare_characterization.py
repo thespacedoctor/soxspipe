@@ -30,12 +30,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from astropy.nddata import CCDData
 
 import soxspipe.commonutils as commonutils
 import soxspipe.commonutils.set_of_files as set_of_files_module
 import soxspipe.commonutils.toolkit as toolkit
+from soxspipe.commonutils import keyword_lookup
 from soxspipe.recipes.base_recipe import base_recipe
 from soxspipe.recipes.soxs_stare import soxs_stare
+from tests.factories import synthetic_ccd
 
 pytestmark = pytest.mark.unit
 
@@ -172,6 +175,7 @@ def _construct(
     verbose: bool = False,
     settings: dict[str, Any] | None = None,
     inputFrames: str | list[str] | None = None,
+    preparedFrames: object | None = None,
 ) -> tuple[soxs_stare, dict[str, Any]]:
     """Construct a recipe for real against a stubbed set of files.
 
@@ -185,7 +189,7 @@ def _construct(
     inventory.calls = calls
 
     sofArguments: dict[str, Any] = {}
-    preparedFrames = object()
+    preparedFrames = object() if preparedFrames is None else preparedFrames
     realGetRecipeSettings = base_recipe.get_recipe_settings
 
     class StubSetOfFiles:
@@ -394,21 +398,64 @@ def test_a_list_of_frames_fails_in_the_inherited_constructor(
     assert calls == []
 
 
-def test_a_missing_set_of_files_name_calls_an_unimported_name(
+class FramesWithFiles:
+    """Prepared-frame collection stub exposing the `files_filtered` seam the naming fallback filters
+    by image type, the same seam `filenamer` reads the selected path through.
+    """
+
+    def __init__(self, *, frames: list[tuple[str, dict[str, str]]]) -> None:
+        self._frames = frames
+
+    def files_filtered(self, *, include_path: bool, **filters: str) -> list[str]:
+        assert include_path is True
+        return [
+            path
+            for path, headerValues in self._frames
+            if all(headerValues.get(key) == value for key, value in filters.items())
+        ]
+
+
+def _stare_keyword(log: Any, tag: str) -> str:
+    """Return the real FITS header keyword a SOXS-instrument `soxs_stare` recipe resolves `tag` to."""
+    return keyword_lookup(log=log, settings={"instrument": "soxs"}).get(tag)
+
+
+def test_a_missing_set_of_files_name_names_products_from_the_object_frame_not_the_first_by_mjd(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """With no set-of-files name, the product-name fallback raises `NameError` after preparation.
+    """With no set-of-files name, the product is named from the OBJECT frame, not merely index 0.
 
-    This pins a defect, DY-111: `filenamer` is never imported into
-    `soxs_stare`. The branch is masked by DY-90 today, so the inherited
-    product-path step is stubbed to leave `sofName` false while still
-    setting `startNightDate`. Whoever fixes DY-111 moves this pin.
+    Pins the DY-111 review fix: `verify_input_frames` accepts calibration frames (bias, dark, flat,
+    standards) alongside OBJECT frames, so the earlier "first prepared frame" fallback could silently
+    name the product after a calibration frame. Here the earlier-MJD-OBS frame is a BIAS and the
+    later-MJD-OBS frame is the OBJECT frame; only the OBJECT frame's header may drive the filename.
     """
     # ARRANGE
     inventory = FrameInventory()
     calls: list[str] = []
+    calibrationPath = str(tmp_path / "bias_earlier_mjd.fits")
+    objectPath = str(tmp_path / "object_later_mjd.fits")
+    preparedFrames = FramesWithFiles(
+        frames=[
+            (calibrationPath, {_stare_keyword(log, "DPR_TYPE"): "BIAS", _stare_keyword(log, "DPR_TECH"): "IMAGE"}),
+            (
+                objectPath,
+                {
+                    _stare_keyword(log, "DPR_TYPE"): "OBJECT",
+                    _stare_keyword(log, "DPR_TECH"): "ECHELLE,SLIT,STARE",
+                },
+            ),
+        ]
+    )
+    objectFrame = synthetic_ccd(
+        headerOverrides={
+            "DPR_TYPE": "OBJECT",
+            "DPR_TECH": "ECHELLE,SLIT,STARE",
+            "OBJECT": "REAL TARGET",
+        }
+    )
 
     def unnamed_product_path(self: soxs_stare, log: Any, *_: object) -> None:
         self.sofName = False
@@ -416,13 +463,77 @@ def test_a_missing_set_of_files_name_calls_an_unimported_name(
         self.startNightDate = "2024-01-02"
         self.log = log
 
+    def fake_ccddata_read(path: str, **_: object) -> CCDData:
+        assert path == objectPath
+        return objectFrame
+
     monkeypatch.setattr(base_recipe, "_resolve_product_path", unnamed_product_path)
+    monkeypatch.setattr(CCDData, "read", staticmethod(fake_ccddata_read))
 
-    # ACT / ASSERT
-    with pytest.raises(NameError, match="filenamer"):
-        _construct(log, monkeypatch, tmp_path, inventory=inventory, calls=calls)
+    # ACT
+    recipe, _ = _construct(
+        log,
+        monkeypatch,
+        tmp_path,
+        inventory=inventory,
+        calls=calls,
+        preparedFrames=preparedFrames,
+    )
 
+    # ASSERT
+    assert recipe.filenameTemplate == "2024.01.02T03.04.05.678_VIS_RO2_OBJECT_STARE_REAL_TARGET_SLIT.fits"
     assert calls[-1] == "prepare_frames(save=False)"
+
+
+def test_a_missing_set_of_files_name_falls_back_to_the_first_frame_when_no_object_frame_exists(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """With no set-of-files name and no OBJECT/standard frame present, naming falls back to frame 0.
+
+    A calibration-only input (e.g. building master calibrations without any science frame) must still
+    resolve a filename, so the fallback stays but is only reached when no science-type frame exists.
+    """
+    # ARRANGE
+    inventory = FrameInventory()
+    calls: list[str] = []
+    onlyCalibrationPath = str(tmp_path / "only_bias.fits")
+    preparedFrames = FramesWithFiles(
+        frames=[
+            (
+                onlyCalibrationPath,
+                {_stare_keyword(log, "DPR_TYPE"): "BIAS", _stare_keyword(log, "DPR_TECH"): "IMAGE"},
+            ),
+        ]
+    )
+    calibrationFrame = synthetic_ccd()
+
+    def unnamed_product_path(self: soxs_stare, log: Any, *_: object) -> None:
+        self.sofName = False
+        self.productPath = False
+        self.startNightDate = "2024-01-02"
+        self.log = log
+
+    def fake_ccddata_read(path: str, **_: object) -> CCDData:
+        assert path == onlyCalibrationPath
+        return calibrationFrame
+
+    monkeypatch.setattr(base_recipe, "_resolve_product_path", unnamed_product_path)
+    monkeypatch.setattr(CCDData, "read", staticmethod(fake_ccddata_read))
+
+    # ACT
+    recipe, _ = _construct(
+        log,
+        monkeypatch,
+        tmp_path,
+        inventory=inventory,
+        calls=calls,
+        preparedFrames=preparedFrames,
+    )
+
+    # ASSERT
+    assert recipe.filenameTemplate == "2024.01.02T03.04.05.678_VIS_RO2_BIAS.fits"
 
 
 def test_a_vis_object_frame_with_its_calibrations_passes(
