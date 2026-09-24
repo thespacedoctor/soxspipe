@@ -43,7 +43,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     **Return:**
 
-    - ``slice`` -- the median-collapsed slice when ``median`` is True
+    - ``slice`` -- the median-collapsed slice when ``median`` is True, otherwise the full uncollapsed cut
     - ``slice_length_offset`` -- the pixel offset of the slice start along its length
     - ``slice_width_centre`` -- the pixel coordinate of the slice centre across its width
 
@@ -110,6 +110,8 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     if median:
         slice = ma.median(sliceFull, axis=1) if sliceAxis == "y" else ma.median(sliceFull, axis=0)
+    else:
+        slice = sliceFull
 
     # DELIBERATELY DISABLED DEBUG PLOT: THE LEADING `False` SHORT-CIRCUITS, SO `random` NEVER RUNS
     if False and debug and random.randint(1, 101) < 5:  # noqa: SIM223, S311
