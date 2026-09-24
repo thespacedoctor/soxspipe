@@ -30,12 +30,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from astropy.nddata import CCDData
 
 import soxspipe.commonutils as commonutils
 import soxspipe.commonutils.set_of_files as set_of_files_module
 import soxspipe.commonutils.toolkit as toolkit
 from soxspipe.recipes.base_recipe import base_recipe
 from soxspipe.recipes.soxs_stare import soxs_stare
+from tests.factories import synthetic_ccd
 
 pytestmark = pytest.mark.unit
 
@@ -172,6 +174,7 @@ def _construct(
     verbose: bool = False,
     settings: dict[str, Any] | None = None,
     inputFrames: str | list[str] | None = None,
+    preparedFrames: object | None = None,
 ) -> tuple[soxs_stare, dict[str, Any]]:
     """Construct a recipe for real against a stubbed set of files.
 
@@ -185,7 +188,7 @@ def _construct(
     inventory.calls = calls
 
     sofArguments: dict[str, Any] = {}
-    preparedFrames = object()
+    preparedFrames = object() if preparedFrames is None else preparedFrames
     realGetRecipeSettings = base_recipe.get_recipe_settings
 
     class StubSetOfFiles:
@@ -394,21 +397,36 @@ def test_a_list_of_frames_fails_in_the_inherited_constructor(
     assert calls == []
 
 
-def test_a_missing_set_of_files_name_calls_an_unimported_name(
+class FramesWithFiles:
+    """Prepared-frame collection stub exposing the `files_filtered` seam `filenamer` reads through."""
+
+    def __init__(self, *, paths: list[str]) -> None:
+        self._paths = paths
+
+    def files_filtered(self, *, include_path: bool) -> list[str]:
+        assert include_path is True
+        return list(self._paths)
+
+
+def test_a_missing_set_of_files_name_names_products_from_the_first_prepared_frame(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """With no set-of-files name, the product-name fallback raises `NameError` after preparation.
+    """With no set-of-files name, the product name falls back to the first prepared frame.
 
-    This pins a defect, DY-111: `filenamer` is never imported into
-    `soxs_stare`. The branch is masked by DY-90 today, so the inherited
-    product-path step is stubbed to leave `sofName` false while still
-    setting `startNightDate`. Whoever fixes DY-111 moves this pin.
+    This moves the DY-111 pin: `filenamer` is now imported, and the branch
+    reads the first frame of the prepared collection (`self.inputFrames`,
+    the only frame-bearing attribute the constructor has set by this point)
+    rather than the never-set `self.objectFrame`. The branch is still masked
+    by DY-90 today, so the inherited product-path step is stubbed to leave
+    `sofName` false while still setting `startNightDate`.
     """
     # ARRANGE
     inventory = FrameInventory()
     calls: list[str] = []
+    preparedFrames = FramesWithFiles(paths=[str(tmp_path / "prepared_frame.fits")])
+    firstFrame = synthetic_ccd()
 
     def unnamed_product_path(self: soxs_stare, log: Any, *_: object) -> None:
         self.sofName = False
@@ -416,12 +434,25 @@ def test_a_missing_set_of_files_name_calls_an_unimported_name(
         self.startNightDate = "2024-01-02"
         self.log = log
 
+    def fake_ccddata_read(path: str, **_: object) -> CCDData:
+        assert path == str(tmp_path / "prepared_frame.fits")
+        return firstFrame
+
     monkeypatch.setattr(base_recipe, "_resolve_product_path", unnamed_product_path)
+    monkeypatch.setattr(CCDData, "read", staticmethod(fake_ccddata_read))
 
-    # ACT / ASSERT
-    with pytest.raises(NameError, match="filenamer"):
-        _construct(log, monkeypatch, tmp_path, inventory=inventory, calls=calls)
+    # ACT
+    recipe, _ = _construct(
+        log,
+        monkeypatch,
+        tmp_path,
+        inventory=inventory,
+        calls=calls,
+        preparedFrames=preparedFrames,
+    )
 
+    # ASSERT
+    assert recipe.filenameTemplate == "2024.01.02T03.04.05.678_VIS_RO2_BIAS.fits"
     assert calls[-1] == "prepare_frames(save=False)"
 
 

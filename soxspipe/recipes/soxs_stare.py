@@ -13,7 +13,7 @@ Date Created
 import os
 import sys
 
-from soxspipe.commonutils import detector_lookup, subtract_sky
+from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
 from soxspipe.commonutils.toolkit import (
     generic_quality_checks,
     get_calibrations_path,
@@ -92,10 +92,23 @@ class soxs_stare(base_recipe):
         if self.sofName:
             self.filenameTemplate = self.sofName + ".fits"
         else:
-            # FILENAMER IS NEVER IMPORTED, SO THIS BRANCH RAISES NAMEERROR. THE FIX IS DY-111, NOT A REFACTOR
-            self.filenameTemplate = filenamer(  # noqa: F821
-                log=self.log, frame=self.objectFrame, settings=self.settings
+            # NO SET-OF-FILES NAME TO FALL BACK ON, SO NAME PRODUCTS FROM THE
+            # FIRST PREPARED FRAME INSTEAD -- THE ONLY FRAME-BEARING ATTRIBUTE
+            # THE CONSTRUCTOR HAS SET BY THIS POINT (DY-111)
+            from astropy import units as u
+            from astropy.nddata import CCDData
+
+            firstFramePath = self.inputFrames.files_filtered(include_path=True)[0]
+            firstFrame = CCDData.read(
+                firstFramePath,
+                hdu=0,
+                unit=u.electron,
+                hdu_uncertainty="ERRS",
+                hdu_mask="QUAL",
+                hdu_flags="FLAGS",
+                key_uncertainty_type="UTYPE",
             )
+            self.filenameTemplate = filenamer(log=self.log, frame=firstFrame, settings=self.settings)
 
         self.generateReponseCurve = False
 
