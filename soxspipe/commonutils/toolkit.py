@@ -1619,7 +1619,7 @@ def predict_product_path(sofName, recipeName=False):
 
     if "_STARE_STD" in sofName or "_NOD_STD" in sofName:
         sofName += "_RESP"
-    elif "_STARE_STD" in sofName or "_NOD_STD" in sofName:
+    elif "_STARE" in sofName or "_NOD" in sofName:
         sofName += "_EXTRACTED_MERGED"
     productPath = (
         f"./sessions/{currentSession}/reduced/{startNightDate}/"
