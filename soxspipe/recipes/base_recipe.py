@@ -1381,7 +1381,7 @@ class base_recipe:
         # SET BAD-PIXELS TO 0 IN DATA FRAME
         if maskToZero:
             self.log.print(f"\nSetting {frame.mask.sum()} bad-pixels to a value of 0 while saving '{filename}'.")
-            frame.data[frame.mask] = 1
+            frame.data[frame.mask] = 0
 
         HDUList = frame.to_hdu(hdu_mask="QUAL", hdu_uncertainty="ERRS", hdu_flags=None)
         HDUList[0].name = "FLUX"
