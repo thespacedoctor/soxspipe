@@ -28,7 +28,7 @@
         list sof                               list all science object SOF files within the workspace
         prep                                   prepare a folder of raw data (workspace) for data reduction
         session ls                             list all available data-reduction sessions in the workspace
-        session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
+        session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _
         session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
         reduce all                             reduce all of the data in a workspace.
         reduce sof                             reduce a single science object SOF file.

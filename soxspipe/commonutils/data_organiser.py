@@ -45,10 +45,10 @@ def _validate_session_id(sessionId):
     import re
 
     if not isinstance(sessionId, str) or re.fullmatch(
-        r"[0-9A-Za-z_-]{1,16}", sessionId
+        r"[0-9A-Za-z_]{1,16}", sessionId
     ) is None:
         raise _UnsafePathError(
-            "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _-"
+            "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _"
         )
     return sessionId
 
@@ -1381,7 +1381,7 @@ class data_organiser:
 
         **Key Arguments:**
 
-        - ``sessionId`` -- optionally provide a sessionId (A-Z, a-z 0-9 and/or _- allowed, 16 character limit)
+        - ``sessionId`` -- optionally provide a sessionId (A-Z, a-z, 0-9 and/or _ allowed, 16 character limit)
 
         **Return:**
 
