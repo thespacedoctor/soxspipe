@@ -22,3 +22,14 @@ def test_utkit_builds_legacy_paths_and_optional_database_configuration(
     assert withoutDatabase.dbConfig is False
     assert "dryx_unit_testing" in withDatabase.dbConfig
     assert Path(withDatabase.get_project_root()).name == "soxspipe"
+
+
+def test_utkit_no_longer_defines_dead_refresh_database_method() -> None:
+    # DY-32: REFRESH_DATABASE() POINTED AT A SETTINGS FILE THAT NEVER SHIPPED
+    # (TEST_SETTINGS.YAML, SINGULAR) AND RAN A MYSQL SCRIPT RUNNER AGAINST A
+    # PIPELINE WHOSE PERSISTED STATE IS SQLITE. IT HAD NO REACHABLE CALLER.
+    #
+    # CHECK THE SOXSPIPE OVERRIDE'S OWN __DICT__, NOT HASATTR(): THE PARENT
+    # FUNDAMENTALS.UTKIT CLASS STILL DEFINES REFRESH_DATABASE, SO HASATTR()
+    # WOULD REPORT TRUE VIA INHERITANCE REGARDLESS OF THIS DELETION.
+    assert "refresh_database" not in utKit.__dict__
