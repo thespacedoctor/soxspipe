@@ -288,7 +288,8 @@ class set_of_files:
         keys = self.settings["summary-keys"]["verbose"] if self.verbose else self.settings["summary-keys"]["default"]
 
         if recipeName and recipeName == "soxs-nod":
-            keys += self.settings["summary-keys"]["nodding_extras"]
+            # BUILD A NEW LIST -- NEVER MUTATE THE SETTINGS DICT'S OWN LIST (DY-73)
+            keys = keys + self.settings["summary-keys"]["nodding_extras"]
 
         keys = kw(keys)
         self.keys = []

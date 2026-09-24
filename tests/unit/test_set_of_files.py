@@ -1,7 +1,7 @@
 """Characterization tests pinning the current behaviour of `set_of_files.py`.
 
 These tests describe what the module does today, including behaviour that
-looks like a defect (DY-73, DY-74, DY-75, and others noted inline). They must
+looks like a defect (DY-74, DY-75, and others noted inline). They must
 all pass unchanged against the current implementation -- they are not
 RED/GREEN tests, they exist to freeze behaviour ahead of a refactor.
 """
@@ -89,15 +89,17 @@ def test_init_verbose_false_selects_the_default_summary_keys(
     assert sof.keys == ["ESO DPR TYPE", "file"]
 
 
-def test_init_nodding_recipe_mutates_the_shared_settings_list(
+def test_init_nodding_recipe_does_not_mutate_the_shared_settings_list(
     tmp_path: Path, log: object
 ) -> None:
-    """DY-73: `keys += nodding_extras` mutates the settings dict's own list.
+    """DY-73: `keys += nodding_extras` used to mutate the settings dict's own list.
 
-    Every `set_of_files` instantiation with `recipeName="soxs-nod"` appends
-    the nodding-extras keys onto `settings["summary-keys"]["verbose"]` again,
-    in place, so the settings object grows unboundedly across repeated use.
-    This is a known defect (DY-73); it is pinned here, not fixed.
+    Every `set_of_files` instantiation with `recipeName="soxs-nod"` used to
+    append the nodding-extras keys onto `settings["summary-keys"]["verbose"]`
+    again, in place, so the settings object grew unboundedly across repeated
+    use. `set_of_files.__init__` now builds its per-instance key list from a
+    new list, so the settings dict's own list is left untouched no matter how
+    many times `set_of_files` is instantiated.
     """
     settings = _settings(tmp_path, verbose=["DPR_TYPE"], nodding_extras=["SEQ_ARM"])
     verboseKeysList = settings["summary-keys"]["verbose"]
@@ -107,7 +109,8 @@ def test_init_nodding_recipe_mutates_the_shared_settings_list(
             log=log, settings=settings, verbose=True, recipeName="soxs-nod"
         )
 
-    assert verboseKeysList == ["DPR_TYPE", "SEQ_ARM", "SEQ_ARM", "SEQ_ARM"]
+    assert settings["summary-keys"]["verbose"] is verboseKeysList
+    assert verboseKeysList == ["DPR_TYPE"]
 
 
 def test_init_keys_is_a_new_list_not_the_settings_list(
