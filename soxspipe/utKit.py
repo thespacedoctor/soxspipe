@@ -73,28 +73,3 @@ class utKit(utKit):
         rootPath = os.path.dirname(__file__)
 
         return rootPath
-
-    def refresh_database(self):
-        """
-        *Refresh the unit test database*
-        """
-        from fundamentals import tools
-        from fundamentals.mysql import directory_script_runner
-
-        packageDirectory = self.get_project_root()
-        su = tools(
-            arguments={"settingsFile": packageDirectory + "/test_settings.yaml"},
-            docString=__doc__,
-            logLevel="DEBUG",
-            options_first=False,
-            projectName=None,
-            defaultSettingsFile=False,
-        )
-        arguments, settings, log, dbConn = su.setup()
-        directory_script_runner(
-            log=log,
-            pathToScriptDirectory=packageDirectory + "/tests/input",
-            dbConn=dbConn,
-            successRule=None,
-            failureRule=None,
-        )
