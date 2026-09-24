@@ -930,10 +930,7 @@ class base_recipe:
         if len(arm) > 1:
             arms = " and ".join(arm)
             self._report_verification_error(showSummary=True)
-            # THIS INTERPOLATION IS A DEFECT, NOT A STYLE CHOICE: `imageTypes`
-            # DOES NOT EXIST YET, SO IT RAISES `KeyError`. REWRITING IT IS
-            # DY-89, AND THE CHARACTERIZATION TEST PINS TODAY'S BEHAVIOUR.
-            raise TypeError("Input frames are a mix of %(imageTypes)s" % locals())  # noqa: UP031
+            raise TypeError(f"Input frames are a mix of arms: {arms}")
         self.arm = arm[0]
 
         return
@@ -992,7 +989,7 @@ class base_recipe:
 
         if len(readSpeed) > 1:
             self._report_verification_error(showSummary=True, trailingNewlines=True)
-            raise TypeError(f"Input frames are a mix of readout speeds. {readSpeed}" % locals())
+            raise TypeError(f"Input frames are a mix of readout speeds. {readSpeed}")
 
         return
 
@@ -1031,7 +1028,7 @@ class base_recipe:
         if len(gain) > 1:
             self._report_verification_error(showSummary=True)
             # gain = np.unique(gain)
-            raise TypeError(f"Input frames are a mix of gain {gain}" % locals())
+            raise TypeError(f"Input frames are a mix of gain {gain}")
         if len(gain) and gain[0]:
             # UVB & VIS
             self.detectorParams["gain"] = gain[0] * u.electron / u.adu
@@ -1095,7 +1092,7 @@ class base_recipe:
                 pass
             else:
                 self._report_verification_error(showSummary=True)
-                raise TypeError(f"Input frames are a mix of slit-width ({slitWidth})" % locals())
+                raise TypeError(f"Input frames are a mix of slit-width ({slitWidth})")
 
         return
 
@@ -1118,7 +1115,7 @@ class base_recipe:
         # MIXED NOISE
         if len(ron) > 1:
             self._report_verification_error(showSummary=True)
-            raise TypeError(f"Input frames are a mix of readnoise. {ron}" % locals())
+            raise TypeError(f"Input frames are a mix of readnoise. {ron}")
         if len(ron) and ron[0]:
             # UVB & VIS
             self.detectorParams["ron"] = ron[0] * u.electron

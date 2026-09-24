@@ -138,6 +138,72 @@ def test_predict_product_path_uses_observation_night_and_cli_recipe(
     )
 
 
+@pytest.mark.parametrize(
+    ("sofName", "expectedProductName"),
+    [
+        ("20240102T030405_STARE_STD.sof", "20240102T030405_STARE_STD_RESP.fits"),
+        ("20240102T030405_NOD_STD.sof", "20240102T030405_NOD_STD_RESP.fits"),
+    ],
+)
+def test_predict_product_path_appends_resp_for_std_stare_and_nod(
+    monkeypatch: pytest.MonkeyPatch,
+    sofName: str,
+    expectedProductName: str,
+) -> None:
+    class Organiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_list(self, silent: bool) -> tuple[str, list[str]]:
+            return "session-01", ["session-01"]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", Organiser)
+    monkeypatch.setattr(sys, "argv", ["soxspipe", "stare"])
+
+    productPath, night = toolkit.predict_product_path(sofName)
+
+    assert night == "2024-01-01"
+    assert productPath == (
+        f"./sessions/session-01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("sofName", "expectedProductName"),
+    [
+        ("20240102T030405_STARE.sof", "20240102T030405_STARE_EXTRACTED_MERGED.fits"),
+        ("20240102T030405_NOD.sof", "20240102T030405_NOD_EXTRACTED_MERGED.fits"),
+    ],
+)
+def test_predict_product_path_appends_extracted_merged_for_non_std_stare_and_nod(
+    monkeypatch: pytest.MonkeyPatch,
+    sofName: str,
+    expectedProductName: str,
+) -> None:
+    class Organiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_list(self, silent: bool) -> tuple[str, list[str]]:
+            return "session-01", ["session-01"]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", Organiser)
+    monkeypatch.setattr(sys, "argv", ["soxspipe", "stare"])
+
+    productPath, night = toolkit.predict_product_path(sofName)
+
+    assert night == "2024-01-01"
+    assert productPath == (
+        f"./sessions/session-01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
+    )
+
+
 def test_add_recipe_logger_replaces_handlers_and_separates_messages(
     tmp_path: Path,
 ) -> None:
