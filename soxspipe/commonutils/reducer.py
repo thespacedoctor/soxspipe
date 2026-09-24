@@ -18,6 +18,26 @@ import sys
 os.environ["TERM"] = "vt100"
 
 
+def _sql_in_placeholders(values):
+    """*build a bound `?` placeholder clause and its parameter list for a SQL `in (...)` test*
+
+    An empty `values` produces a clause that matches no row, since `sof in
+    ()` is invalid SQLite syntax.
+
+    **Key Arguments:**
+
+    - ``values`` -- the list of values the `in (...)` clause should match
+
+    **Return:**
+
+    - ``clause`` -- the `in (...)` clause body, either `?, ?, ...` or `NULL`
+    - ``params`` -- the parameters to bind against `clause`, in order
+    """
+    if not values:
+        return "NULL", []
+    return ", ".join("?" for _ in values), list(values)
+
+
 class reducer:
     """
         *reduce all the data in a workspace, or target specific obs and files for reduction*
@@ -559,6 +579,7 @@ def run_recipe_bulk(
     from fundamentals import fmultiprocess
 
     from soxspipe.commonutils import data_organiser
+    from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
     def wrapper(
         inputDict,
@@ -690,18 +711,31 @@ def run_recipe_bulk(
             qcTables.append(result["qcTable"])
 
     c = conn.cursor()
-    passingString = "','".join(passing)
-    failingString = "','".join(failing)
-    sqlQuery = f"select count(*) from product_frames where (sof in ('{passingString}') and status_{sessionId} = 'fail') or  (sof in ('{failingString}') and (status_{sessionId} != 'fail' or status_{sessionId} is null))"
-    c.execute(sqlQuery)
+    statusColumn = validate_sql_identifier(f"status_{sessionId}", "status column")
+    passingClause, passingParams = _sql_in_placeholders(passing)
+    failingClause, failingParams = _sql_in_placeholders(failing)
+    sqlQuery = (
+        "select count(*) from product_frames where "  # noqa: S608
+        f"(sof in ({passingClause}) and {statusColumn} = 'fail') "
+        f"or (sof in ({failingClause}) and ({statusColumn} != 'fail' or {statusColumn} is null))"
+    )
+    c.execute(sqlQuery, passingParams + failingParams)
     count = c.fetchone()[0]
     if len(passing) or len(failing):
         sqlQueries = [
-            f"update product_frames set status_{sessionId} = 'pass' where sof in ('{passingString}') and (status_{sessionId} != 'pass' or status_{sessionId} is null)",
-            f"update product_frames set status_{sessionId} = 'fail' where sof in ('{failingString}') and (status_{sessionId} != 'fail' or status_{sessionId} is null)",
+            (
+                f"update product_frames set {statusColumn} = 'pass' where sof in ({passingClause}) "  # noqa: S608
+                f"and ({statusColumn} != 'pass' or {statusColumn} is null)",
+                passingParams,
+            ),
+            (
+                f"update product_frames set {statusColumn} = 'fail' where sof in ({failingClause}) "  # noqa: S608
+                f"and ({statusColumn} != 'fail' or {statusColumn} is null)",
+                failingParams,
+            ),
         ]
-        for sqlQuery in sqlQueries:
-            c.execute(sqlQuery)
+        for sqlQuery, sqlParams in sqlQueries:
+            c.execute(sqlQuery, sqlParams)
     if len(errorSOF):
         error_rows = [(str(error), sof) for sof, error in zip(errorSOF, errorMessages)]
         c.executemany(
