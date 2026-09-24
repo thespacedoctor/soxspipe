@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 """
 *using a fully-illuminated slit flat frame detect and record the order-edges*
 
@@ -9,13 +10,19 @@ Date Created
 : September 18, 2020
 """
 
-import os
-from datetime import datetime
-
-from soxspipe.commonutils import _base_detect, detector_lookup, keyword_lookup
+from datetime import datetime, date, time
 from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.toolkit import unpack_order_table, get_calibration_lamp
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils import keyword_lookup
+from os.path import expanduser
 from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
-from soxspipe.commonutils.toolkit import cut_image_slice, unpack_order_table
+from soxspipe.commonutils import _base_detect
+from soxspipe.commonutils.toolkit import cut_image_slice
+from fundamentals import tools
+from builtins import object
+import sys
+import os
 
 os.environ["TERM"] = "vt100"
 
@@ -111,7 +118,7 @@ class detect_order_edges(_base_detect):
         self.exptime = flatFrame.header[kw("EXPTIME")]
         try:
             self.slit = flatFrame.header[kw(f"SLIT_{self.arm}".upper())]
-        except KeyError:
+        except:
             self.log.warning(kw(f"SLIT_{self.arm}".upper()) + " keyword not found")
             self.slit = ""
 
@@ -169,7 +176,7 @@ class detect_order_edges(_base_detect):
             surfacePlot=True,
         )
 
-        return
+        return None
 
     def get(self):
         """
@@ -184,7 +191,7 @@ class detect_order_edges(_base_detect):
         import numpy as np
         import pandas as pd
         from astropy.stats import mad_std
-
+        from soxspipe.commonutils.toolkit import read_spectral_format
 
         self.log.print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
 
@@ -413,54 +420,60 @@ class detect_order_edges(_base_detect):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES MIN",
-                            "qc_value": f"{min_res:0.5f}",
+                            "qc_value": f"{min_res:0.3f}",
                             "qc_comment": "[px] Minimum residual in order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES MAX",
-                            "qc_value": f"{max_res:0.5f}",
+                            "qc_value": f"{max_res:0.3f}",
                             "qc_comment": "[px] Maximum residual in order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES SD",
-                            "qc_value": f"{std_res:0.5f}",
+                            "qc_value": f"{std_res:0.3f}",
                             "qc_comment": "[px] Std-dev of residual order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
@@ -487,7 +500,7 @@ class detect_order_edges(_base_detect):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"ORDER_LOC{self.tag}",
@@ -499,14 +512,16 @@ class detect_order_edges(_base_detect):
                             "file_path": orderTablePath,
                             "label": "PROD",
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"ORDER_LOC_RES{self.tag}",
@@ -518,7 +533,9 @@ class detect_order_edges(_base_detect):
                             "file_path": plotPath,
                             "label": "QC",
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
@@ -553,9 +570,9 @@ class detect_order_edges(_base_detect):
         """
         self.log.debug("starting the ``plot_results`` method")
 
-        import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
+        import matplotlib.pyplot as plt
 
         allResiduals = np.concatenate(
             (
@@ -744,8 +761,7 @@ class detect_order_edges(_base_detect):
                 axisAfitlow, axisBfitlow = zip(
                     *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10]
                 )
-            except ValueError as e:
-                self.log.debug(f"plot_results: `axisAfitup, axisBfitup = zip( *[(a, b) for...` failed, continuing: {e}")
+            except:
                 continue
 
             if len(axisBfitlow) < len(axisBfitup):
@@ -760,8 +776,8 @@ class detect_order_edges(_base_detect):
                     )
                     axisAfitlow = axisAfitlowExtra + axisAfitlow
                     axisBfitlow = axisBfitlowExtra + axisBfitlow
-                except ValueError as e:
-                    self.log.debug(f"plot_results: `axisAfitlowExtra, axisBfitlowExtra = z...` failed, continuing: {e}")
+                except:
+                    pass
                 try:
                     axisAfitlowExtra, axisBfitlowExtra = zip(
                         *[
@@ -772,8 +788,8 @@ class detect_order_edges(_base_detect):
                     )
                     axisAfitlow += axisAfitlowExtra
                     axisBfitlow += axisBfitlowExtra
-                except ValueError as e:
-                    self.log.debug(f"plot_results: `axisAfitlowExtra, axisBfitlowExtra = z...` failed, continuing: {e}")
+                except:
+                    pass
 
             if self.axisAbin > 1:
                 axisAfitup = np.array(axisAfitup) / self.axisAbin
@@ -803,8 +819,8 @@ class detect_order_edges(_base_detect):
                     fc=l[0].get_color(),
                     label=label2,
                 )
-            except (ValueError, IndexError) as e:
-                self.log.debug(f"plot_results: `midrow.fill_between( axisBfitlow, axisAfit...` failed, continuing: {e}")
+            except:
+                pass
             midrow.text(
                 axisBfitlow[10],
                 axisAfitlow[10] + 5,
@@ -863,8 +879,8 @@ class detect_order_edges(_base_detect):
                         c=c,
                         verticalalignment="bottom",
                     )
-                except IndexError as e:
-                    self.log.debug(f"plot_results: `bottomleft.text( orderAxisACoords[10],...` failed, continuing: {e}")
+                except:
+                    pass
                 bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
                 try:
                     bottomright.text(
@@ -875,8 +891,8 @@ class detect_order_edges(_base_detect):
                         c=c,
                         verticalalignment="bottom",
                     )
-                except IndexError as e:
-                    self.log.debug(f"plot_results: `bottomright.text( orderAxisBCoords[10]...` failed, continuing: {e}")
+                except:
+                    pass
 
             bottomleft.set_xlabel(f"{self.axisA} pixel position")
             bottomleft.set_ylabel(f"{self.axisA} residual")
@@ -915,7 +931,7 @@ class detect_order_edges(_base_detect):
         )
 
         if self.sofName:
-            filename = self.sofName + "_ORD_LOC.pdf"
+            filename = self.sofName + f"_ORD_LOC.pdf"
         else:
             filename = filenamer(log=self.log, frame=self.flatFrame, settings=self.settings)
             filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
@@ -1039,10 +1055,9 @@ class detect_order_edges(_base_detect):
         minThresholdPercenage = self.minThresholdPercenage
         maxThresholdPercenage = self.maxThresholdPercenage
 
-        import random
-
         import numpy as np
         from scipy.signal import medfilt
+        import random
 
         sliceWidth = self.sliceWidth
         sliceLength = self.sliceLength
@@ -1105,8 +1120,7 @@ class detect_order_edges(_base_detect):
                 axisAmaxguess = np.where(secondHalf < threshold)[0][0] + middle
                 axisAminguess = np.where(firstHalf < threshold)[0][-1]
                 hit = True
-            except IndexError as e:
-                self.log.debug(f"determine_lower_upper_edge_pixel_positions: `axisAmaxgues...` failed, continuing: {e}")
+            except:
                 threshold = threshold + thresholdRange * 0.1
 
         # IF WE STILL DIDN'T GET A HIT THEN REJECT
@@ -1159,8 +1173,9 @@ class detect_order_edges(_base_detect):
                 plt.legend()
                 plt.show()
             return orderData
-        orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice) + 1
-        orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice) - 1
+        else:
+            orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice) + 1
+            orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice) - 1
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if False and random.randint(1, 5001) < 2000:

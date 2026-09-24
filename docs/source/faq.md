@@ -31,7 +31,3 @@
     ```bash
     soxspipe raw sof 20260128T075112_NIR_3_STARE-OBJ_SLIT1_0_600_0S_SOXS_PAQS135626+042348.sof
     ```
-
-- My spectrum seems to be very noisy in the bluer region < 400 nm. Why is this?
-
-    The QTH lamp SOXS currently uses to generate the flat-field frames produces little signal in this region. Therefore, when the data is divided by the master flat, this additional noise is introduced. This can also affect the quality of the response curve generated from the spectroscopic standard stars in the same region and, therefore, the final flux calibration of science sources.

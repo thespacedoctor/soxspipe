@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 """
 *Sub-class of CCDProc Combiner to fix error map combination*
 
@@ -9,9 +10,11 @@ Date Created
 : October 27, 2022
 """
 
-import os
-
 from ccdproc import Combiner as OriginalCombiner
+from fundamentals import tools
+from builtins import object
+import sys
+import os
 
 os.environ["TERM"] = "vt100"
 
@@ -19,17 +22,10 @@ os.environ["TERM"] = "vt100"
 class Combiner(OriginalCombiner):
 
     def average_combine(self):
-        """*average-combine the stack, ignoring NaN pixels*
-
-        **Return:**
-
-        - ``combined_image`` -- a ``CCDData`` holding the NaN-ignoring mean of the
-          stack. Pixels masked in every frame are masked in the result, and ``NCOMBINE``
-          holds the number of frames.
-        """
-        import bottleneck as bn
-        import numpy as np
+        """ """
         from astropy.nddata import CCDData
+        import numpy as np
+        import bottleneck as bn
 
         data, masked_values, scale_func = self._combination_setup(
             None, bn.nanmean, None
@@ -38,13 +34,13 @@ class Combiner(OriginalCombiner):
         mean = scale_func(data, axis=0)
         mask = masked_values == len(self.data_arr)
 
-        # CREATE THE COMBINED IMAGE WITH A DTYPE THAT MATCHES THE COMBINER
+        # create the combined image with a dtype that matches the combiner
         combined_image = CCDData(
             np.asarray(mean, dtype=self.dtype), mask=mask, unit=self.unit
         )
 
-        # UPDATE THE META DATA
+        # update the meta data
         combined_image.meta["NCOMBINE"] = len(data)
 
-        # RETURN THE COMBINED IMAGE
+        # return the combined image
         return combined_image

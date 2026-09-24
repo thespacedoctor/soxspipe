@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 """
 *Subtract the sky background using the Kelson Method*
 
@@ -9,23 +10,27 @@ Date Created
 : April 14, 2022
 """
 
-import contextlib
-import os
-import sys
-from datetime import datetime
-
-from soxspipe.commonutils import detector_lookup, keyword_lookup
+from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
+from fundamentals import tools
+from builtins import object
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils.toolkit import read_spectral_format
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+import sys
+import os
+from datetime import datetime
+from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.filenamer import filenamer
-from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-from soxspipe.commonutils.toolkit import quicklook_image, read_spectral_format, twoD_disp_map_image_to_dataframe
+from soxspipe.commonutils.toolkit import quicklook_image
+from soxspipe.commonutils.toolkit import twoD_disp_map_image_to_dataframe
+from os.path import expanduser
 
 os.environ["TERM"] = "vt100"
 
 
-class subtract_sky:
+class subtract_sky(object):
     """
     *Subtract the sky background from a science image using the Kelson Method*
 
@@ -198,7 +203,7 @@ class subtract_sky:
 
         pd.options.mode.chained_assignment = None
 
-        self.log.print("\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME")
+        self.log.print(f"\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME")
 
         # THESE PLACEHOLDERS ARE INITIALLY BLANK AND AWAITING PIXEL VALUES TO BE ADDED
         skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData = self.create_placeholder_images()
@@ -223,7 +228,7 @@ class subtract_sky:
             imageMapOrders.append(self.mapDF[self.mapDF["order"] == o])
 
         # GET OVER SAMPLED SKY & SKY+OBJECT AS LISTS OF DATAFRAMES
-        self.log.print("\n  ## CLIPPING DEVIANT PIXELS AND PIXELS WITH OBJECT FLUX\n")
+        self.log.print(f"\n  ## CLIPPING DEVIANT PIXELS AND PIXELS WITH OBJECT FLUX\n")
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         for o in uniqueOrders:
@@ -247,7 +252,7 @@ class subtract_sky:
         )
 
         self.log.print(
-            "\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH) AND LOW-ORDER POLY (SLIT-ILLUMINATION PROFILE)\n"
+            f"\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH) AND LOW-ORDER POLY (SLIT-ILLUMINATION PROFILE)\n"
         )
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
@@ -297,7 +302,7 @@ class subtract_sky:
                     self.products = pd.concat(
                         [
                             self.products,
-                            pd.DataFrame([
+                            pd.Series(
                                 {
                                     "soxspipe_recipe": "soxs-stare",
                                     "product_label": "SKY_MODEL_QC_PLOTS",
@@ -305,11 +310,13 @@ class subtract_sky:
                                     "file_type": "PDF",
                                     "obs_date_utc": self.dateObs,
                                     "reduction_date_utc": utcnow,
-                                    "product_desc": "QC plots for the sky-background modelling",
+                                    "product_desc": f"QC plots for the sky-background modelling",
                                     "file_path": qc_plot_path,
                                     "label": "QC",
                                 }
-                            ]),
+                            )
+                            .to_frame()
+                            .T,
                         ],
                         ignore_index=True,
                     )
@@ -327,7 +334,7 @@ class subtract_sky:
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": "soxs-stare",
                             "product_label": "SKY SUBTRACTION QUICKLOOK",
@@ -335,11 +342,13 @@ class subtract_sky:
                             "file_type": "PDF",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
-                            "product_desc": "Sky-subtraction quicklook",
+                            "product_desc": f"Sky-subtraction quicklook",
                             "file_path": comparisonPdf,
                             "label": "QC",
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
@@ -374,6 +383,7 @@ class subtract_sky:
         """
         self.log.debug("starting the ``get_over_sampled_sky_from_order`` method")
 
+        from astropy.stats import sigma_clip, mad_std
 
         # COLLECT SETTINGS
         percentile_clipping_sigma = self.recipeSettings["sky-subtraction"]["percentile_clipping_sigma"]
@@ -439,14 +449,16 @@ class subtract_sky:
         """
         self.log.debug("starting the ``plot_sky_sampling`` method")
 
+        import numpy as np
+        import scipy.interpolate as ip
+        import numpy.ma as ma
         from copy import copy
 
+        import matplotlib.pyplot as plt
         import matplotlib.patches as mpatches
         import matplotlib.pyplot as plt
-        import numpy as np
-        import numpy.ma as ma
-        import scipy.interpolate as ip
-        from matplotlib import cm, colors
+        from matplotlib import cm
+        from matplotlib import colors
 
         # SET COLOURS FOR VARIOUS STAGES
         red = "#dc322f"
@@ -624,7 +636,7 @@ class subtract_sky:
         if ylimmin < -3000:
             ylimmin = -300
 
-        from astropy.stats import mad_std, sigma_clip
+        from astropy.stats import sigma_clip, mad_std
 
         # SIGMA-CLIP THE DATA
         masked = sigma_clip(
@@ -677,15 +689,6 @@ class subtract_sky:
                 zorder=3,
                 alpha=al,
             )
-
-        print(f"DEBUG: median {median}, std {std}")
-
-        if np.isnan(std):
-            std = 500
-
-        if np.isnan(median):
-            median = 0
-
 
         threerow.set_ylim(median - 3 * std, median + 7 * std)
         threerow.set_xlabel("slit-position relative to slit centre (arcsec)", fontsize=10)
@@ -1004,8 +1007,8 @@ class subtract_sky:
 
         try:
             ninerow.set_ylim(mean - 10 * std, mean + 10 * std)
-        except ValueError as e:
-            self.log.debug(f"plot_sky_sampling: `ninerow.set_ylim(mean - 10 * std, mean +...` failed, continuing: {e}")
+        except:
+            pass
 
         ninerow.set_xlabel("wavelength (nm)", fontsize=10)
         ninerow.set_ylabel("residual (weighted)", fontsize=10)
@@ -1051,6 +1054,7 @@ class subtract_sky:
         self.log.debug("starting the ``rolling_window_clipping`` method")
 
         import numpy as np
+        from astropy.stats import sigma_clip, mad_std
 
         allPixels = len(imageMapOrderDF.index)
         order = imageMapOrderDF["order"].values[0]
@@ -1130,7 +1134,7 @@ class subtract_sky:
                 break
             lastClipped = totalClipped
 
-            if self.debug and True:
+            if self.debug and False:
                 # PLOT THE CLIPPED PIXELS IN EACH ITERATION
                 self.plot_order_skymodel_fitting_quicklook(
                     imageMapOrderDF,
@@ -1214,6 +1218,8 @@ class subtract_sky:
 
         import numpy as np
         import scipy.interpolate as ip
+        import pandas as pd
+        from astropy.stats import sigma_clip
 
         # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot
         min_points_per_knot = self.recipeSettings["sky-subtraction"]["min_points_per_knot"]
@@ -1225,7 +1231,7 @@ class subtract_sky:
         residual_floor_percentile = self.recipeSettings["sky-subtraction"]["residual_floor_percentile"]
 
         # SORT BY COLUMN NAME
-        imageMapOrder.sort_values(by=["wavelength"], inplace=True, kind="stable")
+        imageMapOrder.sort_values(by=["wavelength"], inplace=True)
         order = imageMapOrder["order"].values[0]
 
         # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
@@ -1306,7 +1312,10 @@ class subtract_sky:
         if defaultPointsPerKnot:
             n_interior_knots = int(goodWl.values.shape[0] / defaultPointsPerKnot)
             # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1, ALONG WAVELENGTH RANGE
-            qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
+            try:
+                qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
+            except:
+                qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
             defaultKnots = np.quantile(goodWl, qs)
         else:
             defaultKnots = np.array([])
@@ -1475,8 +1484,7 @@ class subtract_sky:
                     w=goodWeights,
                     full_output=True,
                 )
-            except (ValueError, TypeError, RuntimeError) as e:
-                self.log.debug(f"fit_bspline_curve_to_sky: `tck, fp, ier, msg = ip.splrep(...` failed, continuing: {e}")
+            except:
                 raise ValueError(
                     f"BSpline fit failed for order {order} on iteration {iterationCount}. Possibly too many knots ({len(allKnots)}) for the number of data points ({goodWl.values.shape[0]})."
                 )
@@ -1488,7 +1496,8 @@ class subtract_sky:
                 )
                 tck = tck_previous
                 break
-            tck_previous = tck
+            else:
+                tck_previous = tck
 
             if iterationCount >= -1:
                 # FIRST PASS SIGMA CLIPPING OF BSPLINE
@@ -1603,11 +1612,12 @@ class subtract_sky:
 
             sys.stdout.flush()
             sys.stdout.write("\x1b[1A\x1b[2K")
-            # THE FAILING CALL WOULD BE THE PROGRESS LOGGER ITSELF, SO REPORTING THROUGH IT COULD RAISE AGAIN
-            with contextlib.suppress(ValueError, TypeError, OSError):
+            try:
                 self.log.print(
                     f"\tOrder: {order}, Iteration {iterationCount}, RES {flux_error_ratio.mean():0.3f}, STD {flux_error_ratio.std():0.3f}, MEDIAN {np.median(flux_error_ratio):0.3f}, MAX {flux_error_ratio.max():0.3f}, MIN {flux_error_ratio.min():0.3f}"
                 )
+            except:
+                pass
 
             if iterationCount >= 5 and lastExtraKnotCount == len(extraKnots):
                 self.log.info(f"\t\tNo new knots added on iteration {iterationCount}. Stopping iterations.\n")
@@ -1746,8 +1756,8 @@ class subtract_sky:
         self.log.debug("starting the ``plot_results`` method")
 
         import matplotlib.pyplot as plt
-        import numpy as np
         import numpy.ma as ma
+        import numpy as np
 
         arm = self.arm
 
@@ -1780,8 +1790,7 @@ class subtract_sky:
         try:
             std = np.nanstd(maskedDataValues)
             mean = np.nanmean(maskedDataValues)
-        except (TypeError, ValueError) as e:
-            self.log.debug(f"plot_image_comparison: `std = np.nanstd(maskedDataValues)` failed, continuing: {e}")
+        except:
             std = np.std(maskedDataValues)
             mean = np.mean(maskedDataValues)
         vmax = mean + 1 * std
@@ -1812,8 +1821,7 @@ class subtract_sky:
         try:
             std = np.nanstd(maskedDataValues)
             mean = np.nanmean(maskedDataValues)
-        except (TypeError, ValueError) as e:
-            self.log.debug(f"plot_image_comparison: `std = np.nanstd(maskedDataValues)` failed, continuing: {e}")
+        except:
             std = np.std(maskedDataValues)
             mean = np.mean(maskedDataValues)
 
@@ -2150,10 +2158,10 @@ class subtract_sky:
                         (df["slit_position"].between(objectt[0], objectt[1])),
                         "flagged_object_clipped",
                     ] = True
-                    df.loc[(df["flagged_object_clipped"] == True), "flagged_all_clipped"] = True
+                    df.loc[((df["flagged_object_clipped"] == True)), "flagged_all_clipped"] = True
             else:
                 # df.loc[((df['slit_position'].between(object[0], object[1])) & (df['object'] == True)), "flagged_all_clipped"] = True
-                df.loc[(df["flagged_object_clipped"] == True), "flagged_all_clipped"] = True
+                df.loc[((df["flagged_object_clipped"] == True)), "flagged_all_clipped"] = True
             # df.loc[
             #     ((df["flagged_all_clipped"] == False) & (df["flagged_object_clipped"] == True)),
             #     "flagged_object_clipped",
@@ -2218,10 +2226,11 @@ class subtract_sky:
         """
         self.log.debug("starting the ``cross_dispersion_flux_normaliser`` method")
 
-        import matplotlib.pyplot as plt
         import numpy as np
-        import scipy.interpolate as ip
         from astropy.stats import sigma_clip
+        import matplotlib.pyplot as plt
+        import pandas as pd
+        import scipy.interpolate as ip
 
         slit_illumination_order = self.recipeSettings["sky-subtraction"]["slit_illumination_order"]
         order = orderDF["order"].values[0]
@@ -2233,7 +2242,7 @@ class subtract_sky:
         thisOrder = orderDF.loc[mask]
 
         # SORT BY COLUMN NAME
-        thisOrder.sort_values(["slit_position"], inplace=True, kind="stable")
+        thisOrder.sort_values(["slit_position"], inplace=True)
 
         # GROUP INTO DISCRETE WAVELENGTH BINS
         # DEFINE THE BINS FOR COLUMN 'wavelength'
@@ -2338,7 +2347,10 @@ class subtract_sky:
         """
         self.log.debug("starting the ``adjust_tilt`` method")
 
+        import scipy.interpolate
         import numpy as np
+        from astropy.stats import sigma_clip
+        import matplotlib.pyplot as plt
         import pandas as pd
         import scipy.interpolate as ip
 
@@ -2397,7 +2409,7 @@ class subtract_sky:
 
         # orderDF['wavelength'] = orderDF["wavelength"] - orderDF["slit_position"] * orderDF["pixelScale"] * bestShift
 
-        orderDF.sort_values(by=["wavelength"], inplace=True, kind="stable")
+        orderDF.sort_values(by=["wavelength"], inplace=True)
 
         self.log.debug("completed the ``adjust_tilt`` method")
         return orderDF
@@ -2513,13 +2525,14 @@ class subtract_sky:
 
     def plot_order_skymodel_fitting_quicklook(self, imageMapOrder, tck, title=None, knots=False):
         """Quick-look diagnostic plot of the sky-model fit for a single order."""
+        from soxspipe.commonutils.toolkit import get_calibrations_path
+        from astropy.table import Table
         import matplotlib.pyplot as plt
         import numpy as np
-        import pandas as pd
         import scipy.interpolate as ip
         from astropy.stats import sigma_clipped_stats
-
         from soxspipe.commonutils.toolkit import get_skylines_dataframe
+        import pandas as pd
 
         skylinesDF = get_skylines_dataframe(self.log, self.settings, self.arm)
 
@@ -2574,8 +2587,8 @@ class subtract_sky:
                         try:
                             legobj.set_sizes([30])
                             legobj.set_alpha(0.7)
-                        except AttributeError as e:
-                            self.log.debug(f"refresh_and_plot: `legobj.set_sizes([30])` failed, continuing: {e}")
+                        except:
+                            pass
             fig.canvas.draw()
             fig.canvas.flush_events()
             if pause:

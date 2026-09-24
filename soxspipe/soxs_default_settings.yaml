@@ -12,21 +12,20 @@ ignore-dflats: True
 ignore-dome-flats: True
 
 soxs-mbias:
-    # INDIVIDUAL RAW BIAS FRAME CLIPPING PARAMETERS. DATA IS CLIPPED BEFORE STACKING.
-    frame-clipping-sigma: 3 
+    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
+    stacked-clipping-sigma: 3
+    stacked-clipping-iterations: 3 
+    # MASTER BIAS FRAME CLIPPING PARAMETERS. 
+    frame-clipping-sigma: 4 
     frame-clipping-iterations: 3
-    # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED AFTER STACKING.
-    stacked-clipping-sigma: 4
-    stacked-clipping-iterations: 3
     qc-acceptable-ranges:
         master-ron: [0,10]
         fpn-fracmax: [0,3]
         mbias-median: [0, 2000]
         raw-ron: [0,15]
-        structx: [-4,+4]
-        structy: [-0.6,0.6]
+        structx: [-3,1]
+        structy: [-0.01,0.6]
         detector-temp: [0,165]
-        
 
 soxs-mdark:
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
@@ -52,7 +51,7 @@ soxs-disp-solution:
         # DEGREE OF WAVELENGTH TERM WHEN FITTING DISPERSION SOLUTION POLYNOMIALS [X,Y]
         wavelength-deg: [5,5] 
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
-        poly-fitting-residual-clipping-sigma: 7
+        poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 7
         qc-acceptable-ranges:
@@ -224,8 +223,8 @@ soxs-spat-solution:
         # DEGREE OF SLIT POSITION COMPONENT OF GLOBAL POLYNOMIAL FIT TO THE DISPERSION SOLUTION [X, Y]
         slit-deg: [1,1]
         # NUMBER OF SIGMA-CLIPPING ITERATIONS TO PERFORM BEFORE SETTINGS ON A POLYNOMIAL FIT FOR THE DISPERSION SOLUTION
-        poly-clipping-iteration-limit: 7
-        poly-fitting-residual-clipping-sigma: 7
+        poly-clipping-iteration-limit: 5
+        poly-fitting-residual-clipping-sigma: 4
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: False
         # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
@@ -326,7 +325,7 @@ soxs-stare-std:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
             # PERCENTILE CLIPPING SIGMA LIMIT USED TO CLIP THE OBJECT(S) BEFORE FITTING A SKY MODEL
-            percentile_clipping_sigma: 2
+            percentile_clipping_sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS USED TO REMOVE THE OBJECT(S) BEFORE FITTING A SKY MODEL
             percentile_clipping_iterations: 15 
             # THE SIZE OF THE ROLLING WINDOW (IN PIXELS) USED TO PERCENTILE SMOOTH THE SKY SPECTRUM

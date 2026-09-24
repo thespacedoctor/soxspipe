@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 """
 *further constrain the first guess locations of the order centres derived in `soxs_disp_solution`*
 
@@ -10,13 +11,12 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-import os
-import sys
-
 from soxspipe.commonutils import detect_continuum
-from soxspipe.commonutils.toolkit import append_product, utcnow_string
-
+from soxspipe.commonutils import keyword_lookup
 from .base_recipe import base_recipe
+from fundamentals import tools
+import sys
+import os
 
 os.environ["TERM"] = "vt100"
 
@@ -42,7 +42,7 @@ class soxs_order_centres(base_recipe):
 
     ```python
     from soxspipe.recipes import soxs_order_centres
-    productPath, qcTable = soxs_order_centres(
+    order_table = soxs_order_centres(
         log=log,
         settings=settings,
         inputFrames=a["inputFrames"]
@@ -50,7 +50,7 @@ class soxs_order_centres(base_recipe):
     ```
     """
 
-    # INITIALISATION
+    # Initialisation
 
     def __init__(
         self,
@@ -65,7 +65,7 @@ class soxs_order_centres(base_recipe):
         turnOffMP=False,
     ):
         # INHERIT INITIALISATION FROM  base_recipe
-        super().__init__(
+        super(soxs_order_centres, self).__init__(
             log=log,
             settings=settings,
             inputFrames=inputFrames,
@@ -83,36 +83,14 @@ class soxs_order_centres(base_recipe):
         self.verbose = verbose
         self.polyOrders = polyOrders
 
-        self._parse_poly_orders()
-        self._collect_input_frames()
-        self._verify_and_announce_input_frames()
-        self._sort_and_report_input_frames()
-
-        # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
-        # EXTENSIONS
-        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
-
-        return
-
-    def _parse_poly_orders(self):
-        """*coerce the `polyOrders` override to an integer, or reject it*
-
-        Sets ``self.polyOrders``. A false value is left alone, so the recipe
-        falls back to the degrees in the settings file.
-        """
         if self.polyOrders:
             try:
                 self.polyOrders = int(self.polyOrders)
-            except (ValueError, TypeError) as e:
-                self.log.debug(f"__init__: `self.polyOrders = int(self.polyOrders)` failed, continuing: {e}")
+            except:
+                pass
             if not isinstance(self.polyOrders, int):
                 raise TypeError("THE poly VALUE NEEDS TO BE A 2 DIGIT INTEGER")
 
-    def _collect_input_frames(self):
-        """*resolve the recipe's input into a ccdproc image collection*
-
-        Sets ``self.inputFrames`` and ``self.supplementaryInput``.
-        """
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
@@ -126,11 +104,6 @@ class soxs_order_centres(base_recipe):
         )
         self.inputFrames, self.supplementaryInput = sof.get()
 
-    def _verify_and_announce_input_frames(self):
-        """*verify the collected frames and report the outcome to the terminal*
-
-        Sets ``self.imageType``, through ``verify_input_frames``.
-        """
         # VERIFY THE FRAMES ARE THE ONES EXPECTED BY SOXS_order_centres - NO MORE, NO LESS.
         # PRINT SUMMARY OF FILES.
         self.log.print("# VERIFYING INPUT FRAMES")
@@ -139,11 +112,6 @@ class soxs_order_centres(base_recipe):
         sys.stdout.write("\x1b[1A\x1b[2K")
         self.log.print("# VERIFYING INPUT FRAMES - ALL GOOD")
 
-    def _sort_and_report_input_frames(self):
-        """*sort the input frames by observation date and print the verbose summary*
-
-        Sets no attribute; sorts ``self.inputFrames`` in place.
-        """
         # SORT IMAGE COLLECTION
         self.inputFrames.sort(["MJD-OBS"])
         if self.verbose:
@@ -151,20 +119,85 @@ class soxs_order_centres(base_recipe):
             self.log.print(self.inputFrames.summary)
             self.log.print("\n")
 
+        # PREPARE THE FRAMES - CONVERT TO ELECTRONS, ADD UNCERTAINTY AND MASK
+        # EXTENSIONS
+        self.inputFrames = self.prepare_frames(save=self.settings["save-intermediate-products"])
+
+        return None
+
     def verify_input_frames(self):
         """*verify input frames match those required by the soxs_order_centres recipe*
+
+        **Return:**
+
+        - ``None``
 
         If the fits files conform to the required input for the recipe, everything will pass silently; otherwise, an exception will be raised.
         """
         self.log.debug("starting the ``verify_input_frames`` method")
 
+        kw = self.kw
+
+        error = False
+
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 
         if self.arm == "NIR":
-            error = self._nir_input_frame_error(imageTypes, imageTech, imageCat, self.arm)
+            # WANT ON AND OFF PINHOLE FRAMES
+            # MIXED INPUT IMAGE TYPES ARE BAD
+            if not error:
+                if len(imageTypes) > 1:
+                    imageTypes = " and ".join(imageTypes)
+                    erorr = "Input frames are a mix of %(imageTypes)s" % locals()
+
+            if not error:
+                if self.inst == "SOXS":
+                    good = "FLAT"
+                else:
+                    good = "LAMP,ORDERDEF"
+                if good not in imageTypes[0]:
+                    error = (
+                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames and a first-guess dispersion solution table for NIR"
+                        % locals()
+                    )
+
+            if not error:
+                for i in imageTech:
+                    if i not in ["ECHELLE,PINHOLE", "IMAGE"]:
+                        error = (
+                            "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR"
+                            % locals()
+                        )
+
+            if not error:
+                for i in [f"DISP_TAB_{self.arm}"]:
+                    if i not in imageCat:
+                        error = (
+                            "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off frames a first-guess dispersion solution table for NIR"
+                            % locals()
+                        )
+
         else:
-            error = self._uvb_vis_input_frame_error(imageTypes, imageCat, self.arm)
+            if not error:
+                if self.inst == "SOXS":
+                    goodList = ["FLAT,LAMP", "LAMP,DFLAT", "LAMP,FLAT"]
+                else:
+                    goodList = ["LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF"]
+                for i in imageTypes:
+                    if i not in goodList:
+                        error = (
+                            "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. Found {i}"
+                            % locals()
+                        )
+
+            if not error:
+                for i in [f"MASTER_BIAS_{self.arm}", f"DISP_TAB_{self.arm}"]:
+                    if i not in imageCat:
+                        error = (
+                            "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS."
+                            % locals()
+                        )
 
         if error:
             sys.stdout.flush()
@@ -176,93 +209,7 @@ class soxs_order_centres(base_recipe):
 
         self.imageType = imageTypes[0]
         self.log.debug("completed the ``verify_input_frames`` method")
-        return
-
-    def _nir_input_frame_error(self, imageTypes, imageTech, imageCat, arm):
-        """*report why a NIR frame set is not a single-pinhole flat-lamp set with its dispersion table*
-
-        **Key Arguments:**
-
-        - ``imageTypes`` -- the image types the basic verification classified
-        - ``imageTech`` -- the image techniques the basic verification classified
-        - ``imageCat`` -- the product categories the basic verification classified
-        - ``arm`` -- the arm under reduction, which names the dispersion table required
-
-        **Return:**
-
-        - ``error`` -- the rejection message, or False when the set is acceptable
-        """
-        error = False
-
-        # WANT ON AND OFF PINHOLE FRAMES
-        # MIXED INPUT IMAGE TYPES ARE BAD
-        if not error and len(imageTypes) > 1:
-            joinedImageTypes = " and ".join(imageTypes)
-            error = f"Input frames are a mix of {joinedImageTypes}"
-
-        if not error:
-            good = "FLAT" if self.inst == "SOXS" else "LAMP,ORDERDEF"
-            if good not in imageTypes[0]:
-                error = (
-                    "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off "
-                    "frames and a first-guess dispersion solution table for NIR"
-                )
-
-        if not error:
-            for i in imageTech:
-                if i not in ["ECHELLE,PINHOLE", "IMAGE"]:
-                    error = (
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off "
-                        "frames a first-guess dispersion solution table for NIR"
-                    )
-
-        if not error:
-            for i in [f"DISP_TAB_{arm}"]:
-                if i not in imageCat:
-                    error = (
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp on and lamp off "
-                        "frames a first-guess dispersion solution table for NIR"
-                    )
-
-        return error
-
-    def _uvb_vis_input_frame_error(self, imageTypes, imageCat, arm):
-        """*report why a UVB or VIS frame set is not a single-pinhole flat-lamp set with its calibrations*
-
-        **Key Arguments:**
-
-        - ``imageTypes`` -- the image types the basic verification classified
-        - ``imageCat`` -- the product categories the basic verification classified
-        - ``arm`` -- the arm under reduction, which names the master bias and dispersion table required
-
-        **Return:**
-
-        - ``error`` -- the rejection message, or False when the set is acceptable
-        """
-        error = False
-
-        if not error:
-            if self.inst == "SOXS":
-                goodList = ["FLAT,LAMP", "LAMP,DFLAT", "LAMP,FLAT"]
-            else:
-                goodList = ["LAMP,ORDERDEF", "LAMP,DORDERDEF", "LAMP,QORDERDEF"]
-            for i in imageTypes:
-                if i not in goodList:
-                    error = (
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias "
-                        "frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS. "
-                        f"Found {i}"
-                    )
-
-        if not error:
-            for i in [f"MASTER_BIAS_{arm}", f"DISP_TAB_{arm}"]:
-                if i not in imageCat:
-                    error = (
-                        "Input frames for soxspipe order_centres need to be single pinhole flat-lamp, a master-bias "
-                        "frame, a first-guess dispersion solution table and possibly a master dark for UVB/VIS."
-                    )
-
-        return error
+        return None
 
     def produce_product(self):
         """*generate the order-table with polynomal fits of order-centres*
@@ -270,86 +217,23 @@ class soxs_order_centres(base_recipe):
         **Return:**
 
         - ``productPath`` -- the path to the order-table
-        - ``qcTable`` -- the reported quality-control table
-
-        When the pipeline is tuning rather than reducing, the method returns a single
-        ``None`` instead of the pair.
-
-        **Usage:**
-
-        ```python
-        productPath, qcTable = recipe.produce_product()
-        ```
         """
         self.log.debug("starting the ``produce_product`` method")
 
+        from astropy.nddata import CCDData
+        from astropy import units as u
+        import pandas as pd
+        from datetime import datetime
+
         arm = self.arm
         kw = self.kw
+        dp = self.detectorParams
 
         productPath = None
 
-        master_bias, dark = self._read_calibration_frames(kw, arm)
-        orderDef_image = self._read_order_definition_frame(kw)
-
-        add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}
-        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            disp_map_table = i
-
-        self._calibrate_order_frame(orderDef_image, master_bias, dark)
-        binx, biny = self._read_trace_binning(kw, arm)
-
-        if self.settings["tune-pipeline"]:
-            from itertools import product
-
-            digits = [2, 3, 4, 5, 6]
-            perm = product(digits, repeat=2)
-            try:
-                os.remove("residuals.txt")
-            except OSError as e:
-                self.log.debug(f"produce_product: `os.remove('residuals.txt')` failed, continuing: {e}")
-
-            self._tune_order_centre_parameters(perm, disp_map_table, binx, biny)
-            return None
-
-        if self.polyOrders:
-            self.polyOrders = str(self.polyOrders)
-            self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
-            self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
-            self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
-
-        productPath = self._fit_order_centres(kw, disp_map_table, binx, biny)
-
-        qcTable = self.report_output()
-        self.clean_up()
-
-        self.log.debug("completed the ``produce_product`` method")
-        return productPath, qcTable
-
-    def _read_calibration_frames(self, kw, arm):
-        """*read the master bias and the dark frame this reduction detrends with*
-
-        **Key Arguments:**
-
-        - ``kw`` -- the recipe's FITS keyword lookup, read by the caller
-        - ``arm`` -- the arm under reduction, read by the caller
-
-        **Return:**
-
-        - ``master_bias`` -- the master bias frame, or False when the set carries none
-        - ``dark`` -- the dark frame, or False when the set carries none. The lamp-off
-          frame is read after the master dark, so it overrides one
-
-        **Usage:**
-
-        ```python
-        master_bias, dark = self._read_calibration_frames(self.kw, self.arm)
-        ```
-        """
-        from astropy import units as u
-        from astropy.nddata import CCDData
-
         master_bias = False
         dark = False
+        orderDef_image = False
 
         add_filters = {kw("PRO_CATG"): "MASTER_BIAS_" + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
@@ -392,38 +276,12 @@ class soxs_order_centres(base_recipe):
                 key_uncertainty_type="UTYPE",
             )
 
-        return master_bias, dark
-
-    def _read_order_definition_frame(self, kw):
-        """*read the single-pinhole flat-lamp frame whose order centres are traced*
-
-        **Key Arguments:**
-
-        - ``kw`` -- the recipe's FITS keyword lookup, read by the caller
-
-        **Return:**
-
-        - ``orderDef_image`` -- the last frame matching the instrument's filter list, or
-          False when the set carries none
-
-        **Usage:**
-
-        ```python
-        orderDef_image = self._read_order_definition_frame(self.kw)
-        ```
-        """
-        from astropy import units as u
-        from astropy.nddata import CCDData
-
-        orderDef_image = False
-
         if self.inst == "SOXS":
             filter_list = [
                 {kw("DPR_TYPE"): "FLAT,LAMP", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
                 {kw("DPR_TYPE"): "LAMP,FLAT", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
                 {kw("DPR_TYPE"): "LAMP,DFLAT", kw("DPR_TECH"): "ECHELLE,PINHOLE"},
-                # KEYWORD SCREW-UP DURING PAE MEANT WE HAD TO ADD BELOW WITH ECHELLE,SLIT ...
-                # SHOULD REMOVE THIS EVENTUALLY
+                # KEYWORD SCREW-UP DURING PAE MEANT WE HAD TO ADD BELOW WITH ECHELLE,SLIT ... SHOULD REMOVE THIS EVENTUALLY
                 {kw("DPR_TYPE"): "FLAT,LAMP", kw("DPR_TECH"): "ECHELLE,SLIT"},
                 {kw("DPR_TYPE"): "LAMP,FLAT", kw("DPR_TECH"): "ECHELLE,SLIT"},
                 {kw("DPR_TYPE"): "LAMP,DFLAT", kw("DPR_TECH"): "ECHELLE,SLIT"},
@@ -448,19 +306,10 @@ class soxs_order_centres(base_recipe):
                     key_uncertainty_type="UTYPE",
                 )
 
-        return orderDef_image
+        add_filters = {kw("PRO_CATG"): f"DISP_TAB_{arm}".upper()}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            disp_map_table = i
 
-    def _calibrate_order_frame(self, orderDef_image, master_bias, dark):
-        """*detrend the order-definition frame, stamp its keywords and optionally save it*
-
-        **Key Arguments:**
-
-        - ``orderDef_image`` -- the order-definition frame to calibrate
-        - ``master_bias`` -- the master bias frame, or False
-        - ``dark`` -- the dark frame, or False
-
-        Sets ``self.orderFrame``.
-        """
         self.orderFrame = self.detrend(inputFrame=orderDef_image, master_bias=master_bias, dark=dark)
 
         self.update_fits_keywords(frame=self.orderFrame)
@@ -470,19 +319,6 @@ class soxs_order_centres(base_recipe):
             filepath = self._write(self.orderFrame, fileDir, filename=False, overwrite=True, product=False)
             self.log.print(f"\nCalibrated single pinhole frame frame saved to {filepath}\n")
 
-    def _read_trace_binning(self, kw, arm):
-        """*read the calibrated frame's binning, which selects the predicted line-list*
-
-        **Key Arguments:**
-
-        - ``kw`` -- the recipe's FITS keyword lookup, read by the caller
-        - ``arm`` -- the arm under reduction, read by the caller
-
-        **Return:**
-
-        - ``binx`` -- the x binning; 1 on the NIR arm or when the header carries none
-        - ``biny`` -- the y binning; 1 on the NIR arm or when the header carries none
-        """
         # FIND THE APPROPRIATE PREDICTED LINE-LIST
         if arm != "NIR" and kw("WIN_BINX") in self.orderFrame.header:
             binx = int(self.orderFrame.header[kw("WIN_BINX")])
@@ -491,147 +327,132 @@ class soxs_order_centres(base_recipe):
             binx = 1
             biny = 1
 
-        return binx, biny
+        if self.settings["tune-pipeline"]:
+            from itertools import product
 
-    def _tune_order_centre_parameters(self, perm, disp_map_table, binx, biny):
-        """*sample the trace once, then sweep the continuum polynomial degrees over the grid*
+            digits = [2, 3, 4, 5, 6]
+            perm = product(digits, repeat=2)
+            try:
+                os.remove("residuals.txt")
+            except:
+                pass
 
-        **Key Arguments:**
+            # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+            # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
+            detector = detect_continuum(
+                log=self.log,
+                traceFrame=self.orderFrame,
+                dispersion_map=disp_map_table,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                recipeName="soxs-order-centres",
+                qcTable=self.qc,
+                productsTable=self.products,
+                sofName=self.sofName,
+                binx=binx,
+                biny=biny,
+                startNightDate=self.startNightDate,
+            )
+            orderPixelTable, detectionPercentage = detector.sample_trace()
 
-        - ``perm`` -- the iterator of (order degree, dispersion-axis degree) pairs to try
-        - ``disp_map_table`` -- the path to the first-guess dispersion table
-        - ``binx`` -- the x binning of the calibrated frame
-        - ``biny`` -- the y binning of the calibrated frame
-        """
-        # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
-        # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
-        detector = detect_continuum(
-            log=self.log,
-            traceFrame=self.orderFrame,
-            dispersion_map=disp_map_table,
-            settings=self.settings,
-            recipeSettings=self.recipeSettings,
-            recipeName="soxs-order-centres",
-            qcTable=self.qc,
-            productsTable=self.products,
-            sofName=self.sofName,
-            binx=binx,
-            biny=biny,
-            startNightDate=self.startNightDate,
-        )
-        orderPixelTable, detectionPercentage = detector.sample_trace()
+            print("\n\nTUNING SOXSPIPE\n")
 
-        print("\n\nTUNING SOXSPIPE\n")
+            # DEFINE AN INPUT ARRAY
+            from fundamentals import fmultiprocess
 
-        # DEFINE AN INPUT ARRAY
-        from fundamentals import fmultiprocess
+            # NOTE TO SELF: if having issue with multiprocessing stalling, try and import required modules into the mthod/function running this fmultiprocess function instead of at the module level
+            results = fmultiprocess(
+                log=self.log,
+                function=parameterTuning,
+                inputArray=list(perm),
+                poolSize=False,
+                timeout=360000,
+                recipeSettings=self.recipeSettings,
+                settings=self.settings,
+                orderFrame=self.orderFrame,
+                disp_map_table=disp_map_table,
+                orderPixelTable=orderPixelTable,
+                qc=self.qc,
+                products=self.products,
+                sofName=self.sofName,
+                binx=binx,
+                biny=biny,
+                turnOffMP=self.debug,
+                mute=True,
+                progressBar=True,
+            )
+            return None
 
-        # NOTE TO SELF: IF HAVING ISSUE WITH MULTIPROCESSING STALLING, TRY AND IMPORT REQUIRED MODULES INTO THE
-        # METHOD/FUNCTION RUNNING THIS fmultiprocess FUNCTION INSTEAD OF AT THE MODULE LEVEL
-        fmultiprocess(
-            log=self.log,
-            function=parameterTuning,
-            inputArray=list(perm),
-            poolSize=False,
-            timeout=360000,
-            recipeSettings=self.recipeSettings,
-            settings=self.settings,
-            orderFrame=self.orderFrame,
-            disp_map_table=disp_map_table,
-            orderPixelTable=orderPixelTable,
-            qc=self.qc,
-            products=self.products,
-            sofName=self.sofName,
-            binx=binx,
-            biny=biny,
-            turnOffMP=self.debug,
-            mute=True,
-            progressBar=True,
-        )
+        else:
+            if self.polyOrders:
+                self.polyOrders = str(self.polyOrders)
+                self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
+                self.recipeSettings["detect-continuum"]["order-deg"] = self.polyOrders[0]
+                self.recipeSettings["detect-continuum"]["disp-axis-deg"] = self.polyOrders[1]
 
-    def _fit_order_centres(self, kw, disp_map_table, binx, biny):
-        """*fit the order centre traces and record the order table as a product*
-
-        **Key Arguments:**
-
-        - ``kw`` -- the recipe's FITS keyword lookup, read by the caller
-        - ``disp_map_table`` -- the path to the first-guess dispersion table
-        - ``binx`` -- the x binning of the calibrated frame
-        - ``biny`` -- the y binning of the calibrated frame
-
-        **Return:**
-
-        - ``productPath`` -- the path to the order table
-
-        Sets ``self.products``, ``self.qc`` and ``self.dateObs``.
-
-        A continuum fit that does not converge raises an ``ArithmeticError``, and no
-        order table is recorded. The detector's quality-control rows are merged before
-        the failure, so they survive it.
-        """
-        import pandas as pd
-
-        # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
-        # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
-        detector = detect_continuum(
-            log=self.log,
-            traceFrame=self.orderFrame,
-            dispersion_map=disp_map_table,
-            settings=self.settings,
-            recipeSettings=self.recipeSettings,
-            recipeName="soxs-order-centres",
-            qcTable=self.qc,
-            productsTable=self.products,
-            sofName=self.sofName,
-            binx=binx,
-            biny=biny,
-            startNightDate=self.startNightDate,
-        )
-        (
-            productPath,
-            qcTable,
-            productsTable,
-            orderPolyTable,
-            orderPixelTable,
-            orderMetaTable,
-        ) = detector.get()
+            # DETECT THE CONTINUUM OF ORDERE CENTRES - RETURN ORDER TABLE FILE PATH
+            # self.log.print("\n# DETECTING ORDER CENTRE CONTINUUM\n")
+            detector = detect_continuum(
+                log=self.log,
+                traceFrame=self.orderFrame,
+                dispersion_map=disp_map_table,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                recipeName="soxs-order-centres",
+                qcTable=self.qc,
+                productsTable=self.products,
+                sofName=self.sofName,
+                binx=binx,
+                biny=biny,
+                startNightDate=self.startNightDate,
+            )
+            (
+                productPath,
+                qcTable,
+                productsTable,
+                orderPolyTable,
+                orderPixelTable,
+                orderMetaTable,
+            ) = detector.get()
 
         self.products = pd.concat([self.products, productsTable])
         self.qc = pd.concat([self.qc, qcTable])
 
-        # THE DETECTOR REPORTS A FAILED FIT AS A MISSING PRODUCT PATH. THE QUALITY-CONTROL
-        # ROWS MERGE FIRST, SO THE EVIDENCE OF THE FAILED ATTEMPT SURVIVES THE FAILURE.
-        if productPath is None:
-            raise ArithmeticError(
-                f"Could not converge on a good fit to the {self.arm} order-centre continuum. "
-                "Please check the quality of your data or adjust your fitting parameters. "
-                "No order table was produced."
-            )
-
         filename = os.path.basename(productPath)
 
-        utcnow = utcnow_string()
+        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
         self.dateObs = self.orderFrame.header[kw("DATE_OBS")]
 
-        self.products = append_product(
-            self.products,
-            recipeName=self.recipeName,
-            productLabel="ORDER_CENTRES",
-            fileName=filename,
-            filePath=productPath,
-            productDesc=f"{self.arm} order centre traces",
-            obsDateUtc=self.dateObs,
-            reductionDateUtc=utcnow,
-            fileType="FITS",
-            label="PROD",
+        self.products = pd.concat(
+            [
+                self.products,
+                pd.Series(
+                    {
+                        "soxspipe_recipe": self.recipeName,
+                        "product_label": "ORDER_CENTRES",
+                        "file_name": filename,
+                        "file_type": "FITS",
+                        "obs_date_utc": self.dateObs,
+                        "reduction_date_utc": utcnow,
+                        "product_desc": f"{self.arm} order centre traces",
+                        "file_path": productPath,
+                        "label": "PROD",
+                    }
+                )
+                .to_frame()
+                .T,
+            ],
+            ignore_index=True,
         )
 
-        return productPath
+        qcTable = self.report_output()
+        self.clean_up()
+
+        self.log.debug("completed the ``produce_product`` method")
+        return productPath, qcTable
 
 
-# THE NAME IS PUBLIC: EACH RECIPE PASSES IT TO fmultiprocess AND tests/unit/test_parameter_tuning.py
-# CALLS IT BY NAME, AS IN soxs_disp_solution AND soxs_spatial_solution
-def parameterTuning(  # noqa: N802
+def parameterTuning(
     p,
     log,
     recipeSettings,
@@ -645,44 +466,7 @@ def parameterTuning(  # noqa: N802
     binx,
     biny,
 ):
-    """*tuning the spatial solution*
-
-    **Key Arguments:**
-
-    - ``p`` -- one permutation of the order and dispersion-axis polynomial degrees
-    - ``log`` -- logger
-    - ``recipeSettings`` -- the recipe settings dictionary, rewritten in place with ``p``
-    - ``settings`` -- the settings dictionary
-    - ``orderFrame`` -- the calibrated order-definition frame to trace
-    - ``disp_map_table`` -- the path to the first-guess dispersion table
-    - ``orderPixelTable`` -- the sampled trace to reuse across permutations
-    - ``qc`` -- the quality-control table to pass to the continuum detector
-    - ``products`` -- the products table to pass to the continuum detector
-    - ``sofName`` -- the name of the set-of-files this reduction came from
-    - ``binx`` -- the x binning of the calibrated frame
-    - ``biny`` -- the y binning of the calibrated frame
-
-    The fit's own outputs are discarded.
-
-    **Usage:**
-
-    ```python
-    parameterTuning(
-        (3, 5),
-        log=log,
-        recipeSettings=recipeSettings,
-        settings=settings,
-        orderFrame=orderFrame,
-        disp_map_table=disp_map_table,
-        orderPixelTable=orderPixelTable,
-        qc=qc,
-        products=products,
-        sofName=sofName,
-        binx=binx,
-        biny=biny,
-    )
-    ```
-    """
+    """*tuning the spatial solution*"""
 
     recipeSettings["detect-continuum"]["order-deg"] = p[0]
     recipeSettings["detect-continuum"]["disp-axis-deg"] = p[1]
@@ -711,13 +495,13 @@ def parameterTuning(  # noqa: N802
             orderPixelTable,
             orderMetaTable,
         ) = detector.get()
-    except Exception as e:
-        log.warning(f"parameterTuning: this tuning iteration failed and records nothing in the grid, continuing: {e}")
+    except:
+        pass
 
-    return
+    return None
 
-    # USE THE TAB-TRIGGER BELOW FOR NEW METHOD
+    # use the tab-trigger below for new method
     # xt-class-method
 
-    # OVERRIDE METHOD ATTRIBUTES
+    # Override Method Attributes
     # method-override-tmpx

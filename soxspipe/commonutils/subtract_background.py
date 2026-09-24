@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 """
 *fit and subtract background flux from scattered light from frame*
 
@@ -9,15 +10,19 @@ Date Created
 : June  3, 2021
 """
 
-import os
-
 from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils.toolkit import quicklook_image, unpack_order_table
+from os.path import expanduser
+from soxspipe.commonutils.toolkit import quicklook_image
+from soxspipe.commonutils.toolkit import unpack_order_table
+from fundamentals import tools
+from builtins import object
+import sys
+import os
 
 os.environ["TERM"] = "vt100"
 
 
-class subtract_background:
+class subtract_background(object):
     """
     *fit and subtract background flux from scattered light from frame*
 
@@ -119,7 +124,7 @@ class subtract_background:
             title="Initial input frame needing scattered light subtraction",
         )
 
-        return
+        return None
 
     def subtract(self):
         """
@@ -133,7 +138,6 @@ class subtract_background:
 
         import numpy as np
         import pandas as pd
-
         from soxspipe.commonutils import toolkit
 
         kw = self.kw
@@ -150,8 +154,8 @@ class subtract_background:
         try:
             binx = self.frame.header[self.kw("WIN_BINX")]
             biny = self.frame.header[self.kw("WIN_BINY")]
-        except KeyError as e:
-            self.log.debug(f"subtract: `binx = self.frame.header[self.kw('WIN_BINX')]` failed, continuing: {e}")
+        except:
+            pass
 
         # UNPACK THE ORDER TABLE
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
@@ -197,7 +201,7 @@ class subtract_background:
         # GET FILENAME FOR THE RESIDUAL PLOT
         saveToPath = False
         if self.sofName:
-            backgroundQCImage = self.sofName + "_BKGROUND.pdf"
+            backgroundQCImage = self.sofName + f"_BKGROUND.pdf"
             saveToPath = self.qcDir + "/" + backgroundQCImage
 
         quicklook_image(
@@ -218,7 +222,7 @@ class subtract_background:
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"BKGROUND{self.lamp}",
@@ -230,7 +234,9 @@ class subtract_background:
                             "file_path": saveToPath,
                             "label": "QC",
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
@@ -300,8 +306,7 @@ class subtract_background:
                         if x1 < axisALen and x2 > 0 and x2 < axisALen and b > 0 and b < axisBLen
                     ]
                 )
-            except ValueError as e:
-                self.log.debug(f"mask_order_locations: `axisAcoord_edgelow, axisAcoord_edg...` failed, continuing: {e}")
+            except:
                 continue
             for b, u, l in zip(
                 axisBcoord,
@@ -342,7 +347,7 @@ class subtract_background:
                         self.frame.mask[:m, b] = 1
 
         self.log.debug("completed the ``mask_order_locations`` method")
-        return
+        return None
 
     def create_background_image(self, rowFitOrder, gaussianSigma):
         """*model the background image from intra-order flux detected*
@@ -354,17 +359,18 @@ class subtract_background:
         """
         self.log.debug("starting the ``create_background_image`` method")
 
+        from astropy.stats import sigma_clip, mad_std
+        import numpy as np
+        import pandas as pd
+        from astropy.nddata import CCDData
+        from scipy.signal import medfilt2d
+        from scipy.interpolate import splrep, splev
+        import scipy
+        import numpy.ma as ma
         import math
         import random
-
-        import numpy as np
-        import numpy.ma as ma
-        import pandas as pd
-        import scipy
-        from astropy.nddata import CCDData
-        from astropy.stats import sigma_clip
-        from scipy.interpolate import splev, splrep
-
+        from soxspipe.commonutils.filenamer import filenamer
+        from os.path import expanduser
 
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA
@@ -434,8 +440,7 @@ class subtract_background:
             # rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).quantile(.1)
             try:
                 rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()
-            except (TypeError, ValueError) as e:
-                self.log.debug(f"create_background_image: `rowmaskedSmoothed = pd.Series(r...` failed, continuing: {e}")
+            except:
                 rowmasked = rowmasked.astype(float)
                 # rowmasked = rowmasked.byteswap().newbyteorder() ## REMOVE IF ABOVE .astype(float) WORKS
                 rowmaskedSmoothed = pd.Series(rowmasked).rolling(window=window, center=True).median()

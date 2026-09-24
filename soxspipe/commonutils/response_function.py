@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 """
 *Given a standard star extracted spectrum, generate the instrument response function needed to flux calibrate science spectra*
 
@@ -9,88 +10,16 @@
     July 28, 2023
 """
 
+import sys
 import os
-from typing import Any
+from builtins import object
 
 from soxspipe.commonutils.toolkit import extinction_correction_factor
 
 os.environ["TERM"] = "vt100"
 
 
-class _ResponseFitConvergenceError(Exception):
-    """Mark failures raised inside the legacy iterative fitting loop."""
-
-    def __init__(self, originalError: Exception) -> None:
-        super().__init__(str(originalError))
-        self.originalError = originalError
-
-
-def _fit_response_polynomial(
-    wavelength: Any,
-    rawResponse: Any,
-    polynomialOrder: int,
-    maxIterations: int,
-    excludedRegions: Any = (),
-    smoothingSigma: float | None = None,
-) -> tuple[Any, Any, Any]:
-    """Fit the response polynomial using the pipeline clipping algorithm."""
-    import numpy as np
-
-    fittedWavelength = np.asarray(wavelength).copy()
-    fittedResponse = np.asarray(rawResponse).copy()
-    for lowerBound, upperBound in excludedRegions:
-        excluded = np.where(
-            (fittedWavelength >= lowerBound) & (fittedWavelength <= upperBound)
-        )[0]
-        fittedWavelength = np.delete(fittedWavelength, excluded)
-        fittedResponse = np.delete(fittedResponse, excluded)
-
-    if smoothingSigma is not None:
-        from scipy.ndimage import gaussian_filter1d
-
-        fittedResponse = gaussian_filter1d(fittedResponse, sigma=smoothingSigma)
-
-    iteration = 0
-    deletedPointCount = 1
-    while iteration < int(maxIterations) and deletedPointCount > 0:
-        try:
-            sampledWavelength = np.array(
-                [
-                    np.median(fittedWavelength[max(0, index - 5) : index + 6])
-                    for index in range(0, len(fittedWavelength), 100)
-                ]
-            )
-            sampledResponse = np.array(
-                [
-                    np.median(fittedResponse[max(0, index - 5) : index + 6])
-                    for index in range(0, len(fittedResponse), 100)
-                ]
-            )
-            responseCoefficients = np.polyfit(
-                sampledWavelength,
-                sampledResponse,
-                deg=polynomialOrder,
-            )
-            modelResponse = np.polyval(responseCoefficients, fittedWavelength)
-            deletedPoints = [
-                index
-                for index, (responseValue, modelValue) in enumerate(
-                    zip(fittedResponse, modelResponse)
-                )
-                if responseValue < 0
-                or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
-            ]
-            fittedWavelength = np.delete(fittedWavelength, deletedPoints)
-            fittedResponse = np.delete(fittedResponse, deletedPoints)
-            deletedPointCount = len(deletedPoints)
-            iteration += 1
-        except Exception as error:
-            raise _ResponseFitConvergenceError(error) from error
-
-    return responseCoefficients, fittedWavelength, fittedResponse
-
-
-class response_function:
+class response_function(object):
     """
     *Given a standard star extracted spectrum, generate the instrument response function needed to flux calibrate science spectra*
 
@@ -156,11 +85,11 @@ class response_function:
         self.sofName = sofName
         self.orderJoins = orderJoins
 
-        from astropy.io import fits
-        from astropy.table import Table
-
-        from soxspipe.commonutils import detector_lookup, keyword_lookup
         from soxspipe.commonutils.toolkit import get_calibrations_path
+        from astropy.table import Table
+        from astropy.io import fits
+        from soxspipe.commonutils import detector_lookup
+        from soxspipe.commonutils import keyword_lookup
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -179,7 +108,7 @@ class response_function:
         self.stdExtractionDF = self.stdExtractionDF.to_pandas()
 
         # SORT BY COLUMN NAME
-        self.stdExtractionDF.sort_values(["WAVE"], inplace=True, kind="stable")
+        self.stdExtractionDF.sort_values(["WAVE"], inplace=True)
 
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
@@ -196,33 +125,46 @@ class response_function:
         # MAKE ALL COLUMNS UPPERCASE
         self.stdAbsFluxDF.columns = [d.upper() for d in self.stdAbsFluxDF.columns]
 
-        # NAME: AKA
-        stdAkas = {
-            "LTT7987": "CD3017706",
-            "EG274": "CD3810980",
-            "LTT3218": "CD325613",
-            "EG21": "CPD69177",
-        }
+        stdNames = ["LTT7987", "EG274", "LTT3218", "EG21"]
+        stdAkas = ["CD3017706", "CD3810980", "CD325613", "CPD69177"]
 
-        self.std_objName = ""
-        for ii in kw("OBS_TARG_NAME"), kw("OBJECT"), kw("OBS_NAME"):
-            if ii in self.header:
-                self.std_objName += self.header[ii].strip().upper().replace(" ", "").replace("-", "").replace("_", "")
+        
+        if self.instrument == "xsh":
+            # Name is in the format 'EG 274'
+            self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()
+        else:
+            # Name is in the format 'EG 274'
+            self.std_objName = self.header[kw("OBJECT")].strip().upper()
 
-        for k,v in stdAkas.items():
-            if v in self.std_objName:
-                self.std_objName = k
-                break   
+            if "STD," in self.std_objName:
+                try:
+                    self.std_objName = self.header[kw("OBS_TARG_NAME")].strip().upper()
+                except:
+                    pass
 
-        for ii in self.stdAbsFluxDF.columns:
-            if ii in self.std_objName:
-                self.std_objName = ii
-                break
+
+
+        self.std_objName = self.std_objName.split(" V")[0].replace(" ", "")  # Hack to reduce xsh data
+
+        # REMOVE SPACES IN NAME
+        self.std_objName = self.std_objName.replace(" ", "").replace("-", "").replace("_", "")
+        self.std_objName = self.std_objName.replace("_NOD", "")
 
         if stdNotFlatExtractionPath and len(stdNotFlatExtractionPath) > 1:
             # STD STAR GIVEN, READING THE NON FLAT FIELDED SPECTRUM
             self.stdExtractionNotFlatDF = Table.read(stdNotFlatExtractionPath, format="fits")
             self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF.to_pandas()
+        if self.std_objName in stdAkas:
+            for s, a in zip(stdNames, stdAkas):
+                if self.std_objName == a:
+                    self.std_objName = s
+
+        if self.std_objName not in self.stdAbsFluxDF.columns:
+            for name in self.stdAbsFluxDF.columns:
+                if name in self.std_objName:
+                    self.std_objName = name
+                    break
+
 
         self.log.print(f"STANDARD-STAR: {self.std_objName}")
         # USING THE AVERAGE AIR MASS
@@ -245,7 +187,7 @@ class response_function:
             startNightDate=startNightDate,
         )
 
-        return
+        return None
 
     def get(self):
         """
@@ -256,13 +198,13 @@ class response_function:
         """
         self.log.debug("starting the ``get`` method")
 
-        from datetime import datetime
-
-        import numpy as np
         import pandas as pd
-        from matplotlib import pyplot as plt
         from scipy.interpolate import interp1d
+        import numpy as np
         from scipy.signal import savgol_filter
+        from datetime import datetime
+        from astropy.table import Table
+        from matplotlib import pyplot as plt
 
         response_function = None
 
@@ -272,11 +214,7 @@ class response_function:
         stdExtWaveNotFlat = self.stdExtractionNotFlatDF["WAVE"].values
         stdExtFluxNotFlat = self.stdExtractionNotFlatDF["FLUX_DENSITY_COUNTS"].values
 
-        if self.std_objName not in self.stdAbsFluxDF.columns:
-            self.log.error(
-                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
-            )            
-            raise LookupError(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}")
+        
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
         stdAbsFluxDF = self.stdAbsFluxDF
@@ -285,13 +223,23 @@ class response_function:
             & (stdAbsFluxDF["WAVE"] < 10 + np.max(stdExtWaveNotFlat))
         ]
 
-        # FLUX IS CONVERTED IN ERG / CM2 / S / ANGs
-        self.std_wavelength_to_abs_flux = interp1d(
-            np.array(stdAbsFluxDF["WAVE"]),
-            np.array(stdAbsFluxDF[self.std_objName]) * 10**17,
-            kind="next",
-            fill_value="extrapolate",
-        )
+        # FLUX IS CONVERTED IN ERG / CM2 / S / ANG
+        try:
+            self.std_wavelength_to_abs_flux = interp1d(
+                np.array(stdAbsFluxDF["WAVE"]),
+                np.array(stdAbsFluxDF[self.std_objName]) * 10**17,
+                kind="next",
+                fill_value="extrapolate",
+            )
+        except Exception as e:
+            self.log.warning(
+                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(stdAbsFluxDF.columns[1:])}"
+            )
+            return (
+                self.qc,
+                self.products,
+                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(stdAbsFluxDF.columns[1:])}",
+            )
 
         # STRONG SKY ABS REGION TO BE EXCLUDED
         if self.arm == "NIR":
@@ -405,22 +353,59 @@ class response_function:
         wavelength_response = self.stdExtractionDF["WAVE"].values
 
         polyOrder = int(self.recipeSettings[self.arm.lower()]["poly_order"])
-        try:
-            (
-                responseFuncCoeffs,
-                wavelength_response,
-                self.response_function_raw,
-            ) = _fit_response_polynomial(
-                wavelength_response,
-                self.response_function_raw,
-                polynomialOrder=polyOrder,
-                maxIterations=self.recipeSettings[self.arm.lower()]["max_iteration"],
-                excludedRegions=excludeRegions,
-                smoothingSigma=5 if self.arm == "NIR" else None,
-            )
-        except _ResponseFitConvergenceError as e:
-            self.log.print("fail")
-            raise Exception("The fitting of response function did not converge!") from e.originalError
+        numIter = 0
+        deletedPoints = 1
+
+        # REMOVE EXCLUDED REGION FROM WAVELENGTH AND RESPONSE FUNCTION
+        for er in excludeRegions:
+            elementsToDelete = np.where((wavelength_response >= er[0]) & (wavelength_response <= er[1]))[0]
+            wavelength_response = np.delete(wavelength_response, elementsToDelete)
+            self.response_function_raw = np.delete(self.response_function_raw, elementsToDelete)
+
+        # SMOOTHING DATA IF NIR
+        if self.arm == "NIR":
+            from scipy.ndimage import gaussian_filter1d
+
+            self.response_function_raw = gaussian_filter1d(self.response_function_raw, sigma=5)
+
+        # FITTING ITERATIVELY THE DATA WITH A POLYNOMIAL
+        while (numIter < int(self.recipeSettings[self.arm.lower()]["max_iteration"])) and (deletedPoints > 0):
+            try:
+                # FITTING THE DATA
+                elementsToDelete = []
+
+                wavelength_response_tmp = np.array(
+                    [
+                        np.median(wavelength_response[max(0, i - 5) : i + 6])
+                        for i in range(0, len(wavelength_response), 100)
+                    ]
+                )
+                response_function_raw_tmp = np.array(
+                    [
+                        np.median(self.response_function_raw[max(0, i - 5) : i + 6])
+                        for i in range(0, len(self.response_function_raw), 100)
+                    ]
+                )
+
+                responseFuncCoeffs = np.polyfit(wavelength_response_tmp, response_function_raw_tmp, deg=polyOrder)
+                for index, (z, zf) in enumerate(
+                    zip(
+                        self.response_function_raw,
+                        np.polyval(responseFuncCoeffs, wavelength_response),
+                    )
+                ):
+                    # if np.abs(np.abs(z)-np.abs(zf)) > 0.05:
+                    # ff np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 100 or z < 0:
+                    if z < 0 or np.abs(np.abs(z) - np.abs(zf)) / np.abs(z) > 0.2:
+                        elementsToDelete.append(index)
+
+                wavelength_response = np.delete(wavelength_response, elementsToDelete)
+                self.response_function_raw = np.delete(self.response_function_raw, elementsToDelete)
+                deletedPoints = len(elementsToDelete)
+                numIter = numIter + 1
+            except Exception as e:
+                self.log.print("fail")
+                raise Exception("The fitting of response function did not converge!") from e
 
         if False:
             plt.plot(wavelength_response, self.response_function_raw)
@@ -429,14 +414,15 @@ class response_function:
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
         self.write_response_function_to_file(responseFuncCoeffs=responseFuncCoeffs, polyOrder=polyOrder)
 
-        if stdEfficiencyEstimate is not None:
+        if not isinstance(stdEfficiencyEstimate, bool):
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
             stdEfficiencyEstimateDF = pd.DataFrame({"WAVE": stdExtWaveNotFlat, "EFFICIENCY": stdEfficiencyEstimate})
             # WRITE THE EFFICIENCY ESTIMATE TO FITS BINARY TABLE
+            from astropy.table import Table
             import copy
-
-            from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+            from astropy.io import fits
             from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
+            from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
             filename = f"{self.sofName}_EFFICIENCY.fits"
             filepath = f"{self.productDir}/{filename}"
@@ -469,7 +455,7 @@ class response_function:
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": "EFFICIENCY",
@@ -477,11 +463,13 @@ class response_function:
                             "file_type": "FITS",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
-                            "product_desc": "SOXS efficiency estimate",
+                            "product_desc": f"SOXS efficiency estimate",
                             "file_path": filepath,
                             "label": "QC",
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
@@ -531,10 +519,9 @@ class response_function:
         """
         self.log.debug("starting the ``plot_response_curve`` method")
 
-        from datetime import datetime
-
         import matplotlib.pyplot as plt
         import numpy as np
+        from datetime import datetime
         import pandas as pd
 
         # WRITE THE QC PLOT TO PDF
@@ -557,7 +544,7 @@ class response_function:
             linewidth=0.2,
         )
         onerow.set_title(f"{self.std_objName} absolute flux spectrum", fontsize=12)
-        onerow.set_xlabel("wavelength (nm)", fontsize=9)
+        onerow.set_xlabel(f"wavelength (nm)", fontsize=9)
         onerow.set_ylabel("flux ($\\mathrm{erg/cm^{2}/s/angstom}$)", fontsize=9)
         onerow.tick_params(axis="both", which="major", labelsize=9)
         # Set y-limits based on the absolute flux spectrum
@@ -568,7 +555,7 @@ class response_function:
 
         tworow.scatter(binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.5)
         tworow.set_title("Raw ratio", fontsize=12)
-        tworow.set_xlabel("wavelength (nm)", fontsize=9)
+        tworow.set_xlabel(f"wavelength (nm)", fontsize=9)
         tworow.set_ylabel("Ratio $\\frac{F_{\\lambda}}{F_c}$", fontsize=9)
         tworow.tick_params(axis="both", which="major", labelsize=9)
 
@@ -585,7 +572,7 @@ class response_function:
         threerow.scatter(binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.2)
         # threerow.set_xlim(min(binCentreWave), max(binCentreWave))
         # threerow.set_ylim(min(absToExtFluxRatio), max(absToExtFluxRatio))
-        threerow.set_xlabel("wavelength (nm)", fontsize=9)
+        threerow.set_xlabel(f"wavelength (nm)", fontsize=9)
         threerow.set_ylabel("absolute-extracted flux ratio", fontsize=9)
         threerow.tick_params(axis="both", which="major", labelsize=9)
 
@@ -597,7 +584,7 @@ class response_function:
         flux_calib = flux_calib * 10**-17  # CONVERTING BACK TO PHYS UNITS
         fourrow.plot(stdExtWave, flux_calib, linewidth=0.2)
         fourrow.set_title("Self calibration of std star", fontsize=12)
-        fourrow.set_xlabel("wavelength (nm)", fontsize=9)
+        fourrow.set_xlabel(f"wavelength (nm)", fontsize=9)
         fourrow.set_ylabel("flux ($\\mathrm{erg/cm^{2}/s/angstom}$)", fontsize=9)
         fourrow.tick_params(axis="both", which="major", labelsize=9)
         # fourrow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
@@ -612,7 +599,7 @@ class response_function:
         # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
         plt.subplots_adjust(hspace=1.0)
         fiverow.set_title("Relative residuals", fontsize=12)
-        fiverow.set_xlabel("wavelength (nm)", fontsize=9)
+        fiverow.set_xlabel(f"wavelength (nm)", fontsize=9)
         fiverow.set_ylabel("residual", fontsize=9)
         fiverow.tick_params(axis="both", which="major", labelsize=9)
 
@@ -623,7 +610,7 @@ class response_function:
             # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
             plt.subplots_adjust(hspace=1.0)
             sixrow.set_title("Efficiency (end-to-end)", fontsize=12)
-            sixrow.set_xlabel("wavelength (nm)", fontsize=9)
+            sixrow.set_xlabel(f"wavelength (nm)", fontsize=9)
             sixrow.set_ylabel("Efficiency", fontsize=9)
             sixrow.tick_params(axis="both", which="major", labelsize=9)
 
@@ -637,7 +624,7 @@ class response_function:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
+                pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "RESPONSE_QC_PLOT",
@@ -645,11 +632,13 @@ class response_function:
                         "file_type": "PDF",
                         "obs_date_utc": self.dateObs,
                         "reduction_date_utc": utcnow,
-                        "product_desc": "Response curve QC plot.",
+                        "product_desc": f"Response curve QC plot.",
                         "file_path": plotFilePath,
                         "label": "QC",
                     }
-                ]),
+                )
+                .to_frame()
+                .T,
             ],
             ignore_index=True,
         )
@@ -674,12 +663,11 @@ class response_function:
         """
         self.log.debug("starting the ``write_response_function_to_file`` method")
 
-        import copy
-        from datetime import datetime
-
         import pandas as pd
-        from astropy.io import fits
         from astropy.table import Table
+        from astropy.io import fits
+        from datetime import datetime
+        import copy
 
         arm = self.arm
         kw = self.kw
@@ -726,7 +714,7 @@ class response_function:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
+                pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "RESPONSE_FUNC",
@@ -734,11 +722,13 @@ class response_function:
                         "file_type": "FITS",
                         "obs_date_utc": self.dateObs,
                         "reduction_date_utc": utcnow,
-                        "product_desc": "Response function coeffs.",
+                        "product_desc": f"Response function coeffs.",
                         "file_path": filePath,
                         "label": "PROD",
                     }
-                ]),
+                )
+                .to_frame()
+                .T,
             ],
             ignore_index=True,
         )

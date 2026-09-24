@@ -78,8 +78,8 @@ class utKit(utKit):
         """
         *Refresh the unit test database*
         """
-        from fundamentals import tools
         from fundamentals.mysql import directory_script_runner
+        from fundamentals import tools
 
         packageDirectory = self.get_project_root()
         su = tools(

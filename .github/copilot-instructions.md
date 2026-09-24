@@ -26,13 +26,28 @@ Always reference these instructions first and fallback to search or bash command
   - Use this for making code changes
 
 ### Testing
-- **Install and run the required offline suite**:
+- **Install test dependencies first**:
   ```bash
-  python -m pip install -e ".[tests]"
-  python -m pytest tests/unit tests/integration -m "not slow"
+  pip install pytest nose2 pytest-profiling gprof2dot pyprof2calltree
+  mkdir -p prof
   ```
-- The required suite is configured in `pyproject.toml`, uses only synthetic local data, blocks network access, and must not write to package directories.
-- Tests in `tests/real_data` are opt-in. They require a verified, prepared workspace supplied through `SOXSPIPE_REAL_DATA_DIR`; the `Real-data tests` GitHub Actions workflow creates it from the repository-owned manifest.
+
+- **Run quick individual tests**:
+  ```bash
+  pytest soxspipe/commonutils/tests/test_detector_lookup.py::test_detector_lookup::test_soxs_detector_lookup_function -v
+  ```
+  - Individual tests take ~2 seconds
+
+- **Run test categories**:
+  ```bash
+  pytest -m "not full" -v    # Run non-full tests (lite tests)
+  pytest -m "not slow" -v    # Skip slow tests  
+  ```
+
+- **WARNING: Full test suite limitations**:
+  - Many tests require external test data from `/home/runner/xshooter-pipeline-data/` not available in repository
+  - Some test files have import issues (missing `import pytest`)
+  - Use individual test files for validation: `pytest soxspipe/commonutils/tests/test_detector_lookup.py -v`
 
 ### CLI Tool Usage and Validation
 - **Verify installation**: `soxspipe -v` (should show version 0.13.4)
@@ -105,7 +120,7 @@ cd /path/to/soxspipe/repository
 pip install -e .  # Install in development mode
 
 # Install test dependencies
-  python -m pip install -e ".[tests]"
+pip install pytest nose2 pytest-profiling gprof2dot pyprof2calltree
 mkdir -p prof
 
 # Run targeted tests
@@ -136,21 +151,23 @@ soxspipe --help
 ├── setup.py               # Python package configuration
 ├── environment.yml        # Conda environment specification
 ├── Makefile              # Test targets (litetest, fulltest)
-├── pyproject.toml       # Package, pytest, and coverage configuration
-├── .github/workflows/   # Required and opt-in GitHub Actions workflows
+├── pytest.ini           # Test configuration with markers
+├── nose2.cfg            # Alternative test runner config
+├── Jenkinsfile          # CI configuration (Jenkins, not GitHub Actions)
 ├── docs/                # Sphinx documentation
 ├── soxspipe/           # Main package directory
 │   ├── cl_utils.py     # Command-line interface
 │   ├── recipes/        # Data reduction recipes
 │   ├── commonutils/    # Shared utilities
-└── tests/               # Unit, integration, and opt-in real-data tests
+│   └── tests/          # Unit tests
+└── prof/               # Profiling output directory (create manually)
 ```
 
 ### Key Files
 - `soxspipe/__version__.py` - Version information
 - `soxspipe/cl_utils.py` - Main CLI entry point
 - `setup.py` - Dependencies and package metadata
-- `pyproject.toml` - Test markers: `unit`, `integration`, `real_data`, `slow`, and `serial`
+- `pytest.ini` - Test markers: 'slow', 'full', 'serial'
 
 ## Common Issues and Workarounds
 
@@ -158,9 +175,13 @@ soxspipe --help
 
 2. **pkg_resources warnings**: Expected deprecation warnings from fundamentals package, can be ignored
 
-3. **Real-data test data missing**: Run the required synthetic suite, or use the opt-in real-data workflow to create a verified workspace before running `tests/real_data`.
+3. **Test data missing**: Full test suite needs external data, use individual test files for validation
 
 4. **Documentation build errors**: Known extension issues, focus on code functionality
+
+5. **Import errors in tests**: Some test files have missing imports, skip problematic test files
+
+6. **Makefile test targets fail**: Need pytest-profiling and prof/ directory setup
 
 ## Expected Timing (with 50% safety buffer)
 - **Conda environment creation**: 94 seconds (use 120+ second timeout)
@@ -172,7 +193,7 @@ soxspipe --help
 ## CRITICAL Reminders
 - **NEVER CANCEL** conda environment creation - it takes time but will complete
 - **ALWAYS** source conda profile script before activation
-- **DO NOT** run `tests/real_data` without a verified workspace supplied through `SOXSPIPE_REAL_DATA_DIR`
+- **DO NOT** expect full test suite to pass without external test data
 - **ALWAYS** test CLI functionality after making changes to validate the pipeline works
 - Use conda-forge channel for all conda operations
 - Development changes require `pip install -e .` to take effect

@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 """
 *Flux calibrate an extracted science spectrum using an instrument response function*
 
@@ -9,31 +10,17 @@ Date Created
 : July 28, 2023
 """
 
+from builtins import object
 import os
-from typing import Any
 
 os.environ["TERM"] = "vt100"
-
-
-def _calculate_flux_calibration(
-    wavelengths: Any,
-    counts: Any,
-    exposureTime: float,
-    responseCoefficients: Any,
-    extinctionFactors: Any,
-) -> Any:
-    """Return calibrated flux values from the pipeline calibration factors."""
-    import numpy as np
-
-    responseFactors = np.polyval(responseCoefficients, wavelengths)
-    return counts / exposureTime * extinctionFactors * responseFactors * 10**-17
 
 
 # OR YOU CAN REMOVE THE CLASS BELOW AND ADD A WORKER FUNCTION ... SNIPPET TRIGGER BELOW
 # xt-worker-def
 
 
-class flux_calibration:
+class flux_calibration(object):
     """
     *The worker class for the flux_calibration module*
 
@@ -100,9 +87,8 @@ class flux_calibration:
         self.sofName = sofName
 
         import pandas as pd
-
-        from soxspipe.commonutils import keyword_lookup
         from soxspipe.commonutils.toolkit import utility_setup
+        from soxspipe.commonutils import keyword_lookup
 
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
 
@@ -114,7 +100,7 @@ class flux_calibration:
         )
         self.products = pd.DataFrame()
 
-        return
+        return None
 
     def calibrate(self):
         """
@@ -141,10 +127,10 @@ class flux_calibration:
 
         import copy
         from contextlib import suppress
-
-        import pandas as pd
         from astropy.table import Table
-
+        import numpy as np
+        from astropy.io import fits
+        import pandas as pd
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import extinction_correction_factor
 
@@ -153,13 +139,17 @@ class flux_calibration:
         self.log.debug("completed the ``calibrate`` method")
         # STEP TO DO:
 
+        # DIVIDE PER EXPOSURE TIME
+        countsPerAngstrom = self.extractedSpectrum["FLUX_COUNTS"] / self.exptime
+
         # APPLY EXTINCTION CORRECTION FACTOR
         if self.arm == "UVB" or self.arm == "VIS":
             extinctionCorrectionFactor = extinction_correction_factor(
                 self.extractedSpectrum["WAVE"], self.extinctionPath, self.airmass
             )
+            flux_calibration = countsPerAngstrom * extinctionCorrectionFactor
         else:
-            extinctionCorrectionFactor = 1.0
+            flux_calibration = countsPerAngstrom
 
         # APPLY RESPNSE FUNCTION
         responseFunctionCoeff = Table.read(self.responseFunction, format="fits")
@@ -168,13 +158,8 @@ class flux_calibration:
         for idx_coeff in range(0, int(responseFunctionCoeff["polyOrder"]) + 1):
             polyCoeffs.append(responseFunctionCoeff[f"c{idx_coeff}"][0])
 
-        flux_calibration = _calculate_flux_calibration(
-            self.extractedSpectrum["WAVE"],
-            self.extractedSpectrum["FLUX_COUNTS"],
-            self.exptime,
-            polyCoeffs,
-            extinctionCorrectionFactor,
-        )
+        responseFunctionFactor = np.polyval(polyCoeffs, self.extractedSpectrum["WAVE"])
+        flux_calibration = flux_calibration * responseFunctionFactor * 10**-17
 
         fluxCalSpectrum = pd.DataFrame(
             {
@@ -226,19 +211,21 @@ class flux_calibration:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
+                pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
-                        "product_label": "EXTRACTED_FLUXCAL_SPECTRUM",
+                        "product_label": f"EXTRACTED_FLUXCAL_SPECTRUM",
                         "file_name": filename,
                         "file_type": "FITS",
                         "reduction_date_utc": utcnow,
-                        "product_desc": "Flux calibrated extracted spectrum",
+                        "product_desc": f"Flux calibrated extracted spectrum",
                         "file_path": filePath,
                         "obs_date_utc": header["DATE-OBS"],
                         "label": "PROD",
                     }
-                ]),
+                )
+                .to_frame()
+                .T,
             ],
             ignore_index=True,
         )

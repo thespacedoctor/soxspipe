@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# encoding: utf-8
 """
 *detect arc-lines on a pinhole frame to generate a dispersion solution*
 
@@ -29,119 +30,30 @@ Module Structure
 """
 
 ################# GLOBAL IMPORTS ####################
-import contextlib
-import logging
-import os
-import sys
-from datetime import datetime
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    # TYPING-ONLY IMPORT. NUMPY IS IMPORTED INSIDE THE FUNCTIONS THAT USE IT AT
-    # RUNTIME, SO THIS BLOCK COSTS NOTHING AT IMPORT TIME
-    import numpy as np
-    import numpy.typing as npt
-
-from soxspipe.commonutils import detector_lookup, keyword_lookup
+from soxspipe.commonutils.toolkit import (
+    unpack_order_table,
+    read_spectral_format,
+    twoD_disp_map_image_to_dataframe,
+)
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-from soxspipe.commonutils.toolkit import (
-    get_calibrations_path,
-    read_spectral_format,
-    twoD_disp_map_image_to_dataframe,
-    unpack_order_table,
-)
+from soxspipe.commonutils.toolkit import get_calibrations_path
+from os.path import expanduser
+from soxspipe.commonutils import detector_lookup
+from soxspipe.commonutils import keyword_lookup
+from fundamentals import tools
+from builtins import object
+import sys
+import os
+from datetime import datetime, timezone
 
 os.environ["TERM"] = "vt100"
 
 
-# RESIDUALS ARE QUANTISED BEFORE THEY ARE COMPARED AGAINST THE SIGMA-CLIP THRESHOLD.
-# THE CLIP LOOP RE-FITS ON WHATEVER SURVIVES, SO A RESIDUAL DIFFERING ONLY IN ITS
-# LAST BITS CAN LAND ON EITHER SIDE OF THE THRESHOLD AND CHANGE EVERY LATER
-# ITERATION. NINE DECIMAL PLACES IS SEVEN ORDERS OF MAGNITUDE FINER THAN THE ~0.01
-# PIXEL CENTROIDING PRECISION, SO NO REAL MEASUREMENT IS AFFECTED, AND FAR COARSER
-# THAN THE ~1e-16 NOISE A LEAST-SQUARES SOLVE VARIES BY BETWEEN MACHINES
-RESIDUAL_QUANTISATION_DECIMALS = 9
-
-
-def quantise_residuals(residuals: "npt.ArrayLike") -> "np.ndarray":
-    """*round residuals to a fixed precision so the clip decision cannot flip on float noise*
-
-    **Key Arguments:**
-
-    - ``residuals`` -- an array of fit residuals, in pixels
-
-    **Return:**
-
-    - ``quantised`` -- the residuals rounded to `RESIDUAL_QUANTISATION_DECIMALS` places
-
-    **Usage:**
-
-    ```python
-    from soxspipe.commonutils.create_dispersion_map import quantise_residuals
-    stable = quantise_residuals(orderPixelTable["residuals_xy"].to_numpy())
-    ```
-    """
-    import numpy as np
-
-    return np.round(np.asarray(residuals, dtype=float), RESIDUAL_QUANTISATION_DECIMALS)
-
-
-# THE SIGMA-CLIP CUT IS A KNIFE EDGE: A RESIDUAL A FRACTION OF AN ULP EITHER SIDE OF IT
-# IS CLIPPED OR KEPT, AND THE CLIP LOOP RE-FITS ON WHATEVER SURVIVES, SO THE DIFFERENCE
-# COMPOUNDS. A DEAD-BAND ROUND THE CUT RESOLVES THE UNDECIDABLE CASES ONE WAY: ANYTHING
-# INDISTINGUISHABLE FROM THE CUT IS KEPT. AT 1e-7 OF THE CUT THIS IS FIVE ORDERS OF
-# MAGNITUDE BELOW THE ~0.01 PIXEL CENTROIDING PRECISION, SO IT DECIDES ONLY CASES THE
-# MEASUREMENT CANNOT SEPARATE, AND NINE ORDERS ABOVE THE ~1e-16 BY WHICH A LEAST-SQUARES
-# SOLVE VARIES BETWEEN MACHINES, SO IT COVERS THE DIFFERENCES THAT ACTUALLY ARISE
-CLIP_DEADBAND_RELATIVE = 1e-7
-
-
-def sigma_clip_stable(data, deadbandRelative=CLIP_DEADBAND_RELATIVE, **kwargs):
-    """*sigma-clip an array, keeping any point too close to the cut to be told apart from it*
-
-    **Key Arguments:**
-
-    - ``data`` -- the values to clip
-    - ``deadbandRelative`` -- half-width of the dead-band, as a fraction of the clip bound
-    - ``kwargs`` -- passed straight through to `astropy.stats.sigma_clip`
-
-    **Return:**
-
-    - ``clipped`` -- a masked array, masked where the value lies beyond the cut by more than the dead-band
-
-    **Usage:**
-
-    ```python
-    from soxspipe.commonutils.create_dispersion_map import sigma_clip_stable
-    masked = sigma_clip_stable(residuals, sigma_lower=3000, sigma_upper=3, maxiters=1, cenfunc="mean", stdfunc="std")
-    ```
-
-    This narrows the window in which a machine-to-machine floating-point difference can
-    change the clip decision; it does not abolish it, since the dead-band has edges of
-    its own. What makes the reduction reproducible is that the fits receive bit-identical
-    input, which the line table's total sort key provides. This is the second line of defence.
-    """
-    import numpy as np
-    from astropy.stats import sigma_clip
-
-    values = np.asarray(data, dtype=float)
-    clipped, lower, upper = sigma_clip(values, return_bounds=True, **kwargs)
-    mask = np.ma.getmaskarray(clipped).copy()
-
-    deadband = deadbandRelative * max(abs(float(lower)), abs(float(upper)))
-
-    # A NaN COMPARES FALSE AGAINST BOTH BOUNDS, SO IT IS NEVER PULLED BACK IN
-    borderline = mask & (values > lower - deadband) & (values < upper + deadband)
-    mask = mask & ~borderline
-
-    return np.ma.MaskedArray(values, mask=mask)
-
-
-class create_dispersion_map:
+class create_dispersion_map(object):
     """
     *detect arc-lines on a pinhole frame to generate a dispersion solution*
 
@@ -206,8 +118,8 @@ class create_dispersion_map:
         self.log = log
         log.debug("instantiating a new 'create_dispersion_map' object")
 
-        import copy
         import warnings
+        import copy
 
         # STORE INITIALIZATION PARAMETERS
         self._store_init_params(
@@ -249,7 +161,7 @@ class create_dispersion_map:
         # CREATE OUTPUT DIRECTORIES FOR QC AND PRODUCTS
         self._setup_output_directories()
 
-        return
+        return None
 
     def _store_init_params(
         self,
@@ -323,9 +235,8 @@ class create_dispersion_map:
 
     def _configure_warnings_and_logging(self, warnings):
         """*Configure warning filters and reset logging levels*"""
-        import logging
-
         from photutils.utils import NoDetectionsWarning
+        import logging
 
         # SUPPRESS PHOTUTILS NO DETECTIONS WARNINGS
         warnings.simplefilter("ignore", NoDetectionsWarning)
@@ -523,7 +434,7 @@ class create_dispersion_map:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": qc_name,
@@ -534,7 +445,9 @@ class create_dispersion_map:
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
@@ -565,6 +478,7 @@ class create_dispersion_map:
     def _calculate_order_shift_statistics(self, orderPixelTable, mask):
         """*CALCULATE SHIFT STATISTICS FOR A SINGLE ORDER*"""
         from astropy.stats import sigma_clipped_stats
+        import numpy as np
 
         # CALCULATE XY DISTANCE STATISTICS
         meanxy, medianxy, stdxy = sigma_clipped_stats(
@@ -626,6 +540,7 @@ class create_dispersion_map:
     def _handle_multipin_hole_big_shift(self, orderPixelTable, order_num, mask, iteration):
         """*DETECT AND CORRECT LARGE SHIFTS BETWEEN SINGLE/MULTI-PINHOLE FRAMES*"""
         from astropy.stats import sigma_clipped_stats
+        import numpy as np
 
         # ONLY CHECK ON FIRST ITERATION
         if iteration > 1:
@@ -732,8 +647,11 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``get`` method")
 
-        import numpy as np
         import pandas as pd
+        from astropy.table import Table
+        import numpy as np
+        from astropy.stats import sigma_clipped_stats
+        from astropy.stats import sigma_clip
 
         # STEP 1: INITIALIZE RECIPE SETTINGS AND POLYNOMIAL DEGREES
         bootstrap_dispersion_solution, tightFit, orderDeg, wavelengthDeg, slitDeg = self._initialize_recipe_settings()
@@ -752,17 +670,8 @@ class create_dispersion_map:
 
         boost = True
         while boost:
-            # SORT ON A KEY THAT IS UNIQUE PER ROW. WAVELENGTH IS NOT A TOTAL KEY ON ITS
-            # OWN: IT REPEATS ACROSS ORDERS AND SLIT POSITIONS, PANDAS DEFAULTS TO AN
-            # UNSTABLE QUICKSORT AND NUMPY DISPATCHES FLOAT SORTS TO SIMD KERNELS WHOSE
-            # PERMUTATION OF TIED ROWS DEPENDS ON THE CPU, SO SORTING ON WAVELENGTH ALONE
-            # PUT THE SAME ROWS IN DIFFERENT ORDERS ON DIFFERENT MACHINES. THAT CHANGED
-            # SUMMATION ORDER IN THE POLYNOMIAL FITS AND FLIPPED LINES ACROSS THE
-            # SIGMA-CLIPPING THRESHOLD, MOVING THE MERGED SPECTRUM'S RED END.
-            # WAVELENGTH, ORDER AND SLIT INDEX ARE STILL NOT ENOUGH: THE SHIPPED NIR ARC
-            # LINE LIST CONTAINS TWO LINES SHARING ALL THREE AND DIFFERING ONLY IN THEIR
-            # DETECTOR POSITION, SO THE DETECTOR COORDINATES COMPLETE THE KEY
-            orderPixelTable = self._sort_line_table_on_a_total_key(orderPixelTable)
+            # SORT BY COLUMN NAME
+            orderPixelTable.sort_values(["wavelength"], inplace=True)
 
             # BOOST WILL BE SET TO TRUE LATER IF FOUND TO BE TRUE IN THE SETTINGS FILE
             boost = False
@@ -775,7 +684,7 @@ class create_dispersion_map:
                 # DETECT THE LINES ON THE PINHOLE FRAME AND
                 # ADD OBSERVED LINES TO DATAFRAME
                 iteration = 0
-                self.log.print("\n# FINDING PINHOLE ARC-LINES ON IMAGE\n")
+                self.log.print(f"\n# FINDING PINHOLE ARC-LINES ON IMAGE\n")
                 iraf = False
                 while iteration < 3:
 
@@ -931,7 +840,7 @@ class create_dispersion_map:
                 )
 
             # CALCULATE LINE DETECTION STATISTICS
-            percentageDetectedLines = float(f"{float(detectedLines) / float(totalLines):.6f}")
+            percentageDetectedLines = float("{:.6f}".format(float(detectedLines) / float(totalLines)))
 
             # GET CURRENT UTC TIMESTAMP FOR QC RECORDS
             utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -1001,7 +910,7 @@ class create_dispersion_map:
         goodLinesFN, missingLinesFN = self._get_output_filenames()
 
         # CALCULATE GOOD LINES PERCENTAGE STATISTICS
-        percentageGoodLines = float(f"{float(len(goodLinesTable.index)) / float(totalLines):.6f}")
+        percentageGoodLines = float("{:.6f}".format(float(len(goodLinesTable.index)) / float(totalLines)))
 
         # WRITE LINE DETECTION QC METRICS
         self._write_qc_metrics(
@@ -1039,7 +948,7 @@ class create_dispersion_map:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
+                    pd.Series(
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "PINHOLE COUNT MIN",
@@ -1050,7 +959,9 @@ class create_dispersion_map:
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    ]),
+                    )
+                    .to_frame()
+                    .T,
                 ],
                 ignore_index=True,
             )
@@ -1113,6 +1024,9 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``get_predicted_line_list`` method")
 
+        from astropy.table import Table
+        from astropy.stats import sigma_clipped_stats
+        import numpy as np
 
         # DETERMINE FRAME TYPE (SINGLE OR MULTI-PINHOLE)
         frameTech = self._determine_frame_tech()
@@ -1147,9 +1061,10 @@ class create_dispersion_map:
 
         if tech == "ECHELLE,PINHOLE":
             return "single"
-        if tech == "ECHELLE,MULTI-PINHOLE":
+        elif tech == "ECHELLE,MULTI-PINHOLE":
             return "multi"
-        raise TypeError("The input frame needs to be a calibrated single- or multi-pinhole arc lamp frame")
+        else:
+            raise TypeError("The input frame needs to be a calibrated single- or multi-pinhole arc lamp frame")
 
     def _get_binning_params(self):
         """*Extract binning parameters from frame header*"""
@@ -1189,22 +1104,22 @@ class create_dispersion_map:
             if col in df.columns:
                 try:
                     df[col] = df[col].astype(float)
-                except (ValueError, TypeError) as e:
-                    self.log.debug(f"_clean_line_list: `df[col] = df[col].astype(float)` failed, continuing: {e}")
+                except:
+                    pass
 
         for col in intCols:
             if col in df.columns:
                 try:
                     df[col] = df[col].astype(int)
-                except (ValueError, TypeError) as e:
-                    self.log.debug(f"_clean_line_list: `df[col] = df[col].astype(int)` failed, continuing: {e}")
+                except:
+                    pass
 
         for col in stringCols:
             if col in df.columns:
                 try:
                     df[col] = df[col].astype(str)
-                except (ValueError, TypeError) as e:
-                    self.log.debug(f"_clean_line_list: `df[col] = df[col].astype(str)` failed, continuing: {e}")
+                except:
+                    pass
 
         # REMOVE FLAGGED LINES
         if "delete" in df.columns:
@@ -1240,8 +1155,8 @@ class create_dispersion_map:
 
     def _apply_first_guess_corrections(self, df):
         """*Apply systematic shifts from first guess dispersion solution*"""
-        import numpy as np
         from astropy.stats import sigma_clipped_stats
+        import numpy as np
 
         slitIndex = int(self.detectorParams["mid_slit_index"])
 
@@ -1385,7 +1300,7 @@ class create_dispersion_map:
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
+                pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "DETLINES CLIP NUM",
@@ -1396,15 +1311,17 @@ class create_dispersion_map:
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                ]),
+                )
+                .to_frame()
+                .T,
             ],
             ignore_index=True,
         )
 
     def _prepare_line_list_columns(self, goodLinesTable, clippedLinesTable):
         """*Prepare and combine good and clipped line lists with proper columns*"""
-        import numpy as np
         import pandas as pd
+        import numpy as np
 
         # DEFINE COLUMNS TO KEEP
         keepColumns = [
@@ -1459,16 +1376,16 @@ class create_dispersion_map:
             goodAndClippedLines = goodLinesTable[keepColumns]
 
         # SORT BOTH DATAFRAMES
-        goodAndClippedLines.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
+        goodAndClippedLines.sort_values(["order", "wavelength", "slit_index"], inplace=True)
         goodLinesTable = goodLinesTable[keepColumns]
-        goodLinesTable.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
+        goodLinesTable.sort_values(["order", "wavelength", "slit_index"], inplace=True)
 
         return goodAndClippedLines, goodLinesTable
 
     def _write_fitted_lines_file(self, goodAndClippedLines, goodLinesFN, utcnow):
         """*Write fitted lines (good + clipped) to FITS file*"""
-        import pandas as pd
         from astropy.table import Table
+        import pandas as pd
 
         t = Table.from_pandas(goodAndClippedLines)
         filePath = f"{self.qcDir}/{goodLinesFN}"
@@ -1479,7 +1396,7 @@ class create_dispersion_map:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
+                pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "DISP_MAP_LINES",
@@ -1491,15 +1408,17 @@ class create_dispersion_map:
                         "file_path": filePath,
                         "label": "QC",
                     }
-                ]),
+                )
+                .to_frame()
+                .T,
             ],
             ignore_index=True,
         )
 
     def _write_missing_lines_file(self, missingLines, missingLinesFN, utcnow):
         """*Write missing lines to FITS file*"""
-        import pandas as pd
         from astropy.table import Table
+        import pandas as pd
 
         keepColumns = [
             "wavelength",
@@ -1511,7 +1430,7 @@ class create_dispersion_map:
         ]
 
         # SORT AND EXTRACT RELEVANT COLUMNS
-        missingLines.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
+        missingLines.sort_values(["order", "wavelength", "slit_index"], inplace=True)
         t = Table.from_pandas(missingLines[keepColumns])
         filePath = f"{self.qcDir}/{missingLinesFN}"
 
@@ -1521,7 +1440,7 @@ class create_dispersion_map:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
+                pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "DISP_MAP_LINES_MISSING",
@@ -1533,7 +1452,9 @@ class create_dispersion_map:
                         "file_path": filePath,
                         "label": "QC",
                     }
-                ]),
+                )
+                .to_frame()
+                .T,
             ],
             ignore_index=True,
         )
@@ -1565,10 +1486,9 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``detect_pinhole_arc_lines`` method")
 
-        import logging
-
         import numpy as np
         from fundamentals import fmultiprocess
+        import logging
 
         # FIX ASTROPY LOGGING LEVEL RESET ISSUE
         logging.getLogger().setLevel(logging.INFO + 5)
@@ -1640,7 +1560,7 @@ class create_dispersion_map:
 
         # AGGREGATE RESULTS FROM ALL STAMP MEASUREMENTS
         for rr in results:
-            for k in predictedLines:
+            for k in predictedLines.keys():
                 thisList = [r[k] for r in rr]
                 predictedLines[k].append(thisList)
         print()
@@ -1669,12 +1589,13 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``write_map_to_file`` method")
 
-        import copy
-        from contextlib import suppress
-
         import pandas as pd
         from astropy.table import Table
-
+        from astropy.io import fits
+        from contextlib import suppress
+        import copy
+        import math
+        import numpy as np
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         arm = self.arm
@@ -1939,19 +1860,12 @@ class create_dispersion_map:
                 inplace=True,
             )
 
-        # RESIDUALS ARE QUANTISED AS THEY ARE CALCULATED, SO EVERY CONSUMER — THE
-        # SIGMA-CLIPPING BELOW ABOVE ALL — SEES A VALUE THAT DOES NOT MOVE WITH THE
-        # LAST BITS OF THE SOLVE. SEE quantise_residuals
-        orderPixelTable["residuals_x"] = quantise_residuals(
-            orderPixelTable["fit_x"] - orderPixelTable["observed_x"]
-        )
-        orderPixelTable["residuals_y"] = quantise_residuals(
-            orderPixelTable["fit_y"] - orderPixelTable["observed_y"]
-        )
+        orderPixelTable["residuals_x"] = orderPixelTable["fit_x"] - orderPixelTable["observed_x"]
+        orderPixelTable["residuals_y"] = orderPixelTable["fit_y"] - orderPixelTable["observed_y"]
 
         # CALCULATE COMBINED RESIDUALS AND STATS
-        orderPixelTable["residuals_xy"] = quantise_residuals(
-            np.sqrt(np.square(orderPixelTable["residuals_x"]) + np.square(orderPixelTable["residuals_y"]))
+        orderPixelTable["residuals_xy"] = np.sqrt(
+            np.square(orderPixelTable["residuals_x"]) + np.square(orderPixelTable["residuals_y"])
         )
         combined_res_mean = np.mean(orderPixelTable["residuals_xy"])
         combined_res_std = np.std(orderPixelTable["residuals_xy"])
@@ -2088,22 +2002,22 @@ class create_dispersion_map:
                     odb = o
 
                 arrayOfNames = [
-                    "X RES MEDIAN",
-                    "Y RES MEDIAN",
-                    "XY RES MEDIAN",
-                    "X RES SD",
-                    "Y RES SD",
-                    "XY RES SD",
-                    "X DIFF MEDIAN",
-                    "Y DIFF MEDIAN",
-                    "XY DIFF MEDIAN",
-                    "X DIFF SD",
-                    "Y DIFF SD",
-                    "XY DIFF SD",
-                    "FWHM PIN MEDIAN",
-                    "FWHM PIN SD",
-                    "R PIN MEDIAN",
-                    "R PIN SD",
+                    f"X RES MEDIAN",
+                    f"Y RES MEDIAN",
+                    f"XY RES MEDIAN",
+                    f"X RES SD",
+                    f"Y RES SD",
+                    f"XY RES SD",
+                    f"X DIFF MEDIAN",
+                    f"Y DIFF MEDIAN",
+                    f"XY DIFF MEDIAN",
+                    f"X DIFF SD",
+                    f"Y DIFF SD",
+                    f"XY DIFF SD",
+                    f"FWHM PIN MEDIAN",
+                    f"FWHM PIN SD",
+                    f"R PIN MEDIAN",
+                    f"R PIN SD",
                 ]
 
                 qc_names.extend(arrayOfNames)
@@ -2165,11 +2079,11 @@ class create_dispersion_map:
 
             for name, value, unit, comment, order in zip(qc_names, qc_values, qc_units, qc_comments, qc_order):
                 if unit != "lines":
-                    value = f"{value:0.5f}"
+                    value = f"{value:0.3f}"
                 self.qc = pd.concat(
                     [
                         self.qc,
-                        pd.DataFrame([
+                        pd.Series(
                             {
                                 "soxspipe_recipe": self.recipeName,
                                 "qc_name": name,
@@ -2181,7 +2095,9 @@ class create_dispersion_map:
                                 "reduction_date_utc": utcnow,
                                 "to_header": True,
                             }
-                        ]),
+                        )
+                        .to_frame()
+                        .T,
                     ],
                     ignore_index=True,
                 )
@@ -2191,11 +2107,10 @@ class create_dispersion_map:
 
     def _calculate_resolution_on_slit(self, row):
         import math
-
-        import matplotlib.pyplot as plt
+        from astropy.modeling import models, fitting
         import numpy as np
+        import matplotlib.pyplot as plt
         import pandas as pd
-        from astropy.modeling import fitting, models
 
         stdToFwhm = 2 * (2 * math.log(2)) ** 0.5
 
@@ -2251,7 +2166,7 @@ class create_dispersion_map:
                 )
                 plt.legend()
                 plt.show()
-        except Exception:
+        except Exception as e:
             return pd.Series([None, None])
 
         # stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
@@ -2265,56 +2180,6 @@ class create_dispersion_map:
         resolution_line = row["wavelength"] / delta_wavelength
 
         return pd.Series([resolution_line, fwhm])
-
-    def _sort_line_table_on_a_total_key(self, orderPixelTable):
-        """*sort the line table on a key that is unique per row, so the row order is fixed*
-
-        **Key Arguments:**
-
-        - ``orderPixelTable`` -- the line table to sort
-
-        **Return:**
-
-        - ``orderPixelTable`` -- the same rows in an order that does not depend on how they arrived
-
-        The physical columns are used first, so the resulting order still reads as
-        wavelength within order within slit position. A row's position in the incoming
-        table completes the key, which guarantees the sort is total even when two lines
-        agree on every physical column.
-        """
-        self.log.debug("starting the ``_sort_line_table_on_a_total_key`` method")
-
-        import numpy as np
-
-        candidateKey = ("wavelength", "order", "slit_index", "detector_x", "detector_y")
-        physicalKey = [c for c in candidateKey if c in orderPixelTable.columns]
-
-        if not physicalKey:
-            raise ValueError("the line table carries none of the columns the deterministic sort needs")
-
-        # A ROW'S POSITION IN THE INCOMING TABLE IS ITSELF DETERMINISTIC, SINCE THE TABLE
-        # IS READ FROM A FITS FILE IN FILE ORDER. APPENDING IT MAKES THE KEY TOTAL BY
-        # CONSTRUCTION, SO NO TIE IS EVER LEFT TO THE PLATFORM'S SORT KERNEL
-        orderPixelTable = orderPixelTable.copy()
-        orderPixelTable["incoming_position"] = np.arange(len(orderPixelTable.index))
-
-        duplicated = orderPixelTable.duplicated(subset=physicalKey, keep=False)
-        if duplicated.any():
-            # NOT FATAL, BUT WORTH SEEING: THE SHIPPED NIR ARC LINE LIST CONTAINS ONE SUCH
-            # PAIR, TWO LINES AT 1588.31 NM IN ORDER 12 THAT DIFFER ONLY IN DETECTOR POSITION
-            self.log.warning(
-                f"{int(duplicated.sum())} line-table rows share the physical sort key "
-                f"{physicalKey}; their relative order is taken from the input file"
-            )
-
-        # PANDAS ROUTES A MULTI-COLUMN SORT THROUGH np.lexsort, WHICH IS STABLE, AND
-        # IGNORES kind ENTIRELY. THE UNIQUE KEY IS WHAT FIXES THE ORDER HERE
-        orderPixelTable = orderPixelTable.sort_values(physicalKey + ["incoming_position"])
-        orderPixelTable.drop(columns=["incoming_position"], inplace=True)
-
-        self.log.debug("completed the ``_sort_line_table_on_a_total_key`` method")
-
-        return orderPixelTable
 
     def fit_polynomials(self, orderPixelTable, wavelengthDeg, orderDeg, slitDeg, missingLines=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
@@ -2342,9 +2207,10 @@ class create_dispersion_map:
         allClippedLines.append(orderPixelTable.loc[mask])
         orderPixelTable = orderPixelTable.loc[~mask]
 
-        import pandas as pd
+        import numpy as np
+        from astropy.stats import sigma_clip
         from scipy.optimize import curve_fit
-
+        import pandas as pd
         from soxspipe.commonutils import get_cached_coeffs
 
         arm = self.arm
@@ -2450,8 +2316,7 @@ class create_dispersion_map:
                     p0=xcoeff,
                     maxfev=30000,
                 )
-            except (RuntimeError, ValueError) as e:
-                self.log.debug(f"fit_polynomials: `xcoeff, pcov_x = curve_fit( polyx, xdat...` failed, continuing: {e}")
+            except:
                 return "xerror", None, None, None
 
             # NOW Y
@@ -2465,8 +2330,7 @@ class create_dispersion_map:
                     p0=ycoeff,
                     maxfev=30000,
                 )
-            except (RuntimeError, ValueError) as e:
-                self.log.debug(f"fit_polynomials: `ycoeff, pcov_y = curve_fit( polyy, xdat...` failed, continuing: {e}")
+            except:
                 return None, "yerror", None, None
 
             self.log.info("""calculate_residuals""" % locals())
@@ -2499,15 +2363,15 @@ class create_dispersion_map:
                 columnsNoStrings = list(orderPixelTable.columns)
                 try:
                     columnsNoStrings.remove("ion")
-                except ValueError as e:
-                    self.log.debug(f"fit_polynomials: `columnsNoStrings.remove('ion')` failed, continuing: {e}")
+                except:
+                    pass
 
                 # GROUP BY ARC LINES (MPH SETS)
                 lineGroups = orderPixelTable[columnsNoStrings].groupby(["wavelength", "order"]).mean()
                 lineGroups = lineGroups.reset_index()
 
                 # SIGMA-CLIP THE DATA ON SCATTER
-                masked_residuals = sigma_clip_stable(
+                masked_residuals = sigma_clip(
                     lineGroups["residuals_x"].abs(),
                     sigma_lower=3000,
                     sigma_upper=clippingSigmaX,
@@ -2516,7 +2380,7 @@ class create_dispersion_map:
                     stdfunc="std",
                 )
                 lineGroups["sigma_clipped_x"] = masked_residuals.mask
-                masked_residuals = sigma_clip_stable(
+                masked_residuals = sigma_clip(
                     lineGroups["residuals_y"].abs(),
                     sigma_lower=3000,
                     sigma_upper=clippingSigmaY,
@@ -2532,7 +2396,7 @@ class create_dispersion_map:
 
                 if True:
                     # CLIP ALSO ON COMBINED RESIDUALS
-                    masked_residuals = sigma_clip_stable(
+                    masked_residuals = sigma_clip(
                         lineGroups["residuals_xy"],
                         sigma_lower=5000,
                         sigma_upper=clippingSigma,
@@ -2562,7 +2426,7 @@ class create_dispersion_map:
 
                 # CLIP THE MOST DEVIATE SINGLE PINHOLES
                 if iteration == 1 and True:
-                    masked_residuals = sigma_clip_stable(
+                    masked_residuals = sigma_clip(
                         orderPixelTable["residuals_x"].abs(),
                         sigma_lower=3000,
                         sigma_upper=clippingSigmaX * 3,
@@ -2571,7 +2435,7 @@ class create_dispersion_map:
                         stdfunc="std",
                     )
                     orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
-                    masked_residuals = sigma_clip_stable(
+                    masked_residuals = sigma_clip(
                         orderPixelTable["residuals_y"].abs(),
                         sigma_lower=3000,
                         sigma_upper=clippingSigmaY * 3,
@@ -2580,7 +2444,7 @@ class create_dispersion_map:
                         stdfunc="std",
                     )
                     orderPixelTable["sigma_clipped_y"] = masked_residuals.mask
-                    masked_residuals = sigma_clip_stable(
+                    masked_residuals = sigma_clip(
                         orderPixelTable["R_pin"],
                         sigma_lower=3000,
                         sigma_upper=10,
@@ -2599,7 +2463,7 @@ class create_dispersion_map:
                     ] = True
 
             else:
-                masked_residuals = sigma_clip_stable(
+                masked_residuals = sigma_clip(
                     orderPixelTable["residuals_x"].abs(),
                     sigma_lower=3000,
                     sigma_upper=clippingSigmaX * 1,
@@ -2608,7 +2472,7 @@ class create_dispersion_map:
                     stdfunc="std",
                 )
                 orderPixelTable["sigma_clipped_x"] = masked_residuals.mask
-                masked_residuals = sigma_clip_stable(
+                masked_residuals = sigma_clip(
                     orderPixelTable["residuals_y"].abs(),
                     sigma_lower=3000,
                     sigma_upper=clippingSigmaY * 1,
@@ -2624,7 +2488,7 @@ class create_dispersion_map:
 
                 if True:
                     # CLIP ALSO ON COMBINED RESIDUALS
-                    masked_residuals = sigma_clip_stable(
+                    masked_residuals = sigma_clip(
                         orderPixelTable["residuals_xy"],
                         sigma_lower=5000,
                         sigma_upper=clippingSigma,
@@ -2642,8 +2506,7 @@ class create_dispersion_map:
                             ),
                             "sigma_clipped",
                         ] = True
-                    except KeyError as e:
-                        self.log.debug(f"fit_polynomials: `orderPixelTable.loc[ ( (orderPi...` failed, continuing: {e}")
+                    except:
                         orderPixelTable.loc[
                             (orderPixelTable["sigma_clipped_xy"] == True),
                             "sigma_clipped",
@@ -2666,11 +2529,12 @@ class create_dispersion_map:
                 sys.stdout.flush()
                 sys.stdout.write("\x1b[1A\x1b[2K")
 
-            # THE FAILING CALL WOULD BE THE PROGRESS LOGGER ITSELF, SO REPORTING THROUGH IT COULD RAISE AGAIN
-            with contextlib.suppress(ValueError, TypeError, OSError):
+            try:
                 self.log.print(
                     f"\tITERATION {iteration:02d}: {clippedCount} arc lines where clipped in this iteration of fitting a global dispersion map"
                 )
+            except:
+                pass
 
             mask = orderPixelTable["sigma_clipped"] == True
             orderPixelTable = orderPixelTable.loc[~mask]
@@ -2724,7 +2588,6 @@ class create_dispersion_map:
         orderPolyTable, orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=self.orderTable, extend=0.0, order=order
         )
-        self.orderPixelTable = orderPixelTable
 
         # CREATE THE IMAGE SAME SIZE AS DETECTOR - NAN INSIDE ORDERS, 0 OUTSIDE
         science_pixels = dp["science-pixels"]
@@ -2839,14 +2702,12 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``map_to_image`` method")
 
-        import copy
-
+        from soxspipe.commonutils.combiner import Combiner
         import numpy as np
         from astropy.io import fits
+        import copy
         from fundamentals import fmultiprocess
-
         from soxspipe.commonutils import toolkit
-        from soxspipe.commonutils.combiner import Combiner
 
         self.log.print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
@@ -2920,7 +2781,7 @@ class create_dispersion_map:
         combinedWlImage = combinedWlImage.sum_combine()
 
         combinedWlImage.data += wlMap.data
-        combinedSlitImage.data += slitMap.data
+        combinedSlitImage.data += wlMap.data
 
         toolkit.frame_to_32(combinedWlImage)
         toolkit.frame_to_32(combinedSlitImage)
@@ -2949,21 +2810,6 @@ class create_dispersion_map:
             overwrite=True,
             checksum=True,
         )
-
-        if self.debug:
-            from soxspipe.commonutils.image_transformer import image_transformer
-            # ZOOM AND REBIN ALL ARRAYS ORDER-BY-ORDER, ALSO SIGMA-CLIPPING THE BAD-PIXEL MASK
-            transformer = image_transformer(
-                log=self.log,
-                settings=self.settings,
-                orderPixelTable=self.orderPixelTable,
-                twoDMapPath=dispersion_image_filePath,
-                dispersionMap=self.dispersionMapPath,
-                associatedFrame=self.pinholeFrame,
-                slitHalfLength=20,
-            )
-            transformer.cache_image("multi-pinhole", self.pinholeFrame.data)
-            orderRectifiedImages = transformer.get_order_rectified()
 
         self.log.debug("completed the ``map_to_image`` method")
         return dispersion_image_filePath
@@ -3088,8 +2934,8 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``convert_and_fit`` method")
 
-        import numpy as np
         import pandas as pd
+        import numpy as np
 
         # CREATE PANDAS DATAFRAME WITH LARGE ARRAYS - ONE ROW PER
         # WAVELENGTH-SLIT GRID CELL
@@ -3135,7 +2981,7 @@ class create_dispersion_map:
             left_on=["pixel_x", "pixel_y"],
             right_on=["pixel_x", "pixel_y"],
         )
-        orderPixelTable = orderPixelTable.sort_values(["order", "pixel_x", "pixel_y", "residual_xy"], kind="stable")
+        orderPixelTable = orderPixelTable.sort_values(["order", "pixel_x", "pixel_y", "residual_xy"])
 
         # FILTER TO WL/SLIT POSITION CLOSE ENOUGH TO CENTRE OF PIXEL
         mask = orderPixelTable["residual_xy"] < self.map_to_image_displacement_threshold
@@ -3163,9 +3009,9 @@ class create_dispersion_map:
             try:
                 wlMap.data[yy, xx] = np.where(np.isnan(wlMap.data[yy, xx]), wavelength, wlMap.data[yy, xx])
                 slitMap.data[yy, xx] = np.where(np.isnan(slitMap.data[yy, xx]), slit_position, slitMap.data[yy, xx])
-            except IndexError as e:
+            except IndexError:
                 # PIXELS OUTSIDE OF DETECTOR EDGES - IGNORE
-                self.log.debug(f"convert_and_fit: `wlMap.data[yy, xx] = np.where(np.isnan(...` failed, continuing: {e}")
+                pass
 
         sys.stdout.flush()
         sys.stdout.write("\x1b[1A\x1b[2K")
@@ -3176,13 +3022,12 @@ class create_dispersion_map:
             self.log.print(
                 f"ORDER {order:02d}, iteration {iteration:02d}. {percentageFound:0.2f}% order pixels now fitted."
             )
-        except (OSError, ValueError):
-            # THE FAILING CALLS ARE STDOUT AND THE PROGRESS LOGGER, SO REPORTING THROUGH THEM COULD RAISE AGAIN
+        except:
             pass
 
         if plots:
-            import matplotlib.pyplot as plt
             from matplotlib import cm
+            import matplotlib.pyplot as plt
 
             # PLOT CCDDATA OBJECT
             rotatedImg = slitMap.data
@@ -3245,13 +3090,12 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``create_dispersion_map_qc_plot`` method")
 
-        import matplotlib.pyplot as plt
         import numpy as np
-        import pandas as pd
-        from astropy.stats import sigma_clipped_stats
         from astropy.visualization import hist
-
+        import matplotlib.pyplot as plt
+        import pandas as pd
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
+        from astropy.stats import sigma_clipped_stats
 
         arm = self.arm
         kw = self.kw
@@ -3611,7 +3455,7 @@ class create_dispersion_map:
                 orderPixelTable[f"fit_{self.axisA}"],
                 marker="o",
                 c="blue",
-                s=orderPixelTable["residuals_xy"] * 30,
+                s=orderPixelTable[f"residuals_xy"] * 30,
                 alpha=0.1 * alphaBoost,
                 label="fitted line (size proportional to line-fit residual)",
             )
@@ -3776,7 +3620,7 @@ class create_dispersion_map:
                 orderGeoTable[f"{self.axisA}coord_edgeup"] - orderGeoTable[f"{self.axisA}coord_edgelow"]
             )
             orderGeoTable["slitLengthArcsec"] = np.abs(
-                orderGeoTable["slit_position_u"] - orderGeoTable["slit_position_l"]
+                orderGeoTable[f"slit_position_u"] - orderGeoTable[f"slit_position_l"]
             )
             orderGeoTable["pixelScale"] = orderGeoTable["slitLengthArcsec"] / orderGeoTable["slitLengthPixelsInt"]
             orderGeoTable["slitLengthArcsec"] = orderGeoTable["slitLengthPixels"] * orderGeoTable["pixelScale"]
@@ -3848,7 +3692,7 @@ class create_dispersion_map:
                     sizeAx.set_xlim(x_limits)
                     sizeAx.tick_params(axis="both", which="major", labelsize=8)
                     sizeAx.set_title(
-                        "Slit height as measured between the lower and upper order edges",
+                        f"Slit height as measured between the lower and upper order edges",
                         fontsize=9,
                     )
 
@@ -3875,7 +3719,7 @@ class create_dispersion_map:
                         gapAx.set_xlim(x_limits)
                         gapAx.tick_params(axis="both", which="major", labelsize=8)
                         gapAx.set_title(
-                            "Inter-order gap measured between adjacent orders",
+                            f"Inter-order gap measured between adjacent orders",
                             fontsize=9,
                         )
 
@@ -3946,7 +3790,7 @@ class create_dispersion_map:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
+                pd.Series(
                     {
                         "soxspipe_recipe": self.recipeName,
                         "product_label": "DISP_MAP_RES",
@@ -3958,7 +3802,9 @@ class create_dispersion_map:
                         "file_path": filePath,
                         "label": "QC",
                     }
-                ]),
+                )
+                .to_frame()
+                .T,
             ],
             ignore_index=True,
         )
@@ -3983,12 +3829,12 @@ class create_dispersion_map:
         if self.settings["tune-pipeline"]:
             import codecs
 
-            filePath = "residuals.txt"
+            filePath = f"residuals.txt"
             exists = os.path.exists(filePath)
             if not exists:
                 with codecs.open(filePath, encoding="utf-8", mode="w") as writeFile:
                     writeFile.write(
-                        "polyOrders,mean_x_res,mean_y_res,mean_res,std_res,median_res,median_x_res,median_y_res,CLINE \n"
+                        f"polyOrders,mean_x_res,mean_y_res,mean_res,std_res,median_res,median_x_res,median_y_res,CLINE \n"
                     )
             with codecs.open(filePath, encoding="utf-8", mode="a") as writeFile:
                 writeFile.write(
@@ -4012,6 +3858,7 @@ class create_dispersion_map:
         self.log.debug("starting the ``_clip_on_measured_line_metrics`` method")
 
         import matplotlib.pyplot as plt
+        from astropy.stats import sigma_clip, sigma_clipped_stats
         from astropy.visualization import hist
 
         # LAYOUT THE FIGURE
@@ -4029,8 +3876,8 @@ class create_dispersion_map:
         columnsNoStrings = list(orderPixelTable.columns)
         try:
             columnsNoStrings.remove("ion")
-        except ValueError as e:
-            self.log.debug(f"_clip_on_measured_line_metrics: `columnsNoStrings.remove('ion')` failed, continuing: {e}")
+        except:
+            pass
 
         if self.firstGuessMap:
 
@@ -4050,7 +3897,7 @@ class create_dispersion_map:
 
             # SIGMA-CLIP THE DATA ON SCATTER
             lineGroups["sigma_clipped_scatter"] = False
-            masked_residuals = sigma_clip_stable(
+            masked_residuals = sigma_clip(
                 lineGroups["x_diff"],
                 sigma_lower=5000,
                 sigma_upper=7,
@@ -4059,7 +3906,7 @@ class create_dispersion_map:
                 stdfunc="mad_std",
             )
             lineGroups["sigma_clipped_x"] = masked_residuals.mask
-            masked_residuals = sigma_clip_stable(
+            masked_residuals = sigma_clip(
                 lineGroups["y_diff"],
                 sigma_lower=5000,
                 sigma_upper=7,
@@ -4068,7 +3915,7 @@ class create_dispersion_map:
                 stdfunc="mad_std",
             )
             lineGroups["sigma_clipped_y"] = masked_residuals.mask
-            masked_residuals = sigma_clip_stable(
+            masked_residuals = sigma_clip(
                 lineGroups["xy_diff"],
                 sigma_lower=5000,
                 sigma_upper=7,
@@ -4110,8 +3957,8 @@ class create_dispersion_map:
                 label="clipped arc lines",
             )
 
-            bottomleft.set_ylabel("y-shift SD (px)", fontsize=12)
-            bottomleft.set_xlabel("x-shift SD (px)", fontsize=12)
+            bottomleft.set_ylabel(f"y-shift SD (px)", fontsize=12)
+            bottomleft.set_xlabel(f"x-shift SD (px)", fontsize=12)
             bottomleft.tick_params(axis="both", which="major", labelsize=9)
             bottomleft.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
@@ -4143,7 +3990,7 @@ class create_dispersion_map:
             .mean()
         )
         lineGroups = lineGroups.reset_index()
-        masked_residuals = sigma_clip_stable(
+        masked_residuals = sigma_clip(
             lineGroups["fwhm_pin_px"],
             sigma_lower=2.5,
             sigma_upper=5,
@@ -4176,8 +4023,8 @@ class create_dispersion_map:
             label="clipped pinhole lines",
         )
 
-        toprow.set_ylabel("fwhm (px)", fontsize=12)
-        toprow.set_xlabel("wavelength (nm)", fontsize=12)
+        toprow.set_ylabel(f"fwhm (px)", fontsize=12)
+        toprow.set_xlabel(f"wavelength (nm)", fontsize=12)
         toprow.tick_params(axis="both", which="major", labelsize=9)
         toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
@@ -4189,11 +4036,11 @@ class create_dispersion_map:
         s["dropped"] = False
         s.loc[(s["_merge"] == "both"), "dropped"] = True
         orderPixelTable["droppedOnFWHM"] = s["dropped"].values
-        orderPixelTable.loc[orderPixelTable["droppedOnFWHM"], "dropped"] = True
+        orderPixelTable.loc[(orderPixelTable["droppedOnFWHM"] == True), "dropped"] = True
 
         # SIGMA-CLIP THE DATA ON FLUX
         lineGroups = lineGroups.loc[~mask]
-        masked_residuals = sigma_clip_stable(
+        masked_residuals = sigma_clip(
             lineGroups["flux"],
             sigma_lower=5,
             sigma_upper=5,
@@ -4214,8 +4061,8 @@ class create_dispersion_map:
             label="pinhole flux",
         )
 
-        midrow.set_ylabel("pinhole flux", fontsize=12)
-        midrow.set_xlabel("wavelength (nm)", fontsize=12)
+        midrow.set_ylabel(f"pinhole flux", fontsize=12)
+        midrow.set_xlabel(f"wavelength (nm)", fontsize=12)
         midrow.tick_params(axis="both", which="major", labelsize=9)
         midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
@@ -4245,7 +4092,7 @@ class create_dispersion_map:
         # SIGMA-CLIP THE DATA ON FLUX
         lineGroups = lineGroups.loc[~mask]
         lineGroups["peak"] = lineGroups["peak"] / lineGroups["flux"]
-        masked_residuals = sigma_clip_stable(
+        masked_residuals = sigma_clip(
             lineGroups["peak"],
             sigma_lower=5000,
             sigma_upper=7,
@@ -4266,8 +4113,8 @@ class create_dispersion_map:
             label="pinhole peak flux / mean flux",
         )
 
-        midrow2.set_ylabel("pinhole peak flux", fontsize=12)
-        midrow2.set_xlabel("wavelength (nm)", fontsize=12)
+        midrow2.set_ylabel(f"pinhole peak flux", fontsize=12)
+        midrow2.set_xlabel(f"wavelength (nm)", fontsize=12)
         midrow2.tick_params(axis="both", which="major", labelsize=9)
         midrow2.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
@@ -4315,9 +4162,10 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``update_static_line_list_detector_positions`` method")
 
-        import pandas as pd
-
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
+        from soxspipe.commonutils.toolkit import read_spectral_format
+        import pandas as pd
+        from astropy.table import Table
 
         # GET UNIQUE VALUES OF order AND WAVELENGTH
         uniquecolNames = originalOrderPixelTable[["order", "wavelength"]].drop_duplicates()
@@ -4382,11 +4230,10 @@ class create_dispersion_map:
         """
         self.log.debug("starting the ``create_new_static_line_list`` method")
 
-        import pandas as pd
-        from astropy.table import Table
-
         from soxspipe.commonutils import dispersion_map_to_pixel_arrays
         from soxspipe.commonutils.toolkit import read_spectral_format
+        import pandas as pd
+        from astropy.table import Table
 
         dp = self.detectorParams
 
@@ -4421,7 +4268,7 @@ class create_dispersion_map:
         # lineAtlas = lineAtlas.loc[mask]
 
         # ORDER BY MOST INTENSE LINES
-        lineAtlas.sort_values(["amplitude"], ascending=[False], inplace=True, kind="stable")
+        lineAtlas.sort_values(["amplitude"], ascending=[False], inplace=True)
         lineAtlas = lineAtlas.head(500)
 
         # try:
@@ -4543,11 +4390,10 @@ def measure_line_position(
     """
     log.debug("starting the ``measure_line_position`` function")
 
-    import logging
-
     import numpy as np
-    from astropy.stats import sigma_clipped_stats
     from photutils import DAOStarFinder, IRAFStarFinder
+    from astropy.stats import sigma_clipped_stats
+    import logging
 
     # FIX ASTROPY LOGGING LEVEL RESET
     logging.getLogger().setLevel(logging.INFO + 5)
@@ -4583,7 +4429,7 @@ def measure_line_position(
         )
         # SUBTRACT MEDIAN FOR BETTER DETECTION IN LOW SIGNAL IMAGES
         sources = daofind(stamp.data - median, mask=stamp.mask)
-    except Exception:
+    except Exception as e:
         sources = None
 
     # INITIALIZE DETECTION VARIABLES
@@ -4806,17 +4652,13 @@ def _plot_slit_index_comparisons(df):
     Each panel title includes the global mean and std for that metric.
     Adds a fourth panel: scatter plot of x_diff vs y_diff, color-coded by slit_index.
     """
-    import matplotlib.pyplot as plt
     import numpy as np
+    import matplotlib.pyplot as plt
 
     slit_indexes = np.sort(df["slit_index"].unique())
     try:
         order_num = df["order"].iloc[0] if "order" in df.columns else None
-    except (IndexError, KeyError) as e:
-        # NO SOXSPIPE LOGGER IS IN SCOPE IN THIS MODULE-LEVEL PLOTTING HELPER
-        logging.getLogger(__name__).warning(
-            f"_plot_slit_index_comparisons: no order number in the dataframe, skipping the plot: {e}"
-        )
+    except:
         return
     cmap = plt.get_cmap("tab10")
     colors = {idx: cmap(i % 10) for i, idx in enumerate(slit_indexes)}
