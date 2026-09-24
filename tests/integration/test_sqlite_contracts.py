@@ -21,7 +21,7 @@ from tests.factories import (
 pytestmark = pytest.mark.integration
 
 
-def _write_corrupt_but_openable_database(path) -> None:
+def _write_corrupt_but_openable_database(path: str | os.PathLike[str]) -> None:
     """Write a real SQLite file whose `PRAGMA integrity_check` returns non-`ok`
     rows without SQLite refusing to open it or raising while executing the
     check.
@@ -79,6 +79,19 @@ def test_database_connection_rebuilds_a_corrupt_but_openable_database(
     organiser = workspace_organiser(tmp_path, log=log)
     _write_corrupt_but_openable_database(organiser.rootDbPath)
 
+    # CONFIRM THE FIXTURE'S OWN PRECONDITION: THE FILE MUST STAY OPENABLE
+    # AND MUST MAKE `PRAGMA INTEGRITY_CHECK` REPORT ROWS OTHER THAN
+    # `[("OK",)]`. WITHOUT THIS, A SQLITE BUILD THAT INSTEAD RAISED ON
+    # OPEN/CHECK WOULD STILL ROUTE INTO THE PRE-EXISTING BROAD
+    # `EXCEPT EXCEPTION:` RECOVERY PATH, AND THIS TEST WOULD PASS WITHOUT
+    # EVER EXERCISING THE FETCHALL-INSPECTION CODE IT IS MEANT TO PIN.
+    precondingConnection = sqlite3.connect(organiser.rootDbPath)
+    precondingRows = precondingConnection.execute(
+        "PRAGMA integrity_check"
+    ).fetchall()
+    precondingConnection.close()
+    assert precondingRows != [("ok",)]
+
     # `PREPARE(REFRESH=TRUE)` IS THE EXISTING RECOVERY PATH THIS FIX MUST
     # ROUTE INTO; IT ALSO DOES A FULL WORKSPACE SCAN (FITS INDEXING,
     # SESSION BOOTSTRAP, AND SO ON) THAT IS UNRELATED TO THIS DEFECT AND
@@ -87,29 +100,44 @@ def test_database_connection_rebuilds_a_corrupt_but_openable_database(
     # ITSELF DOES, THEN RE-RUNS THE REAL, UNMOCKED `_GET_OR_CREATE_DB_CONNECTION`
     # TO REBUILD THE CONNECTION FROM THE SCHEMA TEMPLATE - EXACTLY WHAT
     # `PREPARE` DOES INTERNALLY.
-    prepareCalls = []
+    prepareRefreshValues: tuple[bool, ...] = ()
 
-    def _rebuild_from_template(*, refresh=False, report=True):
-        prepareCalls.append(refresh)
+    def _rebuild_from_template(*, refresh: bool = False, report: bool = True) -> None:
+        """Stand in for `prepare(refresh=True)`'s file-replacement step, then
+        rebuild the connection via the real `_get_or_create_db_connection`.
+        """
+        nonlocal prepareRefreshValues
+        prepareRefreshValues = (*prepareRefreshValues, refresh)
         if refresh and os.path.exists(organiser.rootDbPath):
             os.remove(organiser.rootDbPath)
         organiser.conn, _ = organiser._get_or_create_db_connection()
 
     monkeypatch.setattr(organiser, "prepare", _rebuild_from_template)
 
-    connection, wasReset = organiser._get_or_create_db_connection()
+    connection = None
+    try:
+        connection, wasReset = organiser._get_or_create_db_connection()
 
-    assert prepareCalls == [True]
-    assert wasReset is True
-    assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-    tableNames = {
-        row[0]
-        for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        )
-    }
-    assert {"raw_frames", "product_frames", "z_sof_map"} <= tableNames
-    connection.close()
+        assert prepareRefreshValues == (True,)
+        assert wasReset is True
+        assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        tableNames = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        assert {"raw_frames", "product_frames", "z_sof_map"} <= tableNames
+    finally:
+        # `_REBUILD_FROM_TEMPLATE` (THE `PREPARE` STAND-IN) SETS
+        # `ORGANISER.CONN` VIA A NESTED CALL TO
+        # `_GET_OR_CREATE_DB_CONNECTION`, WHICH IS A GENUINELY SEPARATE
+        # CONNECTION OBJECT FROM THE ONE THE OUTER CALL RETURNS - CLOSE
+        # BOTH ON EVERY EXIT PATH.
+        if connection is not None:
+            connection.close()
+        if organiser.conn is not None and organiser.conn is not connection:
+            organiser.conn.close()
 
 
 def test_dataframe_write_normalises_sentinels_and_replaces_existing_rows(
