@@ -93,22 +93,8 @@ class soxs_stare(base_recipe):
             self.filenameTemplate = self.sofName + ".fits"
         else:
             # NO SET-OF-FILES NAME TO FALL BACK ON, SO NAME PRODUCTS FROM THE
-            # FIRST PREPARED FRAME INSTEAD -- THE ONLY FRAME-BEARING ATTRIBUTE
-            # THE CONSTRUCTOR HAS SET BY THIS POINT (DY-111)
-            from astropy import units as u
-            from astropy.nddata import CCDData
-
-            firstFramePath = self.inputFrames.files_filtered(include_path=True)[0]
-            firstFrame = CCDData.read(
-                firstFramePath,
-                hdu=0,
-                unit=u.electron,
-                hdu_uncertainty="ERRS",
-                hdu_mask="QUAL",
-                hdu_flags="FLAGS",
-                key_uncertainty_type="UTYPE",
-            )
-            self.filenameTemplate = filenamer(log=self.log, frame=firstFrame, settings=self.settings)
+            # OBJECT/STANDARD FRAME INSTEAD (DY-111 REVIEW FOLLOW-UP)
+            self.filenameTemplate = self._resolve_filename_template_frame()
 
         self.generateReponseCurve = False
 
@@ -127,6 +113,51 @@ class soxs_stare(base_recipe):
         self.inputFrames, self.supplementaryInput = sof.get()
 
         return
+
+    def _resolve_filename_template_frame(self):
+        """*read the header of the first science-type prepared frame and derive the product filename template*
+
+        Filters the prepared frames with the same OBJECT / OBJECT,ASYNC / STD,FLUX / STD,TELLURIC idiom
+        `_read_stare_object_frames` uses to pick out the science frames, so a calibration frame that
+        ``verify_input_frames`` also accepts (bias, dark, flat, master calibrations) never drives the
+        product name. Falls back to the first prepared frame only when no science-type frame is present.
+
+        **Return:**
+
+        - ``filenameTemplate`` -- the filename template `filenamer` derives from the selected frame's header
+        """
+        from astropy import units as u
+        from astropy.nddata import CCDData
+
+        kw = self.kw
+        scienceFilters = [
+            {kw("DPR_TYPE"): "OBJECT", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
+            {kw("DPR_TYPE"): "OBJECT,ASYNC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
+            {kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
+            {kw("DPR_TYPE"): "STD,TELLURIC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
+        ]
+
+        framePath = None
+        for filters in scienceFilters:
+            matchingPaths = self.inputFrames.files_filtered(include_path=True, **filters)
+            if len(matchingPaths):
+                framePath = matchingPaths[0]
+                break
+
+        if framePath is None:
+            # NO SCIENCE-TYPE FRAME PRESENT (E.G. A CALIBRATION-ONLY SET OF
+            # FILES) -- FALL BACK TO THE FIRST PREPARED FRAME
+            self.log.debug(
+                "_resolve_filename_template_frame: no OBJECT/standard frame found, naming from the first "
+                "prepared frame instead"
+            )
+            framePath = self.inputFrames.files_filtered(include_path=True)[0]
+
+        # HEADER-ONLY READ -- `filenamer` NEEDS THE HEADER (AND WCS) ONLY, SO
+        # SKIP LOADING THE UNCERTAINTY, MASK AND FLAGS EXTENSIONS
+        frame = CCDData.read(framePath, hdu=0, unit=u.electron)
+
+        return filenamer(log=self.log, frame=frame, settings=self.settings)
 
     def _verify_and_announce_input_frames(self):
         """*verify the collected frames and report the result to the user*
