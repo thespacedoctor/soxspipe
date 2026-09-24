@@ -464,45 +464,11 @@ class data_organiser:
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
-        if True:
-            c = self.conn.cursor()
-            sqlQueries = [
-                f'update product_frames set status_{self.sessionId} = "pass" where status_{self.sessionId} = "fail" and sof in (select sof_name from quality_control);',
-                "update quality_control set qc_value_min = null, qc_value_max = null, qc_flag = 'pass';",
-            ]
-
-            for k, v in self.settings.items():
-                if k[:5] == "soxs-":
-                    recipe = k
-                    for a in ["acq", "vis", "nir"]:
-                        if a in v and "qc-acceptable-ranges" in v[a]:
-                            arm = a.upper()
-                            for kk, vv in v[a]["qc-acceptable-ranges"].items():
-                                qc_name = kk.upper().replace("-", " ")
-                                qc_min = vv[0]
-                                qc_max = vv[1]
-                                sqlQueries.append(
-                                    f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and sof_name like "%{arm}%" and qc_name = "{qc_name}"  and qc_order = "-1";'
-                                )
-                    if "qc-acceptable-ranges" in v:
-                        for kk, vv in v["qc-acceptable-ranges"].items():
-                            qc_name = kk.upper().replace("-", " ")
-                            qc_min = vv[0]
-                            qc_max = vv[1]
-                            sqlQueries.append(
-                                f'update quality_control set qc_value_min = {qc_min}, qc_value_max = {qc_max} where soxspipe_recipe = "{recipe}" and qc_name = "{qc_name}"  and qc_order = "-1";'
-                            )
-
-            sqlQueries += [
-                'update quality_control set qc_flag = "pass" where CAST(qc_value as float) < qc_value_max and CAST(qc_value as float) > qc_value_min and qc_flag != "pass" and qc_order = "-1";',
-                'update quality_control set qc_flag = "fail" where (CAST(qc_value as float) > qc_value_max or CAST(qc_value as float) < qc_value_min) and qc_flag != "fail" and qc_order = "-1";',
-                'update product_frames set status_base = "fail" where sof in (select sof_name from quality_control where qc_flag = "fail");',
-            ]
-
-            for sqlQuery in sqlQueries:
-                c.execute(sqlQuery)
-            self.conn.commit()
-            c.close()
+        c = self.conn.cursor()
+        for sqlQuery, sqlParams in self._qc_acceptable_range_queries():
+            c.execute(sqlQuery, sqlParams)
+        self.conn.commit()
+        c.close()
 
         self._flag_files_to_ignore()
         self.build_sof_files()
@@ -555,6 +521,82 @@ class data_organiser:
         self.log.debug("completed the ``prepare`` method")
         return
 
+    def _qc_acceptable_range_queries(self):
+        """*build the `(sql, params)` pairs that apply this session's QC-acceptable-range settings*
+
+        Recipe names and QC-range keys come from the workspace YAML settings,
+        so they are bound as `?` parameters rather than interpolated into the
+        SQL text.
+
+        **Return:**
+
+        - a list of `(sqlQuery, sqlParams)` tuples, ready for `cursor.execute(sqlQuery, sqlParams)`
+        """
+        statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
+        queries = [
+            (
+                f'update product_frames set {statusColumn} = "pass" '  # noqa: S608
+                f'where {statusColumn} = "fail" and sof in (select sof_name from quality_control);',
+                (),
+            ),
+            (
+                "update quality_control set qc_value_min = null, qc_value_max = null, qc_flag = 'pass';",
+                (),
+            ),
+        ]
+
+        for k, v in self.settings.items():
+            if k[:5] != "soxs-":
+                continue
+            recipe = k
+            for a in ["acq", "vis", "nir"]:
+                if a in v and "qc-acceptable-ranges" in v[a]:
+                    arm = a.upper()
+                    for kk, vv in v[a]["qc-acceptable-ranges"].items():
+                        qc_name = kk.upper().replace("-", " ")
+                        qc_min = vv[0]
+                        qc_max = vv[1]
+                        queries.append(
+                            (
+                                "update quality_control set qc_value_min = ?, qc_value_max = ? "
+                                'where soxspipe_recipe = ? and sof_name like ? and qc_name = ?  and qc_order = "-1";',
+                                (qc_min, qc_max, recipe, f"%{arm}%", qc_name),
+                            )
+                        )
+            if "qc-acceptable-ranges" in v:
+                for kk, vv in v["qc-acceptable-ranges"].items():
+                    qc_name = kk.upper().replace("-", " ")
+                    qc_min = vv[0]
+                    qc_max = vv[1]
+                    queries.append(
+                        (
+                            "update quality_control set qc_value_min = ?, qc_value_max = ? "
+                            'where soxspipe_recipe = ? and qc_name = ?  and qc_order = "-1";',
+                            (qc_min, qc_max, recipe, qc_name),
+                        )
+                    )
+
+        queries += [
+            (
+                'update quality_control set qc_flag = "pass" '
+                "where CAST(qc_value as float) < qc_value_max and CAST(qc_value as float) > qc_value_min "
+                'and qc_flag != "pass" and qc_order = "-1";',
+                (),
+            ),
+            (
+                'update quality_control set qc_flag = "fail" '
+                "where (CAST(qc_value as float) > qc_value_max or CAST(qc_value as float) < qc_value_min) "
+                'and qc_flag != "fail" and qc_order = "-1";',
+                (),
+            ),
+            (
+                'update product_frames set status_base = "fail" '
+                'where sof in (select sof_name from quality_control where qc_flag = "fail");',
+                (),
+            ),
+        ]
+        return queries
+
     def list_obs(self):
         """*list all observation names and IDs in the current workspace*"""
         import pandas as pd
@@ -604,16 +646,14 @@ class data_organiser:
 
         self.log.debug("starting the ``list_raw`` method")
 
-        sqlQuery = (
-            f"select sof from product_frames where sof = '{sofFile}' and complete = 1"
-        )
+        sqlQuery = "select sof from product_frames where sof = :sofFile and complete = 1"
 
         for _ in range(4):  # Recursively query up to 5 times
             sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
 
         sqlQuery = f"SELECT * from sof_map WHERE sof in ({sqlQuery}) and filepath like '%./raw/%' order by sof"
 
-        table = pd.read_sql(sqlQuery, con=self.conn)
+        table = pd.read_sql(sqlQuery, con=self.conn, params={"sofFile": sofFile})
 
         filepaths = table["filepath"].tolist()
 
@@ -740,10 +780,10 @@ class data_organiser:
                                 os.remove(self.rootDir + "/" + n)
 
                 if len(databaseDeletes):
-                    databaseDeletes = (", ").join(databaseDeletes)
                     c = self.conn.cursor()
-                    sqlQuery = f'delete from raw_frames where filepath in ("{databaseDeletes}");'
-                    c.execute(sqlQuery)
+                    placeholders = ", ".join("?" for _ in databaseDeletes)
+                    sqlQuery = f"delete from raw_frames where filepath in ({placeholders});"  # noqa: S608
+                    c.execute(sqlQuery, databaseDeletes)
                     c.close()
 
         if not skipSqlSync:

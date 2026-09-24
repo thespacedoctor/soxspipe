@@ -385,3 +385,132 @@ def test_clean_up_with_hostile_force_fail_message_writes_no_error_in_a_real_data
     # ONLY THE MATCHING ROW IS STAMPED, AND THE PAYLOAD IS STORED VERBATIM AS A
     # VALUE RATHER THAN EXECUTED AS SQL.
     assert rows == [("one.sof", hostileMessage), ("two.sof", None)]
+
+
+# ---------------------------------------------------------------------------
+# `data_organiser._qc_acceptable_range_queries` -- WORKSPACE-SETTINGS RECIPE
+# AND QC-RANGE KEYS REACH THE DATABASE AS BOUND PARAMETERS, NOT INTERPOLATED
+# SQL TEXT.
+# ---------------------------------------------------------------------------
+
+
+def _qc_range_organiser(*, sessionId: str = "base", settings: dict[str, Any]) -> Any:
+    """Build a `data_organiser` carrying only the attributes the method reads."""
+    organiser = data_organiser_module.__new__(data_organiser_module)
+    organiser.sessionId = sessionId
+    organiser.settings = settings
+    return organiser
+
+
+def test_qc_acceptable_range_queries_binds_a_hostile_recipe_key_as_a_parameter() -> None:
+    """A workspace-settings recipe key shaped like a SQL injection payload is bound, not interpolated."""
+    # ARRANGE
+    hostileRecipe = 'soxs-x" OR 1=1 --'
+    organiser = _qc_range_organiser(
+        settings={hostileRecipe: {"qc-acceptable-ranges": {"ron": [1.0, 2.0]}}}
+    )
+
+    # ACT
+    queries = organiser._qc_acceptable_range_queries()
+
+    # ASSERT
+    matching = [q for q in queries if q[1] and q[1][2] == hostileRecipe]
+    assert len(matching) == 1
+    sqlQuery, params = matching[0]
+    assert hostileRecipe not in sqlQuery
+    assert params == (1.0, 2.0, hostileRecipe, "RON")
+
+
+def test_qc_acceptable_range_queries_updates_no_row_for_a_hostile_recipe_key_in_a_real_database() -> None:
+    """An injection-shaped recipe key matches no real row, leaving every existing row untouched."""
+    # ARRANGE
+    hostileRecipe = 'soxs-x" OR 1=1 --'
+    organiser = _qc_range_organiser(
+        settings={hostileRecipe: {"qc-acceptable-ranges": {"ron": [1.0, 2.0]}}}
+    )
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "create table quality_control (soxspipe_recipe text, qc_name text, "
+        "qc_order text, qc_value_min real, qc_value_max real, qc_flag text, "
+        "qc_value text, sof_name text)"
+    )
+    connection.executemany(
+        "insert into quality_control values (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("soxs-mbias", "RON", "-1", None, None, "pass", "1.5", "one.sof"),
+            ("soxs-mflat", "RON", "-1", None, None, "pass", "1.5", "two.sof"),
+        ],
+    )
+    connection.execute("create table product_frames (sof text, status_base text)")
+    connection.commit()
+
+    # ACT
+    for sqlQuery, sqlParams in organiser._qc_acceptable_range_queries():
+        connection.execute(sqlQuery, sqlParams)
+    connection.commit()
+
+    # ASSERT
+    rows = connection.execute(
+        "select soxspipe_recipe, qc_value_min, qc_value_max from quality_control order by soxspipe_recipe"
+    ).fetchall()
+    connection.close()
+    # NEITHER REAL ROW MATCHES THE HOSTILE RECIPE, SO NEITHER GAINS THE
+    # HOSTILE RANGE. IF THE PAYLOAD WERE STILL INTERPOLATED, THE `OR 1=1`
+    # WOULD HAVE SET THE RANGE ON BOTH.
+    assert rows == [
+        ("soxs-mbias", None, None),
+        ("soxs-mflat", None, None),
+    ]
+
+
+def test_qc_acceptable_range_queries_updates_no_row_for_a_hostile_qc_key_in_a_real_database() -> None:
+    """An injection-shaped QC-range key matches no real row, leaving every existing row untouched.
+
+    The recipe name is the other value read from the same workspace settings
+    and is covered by the test above; this covers the QC-range key itself
+    (the `kk` in `v["qc-acceptable-ranges"].items()`), which becomes `qc_name`.
+    """
+    # ARRANGE
+    # `/*` RATHER THAN `--`: `qc_name` IS BUILT VIA `kk.upper().replace("-", " ")`,
+    # WHICH TURNS A TRAILING `--` COMMENT MARKER INTO TWO SPACES AND ONLY BREAKS
+    # THE STILL-VULNERABLE SQL WITH A SYNTAX ERROR RATHER THAN SILENTLY
+    # CORRUPTING BOTH ROWS. `/*` SURVIVES THE REPLACEMENT AND REPRODUCES THE
+    # REAL DOUBLE-ROW CORRUPTION AGAINST THE OLD, UNPARAMETERIZED QUERY.
+    hostileQcKey = 'ron" OR 1=1 /*'
+    organiser = _qc_range_organiser(
+        settings={"soxs-mbias": {"qc-acceptable-ranges": {hostileQcKey: [1.0, 2.0]}}}
+    )
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "create table quality_control (soxspipe_recipe text, qc_name text, "
+        "qc_order text, qc_value_min real, qc_value_max real, qc_flag text, "
+        "qc_value text, sof_name text)"
+    )
+    connection.executemany(
+        "insert into quality_control values (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("soxs-mbias", "RON", "-1", None, None, "pass", "1.5", "one.sof"),
+            ("soxs-mbias", "FLUX", "-1", None, None, "pass", "1.5", "two.sof"),
+        ],
+    )
+    connection.execute("create table product_frames (sof text, status_base text)")
+    connection.commit()
+
+    # ACT
+    for sqlQuery, sqlParams in organiser._qc_acceptable_range_queries():
+        connection.execute(sqlQuery, sqlParams)
+    connection.commit()
+
+    # ASSERT
+    rows = connection.execute(
+        "select soxspipe_recipe, qc_name, qc_value_min, qc_value_max from quality_control order by qc_name"
+    ).fetchall()
+    connection.close()
+    # NEITHER REAL ROW MATCHES THE HOSTILE QC NAME, SO NEITHER GAINS THE
+    # HOSTILE RANGE. IF THE PAYLOAD WERE STILL INTERPOLATED, THE `OR 1=1 /*`
+    # WOULD HAVE SET THE RANGE ON BOTH -- CONFIRMED BY RECONSTRUCTING THE OLD
+    # UNPARAMETERIZED QUERY WITH THIS EXACT PAYLOAD AGAINST THIS SAME FIXTURE.
+    assert rows == [
+        ("soxs-mbias", "FLUX", None, None),
+        ("soxs-mbias", "RON", None, None),
+    ]

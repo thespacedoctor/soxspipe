@@ -425,6 +425,73 @@ def test_raw_frame_sync_indexes_and_moves_a_new_root_frame(tmp_path, log, monkey
     ]
 
 
+def test_sync_raw_frames_binds_a_hostile_mismatch_delete_as_a_parameter(
+    tmp_path, log, monkeypatch
+) -> None:
+    """A mismatched-location cleanup delete binds the filepath as a parameter.
+
+    `_sync_raw_frames` joined the mismatched filepaths into `WHERE filepath IN
+    (...)` as raw SQL text. A filepath containing a quote could close the
+    string literal early and turn the delete into `OR 1=1`, removing every row
+    rather than only the mismatched one.
+    """
+    organiser = workspace_organiser(tmp_path, log=log)
+    organiser.conn = sqlite3.connect(":memory:")
+    # THE SOURCE LOCATION MUST ALREADY LOOK LIKE A DATED RAW-ARCHIVE PATH FOR
+    # `_sync_raw_frames` TO TREAT A DIFFERING DESTINATION AS A STALE DATABASE
+    # ROW TO DELETE, RATHER THAN A NEW FRAME TO MOVE.
+    organiser.rootDir = str(tmp_path / "raw" / "2024-01-02")
+    os.makedirs(organiser.rootDir)
+    sourcePath = Path(organiser.rootDir) / "dup.fits"
+    sourcePath.write_text("synthetic frame", encoding="utf-8")
+    hostileDestination = str(
+        tmp_path / "raw" / "2024-01-03" / 'evil") OR 1=1 --.fits'
+    )
+    survivingPath = str(tmp_path / "raw" / "2024-01-01" / "keep.fits")
+
+    knownFrames = pd.DataFrame(
+        [
+            {
+                "file": "keep.fits",
+                "eso dpr tech": "ECHELLE,SLIT,STARE",
+                "mjd-date": "2024-01-01",
+                "filepath": survivingPath,
+            }
+        ]
+    )
+    knownFrames.to_sql("raw_frames", organiser.conn, index=False)
+    frames = pd.DataFrame(
+        [
+            {
+                "file": "dup.fits",
+                "eso dpr tech": "ECHELLE,SLIT,STARE",
+                "mjd-date": "2024-01-02",
+                "filepath": hostileDestination,
+            }
+        ]
+    )
+    scans = iter([(frames.copy(), [str(sourcePath)], 1), (None, None, 0)])
+
+    monkeypatch.setattr(
+        organiser,
+        "_create_directory_table",
+        lambda **_: next(scans),
+    )
+    monkeypatch.setattr(
+        organiser,
+        "_populate_raw_frames_extra_columns",
+        lambda table: table.copy(),
+    )
+
+    organiser._sync_raw_frames(skipSqlSync=True)
+
+    remaining = pd.read_sql("SELECT file FROM raw_frames", organiser.conn)
+    # ONLY THE ROW MATCHING THE EXACT HOSTILE FILEPATH IS REMOVED. IF THE
+    # PAYLOAD WERE STILL INTERPOLATED, THE `OR 1=1` WOULD HAVE DELETED
+    # `keep.fits` TOO, LEAVING THE TABLE EMPTY.
+    assert remaining["file"].tolist() == ["keep.fits"]
+
+
 def test_prepare_indexes_a_raw_frame_and_creates_a_base_session(
     tmp_path, log, monkeypatch
 ) -> None:

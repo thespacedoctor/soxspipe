@@ -103,3 +103,20 @@ def test_list_raw_recursively_traces_raw_members_and_deduplicates_paths(tmp_path
             "filepath": "./raw/2024-01-02/raw-1.fits",
         },
     ]
+
+
+def test_list_raw_binds_a_hostile_sof_file_as_a_parameter(tmp_path, log) -> None:
+    """An injection-shaped `sofFile` matches no real row rather than every row.
+
+    `list_raw` interpolated `sofFile` into the base query text. A value ending
+    `' OR '1'='1' --` closed the string literal early, matched every row in
+    `product_frames`, and propagated through the five-level recursive nesting.
+    Bound as a parameter, it matches nothing.
+    """
+    organiser = _organiser_with_inventory(tmp_path, log)
+    hostileSofFile = "science.sof' OR '1'='1' --"
+
+    paths, table = organiser.list_raw(hostileSofFile)
+
+    assert paths == []
+    assert table.empty
