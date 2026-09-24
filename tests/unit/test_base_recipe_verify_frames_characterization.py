@@ -9,10 +9,10 @@ exemption that lets a SOXS NIR nodding recipe carry two slit widths.
 The method mutates `self` rather than returning its results, so each test
 asserts the attributes it set as well as the exception it raised.
 
-One pinned behavior is a defect, not an intention: the mixed-arm guard
-interpolates `%(imageTypes)s` against `locals()` before `imageTypes` exists,
-so it raises `KeyError` instead of the `TypeError` it reads as raising. It is
-pinned here as it stands and reported in the pull request.
+The mixed-arm guard used to interpolate `%(imageTypes)s` against `locals()`
+before `imageTypes` existed, so it raised `KeyError` instead of the
+`TypeError` it read as raising (DY-89). It now raises `TypeError` naming the
+arms that differ.
 """
 
 from __future__ import annotations
@@ -141,17 +141,11 @@ def test_empty_input_inventory_is_rejected_before_any_header_is_read(
     assert _printed(log) == [ERROR_BANNER]
 
 
-def test_mixed_arms_raise_key_error_from_the_unformatted_guard_message(
+def test_mixed_arms_raise_type_error_naming_the_arms(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The mixed-arm guard interpolates a name that does not exist yet.
-
-    `raise TypeError("Input frames are a mix of %(imageTypes)s" % locals())`
-    runs before `imageTypes` is assigned, so the interpolation raises
-    `KeyError` and the `TypeError` never reaches the caller. Pinned as it
-    stands; the intended message is reported as a defect.
-    """
+    """The mixed-arm guard fails with `TypeError` naming the arms that differ."""
     # ARRANGE
     summary = {**UNIFORM_VIS_SUMMARY, "SEQ_ARM": ["VIS", "NIR"]}
     summary = {key: (value * 2)[:2] for key, value in summary.items()}
@@ -160,7 +154,7 @@ def test_mixed_arms_raise_key_error_from_the_unformatted_guard_message(
     monkeypatch.setattr(RECIPE_MODULE, "detector_lookup", _detector_lookup())
 
     # ACT / ASSERT
-    with pytest.raises(KeyError, match="imageTypes"):
+    with pytest.raises(TypeError, match="mix of arms: VIS and NIR"):
         recipe._verify_input_frames_basics()
 
 
