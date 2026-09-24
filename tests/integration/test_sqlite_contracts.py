@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import struct
 
 import pandas as pd
 import pytest
@@ -19,6 +21,30 @@ from tests.factories import (
 pytestmark = pytest.mark.integration
 
 
+def _write_corrupt_but_openable_database(path) -> None:
+    """Write a real SQLite file whose `PRAGMA integrity_check` returns non-`ok`
+    rows without SQLite refusing to open it or raising while executing the
+    check.
+    """
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA page_size=4096")
+    connection.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)")
+    connection.executemany(
+        "INSERT INTO t (val) VALUES (?)",
+        [(f"row-{i}-" + "x" * 50,) for i in range(500)],
+    )
+    connection.commit()
+    connection.execute("VACUUM")
+    connection.close()
+
+    # CORRUPT THE "NUMBER OF FREELIST PAGES" FIELD IN THE FILE HEADER (BYTES
+    # 36-39, BIG-ENDIAN) SO INTEGRITY_CHECK REPORTS A MISMATCH AS DATA ROWS
+    # RATHER THAN RAISING WHILE READING THE FILE.
+    with open(path, "r+b") as databaseFile:
+        databaseFile.seek(36)
+        databaseFile.write(struct.pack(">I", 999))
+
+
 def test_database_connection_creates_and_reuses_valid_workspace_database(
     tmp_path, log
 ) -> None:
@@ -32,6 +58,49 @@ def test_database_connection_creates_and_reuses_valid_workspace_database(
     assert wasReset is False
     assert wasReusedReset is False
     assert reusedConnection is connection
+    assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+    tableNames = {
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    assert {"raw_frames", "product_frames", "z_sof_map"} <= tableNames
+    connection.close()
+
+
+def test_database_connection_rebuilds_a_corrupt_but_openable_database(
+    tmp_path, log, monkeypatch
+) -> None:
+    """Detect a corrupt-but-openable database via `PRAGMA integrity_check`
+    and rebuild it through the same recovery path used for a connection
+    failure, instead of silently reusing it."""
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    organiser = workspace_organiser(tmp_path, log=log)
+    _write_corrupt_but_openable_database(organiser.rootDbPath)
+
+    # `PREPARE(REFRESH=TRUE)` IS THE EXISTING RECOVERY PATH THIS FIX MUST
+    # ROUTE INTO; IT ALSO DOES A FULL WORKSPACE SCAN (FITS INDEXING,
+    # SESSION BOOTSTRAP, AND SO ON) THAT IS UNRELATED TO THIS DEFECT AND
+    # REQUIRES A MUCH BIGGER FIXTURE, SO REPLACE IT WITH A STAND-IN THAT
+    # PERFORMS THE SAME FILE-REPLACEMENT STEP `PREPARE(REFRESH=TRUE)`
+    # ITSELF DOES, THEN RE-RUNS THE REAL, UNMOCKED `_GET_OR_CREATE_DB_CONNECTION`
+    # TO REBUILD THE CONNECTION FROM THE SCHEMA TEMPLATE - EXACTLY WHAT
+    # `PREPARE` DOES INTERNALLY.
+    prepareCalls = []
+
+    def _rebuild_from_template(*, refresh=False, report=True):
+        prepareCalls.append(refresh)
+        if refresh and os.path.exists(organiser.rootDbPath):
+            os.remove(organiser.rootDbPath)
+        organiser.conn, _ = organiser._get_or_create_db_connection()
+
+    monkeypatch.setattr(organiser, "prepare", _rebuild_from_template)
+
+    connection, wasReset = organiser._get_or_create_db_connection()
+
+    assert prepareCalls == [True]
+    assert wasReset is True
     assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
     tableNames = {
         row[0]

@@ -1890,10 +1890,14 @@ class data_organiser:
 
             try:
                 c.execute("PRAGMA integrity_check;")
+                integrityCheckRows = c.fetchall()
+                if integrityCheckRows != [("ok",)]:
+                    raise sql.DatabaseError(
+                        f"database integrity check failed: {integrityCheckRows}"
+                    )
                 c.execute("PRAGMA busy_timeout = 100000")
                 c.execute("PRAGMA synchronous = OFF")
 
-                this = c.fetchall()
                 i = tries + 1
             except Exception:
                 # DATABASE IS BROKEN, REPLACE WITH EMPTY ONE
