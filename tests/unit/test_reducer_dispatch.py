@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -17,12 +18,12 @@ class RecordingCursor:
 
     def __init__(self, changedRows: int = 0) -> None:
         self.changedRows = changedRows
-        self.executed: list[str] = []
+        self.executed: list[tuple[str, list[Any] | None]] = []
         self.executedMany: list[tuple[str, list[tuple[str, str]]]] = []
         self.isClosed = False
 
-    def execute(self, query: str) -> None:
-        self.executed.append(query)
+    def execute(self, query: str, params: list[Any] | None = None) -> None:
+        self.executed.append((query, params))
 
     def executemany(self, query: str, rows: list[tuple[str, str]]) -> None:
         self.executedMany.append((query, rows))
@@ -225,11 +226,11 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
     assert connection.recordingCursor.isClosed is True
     assert any(
         "status_night1 = 'pass'" in query
-        for query in connection.recordingCursor.executed
+        for query, _ in connection.recordingCursor.executed
     )
     assert any(
         "status_night1 = 'fail'" in query
-        for query in connection.recordingCursor.executed
+        for query, _ in connection.recordingCursor.executed
     )
     assert connection.recordingCursor.executedMany == [
         (
@@ -297,3 +298,104 @@ def test_run_recipe_bulk_skips_refresh_and_qc_when_workers_return_nothing(
 
     assert organiserWasCreated is False
     assert connection.recordingCursor.executedMany == []
+
+
+def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """A sof name shaped like a SQL injection payload updates only its own row.
+
+    `run_recipe_bulk` interpolated the passing/failing sof names into `select`
+    and `update` text. A sof name shaped `x.sof') OR (1=1) OR ('a'='` closes
+    the `in (...)` clause early and forces an always-true condition, flipping
+    every row's status rather than just the reduced one -- confirmed against
+    this exact payload with the old, unparameterized query text.
+    """
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    commonutilsModule = import_module("soxspipe.commonutils")
+    fundamentalsModule = import_module("fundamentals")
+    workspacePath = tmp_path / "workspace"
+    (workspacePath / "tmp").mkdir(parents=True)
+    hostileSofName = "x.sof') OR (1=1) OR ('a'='"
+
+    def fake_run_recipe(**kwargs: object) -> tuple[str, pd.DataFrame]:
+        return "product.fits", pd.DataFrame([{"qc_name": "signal", "qc_flag": "pass"}])
+
+    def fake_multiprocess(**kwargs: object) -> list[dict[str, object]]:
+        wrapper = kwargs["function"]
+        return [
+            wrapper(
+                inputDict=inputDict,
+                log=kwargs["log"],
+                recipe=kwargs["recipe"],
+                settings=kwargs["settings"],
+                overwrite=kwargs["overwrite"],
+                workspaceDirectory=kwargs["workspaceDirectory"],
+                wrapperTurnOffMP=kwargs["wrapperTurnOffMP"],
+            )
+            for inputDict in kwargs["inputArray"]
+        ]
+
+    class NoOpOrganiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_refresh(self, **kwargs: object) -> bool:
+            return False
+
+        def _dataframe_to_sqlite(
+            self, dataframe: pd.DataFrame, tableName: str, replace: bool
+        ) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(reducerModule, "run_recipe", fake_run_recipe)
+    monkeypatch.setattr(fundamentalsModule, "fmultiprocess", fake_multiprocess)
+    monkeypatch.setattr(commonutilsModule, "data_organiser", NoOpOrganiser)
+
+    # `autocommit=True` MATCHES THE CONNECTION `run_recipe` OPENS IN PRODUCTION
+    # (`sql.connect(databasePath, ..., autocommit=True, ...)`); WITHOUT IT,
+    # SQLITE'S IMPLICIT TRANSACTION IS NEVER COMMITTED BEFORE `run_recipe_bulk`
+    # CLOSES THE CONNECTION, MASKING THE BEHAVIOUR UNDER TEST.
+    databasePath = tmp_path / "reducer.db"
+    connection = sqlite3.connect(str(databasePath), autocommit=True)
+    connection.execute(
+        "create table product_frames (sof text, status_night1 text, error_message text)"
+    )
+    connection.executemany(
+        "insert into product_frames values (?, ?, ?)",
+        [
+            (hostileSofName, None, None),
+            ("decoy.sof", "fail", None),
+        ],
+    )
+    connection.commit()
+
+    reducerModule.run_recipe_bulk(
+        log=log,
+        recipe="mflat",
+        sofList=[str(workspacePath / "sof" / hostileSofName)],
+        commandList=[f"soxspipe mflat {hostileSofName}"],
+        settings={"workspace-root-dir": str(workspacePath)},
+        overwrite=True,
+        workspaceDirectory=str(workspacePath),
+        conn=connection,
+        sessionId="night1",
+    )
+
+    verifyConnection = sqlite3.connect(str(databasePath))
+    rows = verifyConnection.execute(
+        "select sof, status_night1 from product_frames order by sof"
+    ).fetchall()
+    verifyConnection.close()
+    # ONLY THE ROW THAT ACTUALLY REDUCED IS STAMPED 'pass'. IF THE PAYLOAD WERE
+    # STILL INTERPOLATED, THE ALWAYS-TRUE CONDITION WOULD HAVE STAMPED THE
+    # UNRELATED `decoy.sof` ROW TOO, OVERWRITING ITS 'fail' STATUS.
+    assert rows == [
+        ("decoy.sof", "fail"),
+        (hostileSofName, "pass"),
+    ]
