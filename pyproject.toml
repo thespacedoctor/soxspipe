@@ -28,6 +28,7 @@ dependencies = [
     'photutils==1.13.0',
     'matplotlib',
     'numpy==2.1.0',
+    'numba>=0.61',
     'unicodecsv==0.14.1',
     'pandas>=2.2.3,<3',
     'tabulate==0.9.0',
@@ -66,15 +67,19 @@ docs = [
     "sphinxcontrib.bibtex",
 ]
 tests = [
+    "diff-cover==10.5.1",
     "pytest",
     "pytest-cov",
-    "nose2"
+    # PINNED BECAUSE THE LINT RATCHET GATES ON RUFF'S OUTPUT: A FLOATING VERSION WOULD
+    # FAIL A PULL REQUEST THAT CHANGED NOTHING, THE WAY diff-cover IS PINNED ABOVE.
+    "ruff==0.16.5",
 ]
 dev = [
     "soxspipe[tests, docs]",
     "build",
     "twine",
-    "debuggy"
+    "debuggy",
+    "pre-commit"
 ]
 
 # THESE ARE ENTRY POINTS USED FOR THE CL-INTERFACE
@@ -100,7 +105,52 @@ write_to = "soxspipe/__version__.py"
 write_to_template = "__version__ = '{version}'\n"
 
 [tool.ruff]
+line-length = 120
 # MATCHES THE FLOOR OF requires-python (">=3.12,<3.14"), NOT THE CEILING, SO THE
 # UP RULES NEVER PROPOSE SYNTAX THAT BREAKS A SUPPORTED INTERPRETER.
 target-version = "py312"
 
+[tool.ruff.lint]
+select = ["F", "E4", "E7", "E9", "E501", "I", "B", "S", "UP", "SIM", "C4", "RET", "N", "PLR0915"]
+# HOUSE NAMING CONVENTION IS camelCase VARIABLES AND snake_case FUNCTIONS.
+# pep8-naming INVERTS THAT, SO THESE FIVE ARE SILENCED DELIBERATELY:
+# N806 (3353 hits), N803 (662), N816 (225), N801 (60), N815 (11).
+# N815 IS THE CLASS-SCOPE CASE OF N806 AND FIRES ONLY IN tests/.
+# RUFF CANNOT ENFORCE THE HOUSE CONVENTION POSITIVELY, ONLY STOP OBJECTING TO IT.
+ignore = ["N801", "N803", "N806", "N815", "N816"]
+
+[tool.ruff.lint.pylint]
+# PROXY FOR THE 50-LINE FUNCTION RULE. PLR0915 COUNTS STATEMENTS, NOT PHYSICAL
+# LINES, SO THE POPULATIONS DIFFER: 80 FUNCTIONS EXCEED 50 STATEMENTS WHILE 188
+# EXCEED 50 PHYSICAL LINES. THE NUMBER IS KEPT AT 50 TO MATCH THE WRITTEN RULE.
+max-statements = 50
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["--strict-config", "--strict-markers"]
+markers = [
+    "unit: isolated tests with no filesystem, network, or external-data dependencies",
+    "integration: tests spanning package components with synthetic local files",
+    "real_data: tests requiring the separately downloaded verified dataset",
+    "slow: tests excluded from the fast local workflow",
+    "serial: tests that must not run concurrently",
+]
+
+[tool.coverage.run]
+branch = true
+# tools/ HOLDS THE REPOSITORY'S OWN GATES, WHICH ARE MEASURED LIKE ANY OTHER CODE
+source = ["soxspipe", "tools"]
+relative_files = true
+omit = [
+    "*/tests/*",
+    "soxspipe/__version__.py",
+    "soxspipe/docstring_test.py",
+]
+
+[tool.coverage.report]
+fail_under = 70
+precision = 2
+show_missing = true

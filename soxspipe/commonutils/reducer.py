@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *reduce all the data in a workspace, or target specific obs and files for reduction*
 
@@ -11,18 +10,35 @@ Date Created
 """
 
 # from memory_profiler import profile
-from fundamentals import tools
-from builtins import object
-import sys
 import os
-import multiprocessing
+import sys
 
 # multiprocessing.set_start_method("spawn")
 
 os.environ["TERM"] = "vt100"
 
 
-class reducer(object):
+def _sql_in_placeholders(values):
+    """*build a bound `?` placeholder clause and its parameter list for a SQL `in (...)` test*
+
+    An empty `values` produces a clause that matches no row, since `sof in
+    ()` is invalid SQLite syntax.
+
+    **Key Arguments:**
+
+    - ``values`` -- the list of values the `in (...)` clause should match
+
+    **Return:**
+
+    - ``clause`` -- the `in (...)` clause body, either `?, ?, ...` or `NULL`
+    - ``params`` -- the parameters to bind against `clause`, in order
+    """
+    if not values:
+        return "NULL", []
+    return ", ".join("?" for _ in values), list(values)
+
+
+class reducer:
     """
         *reduce all the data in a workspace, or target specific obs and files for reduction*
 
@@ -92,7 +108,7 @@ class reducer(object):
         do.close()
 
         if self.sessionId is None:
-            return None
+            return
 
         self.recipeList = [
             "mbias",
@@ -118,7 +134,7 @@ class reducer(object):
             do.prepare(refresh=False, report=False)
             do.close()
 
-        return None
+        return
 
     def reduce(self, batch=False, multiprocess=False):
         """
@@ -128,10 +144,12 @@ class reducer(object):
 
         if self.sessionId is None:
             print("Please prepare this workspace using `soxspipe prep` before attempting to reduce the data.")
-            return None
+            return
+
+        import traceback
 
         from fundamentals import times
-        import traceback
+
         from soxspipe.commonutils import data_organiser
 
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
@@ -160,8 +178,17 @@ class reducer(object):
                 if multiprocess:
                     import sqlite3 as sql
 
-                    conn = sql.connect(
+                    from soxspipe.commonutils.data_organiser import (
+                        _validate_owned_path,
+                    )
+
+                    databasePath = _validate_owned_path(
                         self.sessionDB,
+                        self.workspaceDirectory,
+                        "database path",
+                    )
+                    conn = sql.connect(
+                        databasePath,
                         timeout=300,
                         autocommit=True,
                         check_same_thread=False,
@@ -190,67 +217,66 @@ class reducer(object):
                     self.log.print(f"Multiprocess for {rootRecipe} recipe completed for {len(sofList)} files.")
                     self.log.print(f"Multiprocess Recipe Run Time: {runningTime}\n\n")
                     break
-                else:
 
-                    fail = False
-                    for index, row in rawGroups.iterrows():
-                        if batchCount >= batch:
-                            self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
-                            break
+                fail = False
+                for index, row in rawGroups.iterrows():
+                    if batchCount >= batch:
+                        self.log.print(f"Batch limit of {batch} reached, pausing reductions.")
+                        break
 
-                        recipe = row["recipe"].replace("_obj", "")
-                        sof = row["sof"]
-                        startTime = times.get_now_sql_datetime()
-                        sof = self.sessionPath + "/sof/" + sof
+                    recipe = row["recipe"].replace("_obj", "")
+                    sof = row["sof"]
+                    startTime = times.get_now_sql_datetime()
+                    sof = self.sessionPath + "/sof/" + sof
 
-                        try:
-                            run_recipe(
-                                self.log,
-                                recipe,
-                                sof,
-                                settings=self.settings,
-                                overwrite=self.overwrite,
-                                command=row["command"],
-                                verbose=self.verbose,
-                            )
-                            batchCount += 1
-                        except FileExistsError as e:
-                            continue
-                        except Exception as e:
-                            # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                            self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-                            self.log.error(
-                                f'\nRecipe Command: {row["command"].replace("-obj ", " ").replace("-std ", " ")}\n\n'
-                            )
-                            fail = True
+                    try:
+                        run_recipe(
+                            self.log,
+                            recipe,
+                            sof,
+                            settings=self.settings,
+                            overwrite=self.overwrite,
+                            command=row["command"],
+                            verbose=self.verbose,
+                        )
+                        batchCount += 1
+                    except FileExistsError:
+                        continue
+                    except Exception:
+                        # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                        self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                        self.log.error(
+                            f'\nRecipe Command: {row["command"].replace("-obj ", " ").replace("-std ", " ")}\n\n'
+                        )
+                        fail = True
 
-                            if self.quitOnFail:
-                                sys.exit(1)
+                        if self.quitOnFail:
+                            sys.exit(1)
 
-                            if self.reductionTarget != "all":
-                                self.overwrite = False
+                        if self.reductionTarget != "all":
+                            self.overwrite = False
 
-                            if not self.daemon:
-                                print(f"{'='*70}\n")
-
-                        ## FINISH LOGGING ##
-                        endTime = times.get_now_sql_datetime()
-                        runningTime = times.calculate_time_difference(startTime, endTime)
-                        sys.argv[0] = os.path.basename(sys.argv[0])
-
-                        self.log.print(f'\nRecipe Command: {row["command"].replace("_obj ", " ")} ')
-                        self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                         if not self.daemon:
                             print(f"{'='*70}\n")
 
-                    if fail:
-                        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-                        reset = do.session_refresh()
-                        do.close()
-                        if reset:
-                            print(f"BACK TO THE START! {rootRecipe}\n\n")
-                            break
-                    break
+                    ## FINISH LOGGING ##
+                    endTime = times.get_now_sql_datetime()
+                    runningTime = times.calculate_time_difference(startTime, endTime)
+                    sys.argv[0] = os.path.basename(sys.argv[0])
+
+                    self.log.print(f'\nRecipe Command: {row["command"].replace("_obj ", " ")} ')
+                    self.log.print(f"Recipe Run Time: {runningTime}\n\n")
+                    if not self.daemon:
+                        print(f"{'='*70}\n")
+
+                if fail:
+                    do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+                    reset = do.session_refresh()
+                    do.close()
+                    if reset:
+                        print(f"BACK TO THE START! {rootRecipe}\n\n")
+                        break
+                break
 
         if self.reductionTarget == "all":
             do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
@@ -276,7 +302,7 @@ class reducer(object):
         do.close()
 
         self.log.debug("completed the ``reduce`` method")
-        return None
+        return
 
     def select_sof_files_to_process(self, recipe=False, reductionTarget=False, batch=False, arm=False):
         """*select all of the SOF files still requiring processing*
@@ -299,21 +325,31 @@ class reducer(object):
         """
         self.log.debug("starting the ``select_sof_files_to_process`` method")
 
-        import pandas as pd
         import sqlite3 as sql
 
-        conn = sql.connect(self.sessionDB, timeout=300, autocommit=True, check_same_thread=False)
+        import pandas as pd
+
+        from soxspipe.commonutils.data_organiser import _validate_owned_path
+
+        databasePath = _validate_owned_path(
+            self.sessionDB, self.workspaceDirectory, "database path"
+        )
+        conn = sql.connect(databasePath, timeout=300, autocommit=True, check_same_thread=False)
         c = conn.cursor()
         c.execute("PRAGMA busy_timeout = 100000")
         c.execute("PRAGMA synchronous = OFF")
 
+        allBranchParams = {}
+
         if batch:
-            limitText = f" LIMIT {batch} "
+            limitText = " LIMIT :batch "
+            allBranchParams["batch"] = batch
         else:
             limitText = ""
 
         if arm:
-            armText = f" and `eso seq arm` = '{arm}' "
+            armText = " and `eso seq arm` = :arm "
+            allBranchParams["arm"] = arm
         else:
             armText = ""
 
@@ -322,24 +358,38 @@ class reducer(object):
             if not recipe:
                 recipeText = "is not null"
             else:
-                recipeText = f"= '{recipe}'"
+                recipeText = "= :recipe"
+                allBranchParams["recipe"] = recipe
 
+            # `recipeText`, `armText` AND `limitText` ARE ALWAYS EITHER STATIC
+            # TEXT OR A `:name` PLACEHOLDER -- NEVER A RAW VALUE -- SO THE
+            # ACTUAL `recipe`/`arm`/`batch` VALUES REACH SQLITE ONLY THROUGH
+            # `allBranchParams` BELOW.
             rawGroups = pd.read_sql(
-                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {armText}  order by recipe_order, sof {limitText}",
+                f"SELECT * FROM raw_frame_sets where recipe_order is not null "  # noqa: S608
+                f"and complete = 1 and recipe {recipeText} {armText}  order by recipe_order, sof {limitText}",
                 con=conn,
+                params=allBranchParams,
             )
 
         elif reductionTarget.split(".")[-1].lower() == "sof":
-            sqlQuery = f"select sof from product_frames where sof = '{reductionTarget}' and complete = 1"
+            # `reductionTarget` IS THE ONLY EXTERNAL VALUE HERE. IT IS BOUND
+            # ONCE, AS A NAMED PARAMETER, AND REUSED ACROSS EVERY NESTED
+            # SUBQUERY BELOW -- SQLITE ALLOWS THE SAME NAMED PLACEHOLDER TO
+            # REPEAT WITHIN ONE STATEMENT.
+            sqlQuery = "select sof from product_frames where sof = :reductionTarget and complete = 1"
 
             for _ in range(4):  # Recursively query up to 5 times
-                sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
+                sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"  # noqa: S608
 
             sqlQuery = (
-                f"SELECT distinct sof, recipe from raw_frame_sets WHERE sof in ({sqlQuery}) order by recipe_order, sof"
+                f"SELECT distinct sof, recipe from raw_frame_sets WHERE sof in ({sqlQuery}) "  # noqa: S608
+                "order by recipe_order, sof"
             )
 
-            rawGroups = pd.read_sql(sqlQuery, con=conn)
+            rawGroups = pd.read_sql(
+                sqlQuery, con=conn, params={"reductionTarget": reductionTarget}
+            )
 
         if not len(rawGroups.index):
             if reductionTarget != "all":
@@ -541,10 +591,13 @@ def run_recipe_bulk(
     """
     log.debug("starting the ``run_recipe_bulk`` method")
 
-    from fundamentals import fmultiprocess
-    from soxspipe.commonutils import data_organiser
-    import pandas as pd
     import shutil
+
+    import pandas as pd
+    from fundamentals import fmultiprocess
+
+    from soxspipe.commonutils import data_organiser
+    from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
     def wrapper(
         inputDict,
@@ -556,7 +609,6 @@ def run_recipe_bulk(
         wrapperTurnOffMP=True,
     ):
         import traceback
-        import os
 
         returnDict = {
             "status": None,
@@ -610,7 +662,7 @@ def run_recipe_bulk(
     turnOffMP = False
     wrapperTurnOffMP = True
 
-    if "mflat" in recipe:
+    if "mflat" in recipe or "stare" in recipe or "nod" in recipe or "offset" in recipe:
         poolSize = 3
         print(
             f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode with a pool size of {poolSize} to avoid memory issues..."
@@ -677,18 +729,31 @@ def run_recipe_bulk(
             qcTables.append(result["qcTable"])
 
     c = conn.cursor()
-    passingString = "','".join(passing)
-    failingString = "','".join(failing)
-    sqlQuery = f"select count(*) from product_frames where (sof in ('{passingString}') and status_{sessionId} = 'fail') or  (sof in ('{failingString}') and (status_{sessionId} != 'fail' or status_{sessionId} is null))"
-    c.execute(sqlQuery)
+    statusColumn = validate_sql_identifier(f"status_{sessionId}", "status column")
+    passingClause, passingParams = _sql_in_placeholders(passing)
+    failingClause, failingParams = _sql_in_placeholders(failing)
+    sqlQuery = (
+        "select count(*) from product_frames where "  # noqa: S608
+        f"(sof in ({passingClause}) and {statusColumn} = 'fail') "
+        f"or (sof in ({failingClause}) and ({statusColumn} != 'fail' or {statusColumn} is null))"
+    )
+    c.execute(sqlQuery, passingParams + failingParams)
     count = c.fetchone()[0]
     if len(passing) or len(failing):
         sqlQueries = [
-            f"update product_frames set status_{sessionId} = 'pass' where sof in ('{passingString}') and (status_{sessionId} != 'pass' or status_{sessionId} is null)",
-            f"update product_frames set status_{sessionId} = 'fail' where sof in ('{failingString}') and (status_{sessionId} != 'fail' or status_{sessionId} is null)",
+            (
+                f"update product_frames set {statusColumn} = 'pass' where sof in ({passingClause}) "  # noqa: S608
+                f"and ({statusColumn} != 'pass' or {statusColumn} is null)",
+                passingParams,
+            ),
+            (
+                f"update product_frames set {statusColumn} = 'fail' where sof in ({failingClause}) "  # noqa: S608
+                f"and ({statusColumn} != 'fail' or {statusColumn} is null)",
+                failingParams,
+            ),
         ]
-        for sqlQuery in sqlQueries:
-            c.execute(sqlQuery)
+        for sqlQuery, sqlParams in sqlQueries:
+            c.execute(sqlQuery, sqlParams)
     if len(errorSOF):
         error_rows = [(str(error), sof) for sof, error in zip(errorSOF, errorMessages)]
         c.executemany(
@@ -714,4 +779,4 @@ def run_recipe_bulk(
         shutil.rmtree(workspaceDirectory + "/tmp/")
 
     log.debug("completed the ``run_recipe_bulk`` method")
-    return None
+    return

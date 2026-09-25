@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *Given a keyword token and instrument name return the exact FITS Header keyword*
 
@@ -11,27 +10,24 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from fundamentals import tools
-from builtins import object
-import sys
 import os
 
 os.environ["TERM"] = "vt100"
 
 
-class keyword_lookup(object):
+class keyword_lookup:
     """
     *The worker class for the keyword_lookup module*
 
     **Key Arguments:**
 
     - ``log`` -- logger
+    - ``instrument`` -- can directly add the instrument if settings file is not available. Default *False*
     - ``settings`` -- the settings dictionary. Default *False*
-    - ``instrument`` -- can directly add the instrument if settings file is not avalable. Default *False*
 
     **Usage**
 
-    To initalise the keyword lookup object in your code add the following:
+    To initialise the keyword lookup object in your code add the following:
 
     ```python
     from soxspipe.commonutils import keyword_lookup
@@ -42,7 +38,7 @@ class keyword_lookup(object):
     ).get
     ```
 
-    After this it's possible to either look up a single keyword using it's alias:
+    After this it's possible to either look up a single keyword using its alias:
 
     ```python
     kw("DET_NDITSKIP")
@@ -66,7 +62,7 @@ class keyword_lookup(object):
     If a tag is not in the list of FITS Header keyword aliases in the configuration file a `LookupError` will be raised.
     """
 
-    # Initialisation
+    # INITIALISATION
 
     def __init__(
         self,
@@ -90,7 +86,7 @@ class keyword_lookup(object):
             self.instrument = "soxs"
         self.kwDict = self._select_dictionary()
 
-        return None
+        return
 
     def get(self, tag, index=False):
         """
@@ -98,12 +94,14 @@ class keyword_lookup(object):
 
         **Key Arguments:**
 
-        - ``tag`` -- the keyword tag as set in the yaml keyword dictionary (e.g. 'SDP_KEYWORD_TMID' returns 'TMID'). Can be string or list of sttings.
-        - ``index`` -- add an index to the keyword if not False (e.g. tag='PROV', index=3 returns 'PROV03') Default *False*
+        - ``tag`` -- the keyword tag as set in the yaml keyword dictionary (e.g. 'SDP_KEYWORD_TMID' returns
+          'TMID'). Can be string or list of strings.
+        - ``index`` -- add an index to the keyword if not False (e.g. tag='PROV', index=3 returns 'PROV03').
+          Default *False*
 
         **Return:**
 
-        - ``keywords`` -- the FITS Header keywords. Can be string or list of sttings depending on format of tag argument
+        - ``keywords`` -- the FITS Header keywords. Can be string or list of strings depending on format of tag argument
 
         **Usage**
 
@@ -117,11 +115,9 @@ class keyword_lookup(object):
             single = True
             tag = [tag]
 
-        # STRINGIFY INDEX
-        if index:
-            index = "%(index)0.2d" % locals()
-        else:
-            index = ""
+        # STRINGIFY INDEX. PERCENT FORMATTING IS KEPT ON PURPOSE: `%d` TRUNCATES FLOATS, KEEPS THE SIGN
+        # OUTSIDE THE ZERO PADDING AND REJECTS NON-NUMERIC TYPES, AND NO F-STRING REPRODUCES THAT EXACTLY
+        index = "%(index)0.2d" % locals() if index else ""  # noqa: UP031
 
         # LOOKUP KEYWORDS
         keywords = []
@@ -170,7 +166,7 @@ class keyword_lookup(object):
         # YAML CONTENT TO DICTIONARY
         import yaml
 
-        with open(yamlFilePath, "r") as stream:
+        with open(yamlFilePath) as stream:
             kwDict = yaml.safe_load(stream)
 
         self.log.debug("completed the ``_select_dictionary`` method")

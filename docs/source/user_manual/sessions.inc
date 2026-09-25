@@ -14,7 +14,7 @@ To create a new session, run the command:
 soxspipe session new
 ```
 
-The new session will be named with the date-time stamp of its creation date. Alternatively, you can also supply a memorable name for the session. The name can be up to 16 characters long and use alpha-numeric characters, \- or \_.
+The new session will be named with the date-time stamp of its creation date. Alternatively, you can also supply a memorable name for the session. The name can be up to 16 characters long and use letters (A-Z, a-z), digits (0-9) or \_. Hyphens are not allowed.
 
 ```bash
 soxspipe session new my_supernova

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *find and fit the continuum trace across all echelle orders with low-order polynomials.*
 
@@ -11,37 +10,28 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
-from soxspipe.commonutils.toolkit import read_spectral_format
-from soxspipe.commonutils.toolkit import cut_image_slice
-from soxspipe.commonutils.toolkit import get_calibration_lamp
+import copy
+import math
+import os
+import sys
+from contextlib import suppress
+from datetime import datetime
+
+from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import (
-    chebyshev_xy_polynomial,
     chebyshev_order_xy_polynomials,
+    chebyshev_xy_polynomial,
 )
-from soxspipe.commonutils import detector_lookup
-from soxspipe.commonutils import keyword_lookup
-import collections
-from random import random
-from os.path import expanduser
-from fundamentals import tools
-from builtins import object
-import sys
-import math
-import os
-from io import StringIO
-import copy
-from contextlib import suppress
-from datetime import datetime
-from line_profiler import profile
+from soxspipe.commonutils.toolkit import cut_image_slice, get_calibration_lamp, read_spectral_format
 
 os.environ["TERM"] = "vt100"
 
 
-class _base_detect(object):
+class _base_detect:
 
     def fit_order_polynomial(self, pixelList, order, axisBDeg, axisACol, axisBCol, exponentsIncluded=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
@@ -85,7 +75,7 @@ class _base_detect(object):
         mask = pixelList["order"] == order
         pixelListFiltered = pixelList.loc[mask]
 
-        coeff = np.ones((self.axisBDeg + 1))
+        coeff = np.ones(self.axisBDeg + 1)
         while clippedCount > 0 and iteration < clippingIterationLimit:
             pixelListFiltered = pixelList.loc[mask]
 
@@ -102,7 +92,7 @@ class _base_detect(object):
                     p0=coeff,
                     maxfev=30000,
                 )
-            except TypeError as e:
+            except TypeError:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 pixelList = pixelList.loc[~mask]
                 coeff = None
@@ -171,9 +161,9 @@ class _base_detect(object):
         self.log.debug("starting the ``fit_global_polynomial`` method")
 
         import numpy as np
+        import pandas as pd
         from astropy.stats import sigma_clip
         from scipy.optimize import curve_fit
-        import pandas as pd
 
         arm = self.arm
 
@@ -235,7 +225,7 @@ class _base_detect(object):
                     p0=coeff,
                     maxfev=30000,
                 )
-            except TypeError as e:
+            except TypeError:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 coeff = None
                 return coeff, pixelList, pixelList
@@ -350,60 +340,54 @@ class _base_detect(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MIN",
-                            "qc_value": f"{res.min():0.2f}",
+                            "qc_value": f"{res.min():0.3f}",
                             "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MAX",
-                            "qc_value": f"{res.max():0.2f}",
+                            "qc_value": f"{res.max():0.3f}",
                             "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES SD",
-                            "qc_value": f"{res_std:0.2f}",
+                            "qc_value": f"{res_std:0.3f}",
                             "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -411,33 +395,31 @@ class _base_detect(object):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MEDIAN",
-                            "qc_value": f"{res_mean:0.2f}",
+                            "qc_value": f"{res_mean:0.3f}",
                             "qc_comment": f"[px] Median abolute residual {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
 
             if "order" in self.recipeName.lower():
-                c = f"Number of order centre traces found"
+                c = "Number of order centre traces found"
             else:
-                c = f"Number of orders containing an object trace"
+                c = "Number of orders containing an object trace"
 
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "N ORDERS",
@@ -448,9 +430,7 @@ class _base_detect(object):
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -471,8 +451,6 @@ class _base_detect(object):
 
         - ``order_table_path`` -- path to the order table file
         """
-        from astropy.table import Table
-        from astropy.io import fits
 
         self.log.debug("starting the ``write_order_table_to_file`` method")
 
@@ -617,7 +595,8 @@ class detect_continuum(_base_detect):
             self.noddingSequence = "_A" if int(traceFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
             if locationSetIndex:
                 self.noddingSequence += str(locationSetIndex)
-        except:
+        except (KeyError, TypeError) as e:
+            self.log.debug(f"__init__: `self.noddingSequence = '_A' if int(traceFrame.head...` failed, continuing: {e}")
             self.noddingSequence = ""
 
         self.recipeName = recipeName
@@ -689,7 +668,7 @@ class detect_continuum(_base_detect):
                 "degx_cent": self.axisBDeg,
             }
 
-        return None
+        return
 
     def get(self):
         """
@@ -701,9 +680,10 @@ class detect_continuum(_base_detect):
         """
         self.log.debug("starting the ``get`` method")
 
+        from datetime import datetime
+
         import numpy as np
         import pandas as pd
-        from datetime import datetime
 
         arm = self.arm
         coeff_dict = self.coeff_dict
@@ -712,7 +692,7 @@ class detect_continuum(_base_detect):
             orderPixelTable, detectionPercentage = self.sample_trace()
             if detectionPercentage < 10:
                 self.log.print(
-                    f"Could not converge on a good fit to the continuum. Please check the quality of your data."
+                    "Could not converge on a good fit to the continuum. Please check the quality of your data."
                 )
                 return None, self.qc, self.products, None, None, None
         else:
@@ -753,7 +733,7 @@ class detect_continuum(_base_detect):
                 if "order" in self.recipeName.lower() and mean_res > 2:
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
-                elif mean_res > 10 and not (self.inst == "SOXS" and self.arm == "VIS"):
+                if mean_res > 10 and not (self.inst == "SOXS" and self.arm == "VIS"):
                     # BAD FIT ... FORCE A FAIL
                     orderPixelTable = backupOrderPixelTable
                     raise AttributeError("Failed to continuum trace")
@@ -792,7 +772,7 @@ class detect_continuum(_base_detect):
                 tryCount += 1
                 if tryCount == 5:
                     self.log.print(
-                        f"Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters."
+                        "Could not converge on a good fit to the continuum. Please check the quality of your data or adjust your fitting parameters."
                     )
                     return None, self.qc, self.products, None, None, None
                 if self.settings["tune-pipeline"]:
@@ -802,12 +782,13 @@ class detect_continuum(_base_detect):
 
         try:
             nclip = len(clippedData.index)
-        except:
+        except (AttributeError, TypeError) as e:
+            self.log.debug(f"get: `nclip = len(clippedData.index)` failed, continuing: {e}")
             nclip = 0
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES CLIP NUM",
@@ -818,9 +799,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -829,7 +808,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES CLIP FRAC",
@@ -840,9 +819,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -875,16 +852,16 @@ class detect_continuum(_base_detect):
 
         if "order" in self.recipeName.lower():
             label = "ORDER_CENTRES_RES"
-            product_desc = f"Residuals of the order centre polynomial fit"
+            product_desc = "Residuals of the order centre polynomial fit"
         else:
             label = "OBJECT_TRACE_RES"
-            product_desc = f"Residuals of the object trace polynomial fit"
+            product_desc = "Residuals of the object trace polynomial fit"
 
         if not isinstance(self.products, bool):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": label + self.noddingSequence,
@@ -896,9 +873,7 @@ class detect_continuum(_base_detect):
                             "file_path": plotPath,
                             "label": "QC",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -993,7 +968,8 @@ class detect_continuum(_base_detect):
         try:
             dmBinx = header[self.kw("WIN_BINX")]
             dmBiny = header[self.kw("WIN_BINY")]
-        except:
+        except KeyError as e:
+            self.log.debug(f"create_pixel_arrays: `dmBinx = header[self.kw('WIN_BINX')]` failed, continuing: {e}")
             dmBinx = 1
             dmBiny = 1
 
@@ -1003,8 +979,8 @@ class detect_continuum(_base_detect):
     def fit_1d_gaussian_to_slices(self, orderPixelTable, sliceLength, medianStddev=False):
         """Optimized version of Gaussian fitting to slices"""
         import numpy as np
+        from astropy.modeling import fitting, models
         from astropy.stats import mad_std
-        from astropy.modeling import models, fitting
         from scipy.signal import find_peaks
 
         if not medianStddev:
@@ -1089,7 +1065,8 @@ class detect_continuum(_base_detect):
                     gauss_stddev[i] = g.stddev.value
                     gauss_mean[i] = g.mean.value
 
-            except:
+            except (ValueError, TypeError, RuntimeError, IndexError) as e:
+                self.log.debug(f"fit_1d_gaussian_to_slices: `mask = np.isfinite(slice_data)` failed, continuing: {e}")
                 continue
 
         # Assign results back to DataFrame using vectorized operations
@@ -1117,11 +1094,11 @@ class detect_continuum(_base_detect):
         """
         self.log.debug("starting the ``plot_results`` method")
 
+        import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
 
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
-        import matplotlib.pyplot as plt
 
         arm = self.arm
 
@@ -1271,7 +1248,8 @@ class detect_continuum(_base_detect):
                         if x > 0 and x < (axisALength) - 10
                     ]
                 )
-            except:
+            except ValueError as e:
+                self.log.debug(f"plot_results: `xfit, yfit, stdfit, lower, upper = zip( *[...` failed, continuing: {e}")
                 continue
             if flipImage and not rotateImage:
                 xfit = aLen - np.array(xfit)
@@ -1304,8 +1282,8 @@ class detect_continuum(_base_detect):
                     c=c[0].get_color(),
                     verticalalignment="bottom",
                 )
-            except:
-                pass
+            except (IndexError, KeyError) as e:
+                self.log.debug(f"plot_results: `midrow.text( yfit[10], xfit[10] + 10, int(...` failed, continuing: {e}")
 
         # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
         orderMetaTable = {
@@ -1355,8 +1333,8 @@ class detect_continuum(_base_detect):
                     c=c,
                     verticalalignment="bottom",
                 )
-            except:
-                pass
+            except (IndexError, KeyError) as e:
+                self.log.debug(f"plot_results: `bottomleft.text( orderPixelTable.loc[mask]...` failed, continuing: {e}")
 
         bottomleft.set_xlabel(f"{self.axisA} pixel position", fontsize=10)
         bottomleft.set_ylabel(f"{self.axisA} residual", fontsize=10)
@@ -1386,8 +1364,8 @@ class detect_continuum(_base_detect):
                     c=c,
                     verticalalignment="bottom",
                 )
-            except:
-                pass
+            except (IndexError, KeyError) as e:
+                self.log.debug(f"plot_results: `bottomright.text( orderPixelTable.loc[mask...` failed, continuing: {e}")
 
         bottomright.set_xlabel(f"{self.axisB} pixel position", fontsize=10)
         bottomright.tick_params(axis="both", which="major", labelsize=9)
@@ -1417,8 +1395,8 @@ class detect_continuum(_base_detect):
                     c=c,
                     verticalalignment="bottom",
                 )
-            except:
-                pass
+            except (IndexError, KeyError) as e:
+                self.log.debug(f"plot_results: `fwhmaxis.text( orderPixelTable.loc[mask]['...` failed, continuing: {e}")
         fwhmaxis.set_xlabel("wavelength (nm)", fontsize=10)
         fwhmaxis.set_ylabel("Cross-dispersion\nFWHM (pixels)", fontsize=10)
 
@@ -1486,17 +1464,17 @@ class detect_continuum(_base_detect):
             try:
                 item.cla()
                 del item
-            except:
-                pass
+            except AttributeError as e:
+                self.log.debug(f"plot_results: `item.cla()` failed, continuing: {e}")
 
         if self.settings["tune-pipeline"]:
             import codecs
 
-            filePath = f"residuals.txt"
+            filePath = "residuals.txt"
             exists = os.path.exists(filePath)
             if not exists:
                 with codecs.open(filePath, encoding="utf-8", mode="w") as writeFile:
-                    writeFile.write(f"polyOrders,mean_res,std_res,res_min,res_max,res_range \n")
+                    writeFile.write("polyOrders,mean_res,std_res,res_min,res_max,res_range \n")
             with codecs.open(filePath, encoding="utf-8", mode="a") as writeFile:
                 writeFile.write(
                     f"{polyOrders},{mean_res:2.4f},{std_res:2.4f},{res_min:2.4f},{res_max:2.4f},{res_range:2.4f}\n"
@@ -1514,8 +1492,8 @@ class detect_continuum(_base_detect):
         """
         self.log.debug("starting the ``sample_trace`` method")
 
-        import pandas as pd
         import numpy as np
+        import pandas as pd
 
         # CONVERT WAVELENGTH TO PIXEL POSITIONS AND RETURN ARRAY OF POSITIONS TO
         # SAMPLE THE TRACES
@@ -1526,8 +1504,8 @@ class detect_continuum(_base_detect):
         try:
             binx = self.traceFrame.header[self.kw("WIN_BINX")] / dmBinx
             biny = self.traceFrame.header[self.kw("WIN_BINY")] / dmBiny
-        except:
-            pass
+        except KeyError as e:
+            self.log.debug(f"sample_trace: `binx = self.traceFrame.header[self.kw('WIN_BIN...` failed, continuing: {e}")
 
         # FIT_X AND FIT_Y FROM DISP-SOLUTION
         orderPixelTable["fit_x"] = orderPixelTable["fit_x"] / binx
@@ -1570,8 +1548,8 @@ class detect_continuum(_base_detect):
 
         def find_centre_points(orderPixelTable, medianShift=False, medianStddev=False):
             """*find the central peak of the continuum trace*"""
-            from astropy.stats import sigma_clip, mad_std
             import numpy as np
+            from astropy.stats import sigma_clip
 
             # UNIQUE ORDERS
             uniqueOrders = orderPixelTable["order"].unique()
@@ -1870,7 +1848,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES TOT NUM",
@@ -1881,9 +1859,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -1891,7 +1867,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES DET NUM",
@@ -1902,9 +1878,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
@@ -1913,7 +1887,7 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.Series(
+                pd.DataFrame([
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES DET FRAC",
@@ -1924,9 +1898,7 @@ class detect_continuum(_base_detect):
                         "reduction_date_utc": utcnow,
                         "to_header": True,
                     }
-                )
-                .to_frame()
-                .T,
+                ]),
             ],
             ignore_index=True,
         )
