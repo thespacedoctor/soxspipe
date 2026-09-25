@@ -1,5 +1,7 @@
 # Release Notes
 
+* **BREAKING**: Raised the supported Python version floor from 3.11 to 3.12; CI now tests the full declared Python 3.12–3.13 range.
+
 ## v0.17.4 - July 9, 2026
 
 * **FIXED**: standard extraction fail when no sky have been subtracted.

@@ -10,7 +10,7 @@ authors = [
     {name = "David Young", email= "david.young.rse@gmail.com"},
 ]
 keywords = ['soxs, eso, data, pipeline, spectra']
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.14"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 classifiers = [
@@ -99,4 +99,8 @@ local_scheme = "no-local-version"
 write_to = "soxspipe/__version__.py"
 write_to_template = "__version__ = '{version}'\n"
 
+[tool.ruff]
+# MATCHES THE FLOOR OF requires-python (">=3.12,<3.14"), NOT THE CEILING, SO THE
+# UP RULES NEVER PROPOSE SYNTAX THAT BREAKS A SUPPORTED INTERPRETER.
+target-version = "py312"
 
