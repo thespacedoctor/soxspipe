@@ -13,6 +13,7 @@ Date Created
 ################# GLOBAL IMPORTS ####################
 from soxspipe.commonutils import keyword_lookup
 from .base_recipe import base_recipe
+from .poly_orders import validate_poly_orders
 from fundamentals import tools
 from builtins import object
 import sys
@@ -79,13 +80,8 @@ class soxs_spatial_solution(base_recipe):
         self.polyOrders = polyOrders
         self.debug = debug
 
-        if self.polyOrders:
-            try:
-                self.polyOrders = int(self.polyOrders)
-            except:
-                pass
-            if not isinstance(self.polyOrders, int):
-                raise TypeError("THE poly VALUE NEEDS TO BE A 6 DIGIT INTEGER")
+        if self.polyOrders is not False:
+            self.polyOrders = validate_poly_orders(self.polyOrders, 6)
 
         # xt-self-arg-tmpx
 

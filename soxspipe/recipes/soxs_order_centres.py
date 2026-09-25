@@ -14,6 +14,7 @@ Date Created
 from soxspipe.commonutils import detect_continuum
 from soxspipe.commonutils import keyword_lookup
 from .base_recipe import base_recipe
+from .poly_orders import validate_poly_orders
 from fundamentals import tools
 import sys
 import os
@@ -83,13 +84,8 @@ class soxs_order_centres(base_recipe):
         self.verbose = verbose
         self.polyOrders = polyOrders
 
-        if self.polyOrders:
-            try:
-                self.polyOrders = int(self.polyOrders)
-            except:
-                pass
-            if not isinstance(self.polyOrders, int):
-                raise TypeError("THE poly VALUE NEEDS TO BE A 2 DIGIT INTEGER")
+        if self.polyOrders is not False:
+            self.polyOrders = validate_poly_orders(self.polyOrders, 2)
 
         # INITIAL ACTIONS
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >

@@ -19,6 +19,7 @@ from builtins import object
 import sys
 import os
 from soxspipe.commonutils import create_dispersion_map
+from .poly_orders import validate_poly_orders
 
 os.environ["TERM"] = "vt100"
 
@@ -83,13 +84,8 @@ class soxs_disp_solution(base_recipe):
         self.recipeName = "soxs-disp-solution"
         self.polyOrders = polyOrders
 
-        if self.polyOrders:
-            try:
-                self.polyOrders = int(self.polyOrders)
-            except:
-                pass
-            if not isinstance(self.polyOrders, int):
-                raise TypeError("THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER")
+        if self.polyOrders is not False:
+            self.polyOrders = validate_poly_orders(self.polyOrders, 4)
 
         # CONVERT INPUT FILES TO A CCDPROC IMAGE COLLECTION (inputFrames >
         # imagefilecollection)
