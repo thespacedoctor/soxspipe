@@ -404,8 +404,8 @@ class set_of_files(object):
                     for f in supplementaryFilepaths
                 ]
 
-            # MAKE SURE FILES EXIST
-            allFiles = fitsFiles.extend(supplementaryFilepaths)
+            # Validate both groups without adding supplementary files to the
+            # FITS-only list passed to ImageFileCollection below.
             for f in fitsFiles + supplementaryFilepaths:
                 exists = os.path.exists(f)
                 if not exists:

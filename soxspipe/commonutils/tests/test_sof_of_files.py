@@ -3,8 +3,10 @@ from builtins import str
 import os
 import unittest
 import shutil
+import tempfile
 import unittest
 import yaml
+from astropy.io import fits
 from soxspipe.utKit import utKit
 from fundamentals import tools
 from os.path import expanduser
@@ -45,6 +47,42 @@ if not os.path.exists(pathToOutputDir):
 
 
 class test_set_of_files(unittest.TestCase):
+
+    def test_sof_supplementary_files_are_excluded_from_image_collection(self):
+        from soxspipe.commonutils.set_of_files import set_of_files
+
+        with tempfile.TemporaryDirectory() as temp_directory:
+            frame_directory = os.path.join(temp_directory, "frames")
+            supplementary_directory = os.path.join(temp_directory, "supplementary")
+            os.makedirs(frame_directory)
+            os.makedirs(supplementary_directory)
+
+            frame_path = os.path.join(frame_directory, "a.fits")
+            supplementary_path = os.path.join(
+                supplementary_directory, "VIS_ORDER_LOCATIONS.csv"
+            )
+            sof_path = os.path.join(temp_directory, "input.sof")
+            fits.PrimaryHDU().writeto(frame_path)
+            with open(supplementary_path, "w", encoding="utf-8") as stream:
+                stream.write("order,centre\n")
+            with open(sof_path, "w", encoding="utf-8") as stream:
+                stream.write(f"{frame_path} BIAS_VIS\n{supplementary_path}\n")
+
+            sof_reader = set_of_files.__new__(set_of_files)
+            sof_reader.log = log
+            sof_reader.inputFrames = sof_path
+            sof_reader.currentSession = None
+            sof_reader.ext = 0
+            sof_reader.keys = ["file"]
+
+            collection, supplementary = sof_reader.get()
+
+            self.assertEqual(collection.location, frame_directory)
+            self.assertEqual(collection.files, ["a.fits"])
+            self.assertEqual(list(collection.summary["file"]), ["a.fits"])
+            self.assertEqual(
+                supplementary["VIS"]["ORDER_LOCATIONS"], supplementary_path
+            )
 
     def test01_xsh_set_of_files_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
