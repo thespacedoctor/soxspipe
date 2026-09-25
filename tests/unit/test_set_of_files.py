@@ -419,23 +419,31 @@ def test_get_sof_no_common_location_uses_full_paths(
     ]
 
 
-def test_get_list_drops_dot_prefixed_supplementary_paths(
+def test_get_list_keeps_relative_supplementary_paths(
     tmp_path: Path, log: object
 ) -> None:
-    """DY-75: a relative supplementary path starting with "." is dropped.
-
-    The list-input branch filters supplementary candidates with
-    `f[0] != "."`, so a path like "./VIS_DISP_MAP.csv" is excluded from
-    `supplementaryFilepaths` entirely, rather than being resolved relative to
-    the current directory. This is a known defect (DY-75); it is pinned
-    here, not fixed.
-    """
+    """DY-75: a leading relative-path component does not make a file hidden."""
     framePath = raw_fits(tmp_path / "frame.fits")
     (tmp_path / "VIS_DISP_MAP.csv").write_text("x\n1\n", encoding="utf-8")
     settings = _settings(tmp_path, default=["DPR_TYPE"])
 
     sof = set_of_files(log=log, settings=settings, verbose=False)
     sof.inputFrames = [str(framePath), "./VIS_DISP_MAP.csv"]
+
+    _collection, supplementary = sof.get()
+
+    assert supplementary == {"VIS": {"DISP_MAP": "./VIS_DISP_MAP.csv"}}
+
+
+def test_get_list_excludes_hidden_supplementary_files(
+    tmp_path: Path, log: object
+) -> None:
+    """The basename, rather than the whole path, determines hidden status."""
+    framePath = raw_fits(tmp_path / "frame.fits")
+    settings = _settings(tmp_path, default=["DPR_TYPE"])
+
+    sof = set_of_files(log=log, settings=settings, verbose=False)
+    sof.inputFrames = [str(framePath), "./.VIS_DISP_MAP.csv"]
 
     _collection, supplementary = sof.get()
 
