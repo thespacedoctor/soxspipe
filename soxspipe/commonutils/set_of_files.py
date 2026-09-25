@@ -473,7 +473,7 @@ class set_of_files:
 
         **Return:**
 
-        - ``fitsFiles`` -- the FITS frame paths, followed by the supplementary file paths
+        - ``fitsFiles`` -- the FITS frame paths
         - ``supplementaryFilepaths`` -- the supplementary (non-FITS) file paths
         """
         import codecs
@@ -511,7 +511,6 @@ class set_of_files:
             ]
 
         # MAKE SURE FILES EXIST
-        fitsFiles.extend(supplementaryFilepaths)
         for f in fitsFiles + supplementaryFilepaths:
             exists = os.path.exists(f)
             if not exists:

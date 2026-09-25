@@ -329,17 +329,10 @@ def test_get_sof_crlf_fits_only_line_still_resolves(
     assert list(collection.summary["file"]) == ["frame.fits"]
 
 
-def test_get_sof_supplementary_files_pollute_the_collection_but_not_the_summary(
+def test_get_sof_keeps_supplementary_files_out_of_the_collection(
     tmp_path: Path, log: object
 ) -> None:
-    """DY-74: `fitsFiles.extend(supplementaryFilepaths)` mutates `fitsFiles`.
-
-    The SOF branch feeds the (now supplementary-polluted) `fitsFiles` list
-    straight into `ImageFileCollection(filenames=fitsFiles, ...)`, so a
-    supplementary file that ccdproc cannot parse as FITS ends up in
-    `collection.files` even though it never appears in `collection.summary`.
-    This is a known defect (DY-74); it is pinned here, not fixed.
-    """
+    """DY-74: supplementary SOF members are not FITS collection members."""
     framePath = raw_fits(tmp_path / "a.fits")
     supplementaryPath = tmp_path / "VIS_ORDER_LOCATIONS.csv"
     supplementaryPath.write_text("x\n1\n", encoding="utf-8")
@@ -349,24 +342,21 @@ def test_get_sof_supplementary_files_pollute_the_collection_but_not_the_summary(
     )
     settings = _settings(tmp_path, default=["DPR_TYPE"])
 
-    collection, _supplementary = set_of_files(
+    collection, supplementary = set_of_files(
         log=log, settings=settings, inputFrames=str(inputPath), verbose=False
     ).get()
 
-    assert collection.files == ["a.fits", "VIS_ORDER_LOCATIONS.csv"]
+    assert collection.files == ["a.fits"]
     assert list(collection.summary["file"]) == ["a.fits"]
+    assert supplementary == {
+        "VIS": {"ORDER_LOCATIONS": str(supplementaryPath)}
+    }
 
 
-def test_get_sof_supplementary_in_a_different_directory_forces_no_location(
+def test_get_sof_supplementary_in_a_different_directory_does_not_affect_location(
     tmp_path: Path, log: object
 ) -> None:
-    """DY-74, continued: a supplementary file elsewhere ruins `location`.
-
-    Because the supplementary path is folded into `fitsFiles` before the
-    common-location check, a supplementary file living outside the frame
-    directory makes `len(set(locations)) != 1`, so `location` becomes `None`
-    and even the genuine FITS frame is reported with its full path.
-    """
+    """DY-74: only FITS frame directories determine the common location."""
     framesDir = tmp_path / "frames"
     suppDir = tmp_path / "supp"
     framesDir.mkdir()
@@ -385,8 +375,9 @@ def test_get_sof_supplementary_in_a_different_directory_forces_no_location(
         log=log, settings=settings, inputFrames=str(inputPath), verbose=False
     ).get()
 
-    assert collection.location == ""
-    assert list(collection.summary["file"]) == [str(framePath.resolve())]
+    assert collection.location == str(framesDir)
+    assert collection.files == ["a.fits"]
+    assert list(collection.summary["file"]) == ["a.fits"]
 
 
 def test_get_sof_ext_all_keys_present_skips_the_primary_fallback(
