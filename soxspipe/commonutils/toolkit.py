@@ -705,13 +705,11 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
-    try:
-        binx = frame.header[kw("WIN_BINX")]
-        biny = frame.header[kw("WIN_BINY")]
-    except:
-        if arm.lower() == "nir":
-            binx = 1
-            biny = 1
+    binx = 1
+    biny = 1
+    if arm.lower() != "nir" and kw("WIN_BINX") in frame.header:
+        binx = int(frame.header[kw("WIN_BINX")])
+        biny = int(frame.header[kw("WIN_BINY")])
 
     inst = frame.header[kw("INSTRUME")]
 
