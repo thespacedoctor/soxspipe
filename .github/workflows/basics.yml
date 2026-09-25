@@ -4,5 +4,9 @@ on: [push, pull_request]
 
 jobs:
   call-workflow:
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
     uses: thespacedoctor/reusable-workflows/.github/workflows/_basics.yml@main
-    
+    with:
+      python-version: ${{ matrix.python-version }}
