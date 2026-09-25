@@ -1177,15 +1177,26 @@ class soxs_mflat(base_recipe):
             if self.axisA == "x":
                 interOrderMask[b, l:u] = 0
                 if returnMedianOrderFlux and b > bAxisMiddles[o] - 3 and b < bAxisMiddles[o] + 3:
-                    orderFluxes[o] = np.append(orderFluxes[o], frame.data[b, l:u])
+                    orderFluxes[o] = np.append(
+                        orderFluxes[o],
+                        self._valid_order_flux_samples(frame, b, l, u),
+                    )
             else:
                 interOrderMask[l:u, b] = 0
                 if returnMedianOrderFlux and b > bAxisMiddles[o] - 3 and b < bAxisMiddles[o] + 3:
-                    orderFluxes[o] = np.append(orderFluxes[o], frame.data[b, l:u])
+                    orderFluxes[o] = np.append(
+                        orderFluxes[o],
+                        self._valid_order_flux_samples(frame, b, l, u),
+                    )
 
         # GET UNIQUE VALUES IN COLUMN
         if returnMedianOrderFlux:
             for o in uniqueOrders:
+                if not len(orderFluxes[o]):
+                    raise ValueError(
+                        f"Cannot calculate median flux for order {o}: "
+                        "no valid sampled pixels"
+                    )
                 medianFlux.append(np.median(orderFluxes[o]))
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
@@ -1266,6 +1277,21 @@ class soxs_mflat(base_recipe):
             return frame, medianOrderFluxDF
 
         return frame
+
+    def _valid_order_flux_samples(self, frame, b, l, u):
+        """Return the unmasked flux samples for one order-table row."""
+        import numpy as np
+
+        if self.axisA == "x":
+            samples = frame.data[b, l:u]
+            sampleMask = None if frame.mask is None else frame.mask[b, l:u]
+        else:
+            samples = frame.data[l:u, b]
+            sampleMask = None if frame.mask is None else frame.mask[l:u, b]
+
+        if sampleMask is None:
+            return samples
+        return samples[~np.asarray(sampleMask, dtype=bool)]
 
     def stitch_uv_mflats(self, medianOrderFluxDF, orderTablePath):
         """*return a master UV-VIS flat frame after slicing and stitch the UV-VIS D-Lamp and QTH-Lamp flat frames*
