@@ -152,6 +152,123 @@ def test_select_unknown_reduction_target_preserves_unbound_failure(
         collection.select_sof_files_to_process(reductionTarget="ob-123")
 
 
+# ---------------------------------------------------------------------------
+# DY-254 -- `recipe`, `arm` AND `reductionTarget` REACH THE DATABASE AS BOUND
+# PARAMETERS, NOT INTERPOLATED SQL TEXT, IN `select_sof_files_to_process`.
+# ---------------------------------------------------------------------------
+
+
+def test_select_sof_files_binds_a_hostile_recipe_as_a_parameter_in_all_branch(
+    tmp_path: Path,
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile `recipe` filter reaches SQLite as a bound parameter, not as interpolated text.
+
+    The method also re-filters its result in pandas by exact string match on
+    `recipe` (see the `mask` step below the SQL call), which would make a
+    row-count assertion vacuous here: an injected `OR '1'='1'` widens the SQL
+    result, but the pandas mask then narrows it straight back down to nothing,
+    since no real row's `recipe` column equals the hostile string verbatim.
+    So this test inspects the query pandas actually sent instead.
+    """
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    with sqlite3.connect(databasePath) as connection:
+        connection.execute(
+            "INSERT INTO raw_frame_sets VALUES (1, 1, 'mflat', 'flat.sof', 'UVB')"
+        )
+    collection = _uninitialized_reducer(log, databasePath)
+    hostileRecipe = "mflat' OR '1'='1' -- "
+
+    import pandas
+
+    captured: dict[str, Any] = {}
+    realReadSql = pandas.read_sql
+
+    def _capturing_read_sql(sql: str, con: Any, params: Any = None, **kwargs: Any) -> pd.DataFrame:
+        captured["sql"] = sql
+        captured["params"] = params
+        return realReadSql(sql, con=con, params=params, **kwargs)
+
+    monkeypatch.setattr(pandas, "read_sql", _capturing_read_sql)
+
+    collection.select_sof_files_to_process(recipe=hostileRecipe, reductionTarget="all")
+
+    assert hostileRecipe not in captured["sql"]
+    assert captured["params"]["recipe"] == hostileRecipe
+
+
+def test_select_sof_files_binds_a_hostile_arm_as_a_parameter_in_all_branch(
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """A hostile `arm` filter matches no real row in a real database, rather than widening the query.
+
+    Unlike `recipe`, `arm` is not re-filtered afterwards in pandas, so a real
+    injected `OR '1'='1'` would be directly visible here as extra rows.
+    """
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    with sqlite3.connect(databasePath) as connection:
+        connection.executemany(
+            "INSERT INTO raw_frame_sets VALUES (?, ?, ?, ?, ?)",
+            [
+                (1, 1, "mbias", "uvb.sof", "UVB"),
+                (1, 1, "mbias", "vis.sof", "VIS"),
+            ],
+        )
+    collection = _uninitialized_reducer(log, databasePath)
+    # IF STILL INTERPOLATED, THIS CLOSES THE STRING LITERAL, INJECTS AN
+    # ALWAYS-TRUE CONDITION, AND COMMENTS OUT THE TRAILING QUOTE, MATCHING
+    # BOTH THE UVB AND VIS ROWS INSTEAD OF NEITHER.
+    hostileArm = "UVB' OR '1'='1' -- "
+
+    selected = collection.select_sof_files_to_process(
+        reductionTarget="all", arm=hostileArm
+    )
+
+    assert selected.empty
+
+
+def test_select_sof_files_binds_a_hostile_sof_reduction_target_as_a_parameter(
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """A hostile SOF-filename `reductionTarget` matches no real row, rather than dispatching an unrequested SOF.
+
+    `reductionTarget` is the clearest attacker-reachable path into this
+    method: it is a CLI argument (a SOF filename or `all`) forwarded from
+    `soxspipe reduce`. This reproduces the recursive-subquery branch
+    (`reductionTarget.split(".")[-1].lower() == "sof"`) against a real,
+    file-backed database.
+    """
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    with sqlite3.connect(databasePath) as connection:
+        connection.execute(
+            "INSERT INTO raw_frame_sets VALUES (1, 1, 'mbias', 'target.sof', 'UVB')"
+        )
+        connection.execute(
+            "INSERT INTO product_frames VALUES ('target.sof', 'target.fits', 1)"
+        )
+    collection = _uninitialized_reducer(log, databasePath)
+    # BALANCED QUOTES, NO COMMENT MARKER: THE RECURSIVE QUERY-BUILDING LOOP
+    # RE-EMBEDS THIS SAME STRING FOUR MORE TIMES, SO AN UNBALANCED PAYLOAD (E.G.
+    # ONE RELYING ON `--` TO COMMENT OUT A TRAILING QUOTE) BREAKS EVERY LATER
+    # NESTING LEVEL AND JUST RAISES A SYNTAX ERROR RATHER THAN DEMONSTRATING
+    # THE INJECTION. IF STILL INTERPOLATED, THIS PAYLOAD MATCHES THE REAL
+    # `target.sof` ROW REGARDLESS OF THE `and complete = 1` CONDITION, SO IT IS
+    # DISPATCHED EVEN THOUGH IT WAS NEVER REQUESTED.
+    hostileReductionTarget = "x' OR sof = 'target.sof' OR sof = 'z.sof"
+
+    selected = collection.select_sof_files_to_process(
+        reductionTarget=hostileReductionTarget
+    )
+
+    assert selected.empty
+
+
 def test_reduce_without_active_session_reports_preparation_requirement(
     tmp_path: Path,
     log: Any,
