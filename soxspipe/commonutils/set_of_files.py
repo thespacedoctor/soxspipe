@@ -405,7 +405,6 @@ class set_of_files(object):
                 ]
 
             # MAKE SURE FILES EXIST
-            allFiles = fitsFiles.extend(supplementaryFilepaths)
             for f in fitsFiles + supplementaryFilepaths:
                 exists = os.path.exists(f)
                 if not exists:
