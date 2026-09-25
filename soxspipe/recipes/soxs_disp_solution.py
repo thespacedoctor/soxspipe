@@ -199,10 +199,9 @@ class soxs_disp_solution(base_recipe):
         # MIXED INPUT IMAGE TYPES ARE BAD
         if not error and len(imageTypes) > 1:
             imageTypes = " and ".join(imageTypes)
-            imageTypes = " and ".join(imageTypes)
             error = (
                 "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
-                "and lamp off frames for NIR"
+                f"and lamp off frames for NIR. Found {imageTypes}"
             )
 
         # FIX ME!
