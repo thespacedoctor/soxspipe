@@ -25,6 +25,12 @@ arguments, settings, log, dbConn = su.setup()
 class test_toolkit(unittest.TestCase):
 
     def test_spectroscopic_image_quality_checks_defaults_missing_binning_headers_for_non_nir(self):
+        self._run_spectroscopic_quality_check_with_header_binning()
+
+    def test_spectroscopic_image_quality_checks_defaults_when_only_one_binning_header_exists(self):
+        self._run_spectroscopic_quality_check_with_header_binning(winx=2)
+
+    def _run_spectroscopic_quality_check_with_header_binning(self, winx=None, winy=None):
         from soxspipe.commonutils import keyword_lookup
         from soxspipe.commonutils import toolkit
 
@@ -33,6 +39,10 @@ class test_toolkit(unittest.TestCase):
         header[kw("SEQ_ARM")] = "UVB"
         header[kw("DATE_OBS")] = "2024-01-01T00:00:00"
         header[kw("INSTRUME")] = "XSHOOTER"
+        if winx is not None:
+            header[kw("WIN_BINX")] = winx
+        if winy is not None:
+            header[kw("WIN_BINY")] = winy
 
         frame = CCDData(
             np.ones((4, 4), dtype=float),

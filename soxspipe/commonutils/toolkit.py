@@ -707,7 +707,7 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     binx = 1
     biny = 1
-    if arm.lower() != "nir" and kw("WIN_BINX") in frame.header:
+    if arm.lower() != "nir" and kw("WIN_BINX") in frame.header and kw("WIN_BINY") in frame.header:
         binx = int(frame.header[kw("WIN_BINX")])
         biny = int(frame.header[kw("WIN_BINY")])
 
