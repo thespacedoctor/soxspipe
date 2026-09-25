@@ -25,12 +25,12 @@ arguments, settings, log, dbConn = su.setup()
 class test_toolkit(unittest.TestCase):
 
     def test_spectroscopic_image_quality_checks_defaults_missing_binning_headers_for_non_nir(self):
-        self._run_spectroscopic_quality_check_with_header_binning()
+        self._run_spectroscopic_quality_check_with_header_binning(expected_binx=1, expected_biny=1)
 
     def test_spectroscopic_image_quality_checks_defaults_when_only_one_binning_header_exists(self):
-        self._run_spectroscopic_quality_check_with_header_binning(winx=2)
+        self._run_spectroscopic_quality_check_with_header_binning(winx=2, expected_binx=2, expected_biny=1)
 
-    def _run_spectroscopic_quality_check_with_header_binning(self, winx=None, winy=None):
+    def _run_spectroscopic_quality_check_with_header_binning(self, expected_binx, expected_biny, winx=None, winy=None):
         from soxspipe.commonutils import keyword_lookup
         from soxspipe.commonutils import toolkit
 
@@ -81,5 +81,5 @@ class test_toolkit(unittest.TestCase):
                 qcTable=pd.DataFrame(),
             )
 
-        assert observed == {"binx": 1, "biny": 1, "prebinned": True}
+        assert observed == {"binx": expected_binx, "biny": expected_biny, "prebinned": True}
         assert {"INNER ORDER PIX MEAN", "INNER ORDER PIX SUM"}.issubset(set(qcTable["qc_name"]))
