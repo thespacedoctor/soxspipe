@@ -310,6 +310,25 @@ def measure_coverage(modulePath: str, repoRoot: Path) -> float:
         raise SurveyError(f"could not use a temporary directory for the coverage report: {error}") from error
 
 
+def ruff_command() -> list[str]:
+    """*the command that runs ruff, without depending on `PATH`*
+
+    The hermetic test suite runs pytest through `env` with an explicit variable list that
+    leaves `PATH` at its default, so the environment's `bin` directory is not on it. Running
+    ruff as a module of the running interpreter sidesteps that, and pins the run to the
+    version installed beside the interpreter rather than whichever one `PATH` happens to
+    reach first. Only when ruff is not installed there does this fall back to `PATH`.
+
+    **Return:**
+
+    - ``command`` -- the command prefix to run ruff with
+    """
+    if importlib.util.find_spec("ruff") is not None:
+        return [sys.executable, "-m", "ruff"]
+
+    return ["ruff"]
+
+
 def count_ruff_findings(modulePath: str, repoRoot: Path) -> dict[str, int]:
     """*the whole-file ruff findings for one module, under the house configuration*
 
@@ -323,7 +342,7 @@ def count_ruff_findings(modulePath: str, repoRoot: Path) -> dict[str, int]:
     - ``counts`` -- the number of findings per rule code
     """
     # THE -- STOPS A PATH THAT BEGINS WITH A DASH BEING READ AS AN OPTION
-    command = ["ruff", "check", "--output-format", "json", "--force-exclude", "--", modulePath]
+    command = [*ruff_command(), "check", "--output-format", "json", "--force-exclude", "--", modulePath]
 
     # RUFF EXITS 1 WHEN IT FINDS SOMETHING, WHICH IS THE NORMAL CASE HERE
     return parse_ruff_counts(_run(command, repoRoot, allowedStatuses=(0, 1)))
@@ -744,13 +763,31 @@ def _run(command: list[str], workingDirectory: Path, allowedStatuses: tuple[int,
         # NO SHELL, A FIXED EXECUTABLE, AND EVERY PATH ARGUMENT PLACED AFTER A -- SEPARATOR
         completed = subprocess.run(command, cwd=workingDirectory, capture_output=True, text=True, check=False)  # noqa: S603
     except OSError as error:
-        raise SurveyError(f"could not run {command[0]}: {error}") from error
+        raise SurveyError(f"could not run {_command_name(command)}: {error}") from error
 
     if completed.returncode not in allowedStatuses:
         failure = f"{' '.join(command)} failed with status {completed.returncode}"
         raise SurveyError(f"{failure}:\n{completed.stderr.strip()}")
 
     return completed.stdout
+
+
+def _command_name(command: list[str]) -> str:
+    """*the name to report a command by in an error message*
+
+    **Key Arguments:**
+
+    - ``command`` -- the command and its arguments
+
+    **Return:**
+
+    - ``name`` -- the tool's own name, not the interpreter that runs it as a module
+    """
+    # A COMMAND RUN AS python -m <tool> IS THE TOOL'S FAILURE TO REPORT, NOT THE INTERPRETER'S
+    if len(command) > 2 and command[1] == "-m":
+        return command[2]
+
+    return command[0]
 
 
 if __name__ == "__main__":

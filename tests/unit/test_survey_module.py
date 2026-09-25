@@ -592,6 +592,32 @@ def test_a_command_failing_with_an_allowed_status_returns_its_output() -> None:
     assert output.strip() == "done"
 
 
+def test_ruff_is_run_through_the_interpreter_when_it_is_installed_beside_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr(surveyor.importlib.util, "find_spec", lambda name: object())
+
+    # ACT
+    command = surveyor.ruff_command()
+
+    # ASSERT
+    assert command == [surveyor.sys.executable, "-m", "ruff"]
+
+
+def test_ruff_falls_back_to_the_path_when_it_is_not_installed_beside_the_interpreter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr(surveyor.importlib.util, "find_spec", lambda name: None)
+
+    # ACT
+    command = surveyor.ruff_command()
+
+    # ASSERT
+    assert command == ["ruff"]
+
+
 def test_the_ruff_count_runs_ruff_over_the_module(monkeypatch: pytest.MonkeyPatch) -> None:
     # ARRANGE
     calls = []
@@ -601,6 +627,7 @@ def test_the_ruff_count_runs_ruff_over_the_module(monkeypatch: pytest.MonkeyPatc
         return '[{"code": "E501", "location": {"row": 1}}]'
 
     monkeypatch.setattr(surveyor, "_run", _fake_run)
+    monkeypatch.setattr(surveyor, "ruff_command", lambda: ["/somewhere/python", "-m", "ruff"])
 
     # ACT
     counts = surveyor.count_ruff_findings("soxspipe/recipes/soxs_mbias.py", REPO_ROOT)
@@ -608,10 +635,26 @@ def test_the_ruff_count_runs_ruff_over_the_module(monkeypatch: pytest.MonkeyPatc
     # ASSERT
     command, allowedStatuses = calls[0]
     assert counts == {"E501": 1}
-    assert command[:2] == ["ruff", "check"]
+    assert command[:4] == ["/somewhere/python", "-m", "ruff", "check"]
     assert command[-2:] == ["--", "soxspipe/recipes/soxs_mbias.py"]
     # RUFF EXITS 1 WHENEVER IT FINDS SOMETHING, WHICH IS THE NORMAL CASE FOR A SURVEY
     assert allowedStatuses == (0, 1)
+
+
+def test_a_missing_executable_raises_a_survey_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE
+    def missing(command, **keywordArguments):
+        raise OSError("No such file or directory: 'ruff'")
+
+    monkeypatch.setattr(surveyor.subprocess, "run", missing)
+    # RUN AS A MODULE, SO THE ERROR MUST NAME THE TOOL RATHER THAN THE INTERPRETER PATH
+    monkeypatch.setattr(surveyor, "ruff_command", lambda: ["/somewhere/python", "-m", "ruff"])
+
+    # ACT, ASSERT
+    with pytest.raises(surveyor.SurveyError) as raised:
+        surveyor.count_ruff_findings("soxspipe/recipes/soxs_mbias.py", REPO_ROOT)
+
+    assert "could not run ruff" in str(raised.value)
 
 
 def test_coverage_measures_the_package_not_the_single_module(monkeypatch: pytest.MonkeyPatch) -> None:
