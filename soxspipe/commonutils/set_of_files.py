@@ -449,7 +449,10 @@ class set_of_files:
             sof._summary["filename"] = fitsFiles
             self.keys = ["filename"] + self.keys
             supplementaryFilepaths = [
-                f for f in self.inputFrames if ".fits" not in f.lower() and f[0] != "."
+                f
+                for f in self.inputFrames
+                if ".fits" not in f.lower()
+                and not os.path.basename(f).startswith(".")
             ]
 
         else:
