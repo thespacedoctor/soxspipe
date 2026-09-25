@@ -339,13 +339,17 @@ class reducer:
         c.execute("PRAGMA busy_timeout = 100000")
         c.execute("PRAGMA synchronous = OFF")
 
+        allBranchParams = {}
+
         if batch:
-            limitText = f" LIMIT {batch} "
+            limitText = " LIMIT :batch "
+            allBranchParams["batch"] = batch
         else:
             limitText = ""
 
         if arm:
-            armText = f" and `eso seq arm` = '{arm}' "
+            armText = " and `eso seq arm` = :arm "
+            allBranchParams["arm"] = arm
         else:
             armText = ""
 
@@ -354,24 +358,38 @@ class reducer:
             if not recipe:
                 recipeText = "is not null"
             else:
-                recipeText = f"= '{recipe}'"
+                recipeText = "= :recipe"
+                allBranchParams["recipe"] = recipe
 
+            # `recipeText`, `armText` AND `limitText` ARE ALWAYS EITHER STATIC
+            # TEXT OR A `:name` PLACEHOLDER -- NEVER A RAW VALUE -- SO THE
+            # ACTUAL `recipe`/`arm`/`batch` VALUES REACH SQLITE ONLY THROUGH
+            # `allBranchParams` BELOW.
             rawGroups = pd.read_sql(
-                f"SELECT * FROM raw_frame_sets where recipe_order is not null and complete = 1 and recipe {recipeText} {armText}  order by recipe_order, sof {limitText}",
+                f"SELECT * FROM raw_frame_sets where recipe_order is not null "  # noqa: S608
+                f"and complete = 1 and recipe {recipeText} {armText}  order by recipe_order, sof {limitText}",
                 con=conn,
+                params=allBranchParams,
             )
 
         elif reductionTarget.split(".")[-1].lower() == "sof":
-            sqlQuery = f"select sof from product_frames where sof = '{reductionTarget}' and complete = 1"
+            # `reductionTarget` IS THE ONLY EXTERNAL VALUE HERE. IT IS BOUND
+            # ONCE, AS A NAMED PARAMETER, AND REUSED ACROSS EVERY NESTED
+            # SUBQUERY BELOW -- SQLITE ALLOWS THE SAME NAMED PLACEHOLDER TO
+            # REPEAT WITHIN ONE STATEMENT.
+            sqlQuery = "select sof from product_frames where sof = :reductionTarget and complete = 1"
 
             for _ in range(4):  # Recursively query up to 5 times
-                sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
+                sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"  # noqa: S608
 
             sqlQuery = (
-                f"SELECT distinct sof, recipe from raw_frame_sets WHERE sof in ({sqlQuery}) order by recipe_order, sof"
+                f"SELECT distinct sof, recipe from raw_frame_sets WHERE sof in ({sqlQuery}) "  # noqa: S608
+                "order by recipe_order, sof"
             )
 
-            rawGroups = pd.read_sql(sqlQuery, con=conn)
+            rawGroups = pd.read_sql(
+                sqlQuery, con=conn, params={"reductionTarget": reductionTarget}
+            )
 
         if not len(rawGroups.index):
             if reductionTarget != "all":

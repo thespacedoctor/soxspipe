@@ -126,3 +126,32 @@ def test_predict_product_frames_reports_existing_incomplete_products(
     incompleteCount = organiser.predict_product_frames([], pd.DataFrame(), "mflat")
 
     assert incompleteCount == 1
+
+
+def test_predict_product_frames_binds_a_hostile_recipe_as_a_parameter(
+    tmp_path, log
+) -> None:
+    """A hostile recipe name matches no real row in a real database, rather than counting every row.
+
+    DY-254: `recipe` was interpolated directly into the `count(*)` query text.
+    """
+    organiser = workspace_organiser(tmp_path, log=log)
+    organiser.conn = sqlite3.connect(":memory:")
+    organiser.conn.execute(
+        "CREATE TABLE product_frames (recipe TEXT, complete INTEGER)"
+    )
+    organiser.conn.executemany(
+        "INSERT INTO product_frames VALUES (?, ?)",
+        [("mflat", 0), ("mflat", 1), ("mbias", 0)],
+    )
+    # IF STILL INTERPOLATED, THE COMMENT MARKER `--` STRIPS THE TRAILING
+    # `and complete< 1` CONDITION AND THE `OR '1'='1'` MATCHES EVERY ROW,
+    # COUNTING ALL 3 ROWS INSTEAD OF THE 0 WHOSE `recipe` REALLY EQUALS THE
+    # HOSTILE STRING.
+    hostileRecipe = "mflat' OR '1'='1' -- "
+
+    incompleteCount = organiser.predict_product_frames(
+        [], pd.DataFrame(), hostileRecipe
+    )
+
+    assert incompleteCount == 0

@@ -299,3 +299,33 @@ def test_raw_frame_inventory_groups_complete_bias_set_and_names_sof(
     assert rawGroups.loc[0, "complete"] == 1
     assert rawGroups.loc[0, "recipe_order"] == 0
     assert rawGroups.loc[0, "sof"] == ("20240102T030405_VIS_1X1_FAST_MBIAS_SOXS.sof")
+
+
+def test_raw_frame_inventory_binds_a_hostile_arm_as_a_parameter(tmp_path, log) -> None:
+    """A hostile `arm` filter matches no real row in a real database, rather than widening the query.
+
+    DY-254: `ttype`, `arm` and `tech` were interpolated directly into the
+    `raw_frames_valid` filter text in `get_raw_frames_and_groups`.
+    """
+    organiser = workspace_organiser(tmp_path, log=log)
+    organiser.instrument = "SOXS"
+    organiser.conn = sqlite3.connect(":memory:")
+    frames = raw_frame_table()
+    frames.loc[frames.index[1], "eso seq arm"] = "NIR"
+    frames.to_sql("raw_frames_valid", organiser.conn, index=False)
+
+    # IF STILL INTERPOLATED, THIS CLOSES THE STRING LITERAL, INJECTS AN
+    # ALWAYS-TRUE CONDITION, AND COMMENTS OUT THE TRAILING QUOTE, MATCHING
+    # BOTH THE VIS AND NIR ROWS INSTEAD OF NEITHER.
+    hostileArm = "VIS' OR '1'='1' -- "
+
+    rawFrames, rawGroups = organiser.get_raw_frames_and_groups(
+        arm=hostileArm,
+        recipe="mbias",
+        recipeOrder=0,
+        filterName="bias",
+        unprocessedOnly=True,
+    )
+
+    assert rawFrames.empty
+    assert rawGroups.empty

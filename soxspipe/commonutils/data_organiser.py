@@ -648,10 +648,17 @@ class data_organiser:
 
         sqlQuery = "select sof from product_frames where sof = :sofFile and complete = 1"
 
+        # `sofFile` IS ALREADY BOUND ABOVE AS A NAMED PARAMETER. THE LOOP AND
+        # THE LINE BELOW ONLY RE-WRAP THE `sqlQuery` TEXT AROUND ITSELF --
+        # NO NEW EXTERNAL VALUE EVER RE-ENTERS THE STRING -- SO NEITHER LINE
+        # IS AN INJECTION VECTOR, DESPITE THE F-STRING/SQL-KEYWORD SHAPE.
         for _ in range(4):  # Recursively query up to 5 times
-            sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"
+            sqlQuery = f"SELECT distinct sof FROM product_frames WHERE file IN (SELECT file FROM sof_map_base WHERE sof in ({sqlQuery})) or sof in ({sqlQuery})"  # noqa: S608
 
-        sqlQuery = f"SELECT * from sof_map WHERE sof in ({sqlQuery}) and filepath like '%./raw/%' order by sof"
+        sqlQuery = (
+            f"SELECT * from sof_map WHERE sof in ({sqlQuery}) and filepath "  # noqa: S608
+            "like '%./raw/%' order by sof"
+        )
 
         table = pd.read_sql(sqlQuery, con=self.conn, params={"sofFile": sofFile})
 
@@ -994,6 +1001,10 @@ class data_organiser:
 
         if tableName != "raw_frames":
             raise ValueError("Only the raw_frames table can be synchronized")
+        # THE EQUALITY CHECK ABOVE ALREADY RESTRICTS `tableName` TO THE SINGLE
+        # LITERAL "raw_frames"; THIS ADDS THE SAME GRAMMAR CHECK USED FOR EVERY
+        # OTHER INTERPOLATED IDENTIFIER IN THIS FILE, FOR CONSISTENCY.
+        tableName = validate_sql_identifier(tableName, "table name")
 
         # GENERATE A LIST OF FITS FILE PATHS IN RAW DIR
         from fundamentals.files import recursive_directory_listing
@@ -1006,7 +1017,7 @@ class data_organiser:
 
         c = self.conn.cursor()
 
-        sqlQuery = f"select filepath from {tableName};"
+        sqlQuery = f"select filepath from {tableName};"  # noqa: S608
         c.execute(sqlQuery)
 
         # NORMALIZE DATABASE PATHS BEFORE COMPARING THEM WITH THE ABSOLUTE LISTING.
@@ -1034,11 +1045,11 @@ class data_organiser:
         ]
         if len(filesNotInFS):
             placeholders = ", ".join("?" for _ in filesNotInFS)
-            sqlQuery = f"delete from {tableName} where filepath in ({placeholders});"
+            sqlQuery = f"delete from {tableName} where filepath in ({placeholders});"  # noqa: S608
             c.execute(sqlQuery, filesNotInFS)
             sessionId = _validate_session_id(self.sessionId)
-            sofTableName = f"sof_map_{sessionId}"
-            sqlQuery = f"delete from {sofTableName} where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"
+            sofTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
+            sqlQuery = f"delete from {sofTableName} where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"  # noqa: S608
             c.execute(sqlQuery, filesNotInFS)
 
         if len(filesNotInDB):
@@ -1346,8 +1357,11 @@ class data_organiser:
         if not os.path.exists(self.sofDir):
             os.makedirs(self.sofDir)
 
+        sofMapTableName = validate_sql_identifier(
+            f"sof_map_{self.sessionId}", "sof map table name"
+        )
         df = pd.read_sql_query(
-            f"select * from sof_map_{self.sessionId} where complete = 1;", conn
+            f"select * from {sofMapTableName} where complete = 1;", conn  # noqa: S608
         )
 
         # GROUP RESULTS
@@ -1479,9 +1493,14 @@ class data_organiser:
 
         # ADD A NEW STATUS COLUMN IN product_frames FOR THIS SESSION
 
+        statusColumn = validate_sql_identifier(f"status_{sessionId}", "status column")
+        sofMapTableName = validate_sql_identifier(
+            f"sof_map_{sessionId}", "sof map table name"
+        )
+
         conn, reset = self._get_or_create_db_connection()
         c = conn.cursor()
-        sqlQuery = f"ALTER TABLE product_frames ADD status_{sessionId} TEXT;"
+        sqlQuery = f"ALTER TABLE product_frames ADD {statusColumn} TEXT;"  # noqa: S608
         try:
             c.execute(sqlQuery)
         except sqlite3.OperationalError as e:
@@ -1493,7 +1512,7 @@ class data_organiser:
         )
         c.execute(sqlQuery)
         sqlQuery = c.fetchall()[0][0]
-        sqlQuery = sqlQuery.replace("z_sof_map", f"sof_map_{sessionId}")
+        sqlQuery = sqlQuery.replace("z_sof_map", sofMapTableName)
         try:
             c.execute(sqlQuery)
         except sqlite3.OperationalError as e:
@@ -1501,7 +1520,7 @@ class data_organiser:
 
         sqlQueries = [
             "DROP VIEW IF EXISTS sof_map;",
-            f"CREATE VIEW sof_map as select * from sof_map_{sessionId};",
+            f"CREATE VIEW sof_map as select * from {sofMapTableName};",  # noqa: S608
         ]
         for sqlQuery in sqlQueries:
             c.execute(sqlQuery)
@@ -2021,9 +2040,9 @@ class data_organiser:
 
         # FLAG FILES TO IGNORE BASED ON REDUCTION ORDER
         c = self.conn.cursor()
-        theseKeywords = "','".join(self.reductionOrder)
-        sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ('{theseKeywords}')"
-        c.execute(sqlQuery)
+        placeholders = ", ".join("?" for _ in self.reductionOrder)
+        sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ({placeholders})"  # noqa: S608
+        c.execute(sqlQuery, self.reductionOrder)
         self.conn.commit()
 
         # FLAG STANDARDS NOT IN STATIC LIBRARY TO IGNORE
@@ -2088,6 +2107,114 @@ class data_organiser:
             self.conn.commit()
         c.close()
 
+    def _calibration_completeness_select_query(self, recipe, arm, ttype, calType):
+        """*build the `(sql, params)` pair that finds product SOFs whose calibration prerequisites are satisfied*
+
+        `recipe`, `arm` and `ttype` come from the instrument's `sof_map.yaml`
+        resource, so they are bound as `?` parameters rather than
+        interpolated into the SQL text. `calType` entries are calibration
+        type names used as *table-name* identifiers (`cal_<type>`), which
+        SQLite cannot bind, so each is checked against the safe-identifier
+        grammar instead.
+
+        **Key Arguments:**
+
+        - ``recipe`` -- the recipe name to filter product SOFs by
+        - ``arm`` -- the instrument arm to filter product SOFs by
+        - ``ttype`` -- the raw `eso dpr type` this group was built from (adds an extra filter for `STD` types)
+        - ``calType`` -- the list of calibration type names this recipe depends on. This is only ever called for a recipe that has at least one, so an empty list is not a supported input and produces invalid SQL (`AND ;`), matching the pre-refactor behaviour it replaces.
+
+        **Return:**
+
+        - ``sqlQuery`` -- the parameterized select
+        - ``sqlParams`` -- the parameters to bind against ``sqlQuery``
+
+        **Raises:**
+
+        - ``UnsafeSqlIdentifierError`` -- if any entry in ``calType`` fails the safe-identifier grammar
+        """
+        params = [recipe, arm]
+
+        extraType = ""
+        if "STD" in ttype:
+            extraType = 'AND "eso dpr type" = ?'
+            params.append(ttype)
+
+        calTables = [
+            validate_sql_identifier(f"cal_{ct}", "calibration table name")
+            for ct in calType
+        ]
+        exists = " AND ".join(
+            f"EXISTS (SELECT 1 FROM {calTable} WHERE {calTable}.sof = p.sof "  # noqa: S608
+            f"AND ({calTable}.upstream_status = 'pass' OR {calTable}.upstream_status IS NULL))"
+            for calTable in calTables
+        )
+
+        sqlQuery = f"""select sof from product_frames_plus as p
+            WHERE complete < 1
+            AND recipe = ?
+            AND "eso seq arm" = ?
+            {extraType}
+            AND {exists};"""  # noqa: S608
+
+        return sqlQuery, tuple(params)
+
+    def _calibration_completeness_update_query(self, containerSofs):
+        """*build the `(sql, params)` pair that marks product SOFs calibration-complete*
+
+        `containerSofs` are sof filenames read back from a prior query, so
+        they are bound as `?` parameters rather than joined into the SQL
+        text. An empty list matches no row, since `sof in ()` is invalid
+        SQLite syntax.
+
+        **Key Arguments:**
+
+        - ``containerSofs`` -- the list of sof filenames to mark complete
+
+        **Return:**
+
+        - ``sqlQuery`` -- the parameterized update
+        - ``sqlParams`` -- the parameters to bind against ``sqlQuery``
+        """
+        if not containerSofs:
+            return (
+                "UPDATE product_frames as p SET complete = -1 WHERE complete < 1 And sof in (NULL)",
+                (),
+            )
+
+        placeholders = ", ".join("?" for _ in containerSofs)
+        sqlQuery = (
+            f"UPDATE product_frames as p SET complete = -1 WHERE complete < 1 "  # noqa: S608
+            f"And sof in ({placeholders})"
+        )
+        return sqlQuery, tuple(containerSofs)
+
+    def _calibration_raw_frames_query(self, calibrationType):
+        """*build the select that pulls raw calibration frames newly marked complete for one calibration type*
+
+        `calibrationType` is used as a *table-name* identifier (`cal_<type>`),
+        which SQLite cannot bind, so it is checked against the safe-identifier
+        grammar instead.
+
+        **Key Arguments:**
+
+        - ``calibrationType`` -- the calibration type name (e.g. `bias`, `dark`)
+
+        **Return:**
+
+        - ``sqlQuery`` -- the select, safe to run with no bound parameters
+
+        **Raises:**
+
+        - ``UnsafeSqlIdentifierError`` -- if ``calibrationType`` fails the safe-identifier grammar
+        """
+        calTable = validate_sql_identifier(f"cal_{calibrationType}", "calibration table name")
+        return (
+            f"select {calTable}.file, {calTable}.upstream_tag as tag, product_frames.sof, "  # noqa: S608
+            f"{calTable}.filepath, product_frames.complete from product_frames, {calTable} "
+            f"where product_frames.complete = -1 and product_frames.sof={calTable}.sof;"
+        )
+
     def build_sof_files(self):
         """*scan the raw frame table to generate the listing of products that are expected to be created and then write out all of the needed SOF files*
 
@@ -2101,8 +2228,12 @@ class data_organiser:
 
         import pandas as pd
 
+        statusColumn = validate_sql_identifier(
+            f"status_{self.sessionId}", "status column"
+        )
+
         c = self.conn.cursor()
-        sqlQuery = f"update product_frames set status = status_{self.sessionId};"
+        sqlQuery = f"update product_frames set status = {statusColumn};"  # noqa: S608
         c.execute(sqlQuery)
         sqlQuery = "update raw_frames set processed = 0 where processed < 0;"
         c.execute(sqlQuery)
@@ -2121,10 +2252,13 @@ class data_organiser:
             sqlQuery = "update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));"
             c.execute(sqlQuery)
 
+        sofMapTableName = validate_sql_identifier(
+            f"sof_map_{self.sessionId}", "sof map table name"
+        )
         sqlQueries = [
             "update raw_frames set processed = 0 where file in (select file from sof_map where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1))));",
             "update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));",
-            f"delete from sof_map_{self.sessionId} where sof in (  select s.sof from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1));",
+            f"delete from {sofMapTableName} where sof in (  select s.sof from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1));",  # noqa: S608
             "update raw_frames set processed = -1 where file in (select distinct s.file from sof_map s, product_frames p where p.sof=s.sof and p.status = 'fail');",
             "update raw_frames set lamp = null, slit = null, slitmask = null where `eso dpr type` in ('BIAS','DARK');",
             "update raw_frames set rospeed = null where rospeed = -1;",
@@ -2228,63 +2362,49 @@ class data_organiser:
 
                 if not len(calibrationTypes):
                     # MBIAS AND MDARK -- ALWAYS COMPLETE (NO PRIOR CALIBRATION REQUIRED)
-                    sqlQuery = f"select sof from product_frames where recipe = '{recipe}' and complete = 0;"
-                    containerSofs = pd.read_sql(sqlQuery, con=self.conn)["sof"].tolist()
+                    sqlQuery = "select sof from product_frames where recipe = ? and complete = 0;"
+                    containerSofs = pd.read_sql(
+                        sqlQuery, con=self.conn, params=(recipe,)
+                    )["sof"].tolist()
                     self.raw_frames_to_sof_map(
                         rawGroups=rawGroups, containerSofs=containerSofs
                     )
-                    sqlQuery = f"update product_frames set complete = 1 where recipe = '{recipe}' and complete = 0;"
-                    c.execute(sqlQuery)
+                    sqlQuery = "update product_frames set complete = 1 where recipe = ? and complete = 0;"
+                    c.execute(sqlQuery, (recipe,))
 
                 else:
 
                     if isinstance(calibrationTypes, dict):
                         for arm, calType in calibrationTypes.items():
 
-                            if "STD" in ttype:
-                                extraType = f"""AND "eso dpr type" = '{ttype}'"""
-                            else:
-                                extraType = ""
+                            sqlQuery, sqlParams = self._calibration_completeness_select_query(
+                                recipe, arm, ttype, calType
+                            )
 
-                            exists = " AND ".join([f"""EXISTS (
-                                SELECT 1 FROM cal_{ct} 
-                                WHERE cal_{ct}.sof = p.sof 
-                                AND (cal_{ct}.upstream_status = 'pass' OR cal_{ct}.upstream_status IS NULL)
-                            )""" for ct in calType])
-
-                            sqlQuery = f"""select sof from product_frames_plus as p
-                                WHERE complete < 1 
-                                AND recipe = '{recipe}'
-                                AND "eso seq arm" = '{arm}'
-                                {extraType}
-                                AND {exists};"""
-
-                            containerSofs = pd.read_sql(sqlQuery, con=self.conn)[
-                                "sof"
-                            ].tolist()
+                            containerSofs = pd.read_sql(
+                                sqlQuery, con=self.conn, params=sqlParams
+                            )["sof"].tolist()
 
                             self.raw_frames_to_sof_map(
                                 rawGroups=rawGroups, containerSofs=containerSofs
                             )
 
-                            sqlQuery = f"""UPDATE product_frames as p
-                                SET complete = -1 
-                                WHERE complete < 1 
-                                And sof in ("{'","'.join(containerSofs)}")"""
-
-                            c.execute(sqlQuery)
+                            sqlQuery, sqlParams = self._calibration_completeness_update_query(
+                                containerSofs
+                            )
+                            c.execute(sqlQuery, sqlParams)
 
                             # FOR COMPLETE PRODUCTS, ADD CALIBRATION FILES TO SOF MAP
                             # NEED TO ALSO ADD THE RAW FILES TOO ... ADD RAW FRAMES, SET COMPLETE = 1 WHERE PRODUCT FRAMES COMPLETE = 1
                             for ct in calType:
 
-                                sqlQuery = f"""select cal_{ct}.file, cal_{ct}.upstream_tag as tag, product_frames.sof, cal_{ct}.filepath, product_frames.complete from product_frames, cal_{ct} where product_frames.complete = -1 and product_frames.sof=cal_{ct}.sof;"""
+                                sqlQuery = self._calibration_raw_frames_query(ct)
                                 newSof = pd.read_sql(sqlQuery, con=self.conn)
 
                                 if len(newSof):
                                     self._dataframe_to_sqlite(
                                         newSof,
-                                        f"sof_map_{self.sessionId}",
+                                        sofMapTableName,
                                         replace=False,
                                     )
 
@@ -2305,7 +2425,7 @@ class data_organiser:
 
         c = self.conn.cursor()
         sqlQueries = [
-            f"UPDATE sof_map_{self.sessionId} SET complete = 1 WHERE complete = -1;",
+            f"UPDATE {sofMapTableName} SET complete = 1 WHERE complete = -1;",  # noqa: S608
             "UPDATE raw_frame_sets SET complete = 1 WHERE sof IN (SELECT r.sof FROM raw_frame_sets r JOIN product_frames p ON p.sof = r.sof WHERE p.complete = 1);",
             "UPDATE raw_frame_sets SET complete = 0 WHERE sof IN (SELECT r.sof FROM raw_frame_sets r JOIN product_frames p ON p.sof = r.sof WHERE p.complete = 0);",
             "UPDATE raw_frames SET processed = 1 WHERE processed = 0 AND filepath IN (SELECT filepath FROM sof_map);",
@@ -2360,32 +2480,31 @@ class data_organiser:
         # IF NONE, SET TO EMPTY STRING
         ttype, arm, tech = ttype or "", arm or "", tech or ""
 
-        if ttype or arm:
-            where = "where"
-        else:
-            where = ""
+        whereClauses = []
+        params: list = []
         if ttype:
-            ttype = "and `eso dpr type` = '" + ttype + "'"
+            whereClauses.append("`eso dpr type` = ?")
+            params.append(ttype)
         if arm:
-            arm = "and `eso seq arm` = '" + arm + "'"
+            whereClauses.append("`eso seq arm` = ?")
+            params.append(arm)
         if tech:
-            # JOIN ITEMS IN TECH LIST TO A COMMA-SEPARATED STRING
-            tech = (
-                "and `eso dpr tech` in ("
-                + ",".join(["'" + t + "'" for t in tech])
-                + ")"
-            )
-
+            placeholders = ", ".join("?" for _ in tech)
+            whereClauses.append(f"`eso dpr tech` in ({placeholders})")
+            params.extend(tech)
         if unprocessedOnly:
-            where = where + " and processed = 0"
+            whereClauses.append("processed = 0")
+
+        where = ""
+        if whereClauses:
+            where = "where " + " and ".join(whereClauses)
 
         # READ IN RAW FRAMES TABLE
         conn = self.conn
         rawFrames = pd.read_sql(
-            f"SELECT * FROM raw_frames_valid {where} {ttype} {arm} {tech} order by `mjd-obs` asc".replace(
-                "where and", "where"
-            ),
+            f"SELECT * FROM raw_frames_valid {where} order by `mjd-obs` asc",  # noqa: S608
             con=conn,
+            params=params,
         )
 
         rawFrames = rawFrames.astype(
@@ -2628,9 +2747,9 @@ class data_organiser:
         """
 
         if not len(rawGroups.index):
-            sqlQuery = f"select count(*) from product_frames where recipe = '{recipe}' and complete< 1;"
+            sqlQuery = "select count(*) from product_frames where recipe = ? and complete< 1;"
             c = self.conn.cursor()
-            c.execute(sqlQuery)
+            c.execute(sqlQuery, (recipe,))
             incompleteProducts = c.fetchall()[0][0]
             c.close()
             return incompleteProducts
@@ -2724,8 +2843,10 @@ class data_organiser:
         if len(processedRawFiles):
             c = self.conn.cursor()
             placeholders = ",".join(["?"] * len(processedRawFiles))
+            # `placeholders` IS ALWAYS LITERAL `?` MARKS -- THE ACTUAL VALUES
+            # ARE BOUND BELOW VIA `processedRawFiles`, NEVER INTERPOLATED.
             sqlQuery = (
-                f"update raw_frames set processed=1 where file in ({placeholders});"
+                f"update raw_frames set processed=1 where file in ({placeholders});"  # noqa: S608
             )
             c.execute(sqlQuery, processedRawFiles)
             self.conn.commit()
@@ -2754,7 +2875,7 @@ class data_organiser:
 
         if replace:
             c = self.conn.cursor()
-            sqlQuery = f"delete from {table_name};"
+            sqlQuery = f"delete from {table_name};"  # noqa: S608
             try:
                 c.execute(sqlQuery)
             except sqlite3.OperationalError as e:
