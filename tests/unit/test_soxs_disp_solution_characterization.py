@@ -35,9 +35,10 @@ from soxspipe.recipes.soxs_disp_solution import soxs_disp_solution
 
 pytestmark = pytest.mark.unit
 
-# THE TWO RENDERED REJECTION MESSAGES, ONE PER ARM BRANCH. NEITHER NAMES THE
-# OFFENDING FRAMES, ALTHOUGH FIVE OF THE SEVEN SITES THAT RAISE THEM CARRY A
-# `% locals()` SUFFIX THAT LOOKS AS THOUGH IT INTERPOLATES SOMETHING.
+# THE TWO GENERIC REJECTION MESSAGES, ONE PER ARM BRANCH. NEITHER NAMES THE
+# OFFENDING FRAMES ON ITS OWN; THE NIR MIXED-TYPE BRANCH IS THE ONE EXCEPTION,
+# APPENDING THE OFFENDING TYPES TO THIS BASE MESSAGE (SEE
+# test_nir_rejects_mixed_input_image_types).
 NIR_ERROR = "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR"
 UVB_VIS_ERROR = (
     "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
@@ -429,7 +430,7 @@ def test_nir_rejects_mixed_input_image_types(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """More than one image type raises, and the message names neither type."""
+    """More than one image type raises, and the message names both types."""
     # ARRANGE
     recipe = _recipe_with_inventory(log, arm="NIR")
     _stub_basics(
@@ -444,8 +445,7 @@ def test_nir_rejects_mixed_input_image_types(
     with pytest.raises(TypeError) as raised:
         recipe.verify_input_frames()
 
-    assert str(raised.value) == NIR_ERROR
-    assert "LAMP,WAVE" not in str(raised.value)
+    assert str(raised.value) == f"{NIR_ERROR}. Found LAMP,WAVE and WAVE,LAMP"
 
 
 def test_nir_rejects_an_image_type_outside_the_pinhole_set(
