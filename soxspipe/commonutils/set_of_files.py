@@ -75,15 +75,15 @@ class ImageFileCollection(ImageFileCollection):
 
         missing_in_this_file = [k for k in summary if (k not in h and k != "file")]
 
-        multi_entry_keys = {"comment": [], "history": []}
+        multi_entry_keys = {}
 
         alreadyencountered = set()
         for k, v in h.items():
             if k == "":
                 continue
 
-            if k in ["comment", "history"]:
-                multi_entry_keys[k].append(str(v))
+            if k.lower() in {"comment", "history"}:
+                multi_entry_keys.setdefault(k, []).append(str(v))
                 # ACCUMULATE THESE IN A SEPARATE DICTIONARY UNTIL THE
                 # END TO AVOID ADDING MULTIPLE ENTRIES TO SUMMARY.
                 continue
