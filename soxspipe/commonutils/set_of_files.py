@@ -71,8 +71,9 @@ class ImageFileCollection(ImageFileCollection):
             if k == "":
                 continue
 
-            if k in ["comment", "history"]:
-                multi_entry_keys[k].append(str(v))
+            multi_entry_key = k.lower()
+            if multi_entry_key in multi_entry_keys:
+                multi_entry_keys[multi_entry_key].append(str(v))
                 # Accumulate these in a separate dictionary until the
                 # end to avoid adding multiple entries to summary.
                 continue
