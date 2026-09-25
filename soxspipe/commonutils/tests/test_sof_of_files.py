@@ -4,6 +4,7 @@ import os
 import unittest
 import shutil
 import unittest
+from unittest import mock
 import yaml
 from soxspipe.utKit import utKit
 from fundamentals import tools
@@ -96,6 +97,30 @@ class test_set_of_files(unittest.TestCase):
         sof = set_of_files(log=log, settings=settings, inputFrames=fileList)
         sofFile, supplementaryInput = sof.get()
         print(sofFile.summary)
+
+    def test_list_input_keeps_relative_supplementary_paths(self):
+        from soxspipe.commonutils.set_of_files import set_of_files
+
+        sof = set_of_files.__new__(set_of_files)
+        sof.log = mock.Mock()
+        sof.inputFrames = [
+            "frame.fits",
+            "./reduced/VIS_DISP_MAP.csv",
+            "./reduced/.VIS_ORDER_LOCATIONS.csv",
+        ]
+        sof.keys = ["file"]
+        sof.ext = 0
+
+        with mock.patch(
+            "soxspipe.commonutils.set_of_files.ImageFileCollection"
+        ) as image_file_collection:
+            image_file_collection.return_value._summary = {}
+            _, supplementary_input = sof.get()
+
+        self.assertEqual(
+            supplementary_input,
+            {"VIS": {"DISP_MAP": "./reduced/VIS_DISP_MAP.csv"}},
+        )
 
     def test_xsh_validate_sof_frames_function(self):
         directory = settings["test-data-root"] + "/xshooter-mbias/vis"
