@@ -93,18 +93,22 @@ class soxs_disp_solution(base_recipe):
         return
 
     def _parse_poly_orders(self):
-        """*coerce the `polyOrders` override to an integer, or reject it*
+        """*validate the four-digit `polyOrders` override*
 
         Sets ``self.polyOrders``. A false value is left alone, so the recipe
         falls back to the degrees in the settings file.
         """
-        if self.polyOrders:
-            try:
-                self.polyOrders = int(self.polyOrders)
-            except (ValueError, TypeError) as e:
-                self.log.debug(f"__init__: `self.polyOrders = int(self.polyOrders)` failed, continuing: {e}")
-            if not isinstance(self.polyOrders, int):
+        if self.polyOrders is not False:
+            value = self.polyOrders
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, str))
+                or len(str(value)) != 4
+                or not str(value).isascii()
+                or not str(value).isdigit()
+            ):
                 raise TypeError("THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER")
+            self.polyOrders = int(value)
 
     def _collect_input_frames(self):
         """*resolve the recipe's input into a ccdproc image collection*

@@ -362,7 +362,7 @@ def test_a_non_numeric_poly_orders_is_rejected_with_a_type_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A value `int()` cannot take is logged and then rejected."""
+    """A non-numeric string is rejected before input frames are read."""
     # ARRANGE
     calls: list[str] = []
 
@@ -370,9 +370,7 @@ def test_a_non_numeric_poly_orders_is_rejected_with_a_type_error(
     with pytest.raises(TypeError, match="THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER"):
         _construct(log, monkeypatch, tmp_path, calls=calls, polyOrders="not-a-number")
 
-    # THE FAILED COERCION IS SWALLOWED AND RECORDED BEFORE THE REJECTION.
-    debugged = [message for level, message in log.messages if level == "debug"]
-    assert any("`self.polyOrders = int(self.polyOrders)` failed" in message for message in debugged)
+    assert calls == []
 
 
 def test_a_list_poly_orders_is_rejected_with_a_type_error(
@@ -389,36 +387,20 @@ def test_a_list_poly_orders_is_rejected_with_a_type_error(
         _construct(log, monkeypatch, tmp_path, calls=calls, polyOrders=[3, 4, 5, 4])
 
 
-def test_a_float_poly_orders_is_truncated_rather_than_rejected(
+@pytest.mark.parametrize("polyOrders", [3454.9, 7, 12345, True, 0, ""])
+def test_poly_orders_that_are_not_exactly_four_digits_are_rejected(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    polyOrders: Any,
 ) -> None:
-    """`int()` accepts a float, so a non-integer value passes the four-digit check."""
+    """Values must be integer or digit-string overrides of exactly four digits."""
     # ARRANGE
     calls: list[str] = []
 
-    # ACT
-    recipe, _, _ = _construct(log, monkeypatch, tmp_path, calls=calls, polyOrders=3454.9)
-
-    # ASSERT
-    assert recipe.polyOrders == 3454
-
-
-def test_poly_orders_is_not_checked_for_four_digits(
-    log: Any,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """The check is `isinstance(int)`, not a digit count, whatever the message says."""
-    # ARRANGE
-    calls: list[str] = []
-
-    # ACT
-    recipe, _, _ = _construct(log, monkeypatch, tmp_path, calls=calls, polyOrders=7)
-
-    # ASSERT
-    assert recipe.polyOrders == 7
+    # ACT / ASSERT
+    with pytest.raises(TypeError, match="THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER"):
+        _construct(log, monkeypatch, tmp_path, calls=calls, polyOrders=polyOrders)
 
 
 # ---------------------------------------------------------------------------

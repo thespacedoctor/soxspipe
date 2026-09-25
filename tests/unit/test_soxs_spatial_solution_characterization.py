@@ -413,16 +413,16 @@ def test_a_quiet_construction_prints_no_frame_summary(
 
 @pytest.mark.parametrize(
     ("polyOrders", "expected"),
-    [(345435, 345435), ("345435", 345435), (345435.9, 345435), (7, 7), (3454, 3454)],
+    [(345435, 345435), ("345435", 345435)],
 )
-def test_an_integer_like_poly_orders_is_kept_as_an_integer(
+def test_a_six_digit_poly_orders_is_kept_as_an_integer(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     polyOrders: Any,
     expected: int,
 ) -> None:
-    """`int()` is the only check: floats truncate and the digit count is never tested."""
+    """Six-digit integers and digit strings are accepted."""
     # ARRANGE
     calls: list[str] = []
 
@@ -434,14 +434,14 @@ def test_an_integer_like_poly_orders_is_kept_as_an_integer(
     assert isinstance(recipe.polyOrders, int)
 
 
-@pytest.mark.parametrize("polyOrders", ["not-a-number", [3, 4, 5, 4, 3, 5]])
-def test_a_poly_orders_int_cannot_take_is_rejected_with_a_type_error(
+@pytest.mark.parametrize("polyOrders", ["not-a-number", [3, 4, 5, 4, 3, 5], 345435.9, 7, 3454, True, 0, ""])
+def test_poly_orders_that_are_not_exactly_six_digits_are_rejected(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     polyOrders: Any,
 ) -> None:
-    """A `ValueError` or `TypeError` from `int()` is logged, then rejected."""
+    """Values must be integer or digit-string overrides of exactly six digits."""
     # ARRANGE
     calls: list[str] = []
 
@@ -449,10 +449,7 @@ def test_a_poly_orders_int_cannot_take_is_rejected_with_a_type_error(
     with pytest.raises(TypeError, match="^THE poly VALUE NEEDS TO BE A 6 DIGIT INTEGER$"):
         _construct(log, monkeypatch, tmp_path, calls=calls, polyOrders=polyOrders)
 
-    # THE FAILED COERCION IS SWALLOWED AND RECORDED BEFORE THE REJECTION, AND
     # THE REJECTION COMES BEFORE THE SET OF FILES IS READ.
-    debugged = [message for level, message in log.messages if level == "debug"]
-    assert any("`self.polyOrders = int(self.polyOrders)` failed" in message for message in debugged)
     assert calls == []
 
 
