@@ -33,6 +33,36 @@ def _kinds(findings: list) -> list[str]:
     return [finding.kind for finding in findings]
 
 
+def _function(source: str):
+    return checker.ast.parse(source).body[0]
+
+
+def test_check_arguments_reports_all_argument_disagreements() -> None:
+    node = _function("def prepare(frame, save): pass")
+    docstring = """**Key Arguments:**
+
+    - ``frame`` missing separator
+    - ``old`` -- removed argument
+    """
+
+    findings = checker._check_arguments(node, docstring, Path("sample.py"), "prepare")
+
+    assert _kinds(findings) == [
+        "undocumented-argument",
+        "phantom-argument",
+        "malformed-argument-bullet",
+    ]
+    assert [finding.detail for finding in findings] == ["save", "old", "frame"]
+
+
+def test_check_return_reports_a_return_disagreement() -> None:
+    node = _function("def measure(): return 42")
+
+    findings = checker._check_return(node, "*measure*", Path("sample.py"), "measure")
+
+    assert _kinds(findings) == ["undocumented-return"]
+
+
 def test_agreeing_docstring_produces_no_findings(tmp_path: Path) -> None:
     # ARRANGE
     source = '''

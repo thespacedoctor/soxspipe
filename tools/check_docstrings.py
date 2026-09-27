@@ -239,29 +239,54 @@ def check_function(
     if not docstring:
         return []
 
-    findings = []
+    return [
+        *_check_arguments(node, docstring, path, qualifiedName),
+        *_check_return(node, docstring, path, qualifiedName),
+    ]
+
+
+def _check_arguments(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    docstring: str,
+    path: Path,
+    qualifiedName: str,
+) -> list[Finding]:
+    """*compare one function's arguments with its docstring*"""
     arguments = signature_arguments(node)
 
     if arguments and not has_arguments_section(docstring):
-        findings.append(Finding(path, node.lineno, qualifiedName, "no-arguments-section", ", ".join(arguments)))
-    else:
-        bullets = documented_argument_bullets(docstring)
-        documented = [name for name, _ in bullets]
-        findings.extend(
+        return [Finding(path, node.lineno, qualifiedName, "no-arguments-section", ", ".join(arguments))]
+
+    bullets = documented_argument_bullets(docstring)
+    documented = [name for name, _ in bullets]
+
+    return [
+        *(
             Finding(path, node.lineno, qualifiedName, "undocumented-argument", name)
             for name in arguments
             if name not in documented
-        )
-        findings.extend(
+        ),
+        *(
             Finding(path, node.lineno, qualifiedName, "phantom-argument", name)
             for name in documented
             if name not in arguments
-        )
-        findings.extend(
+        ),
+        *(
             Finding(path, node.lineno, qualifiedName, "malformed-argument-bullet", name)
             for name, wellFormed in bullets
             if not wellFormed
-        )
+        ),
+    ]
+
+
+def _check_return(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    docstring: str,
+    path: Path,
+    qualifiedName: str,
+) -> list[Finding]:
+    """*compare one function's return behaviour with its docstring*"""
+    findings = []
 
     returns = returns_a_value(node)
     documentsReturn = has_return_section(docstring)
@@ -421,7 +446,7 @@ def _section_body(docstring: str, headerPattern: re.Pattern[str]) -> str | None:
     return remainder[: nextHeader.start()] if nextHeader else remainder
 
 
-def _own_body_nodes(node: ast.AST) -> Iterator[ast.AST]:
+def _own_body_nodes(node: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
     """*walk a function body, skipping the bodies of nested functions and classes*
 
     **Key Arguments:**
@@ -432,11 +457,18 @@ def _own_body_nodes(node: ast.AST) -> Iterator[ast.AST]:
 
     - ``nodes`` -- a generator of the nodes belonging to this function itself
     """
+    for statement in node.body:
+        yield from _walk_own_node(statement)
+
+
+def _walk_own_node(node: ast.AST) -> Iterator[ast.AST]:
+    """*walk one node without entering a nested function or class*"""
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+        return
+
+    yield node
     for child in ast.iter_child_nodes(node):
-        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            continue
-        yield child
-        yield from _own_body_nodes(child)
+        yield from _walk_own_node(child)
 
 
 def _walk_functions(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, str, str | None]]:
