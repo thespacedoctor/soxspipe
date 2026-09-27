@@ -12,9 +12,8 @@ normalisation trivially `1.0` and never exercises the second pass, the
 non-constant data instead, and start `recipe.qc` from the real declared
 table (`base_recipe._empty_qc_and_product_tables`), not the bare
 `pd.DataFrame()` `test_mflat_helpers.py` uses -- the declared table's columns
-are all empty-list float64 columns, and appending the *first* row into it
-coerces that row's `to_header=True` into `1.0`, not the Python `True` every
-later row keeps. That is pinned below as found.
+are explicitly object-typed, so appending the *first* row preserves its
+`to_header=True` as the Python boolean that every later row also keeps.
 """
 
 from __future__ import annotations
@@ -76,8 +75,8 @@ def _recipe(log: object, *, axisA: str = "x", axisB: str = "y", arm: str = "VIS"
     """Return the small recipe state required by the normalisation and masking seams.
 
     `qc` and `products` start from the real declared tables, not a bare
-    `pd.DataFrame()`, so the column order and the `to_header` dtype quirk
-    pinned here match what a real recipe carries.
+    `pd.DataFrame()`, so the column order and `to_header` values pinned here
+    match what a real recipe carries.
     """
     recipe = soxs_mflat.__new__(soxs_mflat)
     recipe.log = log
@@ -183,12 +182,8 @@ def test_first_pass_appends_ordexp_rows_onto_the_declared_qc_table(
 ) -> None:
     """ORDEXP10, ORDEXP50 and ORDEXP90 are appended in that order, with distinct value formats.
 
-    The first row ever appended into the declared-empty QC table lands its
-    `to_header=True` as the float `1.0`, not the Python `True` the next two
-    rows keep -- the declared table's `to_header` column starts as an
-    all-empty `float64` column, and `pd.concat` coerces the first bool it
-    receives into that dtype before the column widens to `object`. Pinned as
-    found, not as intended.
+    The declared QC table uses object-typed columns, so the first row preserves
+    `to_header=True` as a Python boolean, just like the next two rows.
     """
     # ARRANGE
     recipe = _recipe(log)
@@ -234,10 +229,8 @@ def test_first_pass_appends_ordexp_rows_onto_the_declared_qc_table(
     # ONE CLOCK READ FEEDS ALL THREE ROWS
     assert clockReads == ["read"]
     toHeaderValues = recipe.qc["to_header"].tolist()
-    assert toHeaderValues[0] == 1.0
-    assert isinstance(toHeaderValues[0], float)
-    assert toHeaderValues[1] is True
-    assert toHeaderValues[2] is True
+    assert toHeaderValues == [True, True, True]
+    assert all(value is True for value in toHeaderValues)
 
 
 def test_second_pass_divides_by_the_first_pass_master_flat_and_writes_no_qc(

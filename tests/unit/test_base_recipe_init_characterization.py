@@ -387,6 +387,8 @@ def test_the_constructor_assigns_the_empty_qc_and_product_tables(
     ]
     assert recipe.qc.empty
     assert recipe.products.empty
+    assert set(recipe.qc.dtypes.astype(str)) == {"object"}
+    assert set(recipe.products.dtypes.astype(str)) == {"object"}
 
 
 def test_the_scratch_directory_sits_under_the_workspace_tmp_directory(

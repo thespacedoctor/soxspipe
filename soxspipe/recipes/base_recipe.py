@@ -332,27 +332,27 @@ class base_recipe:
         """
         qc = pd.DataFrame(
             {
-                "soxspipe_recipe": [],
-                "qc_name": [],
-                "qc_value": [],
-                "qc_unit": [],
-                "qc_order": [],
-                "qc_comment": [],
-                "obs_date_utc": [],
-                "reduction_date_utc": [],
-                "to_header": [],
+                "soxspipe_recipe": pd.Series([], dtype="object"),
+                "qc_name": pd.Series([], dtype="object"),
+                "qc_value": pd.Series([], dtype="object"),
+                "qc_unit": pd.Series([], dtype="object"),
+                "qc_order": pd.Series([], dtype="object"),
+                "qc_comment": pd.Series([], dtype="object"),
+                "obs_date_utc": pd.Series([], dtype="object"),
+                "reduction_date_utc": pd.Series([], dtype="object"),
+                "to_header": pd.Series([], dtype="object"),
             }
         )
         products = pd.DataFrame(
             {
-                "soxspipe_recipe": [],
-                "product_label": [],
-                "file_name": [],
-                "file_type": [],
-                "obs_date_utc": [],
-                "reduction_date_utc": [],
-                "file_path": [],
-                "label": [],
+                "soxspipe_recipe": pd.Series([], dtype="object"),
+                "product_label": pd.Series([], dtype="object"),
+                "file_name": pd.Series([], dtype="object"),
+                "file_type": pd.Series([], dtype="object"),
+                "obs_date_utc": pd.Series([], dtype="object"),
+                "reduction_date_utc": pd.Series([], dtype="object"),
+                "file_path": pd.Series([], dtype="object"),
+                "label": pd.Series([], dtype="object"),
             }
         )
 
