@@ -478,6 +478,65 @@ def test_soxs_falls_back_to_the_nearest_raw_dark_when_no_master_or_off_lamp_dark
     assert detrendCalls[0]["dark"] is darkLate
 
 
+def test_soxs_dark_detrends_and_records_every_flat_set(
+    log: Any,
+) -> None:
+    """A dark-carrying reduction retains every lamp set and matches each frame to its nearest dark."""
+    # ARRANGE
+    recipe = _calib_recipe(log, arm="NIR", inst="SOXS")
+    darkEarly = _calib_frame(np.full((3, 3), 2.0))
+    darkEarly.header["MJDOBS"] = 5.0
+    darkLate = _calib_frame(np.full((3, 3), 3.0))
+    darkLate.header["MJDOBS"] = 15.0
+
+    flat = _calib_frame(np.full((3, 3), 10.0))
+    flat.header["MJDOBS"] = 6.0
+    dflat = _calib_frame(np.full((3, 3), 20.0))
+    dflat.header["MJDOBS"] = 14.0
+    qflat = _calib_frame(np.full((3, 3), 30.0))
+    qflat.header["MJDOBS"] = 7.0
+    domeflat = _calib_frame(np.full((3, 3), 40.0))
+    domeflat.header["MJDOBS"] = 13.0
+
+    recipe.inputFrames = _Collections(
+        {
+            _filters(PRO_CATG="MASTER_DARK_NIR"): _Collection(
+                ["dark-a.fits", "dark-b.fits"], [darkEarly, darkLate]
+            ),
+            _filters(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,SLIT"): _Collection(
+                ["flat_pre.fits"], [flat]
+            ),
+            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(
+                ["dflat_pre.fits"], [dflat]
+            ),
+            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(
+                ["qflat_pre.fits"], [qflat]
+            ),
+            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(
+                ["dome_pre.fits"], [domeflat]
+            ),
+        }
+    )
+    detrendCalls: list[dict[str, Any]] = []
+
+    def detrend(**kwargs: Any) -> CCDData:
+        detrendCalls.append(kwargs)
+        return kwargs["inputFrame"].subtract(kwargs["dark"])
+
+    recipe.detrend = detrend
+
+    # ACT
+    calibratedSets = recipe.calibrate_frame_set()
+
+    # ASSERT
+    assert [len(frames) for frames in calibratedSets] == [1, 1, 1, 1]
+    assert [call["dark"] for call in detrendCalls] == [darkEarly, darkLate, darkEarly, darkLate]
+    assert recipe.calibratedFlatFiles == ["flat.fits"]
+    assert recipe.dFlatFiles == ["dflat.fits"]
+    assert recipe.qFlatFiles == ["qflat.fits"]
+    assert recipe.domeFlatFiles == ["dome.fits"]
+
+
 def test_soxs_falls_back_to_bias_only_subtraction_when_no_dark_exists_at_all(
     log: Any,
 ) -> None:

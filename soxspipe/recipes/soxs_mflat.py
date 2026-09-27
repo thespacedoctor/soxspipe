@@ -962,11 +962,17 @@ class soxs_mflat(base_recipe):
                 )
             )
             self.log.print("\n# SUBTRACTING MASTER DARK/OFF-LAMP FROM FRAMES")
-            for flat in flats:
-
-                matchValue, matchIndex = nearest_neighbour(flat.header[kw("MJDOBS")], darkMjds)
-                dark = darks[matchIndex]
-                calibratedFlats.append(self.detrend(inputFrame=flat, master_bias=bias, dark=dark))
+            flatSets = (
+                (flats, calibratedFlats),
+                (dflats, dcalibratedFlats),
+                (qflats, qcalibratedFlats),
+                (domeflats, domecalibratedFlats),
+            )
+            for inputFlats, outputFlats in flatSets:
+                for flat in inputFlats:
+                    _, matchIndex = nearest_neighbour(flat.header[kw("MJDOBS")], darkMjds)
+                    dark = darks[matchIndex]
+                    outputFlats.append(self.detrend(inputFrame=flat, master_bias=bias, dark=dark))
 
         return calibratedFlats, dcalibratedFlats, qcalibratedFlats, domecalibratedFlats
 
