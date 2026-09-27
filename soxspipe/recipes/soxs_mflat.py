@@ -433,7 +433,12 @@ class soxs_mflat(base_recipe):
                 medianOrderFluxDF = pd.merge(medianOrderFluxDFFirst, medianOrderFluxDF)
 
         # UV-STITCHING
-        if len(self.detectionCountSet) > 1:
+        canStitchUvFlats = (
+            len(self.detectionCountSet) > 1
+            and medianOrderFluxDFExists
+            and {"_DLAMP", "_QLAMP"}.issubset(medianOrderFluxDF.columns)
+        )
+        if canStitchUvFlats:
             mflat = self.stitch_uv_mflats(medianOrderFluxDF, orderTablePath=thisPath)
         else:
             self.qc = pd.concat([self.qc, qcTable], ignore_index=True)

@@ -279,6 +279,53 @@ def test_a_missing_dlamp_order_table_raises_instead_of_reusing_the_plain_lamps_t
     assert recipe.orderTableSet == [str(pathsByTag[""])]
 
 
+def test_uv_stitch_is_skipped_when_d_lamp_fluxes_are_missing(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The UV stitch step runs only when both `_DLAMP` and `_QLAMP` flux columns exist."""
+    # ARRANGE
+    orderPath = prepared_fits(tmp_path / "ORDER_TAB_NIR.fits", seed=930)
+    plainFrame = synthetic_ccd(seed=931, prepared=True)
+    qFrame = synthetic_ccd(seed=932, prepared=True)
+    domeFrame = synthetic_ccd(seed=933, prepared=True)
+
+    recipe = _new_bare_recipe(
+        log,
+        tmp_path,
+        orderPath,
+        subtractBackground=False,
+        calibratedFlatFiles=["flat.fits"],
+        dFlatFiles=[],
+        qFlatFiles=["qflat.fits"],
+        domeFlatFiles=["domeflat.fits"],
+    )
+    recipe.arm = "NIR"
+    recipe.inputFrames = _RecordingOrderTableCollection(str(orderPath), [])
+
+    monkeypatch.setattr(recipe, "calibrate_frame_set", lambda: ([plainFrame], [], [qFrame], [domeFrame]))
+    monkeypatch.setattr(recipe, "normalise_flats", lambda cf, orderTablePath, **k: [cf[0].copy()])
+    monkeypatch.setattr(recipe, "clip_and_stack", lambda **k: k["frames"][0].copy())
+    monkeypatch.setattr(recipe, "mask_low_sens_pixels", lambda **k: (k["frame"].copy(), _median_flux_df()))
+    monkeypatch.setattr(recipe, "_write", lambda *a, **k: str(tmp_path / "MFLAT.fits"))
+    stitchCalls = 0
+
+    def fake_stitch(*args: object, **kwargs: object) -> CCDData:
+        nonlocal stitchCalls
+        stitchCalls += 1
+        return plainFrame.copy()
+
+    monkeypatch.setattr(recipe, "stitch_uv_mflats", fake_stitch)
+    _stub_shared_collaborators(recipe, monkeypatch, orderPath)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert stitchCalls == 0
+
+
 # ---------------------------------------------------------------------------
 # shared helpers -- calibrate_frame_set
 # ---------------------------------------------------------------------------
