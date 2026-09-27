@@ -8,6 +8,7 @@ RED/GREEN tests, they exist to freeze behaviour ahead of a refactor.
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import astropy.io.fits as astropy_fits
@@ -212,37 +213,29 @@ def test_dict_from_fits_header_rejects_a_header_containing_a_file_keyword(
         )
 
 
-def test_dict_from_fits_header_real_duplicate_comment_card_warns_instead_of_joining(
+def test_dict_from_fits_header_joins_real_duplicate_comment_and_history_cards(
     tmp_path: Path,
 ) -> None:
-    """Pin that genuine duplicate COMMENT cards do NOT get joined.
-
-    `astropy.io.fits.Header` always normalises the COMMENT/HISTORY keyword to
-    uppercase, even when the card is built from a lowercase string, so the
-    module's `k in ["comment", "history"]` check (comparing against a
-    lowercase literal) never matches a key read from a real header. A second
-    COMMENT card therefore falls through to the generic duplicate-keyword
-    warning branch instead of being merged, and only the first COMMENT value
-    survives.
-    """
+    """Genuine duplicate COMMENT/HISTORY cards are joined without warning."""
     filePath = tmp_path / "one.fits"
     header = fits.Header()
     header["DPR_TYPE"] = "BIAS"
     header.add_comment("first comment")
     header.add_comment("second comment")
+    header.add_history("first history")
+    header.add_history("second history")
     fits.PrimaryHDU(data=np.zeros((2, 2)), header=header).writeto(filePath)
 
-    with pytest.warns(UserWarning) as recordedWarnings:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
         collection = ImageFileCollection(
             filenames=[str(filePath)],
             location=str(tmp_path),
-            keywords=["DPR_TYPE", "COMMENT"],
+            keywords=["DPR_TYPE", "COMMENT", "HISTORY"],
         )
 
-    assert list(collection.summary["COMMENT"]) == ["first comment"]
-    assert 'contains multiple entries for "COMMENT"' in str(
-        recordedWarnings[0].message
-    )
+    assert list(collection.summary["COMMENT"]) == ["first comment,second comment"]
+    assert list(collection.summary["HISTORY"]) == ["first history,second history"]
 
 
 def test_dict_from_fits_header_joins_comment_and_history_when_keys_are_lowercase(
@@ -251,11 +244,8 @@ def test_dict_from_fits_header_joins_comment_and_history_when_keys_are_lowercase
 ) -> None:
     """Pin the comment/history join logic in isolation.
 
-    This is the only way to exercise it: a genuine `fits.getheader()` result
-    never yields a lowercase "comment"/"history" key (see the test above), so
-    `fits.getheader` is monkeypatched to return a header-like stand-in that
-    does, to prove the join code is correct even though it is unreachable
-    through the real FITS reading path.
+    This verifies that case-insensitive detection still preserves the original
+    keyword spelling in the summary.
     """
 
     class _LowercaseCommentHeader:
