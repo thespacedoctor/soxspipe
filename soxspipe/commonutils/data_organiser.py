@@ -34,9 +34,7 @@ def _validate_owned_path(path, owner, label):
         resolvedCandidatePath = candidatePath.resolve()
         resolvedCandidatePath.relative_to(resolvedOwnerPath)
     except (OSError, RuntimeError, ValueError) as error:
-        raise _UnsafePathError(
-            f"Unsafe {label}: path resolves outside {ownerPath}"
-        ) from error
+        raise _UnsafePathError(f"Unsafe {label}: path resolves outside {ownerPath}") from error
     return resolvedCandidatePath
 
 
@@ -44,12 +42,8 @@ def _validate_session_id(sessionId):
     """Enforce the documented grammar for workspace session identifiers."""
     import re
 
-    if not isinstance(sessionId, str) or re.fullmatch(
-        r"[0-9A-Za-z_]{1,16}", sessionId
-    ) is None:
-        raise _UnsafePathError(
-            "Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _"
-        )
+    if not isinstance(sessionId, str) or re.fullmatch(r"[0-9A-Za-z_]{1,16}", sessionId) is None:
+        raise _UnsafePathError("Session ID must be 16 characters long or shorter, consisting of A-Z, a-z, 0-9 and/or _")
     return sessionId
 
 
@@ -99,17 +93,9 @@ class data_organiser:
             directory = directory.replace("~", home)
 
         self.rootDir = rootDir
-        self.rawDir = str(
-            _validate_owned_path(Path(rootDir) / "raw", rootDir, "raw directory")
-        )
-        self.miscDir = str(
-            _validate_owned_path(Path(rootDir) / "misc", rootDir, "misc directory")
-        )
-        self.sessionsDir = str(
-            _validate_owned_path(
-                Path(rootDir) / "sessions", rootDir, "sessions directory"
-            )
-        )
+        self.rawDir = str(_validate_owned_path(Path(rootDir) / "raw", rootDir, "raw directory"))
+        self.miscDir = str(_validate_owned_path(Path(rootDir) / "misc", rootDir, "misc directory"))
+        self.sessionsDir = str(_validate_owned_path(Path(rootDir) / "sessions", rootDir, "sessions directory"))
 
         if self.vlt:
             self.vltReduced = self.use_vlt_environment_folders()
@@ -124,9 +110,7 @@ class data_organiser:
         )
         exists = os.path.exists(self.sessionIdFile)
         if exists:
-            with codecs.open(
-                self.sessionIdFile, encoding="utf-8", mode="r"
-            ) as readFile:
+            with codecs.open(self.sessionIdFile, encoding="utf-8", mode="r") as readFile:
                 sessionId = _validate_session_id(readFile.read())
                 self.sessionPath = str(
                     _validate_owned_path(
@@ -138,9 +122,7 @@ class data_organiser:
                 self.sessionId = sessionId
 
         # DATABASE FILE
-        self.rootDbPath = str(
-            _validate_owned_path(Path(rootDir) / "soxspipe.db", rootDir, "database path")
-        )
+        self.rootDbPath = str(_validate_owned_path(Path(rootDir) / "soxspipe.db", rootDir, "database path"))
 
         # RETURN HERE: add these to yaml file
         # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE LIFTED FROM ALL FITS FILES
@@ -383,9 +365,7 @@ class data_organiser:
             self.conn = None
             if exists:
                 os.remove(self.rootDbPath)
-                print(
-                    "The existing database has been removed to allow a complete refresh of the workspace."
-                )
+                print("The existing database has been removed to allow a complete refresh of the workspace.")
                 try:
                     os.remove(self.rootDbPath + "-shm")
                 except OSError as e:
@@ -407,9 +387,7 @@ class data_organiser:
         fitsExist = self._fits_files_exist()
         # EXIST IF NO FITS FILES EXIST - SOME PROTECTION AGAINST MOVING USER FILES IF THEY MAKE A MISTAKE PREPARE A WORKSPACE IN THE WRONG LOCATION
         if fitsExist == False:
-            print(
-                "There are no FITS files in this directory. Please add your data before running `soxspipe prep`"
-            )
+            print("There are no FITS files in this directory. Please add your data before running `soxspipe prep`")
             sys.exit()
             return
 
@@ -437,9 +415,7 @@ class data_organiser:
             sessionId = self.session_create(sessionId="base")
             self.sessionId = sessionId
         else:
-            with codecs.open(
-                self.sessionIdFile, encoding="utf-8", mode="r"
-            ) as readFile:
+            with codecs.open(self.sessionIdFile, encoding="utf-8", mode="r") as readFile:
                 sessionId = _validate_session_id(readFile.read())
                 self.sessionPath = str(
                     _validate_owned_path(
@@ -478,35 +454,21 @@ class data_organiser:
 
             rawDirStr = self.rawDir.replace("./", "")
 
-            print(
-                f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n"
-            )
+            print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
             print("In this workspace you will find:\n")
             print("   - `misc/`: a lost-and-found archive of non-fits files")
-            print(
-                "   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables."
-            )
-            print(
-                f"   - `{rawDirStr}/`: nested folders, ordered by date, containing raw-frames."
-            )
+            print("   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables.")
+            print(f"   - `{rawDirStr}/`: nested folders, ordered by date, containing raw-frames.")
             print("   - `sessions/`: directory of data-reduction sessions")
-            print(
-                "   - `sof/`: the set-of-files (sof) files required for each reduction step"
-            )
-            print(
-                "   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete"
-            )
-            print(
-                "   - `reduced/`: nested folders, ordered by date, containing reduced data.\n"
-            )
+            print("   - `sof/`: the set-of-files (sof) files required for each reduction step")
+            print("   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
+            print("   - `reduced/`: nested folders, ordered by date, containing reduced data.\n")
 
             incompleteSets = self.get_incomplete_raw_frames_set()
             if len(incompleteSets.index):
                 from tabulate import tabulate
 
-                print(
-                    "SOME CALIBRATION FRAMES ARE NOT PRESENT FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:"
-                )
+                print("SOME CALIBRATION FRAMES ARE NOT PRESENT FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:")
                 print(
                     tabulate(
                         incompleteSets,
@@ -611,9 +573,7 @@ class data_organiser:
         if len(obsDf.index):
             from tabulate import tabulate
 
-            print(
-                f"THE CURRENT WORKSPACE CONTAINS {len(obsDf.index)} SCIENCE OBSERVATION BLOCKS:"
-            )
+            print(f"THE CURRENT WORKSPACE CONTAINS {len(obsDf.index)} SCIENCE OBSERVATION BLOCKS:")
             print(tabulate(obsDf, headers="keys", tablefmt="pretty", showindex=False))
 
         self.log.debug("completed the ``list_obs`` method")
@@ -631,9 +591,7 @@ class data_organiser:
         if len(sofDf.index):
             from tabulate import tabulate
 
-            print(
-                f"# THE CURRENT WORKSPACE CONTAINS {len(sofDf.index)} SCIENCE SOF FILES:\n"
-            )
+            print(f"# THE CURRENT WORKSPACE CONTAINS {len(sofDf.index)} SCIENCE SOF FILES:\n")
             print(tabulate(sofDf, headers="keys", tablefmt="pretty", showindex=False))
             print()
 
@@ -727,10 +685,7 @@ class data_organiser:
                 if len(rawFrames.index):
                     mask = rawFrames["filepath"].isnull()
                     rawFrames.loc[mask, "filepath"] = (
-                        "./raw/"
-                        + rawFrames.loc[mask, "mjd-date"]
-                        + "/"
-                        + rawFrames.loc[mask, "file"]
+                        "./raw/" + rawFrames.loc[mask, "mjd-date"] + "/" + rawFrames.loc[mask, "file"]
                     )
 
                     # FIND AND REMOVE DUPLICATE FILES
@@ -774,9 +729,7 @@ class data_organiser:
                             realSource = os.path.realpath(self.rootDir + "/" + n)
                             realDest = os.path.realpath(p)
 
-                            matchObject = re.match(
-                                r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource
-                            )
+                            matchObject = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource)
 
                             if matchObject and realSource != realDest:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
@@ -794,9 +747,7 @@ class data_organiser:
                     c.close()
 
         if not skipSqlSync:
-            self._sync_sql_table_to_directory(
-                self.rawDir, "raw_frames", recursive=False
-            )
+            self._sync_sql_table_to_directory(self.rawDir, "raw_frames", recursive=False)
 
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return
@@ -844,16 +795,11 @@ class data_organiser:
             if (
                 not entry.name.startswith(".")
                 and entry.is_file()
-                and (
-                    os.path.splitext(entry.name)[1] == ".fits"
-                    or ".fits.Z" in entry.name
-                )
+                and (os.path.splitext(entry.name)[1] == ".fits" or ".fits.Z" in entry.name)
             ):
                 # fitsPaths.append(entry.path)
                 if os.path.islink(entry.path):
-                    fp = "./" + os.path.relpath(
-                        os.path.realpath(entry.path), pathToDirectory
-                    )
+                    fp = "./" + os.path.relpath(os.path.realpath(entry.path), pathToDirectory)
 
                 else:
                     fp = os.path.relpath(entry.path, pathToDirectory)
@@ -871,13 +817,9 @@ class data_organiser:
 
         # INSTRUMENT CHECK
         if recursive:
-            allFrames = ImageFileCollection(
-                filenames=fitsPaths[:3], keywords=["instrume"]
-            )
+            allFrames = ImageFileCollection(filenames=fitsPaths[:3], keywords=["instrume"])
         else:
-            allFrames = ImageFileCollection(
-                location=pathToDirectory, filenames=fitsNames[:3], keywords=["instrume"]
-            )
+            allFrames = ImageFileCollection(location=pathToDirectory, filenames=fitsNames[:3], keywords=["instrume"])
 
         tmpTable = allFrames.summary
         tmpTable["instrume"].fill_value = "--"
@@ -918,10 +860,7 @@ class data_organiser:
         else:
             # Split fitsNames into batches of 100
             batch_size = 1000
-            batches = [
-                fitsPaths[i : i + batch_size]
-                for i in range(0, len(fitsPaths), batch_size)
-            ]
+            batches = [fitsPaths[i : i + batch_size] for i in range(0, len(fitsPaths), batch_size)]
 
             from fundamentals import fmultiprocess
 
@@ -1025,9 +964,7 @@ class data_organiser:
         normalizedDbFiles = {
             filePath: str(
                 _validate_owned_path(
-                    Path(filePath)
-                    if os.path.isabs(filePath)
-                    else Path(self.rootDir) / filePath,
+                    Path(filePath) if os.path.isabs(filePath) else Path(self.rootDir) / filePath,
                     self.rootDir,
                     "database filepath",
                 )
@@ -1039,9 +976,7 @@ class data_organiser:
         # DELETED FILES
         filesNotInDB = list(set(fitsPaths) - absoluteDbFiles)
         filesNotInFS = [
-            filePath
-            for filePath, normalizedPath in normalizedDbFiles.items()
-            if normalizedPath not in fitsPaths
+            filePath for filePath, normalizedPath in normalizedDbFiles.items() if normalizedPath not in fitsPaths
         ]
         if len(filesNotInFS):
             placeholders = ", ".join("?" for _ in filesNotInFS)
@@ -1061,9 +996,7 @@ class data_organiser:
                 if extension.lower() != ".fits":
                     pass
                 elif self.rootDir in f:
-                    exists = os.path.exists(
-                        os.path.abspath(self.rootDir) + "/" + basename
-                    )
+                    exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
                     if not exists:
                         os.symlink(
                             os.path.realpath(f),
@@ -1112,53 +1045,34 @@ class data_organiser:
         filteredFrames["gain"] = -99.99
 
         # ADD SLIT FOR SPECTROSCOPIC DATA
-        filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "slit"] = (
-            filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "NIR"), self.kw("SLIT_NIR").lower()
-            ]
-        )
-        filteredFrames.loc[(filteredFrames["eso seq arm"] == "VIS"), "slit"] = (
-            filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "VIS"), self.kw("SLIT_VIS").lower()
-            ]
-        )
-        filteredFrames.loc[(filteredFrames["eso seq arm"] == "UVB"), "slit"] = (
-            filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "UVB"), self.kw("SLIT_UVB").lower()
-            ]
-        )
+        filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "slit"] = filteredFrames.loc[
+            (filteredFrames["eso seq arm"] == "NIR"), self.kw("SLIT_NIR").lower()
+        ]
+        filteredFrames.loc[(filteredFrames["eso seq arm"] == "VIS"), "slit"] = filteredFrames.loc[
+            (filteredFrames["eso seq arm"] == "VIS"), self.kw("SLIT_VIS").lower()
+        ]
+        filteredFrames.loc[(filteredFrames["eso seq arm"] == "UVB"), "slit"] = filteredFrames.loc[
+            (filteredFrames["eso seq arm"] == "UVB"), self.kw("SLIT_UVB").lower()
+        ]
 
         # CHECK GAIN AND CONAD ARE CORRECTLY POPULATED
         filteredFrames["gain"] = filteredFrames[self.kw("CONAD").lower()]
-        mask = (
-            filteredFrames[self.kw("GAIN").lower()]
-            > filteredFrames[self.kw("CONAD").lower()]
-        )
-        filteredFrames.loc[mask, "gain"] = filteredFrames.loc[
-            mask, self.kw("GAIN").lower()
-        ]
+        mask = filteredFrames[self.kw("GAIN").lower()] > filteredFrames[self.kw("CONAD").lower()]
+        filteredFrames.loc[mask, "gain"] = filteredFrames.loc[mask, self.kw("GAIN").lower()]
 
         # ADD SIMULATION FLAG FOR SPECTROSCOPIC DATA (AND MORE)
         if self.instrument.lower() == "soxs":
-            filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "NIR"), "simulation"
-            ] = filteredFrames.loc[
+            filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "simulation"] = filteredFrames.loc[
                 (filteredFrames["eso seq arm"] == "NIR"), self.kw("SWSIM_NIR").lower()
             ]
-            filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "VIS"), "simulation"
-            ] = filteredFrames.loc[
+            filteredFrames.loc[(filteredFrames["eso seq arm"] == "VIS"), "simulation"] = filteredFrames.loc[
                 (filteredFrames["eso seq arm"] == "VIS"), self.kw("SWSIM_VIS").lower()
             ]
-            filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "UVB"), "simulation"
-            ] = filteredFrames.loc[
+            filteredFrames.loc[(filteredFrames["eso seq arm"] == "UVB"), "simulation"] = filteredFrames.loc[
                 (filteredFrames["eso seq arm"] == "UVB"), self.kw("SWSIM_UVB").lower()
             ]
             filteredFrames.loc[(filteredFrames["simulation"] == "--"), "simulation"] = 0
-            filteredFrames.loc[
-                (filteredFrames["simulation"] == -99.99), "simulation"
-            ] = 0
+            filteredFrames.loc[(filteredFrames["simulation"] == -99.99), "simulation"] = 0
             filteredFrames.loc[(filteredFrames["simulation"] == "T"), "simulation"] = 1
             filteredFrames = filteredFrames.rename(
                 columns={
@@ -1182,24 +1096,15 @@ class data_organiser:
             filteredFrames["afc2 pos2"] = 0
 
         filteredFrames.loc[
-            (
-                (filteredFrames["slit"].str.contains("MULT"))
-                & (filteredFrames["slitmask"] == "--")
-            ),
+            ((filteredFrames["slit"].str.contains("MULT")) & (filteredFrames["slitmask"] == "--")),
             "slitmask",
         ] = "MPH"
         filteredFrames.loc[
-            (
-                (filteredFrames["slit"].str.contains("PINHOLE"))
-                & (filteredFrames["slitmask"] == "--")
-            ),
+            ((filteredFrames["slit"].str.contains("PINHOLE")) & (filteredFrames["slitmask"] == "--")),
             "slitmask",
         ] = "PH"
         filteredFrames.loc[
-            (
-                (filteredFrames["slit"].str.contains("SLIT"))
-                & (filteredFrames["slitmask"] == "--")
-            ),
+            ((filteredFrames["slit"].str.contains("SLIT")) & (filteredFrames["slitmask"] == "--")),
             "slitmask",
         ] = "SLIT"
 
@@ -1214,34 +1119,25 @@ class data_organiser:
                     if l in lamp:
                         lamp = e
                 filteredFrames.loc[
-                    (
-                        (filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)
-                        & (filteredFrames["lamp"] != "--")
-                    ),
+                    ((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] != "--")),
                     "lamp",
                 ] += lamp
                 filteredFrames.loc[
-                    (
-                        (filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99)
-                        & (filteredFrames["lamp"] == "--")
-                    ),
+                    ((filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99) & (filteredFrames["lamp"] == "--")),
                     "lamp",
                 ] = lamp
                 filteredFrames.loc[
-                    (
-                        (filteredFrames[self.kw("DPR_TYPE").lower()] == "DOME,FLAT")
-                        & (filteredFrames["lamp"] == "--")
-                    ),
+                    ((filteredFrames[self.kw("DPR_TYPE").lower()] == "DOME,FLAT") & (filteredFrames["lamp"] == "--")),
                     "lamp",
                 ] = "DOME"
 
             else:
-                filteredFrames.loc[
-                    (filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"
-                ] = filteredFrames.loc[
-                    (filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99),
-                    self.kw(f"LAMP{i}").lower(),
-                ]
+                filteredFrames.loc[(filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99), "lamp"] = (
+                    filteredFrames.loc[
+                        (filteredFrames[self.kw(f"LAMP{i}").lower()] != -99.99),
+                        self.kw(f"LAMP{i}").lower(),
+                    ]
+                )
         mask = []
         for i in self.proKeywords:
             rawFrameGroupKeywords.remove(i)
@@ -1258,30 +1154,22 @@ class data_organiser:
 
         # MATCH OFF FRAMES TO ADD THE MISSING LAMPS
         mask = rawFrames["eso obs name"] == "Maintenance"
-        rawFrames.loc[mask, "eso obs name"] = (
-            rawFrames.loc[mask, "eso obs name"] + rawFrames.loc[mask, "eso dpr type"]
-        )
+        rawFrames.loc[mask, "eso obs name"] = rawFrames.loc[mask, "eso obs name"] + rawFrames.loc[mask, "eso dpr type"]
         if self.instrument.lower() == "soxs":
             groupBy = "eso obs name"
         else:
             groupBy = "template"
         rawFrames.loc[(rawFrames["lamp"] == "--"), "lamp"] = np.nan
-        rawFrames.loc[
-            (rawFrames["eso seq arm"].str.lower() == "nir"), "lamp"
-        ] = rawFrames.loc[
+        rawFrames.loc[(rawFrames["eso seq arm"].str.lower() == "nir"), "lamp"] = rawFrames.loc[
             (rawFrames["eso seq arm"].str.lower() == "nir"), "lamp"
         ].fillna(
-            rawFrames.loc[(rawFrames["eso seq arm"].str.lower() == "nir")]
-            .groupby(groupBy)["lamp"]
-            .transform("first")
+            rawFrames.loc[(rawFrames["eso seq arm"].str.lower() == "nir")].groupby(groupBy)["lamp"].transform("first")
         )
         rawFrames.loc[(rawFrames["lamp"].isnull()), "lamp"] = "--"
 
         rawFrames["exptime"] = rawFrames["exptime"].apply(lambda x: round(x, 2))
 
-        rawGroups = self._group_raw_frames(
-            rawFrames, filterKeywordsRaw, addFilepaths=False, addStartDate=False
-        )
+        rawGroups = self._group_raw_frames(rawFrames, filterKeywordsRaw, addFilepaths=False, addStartDate=False)
 
         if verbose:
             print("\n# CONTENT FILE INDEX\n")
@@ -1348,28 +1236,18 @@ class data_organiser:
 
         # RECURSIVELY CREATE MISSING DIRECTORIES
         self.sofDir = self.sessionPath + "/sof"
-        self.sessionPath = str(
-            _validate_owned_path(self.sessionPath, self.sessionsDir, "session path")
-        )
-        self.sofDir = str(
-            _validate_owned_path(self.sofDir, self.sessionPath, "SOF directory")
-        )
+        self.sessionPath = str(_validate_owned_path(self.sessionPath, self.sessionsDir, "session path"))
+        self.sofDir = str(_validate_owned_path(self.sofDir, self.sessionPath, "SOF directory"))
         if not os.path.exists(self.sofDir):
             os.makedirs(self.sofDir)
 
-        sofMapTableName = validate_sql_identifier(
-            f"sof_map_{self.sessionId}", "sof map table name"
-        )
-        df = pd.read_sql_query(
-            f"select * from {sofMapTableName} where complete = 1;", conn  # noqa: S608
-        )
+        sofMapTableName = validate_sql_identifier(f"sof_map_{self.sessionId}", "sof map table name")
+        df = pd.read_sql_query(f"select * from {sofMapTableName} where complete = 1;", conn)  # noqa: S608
 
         # GROUP RESULTS
         for name, group in df.groupby("sof"):
             if not isinstance(name, str) or Path(name).name != name:
-                raise _UnsafePathError(
-                    "SOF filename must be a filename without directory components"
-                )
+                raise _UnsafePathError("SOF filename must be a filename without directory components")
             sofPath = str(
                 _validate_owned_path(
                     Path(self.sofDir) / name,
@@ -1380,9 +1258,7 @@ class data_organiser:
             if os.path.exists(sofPath):
                 continue
             myFile = open(sofPath, "w")
-            content = tabulate(
-                group[["filepath", "tag"]], tablefmt="plain", showindex=False
-            )
+            content = tabulate(group[["filepath", "tag"]], tablefmt="plain", showindex=False)
 
             myFile.write(content)
             myFile.close()
@@ -1413,7 +1289,6 @@ class data_organiser:
         """
         self.log.debug("starting the ``session_create`` method")
 
-
         if sessionId:
             sessionId = _validate_session_id(sessionId)
 
@@ -1430,9 +1305,7 @@ class data_organiser:
         # TEST SESSION DIRECTORY EXISTS
         exists = os.path.exists(self.sessionsDir)
         if not exists:
-            print(
-                "Please prepare your workspace using the `soxspipe prep` command before creating a new session."
-            )
+            print("Please prepare your workspace using the `soxspipe prep` command before creating a new session.")
             sys.exit(0)
 
         if not sessionId:
@@ -1494,9 +1367,7 @@ class data_organiser:
         # ADD A NEW STATUS COLUMN IN product_frames FOR THIS SESSION
 
         statusColumn = validate_sql_identifier(f"status_{sessionId}", "status column")
-        sofMapTableName = validate_sql_identifier(
-            f"sof_map_{sessionId}", "sof map table name"
-        )
+        sofMapTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
 
         conn, reset = self._get_or_create_db_connection()
         c = conn.cursor()
@@ -1507,9 +1378,7 @@ class data_organiser:
             self.log.debug(f"session_create: `c.execute(sqlQuery)` failed, continuing: {e}")
 
         # DUPLICATE TEH SOF_MAP TABLE
-        sqlQuery = (
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='z_sof_map'"
-        )
+        sqlQuery = "SELECT sql FROM sqlite_master WHERE type='table' AND name='z_sof_map'"
         c.execute(sqlQuery)
         sqlQuery = c.fetchall()[0][0]
         sqlQuery = sqlQuery.replace("z_sof_map", sofMapTableName)
@@ -1537,9 +1406,7 @@ class data_organiser:
         # WRITE THE SESSION ID FILE
         import codecs
 
-        sessionIdFile = _validate_owned_path(
-            self.sessionIdFile, self.sessionsDir, "session ID path"
-        )
+        sessionIdFile = _validate_owned_path(self.sessionIdFile, self.sessionsDir, "session ID path")
         with codecs.open(sessionIdFile, encoding="utf-8", mode="w") as writeFile:
             writeFile.write(sessionId)
 
@@ -1592,17 +1459,11 @@ class data_organiser:
             if not silent:
                 print("No reduction sessions exist in this workspace yet.")
             return None, None
-        with codecs.open(
-            self.sessionIdFile, encoding="utf-8", mode="r"
-        ) as readFile:
+        with codecs.open(self.sessionIdFile, encoding="utf-8", mode="r") as readFile:
             currentSession = _validate_session_id(readFile.read())
 
         # LIST ALL SESSIONS
-        allSessions = [
-            d
-            for d in os.listdir(self.sessionsDir)
-            if os.path.isdir(os.path.join(self.sessionsDir, d))
-        ]
+        allSessions = [d for d in os.listdir(self.sessionsDir) if os.path.isdir(os.path.join(self.sessionsDir, d))]
         allSessions.sort()
 
         if not silent:
@@ -1650,15 +1511,11 @@ class data_organiser:
                 "session path",
             )
             # WRITE THE SESSION ID FILE
-            sessionIdFile = _validate_owned_path(
-                self.sessionIdFile, self.sessionsDir, "session ID path"
-            )
+            sessionIdFile = _validate_owned_path(self.sessionIdFile, self.sessionsDir, "session ID path")
             with codecs.open(sessionIdFile, encoding="utf-8", mode="w") as writeFile:
                 writeFile.write(sessionId)
         else:
-            print(
-                f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`."
-            )
+            print(f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`.")
             return
 
         self.sessionPath = str(sessionPath)
@@ -1679,9 +1536,7 @@ class data_organiser:
         - None
 
         """
-        self.log.debug(
-            "starting the ``_symlink_session_assets_to_workspace_root`` method"
-        )
+        self.log.debug("starting the ``_symlink_session_assets_to_workspace_root`` method")
 
         import os
 
@@ -1712,9 +1567,7 @@ class data_organiser:
                     os.unlink(dest)
                     os.symlink(src, dest)
 
-        self.log.debug(
-            "completed the ``_symlink_session_assets_to_workspace_root`` method"
-        )
+        self.log.debug("completed the ``_symlink_session_assets_to_workspace_root`` method")
         return
 
     def session_refresh(self, silent=False, failure=True):
@@ -1736,29 +1589,20 @@ class data_organiser:
         import os
         import sys
 
-
         if failure is True:
             self.log.print("\nRefeshing SOF files due to recipe failure\n")
         elif failure is False:
-            self.log.print(
-                "\nRefreshing SOF files, as a previously failed recipe is now passing.\n"
-            )
+            self.log.print("\nRefreshing SOF files, as a previously failed recipe is now passing.\n")
         import codecs
 
         # IF SESSION ID FILE DOES NOT EXIST, REPORT
-        self.sessionIdFile = str(
-            _validate_owned_path(
-                self.sessionIdFile, self.sessionsDir, "session ID path"
-            )
-        )
+        self.sessionIdFile = str(_validate_owned_path(self.sessionIdFile, self.sessionsDir, "session ID path"))
         exists = os.path.exists(self.sessionIdFile)
         if not exists:
             if not silent:
                 print("No reduction sessions exist in this workspace yet.")
             return None, None
-        with codecs.open(
-            self.sessionIdFile, encoding="utf-8", mode="r"
-        ) as readFile:
+        with codecs.open(self.sessionIdFile, encoding="utf-8", mode="r") as readFile:
             sessionId = _validate_session_id(readFile.read())
         self.sessionPath = str(
             _validate_owned_path(
@@ -1843,10 +1687,7 @@ class data_organiser:
             level -= 1
             exists = os.path.exists(advs)
             if not exists:
-                advs = (
-                    "/".join(parentDirectory.split("/")[:level])
-                    + "/advanced_settings.yaml"
-                )
+                advs = "/".join(parentDirectory.split("/")[:level]) + "/advanced_settings.yaml"
         if not exists:
             advs = {}
         else:
@@ -1886,17 +1727,14 @@ class data_organiser:
                 whatToList="files",  # all | files | dirs
             )
             for f in theseFiles:
-                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(
-                    f
-                ):
+                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f):
                     fitsExist = True
                     break
         if not fitsExist:
             for d in os.listdir(self.rootDir):
                 filepath = os.path.join(self.rootDir, d)
                 if os.path.isfile(filepath) and (
-                    os.path.splitext(filepath)[1] == ".fits"
-                    or ".fits.gz" in os.path.splitext(filepath)
+                    os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)
                 ):
                     fitsExist = True
                     break
@@ -1910,9 +1748,7 @@ class data_organiser:
 
         reset = False
 
-        self.rootDbPath = str(
-            _validate_owned_path(self.rootDbPath, self.rootDir, "database path")
-        )
+        self.rootDbPath = str(_validate_owned_path(self.rootDbPath, self.rootDir, "database path"))
 
         conn = None
         i = 0
@@ -1934,10 +1770,7 @@ class data_organiser:
                     self.freshRun = False
                 except OSError:
                     self.freshRun = True
-                    emptyDb = (
-                        os.path.dirname(os.path.dirname(__file__))
-                        + "/resources/soxspipe.db"
-                    )
+                    emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
                     shutil.copyfile(emptyDb, self.rootDbPath)
                 conn = sql.connect(
                     self.rootDbPath,
@@ -1951,9 +1784,7 @@ class data_organiser:
                 c.execute("PRAGMA integrity_check;")
                 integrityCheckRows = c.fetchall()
                 if integrityCheckRows != [("ok",)]:
-                    raise sql.DatabaseError(
-                        f"database integrity check failed: {integrityCheckRows}"
-                    )
+                    raise sql.DatabaseError(f"database integrity check failed: {integrityCheckRows}")
                 c.execute("PRAGMA busy_timeout = 100000")
                 c.execute("PRAGMA synchronous = OFF")
 
@@ -2007,14 +1838,12 @@ class data_organiser:
         else:
             try:
                 c = self.conn.cursor()
-                sqlQuery = (
-                    "select instrume from raw_frames where instrume is not null limit 1"
-                )
+                sqlQuery = "select instrume from raw_frames where instrume is not null limit 1"
                 c.execute(sqlQuery)
                 self.instrument = c.fetchall()[0][0]
                 c.close()
             except (AttributeError, IndexError, sqlite3.OperationalError) as e:
-                self.log.warning(f"_select_instrument: `c = self.conn.cursor()` failed, continuing: {e}")
+                self.log.debug(f"_select_instrument: `c = self.conn.cursor()` failed, continuing: {e}")
                 return
 
         if "SOXS" not in self.instrument.upper():
@@ -2025,10 +1854,7 @@ class data_organiser:
 
         # SETUP SOF MAP
         yamlFilePath = (
-            os.path.dirname(os.path.dirname(__file__))
-            + "/resources/"
-            + self.instrument.lower()
-            + "_sof_map.yaml"
+            os.path.dirname(os.path.dirname(__file__)) + "/resources/" + self.instrument.lower() + "_sof_map.yaml"
         )
 
         # YAML CONTENT TO DICTIONARY
@@ -2083,9 +1909,7 @@ class data_organiser:
 
         # FLAG DFLATS TO IGNORE IF SPECIFIED IN SETTINGS
         if "ignore-dflats" in self.settings and self.settings["ignore-dflats"]:
-            sqlQuery = (
-                "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DFLAT%'"
-            )
+            sqlQuery = "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%DFLAT%'"
             c.execute(sqlQuery)
             self.conn.commit()
 
@@ -2096,12 +1920,8 @@ class data_organiser:
             self.conn.commit()
 
         sqlQueries = ["update raw_frames set ignore = 1 WHERE `slit` = 'UNDEFINED'"]
-        sqlQueries.append(
-            "update raw_frames set ignore = 1 WHERE `eso dpr type` like '%FLAT%' and `slit` = 'BLANK'"
-        )
-        sqlQueries.append(
-            "update raw_frames set ignore = 1 WHERE `eso seq arm` = 'ACQ'"
-        )
+        sqlQueries.append("update raw_frames set ignore = 1 WHERE `eso dpr type` like '%FLAT%' and `slit` = 'BLANK'")
+        sqlQueries.append("update raw_frames set ignore = 1 WHERE `eso seq arm` = 'ACQ'")
         for sqlQuery in sqlQueries:
             c.execute(sqlQuery)
             self.conn.commit()
@@ -2140,10 +1960,7 @@ class data_organiser:
             extraType = 'AND "eso dpr type" = ?'
             params.append(ttype)
 
-        calTables = [
-            validate_sql_identifier(f"cal_{ct}", "calibration table name")
-            for ct in calType
-        ]
+        calTables = [validate_sql_identifier(f"cal_{ct}", "calibration table name") for ct in calType]
         exists = " AND ".join(
             f"EXISTS (SELECT 1 FROM {calTable} WHERE {calTable}.sof = p.sof "  # noqa: S608
             f"AND ({calTable}.upstream_status = 'pass' OR {calTable}.upstream_status IS NULL))"
@@ -2228,9 +2045,7 @@ class data_organiser:
 
         import pandas as pd
 
-        statusColumn = validate_sql_identifier(
-            f"status_{self.sessionId}", "status column"
-        )
+        statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
 
         c = self.conn.cursor()
         sqlQuery = f"update product_frames set status = {statusColumn};"  # noqa: S608
@@ -2252,9 +2067,7 @@ class data_organiser:
             sqlQuery = "update product_frames set complete = 0 where (status != 'fail' or status is null) and sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));"
             c.execute(sqlQuery)
 
-        sofMapTableName = validate_sql_identifier(
-            f"sof_map_{self.sessionId}", "sof map table name"
-        )
+        sofMapTableName = validate_sql_identifier(f"sof_map_{self.sessionId}", "sof map table name")
         sqlQueries = [
             "update raw_frames set processed = 0 where file in (select file from sof_map where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1))));",
             "update raw_frame_sets set complete = 0 where sof in (select distinct sof from  sof_map where filepath in (  select p.filepath from sof_map s, product_frames p where p.filepath=s.filepath and (p.status = 'fail' or p.complete < 1)));",
@@ -2351,9 +2164,7 @@ class data_organiser:
                 )
 
                 # ADD PREDICTED PRODUCT TO PRODUCT TABLE - DETERMINE IF COMPLETE LATER
-                incompleteProducts = self.predict_product_frames(
-                    productTypes, rawGroups, recipe
-                )
+                incompleteProducts = self.predict_product_frames(productTypes, rawGroups, recipe)
 
                 if not incompleteProducts:
                     continue
@@ -2363,12 +2174,8 @@ class data_organiser:
                 if not len(calibrationTypes):
                     # MBIAS AND MDARK -- ALWAYS COMPLETE (NO PRIOR CALIBRATION REQUIRED)
                     sqlQuery = "select sof from product_frames where recipe = ? and complete = 0;"
-                    containerSofs = pd.read_sql(
-                        sqlQuery, con=self.conn, params=(recipe,)
-                    )["sof"].tolist()
-                    self.raw_frames_to_sof_map(
-                        rawGroups=rawGroups, containerSofs=containerSofs
-                    )
+                    containerSofs = pd.read_sql(sqlQuery, con=self.conn, params=(recipe,))["sof"].tolist()
+                    self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
                     sqlQuery = "update product_frames set complete = 1 where recipe = ? and complete = 0;"
                     c.execute(sqlQuery, (recipe,))
 
@@ -2381,17 +2188,11 @@ class data_organiser:
                                 recipe, arm, ttype, calType
                             )
 
-                            containerSofs = pd.read_sql(
-                                sqlQuery, con=self.conn, params=sqlParams
-                            )["sof"].tolist()
+                            containerSofs = pd.read_sql(sqlQuery, con=self.conn, params=sqlParams)["sof"].tolist()
 
-                            self.raw_frames_to_sof_map(
-                                rawGroups=rawGroups, containerSofs=containerSofs
-                            )
+                            self.raw_frames_to_sof_map(rawGroups=rawGroups, containerSofs=containerSofs)
 
-                            sqlQuery, sqlParams = self._calibration_completeness_update_query(
-                                containerSofs
-                            )
+                            sqlQuery, sqlParams = self._calibration_completeness_update_query(containerSofs)
                             c.execute(sqlQuery, sqlParams)
 
                             # FOR COMPLETE PRODUCTS, ADD CALIBRATION FILES TO SOF MAP
@@ -2408,9 +2209,7 @@ class data_organiser:
                                         replace=False,
                                     )
 
-            sqlQuery = (
-                """update product_frames set complete = 1 where complete = -1;"""
-            )
+            sqlQuery = """update product_frames set complete = 1 where complete = -1;"""
             c.execute(sqlQuery)
 
         self.conn.commit()
@@ -2572,37 +2371,25 @@ class data_organiser:
         if not len(rawFramesNoOffFrames.index):
             return pd.DataFrame(), pd.DataFrame()
 
-        rawGroups = self._group_raw_frames(
-            rawFramesNoOffFrames, filterKeywordsRaw + ["set_first_file"]
-        )
+        rawGroups = self._group_raw_frames(rawFramesNoOffFrames, filterKeywordsRaw + ["set_first_file"])
 
         # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
         mask = rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
-        rawScienceFrames = rawFrames.loc[
-            rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])
-        ]
+        rawScienceFrames = rawFrames.loc[rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])]
         if len(rawScienceFrames.index):
-            rawScienceFrames = self._group_raw_frames(
-                rawScienceFrames, filterKeywordsRaw + ["mjd-obs"]
-            )
+            rawScienceFrames = self._group_raw_frames(rawScienceFrames, filterKeywordsRaw + ["mjd-obs"])
             # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
         # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
-        mask = rawGroups["eso dpr tech"].isin(
-            ["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"]
-        )
+        mask = rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
         rawGroups = rawGroups.loc[~mask]
         # NOW ADD PINHOLE FRAMES AS ONE ENTRY PER EXPOSURE
         if self.instrument.upper() == "SOXS":
             rawPinholeFrames = rawFrames.loc[
-                (
-                    rawFrames["eso dpr tech"].isin(
-                        ["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"]
-                    )
-                )
+                (rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"]))
                 & (
                     (rawFrames["eso seq arm"] == "NIR")
                     | (~rawFrames["lamp"].isin(["Xe", "Ar", "Hg", "Ne", "ArNeHgXe"]))
@@ -2610,14 +2397,10 @@ class data_organiser:
             ]
         else:
             rawPinholeFrames = rawFrames.loc[
-                rawFrames["eso dpr tech"].isin(
-                    ["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"]
-                )
+                rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
             ]
         if len(rawPinholeFrames.index):
-            rawPinholeFrames = self._group_raw_frames(
-                rawPinholeFrames, filterKeywordsRaw + ["mjd-obs"]
-            )
+            rawPinholeFrames = self._group_raw_frames(rawPinholeFrames, filterKeywordsRaw + ["mjd-obs"])
             # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
 
@@ -2662,15 +2445,9 @@ class data_organiser:
         rawGroups["sof"] += ".sof"
 
         rawGroups["sof"] = rawGroups["sof"].str.replace("MBIAS_0_0S_", "MBIAS_")
-        rawGroups["sof"] = rawGroups["sof"].str.replace(
-            "DISP_SOLUTION.*?_PINHOLE", "DSOL_PINHOLE", regex=True
-        )
-        rawGroups["sof"] = rawGroups["sof"].str.replace(
-            "SPAT_SOLUTION.*?_MULTPIN", "SSOL_MULTPIN", regex=True
-        )
-        rawGroups["sof"] = rawGroups["sof"].str.replace(
-            "ORDER_CENTRES", "OLOC", regex=True
-        )
+        rawGroups["sof"] = rawGroups["sof"].str.replace("DISP_SOLUTION.*?_PINHOLE", "DSOL_PINHOLE", regex=True)
+        rawGroups["sof"] = rawGroups["sof"].str.replace("SPAT_SOLUTION.*?_MULTPIN", "SSOL_MULTPIN", regex=True)
+        rawGroups["sof"] = rawGroups["sof"].str.replace("ORDER_CENTRES", "OLOC", regex=True)
         if recipe in ["mbias", "mdark"]:
             rawGroups["complete"] = 1
         else:
@@ -2679,26 +2456,18 @@ class data_organiser:
 
         # FILTER DATA FRAME
         # FIRST CREATE THE MASK
-        mask = (rawGroups["recipe"].isin(("mbias", "mdark"))) & (
-            rawGroups["counts"] < rawGroups["eso tpl nexp"]
-        )
+        mask = (rawGroups["recipe"].isin(("mbias", "mdark"))) & (rawGroups["counts"] < rawGroups["eso tpl nexp"])
         mask = mask | ((rawGroups["recipe"] == "mflat") & (rawGroups["counts"] < 5))
         rawGroups = rawGroups.loc[~mask]
 
         return rawFrames, rawGroups
 
-    def _group_raw_frames(
-        self, rawFrames, filterKeywordsRaw, addFilepaths=True, addStartDate=True
-    ):
+    def _group_raw_frames(self, rawFrames, filterKeywordsRaw, addFilepaths=True, addStartDate=True):
         """Group raw frames and return grouped rows with aggregation metadata."""
         import pandas as pd
 
         # Create aggregation dictionary
-        agg_dict = {
-            col: "mean"
-            for col in self.filterKeywordsExtras
-            if col not in filterKeywordsRaw
-        }
+        agg_dict = {col: "mean" for col in self.filterKeywordsExtras if col not in filterKeywordsRaw}
         agg_dict["file"] = "size"  # for counting rows
 
         if "set_first_file" in filterKeywordsRaw:
@@ -2712,12 +2481,7 @@ class data_organiser:
             startTime = rawGroups.min()["date-obs"].values
 
         # Group and aggregate
-        rawGroups = (
-            rawFrames.groupby(filterKeywordsRaw)
-            .agg(agg_dict)
-            .rename(columns={"file": "counts"})
-            .reset_index()
-        )
+        rawGroups = rawFrames.groupby(filterKeywordsRaw).agg(agg_dict).rename(columns={"file": "counts"}).reset_index()
         rawGroups.style.hide(axis="index")
         pd.options.mode.chained_assignment = None
 
@@ -2725,10 +2489,7 @@ class data_organiser:
         if addFilepaths:
             rawGroups["filepaths"] = filepaths
         if addStartDate:
-            startTime = [
-                str(s).split(".")[0].replace("-", "").replace(":", "")
-                for s in startTime
-            ]
+            startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
             rawGroups["date-obs"] = startTime
 
         return rawGroups
@@ -2776,19 +2537,13 @@ class data_organiser:
             productFrames["eso pro tech"] = proKeys["eso pro tech"]
             productFrames["eso pro catg"] = proKeys["eso pro catg"]
             productFrames["eso pro catg"] = (
-                productFrames["eso pro catg"].astype(str)
-                + "_"
-                + productFrames["eso seq arm"].astype(str).str.upper()
+                productFrames["eso pro catg"].astype(str) + "_" + productFrames["eso seq arm"].astype(str).str.upper()
             )
             if product in ["fits image", "fits table"]:
-                productFrames["file"] = productFrames["sof"].str.replace(
-                    ".sof", ".fits"
-                )
+                productFrames["file"] = productFrames["sof"].str.replace(".sof", ".fits")
                 if "replace" in proKeys:
                     for item in proKeys["replace"]:
-                        productFrames["file"] = productFrames["file"].str.replace(
-                            item["from"], item["to"]
-                        )
+                        productFrames["file"] = productFrames["file"].str.replace(item["from"], item["to"])
             else:
                 productFrames["file"] = "XXXX"
 
@@ -2826,13 +2581,9 @@ class data_organiser:
         sofMapDF = rawGroups.loc[mask]
 
         sofMapDF = sofMapDF.explode("filepaths")
-        sofMapDF["file"] = sofMapDF["filepaths"].apply(
-            lambda x: os.path.basename(x) if pd.notnull(x) else x
-        )
+        sofMapDF["file"] = sofMapDF["filepaths"].apply(lambda x: os.path.basename(x) if pd.notnull(x) else x)
         sofMapDF = sofMapDF.rename(columns={"filepaths": "filepath"})
-        sofMapDF["tag"] = (
-            sofMapDF["eso dpr type"].replace(",", "_") + "_" + sofMapDF["eso seq arm"]
-        )
+        sofMapDF["tag"] = sofMapDF["eso dpr type"].replace(",", "_") + "_" + sofMapDF["eso seq arm"]
         sofMapDF = sofMapDF[["file", "tag", "sof", "filepath", "complete"]]
         sofMapDF["complete"] = 1
 
@@ -2845,9 +2596,7 @@ class data_organiser:
             placeholders = ",".join(["?"] * len(processedRawFiles))
             # `placeholders` IS ALWAYS LITERAL `?` MARKS -- THE ACTUAL VALUES
             # ARE BOUND BELOW VIA `processedRawFiles`, NEVER INTERPOLATED.
-            sqlQuery = (
-                f"update raw_frames set processed=1 where file in ({placeholders});"  # noqa: S608
-            )
+            sqlQuery = f"update raw_frames set processed=1 where file in ({placeholders});"  # noqa: S608
             c.execute(sqlQuery, processedRawFiles)
             self.conn.commit()
             c.close()
@@ -2896,9 +2645,7 @@ class data_organiser:
                 keepTrying += 1
 
 
-def _harvest_fits_headers(
-    batch, log, pathToDirectory, keywords, filterKeys, instrument, kw
-):
+def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, instrument, kw):
     import numpy as np
     from astropy.time import Time, TimeDelta
     from ccdproc import ImageFileCollection
@@ -2927,21 +2674,14 @@ def _harvest_fits_headers(
 
     # FIX ACQ CAM EXPTIME & ARM & FILTER
     if "SOXS" in instrument.upper():
-        matches = (masterTable["exptime"] == -99.99) & (
-            masterTable[kw("EXPTIME2").lower()] != -99.99
-        )
+        matches = (masterTable["exptime"] == -99.99) & (masterTable[kw("EXPTIME2").lower()] != -99.99)
         masterTable["exptime"][matches] = masterTable[kw("EXPTIME2").lower()][matches]
-        matches = (masterTable["eso seq arm"] == "--") & (
-            masterTable[kw("DET").lower()] == "ACQ"
-        )
+        matches = (masterTable["eso seq arm"] == "--") & (masterTable[kw("DET").lower()] == "ACQ")
         masterTable["eso seq arm"][matches] = "ACQ"
-        matches = (masterTable["eso seq arm"] != "ACQ") & (
-            masterTable[kw("ACFW_ID").lower()] != "--"
-        )
+        matches = (masterTable["eso seq arm"] != "ACQ") & (masterTable[kw("ACFW_ID").lower()] != "--")
         masterTable[kw("ACFW_ID").lower()][matches] = "--"
         matches = (masterTable["eso seq arm"] == "ACQ") & (
-            (masterTable["eso dpr type"] == "BIAS")
-            | (masterTable["eso dpr type"] == "DARK")
+            (masterTable["eso dpr type"] == "BIAS") | (masterTable["eso dpr type"] == "DARK")
         )
         masterTable[kw("ACFW_ID").lower()][matches] = "--"
 
@@ -2955,9 +2695,7 @@ def _harvest_fits_headers(
     )
     missingMJDFiles = masterTable["file"][matches]
     if len(missingMJDFiles):
-        print(
-            "\nThe following FITS files are missing DPR keywords and will be ignored:\n\n"
-        )
+        print("\nThe following FITS files are missing DPR keywords and will be ignored:\n\n")
         print(missingMJDFiles)
         masterTable = masterTable[~matches]
 
@@ -2969,12 +2707,8 @@ def _harvest_fits_headers(
         night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
         mjd_ofset = TimeDelta(12.0 * 60 * 60, format="sec")
         masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
-        chileTimes = (
-            Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset
-        )
-        startNightDate = (
-            Time(masterTable["mjd-obs"], format="mjd", scale="utc") - night_start_offset
-        )
+        chileTimes = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset
+        startNightDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - night_start_offset
         # masterTable["utc-4hrs"] = (masterTable["mjd-obs"] - 2 / 3).astype(int)
         mjdDate = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - mjd_ofset
         masterTable["mjd-date"] = mjdDate.strftime("%Y-%m-%d")
@@ -3065,18 +2799,12 @@ def _harvest_fits_headers(
     # ADD FILEPATHS IF IN ./raw/ FOLDER
     rawFrames["filepath"] = "--"
     rawFrames["file"] = (
-        rawFrames["file"]
-        .astype(str)
-        .str.replace(r"^.*?(raw/\d{4}-\d{2}-\d{2}.*)$", r"./\1", regex=True)
+        rawFrames["file"].astype(str).str.replace(r"^.*?(raw/\d{4}-\d{2}-\d{2}.*)$", r"./\1", regex=True)
     )
-    mask = rawFrames["file"].str.contains(
-        r"\.\/raw\/\d{4}\-\d{2}\-\d{2}.*$", regex=True, na=False
-    )
+    mask = rawFrames["file"].str.contains(r"\.\/raw\/\d{4}\-\d{2}\-\d{2}.*$", regex=True, na=False)
     rawFrames.loc[mask, "filepath"] = rawFrames.loc[mask, "file"]
 
     # MAKE FILE NAME ONLY THE BASENAME IF IN ./raw/ FOLDER
-    rawFrames.loc[mask, "file"] = rawFrames.loc[mask, "file"].apply(
-        lambda x: os.path.basename(x)
-    )
+    rawFrames.loc[mask, "file"] = rawFrames.loc[mask, "file"].apply(lambda x: os.path.basename(x))
 
     return rawFrames
