@@ -16,23 +16,28 @@ pytestmark = pytest.mark.unit
 class CliLogger:
     """Record logging calls made by the command-line adapter."""
 
+    instances: ClassVar[list[CliLogger]] = []
+
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
+        self.keywordArguments: list[dict[str, object]] = []
+        self.instances.append(self)
 
-    def _record(self, level: str, message: object) -> None:
+    def _record(self, level: str, message: object, **kwargs: object) -> None:
         self.messages.append((level, str(message)))
+        self.keywordArguments.append(kwargs)
 
     def debug(self, message: object, **kwargs: object) -> None:
-        self._record("debug", message)
+        self._record("debug", message, **kwargs)
 
     def info(self, message: object, **kwargs: object) -> None:
-        self._record("info", message)
+        self._record("info", message, **kwargs)
 
     def error(self, message: object, **kwargs: object) -> None:
-        self._record("error", message)
+        self._record("error", message, **kwargs)
 
     def print(self, message: object, **kwargs: object) -> None:
-        self._record("print", message)
+        self._record("print", message, **kwargs)
 
 
 class RecordingOrganiser:
@@ -118,6 +123,7 @@ def _run_cli(
     if argumentOverrides:
         parsedArguments = {**parsedArguments, **argumentOverrides}
     parserCalls: list[dict[str, object]] = []
+    CliLogger.instances = []
     logger = CliLogger()
 
     def fake_docopt(docString: str, **kwargs: object) -> dict[str, object]:
@@ -573,11 +579,11 @@ def test_main_file_exists_failure_exits_successfully(
     assert error.value.code == 0
 
 
-def test_main_logs_recipe_failure_then_finishes_dispatch(
+def test_main_recipe_failure_exits_with_error_without_success_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Log unexpected recipe errors without re-raising them."""
+    """Log unexpected recipe errors and stop before reporting success."""
     recipesModule = import_module("soxspipe.recipes")
 
     class FailingRecipe:
@@ -586,9 +592,56 @@ def test_main_logs_recipe_failure_then_finishes_dispatch(
 
     monkeypatch.setattr(recipesModule, "soxs_mbias", FailingRecipe)
 
-    logger, _ = _run_cli(monkeypatch, tmp_path, ["soxspipe", "mbias", "frames"])
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "mbias", "frames"])
 
-    assert any(
-        level == "error" and "recipe failed\nsoxspipe mbias frames" in message
+    assert error.value.code == 1
+    assert error.value.__cause__ is not None
+    assert str(error.value.__cause__) == "recipe failed"
+    logger = CliLogger.instances[-1]
+    assert ("error", "recipe failed\nsoxspipe mbias frames") in logger.messages
+    errorIndex = logger.messages.index(
+        ("error", "recipe failed\nsoxspipe mbias frames")
+    )
+    assert logger.keywordArguments[errorIndex] == {"exc_info": True}
+    assert not any(
+        level == "print"
+        and ("Recipe Command:" in message or "Recipe Run Time:" in message)
         for level, message in logger.messages
     )
+    assert RecordingDaemon.calls == []
+
+
+@pytest.mark.parametrize(
+    ("argv", "failingMethod"),
+    [
+        (["soxspipe", "prep"], "prepare"),
+        (["soxspipe", "list", "ob"], "list_obs"),
+        (["soxspipe", "raw", "sof", "science.sof"], "list_raw"),
+    ],
+)
+def test_main_workspace_command_failure_logs_and_exits_with_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    argv: list[str],
+    failingMethod: str,
+) -> None:
+    """Return exit status 1 when a data-organizer command fails."""
+
+    def fail_command(self: object, *args: object, **kwargs: object) -> None:
+        raise RuntimeError("organizer failed")
+
+    monkeypatch.setattr(RecordingOrganiser, failingMethod, fail_command)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, argv)
+
+    assert error.value.code == 1
+    assert error.value.__cause__ is not None
+    assert str(error.value.__cause__) == "organizer failed"
+    logger = CliLogger.instances[-1]
+    assert any(
+        level == "error" and f"organizer failed\n{' '.join(argv)}" in message
+        for level, message in logger.messages
+    )
+    assert RecordingDaemon.calls == []

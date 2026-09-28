@@ -459,6 +459,7 @@ def main(arguments=None):
 
     except Exception as e:
         log.error(f"{e}\n{clCommand}", exc_info=True)
+        raise SystemExit(1) from e
 
     if a["reduce"]:
 
