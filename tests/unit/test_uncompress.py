@@ -8,6 +8,10 @@ from pathlib import Path
 import pytest
 
 from soxspipe.commonutils import uncompress
+from soxspipe.commonutils.uncompress import (
+    MISSING_COMMAND_MESSAGE,
+    UncompressCommandNotFoundError,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -73,16 +77,20 @@ def test_uncompress_reports_a_missing_executable(
 ) -> None:
     (tmp_path / "raw.fits.Z").touch()
 
+    originalError = FileNotFoundError("uncompress")
+
     def missing_popen(*args: object, **kwargs: object) -> None:
-        raise FileNotFoundError("uncompress")
+        raise originalError
 
     monkeypatch.setattr(subprocess, "Popen", missing_popen)
 
-    with pytest.raises(SystemExit) as error:
+    with pytest.raises(UncompressCommandNotFoundError) as error:
         uncompress(log=log, directory=tmp_path)
 
-    assert error.value.code == 0
-    assert "The uncompress command was not found" in capsys.readouterr().out
+    assert isinstance(error.value, FileNotFoundError)
+    assert str(error.value) == MISSING_COMMAND_MESSAGE
+    assert error.value.__cause__ is originalError
+    assert capsys.readouterr().out == ""
 
 
 def test_uncompress_reports_command_not_found_stderr(
@@ -101,11 +109,33 @@ def test_uncompress_reports_command_not_found_stderr(
         ),
     )
 
-    with pytest.raises(SystemExit) as error:
+    with pytest.raises(UncompressCommandNotFoundError) as error:
         uncompress(log=log, directory=tmp_path)
 
-    assert error.value.code == 0
-    assert "uncompress: command not found" in capsys.readouterr().out
+    assert MISSING_COMMAND_MESSAGE in str(error.value)
+    assert "uncompress: command not found" in str(error.value)
+    assert capsys.readouterr().out == ""
+
+
+def test_uncompress_stops_after_a_missing_command_failure(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _make_archives(tmp_path, 30)
+    callCount = 0
+
+    def missing_popen(*args: object, **kwargs: object) -> None:
+        nonlocal callCount
+        callCount += 1
+        raise FileNotFoundError("uncompress")
+
+    monkeypatch.setattr(subprocess, "Popen", missing_popen)
+
+    with pytest.raises(UncompressCommandNotFoundError):
+        uncompress(log=log, directory=tmp_path)
+
+    assert callCount == 1
 
 
 def test_uncompress_logs_a_nonzero_process_result_without_misclassifying_it(
