@@ -22,6 +22,10 @@ MISSING_COMMAND_MESSAGE = (
 )
 
 
+class UncompressCommandNotFoundError(FileNotFoundError):
+    """Raised when the external ``uncompress`` command is unavailable."""
+
+
 def _build_batches(directory):
     """list the .Z archives in a directory and group them into batches
 
@@ -81,18 +85,17 @@ def _run_batch(log, batch, uncompressedCount, count):
             print(
                 f"Decompressed {uncompressedCount}/{count} fits.Z files ({percent:.1f}%)"
             )
-    except FileNotFoundError:
-        print(MISSING_COMMAND_MESSAGE)
-        sys.exit(0)
+    except FileNotFoundError as error:
+        raise UncompressCommandNotFoundError(MISSING_COMMAND_MESSAGE) from error
     except OSError as error:
         log.error(f"Could not uncompress .Z files: {error}")
         return
 
     stderrMessage = stderr.decode("ascii", errors="replace")
     if p.returncode == 127:
-        print(stderrMessage)
-        print(MISSING_COMMAND_MESSAGE)
-        sys.exit(0)
+        raise UncompressCommandNotFoundError(
+            f"{MISSING_COMMAND_MESSAGE}\n{stderrMessage}"
+        )
     if p.returncode:
         log.error(
             f"Could not uncompress .Z files (exit code {p.returncode}): "
