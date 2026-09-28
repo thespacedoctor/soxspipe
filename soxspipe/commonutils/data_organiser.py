@@ -403,6 +403,13 @@ class data_organiser:
         if not os.path.exists(self.sessionsDir):
             os.makedirs(self.sessionsDir)
 
+        # A newly copied database contains only the template's base-session
+        # objects.  Restore the empty schema objects for every session before
+        # synchronising frames, since that synchronisation can consult the
+        # current session's SOF map.
+        if self.freshRun:
+            self._restore_session_database_objects()
+
         basename = os.path.basename(self.rootDir)
         print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
 
@@ -1365,37 +1372,7 @@ class data_organiser:
             if not os.path.exists(self.sessionPath + f"/{f}"):
                 os.makedirs(self.sessionPath + f"/{f}")
 
-        # ADD A NEW STATUS COLUMN IN product_frames FOR THIS SESSION
-
-        statusColumn = validate_sql_identifier(f"status_{sessionId}", "status column")
-        sofMapTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
-
-        conn, reset = self._get_or_create_db_connection()
-        c = conn.cursor()
-        sqlQuery = f"ALTER TABLE product_frames ADD {statusColumn} TEXT;"  # noqa: S608
-        try:
-            c.execute(sqlQuery)
-        except sqlite3.OperationalError as e:
-            self.log.debug(f"session_create: `c.execute(sqlQuery)` failed, continuing: {e}")
-
-        # DUPLICATE TEH SOF_MAP TABLE
-        sqlQuery = "SELECT sql FROM sqlite_master WHERE type='table' AND name='z_sof_map'"
-        c.execute(sqlQuery)
-        sqlQuery = c.fetchall()[0][0]
-        sqlQuery = sqlQuery.replace("z_sof_map", sofMapTableName)
-        try:
-            c.execute(sqlQuery)
-        except sqlite3.OperationalError as e:
-            self.log.debug(f"session_create: `c.execute(sqlQuery)` failed, continuing: {e}")
-
-        sqlQueries = [
-            "DROP VIEW IF EXISTS sof_map;",
-            f"CREATE VIEW sof_map as select * from {sofMapTableName};",  # noqa: S608
-        ]
-        for sqlQuery in sqlQueries:
-            c.execute(sqlQuery)
-
-        c.close()
+        self._ensure_session_database_objects(sessionId)
 
         self._write_sof_files()
 
@@ -1419,6 +1396,60 @@ class data_organiser:
         self.log.debug("completed the ``session_create`` method")
 
         return sessionId
+
+    def _ensure_session_database_objects(self, sessionId):
+        """Create the empty database objects required by one session."""
+        sessionId = _validate_session_id(sessionId)
+        statusColumn = validate_sql_identifier(f"status_{sessionId}", "status column")
+        sofMapTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
+
+        conn, reset = self._get_or_create_db_connection()
+        c = conn.cursor()
+        sqlQuery = f"ALTER TABLE product_frames ADD {statusColumn} TEXT;"  # noqa: S608
+        try:
+            c.execute(sqlQuery)
+        except sqlite3.OperationalError as e:
+            self.log.debug(f"_ensure_session_database_objects: status column already exists: {e}")
+
+        # DUPLICATE TEH SOF_MAP TABLE
+        sqlQuery = "SELECT sql FROM sqlite_master WHERE type='table' AND name='z_sof_map'"
+        c.execute(sqlQuery)
+        sqlQuery = c.fetchall()[0][0]
+        sqlQuery = sqlQuery.replace("z_sof_map", sofMapTableName)
+        try:
+            c.execute(sqlQuery)
+        except sqlite3.OperationalError as e:
+            self.log.debug(f"_ensure_session_database_objects: SOF map table already exists: {e}")
+
+        sqlQueries = [
+            "DROP VIEW IF EXISTS sof_map;",
+            f"CREATE VIEW sof_map as select * from {sofMapTableName};",  # noqa: S608
+        ]
+        for sqlQuery in sqlQueries:
+            c.execute(sqlQuery)
+
+        c.close()
+
+    def _restore_session_database_objects(self):
+        """Restore schema objects for session directories after a database rebuild."""
+        sessionIds = []
+        for entry in Path(self.sessionsDir).iterdir():
+            if not entry.is_dir():
+                self.log.debug(f"Skipping non-session entry while rebuilding database: {entry.name}")
+                continue
+            try:
+                sessionIds.append(_validate_session_id(entry.name))
+            except _UnsafePathError:
+                self.log.debug(f"Skipping invalid session directory while rebuilding database: {entry.name}")
+
+        currentSession = None
+        if Path(self.sessionIdFile).is_file():
+            currentSession = _validate_session_id(Path(self.sessionIdFile).read_text(encoding="utf-8"))
+
+        # The helper updates the shared view, so process the current session
+        # last to leave the view pointing at the correct table.
+        for sessionId in sorted(sessionIds, key=lambda value: value == currentSession):
+            self._ensure_session_database_objects(sessionId)
 
     def session_list(self, silent=False):
         """*list the sessions available to the user*
