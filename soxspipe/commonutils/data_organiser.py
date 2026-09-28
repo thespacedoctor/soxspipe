@@ -16,6 +16,7 @@ from pathlib import Path
 
 from fundamentals import tools
 
+from soxspipe.commonutils.missing_calibrations import describe_missing, find_missing_calibrations
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
 os.environ["TERM"] = "vt100"
@@ -1822,10 +1823,47 @@ class data_organiser:
 
     # METHOD TO RETURN ALL THE RAW FRAME SETS THAT ARE NOT COMPLETE FROM THE DATABASE AS A PANDAS TABLE
     def get_incomplete_raw_frames_set(self):
+        """*return the science raw-frame sets that cannot be reduced yet, and the calibrations each one lacks*
+
+        **Return:**
+
+        - ``incompleteSets`` -- dataframe with one row per distinct combination of the display columns
+          (`eso seq arm`, `mjd-obs`, `eso dpr tech`, `eso dpr type`, `slit`, `eso obs name`, `eso obs id`)
+          plus a `missing calibrations` column. That column lists, in sof-map order, the calibrations with no
+          passing row in their `cal_<type>` view, or `unknown` if none can be found. When several sofs share one
+          display row, the column lists every calibration that any one of them lacks. The frame is empty when
+          every science set is complete.
+        """
         import pandas as pd
 
-        query = 'select distinct "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit","eso obs name","eso obs id"  from raw_frame_sets where complete = 0 and recipe in ("nod_obj","stare_obj","offset_obj")'
-        return pd.read_sql(query, con=self.conn)
+        displayColumns = [
+            "eso seq arm",
+            "mjd-obs",
+            "eso dpr tech",
+            "eso dpr type",
+            "slit",
+            "eso obs name",
+            "eso obs id",
+        ]
+        query = (
+            'select "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit",'
+            '"eso obs name","eso obs id", sof, recipe from raw_frame_sets '
+            'where complete = 0 and recipe in ("nod_obj","stare_obj","offset_obj")'
+        )
+        rawSets = pd.read_sql(query, con=self.conn)
+
+        # SOF MAP IS ABSENT IF _select_instrument RETURNED EARLY
+        missingBySof = find_missing_calibrations(self.conn, rawSets, getattr(self, "sofMapLookup", None))
+
+        rows = []
+        for displayValues, group in rawSets.groupby(displayColumns, sort=False, dropna=False):
+            mergedPositions = {}
+            for sof in group["sof"]:
+                for calibrationType, position in missingBySof.get(sof, {}).items():
+                    mergedPositions[calibrationType] = min(position, mergedPositions.get(calibrationType, position))
+            rows.append([*displayValues, describe_missing(mergedPositions)])
+
+        return pd.DataFrame(rows, columns=[*displayColumns, "missing calibrations"])
 
     def _select_instrument(self, inst=False):
         """Select the instrument and set related attributes."""

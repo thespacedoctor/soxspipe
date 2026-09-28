@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: `soxspipe prep` and `soxspipe reduce all` add a `missing calibrations` column to the table of science sets that cannot be reduced (DY-265)
 * **FIXED**: soxs_mflat normalisation errors now name the failing flat frame by filename (DY-128)
 * **REFACTOR**: Raised the supported Python version floor from 3.11 to 3.12; CI now tests the full declared Python 3.12–3.13 range.
 * **FIXED**: DY-133, `soxs_disp_solution.verify_input_frames`'s NIR mixed-image-type rejection message ran `imageTypes = " and ".join(imageTypes)` twice in a row, re-joining the already-joined string's own characters, and the rendered message never included the offending types anyway, since it had no placeholder. The duplicate join is removed and the message now names the joined types (`f"...for NIR. Found {imageTypes}"`), matching the `Found {i}` convention already used by `soxs_order_centres._uvb_vis_input_frame_error`. The other three NIR rejection branches and all three UVB/VIS branches are unchanged, since none of them carries a specific offending value worth naming. `tests/unit/test_soxs_disp_solution_characterization.py::test_nir_rejects_mixed_input_image_types` now asserts the exact message naming both types instead of asserting the type name was absent.
