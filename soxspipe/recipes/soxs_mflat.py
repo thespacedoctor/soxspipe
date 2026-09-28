@@ -387,7 +387,7 @@ class soxs_mflat(base_recipe):
             orderTablePath = orderTablePaths[0]
             thisPath = orderTablePath
 
-            combined_normalised_flat = self._normalise_and_stack_lamp_flats(cf, orderTablePath, tag)
+            combined_normalised_flat = self._normalise_and_stack_lamp_flats(cf, orderTablePath, tag, frameNames=files)
 
             self.combinedNormalisedFlatSet.append(combined_normalised_flat.copy())
 
@@ -490,7 +490,7 @@ class soxs_mflat(base_recipe):
         self.log.debug("completed the ``produce_product`` method")
         return productPath, qcTable
 
-    def _normalise_and_stack_lamp_flats(self, cf, orderTablePath, tag):
+    def _normalise_and_stack_lamp_flats(self, cf, orderTablePath, tag, frameNames=None):
         """*normalise and stack one lamp's flats, then renormalise against that first-pass stack and stack again*
 
         **Key Arguments:**
@@ -498,6 +498,8 @@ class soxs_mflat(base_recipe):
         - ``cf`` -- the calibrated flat frames of this lamp
         - ``orderTablePath`` -- path to the order table used to normalise the frames
         - ``tag`` -- the lamp tag, used in plot titles
+        - ``frameNames`` -- the SOF filenames of ``cf``, in the same order, used to name a failing frame in a
+          normalisation error. Default *None*
 
         **Return:**
 
@@ -505,7 +507,7 @@ class soxs_mflat(base_recipe):
         """
         # DETERMINE THE MEDIAN EXPOSURE FOR EACH FLAT FRAME AND NORMALISE THE
         # FLUX TO THAT LEVEL
-        normalisedFlats = self.normalise_flats(cf, orderTablePath=orderTablePath, lamp=tag)
+        normalisedFlats = self.normalise_flats(cf, orderTablePath=orderTablePath, lamp=tag, frameNames=frameNames)
 
         quicklook_image(
             log=self.log,
@@ -544,6 +546,7 @@ class soxs_mflat(base_recipe):
             orderTablePath=orderTablePath,
             firstPassMasterFlat=combined_normalised_flat,
             lamp=tag,
+            frameNames=frameNames,
         )
 
         quicklook_image(
@@ -970,7 +973,7 @@ class soxs_mflat(base_recipe):
 
         return calibratedFlats, dcalibratedFlats, qcalibratedFlats, domecalibratedFlats
 
-    def normalise_flats(self, inputFlats, orderTablePath, firstPassMasterFlat=False, lamp=""):
+    def normalise_flats(self, inputFlats, orderTablePath, firstPassMasterFlat=False, lamp="", frameNames=None):
         """*determine the median exposure for each flat frame and normalise the flux to that level*
 
         **Key Arguments:**
@@ -979,6 +982,8 @@ class soxs_mflat(base_recipe):
         - ``orderTablePath`` -- path to the order table
         - ``firstPassMasterFlat`` -- the first pass of the master flat. Default *False*
         - ``lamp`` -- a lamp tag for QL plots. Default *""*
+        - ``frameNames`` -- the SOF filenames of ``inputFlats``, in the same order, used to name a failing frame
+          in a normalisation error. Default *None*
 
         **Return:**
 
@@ -987,6 +992,12 @@ class soxs_mflat(base_recipe):
         self.log.debug("starting the ``normalise_flats`` method")
 
         kw = self.kw
+
+        if frameNames is not None and len(frameNames) != len(inputFlats):
+            raise ValueError(
+                f"soxs_mflat normalise_flats: got {len(frameNames)} frame names for {len(inputFlats)} flat "
+                "frames; the names must match the frames one to one."
+            )
 
         self._read_binning_ratios(inputFlats, orderTablePath, kw)
 
@@ -1010,9 +1021,9 @@ class soxs_mflat(base_recipe):
             )
 
         if not firstPassMasterFlat:
-            normalisedFrames = self._normalise_flats_first_pass(inputFlats, mask)
+            normalisedFrames = self._normalise_flats_first_pass(inputFlats, mask, frameNames)
         else:
-            normalisedFrames = self._normalise_flats_second_pass(inputFlats, mask, firstPassMasterFlat)
+            normalisedFrames = self._normalise_flats_second_pass(inputFlats, mask, firstPassMasterFlat, frameNames)
 
         # PLOT ONE OF THE NORMALISED FRAMES TO CHECK
         quicklook_image(
@@ -1104,7 +1115,76 @@ class soxs_mflat(base_recipe):
         # COMBINE MASK WITH THE BAD PIXEL MASK
         return np.logical_or(mask, inputFlats[0].mask)
 
-    def _no_usable_centre_pixels_message(self, frameIndex, frameCount, passName):
+    def _flat_frame_name(self, frame, frameIndex, frameNames=None):
+        """*resolve a human-readable name for a flat frame, for use in error messages*
+
+        Mirrors the ARCFILE/ORIGFILE fallback pattern already used in
+        `soxs_offset.py` (~line 499) and `soxs_nod.py` (~line 623), but tries
+        the given name first, unlike those two, which try the header first.
+        The given name is the local SOF filename, which is what a person
+        debugging will search for; the archive name (ARCFILE/ORIGFILE) can
+        differ from it.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the flat frame to name
+        - ``frameIndex`` -- the 1-based position of the frame in the input set
+        - ``frameNames`` -- the SOF filenames of the input flats, in the same order, or *None*. Default *None*
+
+        **Return:**
+
+        - ``name`` -- the resolved frame name, or *None* if no name is available
+
+        A candidate is treated as absent, and the fallback continues, when it
+        is *None* or a string that is empty or contains only whitespace. A
+        header lookup that raises (for example an unusual header type without
+        a working ``.get``) is also treated as absent, so this naming helper
+        never masks the caller's own error with an unrelated exception.
+        """
+
+        def _usable(candidate):
+            if candidate is None:
+                return None
+            if isinstance(candidate, str) and not candidate.strip():
+                return None
+            return candidate
+
+        if frameNames is not None:
+            givenName = _usable(frameNames[frameIndex - 1])
+            if givenName is not None:
+                return givenName
+
+        arcfile = _usable(self._header_value(frame, "ARCFILE"))
+        if arcfile is not None:
+            return arcfile
+
+        origfile = _usable(self._header_value(frame, "ORIGFILE"))
+        if origfile is not None:
+            return origfile
+
+        return None
+
+    @staticmethod
+    def _header_value(frame, keyword):
+        """*safely look up a FITS header keyword, tolerating an unusable header*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame whose header to query
+        - ``keyword`` -- the header keyword to look up
+
+        **Return:**
+
+        - ``value`` -- the header value, or *None* if the keyword is absent or the header lookup itself fails
+        """
+        try:
+            return frame.header.get(keyword)
+        except Exception:
+            # THIS LOOKUP IS PURE BEST-EFFORT: NAMING AN ERROR MESSAGE MUST NEVER ITSELF RAISE
+            # AND MASK THE CALLER'S OWN, MORE IMPORTANT, ERROR
+            return None
+
+    def _no_usable_centre_pixels_message(self, frameIndex, frameCount, passName, frameName=None):
         """*build the error message for a flat frame that has no usable order-centre pixel left*
 
         **Key Arguments:**
@@ -1112,21 +1192,27 @@ class soxs_mflat(base_recipe):
         - ``frameIndex`` -- the 1-based position of the frame in the input set
         - ``frameCount`` -- the number of frames in the input set
         - ``passName`` -- the normalisation pass the frame failed in ("first pass" or "second pass")
+        - ``frameName`` -- the resolved name of the failing frame, or *None* to identify it by position only.
+          Default *None*
 
         **Return:**
 
         - ``message`` -- the error message
         """
+        if frameName:
+            identity = f"{frameName} (frame {frameIndex} of {frameCount}, {passName})"
+        else:
+            identity = f"{frameIndex} of {frameCount} ({passName})"
+
         return (
-            f"soxs_mflat normalise_flats: no usable order-centre pixels in flat frame {frameIndex} of "
-            f"{frameCount} ({passName}). Every order-centre pixel of this frame is either excluded by the "
-            "order-centre mask or holds an invalid (NaN) value, so its normalisation level cannot be measured. "
-            "Check that the order table is not empty, that it matches the arm and binning of these flat frames, "
-            "that the order traces are not fully covered by the bad-pixel mask, and that the frame's own data is "
-            "not all invalid."
+            f"soxs_mflat normalise_flats: no usable order-centre pixels in flat frame {identity}. Every "
+            "order-centre pixel of this frame is either excluded by the order-centre mask or holds an invalid "
+            "(NaN) value, so its normalisation level cannot be measured. Check that the order table is not "
+            "empty, that it matches the arm and binning of these flat frames, that the order traces are not "
+            "fully covered by the bad-pixel mask, and that the frame's own data is not all invalid."
         )
 
-    def _normalise_flats_first_pass(self, inputFlats, mask):
+    def _normalise_flats_first_pass(self, inputFlats, mask, frameNames=None):
         """*normalise each flat frame to the sigma-clipped mean of its unmasked pixels, and record the ORDEXP QCs*
 
         Sets ``self.qc``.
@@ -1135,6 +1221,8 @@ class soxs_mflat(base_recipe):
 
         - ``inputFlats`` -- the input flat field frames
         - ``mask`` -- boolean mask, True where a pixel is excluded
+        - ``frameNames`` -- the SOF filenames of ``inputFlats``, in the same order, used to name a failing frame
+          in the error message. Default *None*
 
         **Return:**
 
@@ -1172,7 +1260,8 @@ class soxs_mflat(base_recipe):
                 del chunk_data, chunk_mask, valid
 
             if not sample_chunks:
-                raise ValueError(self._no_usable_centre_pixels_message(frameIndex, frameCount, "first pass"))
+                frameName = self._flat_frame_name(frame, frameIndex, frameNames)
+                raise ValueError(self._no_usable_centre_pixels_message(frameIndex, frameCount, "first pass", frameName))
 
             all_valid = np.concatenate(sample_chunks)
             del sample_chunks
@@ -1242,7 +1331,7 @@ class soxs_mflat(base_recipe):
 
         return normalisedFrames
 
-    def _normalise_flats_second_pass(self, inputFlats, mask, firstPassMasterFlat):
+    def _normalise_flats_second_pass(self, inputFlats, mask, firstPassMasterFlat, frameNames=None):
         """*normalise each flat frame, divided by the first-pass master flat, to its sigma-clipped unmasked mean*
 
         **Key Arguments:**
@@ -1250,6 +1339,8 @@ class soxs_mflat(base_recipe):
         - ``inputFlats`` -- the input flat field frames
         - ``mask`` -- boolean mask, True where a pixel is excluded
         - ``firstPassMasterFlat`` -- the first pass of the master flat
+        - ``frameNames`` -- the SOF filenames of ``inputFlats``, in the same order, used to name a failing frame
+          in the error message. Default *None*
 
         **Return:**
 
@@ -1286,7 +1377,10 @@ class soxs_mflat(base_recipe):
                 del chunk_data, chunk_nan_mask, chunk_combined_mask, valid
 
             if not chunk_vals:
-                raise ValueError(self._no_usable_centre_pixels_message(frameIndex, frameCount, "second pass"))
+                frameName = self._flat_frame_name(frame, frameIndex, frameNames)
+                raise ValueError(
+                    self._no_usable_centre_pixels_message(frameIndex, frameCount, "second pass", frameName)
+                )
 
             all_valid = np.concatenate(chunk_vals)
             mean, median, std = sigma_clipped_stats(

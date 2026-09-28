@@ -149,6 +149,115 @@ def _empty_pixels() -> pd.DataFrame:
     return pd.DataFrame({"xcoord_centre": pd.array([], dtype="int64"), "ycoord": pd.array([], dtype="int64")})
 
 
+# ---------------------------------------------------------------------------
+# _flat_frame_name (DY-128)
+# ---------------------------------------------------------------------------
+
+
+def test_flat_frame_name_prefers_given_name_then_arcfile_then_origfile(
+    log: Any,
+) -> None:
+    """`_flat_frame_name` tries the given SOF name first, then ARCFILE, then ORIGFILE, then gives up."""
+    # ARRANGE
+    recipe = _worker_recipe(log)
+
+    def _frame_with_header(**header: str) -> Any:
+        frame = _frame(np.random.default_rng(1).normal(loc=1000.0, scale=25.0, size=(4, 4)))
+        for key, value in header.items():
+            frame.header[key] = value
+        return frame
+
+    frameWithBoth = _frame_with_header(ARCFILE="arcfile.fits", ORIGFILE="origfile.fits")
+    frameWithArcfileOnly = _frame_with_header(ARCFILE="arcfile.fits")
+    frameWithOrigfileOnly = _frame_with_header(ORIGFILE="origfile.fits")
+    frameWithBlankArcfile = _frame_with_header(ARCFILE="", ORIGFILE="origfile.fits")
+    frameWithNothing = _frame(np.random.default_rng(2).normal(loc=1000.0, scale=25.0, size=(4, 4)))
+
+    # ACT / ASSERT
+    # GIVEN NAME WINS OVER BOTH HEADER CARDS
+    assert recipe._flat_frame_name(frameWithBoth, 1, ["given-name.fits"]) == "given-name.fits"
+
+    # ARCFILE WINS OVER ORIGFILE WHEN NO GIVEN NAME
+    assert recipe._flat_frame_name(frameWithBoth, 1, None) == "arcfile.fits"
+
+    # ARCFILE ALONE
+    assert recipe._flat_frame_name(frameWithArcfileOnly, 1, None) == "arcfile.fits"
+
+    # ORIGFILE ALONE
+    assert recipe._flat_frame_name(frameWithOrigfileOnly, 1, None) == "origfile.fits"
+
+    # A BLANK ARCFILE FALLS THROUGH TO ORIGFILE
+    assert recipe._flat_frame_name(frameWithBlankArcfile, 1, None) == "origfile.fits"
+
+    # NOTHING AVAILABLE RETURNS None
+    assert recipe._flat_frame_name(frameWithNothing, 1, None) is None
+
+    # A SECOND-FRAME INDEX PICKS THE SECOND GIVEN NAME
+    assert recipe._flat_frame_name(frameWithNothing, 2, ["flat-A.fits", "flat-B.fits"]) == "flat-B.fits"
+
+    # A WHITESPACE-ONLY GIVEN NAME FALLS THROUGH TO ARCFILE
+    assert recipe._flat_frame_name(frameWithBoth, 1, ["   "]) == "arcfile.fits"
+
+    # A WHITESPACE-ONLY ARCFILE FALLS THROUGH TO ORIGFILE
+    frameWithWhitespaceArcfile = _frame_with_header(ARCFILE="   ", ORIGFILE="origfile.fits")
+    assert recipe._flat_frame_name(frameWithWhitespaceArcfile, 1, None) == "origfile.fits"
+
+    # A WHITESPACE-ONLY ORIGFILE, WITH NOTHING ELSE AVAILABLE, RETURNS None
+    frameWithWhitespaceOrigfile = _frame_with_header(ORIGFILE="   ")
+    assert recipe._flat_frame_name(frameWithWhitespaceOrigfile, 1, None) is None
+
+
+class _RaisingHeader:
+    """A header stand-in whose `.get` always raises, like an unusual header type might."""
+
+    def get(self, keyword: str) -> None:
+        raise KeyError(keyword)
+
+
+class _FrameWithRaisingHeader:
+    """A frame stand-in whose header lookups always raise."""
+
+    header = _RaisingHeader()
+
+
+class _OddlyRaisingHeader:
+    """A header stand-in whose `.get` raises something other than KeyError/AttributeError/TypeError."""
+
+    def get(self, keyword: str) -> None:
+        raise ValueError(keyword)
+
+
+class _FrameWithOddlyRaisingHeader:
+    """A frame stand-in whose header lookups raise an unexpected exception type."""
+
+    header = _OddlyRaisingHeader()
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [_FrameWithRaisingHeader(), _FrameWithOddlyRaisingHeader()],
+    ids=["KeyError", "ValueError"],
+)
+def test_flat_frame_name_falls_back_to_none_when_header_lookup_raises(
+    log: Any,
+    frame: Any,
+) -> None:
+    """A header whose `.get` raises, of any exception type, is treated as absent, not propagated.
+
+    A defensive naming helper must never itself crash and mask the caller's
+    original, more important error, no matter what exception a header's
+    `.get` implementation happens to raise.
+    """
+    # ARRANGE
+    recipe = _worker_recipe(log)
+
+    # ACT
+    name = recipe._flat_frame_name(frame, 1, None)
+
+    # ASSERT
+    assert name is None
+
+
 def test_first_pass_raises_a_named_frame_error_when_no_order_centre_pixel_is_usable(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
@@ -184,6 +293,79 @@ def test_second_pass_raises_a_named_frame_error_when_no_order_centre_pixel_is_us
     # ACT / ASSERT
     with pytest.raises(ValueError, match=r"no usable order-centre pixels in flat frame 1 of 1 \(second pass\)"):
         recipe.normalise_flats([frame], str(orderTable), firstPassMasterFlat=masterFlat)
+
+
+def test_first_pass_error_names_the_given_file_of_the_failing_frame(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The first pass names the failing frame by its given SOF filename, not its position alone."""
+    # ARRANGE
+    recipe = _worker_recipe(log)
+    orderTable = _order_table(tmp_path, name="orders_named_first.fits")
+    pixels = pd.DataFrame({"xcoord_centre": [6] * 12, "ycoord": list(range(12))})
+    _stub_unpack_order_table(monkeypatch, pixels)
+    monkeypatch.setattr(soxs_mflat_module, "quicklook_image", lambda **kwargs: None)
+    goodFrame = _frame(np.random.default_rng(801).normal(loc=1000.0, scale=25.0, size=(12, 12)))
+    nanFrame = _frame(np.full((12, 12), np.nan))
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"flat frame flat-B\.fits \(frame 2 of 2, first pass\)") as raised:
+        recipe.normalise_flats(
+            [goodFrame, nanFrame],
+            str(orderTable),
+            frameNames=["flat-A.fits", "flat-B.fits"],
+        )
+    assert "flat-A.fits" not in str(raised.value)
+
+
+def test_second_pass_error_names_the_given_file_of_the_failing_frame(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The second pass names the failing frame by its given SOF filename, not its position alone."""
+    # ARRANGE
+    recipe = _worker_recipe(log)
+    orderTable = _order_table(tmp_path, name="orders_named_second.fits")
+    pixels = pd.DataFrame({"xcoord_centre": [6] * 12, "ycoord": list(range(12))})
+    _stub_unpack_order_table(monkeypatch, pixels)
+    monkeypatch.setattr(soxs_mflat_module, "quicklook_image", lambda **kwargs: None)
+    goodFrame = _frame(np.random.default_rng(801).normal(loc=1000.0, scale=25.0, size=(12, 12)))
+    nanFrame = _frame(np.full((12, 12), np.nan))
+    masterFlat = _frame(1.0 + np.random.default_rng(999).normal(loc=0.0, scale=0.01, size=(12, 12)))
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"flat frame flat-B\.fits \(frame 2 of 2, second pass\)") as raised:
+        recipe.normalise_flats(
+            [goodFrame, nanFrame],
+            str(orderTable),
+            firstPassMasterFlat=masterFlat,
+            frameNames=["flat-A.fits", "flat-B.fits"],
+        )
+    assert "flat-A.fits" not in str(raised.value)
+
+
+def test_error_falls_back_to_the_arcfile_header_when_no_names_are_given(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """With no `frameNames` given, the error message falls back to the frame's own ARCFILE header card."""
+    # ARRANGE
+    recipe = _worker_recipe(log)
+    orderTable = _order_table(tmp_path, name="orders_arcfile_fallback.fits")
+    _stub_unpack_order_table(monkeypatch, _empty_pixels())
+    monkeypatch.setattr(soxs_mflat_module, "quicklook_image", lambda **kwargs: None)
+    frame = _frame(np.random.default_rng(801).normal(loc=1000.0, scale=25.0, size=(12, 12)))
+    frame.header["ARCFILE"] = "SOXS.2024-01-01T00:00:00.000.fits"
+    frame.header["ORIGFILE"] = "SOXS_slit_flat_001.fits"
+
+    # ACT / ASSERT
+    expected = r"flat frame SOXS\.2024-01-01T00:00:00\.000\.fits \(frame 1 of 1, first pass\)"
+    with pytest.raises(ValueError, match=expected):
+        recipe.normalise_flats([frame], str(orderTable))
 
 
 def test_second_pass_error_names_the_later_frame_that_has_no_usable_pixel(
@@ -276,6 +458,37 @@ def test_second_pass_normalises_data_and_leaves_a_missing_uncertainty_as_none(
         rtol=1e-12,
         atol=0,
     )
+
+
+# ---------------------------------------------------------------------------
+# normalise_flats -- frameNames length guard (DY-128)
+# ---------------------------------------------------------------------------
+
+
+def test_normalise_flats_rejects_frame_names_that_do_not_match_the_frames(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A `frameNames` list whose length disagrees with `inputFlats` is rejected before any work runs."""
+    # ARRANGE
+    recipe = _worker_recipe(log)
+    orderTable = _order_table(tmp_path, name="orders_name_count_guard.fits")
+    unpackCalls: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        soxs_mflat_module,
+        "unpack_order_table",
+        lambda **kwargs: unpackCalls.append(kwargs) or (None, _empty_pixels(), None),
+    )
+    frameOne = _frame(np.random.default_rng(1).normal(loc=1000.0, scale=25.0, size=(4, 4)))
+    frameTwo = _frame(np.random.default_rng(2).normal(loc=1000.0, scale=25.0, size=(4, 4)))
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"got 1 frame names for 2 flat frames"):
+        recipe.normalise_flats([frameOne, frameTwo], str(orderTable), frameNames=["only-one.fits"])
+
+    # THE GUARD RUNS BEFORE ANY WORK, NOT JUST BEFORE THE EXCEPTION SURFACES
+    assert unpackCalls == []
 
 
 # ---------------------------------------------------------------------------
