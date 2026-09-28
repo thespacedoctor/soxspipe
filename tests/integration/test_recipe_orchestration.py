@@ -566,6 +566,7 @@ def test_single_lamp_master_flat_records_stable_product_and_preserves_qc(
         assert args[0] == [flatFrame]
         assert kwargs["orderTablePath"] == str(orderPath)
         assert kwargs["lamp"] == ""
+        assert kwargs["frameNames"] == ["flat-1.fits"]
         if normaliseCount == 0:
             assert "firstPassMasterFlat" not in kwargs
         else:
@@ -762,10 +763,17 @@ def test_multi_lamp_master_flat_stitches_independent_lamp_products(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Three lamp sets produce tagged flats before the public UV stitch step."""
+    """Three lamp sets produce tagged flats before the public UV stitch step.
+
+    The un-tagged lamp is given two distinguishable frames, named
+    ``flat-1.fits`` and ``flat-2.fits`` in that order, so the ``frameNames``
+    kwarg forwarded to `normalise_flats` proves per-frame index alignment,
+    not just that the kwarg is forwarded at all -- a reversed or off-by-one
+    mapping would fail the assertion below (DY-128 finding 2).
+    """
     orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=81)
     productPath = tmp_path / "MASTER_FLAT_VIS.fits"
-    frames = [synthetic_ccd(seed=seed, prepared=True) for seed in range(82, 85)]
+    frames = [synthetic_ccd(seed=seed, prepared=True) for seed in range(82, 86)]
     recipe = soxs_mflat.__new__(soxs_mflat)
     recipe.log = log
     recipe.arm = "VIS"
@@ -781,7 +789,7 @@ def test_multi_lamp_master_flat_stitches_independent_lamp_products(
     recipe.startNightDate = "2024-01-02"
     recipe.binRatioX = 1
     recipe.binRatioY = 1
-    recipe.calibratedFlatFiles = ["orderdef.fits"]
+    recipe.calibratedFlatFiles = ["flat-1.fits", "flat-2.fits"]
     recipe.dFlatFiles = ["dorderdef.fits"]
     recipe.qFlatFiles = ["qorderdef.fits"]
     recipe.domeFlatFiles = []
@@ -793,22 +801,34 @@ def test_multi_lamp_master_flat_stitches_independent_lamp_products(
     monkeypatch.setattr(
         recipe,
         "calibrate_frame_set",
-        lambda: ([frames[0]], [frames[1]], [frames[2]], []),
+        lambda: ([frames[0], frames[1]], [frames[2]], [frames[3]], []),
     )
 
     def fake_normalise(*args: object, **kwargs: object) -> list[object]:
         nonlocal normaliseCalls
         lamp = str(kwargs["lamp"])
         calls.append(("normalise", lamp))
-        frameIndex = {"": 0, "_DLAMP": 1, "_QLAMP": 2}[lamp]
-        assert args[0] == [frames[frameIndex]]
+        expectedFrames = {
+            "": [frames[0], frames[1]],
+            "_DLAMP": [frames[2]],
+            "_QLAMP": [frames[3]],
+        }[lamp]
+        assert args[0] == expectedFrames
         assert kwargs["orderTablePath"] == str(orderPath)
+        # THE UN-TAGGED LAMP HAS TWO DISTINGUISHABLE FRAMES, SO THIS PROVES
+        # frameNames IS INDEX-ALIGNED WITH ITS FRAMES, NOT JUST FORWARDED
+        expectedFrameNames = {
+            "": ["flat-1.fits", "flat-2.fits"],
+            "_DLAMP": ["dorderdef.fits"],
+            "_QLAMP": ["qorderdef.fits"],
+        }[lamp]
+        assert kwargs["frameNames"] == expectedFrameNames
         if normaliseCalls % 2:
             assert "firstPassMasterFlat" in kwargs
         else:
             assert "firstPassMasterFlat" not in kwargs
         normaliseCalls += 1
-        return [frames[frameIndex].copy()]
+        return [frame.copy() for frame in expectedFrames]
 
     monkeypatch.setattr(recipe, "normalise_flats", fake_normalise)
     monkeypatch.setattr(
