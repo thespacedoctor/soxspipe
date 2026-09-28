@@ -411,6 +411,9 @@ def test_reduce_multiprocess_forwards_selected_group(
         def get_incomplete_raw_frames_set(self) -> pd.DataFrame:
             return pd.DataFrame()
 
+        def get_incomplete_sets_report(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+            return pd.DataFrame(), pd.DataFrame()
+
         def close(self) -> None:
             pass
 
