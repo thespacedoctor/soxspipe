@@ -11,13 +11,8 @@ from tests.factories import raw_frame_table, workspace_organiser
 pytestmark = pytest.mark.integration
 
 
-def test_session_create_initialises_sqlite_view_assets_and_workspace_links(
-    tmp_path, log
-) -> None:
-    """Create an isolated session with its database view and root-facing assets."""
-    organiser = workspace_organiser(tmp_path, log=log)
-    connection, _ = organiser._get_or_create_db_connection()
-    organiser.conn = connection
+def _insert_complete_raw_frame(connection) -> None:
+    """Seed the minimum complete raw-frame row used by session workflows."""
     connection.execute(
         """INSERT INTO raw_frames (
             instrume, file, "mjd-obs", "mjd-date", "date-obs",
@@ -27,6 +22,16 @@ def test_session_create_initialises_sqlite_view_assets_and_workspace_links(
             '2024-01-02T03:04:05', 60310, 'CALIB', 'BIAS', 'IMAGE', 0, 'BIAS',
             './raw/bias-1.fits')"""
     )
+
+
+def test_session_create_initialises_sqlite_view_assets_and_workspace_links(
+    tmp_path, log
+) -> None:
+    """Create an isolated session with its database view and root-facing assets."""
+    organiser = workspace_organiser(tmp_path, log=log)
+    connection, _ = organiser._get_or_create_db_connection()
+    organiser.conn = connection
+    _insert_complete_raw_frame(connection)
     sessionPath = Path(organiser.sessionsDir) / "science"
     sessionPath.mkdir()
     (sessionPath / "soxspipe.yaml").write_text("# synthetic settings\n")
@@ -54,6 +59,59 @@ def test_session_create_initialises_sqlite_view_assets_and_workspace_links(
         rootAsset = Path(organiser.rootDir) / assetName
         assert rootAsset.is_symlink()
         assert rootAsset.resolve() == sessionPath / assetName
+
+
+def test_prepare_refresh_restores_every_session_database_object(
+    tmp_path, log, monkeypatch
+) -> None:
+    """Rebuild a named-session workspace without leaving its schema unusable."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    organiser = workspace_organiser(tmp_path, log=log)
+    connection, _ = organiser._get_or_create_db_connection()
+    organiser.conn = connection
+    _insert_complete_raw_frame(connection)
+
+    organiser.session_create("science")
+    organiser.session_create("archive")
+    Path(organiser.sessionIdFile).write_text("science", encoding="utf-8")
+    organiser.sessionId = "science"
+    organiser.sessionPath = str(Path(organiser.sessionsDir) / "science")
+    (Path(organiser.sessionsDir) / "not-a-session").mkdir()
+    (Path(organiser.sessionsDir) / "README.txt").write_text(
+        "not a session", encoding="utf-8"
+    )
+
+    monkeypatch.setattr(organiser, "_select_instrument", lambda: None)
+    monkeypatch.setattr(organiser, "_fits_files_exist", lambda: True)
+    monkeypatch.setattr(
+        organiser, "_sync_raw_frames", lambda: _insert_complete_raw_frame(organiser.conn)
+    )
+    monkeypatch.setattr(organiser, "_move_misc_files", lambda: None)
+    monkeypatch.setattr(organiser, "_flag_files_to_ignore", lambda: None)
+    monkeypatch.setattr(organiser, "build_sof_files", lambda: None)
+
+    organiser.prepare(refresh=True, report=False)
+
+    columns = {
+        row[1] for row in organiser.conn.execute("PRAGMA table_info(product_frames)")
+    }
+    assert {"status_science", "status_archive"} <= columns
+    tables = {
+        row[0]
+        for row in organiser.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
+    assert {"sof_map_science", "sof_map_archive"} <= tables
+    viewSql = organiser.conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = 'sof_map'"
+    ).fetchone()[0]
+    assert "sof_map_science" in viewSql
+    assert "Skipping invalid session directory" in " ".join(
+        message for _, message in log.messages
+    )
+
+    organiser.prepare(report=False)
 
 
 def test_session_build_sof_files_creates_complete_bias_inventory(tmp_path, log) -> None:
