@@ -180,6 +180,55 @@ def test_instrument_selection_normalises_xshooter_and_loads_sof_map(
     assert organiser.sofMapLookup["bias_frame"]["recipe"] == "mbias"
 
 
+def test_get_incomplete_raw_frames_set_loads_the_sof_map_lazily_like_the_reducer_path(tmp_path, log) -> None:
+    """`reducer.reduce()` builds a fresh `data_organiser` and calls `get_incomplete_raw_frames_set` without
+    ever calling `prepare()` or `_select_instrument()` first. Before DY-266 that silently reported every
+    missing calibration as `unknown`; it must now name the real one."""
+    organiser = workspace_organiser(tmp_path, log=log)
+    organiser.conn = sqlite3.connect(":memory:")
+    organiser.conn.execute("CREATE TABLE raw_frames (instrume TEXT)")
+    organiser.conn.execute("INSERT INTO raw_frames VALUES ('SOXS')")
+    organiser.conn.execute(
+        'CREATE TABLE raw_frame_sets ("eso seq arm" TEXT, "mjd-obs" REAL, "eso dpr tech" TEXT, '
+        '"eso dpr type" TEXT, "slit" TEXT, "eso obs name" TEXT, "eso obs id" INTEGER, '
+        "sof TEXT, recipe TEXT, binning TEXT, rospeed TEXT, gain REAL, complete INTEGER)"
+    )
+    organiser.conn.execute(
+        'CREATE TABLE failed_products (sof TEXT, recipe TEXT, "eso seq arm" TEXT, binning TEXT, '
+        "rospeed TEXT, gain REAL, error_message TEXT)"
+    )
+    for calibrationType in ("mbias", "mdark", "disp_solution", "order_centres", "mflat", "spat_solution", "std_flux"):
+        organiser.conn.execute(f"CREATE TABLE cal_{calibrationType} (sof TEXT, upstream_status TEXT)")  # noqa: S608
+    organiser.conn.execute(
+        "INSERT INTO raw_frame_sets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "VIS",
+            60000.0,
+            "ECHELLE,SLIT,NODDING",
+            "OBJECT",
+            "SLIT1.0",
+            "target",
+            1,
+            "NOD_A.sof",
+            "nod_obj",
+            "1x1",
+            "100",
+            1.0,
+            0,
+        ),
+    )
+    organiser.conn.execute("INSERT INTO cal_mbias VALUES ('NOD_A.sof', 'pass')")
+    organiser.conn.execute("INSERT INTO cal_spat_solution VALUES ('NOD_A.sof', 'pass')")
+    organiser.conn.execute("INSERT INTO cal_std_flux VALUES ('NOD_A.sof', 'pass')")
+
+    # THE EXACT SHAPE reducer.reduce() USES: A FRESH ORGANISER, NO prepare() OR _select_instrument() CALLED FIRST
+    assert not hasattr(organiser, "sofMapLookup")
+
+    result = organiser.get_incomplete_raw_frames_set()
+
+    assert result["missing calibrations"].tolist() == ["master flat (not observed)"]
+
+
 def test_session_list_and_switch_retarget_workspace_symlinks(tmp_path, log) -> None:
     """List sessions deterministically and retarget all root assets on switch."""
     organiser = workspace_organiser(tmp_path, log=log)

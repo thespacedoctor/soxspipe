@@ -1,5 +1,7 @@
 # Release Notes
 
+* **FIXED**: `soxspipe reduce all` reported every missing calibration as `unknown`, because it built a fresh `data_organiser` and read the report before the SOF map was ever loaded; `get_incomplete_raw_frames_set` now loads it lazily when absent (DY-266)
+* **ENHANCEMENT**: the missing-calibrations report now says why each calibration is missing (`failed QC`, `failed run`, `not yet reduced`, `not observed` or `no match`), and `get_blocking_calibration_sets` names the raw sof and failure message responsible, printed as a second table by `soxspipe prep` and `soxspipe reduce all`; for `mbias`/`mflat` the reason and blocking sof are scoped to the science set's own binning and readout speed, matching the real `cal_mbias`/`cal_mflat` view (DY-266)
 * **ENHANCEMENT**: `soxspipe prep` and `soxspipe reduce all` add a `missing calibrations` column to the table of science sets that cannot be reduced (DY-265)
 * **FIXED**: soxs_mflat normalisation errors now name the failing flat frame by filename (DY-128)
 * **REFACTOR**: Raised the supported Python version floor from 3.11 to 3.12; CI now tests the full declared Python 3.12–3.13 range.

@@ -279,23 +279,12 @@ class reducer:
                 break
 
         if self.reductionTarget == "all":
-            do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-            incompleteSets = do.get_incomplete_raw_frames_set()
-            do.close()
-            if len(incompleteSets.index):
-                from tabulate import tabulate
+            from soxspipe.commonutils.data_organiser import print_incomplete_sets_report
 
-                print(
-                    "\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:"
-                )
-                print(
-                    tabulate(
-                        incompleteSets,
-                        headers="keys",
-                        tablefmt="pretty",
-                        showindex=False,
-                    )
-                )
+            do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+            incompleteSets, blockingSets = do.get_incomplete_sets_report()
+            do.close()
+            print_incomplete_sets_report(incompleteSets, blockingSets)
 
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
         do.session_refresh(failure=None)

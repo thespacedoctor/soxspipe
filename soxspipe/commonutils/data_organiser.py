@@ -16,10 +16,59 @@ from pathlib import Path
 
 from fundamentals import tools
 
-from soxspipe.commonutils.missing_calibrations import describe_missing, find_missing_calibrations
+from soxspipe.commonutils.missing_calibrations import (
+    CALIBRATION_RECIPES,
+    FAILED_QC,
+    FAILED_RUN,
+    NOT_YET_REDUCED,
+    QC_FAILURE_MESSAGE_PREFIX,
+    calibration_match_clause,
+    describe_missing,
+    find_missing_calibrations,
+    missing_reasons,
+)
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
 os.environ["TERM"] = "vt100"
+
+
+def print_incomplete_sets_report(incompleteSets, blockingSets=None):
+    """*print the "cannot be reduced" report shared by `data_organiser.prepare` and `reducer.reduce`*
+
+    **Key Arguments:**
+
+    - ``incompleteSets`` -- dataframe from `data_organiser.get_incomplete_raw_frames_set`
+    - ``blockingSets`` -- optional dataframe from `data_organiser.get_blocking_calibration_sets`. Printed as a
+      second table when given and non-empty.
+    """
+    if incompleteSets is None or not len(incompleteSets.index):
+        return
+
+    from tabulate import tabulate
+
+    print(
+        "\nSOME CALIBRATION FRAMES ARE NOT PRESENT (OR FAILED TO BE BUILT) FOR THE FOLLOWING DATA SETS "
+        "AND THEY CANNOT BE REDUCED:"
+    )
+    print(
+        tabulate(
+            incompleteSets,
+            headers="keys",
+            tablefmt="pretty",
+            showindex=False,
+        )
+    )
+
+    if blockingSets is not None and len(blockingSets.index):
+        print("\nCALIBRATIONS BLOCKING THESE DATA SETS:")
+        print(
+            tabulate(
+                blockingSets,
+                headers="keys",
+                tablefmt="pretty",
+                showindex=False,
+            )
+        )
 
 
 class _UnsafePathError(ValueError):
@@ -465,19 +514,8 @@ class data_organiser:
             print("   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
             print("   - `reduced/`: nested folders, ordered by date, containing reduced data.\n")
 
-            incompleteSets = self.get_incomplete_raw_frames_set()
-            if len(incompleteSets.index):
-                from tabulate import tabulate
-
-                print("SOME CALIBRATION FRAMES ARE NOT PRESENT FOR THE FOLLOWING DATA SETS AND THEY CANNOT BE REDUCED:")
-                print(
-                    tabulate(
-                        incompleteSets,
-                        headers="keys",
-                        tablefmt="pretty",
-                        showindex=False,
-                    )
-                )
+            incompleteSets, blockingSets = self.get_incomplete_sets_report()
+            print_incomplete_sets_report(incompleteSets, blockingSets)
 
             self.conn.close()
 
@@ -1821,6 +1859,87 @@ class data_organiser:
 
         return conn, reset
 
+    # DISPLAY COLUMNS SHARED BY get_incomplete_raw_frames_set AND get_blocking_calibration_sets
+    _INCOMPLETE_SET_DISPLAY_COLUMNS = [
+        "eso seq arm",
+        "mjd-obs",
+        "eso dpr tech",
+        "eso dpr type",
+        "slit",
+        "eso obs name",
+        "eso obs id",
+    ]
+
+    # METHOD TO GROUP INCOMPLETE RAW-FRAME SETS AND WORK OUT WHICH CALIBRATIONS EACH GROUP LACKS, AND WHY
+    def _missing_calibrations_by_group(self):
+        """*group incomplete science sets and find which calibrations each group lacks, and why*
+
+        Called once per report by `get_incomplete_sets_report`, which both `get_incomplete_raw_frames_set`
+        and `get_blocking_calibration_sets` build on, so a report never re-runs this grouping-plus-reason
+        pass twice.
+
+        **Return:**
+
+        - ``groups`` -- list of `(displayValues, mergedPositions, reasons, matchContext)` tuples, one per
+          distinct combination of `_INCOMPLETE_SET_DISPLAY_COLUMNS`. `mergedPositions` is `{calibration
+          type: position in the sof map}`, unioned across every sof sharing that display row. `reasons` is
+          `{calibration type: reason string}` from `missing_reasons`, empty when nothing is missing.
+          `matchContext` is the group's own `(binning, rospeed, gain)`, taken from its first sof, passed
+          to `missing_reasons` so `mbias`/`mflat` are classified against the same mode the group is in.
+        """
+        import pandas as pd
+
+        query = (
+            'select "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit",'
+            '"eso obs name","eso obs id", sof, recipe, binning, rospeed, gain from raw_frame_sets '
+            'where complete = 0 and recipe in ("nod_obj","stare_obj","offset_obj")'
+        )
+        rawSets = pd.read_sql(query, con=self.conn)
+
+        # SOF MAP MAY NOT BE LOADED YET IF THIS data_organiser WAS BUILT WITHOUT CALLING prepare() FIRST
+        if not hasattr(self, "sofMapLookup"):
+            self._select_instrument()
+
+        # SOF MAP IS STILL ABSENT IF _select_instrument RETURNED EARLY (NO raw_frames TABLE, NO INSTRUMENT YET)
+        missingBySof = find_missing_calibrations(self.conn, rawSets, getattr(self, "sofMapLookup", None))
+
+        armIndex = self._INCOMPLETE_SET_DISPLAY_COLUMNS.index("eso seq arm")
+        groups = []
+        for displayValues, group in rawSets.groupby(self._INCOMPLETE_SET_DISPLAY_COLUMNS, sort=False, dropna=False):
+            mergedPositions = {}
+            for sof in group["sof"]:
+                for calibrationType, position in missingBySof.get(sof, {}).items():
+                    mergedPositions[calibrationType] = min(position, mergedPositions.get(calibrationType, position))
+            # A DISPLAY GROUP IS ONE OBSERVATION, SO EVERY SOF IN IT SHARES ONE MODE -- THE FIRST ROW STANDS FOR ALL
+            matchContext = tuple(
+                None if pd.isna(value) else value for value in group[["binning", "rospeed", "gain"]].iloc[0]
+            )
+            reasons = (
+                missing_reasons(self.conn, mergedPositions, displayValues[armIndex], *matchContext)
+                if mergedPositions
+                else {}
+            )
+            groups.append((displayValues, mergedPositions, reasons, matchContext))
+
+        return groups
+
+    # METHOD TO BUILD THE INCOMPLETE-SETS AND BLOCKING-SETS TABLES FROM ONE SHARED GROUPING PASS
+    def get_incomplete_sets_report(self):
+        """*return the incomplete-sets and blocking-sets tables together, from one grouping pass*
+
+        `get_incomplete_raw_frames_set` and `get_blocking_calibration_sets` each call
+        `_missing_calibrations_by_group` on their own for standalone use; this method computes it once
+        and builds both tables from that one result, which is what `prepare` and `reducer.reduce` use so
+        printing the report never re-runs the grouping-plus-reason SQL pass twice.
+
+        **Return:**
+
+        - ``(incompleteSets, blockingSets)`` -- the same two dataframes `get_incomplete_raw_frames_set`
+          and `get_blocking_calibration_sets` return
+        """
+        groups = self._missing_calibrations_by_group()
+        return self._incomplete_sets_frame(groups), self._blocking_sets_frame(groups)
+
     # METHOD TO RETURN ALL THE RAW FRAME SETS THAT ARE NOT COMPLETE FROM THE DATABASE AS A PANDAS TABLE
     def get_incomplete_raw_frames_set(self):
         """*return the science raw-frame sets that cannot be reduced yet, and the calibrations each one lacks*
@@ -1830,40 +1949,85 @@ class data_organiser:
         - ``incompleteSets`` -- dataframe with one row per distinct combination of the display columns
           (`eso seq arm`, `mjd-obs`, `eso dpr tech`, `eso dpr type`, `slit`, `eso obs name`, `eso obs id`)
           plus a `missing calibrations` column. That column lists, in sof-map order, the calibrations with no
-          passing row in their `cal_<type>` view, or `unknown` if none can be found. When several sofs share one
-          display row, the column lists every calibration that any one of them lacks. The frame is empty when
-          every science set is complete.
+          passing row in their `cal_<type>` view, each with why it is missing (`failed QC`, `failed run`,
+          `not yet reduced`, `not observed` or `no match`), or `unknown` if none can be found. When several
+          sofs share one display row, the column lists every calibration that any one of them lacks. The
+          frame is empty when every science set is complete.
         """
+        return self._incomplete_sets_frame(self._missing_calibrations_by_group())
+
+    def _incomplete_sets_frame(self, groups):
+        """*build the `get_incomplete_raw_frames_set` dataframe from an already-computed `groups` list*"""
         import pandas as pd
 
-        displayColumns = [
-            "eso seq arm",
-            "mjd-obs",
-            "eso dpr tech",
-            "eso dpr type",
-            "slit",
-            "eso obs name",
-            "eso obs id",
+        rows = [
+            [*displayValues, describe_missing(mergedPositions, reasons)]
+            for displayValues, mergedPositions, reasons, _ in groups
         ]
-        query = (
-            'select "eso seq arm", round("mjd-obs",1) as "mjd-obs", "eso dpr tech","eso dpr type","slit",'
-            '"eso obs name","eso obs id", sof, recipe from raw_frame_sets '
-            'where complete = 0 and recipe in ("nod_obj","stare_obj","offset_obj")'
-        )
-        rawSets = pd.read_sql(query, con=self.conn)
+        return pd.DataFrame(rows, columns=[*self._INCOMPLETE_SET_DISPLAY_COLUMNS, "missing calibrations"])
 
-        # SOF MAP IS ABSENT IF _select_instrument RETURNED EARLY
-        missingBySof = find_missing_calibrations(self.conn, rawSets, getattr(self, "sofMapLookup", None))
+    # METHOD TO NAME THE RAW SOFS RESPONSIBLE FOR EACH MISSING CALIBRATION, WHERE THAT IS KNOWN
+    def get_blocking_calibration_sets(self):
+        """*name the raw sofs blocking each missing calibration currently reported as failed QC, a failed
+        run, or not yet reduced*
+
+        For `mbias`/`mflat` this is scoped to the group's own binning/readout speed/gain (see
+        `missing_calibrations.calibration_match_clause`); every other type is arm-only, since its
+        `cal_<type>` view does not hard-gate on mode either.
+
+        **Return:**
+
+        - ``blockingSets`` -- dataframe with columns `eso seq arm`, `calibration`, `sof`, `recipe`, `reason`,
+          `detail` (the first line of the failure message, or `None` when the reason is `not yet reduced`).
+          Empty when nothing is currently missing for any of these three reasons.
+        """
+        return self._blocking_sets_frame(self._missing_calibrations_by_group())
+
+    def _blocking_sets_frame(self, groups):
+        """*build the `get_blocking_calibration_sets` dataframe from an already-computed `groups` list*"""
+        import pandas as pd
+
+        columns = ["eso seq arm", "calibration", "sof", "recipe", "reason", "detail"]
+
+        pairs = set()
+        for displayValues, _, reasons, matchContext in groups:
+            arm = displayValues[self._INCOMPLETE_SET_DISPLAY_COLUMNS.index("eso seq arm")]
+            for calibrationType, reason in reasons.items():
+                if reason in (FAILED_QC, FAILED_RUN, NOT_YET_REDUCED):
+                    pairs.add((arm, calibrationType, reason, matchContext))
 
         rows = []
-        for displayValues, group in rawSets.groupby(displayColumns, sort=False, dropna=False):
-            mergedPositions = {}
-            for sof in group["sof"]:
-                for calibrationType, position in missingBySof.get(sof, {}).items():
-                    mergedPositions[calibrationType] = min(position, mergedPositions.get(calibrationType, position))
-            rows.append([*displayValues, describe_missing(mergedPositions)])
+        for arm, calibrationType, reason, matchContext in sorted(pairs, key=lambda pair: pair[:3]):
+            recipes = CALIBRATION_RECIPES.get(calibrationType, (calibrationType,))
+            placeholders = ", ".join("?" for _ in recipes)
+            matchClause, matchParams = calibration_match_clause(calibrationType, arm, *matchContext)
+            if reason in (FAILED_QC, FAILED_RUN):
+                # GROUPED: A FAILED RECIPE RUN CAN LEAVE SEVERAL PRODUCT FILES (E.G. A TABLE AND A RESPONSE
+                # CURVE) UNDER ONE sof, EACH CARRYING THE SAME error_message -- ONE ROW PER sof, NOT PER FILE
+                sqlQuery = (
+                    f"SELECT sof, recipe, MIN(error_message) FROM failed_products "  # noqa: S608
+                    f'WHERE recipe IN ({placeholders}) AND "eso seq arm" = ?{matchClause} GROUP BY sof, recipe'
+                )
+                # RECIPE NAMES COME FROM CALIBRATION_RECIPES (A MODULE CONSTANT), NOT USER INPUT; ALL VALUES ARE BOUND
+                wantQc = reason == FAILED_QC
+                candidates = self.conn.execute(sqlQuery, (*recipes, arm, *matchParams))
+                matches = [
+                    (sof, recipe, errorMessage)
+                    for sof, recipe, errorMessage in candidates
+                    if bool((errorMessage or "").startswith(QC_FAILURE_MESSAGE_PREFIX)) == wantQc
+                ]
+            else:
+                sqlQuery = (
+                    f"SELECT sof, recipe, NULL FROM raw_frame_sets "  # noqa: S608
+                    f'WHERE recipe IN ({placeholders}) AND "eso seq arm" = ? '
+                    f"AND complete = 0{matchClause} GROUP BY sof, recipe"
+                )
+                matches = list(self.conn.execute(sqlQuery, (*recipes, arm, *matchParams)))
+            for sof, recipe, errorMessage in matches:
+                detail = errorMessage.splitlines()[0] if errorMessage else None
+                rows.append([arm, calibrationType, sof, recipe, reason, detail])
 
-        return pd.DataFrame(rows, columns=[*displayColumns, "missing calibrations"])
+        return pd.DataFrame(rows, columns=columns)
 
     def _select_instrument(self, inst=False):
         """Select the instrument and set related attributes."""
