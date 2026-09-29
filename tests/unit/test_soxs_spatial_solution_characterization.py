@@ -721,34 +721,50 @@ def test_verification_logs_its_own_entry_and_exit(
 # ---------------------------------------------------------------------------
 
 
-def test_the_tuning_worker_writes_all_three_degree_pairs_then_fails_on_an_undefined_self(
+class RecordingMapper:
+    """Stands in for `create_dispersion_map`: records its keywords and returns an empty fit."""
+
+    built: list[dict[str, Any]] = []
+
+    def __init__(self, **kwargs: Any) -> None:
+        RecordingMapper.built.append(kwargs)
+
+    def get(self) -> tuple[None, ...]:
+        return (None,) * 6
+
+
+@pytest.mark.parametrize("debug", [True, False])
+def test_the_tuning_worker_writes_all_three_degree_pairs_and_forwards_the_debug_switch(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
+    debug: bool,
 ) -> None:
-    """DY-61: the worker reads `self.debug` at module level and raises `NameError`.
-
-    The three degree writes land first, and the dispersion map is never built.
-    """
+    """DY-61: the worker builds the dispersion map with the `debug` it is passed, not one read from `self`."""
     # ARRANGE
     recipeSettings: dict[str, Any] = {}
-    built: list[object] = []
-    monkeypatch.setattr(commonutils, "create_dispersion_map", lambda **kwargs: built.append(kwargs))
+    monkeypatch.setattr(RecordingMapper, "built", [])
+    monkeypatch.setattr(commonutils, "create_dispersion_map", RecordingMapper)
 
-    # ACT / ASSERT
-    with pytest.raises(NameError, match="self"):
-        SPATIAL_MODULE.parameterTuning(
-            (2, 3, 4, 5, 1, 2),
-            log=log,
-            recipeSettings=recipeSettings,
-            settings={},
-            multiPinholeFrame=None,
-            disp_map_table="DISP_TAB",
-            order_table="ORDER_TAB",
-            qc=None,
-            products=None,
-            sofName="sof",
-            lineDetectionTable=None,
-        )
+    # ACT
+    returned = SPATIAL_MODULE.parameterTuning(
+        (2, 3, 4, 5, 1, 2),
+        log=log,
+        recipeSettings=recipeSettings,
+        settings={},
+        multiPinholeFrame=None,
+        disp_map_table="DISP_TAB",
+        order_table="ORDER_TAB",
+        qc=None,
+        products=None,
+        sofName="sof",
+        lineDetectionTable="LINE-DETECTION-TABLE",
+        debug=debug,
+    )
 
+    # ASSERT
+    assert returned is None
     assert recipeSettings == {"order-deg": [2, 3], "wavelength-deg": [4, 5], "slit-deg": [1, 2]}
-    assert built == []
+    (mapper,) = RecordingMapper.built
+    assert mapper["debug"] is debug
+    assert mapper["lineDetectionTable"] == "LINE-DETECTION-TABLE"
+    assert mapper["startNightDate"] is False

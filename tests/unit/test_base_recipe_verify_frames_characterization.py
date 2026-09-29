@@ -184,8 +184,9 @@ def test_mixed_binning_is_rejected(log: Any, monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(RECIPE_MODULE, "detector_lookup", _detector_lookup())
 
     # ACT / ASSERT
-    with pytest.raises(TypeError, match="mix of binnings"):
+    with pytest.raises(TypeError) as excinfo:
         recipe._verify_input_frames_basics()
+    assert str(excinfo.value) == "Input frames are a mix of binnings"
 
     assert _printed(log) == [ERROR_BANNER]
 

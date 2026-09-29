@@ -337,8 +337,9 @@ def test_a_non_dark_image_type_is_rejected(
     _stub_basics(monkeypatch, inventory)
 
     # ACT / ASSERT
-    with pytest.raises(TypeError, match="Input frames not DARK frames"):
+    with pytest.raises(TypeError) as excinfo:
         recipe.verify_input_frames()
+    assert str(excinfo.value) == "Input frames not DARK frames"
 
 
 def test_differing_exposure_times_are_rejected(

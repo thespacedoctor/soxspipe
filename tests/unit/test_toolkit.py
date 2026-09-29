@@ -15,6 +15,7 @@ from astropy.nddata import CCDData, StdDevUncertainty
 from numpy.testing import assert_allclose, assert_array_equal
 
 from soxspipe.commonutils import toolkit
+from soxspipe.commonutils.detect_order_edges import detect_order_edges
 
 pytestmark = pytest.mark.unit
 
@@ -59,6 +60,20 @@ def test_cut_image_slice_rejects_invalid_axis_and_out_of_bounds(log: object) -> 
     assert toolkit.cut_image_slice(log, frame, 3, 4, 1, 3) == (None, None, None)
     with pytest.raises(ValueError, match="either 'x' or 'y'"):
         toolkit.cut_image_slice(log, frame, 3, 4, 3, 3, sliceAxis="z")
+
+
+@pytest.mark.parametrize(
+    "function",
+    [
+        toolkit.cut_image_slice,
+        detect_order_edges.determine_order_flux_threshold,
+        detect_order_edges.determine_lower_upper_edge_pixel_positions,
+    ],
+    ids=lambda function: function.__name__,
+)
+def test_cut_image_slice_and_its_callers_do_not_shadow_the_builtin_slice(function) -> None:
+    # ANY LOCAL NAMED `slice` SHADOWS THE BUILTIN FOR THE WHOLE FUNCTION BODY (DY-84, DY-220)
+    assert "slice" not in function.__code__.co_varnames
 
 
 @pytest.mark.parametrize(

@@ -964,7 +964,7 @@ class base_recipe:
 
         if len(cdelt1) > 1 or len(cdelt2) > 1:
             self._report_verification_error()
-            raise TypeError("Input frames are a mix of binnings" % locals())  # noqa: F507, UP031
+            raise TypeError("Input frames are a mix of binnings")
 
         if cdelt1[0] and cdelt2[0]:
             self.detectorParams["binning"] = [int(cdelt2[0]), int(cdelt1[0])]
@@ -2236,7 +2236,8 @@ class base_recipe:
             dmin, dmax, dmean, dstd = _image_stats(tmp)
             masterRon = float(dstd)
 
-        elif masterRon:
+        # RECORD THE MASTER RON ROW ONCE, WHETHER MEASURED HERE OR SUPPLIED
+        if masterRon:
             self.add_qc(
                 qcName="MASTER RON",
                 qcValue=float(masterRon),

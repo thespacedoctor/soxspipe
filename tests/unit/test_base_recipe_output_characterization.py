@@ -117,7 +117,55 @@ def test_qc_ron_measures_master_noise_against_the_raw_pair_mask(log: Any) -> Non
     # ASSERT
     assert rawRon == pytest.approx(2.9832380152474314, rel=1e-12)
     assert masterRon == pytest.approx(0.24999807765504675, rel=1e-12)
-    # THE MASTER BRANCH RECORDS NO QC ROW OF ITS OWN, ONLY THE RAW ROW
+    # THE MEASURED MASTER NOISE IS RECORDED AS EXACTLY ONE NUMERIC MASTER RON ROW
+    assert recipe.qc["qc_name"].tolist() == ["RAW RON", "MASTER RON"]
+    masterRows = recipe.qc[recipe.qc["qc_name"] == "MASTER RON"]
+    assert len(masterRows) == 1
+    masterRow = masterRows.iloc[0]
+    assert isinstance(masterRow["qc_value"], float)
+    assert masterRow["qc_value"] == masterRon
+    assert masterRow["qc_comment"] == "[e-] Combined RON in MBIAS"
+    assert masterRow["qc_unit"] == "electrons"
+    assert bool(masterRow["to_header"]) is True
+
+
+def test_qc_ron_records_one_master_row_when_master_noise_is_supplied_with_the_frame(
+    log: Any,
+) -> None:
+    """A supplied master noise is not remeasured and is recorded only once."""
+    # ARRANGE
+    recipe = _recipe(log)
+    recipe.inputFrames = StubInputFrames(_noise_frames())
+    masterFrame = _frame(np.full((16, 16), 5.0))
+    masterFrame.data[1, 1] = 9.0
+
+    # ACT
+    rawRon, masterRon = recipe.qc_ron(
+        frameType="MBIAS",
+        frameName="master bias",
+        masterFrame=masterFrame,
+        masterRon=0.8,
+    )
+
+    # ASSERT
+    assert masterRon == 0.8
+    assert recipe.qc["qc_name"].tolist() == ["RAW RON", "MASTER RON"]
+    masterRow = recipe.qc[recipe.qc["qc_name"] == "MASTER RON"].iloc[0]
+    assert masterRow["qc_value"] == pytest.approx(0.8)
+    assert isinstance(masterRow["qc_value"], float)
+
+
+def test_qc_ron_records_no_master_row_without_a_master_frame_or_noise(log: Any) -> None:
+    """With nothing to measure or record, no MASTER RON row is added."""
+    # ARRANGE
+    recipe = _recipe(log)
+    recipe.inputFrames = StubInputFrames(_noise_frames())
+
+    # ACT
+    rawRon, masterRon = recipe.qc_ron(frameType="MBIAS", frameName="master bias")
+
+    # ASSERT
+    assert masterRon is None
     assert recipe.qc["qc_name"].tolist() == ["RAW RON"]
 
 

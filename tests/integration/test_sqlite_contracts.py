@@ -102,7 +102,7 @@ def test_database_connection_rebuilds_a_corrupt_but_openable_database(
     # `PREPARE` DOES INTERNALLY.
     prepareRefreshValues: tuple[bool, ...] = ()
 
-    def _rebuild_from_template(*, refresh: bool = False, report: bool = True) -> None:
+    def _rebuild_from_template(*, refresh: bool = False, report: bool = True, _failedToOpen: bool = False) -> None:
         """Stand in for `prepare(refresh=True)`'s file-replacement step, then
         rebuild the connection via the real `_get_or_create_db_connection`.
         """
