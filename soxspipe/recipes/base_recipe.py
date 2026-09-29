@@ -2236,7 +2236,8 @@ class base_recipe:
             dmin, dmax, dmean, dstd = _image_stats(tmp)
             masterRon = float(dstd)
 
-        elif masterRon:
+        # RECORD THE MASTER RON ROW ONCE, WHETHER MEASURED HERE OR SUPPLIED
+        if masterRon:
             self.add_qc(
                 qcName="MASTER RON",
                 qcValue=float(masterRon),
