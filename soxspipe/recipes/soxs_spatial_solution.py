@@ -98,7 +98,7 @@ class soxs_spatial_solution(base_recipe):
         Sets ``self.polyOrders``. A false value is left alone, so the recipe
         falls back to the degrees in the settings file.
         """
-        if self.polyOrders is not False:
+        if self.polyOrders is not False and self.polyOrders is not None:
             value = self.polyOrders
             if (
                 isinstance(value, bool)
