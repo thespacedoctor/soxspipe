@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: twelve QC metrics in `detect_continuum`, `detect_order_edges` and `soxs_mflat` now store a rounded number in `qc_value` instead of a formatted string, so QC tables keep a numeric dtype and the values reach product FITS headers as numeric cards; `ORDEXP10` is now rounded to 3 decimal places rather than 23 (DY-44)
 * **FIXED**: the `Basic Python Checks` workflow failed to start on every push (`python-version is not defined in the referenced workflow`), because `basics.yml` passed a `python-version` input that the reusable `_basics.yml` does not declare; `integration-tests.yml` had the same undeclared input, so both lose the input and their Python-version matrix.
 * **FIXED**: `image_transformer._determine_rectified_image_boundaries` now fits per-order polynomials of slit position vs wavelength from trace points, so the rectified window follows the object trace along each order
 * **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently (both default to 5, so output is unchanged)
