@@ -254,7 +254,8 @@ class image_transformer(base_util):
         cache_image_names = self._cache_image_names
 
         for order, sp_edges, wl_edges, centreCoeffs, orderTable in zip(
-            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlitCentreCoeffs, self.orderSlices
+            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlitCentreCoeffs, self.orderSlices,
+            strict=True,
         ):
             n_sp = len(sp_edges) - 1
             n_wl = len(wl_edges) - 1
@@ -306,7 +307,8 @@ class image_transformer(base_util):
         records = []
 
         for order, sp_edges, wl_edges, centreCoeffs in zip(
-            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlitCentreCoeffs
+            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlitCentreCoeffs,
+            strict=True,
         ):
             n_sp = len(sp_edges) - 1
             n_wl = len(wl_edges) - 1
