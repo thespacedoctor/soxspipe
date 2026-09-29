@@ -125,6 +125,9 @@ def main(arguments=None):
         except _UnsafePathError as error:
             eLog.error(error)
             raise SystemExit(1) from error
+        except DatabasePreservationError as error:
+            print(error, file=sys.stderr)
+            raise SystemExit(1) from error
 
         clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
@@ -354,8 +357,8 @@ def main(arguments=None):
             reducedOffset = recipe.produce_product()
 
         if a["prep"]:
-            do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
             try:
+                do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
                 do.prepare(refresh=a["refreshFlag"])
             except DatabasePreservationError as error:
                 print(error, file=sys.stderr)

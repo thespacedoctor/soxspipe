@@ -657,3 +657,23 @@ def test_main_prep_exits_non_zero_when_a_refresh_is_refused(
 
     assert error.value.code == 1
     assert "could not preserve `/workspace/soxspipe.db`" in capsys.readouterr().err
+
+
+def test_main_exits_non_zero_when_the_session_lookup_cannot_rebuild_the_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A refused automatic rebuild while reading the current session exits 1 with the message on stderr."""
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    def refuse_rebuild(self: object, **kwargs: object) -> None:
+        raise DatabasePreservationError("the database `/workspace/soxspipe.db` is locked or busy")
+
+    monkeypatch.setattr(RecordingOrganiser, "__init__", refuse_rebuild)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "prep"])
+
+    assert error.value.code == 1
+    assert "is locked or busy" in capsys.readouterr().err

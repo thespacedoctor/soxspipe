@@ -632,3 +632,42 @@ def test_snapshot_that_fails_its_quick_check_falls_back_to_a_raw_copy(tmp_path, 
     assert "_corrupt_" in Path(backupPath).name
     assert Path(backupPath).read_bytes() == originalBytes
     assert [path.name for path in Path(organiser.dbBackupsDir).iterdir()] == [Path(backupPath).name]
+
+
+def _sqlite_error(errorClass, message, errorCode):
+    error = errorClass(message)
+    error.sqlite_errorcode = errorCode
+    return error
+
+
+def test_automatic_rebuild_refuses_a_locked_database(science_workspace) -> None:
+    # ARRANGE
+    organiser = science_workspace
+    lockedError = _sqlite_error(sqlite3.OperationalError, "database is locked", sqlite3.SQLITE_BUSY)
+
+    # ACT
+    with pytest.raises(DatabasePreservationError, match="locked"):
+        organiser._rebuild_database_that_failed_to_open(lockedError)
+
+    # ASSERT
+    assert organiser.syncCalls == []
+    assert _backup_files(organiser) == []
+    assert Path(organiser.rootDbPath).is_file()
+
+
+def test_automatic_rebuild_snapshots_a_database_that_is_not_known_to_be_unreadable(
+    science_workspace, open_sqlite
+) -> None:
+    # ARRANGE
+    organiser = science_workspace
+    integrityError = sqlite3.DatabaseError("database integrity check failed: [('row 1 missing',)]")
+
+    # ACT
+    organiser._rebuild_database_that_failed_to_open(integrityError)
+
+    # ASSERT
+    backups = _backup_files(organiser)
+    assert len(backups) == 1
+    assert "_refresh_" in backups[0].name
+    rebuilt = open_sqlite(organiser.rootDbPath)
+    assert rebuilt.execute("SELECT count(*) FROM quality_control").fetchone() == (2,)

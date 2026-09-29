@@ -89,6 +89,8 @@ class _UnreadableDatabaseError(sqlite3.DatabaseError):
 _RAW_BACKUP_LABEL = "corrupt"
 # SQLITE PRIMARY RESULT CODES THAT MEAN THE FILE ITSELF IS DAMAGED (NOT LOCKED OR BUSY)
 _UNREADABLE_DATABASE_CODES = {sqlite3.SQLITE_NOTADB, sqlite3.SQLITE_CORRUPT}
+# SQLITE PRIMARY RESULT CODES THAT MEAN ANOTHER CONNECTION HOLDS THE DATABASE
+_LOCKED_DATABASE_CODES = {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
 _SQLITE_PRIMARY_CODE_MASK = 0xFF
 
 
@@ -98,6 +100,12 @@ def _is_unreadable_database_error(error):
         return True
     errorCode = getattr(error, "sqlite_errorcode", None)
     return errorCode is not None and (errorCode & _SQLITE_PRIMARY_CODE_MASK) in _UNREADABLE_DATABASE_CODES
+
+
+def _is_locked_database_error(error):
+    """Return True when a SQLite error says the database is locked or busy."""
+    errorCode = getattr(error, "sqlite_errorcode", None)
+    return errorCode is not None and (errorCode & _SQLITE_PRIMARY_CODE_MASK) in _LOCKED_DATABASE_CODES
 
 
 def _fsync_path(path):
@@ -2104,7 +2112,7 @@ class data_organiser:
         try:
             qcRows = self._read_preserved_quality_control(backupPath)
             restoredCount = self._write_quality_control_rows(qcRows)
-        except (sqlite3.Error, pd.errors.DatabaseError, OSError, ValueError) as error:
+        except (sqlite3.Error, pd.errors.DatabaseError, OSError, ValueError, TypeError, KeyError) as error:
             self.log.warning(f"could not restore quality-control history from `{backupPath}`: {error}")
             self.log.debug(traceback.format_exc())
             print(
@@ -2116,15 +2124,30 @@ class data_organiser:
         print(f"Restored {restoredCount} of {len(qcRows)} quality-control rows from {source}.")
         return restoredCount
 
-    def _rebuild_database_that_failed_to_open(self):
-        """*rebuild the workspace database after it failed to open, keeping a raw copy of it in `backups/`*
+    def _rebuild_database_that_failed_to_open(self, error):
+        """*rebuild the workspace database after it repeatedly failed to open or pass its integrity check*
+
+        A database that SQLite reports is not a database or is malformed is kept as a raw copy in `backups/`.
+        Any other failure goes through the normal snapshot-first preservation. A locked or busy database is
+        never rebuilt, because another process may still be writing to it.
+
+        **Key Arguments:**
+
+        - ``error`` -- the exception from the last failed attempt to open and check the database
 
         **Raises:**
 
-        - `DatabasePreservationError` when the failed database could not be copied into `backups/`. It is then
-          left in place, never deleted, and there is no usable database to continue with.
+        - `DatabasePreservationError` when the database is locked or busy, or could not be copied into
+          `backups/`. It is then left in place, never deleted, and there is no usable database to continue with.
         """
-        self.prepare(refresh=True, _failedToOpen=True)
+        if _is_locked_database_error(error):
+            message = (
+                f"The database `{self.rootDbPath}` is locked or busy ({error}), so it has not been rebuilt. "
+                "Stop any other soxspipe process using this workspace, then try again."
+            )
+            self.log.error(message)
+            raise DatabasePreservationError(message) from error
+        self.prepare(refresh=True, _failedToOpen=_is_unreadable_database_error(error))
 
     def _get_or_create_db_connection(self):
         """Private method to get or create the SQLite database connection, copying the template if missing."""
@@ -2175,8 +2198,9 @@ class data_organiser:
                 c.execute("PRAGMA synchronous = OFF")
 
                 i = tries + 1
-            except Exception:
+            except Exception as error:
                 # DATABASE IS BROKEN, REPLACE WITH EMPTY ONE
+                lastError = error
                 i += 1
                 c.close()
                 conn.close()
@@ -2189,7 +2213,7 @@ class data_organiser:
                 time.sleep(1)
 
                 if i > tries - 1:
-                    self._rebuild_database_that_failed_to_open()
+                    self._rebuild_database_that_failed_to_open(lastError)
                     if not reset:
                         reset = True
                 conn = sql.connect(
