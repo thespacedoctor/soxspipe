@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: DY-61, the module-level `parameterTuning` workers in `soxs_order_centres` and `soxs_spatial_solution` read `self.startNightDate` and `self.debug` where there is no `self`, so every tuning iteration raised `NameError` and `tune-pipeline` produced nothing; each worker now takes the value as a keyword argument (`startNightDate`, `debug`) that the recipe's `_tune_*` method passes through `fmultiprocess`, and a failed tuning iteration now propagates instead of being logged and swallowed, matching `soxs_disp_solution`.
 * **FIXED**: `image_transformer._determine_rectified_image_boundaries` now fits per-order polynomials of slit position vs wavelength from trace points, so the rectified window follows the object trace along each order
 * **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently (both default to 5, so output is unchanged)
 

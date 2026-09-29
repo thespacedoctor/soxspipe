@@ -113,6 +113,27 @@ def test_tuning_samples_the_trace_once_then_sweeps_the_polynomial_grid(
     assert (tuningArguments["binx"], tuningArguments["biny"]) == (2, 2)
 
 
+def test_tuning_forwards_the_start_night_date_to_every_worker(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-61: the worker has no `self`, so the recipe passes `startNightDate` through `fmultiprocess`."""
+    # ARRANGE
+    tuningDirectory = tmp_path / "tuning-night-date"
+    tuningDirectory.mkdir()
+    monkeypatch.chdir(tuningDirectory)
+    recipe, _, _, tuningArguments = _tuning_recipe(log, tmp_path, monkeypatch)
+    recipe.startNightDate = "2031-07-14"
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert tuningArguments["function"] is ORDER_MODULE.parameterTuning
+    assert tuningArguments["startNightDate"] == "2031-07-14"
+
+
 def test_tuning_ignores_poly_orders_and_leaves_the_tables_untouched(
     log: Any,
     tmp_path: Path,

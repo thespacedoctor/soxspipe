@@ -659,6 +659,7 @@ class soxs_spatial_solution(base_recipe):
             products=self.products,
             sofName=self.sofName,
             lineDetectionTable=lineDetectionTable,
+            debug=self.debug,
             turnOffMP=self.debug,
             mute=True,
             progressBar=True,
@@ -775,6 +776,7 @@ def parameterTuning(  # noqa: N802
     products,
     sofName,
     lineDetectionTable,
+    debug,
 ):
     """*tuning the spatial solution*
 
@@ -791,8 +793,9 @@ def parameterTuning(  # noqa: N802
     - ``products`` -- the products table to pass to the dispersion map
     - ``sofName`` -- the name of the set-of-files this reduction came from
     - ``lineDetectionTable`` -- the line detections to reuse across permutations
+    - ``debug`` -- the recipe's debug switch, passed to the dispersion map
 
-    The fit's own outputs are discarded.
+    The fit's own outputs are discarded. A failed fit propagates.
 
     **Usage:**
 
@@ -809,6 +812,7 @@ def parameterTuning(  # noqa: N802
         products=products,
         sofName=sofName,
         lineDetectionTable=lineDetectionTable,
+        debug=debug,
     )
     ```
     """
@@ -832,18 +836,15 @@ def parameterTuning(  # noqa: N802
         create2DMap=False,
         lineDetectionTable=lineDetectionTable,
         startNightDate=False,
-        debug=self.debug,
+        debug=debug,
     )
-    try:
-        (
-            productPath,
-            mapImagePath,
-            res_plots,
-            qcTable,
-            productsTable,
-            lineDetectionTable,
-        ) = this.get()
-    except Exception as e:
-        log.warning(f"parameterTuning: this tuning iteration failed and records nothing in the grid, continuing: {e}")
+    (
+        productPath,
+        mapImagePath,
+        res_plots,
+        qcTable,
+        productsTable,
+        lineDetectionTable,
+    ) = this.get()
 
     return
